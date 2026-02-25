@@ -325,6 +325,22 @@ export function WizardCrearAutoWorldClass({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Validar que sea PDF (MIME type y extensión)
+      const allowedMimeTypes = ['application/pdf'];
+      const allowedExtensions = ['.pdf'];
+      const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+      
+      if (!allowedMimeTypes.includes(file.type) || !allowedExtensions.includes(fileExtension)) {
+        toast.error('Tipo de archivo no permitido', {
+          description: 'Para Autos solo se permiten archivos PDF'
+        });
+        // Limpiar el input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+      
       setSubiendo(true);
       setTimeout(() => {
         setArchivoAdjunto(file);
@@ -1157,7 +1173,7 @@ export function WizardCrearAutoWorldClass({
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".doc,.docx,.pdf"
+                        accept=".pdf"
                         onChange={handleFileChange}
                         className="hidden"
                       />

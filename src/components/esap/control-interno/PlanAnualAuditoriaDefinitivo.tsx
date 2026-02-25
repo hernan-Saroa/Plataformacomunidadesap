@@ -22,7 +22,7 @@ import { motion, AnimatePresence } from 'motion/react';
 // ═══════════════════════════════════════════════════════════════════════════
 // SERVICIO API - Plan Anual (cargar datos desde backend)
 // ═══════════════════════════════════════════════════════════════════════════
-import { usePlanAnualCompleto, useCreatePlanAnual, actividadesApi } from './services/plan-anual';
+import { usePlanAnualCompleto, useCreatePlanAnual, actividadesApi, planAnualApi } from './services/plan-anual';
 import {
   Shield, Calendar, Users, FileText, Download, ArrowLeft,
   Plus, Check, AlertCircle, CheckCircle2, TrendingUp,
@@ -166,14 +166,14 @@ const ROLES_DECRETO_648: Omit<Rol, 'actividades'>[] = [
   },
   {
     numero: 4,
-    nombre: 'Evaluación del sistema de control interno',
+    nombre: 'Evaluación y seguimiento',
     color: '#AA00FF',
     icono: '✓',
     descripcion: 'Evaluar de manera independiente el diseño y efectividad del sistema de control interno'
   },
   {
     numero: 5,
-    nombre: 'Relación con organismos externos de control',
+    nombre: 'Relación con entes externos de control',
     color: '#C62828',
     icono: '⚖️',
     descripcion: 'Coordinar y facilitar las relaciones con entes de control externo'
@@ -394,8 +394,8 @@ const ACTIVIDADES_ROL_4: Omit<Actividad, 'id' | 'responsable' | 'porcentajeAvanc
 
 const ACTIVIDADES_ROL_5: Omit<Actividad, 'id' | 'responsable' | 'porcentajeAvance' | 'estado'>[] = [
   {
-    nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos o responsables del suministro de información, para evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control',
-    descripcion: 'Alertar a la primera línea de defensa, y en general, a los responsables del aporte de información requerida por órganos de control sobre estos efectos (Conductas generadoras de sanciones)',
+    nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos o responsables del suministro de información, para evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control. Alertar a la primera línea de defensa, y en general, a los responsables del aporte de información requerida por órganos de control sobre estos efectos (Conductas generadoras de sanciones)',
+    descripcion: 'Alertar a la primera línea de defensa y a los responsables del aporte de información requerida por órganos de control',
     fechaInicio: '2026-01-01',
     fechaFin: '2026-12-31',
     control: 'Se hace seguimiento mensual.',
@@ -413,7 +413,17 @@ const ACTIVIDADES_ROL_5: Omit<Actividad, 'id' | 'responsable' | 'porcentajeAvanc
     seguimiento: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes',
     requiereVerificacionDirector: false
   },
-  // ═══════════════════ INFORMES DE LEY OBLIGATORIOS ═══════════════════
+  {
+    nombre: 'Presentar informes y seguimientos de ley',
+    descripcion: 'Elaborar y presentar todos los informes de ley en los plazos establecidos',
+    fechaInicio: '2026-01-01',
+    fechaFin: '2026-12-31',
+    control: 'Se hace seguimiento mensual.',
+    evaluacion: '59% avance',
+    seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes',
+    requiereVerificacionDirector: false
+  },
+  // ═══════════════════ INFORMES DE LEY OBLIGATORIOS (Desglose de la actividad anterior) ═══════════════════
   {
     nombre: 'Informe de Pormenorizado del Estado del Control Interno',
     descripcion: 'Presentar ante el CICC y Director Nacional informe detallado del estado del sistema de control interno (Decreto 648/2017, Art. 12)',
@@ -1192,9 +1202,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   const [vista, setVista] = useState<'inicio' | 'wizard' | 'dashboard' | 'rol4-integrado'>('inicio');
   
   // ═══════════════════════════════════════════════════════════════════════
-  // AÑO ACTIVO (siempre el actual)
+  // AÑO ACTIVO (puede cambiar al seleccionar otro plan)
   // ═══════════════════════════════════════════════════════════════════════
-  const añoActual = new Date().getFullYear();
+  const [añoActual, setAñoActual] = useState(new Date().getFullYear());
   
   // ═══════════════════════════════════════════════════════════════════════
   // CARGA DESDE BACKEND - Plan Anual y Auditores
@@ -1397,9 +1407,53 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     }
   }, [planDesdeBackend, auditores]);
   
-  // Planes anteriores - Se cargarán desde backend cuando se implemente
-  // TODO: GET /plan-anual-5-roles para traer histórico
-  const [planesAnteriores] = useState<PlanAnual[]>([]);
+  // Planes anteriores/disponibles - Carga desde backend
+  const [planesAnteriores, setPlanesAnteriores] = useState<PlanAnual[]>([]);
+
+  // Cargar lista de todos los planes disponibles
+  useEffect(() => {
+    const cargarPlanesDisponibles = async () => {
+      try {
+        const response = await planAnualApi.getAll();
+        if (response.data && Array.isArray(response.data)) {
+          // Transformar planes del backend al formato frontend
+          const planesTransformados = response.data.map((planBackend: any) => ({
+            id: planBackend.id,
+            vigencia: planBackend.año || planBackend.vigencia || new Date().getFullYear(),
+            version: planBackend.version || 1,
+            estado: (planBackend.estado?.toUpperCase().replace(/-/g, '_') || 'BORRADOR') as EstadoPlan,
+            jefeOCI: {
+              id: planBackend.responsable_id || '',
+              nombre: planBackend.responsable || 'No asignado',
+              cargo: 'Responsable',
+              email: ''
+            },
+            fechaAprobacion: planBackend.fecha_aprobacion || null,
+            fechaCreacion: planBackend.fecha_creacion || new Date().toISOString(),
+            actaCICC: planBackend.acta_cicc || null,
+            roles: [] // Se cargarán al abrir el plan
+          }));
+          setPlanesAnteriores(planesTransformados);
+        }
+      } catch (error) {
+        console.error('Error cargando planes disponibles:', error);
+      }
+    };
+    cargarPlanesDisponibles();
+  }, [planActual]); // Recargar cuando cambie el plan actual para reflejar nuevos planes
+
+  // Handler para cambiar de plan
+  const handleCambiarPlan = async (planId: string) => {
+    if (planId === planActual?.id) return;
+    
+    const planSeleccionado = planesAnteriores.find(p => p.id === planId);
+    if (planSeleccionado) {
+      // Cambiar el año para que el hook usePlanAnualCompleto cargue el nuevo plan
+      setAñoActual(planSeleccionado.vigencia);
+      // El planActual se actualizará automáticamente cuando planDesdeBackend cambie
+      toast.success(`Cargando plan ${planSeleccionado.vigencia}...`);
+    }
+  };
 
   // Hook para crear plan en backend
   const { mutate: crearPlanEnBackend, loading: creandoPlan } = useCreatePlanAnual();
@@ -1597,6 +1651,8 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             }}
             onCrearNuevo={() => setVista('wizard')}
             planesAnteriores={planesAnteriores}
+            planesDisponibles={planesAnteriores}
+            onCambiarPlan={handleCambiarPlan}
           />
         )}
 
@@ -1717,7 +1773,7 @@ function PantallaInicio({ planesAnteriores, onCrearNuevo, onAbrirPlan, onCargarM
                   <div>
                     <h3 className="font-bold text-gray-900">Plan anual {plan.vigencia}</h3>
                     <p className="text-sm text-gray-600">
-                      {plan.id} • {plan.estado} • Jefe: {plan.jefeOCI.nombre}
+                      {plan.id} • {plan.estado} • Responsable: {plan.jefeOCI?.nombre || 'No asignado'}
                     </p>
                   </div>
                   <button

@@ -28,6 +28,8 @@ interface UserToEdit {
   status: string;
   asignacionesSedes?: any[];
   sedePrincipalId?: string;
+  idSede?: string | number;
+  idSeccional?: string | number;
 }
 
 interface UserDataEdit {
@@ -39,6 +41,8 @@ interface UserDataEdit {
   status: string;
   asignacionesSedes: CreateAsignacionSedeDTO[];
   sedePrincipalId?: string;
+  idSede?: string | number;
+  idSeccional?: string | number;
 }
 
 const roles = [
@@ -51,33 +55,51 @@ const roles = [
   { id: 'graduate', name: 'Graduado' },
 ];
 
-export function EditUserModal({ isOpen, onClose, onSave, user }: EditUserModalProps) {
-  const [formData, setFormData] = useState<UserDataEdit>({
+const buildInitialEditData = (user: UserToEdit): UserDataEdit => {
+  const currentDate = new Date().toISOString().split('T')[0];
+  const normalizedSedeId = user.idSede ? String(user.idSede) : undefined;
+  const existingAsignaciones = user.asignacionesSedes || [];
+  const hasAsignaciones = existingAsignaciones.length > 0;
+
+  const asignacionesSedes: CreateAsignacionSedeDTO[] = hasAsignaciones
+    ? existingAsignaciones
+    : normalizedSedeId
+      ? [{
+          unidadId: normalizedSedeId,
+          ambitoAcceso: 'local',
+          esPrincipal: true,
+          fechaInicio: currentDate,
+        }]
+      : [];
+
+  const sedePrincipalId =
+    user.sedePrincipalId ||
+    asignacionesSedes.find(a => a.esPrincipal)?.unidadId ||
+    normalizedSedeId;
+
+  return {
     id: user.id,
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
     phone: user.phone || '',
     status: user.status,
-    asignacionesSedes: user.asignacionesSedes || [],
-    sedePrincipalId: user.sedePrincipalId,
-  });
+    asignacionesSedes,
+    sedePrincipalId,
+    idSede: user.idSede,
+    idSeccional: user.idSeccional,
+  };
+};
+
+export function EditUserModal({ isOpen, onClose, onSave, user }: EditUserModalProps) {
+  const [formData, setFormData] = useState<UserDataEdit>(buildInitialEditData(user));
 
   const [errors, setErrors] = useState<Partial<UserDataEdit>>({});
 
   // Actualizar form data cuando cambia el usuario
   useEffect(() => {
     if (user) {
-      setFormData({
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        phone: user.phone || '',
-        status: user.status,
-        asignacionesSedes: user.asignacionesSedes || [],
-        sedePrincipalId: user.sedePrincipalId,
-      });
+      setFormData(buildInitialEditData(user));
     }
   }, [user]);
 
@@ -108,20 +130,22 @@ export function EditUserModal({ isOpen, onClose, onSave, user }: EditUserModalPr
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const handleSubmit = () => {
     if (!validateForm()) {
       toast.error('Por favor corrige los errores del formulario');
       return;
     }
 
     onSave(formData);
-    toast.success('Usuario actualizado exitosamente');
-    onClose();
   };
 
   const handleInputChange = (field: keyof UserDataEdit, value: any) => {
+    if(field === 'asignacionesSedes') {
+      const esPrincipal = value.some(a => a.esPrincipal);
+      if(!esPrincipal) {
+        value[0].esPrincipal = true;
+      }
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
     // Clear error when user starts typing
     if (errors[field]) {
@@ -186,7 +210,7 @@ export function EditUserModal({ isOpen, onClose, onSave, user }: EditUserModalPr
               </div>
 
               {/* Form */}
-              <form onSubmit={handleSubmit} className="p-6">
+              <div className="p-6">
                 {/* Información Básica */}
                 <div className="mb-6">
                   <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -318,7 +342,8 @@ export function EditUserModal({ isOpen, onClose, onSave, user }: EditUserModalPr
                     Cancelar
                   </button>
                   <motion.button
-                    type="submit"
+                    type="button"
+                    onClick={handleSubmit}
                     className="flex-1 px-5 py-3 text-white rounded-xl font-semibold transition-all flex items-center justify-center gap-2"
                     style={{
                       background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
@@ -331,7 +356,7 @@ export function EditUserModal({ isOpen, onClose, onSave, user }: EditUserModalPr
                     Guardar Cambios
                   </motion.button>
                 </div>
-              </form>
+              </div>
             </motion.div>
           </div>
         </>

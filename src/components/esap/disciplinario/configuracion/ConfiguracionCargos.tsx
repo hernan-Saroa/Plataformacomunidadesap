@@ -151,7 +151,8 @@ export function ConfiguracionCargos() {
         roleCapacities,
         notificationSettings: currentConfig?.notificationSettings || {},
         alertSettings: currentConfig?.alertSettings || {},
-        securitySettings: currentConfig?.securitySettings || { auditEnabled: true, digitalSignature: true, backupEnabled: true }
+        securitySettings: currentConfig?.securitySettings || { auditEnabled: true, digitalSignature: true, backupEnabled: true },
+        documentTemplates: currentConfig?.documentTemplates || {}
       };
 
       console.log('🔵 Payload COMPLETO para backend:', globalPayload);

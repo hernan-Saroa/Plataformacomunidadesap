@@ -53,6 +53,10 @@ export class CreateDisciplinaryNewsDto {
   @IsDateString()
   fechaQueja?: string;
 
+  @IsOptional()
+  @IsDateString()
+  fechaHechos?: string;
+
   @IsString()
   territorial: string;
 

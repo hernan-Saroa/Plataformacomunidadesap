@@ -27,17 +27,65 @@ const formatFileSize = (size?: number) => {
   return `${Math.max(1, Math.round(size / 1024))} KB`;
 };
 
-// Construir URL para archivos de evidencias del servicio legal-management
+// Construir URL para archivos de evidencias del servicio control-disciplinario
 const buildEvidenciaFileUrl = (archivoUrl: string, forDownload: boolean = false, originalName?: string): string => {
-  // archivoUrl viene como "files/filename.pdf" - extraer solo el filename
+  // Si no hay URL, retornar vacio
+  if (!archivoUrl) {
+    console.warn('buildEvidenciaFileUrl: archivoUrl es vacio o nulo');
+    return '';
+  }
+
+  // Si la URL ya es una ruta absoluta o URL completa, retornarla tal cual
+  if (archivoUrl.startsWith('http://') || archivoUrl.startsWith('https://')) {
+    return archivoUrl;
+  }
+
+  // Si la URL ya es una ruta de API del control-disciplinario (comienza con /control-disciplinario/)
+  // El backend retorna: /control-disciplinario/api/v1/disciplinary-processes/.../download
+  if (archivoUrl.startsWith('/control-disciplinario/')) {
+    // Extraer la ruta relativa despues de /control-disciplinario
+    // /control-disciplinario/api/v1/... -> /api/v1/...
+    const path = archivoUrl.replace(/^\/control-disciplinario/, '');
+    
+    console.log('buildEvidenciaFileUrl: path extraido =', path);
+    
+    // Construir la URL completa usando buildApiUrl con la ruta relativa
+    if (API_MODE === 'direct') {
+      const result = `${MICROSERVICE_URLS['control-disciplinario']}${path}`;
+      console.log('buildEvidenciaFileUrl (direct):', result);
+      return result;
+    }
+    const result = buildApiUrl('control-disciplinario', path);
+    console.log('buildEvidenciaFileUrl (gateway):', result);
+    return result;
+  }
+
+  // Si es una ruta de archivo del backend (/files/filename.pdf)
+  // El backend tiene el endpoint /files/:filename en files.controller.ts - NO usa /api/v1/
+  if (archivoUrl.startsWith('/files/')) {
+    // El backend devuelve /files/... directamente, necesitamos pasarlo al gateway
+    // que mapea /{service}/files/* -> forwardStatic
+    const filename = archivoUrl.replace(/^\/files\//, '');
+    
+    if (API_MODE === 'direct') {
+      // En modo directo, usar la URL directa del microservicio
+      return `${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`;
+    }
+    // En modo gateway, usar la ruta /files/ que mapea a forwardStatic
+    // El gateway espera: /{service}/files/{filename} -> reenvía a {service}/files/{filename}
+    return buildApiUrl('control-disciplinario', `/files/${filename}`);
+  }
+
+  // Si es una ruta de archivo antigua (files/filename.pdf sin slash inicial), procesarla para backward compatibility
   const filename = archivoUrl.replace(/^files\//, '');
   const endpoint = forDownload ? `files/download/${filename}` : `files/${filename}`;
   const queryParams = forDownload && originalName ? `?name=${encodeURIComponent(originalName)}` : '';
 
   if (API_MODE === 'direct') {
-    return `${MICROSERVICE_URLS['legal']}/${endpoint}${queryParams}`;
+    return `${MICROSERVICE_URLS['control-disciplinario']}/${endpoint}${queryParams}`;
   }
-  return buildApiUrl('legal', `/api/v1/${endpoint}${queryParams}`);
+  // No agregar /api/v1/ ya que el endpoint real es /files/:filename
+  return buildApiUrl('control-disciplinario', `/${endpoint}${queryParams}`);
 };
 
 // Verificar si un archivo puede visualizarse en el navegador
@@ -1769,6 +1817,40 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
     if (!file) return;
     setArchivoError(null);
 
+    // Tipos MIME permitidos para evidencias: HTML, PDF, Word, Excel, Imágenes, Videos
+    const tiposPermitidosEvidencia = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/html',
+      'image/jpeg',
+      'image/png',
+      'image/jpg',
+      'image/gif',
+      'image/webp',
+      'video/mp4',
+      'video/webm',
+      'video/quicktime',
+      'video/x-msvideo',
+    ];
+
+    // Validar tipo MIME
+    const mimeValido = tiposPermitidosEvidencia.includes(file.type);
+    
+    // Validar extensión como respaldo
+    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+    const extensionesValidas = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov', '.avi'];
+    const extensionValida = extensionesValidas.includes(extension);
+
+    if (!mimeValido && !extensionValida) {
+      setArchivoError('Tipo de archivo no permitido para evidencias. Solo se permiten: PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP), Videos (MP4, WebM, MOV, AVI)');
+      setArchivo(null);
+      e.target.value = '';
+      return;
+    }
+
     if (file.size > MAX_FILE_SIZE) {
       setArchivoError('El archivo supera el maximo de 10 GB');
       setArchivo(null);
@@ -1972,35 +2054,26 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       variant="outline"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!evidencia.archivoUrl) {
+                        if (!evidencia.id || !evidencia.processId) {
                           toast.error('URL no disponible');
                           return;
                         }
 
                         const tipoArchivo = evidencia.tipoArchivo?.toLowerCase() || '';
-                        const viewUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, false);
 
-                        // Archivos que se pueden ver directamente en el navegador
-                        if (canPreviewInBrowser(tipoArchivo)) {
-                          window.open(viewUrl, '_blank');
-                          return;
-                        }
-
-                        // Archivos Office - usar visor de Microsoft
+                        // Archivos Office - descargar ya que el visor necesita URL pública
                         const officeTypes = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
                         if (officeTypes.includes(tipoArchivo)) {
-                          // Para archivos Office, necesitamos la URL pública completa
-                          // Por ahora, descargamos ya que el visor necesita URL accesible públicamente
                           toast.info('Descargando archivo Office para visualización...');
                           descargarArchivo(
-                            buildEvidenciaFileUrl(evidencia.archivoUrl, true, evidencia.archivoNombre),
+                            buildDownloadUrl(evidencia.processId, evidencia.id, false),
                             evidencia.archivoNombre || 'documento'
                           );
                           return;
                         }
 
-                        // Otros tipos - abrir directamente
-                        window.open(viewUrl, '_blank');
+                        // Para todos los demás formatos: streaming inline via el servicio disciplinario
+                        window.open(buildDownloadUrl(evidencia.processId, evidencia.id, true), '_blank');
                       }}
                       title="Ver documento"
                       style={{ borderColor: '#003DA5', color: '#003DA5' }}
@@ -2013,13 +2086,15 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       variant="outline"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!evidencia.archivoUrl) {
+                        if (!evidencia.id || !evidencia.processId) {
                           toast.error('URL no disponible');
                           return;
                         }
 
-                        const downloadUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, true, evidencia.archivoNombre);
-                        descargarArchivo(downloadUrl, evidencia.archivoNombre || 'evidencia');
+                        descargarArchivo(
+                          buildDownloadUrl(evidencia.processId, evidencia.id, false),
+                          evidencia.archivoNombre || 'evidencia'
+                        );
                       }}
                       title="Descargar archivo"
                       style={{ borderColor: '#003DA5', color: '#003DA5' }}
@@ -2051,6 +2126,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
               <input
                 type="file"
                 id="file-upload-evidencias"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.html,.jpg,.jpeg,.png,.gif,.webp,.mp4,.webm,.mov,.avi"
                 onChange={handleSeleccionArchivo}
                 className="hidden"
               />
@@ -2470,7 +2546,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
                 <input
                   type="file"
                   id="file-upload-oficios"
-                  accept="application/pdf"
+                  accept=".pdf"
                   onChange={handleSeleccionArchivo}
                   className="hidden"
                 />
@@ -2764,6 +2840,30 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
       return;
     }
     setArchivoError(null);
+
+    // Tipos MIME permitidos para actas: PDF, Word, Excel
+    const tiposPermitidosActa = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ];
+
+    // Validar tipo MIME
+    const mimeValido = tiposPermitidosActa.includes(file.type);
+    
+    // Validar extensión como respaldo
+    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+    const extensionesValidas = ['.pdf', '.doc', '.docx', '.xls', '.xlsx'];
+    const extensionValida = extensionesValidas.includes(extension);
+
+    if (!mimeValido && !extensionValida) {
+      setArchivoError('Tipo de archivo no permitido para actas. Solo se permiten: PDF, Word, Excel (.pdf, .doc, .docx, .xls, .xlsx)');
+      setArchivoSeleccionado(null);
+      e.target.value = '';
+      return;
+    }
 
     if (file.size > MAX_FILE_SIZE) {
       setArchivoError('El archivo supera el maximo de 20 MB');
@@ -3124,7 +3224,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
                   <input
                     type="file"
                     id="file-upload-acta"
-                    accept="application/pdf,.doc,.docx"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx"
                     onChange={(e) => {
                       if (e.target.files && e.target.files[0]) {
                         setArchivoSeleccionado(e.target.files[0]);

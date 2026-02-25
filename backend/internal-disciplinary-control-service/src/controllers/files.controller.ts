@@ -10,6 +10,7 @@ import {
   Res,
   HttpException,
   HttpStatus,
+  Body,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
@@ -39,21 +40,22 @@ export class FilesController {
         },
       }),
       fileFilter: (req, file, cb) => {
-        const allowedMimes = [
-          'application/pdf',
-          'image/jpeg',
-          'image/png',
-          'image/jpg',
-          // Word document types
-          'application/msword', // .doc
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
-        ];
-        const allowedExts = /\.(pdf|jpg|jpeg|png|doc|docx)$/i;
-        if (allowedMimes.includes(file.mimetype) || allowedExts.test(file.originalname)) {
+        // Obtener el tipo de documento del body
+        const tipoDocumento = (req.body?.tipo as string)?.toUpperCase() || 'default';
+        
+        // Usar métodos estáticos para la validación
+        const allowedMimeTypes = FilesController.getAllowedMimeTypes(tipoDocumento);
+        const allowedExts = FilesController.getAllowedExtensions(tipoDocumento);
+        const allowedLabel = FilesController.getAllowedExtensionsLabel(tipoDocumento);
+        
+        if (allowedMimeTypes.includes(file.mimetype) || allowedExts.test(file.originalname)) {
           cb(null, true);
           return;
         }
-        cb(new HttpException('Tipo de archivo no permitido', HttpStatus.BAD_REQUEST), false);
+        cb(new HttpException(
+          `Tipo de archivo no permitido para "${tipoDocumento}". Solo se permiten: ${allowedLabel}`,
+          HttpStatus.BAD_REQUEST
+        ), false);
       },
     }),
   )
@@ -62,7 +64,8 @@ export class FilesController {
       validators: [
         new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }),
       ],
-    })) file: Express.Multer.File
+    })) file: Express.Multer.File,
+    @Body() body: { tipo?: string },
   ) {
     if (!file) {
       throw new HttpException('No file uploaded', HttpStatus.BAD_REQUEST);
@@ -73,6 +76,78 @@ export class FilesController {
       path: file.path,
       url: `/files/${file.filename}`, // URL relativa para acceso
     };
+  }
+
+  /**
+   * Obtiene los tipos MIME permitidos según el tipo de documento
+   */
+  private static getAllowedMimeTypes(tipoDocumento: string): string[] {
+    const tiposPermitidos: Record<string, string[]> = {
+      // Evidencias: HTML, PDF, Word, Excel, Imágenes, Videos
+      'EVIDENCIA': [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/html',
+        'image/jpeg',
+        'image/png',
+        'image/jpg',
+        'image/gif',
+        'image/webp',
+        'video/mp4',
+        'video/webm',
+        'video/quicktime',
+        'video/x-msvideo',
+      ],
+      // Auto: Solo PDF
+      'AUTO': [
+        'application/pdf',
+      ],
+      // Oficio: Solo PDF
+      'OFICIO': [
+        'application/pdf',
+      ],
+      // Otros: PDF, Word, Excel
+      'default': [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ],
+    };
+
+    return tiposPermitidos[tipoDocumento] ?? tiposPermitidos['default'];
+  }
+
+  /**
+   * Obtiene las extensiones permitidas según el tipo de documento (como regex)
+   */
+  private static getAllowedExtensions(tipoDocumento: string): RegExp {
+    const extensiones: Record<string, RegExp> = {
+      'EVIDENCIA': /\.(pdf|doc|docx|xls|xlsx|html|jpg|jpeg|png|gif|webp|mp4|webm|mov|avi)$/i,
+      'AUTO': /\.(pdf)$/i,
+      'OFICIO': /\.(pdf)$/i,
+      'default': /\.(pdf|doc|docx|xls|xlsx)$/i,
+    };
+
+    return extensiones[tipoDocumento] ?? extensiones['default'];
+  }
+
+  /**
+   * Obtiene las extensiones permitidas como texto legible
+   */
+  private static getAllowedExtensionsLabel(tipoDocumento: string): string {
+    const extensiones: Record<string, string> = {
+      'EVIDENCIA': 'PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP), Videos (MP4, WebM, MOV, AVI)',
+      'AUTO': 'Solo PDF',
+      'OFICIO': 'Solo PDF',
+      'default': 'PDF, Word, Excel',
+    };
+
+    return extensiones[tipoDocumento] ?? extensiones['default'];
   }
 
   @Get(':filename')
