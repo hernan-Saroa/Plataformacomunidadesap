@@ -27,17 +27,65 @@ const formatFileSize = (size?: number) => {
   return `${Math.max(1, Math.round(size / 1024))} KB`;
 };
 
-// Construir URL para archivos de evidencias del servicio legal-management
+// Construir URL para archivos de evidencias del servicio control-disciplinario
 const buildEvidenciaFileUrl = (archivoUrl: string, forDownload: boolean = false, originalName?: string): string => {
-  // archivoUrl viene como "files/filename.pdf" - extraer solo el filename
+  // Si no hay URL, retornar vacio
+  if (!archivoUrl) {
+    console.warn('buildEvidenciaFileUrl: archivoUrl es vacio o nulo');
+    return '';
+  }
+
+  // Si la URL ya es una ruta absoluta o URL completa, retornarla tal cual
+  if (archivoUrl.startsWith('http://') || archivoUrl.startsWith('https://')) {
+    return archivoUrl;
+  }
+
+  // Si la URL ya es una ruta de API del control-disciplinario (comienza con /control-disciplinario/)
+  // El backend retorna: /control-disciplinario/api/v1/disciplinary-processes/.../download
+  if (archivoUrl.startsWith('/control-disciplinario/')) {
+    // Extraer la ruta relativa despues de /control-disciplinario
+    // /control-disciplinario/api/v1/... -> /api/v1/...
+    const path = archivoUrl.replace(/^\/control-disciplinario/, '');
+    
+    console.log('buildEvidenciaFileUrl: path extraido =', path);
+    
+    // Construir la URL completa usando buildApiUrl con la ruta relativa
+    if (API_MODE === 'direct') {
+      const result = `${MICROSERVICE_URLS['control-disciplinario']}${path}`;
+      console.log('buildEvidenciaFileUrl (direct):', result);
+      return result;
+    }
+    const result = buildApiUrl('control-disciplinario', path);
+    console.log('buildEvidenciaFileUrl (gateway):', result);
+    return result;
+  }
+
+  // Si es una ruta de archivo del backend (/files/filename.pdf)
+  // El backend tiene el endpoint /files/:filename en files.controller.ts - NO usa /api/v1/
+  if (archivoUrl.startsWith('/files/')) {
+    // El backend devuelve /files/... directamente, necesitamos pasarlo al gateway
+    // que mapea /{service}/files/* -> forwardStatic
+    const filename = archivoUrl.replace(/^\/files\//, '');
+    
+    if (API_MODE === 'direct') {
+      // En modo directo, usar la URL directa del microservicio
+      return `${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`;
+    }
+    // En modo gateway, usar la ruta /files/ que mapea a forwardStatic
+    // El gateway espera: /{service}/files/{filename} -> reenvía a {service}/files/{filename}
+    return buildApiUrl('control-disciplinario', `/files/${filename}`);
+  }
+
+  // Si es una ruta de archivo antigua (files/filename.pdf sin slash inicial), procesarla para backward compatibility
   const filename = archivoUrl.replace(/^files\//, '');
   const endpoint = forDownload ? `files/download/${filename}` : `files/${filename}`;
   const queryParams = forDownload && originalName ? `?name=${encodeURIComponent(originalName)}` : '';
 
   if (API_MODE === 'direct') {
-    return `${MICROSERVICE_URLS['legal']}/${endpoint}${queryParams}`;
+    return `${MICROSERVICE_URLS['control-disciplinario']}/${endpoint}${queryParams}`;
   }
-  return buildApiUrl('legal', `/api/v1/${endpoint}${queryParams}`);
+  // No agregar /api/v1/ ya que el endpoint real es /files/:filename
+  return buildApiUrl('control-disciplinario', `/${endpoint}${queryParams}`);
 };
 
 // Verificar si un archivo puede visualizarse en el navegador

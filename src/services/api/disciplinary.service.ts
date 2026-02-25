@@ -393,9 +393,19 @@ class DisciplinaryService {
     async downloadFileFromUrl(url: string, filename: string): Promise<void> {
         // Verificar si la URL ya es absoluta (contiene protocolo)
         let fullUrl: string;
+        
         if (/^https?:\/\//i.test(url)) {
             // URL ya es absoluta, usarla directamente
             fullUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        } else if (url.startsWith('/control-disciplinario/')) {
+            // La URL ya contiene el prefijo del servicio, extraer la ruta relativa
+            // /control-disciplinario/api/v1/... -> /api/v1/...
+            const path = url.replace(/^\/control-disciplinario/, '/');
+            fullUrl = buildApiUrl('control-disciplinario', path) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        } else if (url.startsWith('/files/')) {
+            // La URL es para archivos estáticos, construir correctamente
+            // /files/filename -> /files/filename
+            fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
         } else {
             // URL relativa, construir URL completa
             fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
