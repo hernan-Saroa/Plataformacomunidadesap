@@ -643,15 +643,17 @@ const graduadosService = {
       id: string,
       files: File[],
       uploadedBy?: string,
+      onProgress?: (progress: number) => void,
     ): Promise<GraduadoArchivo[]> => {
       const formData = new FormData();
       files.forEach((file) => formData.append('files', file));
       if (uploadedBy) {
         formData.append('uploadedBy', uploadedBy);
       }
-      const response = await apiClient.post(
+      const response = await apiClient.upload(
         `${SERVICE_PREFIX}/graduates/${id}/upload-file`,
-        formData
+        formData,
+        onProgress,
       );
       return response;
     },

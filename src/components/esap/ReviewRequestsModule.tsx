@@ -84,6 +84,13 @@ export function ReviewRequestsModule() {
     numLibro: '',
   });
   const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
+  const [approvalUploadProgress, setApprovalUploadProgress] = useState({
+    totalFiles: 0,
+    processedFiles: 0,
+    currentFileName: '',
+    currentFilePercent: 0,
+    overallPercent: 0,
+  });
   const [sedesOptions, setSedesOptions] = useState<string[]>([]);
   const [seccionalesOptions, setSeccionalesOptions] = useState<string[]>([]);
   const [seccionalBySede, setSeccionalBySede] = useState<Record<string, string>>({});
@@ -457,6 +464,15 @@ export function ReviewRequestsModule() {
   const handleRemoveApprovalFile = (index: number) => {
     setApprovalFiles((prev) => prev.filter((_, idx) => idx !== index));
   };
+  const resetApprovalUploadProgress = () => {
+    setApprovalUploadProgress({
+      totalFiles: 0,
+      processedFiles: 0,
+      currentFileName: '',
+      currentFilePercent: 0,
+      overallPercent: 0,
+    });
+  };
 
   const mapStatus = (status: SolicitudCertificadoGraduado['status']): ReviewRequest['status'] => {
     switch (status) {
@@ -773,6 +789,7 @@ export function ReviewRequestsModule() {
     setReviewNotes('');
     setShowReviewModal(true);
     setApprovalFiles([]);
+    resetApprovalUploadProgress();
 
     if (action !== 'approve') {
       return;
@@ -974,13 +991,36 @@ export function ReviewRequestsModule() {
           approvalResponse?.request?.graduateId ||
           (approvalResponse as any)?.request?.graduate?.id;
         if (graduateId && approvalFiles.length > 0) {
-          for (const file of approvalFiles) {
+          const totalFiles = approvalFiles.length;
+          setApprovalUploadProgress({
+            totalFiles,
+            processedFiles: 0,
+            currentFileName: approvalFiles[0]?.name || '',
+            currentFilePercent: 0,
+            overallPercent: 0,
+          });
+          for (const [currentIndex, file] of approvalFiles.entries()) {
+            setApprovalUploadProgress((prev) => ({
+              ...prev,
+              processedFiles: currentIndex,
+              currentFileName: file.name,
+              currentFilePercent: 0,
+              overallPercent: Number(((currentIndex / totalFiles) * 100).toFixed(1)),
+            }));
             try {
               // Subir archivo por archivo evita errores 413 por payload acumulado.
               await graduadosService.graduados.subirArchivos(
                 graduateId,
                 [file],
                 reviewerName,
+                (progress) => {
+                  setApprovalUploadProgress((prev) => ({
+                    ...prev,
+                    currentFileName: file.name,
+                    currentFilePercent: progress,
+                    overallPercent: Number((((currentIndex + progress / 100) / totalFiles) * 100).toFixed(1)),
+                  }));
+                },
               );
             } catch (uploadError: any) {
               console.error('Error subiendo archivo del graduado:', uploadError);
@@ -994,6 +1034,13 @@ export function ReviewRequestsModule() {
                 });
               }
             }
+            const processedFiles = currentIndex + 1;
+            setApprovalUploadProgress((prev) => ({
+              ...prev,
+              processedFiles,
+              currentFilePercent: 100,
+              overallPercent: Number(((processedFiles / totalFiles) * 100).toFixed(1)),
+            }));
           }
         }
         toast.success('Solicitud aprobada y certificado generado');
@@ -1011,6 +1058,7 @@ export function ReviewRequestsModule() {
       setConfirmAction(null);
       setShowConfirmModal(false);
       setApprovalFiles([]);
+      resetApprovalUploadProgress();
       await loadRequests();
     } catch (error: any) {
       console.error('Error actualizando solicitud:', error);
@@ -1019,6 +1067,7 @@ export function ReviewRequestsModule() {
       });
     } finally {
       setIsUpdating(false);
+      resetApprovalUploadProgress();
     }
   };
 
@@ -2165,6 +2214,7 @@ export function ReviewRequestsModule() {
               onClick={() => {
                 setShowReviewModal(false);
                 setApprovalFiles([]);
+                resetApprovalUploadProgress();
               }}
               className="review-approval-btn review-approval-btn--ghost px-4 py-2 text-sm font-medium rounded-lg border-2"
               style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
@@ -2188,13 +2238,28 @@ export function ReviewRequestsModule() {
       <Dialog
         open={showConfirmModal}
         onOpenChange={(open) => {
+          if (!open && isUpdating) {
+            return;
+          }
           setShowConfirmModal(open);
           if (!open) {
             setConfirmAction(null);
           }
         }}
       >
-        <DialogContent className="w-[92vw] max-w-lg">
+        <DialogContent
+          className="w-[92vw] max-w-lg"
+          onEscapeKeyDown={(event) => {
+            if (isUpdating) {
+              event.preventDefault();
+            }
+          }}
+          onInteractOutside={(event) => {
+            if (isUpdating) {
+              event.preventDefault();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-amber-600" />
@@ -2224,6 +2289,28 @@ export function ReviewRequestsModule() {
                   </div>
                 )}
               </div>
+              {confirmAction.type === 'approve' && isUpdating && approvalUploadProgress.totalFiles > 0 && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-semibold text-blue-700">
+                    <span>Subiendo archivos adjuntos del graduado...</span>
+                    <span>
+                      {approvalUploadProgress.processedFiles}/{approvalUploadProgress.totalFiles}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-blue-100">
+                    <div
+                      className="h-full rounded-full bg-blue-600 transition-all duration-300"
+                      style={{ width: `${Math.max(0, Math.min(100, approvalUploadProgress.overallPercent))}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-blue-700">
+                    <span className="truncate pr-3">
+                      {approvalUploadProgress.currentFileName || 'Preparando archivo...'}
+                    </span>
+                    <span>{Math.round(approvalUploadProgress.currentFilePercent)}%</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

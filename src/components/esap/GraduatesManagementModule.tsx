@@ -131,6 +131,13 @@ export function GraduatesManagementModule() {
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [filesUploadQueue, setFilesUploadQueue] = useState<File[]>([]);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const [filesUploadProgress, setFilesUploadProgress] = useState({
+    totalFiles: 0,
+    processedFiles: 0,
+    currentFileName: '',
+    currentFilePercent: 0,
+    overallPercent: 0,
+  });
   const [isDeleteFileModalOpen, setIsDeleteFileModalOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<GraduadoArchivo | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -403,6 +410,13 @@ export function GraduatesManagementModule() {
     setFilesModalUser(user);
     setIsFilesModalOpen(true);
     setFilesUploadQueue([]);
+    setFilesUploadProgress({
+      totalFiles: 0,
+      processedFiles: 0,
+      currentFileName: '',
+      currentFilePercent: 0,
+      overallPercent: 0,
+    });
     await loadGraduateFiles(user.id);
   };
 
@@ -413,6 +427,13 @@ export function GraduatesManagementModule() {
     setIsLoadingFiles(false);
     setFilesUploadQueue([]);
     setIsUploadingFiles(false);
+    setFilesUploadProgress({
+      totalFiles: 0,
+      processedFiles: 0,
+      currentFileName: '',
+      currentFilePercent: 0,
+      overallPercent: 0,
+    });
   };
 
   const handleFilesQueueChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -458,19 +479,42 @@ export function GraduatesManagementModule() {
       });
       return;
     }
+    const totalFiles = filesUploadQueue.length;
     setIsUploadingFiles(true);
+    setFilesUploadProgress({
+      totalFiles,
+      processedFiles: 0,
+      currentFileName: filesUploadQueue[0]?.name || '',
+      currentFilePercent: 0,
+      overallPercent: 0,
+    });
     const uploader =
       authService.getCurrentUser()?.fullName || authService.getCurrentUser()?.email || undefined;
     const failedUploadIndexes = new Set<number>();
     let uploadedCount = 0;
     try {
       for (const [index, file] of filesUploadQueue.entries()) {
+        setFilesUploadProgress((prev) => ({
+          ...prev,
+          processedFiles: index,
+          currentFileName: file.name,
+          currentFilePercent: 0,
+          overallPercent: Number(((index / totalFiles) * 100).toFixed(1)),
+        }));
         try {
           // Subida 1 a 1 para respetar el límite del servidor en requests multipart
           await graduadosService.graduados.subirArchivos(
             filesModalUser.id,
             [file],
             uploader,
+            (progress) => {
+              setFilesUploadProgress((prev) => ({
+                ...prev,
+                currentFileName: file.name,
+                currentFilePercent: progress,
+                overallPercent: Number((((index + progress / 100) / totalFiles) * 100).toFixed(1)),
+              }));
+            },
           );
           uploadedCount += 1;
         } catch (error: any) {
@@ -486,6 +530,13 @@ export function GraduatesManagementModule() {
             });
           }
         }
+        const processedFiles = index + 1;
+        setFilesUploadProgress((prev) => ({
+          ...prev,
+          processedFiles,
+          currentFilePercent: 100,
+          overallPercent: Number(((processedFiles / totalFiles) * 100).toFixed(1)),
+        }));
       }
 
       if (uploadedCount > 0) {
@@ -504,6 +555,13 @@ export function GraduatesManagementModule() {
       }
     } finally {
       setIsUploadingFiles(false);
+      setFilesUploadProgress({
+        totalFiles: 0,
+        processedFiles: 0,
+        currentFileName: '',
+        currentFilePercent: 0,
+        overallPercent: 0,
+      });
     }
   };
 
@@ -713,6 +771,8 @@ export function GraduatesManagementModule() {
 
   const graduatesOnly = useMemo(() => graduates, [graduates]);
   const totalQueuedFiles = filesModalItems.length + filesUploadQueue.length;
+  const isFilesInputDisabled =
+    isLoadingFiles || isUploadingFiles || totalQueuedFiles >= MAX_FILES_PER_GRADUATE;
 
   const stats = useMemo(() => {
     const active = graduatesOnly.filter(u => u.status === 'active').length;
@@ -1926,6 +1986,9 @@ export function GraduatesManagementModule() {
       <Dialog
         open={isFilesModalOpen}
         onOpenChange={(open) => {
+          if (!open && isUploadingFiles) {
+            return;
+          }
           if (!open) {
             handleCloseFilesModal();
           }
@@ -1936,6 +1999,16 @@ export function GraduatesManagementModule() {
           style={{
             width: 'min(72rem, calc(100vw - 2rem))',
             maxWidth: '72rem',
+          }}
+          onEscapeKeyDown={(event) => {
+            if (isUploadingFiles) {
+              event.preventDefault();
+            }
+          }}
+          onInteractOutside={(event) => {
+            if (isUploadingFiles) {
+              event.preventDefault();
+            }
           }}
         >
           <DialogHeader>
@@ -1986,8 +2059,13 @@ export function GraduatesManagementModule() {
               </div>
 
               <div
-                className="graduate-files-dropzone rounded-lg border-2 border-dashed px-4 py-4 text-sm"
-                style={{ borderColor: '#CBD5F5', background: '#F8FAFF' }}
+                className={`graduate-files-dropzone rounded-lg border-2 border-dashed px-4 py-4 text-sm transition-colors ${
+                  isFilesInputDisabled ? '' : 'hover:bg-blue-50/60'
+                }`}
+                style={{
+                  borderColor: '#CBD5F5',
+                  background: isFilesInputDisabled ? '#F3F4F6' : '#F8FAFF',
+                }}
               >
                 <input
                   id="graduate-files-input"
@@ -1995,14 +2073,31 @@ export function GraduatesManagementModule() {
                   multiple
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
                   onChange={handleFilesQueueChange}
-                  className="graduate-files-input"
-                  disabled={isLoadingFiles || isUploadingFiles || totalQueuedFiles >= MAX_FILES_PER_GRADUATE}
+                  className="sr-only"
+                  disabled={isFilesInputDisabled}
                 />
-                <div className="graduate-files-picker">
-                  <label htmlFor="graduate-files-input" className="graduate-files-label">
-                    Elegir archivos
-                  </label>
-                </div>
+                <label
+                  htmlFor="graduate-files-input"
+                  aria-disabled={isFilesInputDisabled}
+                  className={`group flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 transition-all ${
+                    isFilesInputDisabled
+                      ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                      : 'cursor-pointer border-blue-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50'
+                  }`}
+                >
+                  <span
+                    className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                      isFilesInputDisabled
+                        ? 'border-gray-300 bg-gray-200 text-gray-400'
+                        : 'border-blue-200 bg-blue-100 text-blue-700 group-hover:bg-blue-200'
+                    }`}
+                  >
+                    <Upload className="h-4 w-4" />
+                  </span>
+                  <span className="text-sm font-semibold leading-none">
+                    {isFilesInputDisabled ? 'Carga no disponible' : 'Haz clic para seleccionar archivos'}
+                  </span>
+                </label>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
                   Puedes seleccionar varios archivos en una sola carga.
                 </p>
@@ -2022,12 +2117,35 @@ export function GraduatesManagementModule() {
                       <button
                         type="button"
                         onClick={() => handleRemoveQueuedFile(index)}
-                        className="text-gray-400 hover:text-red-500"
+                        disabled={isUploadingFiles}
+                        className="text-gray-400 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         ×
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+              {isUploadingFiles && filesUploadProgress.totalFiles > 0 && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-semibold text-blue-700">
+                    <span>Subiendo archivos...</span>
+                    <span>
+                      {filesUploadProgress.processedFiles}/{filesUploadProgress.totalFiles}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-blue-100">
+                    <div
+                      className="h-full rounded-full bg-blue-600 transition-all duration-300"
+                      style={{ width: `${Math.max(0, Math.min(100, filesUploadProgress.overallPercent))}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-blue-700">
+                    <span className="truncate pr-3">
+                      {filesUploadProgress.currentFileName || 'Preparando archivo...'}
+                    </span>
+                    <span>{Math.round(filesUploadProgress.currentFilePercent)}%</span>
+                  </div>
                 </div>
               )}
               <div className="flex justify-end">
@@ -2115,8 +2233,9 @@ export function GraduatesManagementModule() {
           <DialogFooter>
             <button
               onClick={handleCloseFilesModal}
-              className="graduate-files-secondary-btn px-4 py-2 text-sm font-medium rounded-lg border-2"
+              className="graduate-files-secondary-btn px-4 py-2 text-sm font-medium rounded-lg border-2 disabled:cursor-not-allowed disabled:opacity-60"
               style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
+              disabled={isUploadingFiles}
             >
               Cerrar
             </button>
@@ -2916,5 +3035,6 @@ export function GraduatesManagementModule() {
     </Container4K>
   );
 }
+
 
 
