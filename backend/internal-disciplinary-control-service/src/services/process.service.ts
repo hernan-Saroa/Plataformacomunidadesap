@@ -844,5 +844,58 @@ export class ProcessService {
       throw new HttpException('Proceso no encontrado', HttpStatus.NOT_FOUND);
     }
   }
+
+  /**
+   * ✅ NUEVO: Asocia un proceso a otro proceso disciplinario
+   */
+  async associateProcess(
+    procesoOrigenId: string,
+    procesoDestinoId: string,
+    tipoAsociacion: 'conexo' | 'similar' | 'consolidado',
+    justificacion: string,
+  ): Promise<DisciplinaryProcess> {
+    // Validar que el proceso origen existe
+    const procesoOrigen = await this.processRepository.findOne({
+      where: { id: procesoOrigenId },
+    });
+
+    if (!procesoOrigen) {
+      throw new HttpException('Proceso origen no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    // Validar que el proceso destino existe
+    const procesoDestino = await this.processRepository.findOne({
+      where: { id: procesoDestinoId },
+    });
+
+    if (!procesoDestino) {
+      throw new HttpException('Proceso destino no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    // Validar que no se intente asociar a sí mismo
+    if (procesoOrigenId === procesoDestinoId) {
+      throw new HttpException(
+        'Un proceso no puede asociarse a sí mismo',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Actualizar el proceso origen con la información del proceso asociado
+    procesoOrigen.procesoAsociadoId = procesoDestinoId;
+    procesoOrigen.procesoAsociadoNumero = procesoDestino.radicadoProceso;
+    procesoOrigen.procesoAsociadoTipo = tipoAsociacion;
+    procesoOrigen.procesoAsociadoFecha = new Date();
+    procesoOrigen.procesoAsociadoJustificacion = justificacion;
+
+    console.log('✅ Asociando proceso:', {
+      procesoOrigenId,
+      procesoDestinoId,
+      radicadoDestino: procesoDestino.radicadoProceso,
+      tipoAsociacion,
+      justificacion,
+    });
+
+    return await this.processRepository.save(procesoOrigen);
+  }
 }
 

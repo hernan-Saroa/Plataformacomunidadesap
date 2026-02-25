@@ -991,4 +991,64 @@ export class ProcessController {
       );
     }
   }
+
+  /**
+   * ✅ NUEVO: Asociar un proceso disciplinario a otro proceso
+   */
+  @Post(':id/associate-process')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Asociar Proceso a Otro Proceso',
+    description: 'Asocia un proceso disciplinario a otro proceso existente (conexo, similar o consolidado)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Proceso asociado exitosamente',
+  })
+  @ApiResponse({ status: 400, description: 'Datos inválidos o proceso no puede asociarse a sí mismo' })
+  @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
+  async associateProcess(
+    @Param('id') procesoOrigenId: string,
+    @Body() body: {
+      procesoDestinoId: string;
+      tipoAsociacion: 'conexo' | 'similar' | 'consolidado';
+      justificacion: string;
+    },
+  ) {
+    try {
+      console.log('🔗 [AssociateProcess] Asociando proceso:', {
+        procesoOrigenId,
+        procesoDestinoId: body.procesoDestinoId,
+        tipoAsociacion: body.tipoAsociacion,
+      });
+
+      const proceso = await this.processService.associateProcess(
+        procesoOrigenId,
+        body.procesoDestinoId,
+        body.tipoAsociacion,
+        body.justificacion,
+      );
+
+      console.log('✅ [AssociateProcess] Proceso asociado exitosamente:', proceso.id);
+
+      return {
+        success: true,
+        message: 'Proceso asociado exitosamente',
+        proceso: {
+          id: proceso.id,
+          radicadoProceso: proceso.radicadoProceso,
+          procesoAsociadoId: proceso.procesoAsociadoId,
+          procesoAsociadoNumero: proceso.procesoAsociadoNumero,
+          procesoAsociadoTipo: proceso.procesoAsociadoTipo,
+          procesoAsociadoFecha: proceso.procesoAsociadoFecha,
+        },
+      };
+    } catch (error) {
+      console.error('❌ [AssociateProcess] Error:', error);
+      throw new HttpException(
+        `Error al asociar proceso: ${error.message}`,
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }
