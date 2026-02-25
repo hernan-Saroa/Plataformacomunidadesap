@@ -26,6 +26,9 @@ import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { InputSIGL, TextareaSIGL } from '../gestion-legal/design-system/InputSIGL';
 import { toast } from 'sonner@2.0.3';
 
+// Servicio de exportación PDF con logo ESAP
+import { exportarPlanMejoramientoPDF } from './services/exportarPlanMejoramientoPDF';
+
 // ====================================
 // TIPOS Y DATOS
 // ====================================
@@ -832,6 +835,28 @@ const ModalPreviewPlan: React.FC<{
   auditoria: any;
   onClose: () => void;
 }> = ({ plan, auditoria, onClose }) => {
+  const [exportando, setExportando] = useState(false);
+
+  const handleDescargarPDF = async () => {
+    try {
+      setExportando(true);
+      toast.info('Generando PDF...', { duration: 2000 });
+      
+      const resultado = await exportarPlanMejoramientoPDF(plan);
+      
+      if (resultado.exito) {
+        toast.success('PDF generado', { description: resultado.mensaje });
+      } else {
+        toast.error('Error al generar PDF', { description: resultado.error });
+      }
+    } catch (error: any) {
+      console.error('Error al exportar PDF:', error);
+      toast.error('Error al exportar', { description: error.message || 'No se pudo generar el PDF' });
+    } finally {
+      setExportando(false);
+    }
+  };
+
   return (
     <ModalSIGL
       isOpen={true}
@@ -952,9 +977,13 @@ const ModalPreviewPlan: React.FC<{
         <ButtonSIGL variant="default" onClick={onClose}>
           Cerrar
         </ButtonSIGL>
-        <ButtonSIGL variant="primary">
+        <ButtonSIGL 
+          variant="primary" 
+          onClick={handleDescargarPDF}
+          disabled={exportando}
+        >
           <Download className="w-4 h-4" />
-          Descargar PDF
+          {exportando ? 'Generando...' : 'Descargar PDF'}
         </ButtonSIGL>
       </div>
     </ModalSIGL>

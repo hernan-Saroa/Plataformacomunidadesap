@@ -22,8 +22,9 @@ import { Card } from '../../ui/card';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner';
 
-// ✅ Servicio de exportación a PDF
+// ✅ Servicios de exportación
 import { exportarAuditoriaPDF, type AuditoriaPDFData } from './services/exportarAuditoriaPDF';
+import { exportarAuditoriasExcel } from './services/exportarAuditoriasExcel';
 
 // ✅ Importar modales desde carpeta modales/
 import { 
@@ -2555,8 +2556,8 @@ export function GestionAuditoriasKanbanSimple() {
     }
   };
 
-  // ✅ EXPORTAR TODAS LAS AUDITORÍAS A EXCEL
-  const handleExportarTodo = () => {
+  // ✅ EXPORTAR TODAS LAS AUDITORÍAS A EXCEL (con logo ESAP)
+  const handleExportarTodo = async () => {
     try {
       toast.info('Generando reporte de auditorías...', { duration: 2000 });
 
@@ -2577,35 +2578,18 @@ export function GestionAuditoriasKanbanSimple() {
         return;
       }
 
-      // Crear CSV
-      const headers = ['Código', 'Título', 'Tipo', 'Estado', 'Territorial', 'Auditor Líder', 'Fecha Inicio', 'Fecha Fin', 'Progreso', 'Hallazgos', 'Riesgo'];
-      
-      const rows = auditoriasExportar.map(a => [
-        a.codigo,
-        `"${a.titulo.replace(/"/g, '""')}"`,
-        a.tipo,
-        a.estado,
-        a.territorial,
-        a.auditorLider?.nombre || 'No asignado',
-        a.fechaInicio,
-        a.fechaFin,
-        `${a.progreso}%`,
-        a.hallazgos,
-        a.riesgo
-      ]);
+      // Usar servicio de Excel con logo ESAP
+      const resultado = await exportarAuditoriasExcel(auditoriasExportar);
 
-      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Auditorias_OCIG_${new Date().toISOString().split('T')[0]}.csv`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-
-      toast.success('Reporte exportado', {
-        description: `${auditoriasExportar.length} auditorías exportadas a Excel`
-      });
+      if (resultado.exito) {
+        toast.success('Reporte exportado', {
+          description: resultado.mensaje
+        });
+      } else {
+        toast.error('Error al exportar', {
+          description: resultado.error
+        });
+      }
     } catch (error: any) {
       console.error('Error al exportar:', error);
       toast.error('Error al exportar', {

@@ -28,9 +28,11 @@ import { cargarConfiguracionPDF } from './utils/configuracionHelper';
 import { 
   dibujarEncabezadoInstitucional, 
   dibujarPieInstitucional, 
-  DOCUMENTOS_PREDEFINIDOS 
+  DOCUMENTOS_PREDEFINIDOS,
+  LOGO_ESAP_URL
 } from './services/pdfESAPHeader';
-import logoESAP from '../../../assets/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
+// ✅ NUEVO: Exportación Excel con logo
+import { exportarPlanAnualExcel } from './services/exportarPlanAnualExcel';
 
 // Tipos re-exportados (deben coincidir con el archivo principal)
 type EstadoPlan = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'VIGENTE' | 'CERRADO';
@@ -1921,44 +1923,18 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const handleExportarExcel = async () => {
     setExportando('excel');
     setMostrarModalExportacion(false);
-    const res = await planAnualApi.exportExcel(plan.id);
-    if (res.success) {
-      toast.success('Exportado', { description: 'Excel descargado correctamente' });
-      setExportando(null);
-      return;
-    }
+    
+    // ✅ NUEVO: Usar exportación local con ExcelJS + Logo (no depende del backend)
     try {
-      const XLSX = await import('xlsx');
-      const vigencia = plan.vigencia ?? (plan as { año?: number }).año ?? new Date().getFullYear();
-      const headers = ['Rol', 'Nº', 'Actividad', 'Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Fin', 'Estado', '% Avance'];
-      const rows: unknown[][] = [
-        ['Plan Anual de Auditoría - ESAP'],
-        [`Vigencia ${vigencia}`, '', '', '', '', '', '', `Estado: ${plan.estado}`],
-        [],
-        headers,
-      ];
-      (plan.roles ?? []).forEach((rol) => {
-        (rol.actividades ?? []).forEach((a, i) => {
-          rows.push([
-            rol.nombre,
-            i + 1,
-            a.nombre,
-            a.descripcion ?? '',
-            a.responsable?.nombre ?? '',
-            a.fechaInicio ?? '',
-            a.fechaFin ?? '',
-            a.estado ?? '',
-            a.porcentajeAvance ?? 0,
-          ]);
-        });
-      });
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Plan Anual');
-      XLSX.writeFile(wb, `plan-anual-auditoria-${vigencia}.xlsx`);
-      toast.success('Exportado', { description: 'Excel generado correctamente' });
+      const resultado = await exportarPlanAnualExcel(plan);
+      if (resultado.exito) {
+        toast.success('Exportado', { description: 'Excel descargado correctamente con logo ESAP' });
+      } else {
+        toast.error('Error al exportar Excel', { description: resultado.error || 'Error desconocido' });
+      }
     } catch (e) {
-      toast.error('Error al exportar Excel', { description: res.error || (e instanceof Error ? e.message : 'Error desconocido') });
+      console.error('Error al exportar Excel:', e);
+      toast.error('Error al exportar Excel', { description: e instanceof Error ? e.message : 'Error desconocido' });
     }
     setExportando(null);
   };
@@ -1982,10 +1958,10 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 20;
 
-      // Header institucional estandarizado
+      // Header institucional estandarizado (carga logo dinámicamente)
       const alturaEncabezado = dibujarEncabezadoInstitucional(doc, {
         ...DOCUMENTOS_PREDEFINIDOS.PLAN_ANUAL,
-        logoImg: logoESAP
+        logoImg: LOGO_ESAP_URL
       });
       
       let currentY = alturaEncabezado + 5;
@@ -2033,12 +2009,21 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       currentY = (doc as any).lastAutoTable.finalY + 10;
 
       // Actividades por rol
+      let sumaAvanceTotal = 0;
+      let totalActividadesCount = 0;
+      
       plan.roles.forEach((rol, rolIdx) => {
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 61, 165);
         doc.text(`ROL ${rol.numero}: ${rol.nombre.toUpperCase()}`, margin, currentY);
         currentY += 7;
+
+        // Calcular avance promedio del rol
+        const sumaAvanceRol = rol.actividades.reduce((s, a) => s + a.porcentajeAvance, 0);
+        const promedioRol = rol.actividades.length > 0 ? Math.round(sumaAvanceRol / rol.actividades.length) : 0;
+        sumaAvanceTotal += sumaAvanceRol;
+        totalActividadesCount += rol.actividades.length;
 
         const actividadesData = rol.actividades.map((act, idx) => [
           (idx + 1).toString(),
@@ -2047,6 +2032,15 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           act.estado === 'COMPLETADA' ? 'Completada' : 
           act.estado === 'EN_EJECUCION' ? 'En ejecución' : 'Pendiente',
           `${act.porcentajeAvance}%`
+        ]);
+        
+        // Agregar fila de subtotal del rol
+        actividadesData.push([
+          '',
+          `SUBTOTAL ROL (${rol.actividades.length} actividades)`,
+          '',
+          'PROMEDIO:',
+          `${promedioRol}%`
         ]);
 
         autoTable(doc, {
@@ -2068,7 +2062,15 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
             3: { cellWidth: 30, halign: 'center' },
             4: { cellWidth: 20, halign: 'center' }
           },
-          margin: { left: margin, right: margin }
+          margin: { left: margin, right: margin },
+          didParseCell: function(data) {
+            // Destacar la fila de subtotal
+            if (data.row.index === actividadesData.length - 1) {
+              data.cell.styles.fillColor = [41, 98, 255];
+              data.cell.styles.textColor = [255, 255, 255];
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
         });
 
         currentY = (doc as any).lastAutoTable.finalY + 8;
@@ -2078,6 +2080,24 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           currentY = margin;
         }
       });
+      
+      // Total general del plan
+      const promedioGeneral = totalActividadesCount > 0 ? Math.round(sumaAvanceTotal / totalActividadesCount) : 0;
+      
+      if (currentY > pageHeight - 30) {
+        doc.addPage();
+        currentY = margin;
+      }
+      
+      // Dibujar cuadro de resumen total
+      doc.setFillColor(0, 61, 165);
+      doc.rect(margin, currentY, pageWidth - (margin * 2), 15, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`AVANCE TOTAL DEL PLAN: ${promedioGeneral}%`, margin + 5, currentY + 10);
+      doc.text(`(${totalActividadesCount} actividades en ${plan.roles.length} roles)`, pageWidth - margin - 80, currentY + 10);
+      currentY += 20;
 
       // Footer institucional
       const totalPages = doc.getNumberOfPages();

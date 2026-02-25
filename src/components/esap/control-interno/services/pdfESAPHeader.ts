@@ -18,6 +18,46 @@
 
 import jsPDF from 'jspdf';
 
+// Importar logo dinámicamente - Vite lo convierte a base64 automáticamente
+import logoESAP from '@/assets/cropped-favicon-32x32.png';
+
+/**
+ * Función para obtener el logo ESAP como base64
+ * Carga la imagen y la convierte a base64 en tiempo de ejecución
+ */
+export async function getLogoESAPBase64(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } else {
+        reject(new Error('No se pudo obtener el contexto del canvas'));
+      }
+    };
+    img.onerror = reject;
+    img.src = logoESAP;
+  });
+}
+
+// Cache del logo para no convertirlo múltiples veces
+let _logoCache: string | null = null;
+
+export async function getLogoESAP(): Promise<string> {
+  if (_logoCache) return _logoCache;
+  _logoCache = await getLogoESAPBase64();
+  return _logoCache;
+}
+
+// Exportar la URL del logo para uso directo (Vite ya lo maneja)
+export const LOGO_ESAP_URL = logoESAP;
+
 export interface ConfiguracionDocumento {
   codigo: string;           // ej: 'EM-PT-004', 'EM-FO-009'
   version: number;          // ej: 3
@@ -84,25 +124,22 @@ export function dibujarEncabezadoInstitucional(
     // ============================================
     // LOGO ESAP (IZQUIERDA)
     // ============================================
-    if (config.logoImg) {
-      try {
-        const logoHeight = 18;
-        const logoCenterX = logoX + (logoWidth / 2) - 8;
-        const logoCenterY = yPos + (alturaEncabezado / 2) - (logoHeight / 2);
-        doc.addImage(config.logoImg, 'PNG', logoCenterX, logoCenterY, 16, logoHeight);
-      } catch (error) {
-        console.warn('No se pudo cargar el logo, usando texto fallback');
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(0, 61, 165);
-        doc.text('ESAP', logoX + (logoWidth / 2), yPos + (alturaEncabezado / 2), { align: 'center' });
-      }
-    } else {
-      // Fallback: texto ESAP
-      doc.setFontSize(9);
+    // Usar logo proporcionado o cargar dinámicamente
+    const logoToUse = config.logoImg || LOGO_ESAP_URL;
+    try {
+      const logoSize = 16;
+      const logoCenterX = logoX + (logoWidth / 2) - (logoSize / 2);
+      const logoCenterY = yPos + (alturaEncabezado / 2) - (logoSize / 2);
+      doc.addImage(logoToUse, 'PNG', logoCenterX, logoCenterY, logoSize, logoSize);
+    } catch (error) {
+      console.warn('No se pudo cargar el logo, usando texto fallback');
+      // Fallback: Dibujar círculo con letras ESAP
+      doc.setFillColor(0, 61, 165);
+      doc.circle(logoX + logoWidth / 2, yPos + alturaEncabezado / 2, 8, 'F');
+      doc.setFontSize(6);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(0, 61, 165);
-      doc.text('ESAP', logoX + (logoWidth / 2), yPos + (alturaEncabezado / 2), { align: 'center' });
+      doc.setTextColor(255, 255, 255);
+      doc.text('ESAP', logoX + (logoWidth / 2), yPos + (alturaEncabezado / 2) + 1, { align: 'center' });
     }
 
     // ============================================

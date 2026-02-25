@@ -1,13 +1,13 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * SERVICIO: EXPORTACIÓN DE AUDITORÍA A PDF
+ * SERVICIO: EXPORTACIÓN DE PLAN DE MEJORAMIENTO A PDF
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Genera el documento oficial de la Auditoría con:
- * - Diseño corporativo ESAP (igual que Universo Auditable)
- * - Encabezado tipo formulario con CÓDIGO, VERSIÓN, FECHA
+ * Genera el documento oficial del Plan de Mejoramiento con:
+ * - Logo ESAP institucional
+ * - Encabezado tipo formulario con CÓDIGO: EMFO002, VERSIÓN, FECHA
  * - Colores corporativos (#003DA5)
- * - Footer con numeración de páginas
+ * - Formato oficial ESAP
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
@@ -18,14 +18,69 @@ import autoTable from 'jspdf-autotable';
 // Importar logo ESAP
 import logoESAP from '@/assets/cropped-favicon-32x32.png';
 
-// Cache del logo
+// ════════════════════════════════════════════════════════════════════════════
+// TIPOS
+// ════════════════════════════════════════════════════════════════════════════
+
+export interface AccionCorrectiva {
+  id: string;
+  hallazgoId: string;
+  hallazgoTitulo: string;
+  descripcionAccion: string;
+  causasRaiz: string;
+  responsable: string;
+  cargo: string;
+  cantidadProgramada: number;
+  fechaInicio: string;
+  fechaFin: string;
+  tiempoEjecucionMeses: number;
+  evidenciasSoporte: string[];
+  estado: 'PENDIENTE' | 'EN_REVISION' | 'APROBADA';
+}
+
+export interface PlanMejoramientoPDF {
+  id: string;
+  auditoriaId: string;
+  auditoriaCodigo: string;
+  auditoriaNombre: string;
+  areaResponsable: string;
+  responsableArea: string | { nombre: string };
+  fechaCreacion: string;
+  fechaLimite: string;
+  estado: string;
+  acciones: AccionCorrectiva[];
+  observacionesJefeOCI?: string;
+  fechaAprobacion?: string;
+}
+
+export interface ResultadoExportacion {
+  exito: boolean;
+  nombreArchivo: string;
+  mensaje?: string;
+  error?: string;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// COLORES CORPORATIVOS ESAP
+// ════════════════════════════════════════════════════════════════════════════
+
+const COLORES_ESAP = {
+  azulPrincipal: [0, 61, 165] as [number, number, number],
+  verde: [16, 185, 129] as [number, number, number],
+  gris: [128, 128, 128] as [number, number, number],
+  grisClaro: [240, 244, 248] as [number, number, number],
+  blanco: [255, 255, 255] as [number, number, number],
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// CACHE DEL LOGO
+// ════════════════════════════════════════════════════════════════════════════
+
 let _logoCache: string | null = null;
 
-/**
- * Obtiene el logo ESAP como base64
- */
 async function getLogoBase64(): Promise<string> {
   if (_logoCache) return _logoCache;
+  
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -48,149 +103,22 @@ async function getLogoBase64(): Promise<string> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// TIPOS
+// ENCABEZADO INSTITUCIONAL CON LOGO
 // ════════════════════════════════════════════════════════════════════════════
 
-export interface AuditoriaPDFData {
-  id: string;
-  codigo: string;
-  nombre: string;
-  tipo: string;
-  estado: string;
-  fase?: string;
-  areaObjetivo?: string;
-  territorial?: string;
-  procesoAuditado?: string;
-  auditorLider: {
-    nombre: string;
-    cargo?: string;
-    email?: string;
-  };
-  equipoAuditores?: Array<{
-    nombre: string;
-    rol?: string;
-  }>;
-  fechaInicio: string;
-  fechaFin: string;
-  progreso?: number;
-  hallazgos?: number;
-  objetivo?: string;
-  alcance?: string;
-  criterios?: string;
-  metodologia?: string;
-}
-
-export interface ResultadoExportacionAuditoria {
-  exito: boolean;
-  nombreArchivo: string;
-  mensaje?: string;
-  error?: string;
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// COLORES CORPORATIVOS ESAP
-// ════════════════════════════════════════════════════════════════════════════
-
-const COLORES_ESAP = {
-  azulPrincipal: [0, 61, 165] as [number, number, number],      // #003DA5
-  azulSecundario: [41, 98, 255] as [number, number, number],    // #2962FF
-  naranja: [245, 124, 0] as [number, number, number],           // #F57C00
-  gris: [128, 128, 128] as [number, number, number],
-  grisClaro: [240, 240, 240] as [number, number, number],
-  blanco: [255, 255, 255] as [number, number, number],
-  negro: [0, 0, 0] as [number, number, number],
-};
-
-// ════════════════════════════════════════════════════════════════════════════
-// FUNCIÓN AUXILIAR - FORMATEAR FECHA
-// ════════════════════════════════════════════════════════════════════════════
-
-const MESES_ES: { [key: string]: number } = {
-  'ene': 0, 'feb': 1, 'mar': 2, 'abr': 3, 'may': 4, 'jun': 5,
-  'jul': 6, 'ago': 7, 'sep': 8, 'oct': 9, 'nov': 10, 'dic': 11,
-  'enero': 0, 'febrero': 1, 'marzo': 2, 'abril': 3, 'mayo': 4, 'junio': 5,
-  'julio': 6, 'agosto': 7, 'septiembre': 8, 'octubre': 9, 'noviembre': 10, 'diciembre': 11
-};
-
-function parsearFechaEspanol(fecha: string): Date | null {
-  // Formato: "30 ene 2026" o "30 de enero de 2026"
-  const partes = fecha.toLowerCase().replace(/de /g, '').split(/\s+/);
-  if (partes.length >= 3) {
-    const dia = parseInt(partes[0]);
-    const mes = MESES_ES[partes[1]];
-    const anio = parseInt(partes[2]);
-    if (!isNaN(dia) && mes !== undefined && !isNaN(anio)) {
-      return new Date(anio, mes, dia);
-    }
-  }
-  return null;
-}
-
-function parsearFechaDDMMYYYY(fecha: string): Date | null {
-  // Formato: "01/02/2025" (DD/MM/YYYY)
-  const partes = fecha.split('/');
-  if (partes.length === 3) {
-    const dia = parseInt(partes[0]);
-    const mes = parseInt(partes[1]) - 1;
-    const anio = parseInt(partes[2]);
-    if (!isNaN(dia) && !isNaN(mes) && !isNaN(anio)) {
-      return new Date(anio, mes, dia);
-    }
-  }
-  return null;
-}
-
-function formatearFecha(fecha: string): string {
-  if (!fecha || fecha === '') return 'No definida';
-  
-  try {
-    let d: Date | null = null;
-    
-    // Intentar formato español: "30 ene 2026"
-    d = parsearFechaEspanol(fecha);
-    
-    // Intentar formato DD/MM/YYYY: "01/02/2025"
-    if (!d || isNaN(d.getTime())) {
-      d = parsearFechaDDMMYYYY(fecha);
-    }
-    
-    // Intentar formato ISO o estándar
-    if (!d || isNaN(d.getTime())) {
-      d = new Date(fecha);
-    }
-    
-    // Verificar si la fecha es válida
-    if (!d || isNaN(d.getTime())) {
-      return fecha; // Devolver la fecha original si no se puede parsear
-    }
-    
-    return d.toLocaleDateString('es-CO', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  } catch {
-    return fecha; // Devolver original en caso de error
-  }
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// ENCABEZADO CORPORATIVO TIPO FORMULARIO (con logo ESAP)
-// ════════════════════════════════════════════════════════════════════════════
-
-function crearEncabezadoFormulario(doc: jsPDF, auditoria: AuditoriaPDFData, logoBase64?: string): number {
+function crearEncabezadoFormulario(doc: jsPDF, logoBase64?: string): number {
   const pageWidth = doc.internal.pageSize.getWidth();
   const margen = 10;
   const headerHeight = 28;
   const footerBarHeight = 8;
   const totalHeight = headerHeight + footerBarHeight;
   
-  // ═══ CUADRO PRINCIPAL DEL ENCABEZADO ═══
+  // Cuadro principal del encabezado
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.3);
   doc.rect(margen, margen, pageWidth - (margen * 2), totalHeight);
   
-  // ═══ SECCIÓN IZQUIERDA: LOGO ESAP ═══
+  // Sección izquierda: Logo ESAP
   const logoWidth = 50;
   doc.line(margen + logoWidth, margen, margen + logoWidth, margen + headerHeight);
   
@@ -202,15 +130,13 @@ function crearEncabezadoFormulario(doc: jsPDF, auditoria: AuditoriaPDFData, logo
       const logoCenterY = margen + (headerHeight / 2) - (logoSize / 2);
       doc.addImage(logoBase64, 'PNG', logoCenterX, logoCenterY, logoSize, logoSize);
     } catch (error) {
-      console.warn('No se pudo agregar logo, usando texto fallback');
-      // Fallback a texto
+      console.warn('No se pudo agregar logo');
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(0, 61, 165);
       doc.text('ESAP', margen + logoWidth / 2, margen + 14, { align: 'center' });
     }
   } else {
-    // Texto institucional ESAP (fallback)
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 61, 165);
@@ -223,7 +149,7 @@ function crearEncabezadoFormulario(doc: jsPDF, auditoria: AuditoriaPDFData, logo
     doc.text('Administración Pública', margen + logoWidth / 2, margen + 22, { align: 'center' });
   }
   
-  // ═══ SECCIÓN CENTRAL: TÍTULO ═══
+  // Sección central: Título
   const infoBoxWidth = 50;
   const tituloStartX = margen + logoWidth;
   const tituloEndX = pageWidth - margen - infoBoxWidth;
@@ -233,33 +159,30 @@ function crearEncabezadoFormulario(doc: jsPDF, auditoria: AuditoriaPDFData, logo
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
-  doc.text('INFORME DE AUDITORÍA INTERNA', tituloCentro, margen + 12, { align: 'center' });
+  doc.text('PLAN DE MEJORAMIENTO', tituloCentro, margen + 12, { align: 'center' });
   
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.text('Oficina de Control Interno de Gestión - OCIG', tituloCentro, margen + 19, { align: 'center' });
   
-  doc.setFontSize(10);
+  doc.setFontSize(8);
   doc.setTextColor(0, 61, 165);
   doc.setFont('helvetica', 'bold');
-  doc.text(auditoria.codigo, tituloCentro, margen + 26, { align: 'center' });
+  doc.text('Formato EMFO002', tituloCentro, margen + 26, { align: 'center' });
   
-  // ═══ SECCIÓN DERECHA: CÓDIGO, VERSIÓN, FECHA ═══
+  // Sección derecha: Código, versión, fecha
   const infoBoxX = pageWidth - margen - infoBoxWidth;
   doc.setLineWidth(0.3);
   doc.line(infoBoxX, margen, infoBoxX, margen + headerHeight);
   
   const rowHeight = headerHeight / 3;
   
-  // Líneas horizontales dentro del cuadro de info
   doc.line(infoBoxX, margen + rowHeight, pageWidth - margen, margen + rowHeight);
   doc.line(infoBoxX, margen + (rowHeight * 2), pageWidth - margen, margen + (rowHeight * 2));
   
-  // Línea vertical para separar label de valor
   const labelWidth = 20;
   doc.line(infoBoxX + labelWidth, margen, infoBoxX + labelWidth, margen + headerHeight);
   
-  // Textos de labels
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
@@ -267,16 +190,15 @@ function crearEncabezadoFormulario(doc: jsPDF, auditoria: AuditoriaPDFData, logo
   doc.text('VERSIÓN:', infoBoxX + 2, margen + rowHeight + 6);
   doc.text('FECHA:', infoBoxX + 2, margen + (rowHeight * 2) + 6);
   
-  // Textos de valores
   doc.setTextColor(0, 61, 165);
   doc.setFont('helvetica', 'normal');
-  doc.text('EM-FO-014', infoBoxX + labelWidth + 2, margen + 6);
+  doc.text('EMFO002', infoBoxX + labelWidth + 2, margen + 6);
   doc.text('1', infoBoxX + labelWidth + 2, margen + rowHeight + 6);
   doc.setTextColor(0, 0, 0);
   const fechaActual = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
   doc.text(fechaActual, infoBoxX + labelWidth + 2, margen + (rowHeight * 2) + 6);
   
-  // ═══ BARRA INFERIOR: PROCESO ═══
+  // Barra inferior: Proceso
   doc.setFillColor(240, 244, 248);
   doc.rect(margen, margen + headerHeight, pageWidth - (margen * 2), footerBarHeight, 'F');
   doc.setLineWidth(0.3);
@@ -290,20 +212,37 @@ function crearEncabezadoFormulario(doc: jsPDF, auditoria: AuditoriaPDFData, logo
   doc.setFont('helvetica', 'normal');
   doc.text('Evaluación, Control y Mejora', margen + 28, margen + headerHeight + 5.5);
   
-  // Retornar posición Y después del encabezado
   return margen + totalHeight + 8;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCIÓN AUXILIAR - FORMATEAR FECHA
+// ════════════════════════════════════════════════════════════════════════════
+
+function formatearFecha(fecha: string): string {
+  if (!fecha) return 'No definida';
+  try {
+    const d = new Date(fecha);
+    return d.toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  } catch {
+    return fecha;
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
 // FUNCIÓN PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
-export async function exportarAuditoriaPDF(
-  auditoria: AuditoriaPDFData
-): Promise<ResultadoExportacionAuditoria> {
+export async function exportarPlanMejoramientoPDF(
+  plan: PlanMejoramientoPDF
+): Promise<ResultadoExportacion> {
   
   try {
-    console.log('📄 Generando PDF de Auditoría...');
+    console.log('📄 Generando PDF de Plan de Mejoramiento...');
     
     // Cargar logo ESAP
     let logoBase64: string | undefined;
@@ -325,40 +264,37 @@ export async function exportarAuditoriaPDF(
     const margin = 10;
 
     // ════════════════════════════════════════════════════════════════════════
-    // ENCABEZADO TIPO FORMULARIO (con logo ESAP)
+    // ENCABEZADO CON LOGO
     // ════════════════════════════════════════════════════════════════════════
     
-    let yPos = crearEncabezadoFormulario(doc, auditoria, logoBase64);
+    let yPos = crearEncabezadoFormulario(doc, logoBase64);
 
     // ════════════════════════════════════════════════════════════════════════
-    // INFORMACIÓN DE LA AUDITORÍA
+    // INFORMACIÓN DEL PLAN
     // ════════════════════════════════════════════════════════════════════════
 
-    // Título de sección
     doc.setFillColor(...COLORES_ESAP.azulPrincipal);
     doc.rect(margin, yPos, pageWidth - (margin * 2), 10, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text('INFORMACIÓN DE LA AUDITORÍA', pageWidth / 2, yPos + 7, { align: 'center' });
+    doc.text('INFORMACIÓN DEL PLAN DE MEJORAMIENTO', pageWidth / 2, yPos + 7, { align: 'center' });
     yPos += 15;
 
-    // Extraer nombres del equipo auditor
-    const equipoNombres = auditoria.equipoAuditores && auditoria.equipoAuditores.length > 0
-      ? auditoria.equipoAuditores.map(a => a.nombre).join(', ')
-      : 'No asignado';
+    // Obtener nombre del responsable
+    const responsableNombre = typeof plan.responsableArea === 'string' 
+      ? plan.responsableArea 
+      : plan.responsableArea?.nombre || 'No asignado';
 
-    // Tabla de información
     const infoData = [
-      ['CÓDIGO', auditoria.codigo || '-'],
-      ['NOMBRE', auditoria.nombre || '-'],
-      ['TIPO', auditoria.tipo || '-'],
-      ['ESTADO', auditoria.estado || '-'],
-      ['ÁREA/PROCESO A AUDITAR', auditoria.areaObjetivo || auditoria.procesoAuditado || 'No definido'],
-      ['FECHA INICIO', formatearFecha(auditoria.fechaInicio)],
-      ['FECHA FIN', formatearFecha(auditoria.fechaFin)],
-      ['AUDITOR LÍDER', auditoria.auditorLider?.nombre || 'No asignado'],
-      ['EQUIPO AUDITOR', equipoNombres],
+      ['CÓDIGO DE AUDITORÍA', plan.auditoriaCodigo || '-'],
+      ['NOMBRE DE AUDITORÍA', plan.auditoriaNombre || '-'],
+      ['ÁREA RESPONSABLE', plan.areaResponsable || '-'],
+      ['RESPONSABLE DEL PLAN', responsableNombre],
+      ['FECHA DE CREACIÓN', formatearFecha(plan.fechaCreacion)],
+      ['FECHA LÍMITE', formatearFecha(plan.fechaLimite)],
+      ['ESTADO', plan.estado || 'FORMULACIÓN'],
+      ['TOTAL DE ACCIONES', String(plan.acciones.length)],
     ];
 
     autoTable(doc, {
@@ -379,106 +315,102 @@ export async function exportarAuditoriaPDF(
     yPos = ((doc as any).lastAutoTable?.finalY ?? yPos) + 10;
 
     // ════════════════════════════════════════════════════════════════════════
-    // ASPECTOS A TENER EN CUENTA
+    // ACCIONES CORRECTIVAS
     // ════════════════════════════════════════════════════════════════════════
 
-    doc.setFillColor(...COLORES_ESAP.azulPrincipal);
-    doc.rect(margin, yPos, pageWidth - (margin * 2), 10, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text('ASPECTOS A TENER EN CUENTA', pageWidth / 2, yPos + 7, { align: 'center' });
-    yPos += 15;
+    if (plan.acciones.length > 0) {
+      // Verificar si necesita nueva página
+      if (yPos > 180) {
+        doc.addPage();
+        yPos = crearEncabezadoFormulario(doc, logoBase64);
+      }
 
-    const objetivoTexto = auditoria.objetivo || 
-      `Verificar el cumplimiento de los procesos y procedimientos del área ${auditoria.areaObjetivo || 'auditada'}, identificando oportunidades de mejora.`;
-    
-    const alcanceTexto = auditoria.alcance || 
-      `La auditoría comprende la revisión de los procesos y documentación del área ${auditoria.areaObjetivo || 'objetivo'} durante el período ${formatearFecha(auditoria.fechaInicio)} al ${formatearFecha(auditoria.fechaFin)}.`;
-    
-    const criteriosTexto = auditoria.criterios || 
-      'Normatividad interna, procedimientos del Sistema de Gestión de Calidad, Decreto 648 de 2017.';
-    
-    const metodologiaTexto = auditoria.metodologia || 
-      'Revisión documental, entrevistas, verificación de registros y observación directa.';
+      doc.setFillColor(...COLORES_ESAP.verde);
+      doc.rect(margin, yPos, pageWidth - (margin * 2), 10, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ACCIONES CORRECTIVAS', pageWidth / 2, yPos + 7, { align: 'center' });
+      yPos += 15;
 
-    const aspectosData = [
-      ['OBJETIVO DE LA AUDITORÍA', objetivoTexto],
-      ['ALCANCE DE LA AUDITORÍA', alcanceTexto],
-      ['CRITERIOS DE AUDITORÍA', criteriosTexto],
-      ['METODOLOGÍA DE AUDITORÍA', metodologiaTexto],
-    ];
+      // Iterar por cada acción
+      for (let i = 0; i < plan.acciones.length; i++) {
+        const accion = plan.acciones[i];
 
-    autoTable(doc, {
-      startY: yPos,
-      body: aspectosData,
-      theme: 'grid',
-      bodyStyles: {
-        fontSize: 9,
-        cellPadding: 3
-      },
-      columnStyles: {
-        0: { cellWidth: 55, fontStyle: 'bold', fillColor: [240, 244, 248] },
-        1: { cellWidth: 'auto' }
-      },
-      margin: { left: margin, right: margin }
-    });
+        // Verificar si necesita nueva página
+        if (yPos > 200) {
+          doc.addPage();
+          yPos = crearEncabezadoFormulario(doc, logoBase64);
+        }
 
-    yPos = ((doc as any).lastAutoTable?.finalY ?? yPos) + 10;
+        // Título de la acción
+        doc.setFillColor(240, 244, 248);
+        doc.rect(margin, yPos, pageWidth - (margin * 2), 8, 'F');
+        doc.setTextColor(0, 61, 165);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Acción #${i + 1} - ${accion.hallazgoTitulo}`, margin + 3, yPos + 5.5);
+        yPos += 12;
 
-    // ════════════════════════════════════════════════════════════════════════
-    // CRONOGRAMA (Tabla)
-    // ════════════════════════════════════════════════════════════════════════
+        const accionData = [
+          ['DESCRIPCIÓN DE LA ACCIÓN', accion.descripcionAccion || '-'],
+          ['CAUSAS RAÍZ', accion.causasRaiz || '-'],
+          ['RESPONSABLE', `${accion.responsable || 'No asignado'} - ${accion.cargo || ''}`],
+          ['CANTIDAD PROGRAMADA', `${accion.cantidadProgramada || 0} ejecuciones`],
+          ['FECHA INICIO', formatearFecha(accion.fechaInicio)],
+          ['FECHA FIN', formatearFecha(accion.fechaFin)],
+          ['TIEMPO DE EJECUCIÓN', `${accion.tiempoEjecucionMeses || 0} meses`],
+          ['ESTADO', accion.estado || 'PENDIENTE'],
+        ];
 
-    // Verificar si necesita nueva página
-    if (yPos > 200) {
-      doc.addPage();
-      yPos = crearEncabezadoFormulario(doc, auditoria, logoBase64);
+        if (accion.evidenciasSoporte && accion.evidenciasSoporte.length > 0) {
+          accionData.push(['EVIDENCIAS SOPORTE', accion.evidenciasSoporte.join(', ')]);
+        }
+
+        autoTable(doc, {
+          startY: yPos,
+          body: accionData,
+          theme: 'grid',
+          bodyStyles: {
+            fontSize: 8,
+            cellPadding: 2
+          },
+          columnStyles: {
+            0: { cellWidth: 50, fontStyle: 'bold', fillColor: [240, 244, 248] },
+            1: { cellWidth: 'auto' }
+          },
+          margin: { left: margin, right: margin }
+        });
+
+        yPos = ((doc as any).lastAutoTable?.finalY ?? yPos) + 8;
+      }
     }
 
-    doc.setFillColor(...COLORES_ESAP.azulPrincipal);
-    doc.rect(margin, yPos, pageWidth - (margin * 2), 10, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(11);
+    // ════════════════════════════════════════════════════════════════════════
+    // NOTA DE SEGUIMIENTO
+    // ════════════════════════════════════════════════════════════════════════
+
+    if (yPos > 240) {
+      doc.addPage();
+      yPos = crearEncabezadoFormulario(doc, logoBase64);
+    }
+
+    doc.setFillColor(227, 242, 253);
+    doc.rect(margin, yPos, pageWidth - (margin * 2), 15, 'F');
+    doc.setDrawColor(0, 61, 165);
+    doc.setLineWidth(0.3);
+    doc.rect(margin, yPos, pageWidth - (margin * 2), 15);
+    
+    doc.setTextColor(0, 61, 165);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
-    doc.text('CRONOGRAMA DE ACTIVIDADES', pageWidth / 2, yPos + 7, { align: 'center' });
-    yPos += 12;
-
-    const auditorLiderNombre = auditoria.auditorLider?.nombre || 'No asignado';
-
-    // Tabla de cronograma
-    const actividadesCronograma = [
-      ['Planificación de la auditoría', auditorLiderNombre, formatearFecha(auditoria.fechaInicio), 'Sede ESAP'],
-      ['Reunión de apertura', auditorLiderNombre, formatearFecha(auditoria.fechaInicio), 'Área auditada'],
-      ['Ejecución de la auditoría', 'Equipo auditor', 'Durante el período', 'Área auditada'],
-      ['Elaboración del informe', auditorLiderNombre, formatearFecha(auditoria.fechaFin), 'OCIG'],
-      ['Reunión de cierre', auditorLiderNombre, formatearFecha(auditoria.fechaFin), 'Área auditada'],
-    ];
-
-    autoTable(doc, {
-      startY: yPos,
-      head: [['ACTIVIDAD', 'RESPONSABLE', 'FECHA', 'LUGAR']],
-      body: actividadesCronograma,
-      theme: 'grid',
-      headStyles: {
-        fillColor: COLORES_ESAP.azulPrincipal,
-        textColor: [255, 255, 255],
-        fontStyle: 'bold',
-        fontSize: 9,
-        halign: 'center'
-      },
-      bodyStyles: {
-        fontSize: 8,
-        cellPadding: 2
-      },
-      columnStyles: {
-        0: { cellWidth: 60 },
-        1: { cellWidth: 45 },
-        2: { cellWidth: 40, halign: 'center' },
-        3: { cellWidth: 40, halign: 'center' }
-      },
-      margin: { left: margin, right: margin }
-    });
+    doc.text('NOTA:', margin + 3, yPos + 5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    const notaTexto = 'Este plan será sometido a seguimiento trimestral en los meses de Julio, Octubre, Enero y Abril.';
+    const notaTexto2 = 'El área responsable deberá cargar evidencias de cumplimiento en cada seguimiento.';
+    doc.text(notaTexto, margin + 15, yPos + 5);
+    doc.text(notaTexto2, margin + 3, yPos + 11);
 
     // ════════════════════════════════════════════════════════════════════════
     // PIE DE PÁGINA EN TODAS LAS PÁGINAS
@@ -488,18 +420,15 @@ export async function exportarAuditoriaPDF(
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
       
-      // Línea inferior
       doc.setDrawColor(...COLORES_ESAP.azulPrincipal);
       doc.setLineWidth(0.5);
       doc.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
       
-      // Texto del pie
       doc.setFontSize(8);
       doc.setTextColor(...COLORES_ESAP.gris);
       doc.setFont('helvetica', 'normal');
       doc.text('Oficina de Control Interno de Gestión - OCIG', margin, pageHeight - 10);
       
-      // Número de página
       doc.text(`Página ${i} de ${totalPages}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
     }
 
@@ -507,19 +436,19 @@ export async function exportarAuditoriaPDF(
     // GUARDAR Y DESCARGAR
     // ════════════════════════════════════════════════════════════════════════
 
-    const nombreArchivo = `Auditoria_${auditoria.codigo}_${new Date().getTime()}.pdf`;
+    const nombreArchivo = `PlanMejoramiento_${plan.auditoriaCodigo}_${Date.now()}.pdf`;
     doc.save(nombreArchivo);
 
-    console.log('✅ PDF de auditoría generado exitosamente');
+    console.log('✅ PDF de Plan de Mejoramiento generado exitosamente');
 
     return {
       exito: true,
       nombreArchivo,
-      mensaje: 'Auditoría exportada correctamente a PDF'
+      mensaje: 'Plan de Mejoramiento exportado correctamente a PDF'
     };
 
   } catch (error) {
-    console.error('❌ Error al generar PDF de auditoría:', error);
+    console.error('❌ Error al generar PDF de Plan de Mejoramiento:', error);
     return {
       exito: false,
       nombreArchivo: '',
@@ -528,8 +457,4 @@ export async function exportarAuditoriaPDF(
   }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// EXPORT POR DEFECTO
-// ════════════════════════════════════════════════════════════════════════════
-
-export default exportarAuditoriaPDF;
+export default exportarPlanMejoramientoPDF;
