@@ -297,7 +297,7 @@ export function mapFormularioDafpToBackend(formData: any): Partial<BackendProces
       riesgoInherente,
       riesgoResidual,
       nivelRiesgo,
-      // Campos DAFP detallados
+      // Campos DAFP detallados (solo los que acepta el backend)
       riesgosExtremos: formData.riesgosExtremos || 0,
       riesgosAltos: formData.riesgosAltos || 0,
       riesgosModerados: formData.riesgosModerados || 0,
@@ -305,17 +305,9 @@ export function mapFormularioDafpToBackend(formData: any): Partial<BackendProces
       totalRiesgos: formData.totalRiesgos || 0,
       requerimientoComite: formData.requerimientoComite || false,
       requerimientoEntesReg: formData.requerimientoEntesReg || false,
-      // ═══════════════════════════════════════════════════════════════════════
-      // CAMPOS DAFP CALCULADOS Y DECISIÓN (agregados 2026-02-20)
-      // ═══════════════════════════════════════════════════════════════════════
-      vigencia: formData.vigencia || new Date().getFullYear(),
-      fechaCorte: formData.fechaCorte || new Date().toISOString().split('T')[0],
-      ponderacionRiesgo: formData.ponderacionRiesgo || nivelRiesgoCalculado,
-      diasRotacion: formData.diasRotacion || 365,
-      decisionRotacion: formData.decisionRotacion || 'PENDIENTE',
-      decisionFinal: formData.decisionFinal || 'AUDITORÍA POSTERIOR',
-      motivoDecision: formData.motivoDecision || '',
-      prioridadRegla: formData.prioridadRegla || 5,
+      // NOTA: Los campos vigencia, fechaCorte, ponderacionRiesgo, diasRotacion,
+      // decisionRotacion, decisionFinal, motivoDecision, prioridadRegla
+      // NO se envían al backend porque no los acepta en evaluacionRiesgo
     },
     frecuenciaAuditoria,
     ultimaAuditoria: formData.fechaUltimaAuditoria || undefined,

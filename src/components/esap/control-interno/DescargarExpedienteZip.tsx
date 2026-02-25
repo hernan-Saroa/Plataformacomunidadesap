@@ -190,18 +190,12 @@ Sistema: Backoffice Administrativo ESAP - Control Interno de Gestión
       let documentosProcesados = 0;
 
       for (const [fase, config] of Object.entries(FASES_CONFIG)) {
-        const carpeta = zip.folder(config.carpeta);
         const docs = documentosPorFase[fase as FaseAuditoria] || [];
 
-        if (docs.length === 0) {
-          // Agregar archivo README en carpetas vacías
-          carpeta?.file('README.txt', 
-            `Esta carpeta corresponde a la fase "${config.nombre}".\n\n` +
-            `No hay documentos registrados en esta fase del expediente.\n\n` +
-            `Código de Auditoría: ${expediente.codigoAuditoria}\n` +
-            `Fecha de generación: ${new Date().toLocaleDateString('es-CO')}`
-          );
-        } else {
+        // Solo crear carpeta si tiene documentos
+        if (docs.length > 0) {
+          const carpeta = zip.folder(config.carpeta);
+          
           // Agregar documentos a la carpeta
           for (const doc of docs) {
             // SIMULACIÓN: En producción, aquí se descargaría el archivo real del servidor

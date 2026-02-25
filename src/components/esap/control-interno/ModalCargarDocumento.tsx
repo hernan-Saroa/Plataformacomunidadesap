@@ -11,7 +11,7 @@
  * - Preview del archivo seleccionado
  */
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
   X, Upload, FileText, Clock, FileSearch, ClipboardCheck
@@ -29,14 +29,20 @@ interface DocumentoExpediente {
   descripcion?: string;
 }
 
+// ✅ Tipo extendido que incluye el archivo
+export interface DocumentoConArchivo extends Partial<DocumentoExpediente> {
+  archivo?: File;
+}
+
 interface ModalCargarDocumentoProps {
   onClose: () => void;
-  onGuardar: (documento: Partial<DocumentoExpediente>) => void;
+  onGuardar: (documento: DocumentoConArchivo) => void;
+  loading?: boolean; // Para indicar que el padre está procesando
 }
 
 // ============ COMPONENTE ============
 
-export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocumentoProps) {
+export function ModalCargarDocumento({ onClose, onGuardar, loading }: ModalCargarDocumentoProps) {
   const [nombreDocumento, setNombreDocumento] = useState('');
   const [tipoDocumento, setTipoDocumento] = useState<DocumentoExpediente['tipo']>('Oficio');
   const [faseDocumento, setFaseDocumento] = useState<DocumentoExpediente['fase']>('planeacion');
@@ -44,7 +50,8 @@ export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocument
   const [archivoSeleccionado, setArchivoSeleccionado] = useState<File | null>(null);
   const [progresoCarga, setProgresoCarga] = useState(0);
   const [cargando, setCargando] = useState(false);
-  const [fileInputRef, setFileInputRef] = useState<HTMLInputElement | null>(null);
+  // ✅ CORREGIDO: Usar useRef en lugar de useState para la referencia del input
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSeleccionarArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -66,8 +73,9 @@ export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocument
   };
 
   const handleClickSeleccionar = () => {
-    if (fileInputRef) {
-      fileInputRef.click();
+    // ✅ CORREGIDO: Acceder a .current del useRef
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
     }
   };
 
@@ -104,28 +112,18 @@ export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocument
       return;
     }
 
-    setCargando(true);
-    setProgresoCarga(0);
+    // ✅ CONECTADO AL BACKEND: Pasar el archivo real junto con los metadatos
+    const nuevoDocumento: DocumentoConArchivo = {
+      nombre: nombreDocumento,
+      tipo: tipoDocumento,
+      fase: faseDocumento,
+      size: formatFileSize(archivoSeleccionado.size),
+      descripcion,
+      archivo: archivoSeleccionado, // ✅ Incluir el archivo para subir al backend
+    };
 
-    try {
-      // Simular carga del archivo
-      await simularCarga();
-
-      const nuevoDocumento: Partial<DocumentoExpediente> = {
-        nombre: nombreDocumento,
-        tipo: tipoDocumento,
-        fase: faseDocumento,
-        size: formatFileSize(archivoSeleccionado.size),
-        descripcion,
-      };
-
-      onGuardar(nuevoDocumento);
-    } catch (error) {
-      toast.error('Error al cargar el documento', {
-        description: 'Por favor, intente nuevamente',
-      });
-      setCargando(false);
-    }
+    // La carga real se maneja en el componente padre
+    onGuardar(nuevoDocumento);
   };
 
   return (
@@ -145,7 +143,7 @@ export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocument
         exit={{ opacity: 0, scale: 0.95 }}
         className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
         onClick={(e) => {
-          e.preventDefault();
+          // Solo detener propagación al backdrop, no bloquear clicks internos
           e.stopPropagation();
         }}
       >
@@ -178,14 +176,29 @@ export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocument
             </label>
             <input
               type="file"
-              ref={setFileInputRef}
+              ref={fileInputRef}
               onChange={handleSeleccionarArchivo}
               accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
               className="hidden"
               disabled={cargando}
             />
             <div
-              onClick={handleClickSeleccionar}
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                console.log('[ModalCargarDocumento] Click en área de selección');
+                if (fileInputRef.current && !cargando) {
+                  fileInputRef.current.click();
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  if (fileInputRef.current && !cargando) {
+                    fileInputRef.current.click();
+                  }
+                }
+              }}
               className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
                 archivoSeleccionado
                   ? 'border-green-300 bg-green-50'
@@ -203,6 +216,7 @@ export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocument
                   </p>
                   {!cargando && (
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setArchivoSeleccionado(null);
@@ -355,17 +369,17 @@ export function ModalCargarDocumento({ onClose, onGuardar }: ModalCargarDocument
 
         {/* Footer */}
         <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 flex justify-end gap-3">
-          <ButtonSIGL variant="ghost" onClick={onClose} disabled={cargando}>
+          <ButtonSIGL variant="ghost" onClick={onClose} disabled={cargando || loading}>
             Cancelar
           </ButtonSIGL>
           <ButtonSIGL
             variant="primary"
             onClick={handleGuardar}
-            disabled={!archivoSeleccionado || !nombreDocumento || cargando}
-            icon={cargando ? <Clock className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            disabled={!archivoSeleccionado || !nombreDocumento || cargando || loading}
+            icon={(cargando || loading) ? <Clock className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
             iconPosition="left"
           >
-            {cargando ? 'Cargando...' : 'Cargar Documento'}
+            {(cargando || loading) ? 'Subiendo...' : 'Cargar Documento'}
           </ButtonSIGL>
         </div>
       </motion.div>

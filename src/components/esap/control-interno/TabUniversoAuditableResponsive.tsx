@@ -29,6 +29,7 @@ import { FormularioEvaluacionDafpCompleta } from './FormularioEvaluacionDafpComp
 import { VisualizadorResultadosDafp } from './VisualizadorResultadosDafp';
 import type { ProcesoAuditable as ProcesoAuditableType, EvaluacionDafpCompleta } from '@/types/control-interno';
 import { ETIQUETAS_RIESGO } from '@/lib/dafp/constants'; // Nuevo import
+import { calcularPonderacionRiesgo } from './dafp-utils'; // Para recalcular ponderación
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -197,33 +198,44 @@ export function TabUniversoAuditableResponsive({
    */
   const convertirProceso = (proceso: ProcesoAuditable): ProcesoAuditableType => {
     // ✅ Solo crear evaluacionDafp si hay datos REALES de evaluación DAFP
-    // Los campos distintivos de DAFP son: riesgosExtremos, riesgosAltos, etc.
-    // Si solo tiene probabilidad/impacto (del formulario Editar), NO es evaluación DAFP
+    // Detectar si fue evaluado por: totalRiesgos > 0 o riesgos contados
+    // Los campos ponderacionRiesgo y decisionFinal NO se persisten en backend
     const tieneEvaluacionDafp = proceso._evaluacionRiesgo && (
-      (proceso._evaluacionRiesgo.riesgosExtremos ?? 0) > 0 ||
-      (proceso._evaluacionRiesgo.riesgosAltos ?? 0) > 0 ||
-      (proceso._evaluacionRiesgo.riesgosModerados ?? 0) > 0 ||
-      (proceso._evaluacionRiesgo.riesgosBajos ?? 0) > 0 ||
-      (proceso._evaluacionRiesgo.totalRiesgos ?? 0) > 0 ||
-      proceso._evaluacionRiesgo.ponderacionRiesgo ||
-      proceso._evaluacionRiesgo.decisionFinal
+      // Tiene riesgos contados (indica que se hizo la evaluación DAFP)
+      (proceso._evaluacionRiesgo.totalRiesgos !== undefined && proceso._evaluacionRiesgo.totalRiesgos > 0) ||
+      // O tiene cualquier tipo de riesgo registrado
+      ((proceso._evaluacionRiesgo.riesgosExtremos ?? 0) + 
+       (proceso._evaluacionRiesgo.riesgosAltos ?? 0) + 
+       (proceso._evaluacionRiesgo.riesgosModerados ?? 0) + 
+       (proceso._evaluacionRiesgo.riesgosBajos ?? 0)) > 0
     );
     
-    const evaluacionDafp = tieneEvaluacionDafp && proceso._evaluacionRiesgo ? {
-      riesgosExtremos: proceso._evaluacionRiesgo.riesgosExtremos ?? 0,
-      riesgosAltos: proceso._evaluacionRiesgo.riesgosAltos ?? 0,
-      riesgosModerados: proceso._evaluacionRiesgo.riesgosModerados ?? 0,
-      riesgosBajos: proceso._evaluacionRiesgo.riesgosBajos ?? 0,
-      totalRiesgos: proceso._evaluacionRiesgo.totalRiesgos ?? 0,
-      requerimientoComite: proceso._evaluacionRiesgo.requerimientoComite ?? false,
-      requerimientoEntesReg: proceso._evaluacionRiesgo.requerimientoEntesReg ?? false,
-      fechaUltimaAuditoria: proceso._evaluacionRiesgo.fechaUltimaAuditoria || proceso.ultimaAuditoria || '',
-      resultadoUltimaAuditoria: proceso._evaluacionRiesgo.resultadoUltimaAuditoria || proceso.resultadoUltimaAuditoria || 'SIN_AUDITORIA',
-      ponderacionRiesgo: proceso._evaluacionRiesgo.ponderacionRiesgo || '',
-      decisionFinal: proceso._evaluacionRiesgo.decisionFinal || '',
-      motivoDecision: proceso._evaluacionRiesgo.motivoDecision || '',
-      prioridadRegla: proceso._evaluacionRiesgo.prioridadRegla || 0,
-    } : undefined;
+    const evaluacionDafp = tieneEvaluacionDafp && proceso._evaluacionRiesgo ? (() => {
+      const extremos = proceso._evaluacionRiesgo.riesgosExtremos ?? 0;
+      const altos = proceso._evaluacionRiesgo.riesgosAltos ?? 0;
+      const moderados = proceso._evaluacionRiesgo.riesgosModerados ?? 0;
+      const bajos = proceso._evaluacionRiesgo.riesgosBajos ?? 0;
+      const total = proceso._evaluacionRiesgo.totalRiesgos ?? (extremos + altos + moderados + bajos);
+      
+      // Recalcular ponderación ya que el backend no la guarda
+      const ponderacionCalculada = calcularPonderacionRiesgo(extremos, altos, moderados, bajos, total);
+      
+      return {
+        riesgosExtremos: extremos,
+        riesgosAltos: altos,
+        riesgosModerados: moderados,
+        riesgosBajos: bajos,
+        totalRiesgos: total,
+        requerimientoComite: proceso._evaluacionRiesgo.requerimientoComite ?? false,
+        requerimientoEntesReg: proceso._evaluacionRiesgo.requerimientoEntesReg ?? false,
+        fechaUltimaAuditoria: proceso._evaluacionRiesgo.fechaUltimaAuditoria || proceso.ultimaAuditoria || '',
+        resultadoUltimaAuditoria: proceso._evaluacionRiesgo.resultadoUltimaAuditoria || proceso.resultadoUltimaAuditoria || 'SIN_AUDITORIA',
+        ponderacionRiesgo: ponderacionCalculada, // Recalculado desde los datos guardados
+        decisionFinal: '', // No se guarda en backend
+        motivoDecision: '',
+        prioridadRegla: 0,
+      };
+    })() : undefined;
     
     return {
       id: proceso.id,
@@ -288,11 +300,11 @@ export function TabUniversoAuditableResponsive({
         </span>
       )
     },
-    {
-      key: 'dependenciaResponsable',
-      label: 'Dependencia',
-      render: (value) => <span className="text-sm text-gray-700">{value}</span>
-    },
+    // {
+    //   key: 'dependenciaResponsable',
+    //   label: 'Dependencia',
+    //   render: (value) => <span className="text-sm text-gray-700">{value}</span>
+    // },
     {
       key: 'nivelRiesgo',
       label: 'Riesgo',

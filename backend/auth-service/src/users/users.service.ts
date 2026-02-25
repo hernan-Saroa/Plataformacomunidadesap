@@ -81,31 +81,64 @@ export class UsersService {
   async findAllPaginated(
     page: number = 1,
     limit: number = 10,
+    filters: { search?: string; status?: 'active' | 'inactive' | 'all'; role?: string } = {},
   ): Promise<{
     users: User[];
     total: number;
     totalActive: number;
     totalBlocked: number;
   }> {
-    // Obtener usuarios paginados con seccional y sede desde persona
-    const [users, total] = await this.userRepo.findAndCount({
-      relations: ['person', 'person.seccional', 'person.seccional.ubicacion', 'person.sede', 'person.sede.geopolitica', 'roles'],
-      skip: (page - 1) * limit,
-      take: limit,
-      order: {
-        created_at: 'DESC',
-      },
-    });
+    const baseQuery = this.userRepo
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.person', 'person')
+      .leftJoinAndSelect('person.seccional', 'seccional')
+      .leftJoinAndSelect('seccional.ubicacion', 'seccionalUbicacion')
+      .leftJoinAndSelect('person.sede', 'sede')
+      .leftJoinAndSelect('sede.geopolitica', 'sedeGeopolitica')
+      .leftJoinAndSelect('user.roles', 'roles')
+      .distinct(true);
 
-    // Contar usuarios activos
-    const totalActive = await this.userRepo.count({
-      where: { is_active: true },
-    });
+    if (filters.search?.trim()) {
+      const search = `%${filters.search.trim()}%`;
+      baseQuery.andWhere(
+        `(
+          person.first_name ILIKE :search OR
+          person.last_name ILIKE :search OR
+          person.full_name ILIKE :search OR
+          person.email ILIKE :search OR
+          person.identification_number ILIKE :search
+        )`,
+        { search },
+      );
+    }
 
-    // Contar usuarios bloqueados
-    const totalBlocked = await this.userRepo.count({
-      where: { is_active: false },
-    });
+    if (filters.status && filters.status !== 'all') {
+      baseQuery.andWhere('user.is_active = :isActive', {
+        isActive: filters.status === 'active',
+      });
+    }
+
+    if (filters.role && filters.role?.trim()) {
+      baseQuery.andWhere('roles.id = :id', { id: filters.role });
+    }
+
+    const pagedQuery = baseQuery
+      .clone()
+      .orderBy('user.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [users, total] = await pagedQuery.getManyAndCount();
+
+    const totalActive = await baseQuery
+      .clone()
+      .andWhere('user.is_active = :activeStatus', { activeStatus: true })
+      .getCount();
+
+    const totalBlocked = await baseQuery
+      .clone()
+      .andWhere('user.is_active = :blockedStatus', { blockedStatus: false })
+      .getCount();
 
     return { users, total, totalActive, totalBlocked };
   }
