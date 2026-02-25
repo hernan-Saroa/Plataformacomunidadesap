@@ -1128,7 +1128,8 @@ export class PlanAnual5RolesService {
 
   /**
    * Exportar plan anual a Excel (xlsx)
-   * Encabezado: institución y vigencia. Cuerpo: roles y actividades.
+   * Encabezado institucional formato EM-PT-004
+   * Estructura: Logo | Título | Código/Versión/Fecha
    */
   async exportExcel(planId: string): Promise<{ buffer: Buffer; nombre: string }> {
     const plan = await this.findOne(planId);
@@ -1136,12 +1137,27 @@ export class PlanAnual5RolesService {
 
     const año = plan.año ?? new Date().getFullYear();
     const nombre = `plan-anual-auditoria-${año}.xlsx`;
+    const fechaActual = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
 
-    const headers = ['Rol', 'Nº', 'Actividad', 'Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Fin', 'Estado', '% Avance', 'Observaciones', 'Control', 'Evaluación', 'Seguimiento'];
+    // Encabezado institucional formato EM-PT-004 (igual que PDF)
+    // Estructura: Col A-B (Logo ESAP) | Col C-H (Título centrado) | Col I (Label) | Col J (Valor)
+    const headers = ['Rol', 'Nº', 'Actividad', 'Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Fin', 'Estado', '% Avance', 'Control'];
     const rows: unknown[][] = [
-      ['Plan Anual de Auditoría - ESAP'],
-      [`Vigencia ${año}`, '', '', '', '', '', '', `Estado: ${plan.estado ?? 'N/A'}`],
+      // Filas 1-3: Encabezado institucional con 3 secciones (celdas combinadas)
+      ['ESAP', '', 'PLAN ANUAL DE AUDITORÍA INTERNA', '', '', '', '', '', 'CÓDIGO:', 'EM-PT-004'],
+      ['', '', 'Vigencia ' + año, '', '', '', '', '', 'VERSIÓN:', '3'],
+      ['', '', '', '', '', '', '', '', 'FECHA:', fechaActual],
+      // Fila 4: Proceso (todo el ancho)
+      ['PROCESO: EVALUACIÓN CONTROL Y MEJORA', '', '', '', '', '', '', '', '', ''],
+      // Fila 5: Espacio
       [],
+      // Fila 6-7: Información del plan
+      ['INFORMACIÓN DEL PLAN', '', '', '', '', '', '', '', '', ''],
+      ['Vigencia:', año, '', 'Estado:', plan.estado ?? 'BORRADOR', '', 'Responsable:', plan.responsable ?? 'Sin asignar', '', ''],
+      ['Fecha Creación:', plan.fecha_creacion ? new Date(plan.fecha_creacion).toLocaleDateString('es-CO') : 'N/A', '', '', '', '', '', '', '', ''],
+      // Fila 9: Espacio
+      [],
+      // Fila 10: Headers de la tabla de actividades
       headers,
     ];
 
@@ -1162,7 +1178,6 @@ export class PlanAnual5RolesService {
           fechaFin,
           a.estado ?? '',
           a.porcentaje_avance ?? 0,
-          a.observaciones ?? '',
           a.control ?? '',
           a.evaluacion ?? '',
           a.seguimiento ?? '',
@@ -1171,6 +1186,39 @@ export class PlanAnual5RolesService {
     }
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
+    
+    // Configurar anchos de columna
+    ws['!cols'] = [
+      { wch: 25 }, // Rol
+      { wch: 5 },  // Nº
+      { wch: 40 }, // Actividad
+      { wch: 30 }, // Descripción
+      { wch: 25 }, // Responsable
+      { wch: 12 }, // Fecha Inicio
+      { wch: 12 }, // Fecha Fin
+      { wch: 15 }, // Estado
+      { wch: 10 }, // % Avance
+      { wch: 20 }, // Control
+      { wch: 20 }, // Evaluación
+      { wch: 20 }, // Seguimiento
+    ];
+    
+    // Merge cells para encabezado institucional (igual que PDF)
+    ws['!merges'] = [
+      // Filas 1-3: Logo ESAP columnas A-B (combinadas verticalmente)
+      { s: { r: 0, c: 0 }, e: { r: 2, c: 1 } },
+      // Fila 1: Título columnas C-H
+      { s: { r: 0, c: 2 }, e: { r: 0, c: 7 } },
+      // Fila 2: Subtítulo columnas C-H  
+      { s: { r: 1, c: 2 }, e: { r: 1, c: 7 } },
+      // Fila 3: Espacio columnas C-H
+      { s: { r: 2, c: 2 }, e: { r: 2, c: 7 } },
+      // Fila 4: Proceso todo el ancho
+      { s: { r: 3, c: 0 }, e: { r: 3, c: 9 } },
+      // Fila 6: Info del plan header
+      { s: { r: 5, c: 0 }, e: { r: 5, c: 9 } },
+    ];
+    
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Plan Anual');
     const buffer = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));

@@ -10,8 +10,12 @@
  * @returns Promise<boolean> true si tuvo éxito
  */
 export async function copyToClipboard(text: string): Promise<boolean> {
+  if (typeof window === 'undefined' || typeof document === 'undefined' || typeof navigator === 'undefined') {
+    return false;
+  }
+
   // Método 1: Clipboard API moderna (requiere HTTPS y permisos)
-  if (navigator.clipboard && window.isSecureContext) {
+  if (navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(text);
       return true;
@@ -29,25 +33,51 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 
   // Método 2: Fallback con textarea temporal (funciona en cualquier contexto)
   try {
+    const activeElement = document.activeElement as HTMLElement | null;
+    const dialogContainer = activeElement?.closest('[role="dialog"], [aria-modal="true"]') as HTMLElement | null;
+    const host = dialogContainer || document.body;
+    if (!host) {
+      return false;
+    }
+
+    const selection = document.getSelection();
+    const originalRange = selection && selection.rangeCount > 0
+      ? selection.getRangeAt(0).cloneRange()
+      : null;
+
     const textarea = document.createElement('textarea');
     textarea.value = text;
-    
-    // Hacer el textarea invisible pero accesible
+    textarea.setAttribute('aria-hidden', 'true');
+    textarea.tabIndex = -1;
+
     textarea.style.position = 'fixed';
-    textarea.style.left = '-9999px';
-    textarea.style.top = '-9999px';
-    textarea.setAttribute('readonly', '');
-    
-    document.body.appendChild(textarea);
-    
+    textarea.style.top = '0';
+    textarea.style.left = '0';
+    textarea.style.width = '1px';
+    textarea.style.height = '1px';
+    textarea.style.padding = '0';
+    textarea.style.border = '0';
+    textarea.style.outline = 'none';
+    textarea.style.boxShadow = 'none';
+    textarea.style.background = 'transparent';
+    textarea.style.opacity = '0';
+
+    host.appendChild(textarea);
+
     // Seleccionar y copiar
     textarea.focus();
     textarea.select();
     textarea.setSelectionRange(0, text.length);
-    
+
     const successful = document.execCommand('copy');
-    document.body.removeChild(textarea);
-    
+    textarea.remove();
+
+    if (selection && originalRange) {
+      selection.removeAllRanges();
+      selection.addRange(originalRange);
+    }
+    activeElement?.focus?.();
+
     return successful;
   } catch (err) {
     console.error('Error al copiar al portapapeles:', err);
@@ -59,7 +89,13 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  * Verifica si el navegador soporta Clipboard API
  */
 export function isClipboardSupported(): boolean {
-  return !!(navigator.clipboard && window.isSecureContext);
+  if (typeof document === 'undefined' || typeof navigator === 'undefined') {
+    return false;
+  }
+  return !!(
+    navigator.clipboard?.writeText ||
+    (typeof document.queryCommandSupported === 'function' && document.queryCommandSupported('copy'))
+  );
 }
 
 /**

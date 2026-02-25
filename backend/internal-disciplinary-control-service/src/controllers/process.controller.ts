@@ -274,6 +274,26 @@ export class ProcessController {
           );
         }
 
+        // Validar tipo de archivo según el tipo de documento
+        const allowedMimeTypes = this.getAllowedMimeTypes(tipoDocumento);
+        if (!allowedMimeTypes.includes(file.mimetype)) {
+          const allowedExtensions = this.getAllowedExtensions(tipoDocumento);
+          throw new HttpException(
+            `Tipo de archivo no permitido para "${tipoDocumento}". Solo se permiten: ${allowedExtensions}`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        // Validar extensión del archivo como respaldo adicional
+        const fileExtension = '.' + file.originalname.split('.').pop()?.toLowerCase();
+        const allowedExtensionsList = this.getAllowedExtensionsList(tipoDocumento);
+        if (!allowedExtensionsList.includes(fileExtension)) {
+          throw new HttpException(
+            `Extensión de archivo no permitida para "${tipoDocumento}". Solo se permiten: ${allowedExtensionsList.join(', ')}`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
         // Guardar archivo usando storage service
         rutaRelativa = await this.storageService.saveFile(
           proceso.radicadoProceso,
@@ -348,6 +368,207 @@ export class ProcessController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /**
+   * Obtiene los tipos MIME permitidos según el tipo de documento
+   */
+  private getAllowedMimeTypes(tipoDocumento: string): string[] {
+    // Normalizar el tipo a mayúsculas y eliminar acentos
+    const tipoNormalizado = tipoDocumento?.toUpperCase() || '';
+    const tipoSinAcentos = tipoNormalizado
+      .replace(/Á/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I').replace(/Ó/g, 'O').replace(/Ú/g, 'U')
+      .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u');
+    
+    const tiposPermitidos: Record<string, string[]> = {
+      // Evidencias: HTML, PDF, Word, Excel, Imágenes, Videos
+      'EVIDENCIA': [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/html',
+        'image/jpeg',
+        'image/png',
+        'image/jpg',
+        'image/gif',
+        'image/webp',
+        'video/mp4',
+        'video/webm',
+        'video/quicktime',
+        'video/x-msvideo',
+      ],
+      // Evidencia alternativa
+      'PRUEBA DOCUMENTAL': [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/html',
+        'image/jpeg',
+        'image/png',
+        'image/jpg',
+        'image/gif',
+        'image/webp',
+        'video/mp4',
+        'video/webm',
+        'video/quicktime',
+        'video/x-msvideo',
+      ],
+      // Auto: Solo PDF
+      'AUTO': [
+        'application/pdf',
+      ],
+      // Oficio: Solo PDF
+      'OFICIO': [
+        'application/pdf',
+      ],
+      // Notificación: PDF, Word, Excel
+      'NOTIFICACION': [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ],
+      // Acta: PDF, Word, Excel
+      'ACTA': [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ],
+      // Declaración: PDF, Word, Excel
+      'DECLARACION': [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ],
+      // Otros: PDF, Word, Excel
+      'default': [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ],
+    };
+
+    // Mapear tipos del frontend a los tipos de validación
+    if (tipoSinAcentos === 'EVIDENCIA' || tipoSinAcentos === 'PRUEBA DOCUMENTAL') {
+      return tiposPermitidos['EVIDENCIA'];
+    }
+    if (tipoSinAcentos === 'AUTO') {
+      return tiposPermitidos['AUTO'];
+    }
+    if (tipoSinAcentos === 'OFICIO') {
+      return tiposPermitidos['OFICIO'];
+    }
+    if (tipoSinAcentos === 'NOTIFICACION' || tipoSinAcentos === 'NOTIFICACIÓN') {
+      return tiposPermitidos['NOTIFICACION'];
+    }
+    if (tipoSinAcentos === 'ACTA') {
+      return tiposPermitidos['ACTA'];
+    }
+    if (tipoSinAcentos === 'DECLARACION' || tipoSinAcentos === 'DECLARACIÓN') {
+      return tiposPermitidos['DECLARACION'];
+    }
+    
+    return tiposPermitidos['default'];
+  }
+
+  /**
+   * Obtiene las extensiones permitidas según el tipo de documento
+   */
+  private getAllowedExtensions(tipoDocumento: string): string {
+    // Normalizar el tipo
+    const tipoNormalizado = tipoDocumento?.toUpperCase() || '';
+    const tipoSinAcentos = tipoNormalizado
+      .replace(/Á/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I').replace(/Ó/g, 'O').replace(/Ú/g, 'U')
+      .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u');
+
+    const extensiones: Record<string, string> = {
+      'EVIDENCIA': 'PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP), Videos (MP4, WebM, MOV, AVI)',
+      'PRUEBA DOCUMENTAL': 'PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP), Videos (MP4, WebM, MOV, AVI)',
+      'AUTO': 'Solo PDF',
+      'OFICIO': 'Solo PDF',
+      'NOTIFICACION': 'PDF, Word, Excel',
+      'NOTIFICACIÓN': 'PDF, Word, Excel',
+      'ACTA': 'PDF, Word, Excel',
+      'DECLARACION': 'PDF, Word, Excel',
+      'DECLARACIÓN': 'PDF, Word, Excel',
+      'default': 'PDF, Word, Excel',
+    };
+
+    if (tipoSinAcentos === 'EVIDENCIA' || tipoSinAcentos === 'PRUEBA DOCUMENTAL') {
+      return extensiones['EVIDENCIA'];
+    }
+    if (tipoSinAcentos === 'AUTO') {
+      return extensiones['AUTO'];
+    }
+    if (tipoSinAcentos === 'OFICIO') {
+      return extensiones['OFICIO'];
+    }
+    if (tipoSinAcentos === 'NOTIFICACION' || tipoSinAcentos === 'NOTIFICACIÓN') {
+      return extensiones['NOTIFICACION'];
+    }
+    if (tipoSinAcentos === 'ACTA') {
+      return extensiones['ACTA'];
+    }
+    if (tipoSinAcentos === 'DECLARACION' || tipoSinAcentos === 'DECLARACIÓN') {
+      return extensiones['DECLARACION'];
+    }
+    
+    return extensiones['default'];
+  }
+
+  /**
+   * Obtiene la lista de extensiones permitidas como array
+   */
+  private getAllowedExtensionsList(tipoDocumento: string): string[] {
+    const tipoNormalizado = tipoDocumento?.toUpperCase() || '';
+    const tipoSinAcentos = tipoNormalizado
+      .replace(/Á/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I').replace(/Ó/g, 'O').replace(/Ú/g, 'U')
+      .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u');
+
+    const extensionesLista: Record<string, string[]> = {
+      'EVIDENCIA': ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov', '.avi'],
+      'PRUEBA DOCUMENTAL': ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov', '.avi'],
+      'AUTO': ['.pdf'],
+      'OFICIO': ['.pdf'],
+      'NOTIFICACION': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
+      'NOTIFICACIÓN': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
+      'ACTA': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
+      'DECLARACION': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
+      'DECLARACIÓN': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
+      'default': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
+    };
+
+    if (tipoSinAcentos === 'EVIDENCIA' || tipoSinAcentos === 'PRUEBA DOCUMENTAL') {
+      return extensionesLista['EVIDENCIA'];
+    }
+    if (tipoSinAcentos === 'AUTO') {
+      return extensionesLista['AUTO'];
+    }
+    if (tipoSinAcentos === 'OFICIO') {
+      return extensionesLista['OFICIO'];
+    }
+    if (tipoSinAcentos === 'NOTIFICACION' || tipoSinAcentos === 'NOTIFICACIÓN') {
+      return extensionesLista['NOTIFICACION'];
+    }
+    if (tipoSinAcentos === 'ACTA') {
+      return extensionesLista['ACTA'];
+    }
+    if (tipoSinAcentos === 'DECLARACION' || tipoSinAcentos === 'DECLARACIÓN') {
+      return extensionesLista['DECLARACION'];
+    }
+    
+    return extensionesLista['default'];
   }
 
   /**
@@ -767,6 +988,66 @@ export class ProcessController {
       throw new HttpException(
         `Error al remitir por competencia: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * ✅ NUEVO: Asociar un proceso disciplinario a otro proceso
+   */
+  @Post(':id/associate-process')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Asociar Proceso a Otro Proceso',
+    description: 'Asocia un proceso disciplinario a otro proceso existente (conexo, similar o consolidado)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Proceso asociado exitosamente',
+  })
+  @ApiResponse({ status: 400, description: 'Datos inválidos o proceso no puede asociarse a sí mismo' })
+  @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
+  async associateProcess(
+    @Param('id') procesoOrigenId: string,
+    @Body() body: {
+      procesoDestinoId: string;
+      tipoAsociacion: 'conexo' | 'similar' | 'consolidado';
+      justificacion: string;
+    },
+  ) {
+    try {
+      console.log('🔗 [AssociateProcess] Asociando proceso:', {
+        procesoOrigenId,
+        procesoDestinoId: body.procesoDestinoId,
+        tipoAsociacion: body.tipoAsociacion,
+      });
+
+      const proceso = await this.processService.associateProcess(
+        procesoOrigenId,
+        body.procesoDestinoId,
+        body.tipoAsociacion,
+        body.justificacion,
+      );
+
+      console.log('✅ [AssociateProcess] Proceso asociado exitosamente:', proceso.id);
+
+      return {
+        success: true,
+        message: 'Proceso asociado exitosamente',
+        proceso: {
+          id: proceso.id,
+          radicadoProceso: proceso.radicadoProceso,
+          procesoAsociadoId: proceso.procesoAsociadoId,
+          procesoAsociadoNumero: proceso.procesoAsociadoNumero,
+          procesoAsociadoTipo: proceso.procesoAsociadoTipo,
+          procesoAsociadoFecha: proceso.procesoAsociadoFecha,
+        },
+      };
+    } catch (error) {
+      console.error('❌ [AssociateProcess] Error:', error);
+      throw new HttpException(
+        `Error al asociar proceso: ${error.message}`,
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

@@ -156,6 +156,7 @@ export interface UpdateAutoConfigurationDto {
 export interface CreateNewsDto {
     origen: string;
     fechaQueja?: string;
+    fechaHechos?: string;
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
@@ -210,6 +211,9 @@ class DisciplinaryService {
         formData.append('hechos', data.hechos);
         formData.append('denunciante', JSON.stringify(data.denunciante));
         formData.append('disciplinable', JSON.stringify(data.disciplinable));
+        if (data.fechaHechos) {
+            formData.append('fechaHechos', data.fechaHechos);
+        }
         if (data.adjuntos && data.adjuntos.length > 0) {
             formData.append('adjuntos', JSON.stringify(data.adjuntos));
         }
@@ -393,9 +397,19 @@ class DisciplinaryService {
     async downloadFileFromUrl(url: string, filename: string): Promise<void> {
         // Verificar si la URL ya es absoluta (contiene protocolo)
         let fullUrl: string;
+        
         if (/^https?:\/\//i.test(url)) {
             // URL ya es absoluta, usarla directamente
             fullUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        } else if (url.startsWith('/control-disciplinario/')) {
+            // La URL ya contiene el prefijo del servicio, extraer la ruta relativa
+            // /control-disciplinario/api/v1/... -> /api/v1/...
+            const path = url.replace(/^\/control-disciplinario/, '/');
+            fullUrl = buildApiUrl('control-disciplinario', path) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        } else if (url.startsWith('/files/')) {
+            // La URL es para archivos estáticos, construir correctamente
+            // /files/filename -> /files/filename
+            fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
         } else {
             // URL relativa, construir URL completa
             fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();

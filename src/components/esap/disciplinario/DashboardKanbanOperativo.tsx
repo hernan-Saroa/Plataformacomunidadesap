@@ -102,6 +102,14 @@ interface Proceso {
   cargo?: string;
   dependencia?: string;
   historialAuditoria?: any[];
+  // ✅ NUEVO: Información de asociación a otro proceso
+  procesoAsociado?: {
+    id: string;
+    numeroProceso: string;
+    fechaAsociacion: string;
+    justificacion: string;
+    tipoAsociacion: 'conexo' | 'similar' | 'consolidado';
+  };
 }
 
 type Item = Noticia | Proceso;
@@ -711,6 +719,17 @@ function TarjetaProceso({
               {proceso.diasRestantes} días
             </Badge>
 
+            {/* ✅ NUEVO: Badge de Proceso Asociado */}
+            {proceso.procesoAsociado && (
+              <Badge
+                className={`${isMobile ? 'text-xs' : 'text-xs'} flex items-center gap-1 font-semibold bg-violet-100 text-violet-700 border border-violet-300 cursor-pointer hover:bg-violet-200 transition-colors`}
+                title={`Proceso asociado: ${proceso.procesoAsociado.numeroProceso} (${proceso.procesoAsociado.tipoAsociacion})`}
+              >
+                <Link2 className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'}`} />
+                ASOCIADO
+              </Badge>
+            )}
+
             {/* ✅ NUEVO: Badge de Noticias Asociadas */}
             {noticiasAsociadas.length > 0 && (
               <Badge
@@ -789,6 +808,22 @@ function TarjetaProceso({
                 </div>
               </div>
             </motion.div>
+          )}
+
+          {/* ✅ NUEVO: Sección de Proceso Asociado (siempre visible si existe) */}
+          {proceso.procesoAsociado && (
+            <div className="mb-2 pb-2 border-b border-violet-200 bg-violet-50 -mx-3 px-3 py-2">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Link2 className="w-3 h-3 text-violet-600" />
+                <p className="text-xs font-bold text-violet-700">Asociado a Proceso:</p>
+              </div>
+              <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-violet-900`}>
+                {proceso.procesoAsociado.numeroProceso}
+              </p>
+              <p className="text-xs text-violet-600">
+                Tipo: {proceso.procesoAsociado.tipoAsociacion} | Asociado el {new Date(proceso.procesoAsociado.fechaAsociacion).toLocaleDateString('es-CO')}
+              </p>
+            </div>
           )}
 
           {/* Métricas */}
@@ -3149,6 +3184,32 @@ export function DashboardKanbanOperativo({
       toast.error('Error', { description: 'No se encontraron los procesos para asociar' });
       return;
     }
+
+    // ✅ NUEVO: Llamar al backend para persistir la asociación
+    try {
+      await disciplinaryService.asociarProcesoAProceso(procesoOrigenId, procesoDestinoId, tipoAsociacion, justificacion);
+      console.log('✅ Asociación proceso-proceso persistida en backend');
+    } catch (error) {
+      console.error('❌ Error al persistir asociación en backend:', error);
+      // No bloqueamos la UI, continuamos con la actualización local
+    }
+
+    // ✅ NUEVO: Actualizar el estado local para mostrar la relación
+    setItems(prev => prev.map(item => {
+      if (item.id === procesoOrigenId && item.tipo === 'proceso') {
+        return {
+          ...item,
+          procesoAsociado: {
+            id: procesoDestinoId,
+            numeroProceso: procesoDestino.numeroProceso,
+            fechaAsociacion: new Date().toISOString(),
+            justificacion: justificacion,
+            tipoAsociacion: tipoAsociacion
+          }
+        } as Proceso;
+      }
+      return item;
+    }));
 
     // Registrar en trazabilidad
     const eventoTrazabilidad = {

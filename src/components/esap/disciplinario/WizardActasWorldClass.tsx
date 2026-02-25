@@ -208,6 +208,26 @@ export function WizardActasWorldClass({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Validar que sea PDF, Word o Excel (MIME type y extensión)
+      const allowedMimeTypes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ];
+      const allowedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx'];
+      const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+      
+      if (!allowedMimeTypes.includes(file.type) || !allowedExtensions.includes(fileExtension)) {
+        toast.error('Tipo de archivo no permitido', {
+          description: 'Para Actas solo se permiten archivos PDF, Word o Excel'
+        });
+        // Limpiar el input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+      
       setSubiendo(true);
       setTimeout(() => {
         setArchivoAdjunto(file);
@@ -1037,7 +1057,7 @@ export function WizardActasWorldClass({
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".doc,.docx,.pdf"
+                        accept=".pdf,.doc,.docx"
                         onChange={handleFileChange}
                         className="hidden"
                       />

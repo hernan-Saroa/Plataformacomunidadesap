@@ -28,9 +28,11 @@ import { cargarConfiguracionPDF } from './utils/configuracionHelper';
 import { 
   dibujarEncabezadoInstitucional, 
   dibujarPieInstitucional, 
-  DOCUMENTOS_PREDEFINIDOS 
+  DOCUMENTOS_PREDEFINIDOS,
+  LOGO_ESAP_URL
 } from './services/pdfESAPHeader';
-import logoESAP from '../../../assets/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
+// ✅ NUEVO: Exportación Excel con logo
+import { exportarPlanAnualExcel } from './services/exportarPlanAnualExcel';
 
 // Tipos re-exportados (deben coincidir con el archivo principal)
 type EstadoPlan = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'VIGENTE' | 'CERRADO';
@@ -437,60 +439,60 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
   const [cargandoAuditores, setCargandoAuditores] = useState(true);
   const [jefeSeleccionado, setJefeSeleccionado] = useState<Auditor | null>(null);
   
+  // Función para cargar profesionales OCIG (reutilizable)
+  const cargarAuditores = async () => {
+    setCargandoAuditores(true);
+    try {
+      // Usar profesionales OCIG configurados en lugar de personas disponibles
+      const response = await configuracionesProfesionalesOCIGApi.getAll();
+      console.log('[PlanAnual] Profesionales OCIG response:', response);
+      
+      if (response.success && response.data && response.data.length > 0) {
+        // Transformar a formato Auditor
+        const profesionales: Auditor[] = response.data
+          .filter((config: any) => config.activo)
+          .map((config: any) => ({
+            id: config.id, // UUID de configuracion_profesionales_ocig
+            nombre: config.nombre || `Profesional ${config.idTercero}`,
+            cargo: config.rolOcig || 'Auditor',
+            email: config.email || ''
+          }));
+        
+        setAuditores(profesionales);
+        
+        // Filtrar solo los que son Jefe OCIG
+        const jefes = profesionales.filter((a: Auditor) => 
+          a.cargo === 'Jefe OCIG' || a.cargo.toLowerCase().includes('jefe')
+        );
+        setJefesOCIG(jefes.length > 0 ? jefes : profesionales);
+        
+        // Seleccionar el primer profesional por defecto si no hay uno seleccionado
+        if (!jefeSeleccionado && profesionales.length > 0) {
+          setJefeSeleccionado(profesionales[0]);
+        }
+        
+        console.log('[PlanAnual] Profesionales OCIG cargados:', profesionales.length);
+        return profesionales;
+      } else {
+        console.warn('[PlanAnual] No hay profesionales OCIG configurados');
+        toast.warning('No hay profesionales OCIG configurados', {
+          description: 'Configura el equipo en el módulo de Configuración'
+        });
+        setAuditores([]);
+        setJefesOCIG([]);
+        return [];
+      }
+    } catch (error) {
+      console.error('[PlanAnual] Error cargando profesionales OCIG:', error);
+      toast.error('Error al cargar profesionales OCIG');
+      return [];
+    } finally {
+      setCargandoAuditores(false);
+    }
+  };
+  
   // Cargar profesionales OCIG configurados al montar el componente
   useEffect(() => {
-    const cargarAuditores = async () => {
-      setCargandoAuditores(true);
-      try {
-        // Usar profesionales OCIG configurados en lugar de personas disponibles
-        const response = await configuracionesProfesionalesOCIGApi.getAll();
-        console.log('[PlanAnual] Profesionales OCIG response:', response);
-        
-        if (response.success && response.data && response.data.length > 0) {
-          // Transformar a formato Auditor
-          const profesionales: Auditor[] = response.data
-            .filter((config: any) => config.activo)
-            .map((config: any) => ({
-              id: config.id, // UUID de configuracion_profesionales_ocig
-              nombre: config.nombre || `Profesional ${config.idTercero}`,
-              cargo: config.rolOcig || 'Auditor',
-              email: config.email || ''
-            }));
-          
-          setAuditores(profesionales);
-          
-          // Filtrar solo los que son Jefe OCIG
-          const jefes = profesionales.filter((a: Auditor) => 
-            a.cargo === 'Jefe OCIG' || a.cargo.toLowerCase().includes('jefe')
-          );
-          setJefesOCIG(jefes.length > 0 ? jefes : profesionales);
-          
-          // Seleccionar el primer jefe como jefe por defecto
-          if (jefes.length > 0) {
-            setJefeSeleccionado(jefes[0]);
-          } else if (profesionales.length > 0) {
-            setJefeSeleccionado(profesionales[0]);
-          }
-          
-          console.log('[PlanAnual] Profesionales OCIG cargados:', profesionales.length, 'Jefes:', jefes.length);
-        } else {
-          console.warn('[PlanAnual] No hay profesionales OCIG configurados, usando fallback');
-          toast.warning('No hay profesionales OCIG configurados', {
-            description: 'Configura el equipo en el módulo de Configuración'
-          });
-          setJefesOCIG(AUDITORES_DEFAULT);
-          setJefeSeleccionado(AUDITORES_DEFAULT[0]);
-        }
-      } catch (error) {
-        console.error('[PlanAnual] Error cargando profesionales OCIG:', error);
-        toast.error('Error al cargar profesionales OCIG');
-        setJefesOCIG(AUDITORES_DEFAULT);
-        setJefeSeleccionado(AUDITORES_DEFAULT[0]);
-      } finally {
-        setCargandoAuditores(false);
-      }
-    };
-    
     cargarAuditores();
   }, []);
   const [rolesConfig, setRolesConfig] = useState<RolConfig[]>(() => 
@@ -567,10 +569,10 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
       return false;
     }
     
-    // Validar que haya un jefe seleccionado
+    // Validar que haya un responsable seleccionado
     if (!jefeSeleccionado) {
-      toast.error('Jefe OCI requerido', {
-        description: 'Debe seleccionar un Jefe de Control Interno'
+      toast.error('Responsable requerido', {
+        description: 'Debe seleccionar un responsable del Plan Anual'
       });
       return false;
     }
@@ -644,7 +646,7 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
     
     // Validación de seguridad para TypeScript (ya se validó en validarPaso1)
     if (!jefeSeleccionado) {
-      toast.error('Debe seleccionar un Jefe de Control Interno');
+      toast.error('Debe seleccionar un responsable del Plan');
       return;
     }
     
@@ -695,8 +697,9 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
                 onFechaInicioChange={setFechaInicio}
                 fechaFin={fechaFin}
                 onFechaFinChange={setFechaFin}
-                auditores={jefesOCIG}
+                auditores={auditores}
                 cargandoAuditores={cargandoAuditores}
+                onRecargarAuditores={cargarAuditores}
               />
             )}
             {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={setRolesConfig} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} />}
@@ -762,7 +765,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
       <div className="text-center mb-8">
         <h2 className="text-3xl font-bold text-gray-900 mb-3">Configuración básica</h2>
-        <p className="text-gray-600">Define la vigencia, periodo de ejecución y el jefe responsable del plan</p>
+        <p className="text-gray-600">Define la vigencia, periodo de ejecución y el responsable del plan</p>
       </div>
 
       <div className="bg-white rounded-xl border-2 border-gray-200 p-8 space-y-6">
@@ -850,11 +853,16 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
         )}
 
         <div>
-          <label className="block text-sm font-semibold text-gray-900 mb-2">Jefe de Control Interno</label>
+          <label className="block text-sm font-semibold text-gray-900 mb-2">Responsable del Plan</label>
           {cargandoAuditores ? (
             <div className="flex items-center gap-2 px-4 py-3 border-2 border-gray-300 rounded-lg bg-gray-50">
               <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-              <span className="text-gray-600">Cargando auditores...</span>
+              <span className="text-gray-600">Cargando profesionales OCIG...</span>
+            </div>
+          ) : auditores.length === 0 ? (
+            <div className="flex items-center gap-2 px-4 py-3 border-2 border-orange-300 rounded-lg bg-orange-50">
+              <AlertCircle className="w-5 h-5 text-orange-600" />
+              <span className="text-orange-700">No hay profesionales OCIG configurados. Configura el equipo primero.</span>
             </div>
           ) : (
             <select 
@@ -862,11 +870,13 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
               onChange={(e) => onJefeChange(auditores.find((a: any) => a.id === e.target.value))} 
               className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
             >
+              <option value="">Seleccionar responsable...</option>
               {auditores.map((a: any) => (
                 <option key={a.id} value={a.id}>{a.nombre} - {a.cargo}</option>
               ))}
             </select>
           )}
+          <p className="text-xs text-gray-500 mt-1">Profesional OCIG responsable del Plan Anual de Auditoría</p>
         </div>
       </div>
     </motion.div>
@@ -1793,7 +1803,7 @@ function Paso3({ vigencia, jefeOCI, rolesConfig }: any) {
             <span className="font-bold text-gray-900">{vigencia}</span>
           </div>
           <div className="flex justify-between py-2 border-b border-gray-200">
-            <span className="text-gray-600">Jefe responsable:</span>
+            <span className="text-gray-600">Responsable del Plan:</span>
             <span className="font-bold text-gray-900">{jefeOCI.nombre}</span>
           </div>
           <div className="flex justify-between py-2 border-b border-gray-200">
@@ -1859,9 +1869,11 @@ interface DashboardPlanProps {
   onAbrirRol4?: () => void;
   onCrearNuevo?: () => void; // Nueva prop para crear un nuevo plan
   planesAnteriores?: PlanAnual[]; // Historial de planes anteriores
+  planesDisponibles?: PlanAnual[]; // Lista de todos los planes para selector
+  onCambiarPlan?: (planId: string) => void; // Callback para cambiar de plan activo
 }
 
-export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [] }: DashboardPlanProps) {
+export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan }: DashboardPlanProps) {
   const [seccion, setSeccion] = useState<'gestion' | 'asignar' | 'aprobar'>('gestion');
   const [mostrarModalExportacion, setMostrarModalExportacion] = useState(false);
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
@@ -1911,44 +1923,18 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const handleExportarExcel = async () => {
     setExportando('excel');
     setMostrarModalExportacion(false);
-    const res = await planAnualApi.exportExcel(plan.id);
-    if (res.success) {
-      toast.success('Exportado', { description: 'Excel descargado correctamente' });
-      setExportando(null);
-      return;
-    }
+    
+    // ✅ NUEVO: Usar exportación local con ExcelJS + Logo (no depende del backend)
     try {
-      const XLSX = await import('xlsx');
-      const vigencia = plan.vigencia ?? (plan as { año?: number }).año ?? new Date().getFullYear();
-      const headers = ['Rol', 'Nº', 'Actividad', 'Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Fin', 'Estado', '% Avance'];
-      const rows: unknown[][] = [
-        ['Plan Anual de Auditoría - ESAP'],
-        [`Vigencia ${vigencia}`, '', '', '', '', '', '', `Estado: ${plan.estado}`],
-        [],
-        headers,
-      ];
-      (plan.roles ?? []).forEach((rol) => {
-        (rol.actividades ?? []).forEach((a, i) => {
-          rows.push([
-            rol.nombre,
-            i + 1,
-            a.nombre,
-            a.descripcion ?? '',
-            a.responsable?.nombre ?? '',
-            a.fechaInicio ?? '',
-            a.fechaFin ?? '',
-            a.estado ?? '',
-            a.porcentajeAvance ?? 0,
-          ]);
-        });
-      });
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Plan Anual');
-      XLSX.writeFile(wb, `plan-anual-auditoria-${vigencia}.xlsx`);
-      toast.success('Exportado', { description: 'Excel generado correctamente' });
+      const resultado = await exportarPlanAnualExcel(plan);
+      if (resultado.exito) {
+        toast.success('Exportado', { description: 'Excel descargado correctamente con logo ESAP' });
+      } else {
+        toast.error('Error al exportar Excel', { description: resultado.error || 'Error desconocido' });
+      }
     } catch (e) {
-      toast.error('Error al exportar Excel', { description: res.error || (e instanceof Error ? e.message : 'Error desconocido') });
+      console.error('Error al exportar Excel:', e);
+      toast.error('Error al exportar Excel', { description: e instanceof Error ? e.message : 'Error desconocido' });
     }
     setExportando(null);
   };
@@ -1972,10 +1958,10 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 20;
 
-      // Header institucional estandarizado
+      // Header institucional estandarizado (carga logo dinámicamente)
       const alturaEncabezado = dibujarEncabezadoInstitucional(doc, {
         ...DOCUMENTOS_PREDEFINIDOS.PLAN_ANUAL,
-        logoImg: logoESAP
+        logoImg: LOGO_ESAP_URL
       });
       
       let currentY = alturaEncabezado + 5;
@@ -2023,12 +2009,21 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       currentY = (doc as any).lastAutoTable.finalY + 10;
 
       // Actividades por rol
+      let sumaAvanceTotal = 0;
+      let totalActividadesCount = 0;
+      
       plan.roles.forEach((rol, rolIdx) => {
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 61, 165);
         doc.text(`ROL ${rol.numero}: ${rol.nombre.toUpperCase()}`, margin, currentY);
         currentY += 7;
+
+        // Calcular avance promedio del rol
+        const sumaAvanceRol = rol.actividades.reduce((s, a) => s + a.porcentajeAvance, 0);
+        const promedioRol = rol.actividades.length > 0 ? Math.round(sumaAvanceRol / rol.actividades.length) : 0;
+        sumaAvanceTotal += sumaAvanceRol;
+        totalActividadesCount += rol.actividades.length;
 
         const actividadesData = rol.actividades.map((act, idx) => [
           (idx + 1).toString(),
@@ -2037,6 +2032,15 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           act.estado === 'COMPLETADA' ? 'Completada' : 
           act.estado === 'EN_EJECUCION' ? 'En ejecución' : 'Pendiente',
           `${act.porcentajeAvance}%`
+        ]);
+        
+        // Agregar fila de subtotal del rol
+        actividadesData.push([
+          '',
+          `SUBTOTAL ROL (${rol.actividades.length} actividades)`,
+          '',
+          'PROMEDIO:',
+          `${promedioRol}%`
         ]);
 
         autoTable(doc, {
@@ -2058,7 +2062,15 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
             3: { cellWidth: 30, halign: 'center' },
             4: { cellWidth: 20, halign: 'center' }
           },
-          margin: { left: margin, right: margin }
+          margin: { left: margin, right: margin },
+          didParseCell: function(data) {
+            // Destacar la fila de subtotal
+            if (data.row.index === actividadesData.length - 1) {
+              data.cell.styles.fillColor = [41, 98, 255];
+              data.cell.styles.textColor = [255, 255, 255];
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
         });
 
         currentY = (doc as any).lastAutoTable.finalY + 8;
@@ -2068,6 +2080,24 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           currentY = margin;
         }
       });
+      
+      // Total general del plan
+      const promedioGeneral = totalActividadesCount > 0 ? Math.round(sumaAvanceTotal / totalActividadesCount) : 0;
+      
+      if (currentY > pageHeight - 30) {
+        doc.addPage();
+        currentY = margin;
+      }
+      
+      // Dibujar cuadro de resumen total
+      doc.setFillColor(0, 61, 165);
+      doc.rect(margin, currentY, pageWidth - (margin * 2), 15, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`AVANCE TOTAL DEL PLAN: ${promedioGeneral}%`, margin + 5, currentY + 10);
+      doc.text(`(${totalActividadesCount} actividades en ${plan.roles.length} roles)`, pageWidth - margin - 80, currentY + 10);
+      currentY += 20;
 
       // Footer institucional
       const totalPages = doc.getNumberOfPages();
@@ -2100,6 +2130,21 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-shrink-0">
+            {/* Selector de Plan Activo */}
+            {planesDisponibles.length > 1 && onCambiarPlan && (
+              <select
+                value={plan.id}
+                onChange={(e) => onCambiarPlan(e.target.value)}
+                className="px-3 py-1.5 sm:py-2 border-2 border-blue-300 rounded-lg text-sm font-medium bg-blue-50 text-blue-900 focus:outline-none focus:border-blue-500"
+              >
+                {planesDisponibles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.vigencia} - {p.estado} (v{p.version})
+                  </option>
+                ))}
+              </select>
+            )}
+
             <span className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold border-2 text-sm ${plan.estado === 'VIGENTE' ? 'bg-green-100 text-green-700 border-green-300' : plan.estado === 'APROBADO' ? 'bg-blue-100 text-blue-700 border-blue-300' : plan.estado === 'EN_REVISION' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-gray-100 text-gray-700 border-gray-300'}`}>
               {plan.estado === 'BORRADOR' ? 'Borrador' : plan.estado === 'EN_REVISION' ? 'En revisión' : plan.estado === 'APROBADO' ? 'Aprobado' : plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado'}
             </span>

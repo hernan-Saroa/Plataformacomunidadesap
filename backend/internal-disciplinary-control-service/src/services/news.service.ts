@@ -55,11 +55,19 @@ export class NewsService {
         observaciones: 'Radicación exitosa en el sistema',
       }];
 
+      // Calcular fecha de caducidad (5 años desde la fecha de los hechos - Ley 734/2002 Art. 30)
+      let fechaCaducidad: Date | undefined;
+      if (createNewsDto.fechaHechos) {
+        fechaCaducidad = new Date(createNewsDto.fechaHechos);
+        fechaCaducidad.setFullYear(fechaCaducidad.getFullYear() + 5);
+      }
+
       // Crear y guardar noticia
       const noticia = this.newsRepository.create({
         radicado,
         ...createNewsDto,
         adjuntos,
+        fechaCaducidad,
         estado: NewsStatus.RADICADA,
         kanbanStage: 'RECEPCION',
         historialAuditoria: initialHistory,

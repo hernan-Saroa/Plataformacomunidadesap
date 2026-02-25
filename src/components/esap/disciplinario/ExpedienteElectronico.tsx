@@ -521,9 +521,22 @@ function ModalVisorDocumento({
         let downloadUrl: string;
 
         if (documento.downloadUrl) {
-          // Si el documento ya trae una URL de descarga (ej: Autos), usarla
-          // NO remover el slash inicial, buildApiUrl lo necesita o lo maneja
-          downloadUrl = buildApiUrl('control-disciplinario', documento.downloadUrl);
+          // El backend retorna: /control-disciplinario/api/v1/... o /files/...
+          // Necesitamos extraer la ruta relativa sin el prefijo del servicio para buildApiUrl
+          let path = documento.downloadUrl;
+          
+          if (documento.downloadUrl.startsWith('/control-disciplinario/')) {
+            // Extraer la ruta después de /control-disciplinario conservando el slash inicial
+            // /control-disciplinario/api/v1/... -> /api/v1/...
+            path = documento.downloadUrl.replace(/^\/control-disciplinario/, '/');
+          } else if (documento.downloadUrl.startsWith('/files/')) {
+            // Para /files/ usar la ruta directa sin duplicar el prefijo
+            // /files/filename -> /files/filename
+            path = documento.downloadUrl;
+          }
+          
+          // Construir la URL usando solo la ruta relativa
+          downloadUrl = buildApiUrl('control-disciplinario', path);
         } else {
           // Construcción legacy para evidencias
           const endpoint = API_MODE === 'direct'
@@ -2154,13 +2167,32 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
         description: 'Por favor espere'
       });
 
-      // Convertir tipoDocumento al formato esperado por el backend
-      const tipoBackend = docData.tipo === 'auto' ? 'AUTO' :
-        docData.tipo === 'evidencia' ? 'EVIDENCIA' :
-          docData.tipo === 'oficio' ? 'OFICIO' :
-            docData.tipo === 'notificacion' ? 'NOTIFICACION' :
-              docData.tipo === 'acta' ? 'ACTA' :
-                'DOCUMENTO';
+      // Mapear tipo de documento del modal al formato esperado por el backend
+      // ModalSubirDocumento usa: Auto, Notificación, Prueba Documental, Declaración, Oficio, Respuesta, Descargos, Recurso, Otro
+      let tipoBackend = 'DOCUMENTO';
+      const tipoNormalizado = docData.tipo?.toLowerCase() || '';
+      
+      if (tipoNormalizado === 'auto') {
+        tipoBackend = 'AUTO';
+      } else if (tipoNormalizado === 'evidencia' || tipoNormalizado === 'prueba documental') {
+        tipoBackend = 'EVIDENCIA';
+      } else if (tipoNormalizado === 'oficio') {
+        tipoBackend = 'OFICIO';
+      } else if (tipoNormalizado === 'notificación' || tipoNormalizado === 'notificacion') {
+        tipoBackend = 'NOTIFICACION';
+      } else if (tipoNormalizado === 'acta') {
+        tipoBackend = 'ACTA';
+      } else if (tipoNormalizado === 'declaración' || tipoNormalizado === 'declaracion') {
+        tipoBackend = 'DECLARACION';
+      } else if (tipoNormalizado === 'descargos') {
+        tipoBackend = 'DESCARGOS';
+      } else if (tipoNormalizado === 'recurso') {
+        tipoBackend = 'RECURSO';
+      } else if (tipoNormalizado === 'respuesta') {
+        tipoBackend = 'RESPUESTA';
+      } else {
+        tipoBackend = 'DOCUMENTO';
+      }
 
       // Guardar solo la descripción simple (el backend recibe los campos por separado)
       const descripcionFinal = docData.descripcion || '';
