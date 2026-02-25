@@ -211,6 +211,22 @@ function ModalRevisionEdicion({
 
         {/* Contenido */}
         <div className="flex-1 overflow-y-auto p-6">
+          {/* Banner de Estado Firmado */}
+          {borrador.estado === 'FIRMADO' && (
+            <div className="mb-6 p-4 rounded-xl flex items-center gap-3" style={{ background: '#D1FAE5', border: '2px solid #10B981' }}>
+              <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: '#10B981' }}>
+                <CheckCircle className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <p className="font-bold text-lg" style={{ color: '#065F46' }}>
+                  ✓ Documento Aprobado y Firmado
+                </p>
+                <p className="text-sm" style={{ color: '#047857' }}>
+                  Este documento ha sido aprobado y firmado exitosamente
+                </p>
+              </div>
+            </div>
+          )}
           {activeTab === 'documento' ? (
             <div className="space-y-5">
               {/* Info Denunciado */}
@@ -1315,8 +1331,8 @@ export function RevisionAprobacionJefe() {
 
       await disciplinaryService.firmarAuto(borradorId, currentUser.id, signData);
 
-      toast.success('Auto Firmado Exitosamente', {
-        description: `El documento ha sido firmado digitalmente por ${currentUser.nombre}`
+      toast.success('Auto Aprobado y Firmado', {
+        description: 'El documento ha sido aprobado y firmado exitosamente'
       });
 
       setShowModalRevision(false);
