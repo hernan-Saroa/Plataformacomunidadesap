@@ -156,6 +156,7 @@ export interface UpdateAutoConfigurationDto {
 export interface CreateNewsDto {
     origen: string;
     fechaQueja?: string;
+    fechaHechos?: string;
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
@@ -210,6 +211,9 @@ class DisciplinaryService {
         formData.append('hechos', data.hechos);
         formData.append('denunciante', JSON.stringify(data.denunciante));
         formData.append('disciplinable', JSON.stringify(data.disciplinable));
+        if (data.fechaHechos) {
+            formData.append('fechaHechos', data.fechaHechos);
+        }
         if (data.adjuntos && data.adjuntos.length > 0) {
             formData.append('adjuntos', JSON.stringify(data.adjuntos));
         }

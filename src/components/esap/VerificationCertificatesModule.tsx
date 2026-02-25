@@ -150,6 +150,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [qrPreviewCertificate, setQrPreviewCertificate] = useState<CertificateRecord | null>(null);
   const qrCanvasRef = useRef<HTMLDivElement>(null);
+  const validationUrlCodeRef = useRef<HTMLElement | null>(null);
   const isLoadingCertificatesRef = useRef(false);
   const lastCertificatesLoadAtRef = useRef(0);
   const FOCUS_RELOAD_COOLDOWN_MS = 20000;
@@ -920,6 +921,52 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     } else {
       toast.error('No se pudo copiar. Por favor, cópialo manualmente.');
     }
+  };
+
+  const copyFromElementFallback = (element: HTMLElement | null) => {
+    if (!element) return false;
+    const selection = window.getSelection();
+    if (!selection) return false;
+
+    const previousRange = selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
+
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return document.execCommand('copy');
+    } catch (error) {
+      console.error('Error copiando texto desde elemento:', error);
+      return false;
+    } finally {
+      selection.removeAllRanges();
+      if (previousRange) {
+        selection.addRange(previousRange);
+      }
+    }
+  };
+
+  const handleCopyValidationUrl = async () => {
+    if (!qrPreviewCertificate?.qrCode) {
+      toast.error('No hay URL de validacion disponible');
+      return;
+    }
+
+    const url = getPublicValidationUrl(qrPreviewCertificate.qrCode);
+    const copied = await copyToClipboard(url);
+    if (copied) {
+      toast.success('URL de validacion copiada al portapapeles');
+      return;
+    }
+
+    const copiedFromCode = copyFromElementFallback(validationUrlCodeRef.current);
+    if (copiedFromCode) {
+      toast.success('URL de validacion copiada al portapapeles');
+      return;
+    }
+
+    toast.error('No se pudo copiar. Por favor, copialo manualmente.');
   };
 
   const handleViewQR = (cert: CertificateRecord) => {
@@ -2480,14 +2527,12 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </h4>
               <div className="flex items-center gap-2 p-3 bg-white rounded border border-gray-200">
                 <ExternalLink className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                <code className="flex-1 text-xs font-mono text-blue-600 break-all">
+                <code ref={validationUrlCodeRef} className="flex-1 text-xs font-mono text-blue-600 break-all">
                   {qrPreviewCertificate && getPublicValidationUrl(qrPreviewCertificate.qrCode)}
                 </code>
                 <button
-                  onClick={() => qrPreviewCertificate && handleCopyToClipboard(
-                    getPublicValidationUrl(qrPreviewCertificate.qrCode),
-                    'URL de validación'
-                  )}
+                  type="button"
+                  onClick={handleCopyValidationUrl}
                   className="p-1.5 hover:bg-gray-100 rounded transition-colors"
                   title="Copiar URL"
                 >
@@ -2551,6 +2596,3 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     </div>
   );
 }
-
-
-

@@ -2054,35 +2054,26 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       variant="outline"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!evidencia.archivoUrl) {
+                        if (!evidencia.id || !evidencia.processId) {
                           toast.error('URL no disponible');
                           return;
                         }
 
                         const tipoArchivo = evidencia.tipoArchivo?.toLowerCase() || '';
-                        const viewUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, false);
 
-                        // Archivos que se pueden ver directamente en el navegador
-                        if (canPreviewInBrowser(tipoArchivo)) {
-                          window.open(viewUrl, '_blank');
-                          return;
-                        }
-
-                        // Archivos Office - usar visor de Microsoft
+                        // Archivos Office - descargar ya que el visor necesita URL pública
                         const officeTypes = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
                         if (officeTypes.includes(tipoArchivo)) {
-                          // Para archivos Office, necesitamos la URL pública completa
-                          // Por ahora, descargamos ya que el visor necesita URL accesible públicamente
                           toast.info('Descargando archivo Office para visualización...');
                           descargarArchivo(
-                            buildEvidenciaFileUrl(evidencia.archivoUrl, true, evidencia.archivoNombre),
+                            buildDownloadUrl(evidencia.processId, evidencia.id, false),
                             evidencia.archivoNombre || 'documento'
                           );
                           return;
                         }
 
-                        // Otros tipos - abrir directamente
-                        window.open(viewUrl, '_blank');
+                        // Para todos los demás formatos: streaming inline via el servicio disciplinario
+                        window.open(buildDownloadUrl(evidencia.processId, evidencia.id, true), '_blank');
                       }}
                       title="Ver documento"
                       style={{ borderColor: '#003DA5', color: '#003DA5' }}
@@ -2095,13 +2086,15 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       variant="outline"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!evidencia.archivoUrl) {
+                        if (!evidencia.id || !evidencia.processId) {
                           toast.error('URL no disponible');
                           return;
                         }
 
-                        const downloadUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, true, evidencia.archivoNombre);
-                        descargarArchivo(downloadUrl, evidencia.archivoNombre || 'evidencia');
+                        descargarArchivo(
+                          buildDownloadUrl(evidencia.processId, evidencia.id, false),
+                          evidencia.archivoNombre || 'evidencia'
+                        );
                       }}
                       title="Descargar archivo"
                       style={{ borderColor: '#003DA5', color: '#003DA5' }}

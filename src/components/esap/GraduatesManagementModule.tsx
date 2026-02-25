@@ -249,17 +249,33 @@ export function GraduatesManagementModule() {
     if (ext) return ext.toUpperCase();
     return 'Archivo';
   };
-  const getFileTypeBadgeClass = (file: { originalName?: string; mimeType?: string }) => {
+  const getFileTypeBadgeVariant = (file: { originalName?: string; mimeType?: string }) => {
     const name = (file.originalName || '').toLowerCase();
     const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : '';
     const mime = (file.mimeType || '').toLowerCase();
-    if (ext === 'pdf' || mime === 'application/pdf') return 'is-pdf';
-    if (ext === 'doc' || ext === 'docx' || mime.includes('wordprocessingml')) return 'is-word';
-    if (ext === 'xls' || ext === 'xlsx' || mime.includes('spreadsheetml')) return 'is-excel';
+    if (ext === 'pdf' || mime === 'application/pdf') return 'pdf';
+    if (ext === 'doc' || ext === 'docx' || mime.includes('wordprocessingml')) return 'word';
+    if (ext === 'xls' || ext === 'xlsx' || mime.includes('spreadsheetml')) return 'excel';
     if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp' || mime.startsWith('image/')) {
-      return 'is-image';
+      return 'image';
     }
-    return 'is-generic';
+    return 'generic';
+  };
+  const getFileTypeBadgeStyle = (file: { originalName?: string; mimeType?: string }) => {
+    const variant = getFileTypeBadgeVariant(file);
+    if (variant === 'pdf') {
+      return { borderColor: '#FECACA', background: '#FEF2F2', color: '#B91C1C' };
+    }
+    if (variant === 'word') {
+      return { borderColor: '#BFDBFE', background: '#EFF6FF', color: '#1D4ED8' };
+    }
+    if (variant === 'excel') {
+      return { borderColor: '#A7F3D0', background: '#ECFDF5', color: '#047857' };
+    }
+    if (variant === 'image') {
+      return { borderColor: '#D1D5DB', background: '#F3F4F6', color: '#4B5563' };
+    }
+    return { borderColor: '#E5E7EB', background: '#F9FAFB', color: '#6B7280' };
   };
   const allowedFileExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.webp'];
   const allowedFileMimeTypes = new Set([
@@ -1915,7 +1931,13 @@ export function GraduatesManagementModule() {
           }
         }}
       >
-        <DialogContent className="graduate-files-dialog overflow-y-auto">
+        <DialogContent
+          className="graduate-files-dialog max-h-[88vh] overflow-y-auto"
+          style={{
+            width: 'min(72rem, calc(100vw - 2rem))',
+            maxWidth: '72rem',
+          }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5" style={{ color: '#003DA5' }} />
@@ -2060,7 +2082,8 @@ export function GraduatesManagementModule() {
                         <p className="text-xs" style={{ color: '#6B7280' }}>
                           {formatFileSize(file.sizeBytes)} ·{' '}
                           <span
-                            className={`graduate-files-type-badge ${getFileTypeBadgeClass(file)}`}
+                            className="graduate-files-type-badge inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold"
+                            style={getFileTypeBadgeStyle(file)}
                           >
                             {getFileTypeLabel(file)}
                           </span>
