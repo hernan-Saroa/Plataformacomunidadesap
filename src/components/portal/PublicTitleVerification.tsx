@@ -41,7 +41,7 @@ interface PublicTitleVerificationProps {
  * 
  * Flujos:
  * 1. Si el graduado ESTÁ en la BD → Certificado generado INSTANTÁNEAMENTE
- * 2. Si el graduado NO está en la BD → Solicitud de revisión manual (48-72 horas)
+ * 2. Si el graduado NO está en la BD → Solicitud de revisión manual (15 días hábiles)
  * 
  * En el flujo 2, el equipo administrativo revisa registros históricos y:
  * - Si encuentra al graduado → Lo agrega a BD y genera certificado
@@ -302,7 +302,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
         toast.info('Solicitud de revision creada', {
           description:
             response.mensaje ||
-            'No se encontro el graduado en nuestra base de datos. Se ha generado una solicitud de revision manual (48-72 horas).',
+            'No se encontro el graduado en nuestra base de datos. Se ha generado una solicitud de revision manual (15 días hábiles).',
         });
         return;
       }
@@ -415,7 +415,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                   </div>
                   <div>
                     <h2 className="text-3xl font-black">Solicitud de Revisión Creada</h2>
-                    <p className="text-amber-50">Tiempo estimado: 48-72 horas</p>
+                    <p className="text-amber-50">Tiempo estimado: 15 días hábiles</p>
                   </div>
                 </div>
               </div>
@@ -431,7 +431,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                     No encontramos el registro del graduado con la cédula <span className="font-mono font-bold text-[#1e5da8]">{graduateDocumentNumber}</span> en nuestra base de datos de graduados ESAP.
                   </p>
                   <p className="text-gray-700 leading-relaxed">
-                    Hemos generado una <strong>solicitud de revisión manual</strong> que será evaluada por nuestro equipo administrativo en las próximas <strong className="text-amber-600">48 a 72 horas</strong>.
+                    Hemos generado una <strong>solicitud de revisión manual</strong> que será evaluada por nuestro equipo administrativo en los próximos <strong className="text-amber-600">15 días hábiles</strong>.
                   </p>
                 </div>
 
@@ -478,7 +478,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                         </li>
                         <li className="flex items-start gap-3">
                           <span className="text-green-600 font-bold mt-0.5">✓</span>
-                          <span className="text-gray-700">Nuestro equipo revisará la solicitud en las próximas <strong className="text-amber-600">48 a 72 horas</strong></span>
+                          <span className="text-gray-700">Nuestro equipo revisará la solicitud en los próximos <strong className="text-amber-600">15 días hábiles</strong></span>
                         </li>
                         <li className="flex items-start gap-3">
                           <span className="text-green-600 font-bold mt-0.5">✓</span>
@@ -742,7 +742,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-gray-900 mb-1">Información del Proceso</p>
                     <p className="text-sm text-gray-600 leading-relaxed">
-                      Verifica títulos académicos de graduados ESAP. El certificado se genera instantáneamente si el graduado está registrado, o en 48-72h si requiere revisión manual.
+                      Verifica títulos académicos de graduados ESAP. El certificado se genera instantáneamente si el graduado está registrado, o en 15 días hábiles si requiere revisión manual.
                     </p>
                   </div>
                 </div>
