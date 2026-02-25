@@ -104,4 +104,20 @@ export class DisciplinaryProcess {
   // Relación con pruebas
   @OneToMany(() => Evidence, (evidence) => evidence.process)
   evidence: Evidence[];
+
+  // ✅ NUEVO: Campos para asociar proceso a otro proceso
+  @Column({ name: 'proceso_asociado_id', type: 'uuid', nullable: true })
+  procesoAsociadoId: string | null;
+
+  @Column({ name: 'proceso_asociado_numero', type: 'varchar', length: 50, nullable: true })
+  procesoAsociadoNumero: string | null;
+
+  @Column({ name: 'proceso_asociado_tipo', type: 'varchar', length: 20, nullable: true })
+  procesoAsociadoTipo: 'conexo' | 'similar' | 'consolidado' | null;
+
+  @Column({ name: 'proceso_asociado_fecha', type: 'timestamp', nullable: true })
+  procesoAsociadoFecha: Date | null;
+
+  @Column({ name: 'proceso_asociado_justificacion', type: 'text', nullable: true })
+  procesoAsociadoJustificacion: string | null;
 }
