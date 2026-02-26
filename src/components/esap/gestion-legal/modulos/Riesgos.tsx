@@ -123,10 +123,10 @@ export function Riesgos() {
         codigo: r.codigo,
         nombre: `${r.nombre} - ${r.proceso}`,
         tipo: 'Riesgo',
-        estado: 'ARCHIVADO' as EstadoArchivado,
+        estado: (r.estado === 'ELIMINADO' ? 'ELIMINADO' : 'ARCHIVADO') as EstadoArchivado,
         fechaArchivado: new Date(r.updatedAt),
         usuarioArchivo: r.responsable || 'Sistema',
-        motivoArchivo: r.motivoArchivo || `Riesgo archivado desde el módulo de Gestión de Riesgos`,
+        motivoArchivo: r.motivoArchivo || `Riesgo ${r.estado === 'ELIMINADO' ? 'eliminado' : 'archivado'} desde el módulo de Gestión de Riesgos`,
         metadatos: {
           'Proceso': r.proceso,
           'Tipo Riesgo': r.tipoRiesgo,
@@ -320,18 +320,21 @@ export function Riesgos() {
     }
   };
 
-  // Handler para eliminar riesgo
+  // Handler para eliminar riesgo (soft-delete → va a archivados con estado ELIMINADO)
   const handleEliminarRiesgo = async (riesgo: Riesgo) => {
     const toastId = toast.loading('Eliminando riesgo...');
     try {
-      await riesgosService.delete(riesgo.id);
+      await riesgosService.marcarEliminado(riesgo.id, 'Eliminado por el usuario');
 
-      // Actualizar estado local eliminando el item
+      // Actualizar estado local: quitar de activos
       setRiesgos(prev => prev.filter(r => r.id !== riesgo.id));
 
-      toast.success('Riesgo eliminado permanentemente', {
+      // Recargar archivados para que aparezca allí
+      await fetchArchivados();
+
+      toast.success('Riesgo eliminado', {
         id: toastId,
-        description: `${riesgo.codigo || riesgo.id} ha sido eliminado`
+        description: `${riesgo.codigo || riesgo.id} ha sido eliminado. Puedes restaurarlo o eliminarlo permanentemente desde Archivados.`
       });
       setModalDetalleOpen(false);
     } catch (error) {
