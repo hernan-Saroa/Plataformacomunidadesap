@@ -260,16 +260,20 @@ export class RiesgosService {
 
     async findArchived(): Promise<Riesgo[]> {
         return this.riesgoRepo.find({
-            where: { estado: 'ARCHIVADO' as EstadoRiesgo },
+            where: [
+                { estado: 'ARCHIVADO' as EstadoRiesgo },
+                { estado: 'ELIMINADO' as EstadoRiesgo }
+            ],
             order: { updatedAt: 'DESC' }
         });
     }
 
     async restaurar(id: string): Promise<Riesgo> {
         const riesgo = await this.findOne(id);
-        if (riesgo.estado !== 'ARCHIVADO') {
-            throw new NotFoundException(`Riesgo ${id} no está archivado`);
+        if (riesgo.estado !== 'ARCHIVADO' && riesgo.estado !== 'ELIMINADO') {
+            throw new NotFoundException(`Riesgo ${id} no está archivado ni eliminado`);
         }
+        const estadoAnterior = riesgo.estado;
         riesgo.estado = 'ACTIVO';
         const saved = await this.riesgoRepo.save(riesgo);
 
@@ -279,8 +283,27 @@ export class RiesgosService {
             'ACTUALIZACION',
             `Riesgo ${riesgo.codigo} restaurado del archivo`,
             'estado',
-            'ARCHIVADO',
+            estadoAnterior,
             'ACTIVO',
+            'Sistema'
+        );
+
+        return saved;
+    }
+
+    async marcarEliminado(id: string, motivo?: string): Promise<Riesgo> {
+        const riesgo = await this.findOne(id);
+        riesgo.estado = 'ELIMINADO';
+        riesgo.motivoArchivo = motivo || 'Eliminado por el usuario';
+        const saved = await this.riesgoRepo.save(riesgo);
+
+        await this.registrarEvento(
+            id,
+            'ARCHIVADO',
+            `Riesgo ${riesgo.codigo} marcado como eliminado${motivo ? `: ${motivo}` : ''}`,
+            'estado',
+            'ACTIVO',
+            'ELIMINADO',
             'Sistema'
         );
 
@@ -289,8 +312,8 @@ export class RiesgosService {
 
     async eliminarPermanente(id: string): Promise<void> {
         const riesgo = await this.findOne(id);
-        if (riesgo.estado !== 'ARCHIVADO') {
-            throw new NotFoundException(`Riesgo ${id} debe estar archivado para eliminarse permanentemente`);
+        if (riesgo.estado !== 'ARCHIVADO' && riesgo.estado !== 'ELIMINADO') {
+            throw new NotFoundException(`Riesgo ${id} debe estar archivado o eliminado para eliminarse permanentemente`);
         }
 
         // Primero eliminar el historial asociado
