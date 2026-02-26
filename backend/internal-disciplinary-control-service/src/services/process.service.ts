@@ -286,6 +286,12 @@ export class ProcessService {
         return {
           ...p,
           abogadoAsignadoNombre: p.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+          // ✅ Incluir campos de proceso asociado
+          procesoAsociadoId: p.procesoAsociadoId,
+          procesoAsociadoNumero: p.procesoAsociadoNumero,
+          procesoAsociadoTipo: p.procesoAsociadoTipo,
+          procesoAsociadoFecha: p.procesoAsociadoFecha,
+          procesoAsociadoJustificacion: p.procesoAsociadoJustificacion,
           draftsCount,
           documentsCount,
           timePercentage: Math.round(timePercentage * 100) / 100
@@ -374,6 +380,12 @@ export class ProcessService {
 
     return {
       ...proceso,
+      // ✅ Incluir campos de proceso asociado
+      procesoAsociadoId: proceso.procesoAsociadoId,
+      procesoAsociadoNumero: proceso.procesoAsociadoNumero,
+      procesoAsociadoTipo: proceso.procesoAsociadoTipo,
+      procesoAsociadoFecha: proceso.procesoAsociadoFecha,
+      procesoAsociadoJustificacion: proceso.procesoAsociadoJustificacion,
       draftsCount,
       documentsCount,
       timePercentage: Math.round(timePercentage * 100) / 100
@@ -411,6 +423,12 @@ export class ProcessService {
 
       return {
         ...p,
+        // ✅ Incluir campos de proceso asociado
+        procesoAsociadoId: p.procesoAsociadoId,
+        procesoAsociadoNumero: p.procesoAsociadoNumero,
+        procesoAsociadoTipo: p.procesoAsociadoTipo,
+        procesoAsociadoFecha: p.procesoAsociadoFecha,
+        procesoAsociadoJustificacion: p.procesoAsociadoJustificacion,
         draftsCount,
         documentsCount,
         timePercentage: Math.round(timePercentage * 100) / 100
