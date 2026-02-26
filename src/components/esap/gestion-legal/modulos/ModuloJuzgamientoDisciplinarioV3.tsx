@@ -62,10 +62,10 @@ import { legalService } from '../../../../services/api/legal.service';
 export function ModuloJuzgamientoDisciplinarioV3() {
   // ✅ Obtener configuraciones desde el Context API
   const { estadosActivos, tiempos } = useConfiguracionModulo('juzgamiento');
-  
+
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
-  
+
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
   const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
@@ -216,23 +216,23 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   // ✅ Función para restaurar un proceso archivado
   const handleRestaurar = async (itemId: string) => {
     console.log('Restaurando proceso disciplinario:', itemId);
-    
+
     // Simulación: En producción esto haría una llamada al backend
     // await api.restaurarProceso(itemId);
-    
+
     // Remover de la lista de archivados
     setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
-    
+
     // Aquí se agregaría de vuelta a los procesos activos
   };
 
   // ✅ Función para eliminar permanentemente un proceso
   const handleEliminarPermanente = async (itemId: string) => {
     console.log('Eliminando permanentemente proceso disciplinario:', itemId);
-    
+
     // Simulación: En producción esto haría una llamada al backend
     // await api.eliminarPermanente(itemId);
-    
+
     // Remover de la lista de archivados
     setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
   };
@@ -258,27 +258,28 @@ export function ModuloJuzgamientoDisciplinarioV3() {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  // Fetch Data from API
+  // ✅ Fetch Data from API (extracted for reuse)
+  const fetchProcesos = async () => {
+    try {
+      const data = await legalService.getJuzgamientoProcesos();
+      const mappedData = data.map((p: any) => ({
+        ...p,
+        fechaHechos: new Date(), // Mock/Default
+        fechaUltimaActuacion: new Date(),
+        fechaActualizacion: new Date(),
+        diasTotales: 90, // Default constant
+        disciplinado: p.investigado, // Map backend 'investigado' to frontend 'disciplinado'
+        ultimaActuacion: p.actuaciones && p.actuaciones.length > 0 ? p.actuaciones[0].descripcion : 'Inicio del proceso',
+        documentosAdjuntos: p.documentos ? p.documentos.length : 0,
+      }));
+      setProcesos(mappedData);
+    } catch (error) {
+      console.error('Error fetching procesos:', error);
+      toast.error('Error al cargar expedientes disciplinarios');
+    }
+  };
+
   useEffect(() => {
-    const fetchProcesos = async () => {
-      try {
-        const data = await legalService.getJuzgamientoProcesos();
-        const mappedData = data.map((p: any) => ({
-          ...p,
-          fechaHechos: new Date(), // Mock/Default
-          fechaUltimaActuacion: new Date(),
-          fechaActualizacion: new Date(),
-          diasTotales: 90, // Default constant
-          disciplinado: p.investigado, // Map backend 'investigado' to frontend 'disciplinado'
-          ultimaActuacion: p.actuaciones && p.actuaciones.length > 0 ? p.actuaciones[0].descripcion : 'Inicio del proceso',
-          documentosAdjuntos: p.documentos ? p.documentos.length : 0,
-        }));
-        setProcesos(mappedData);
-      } catch (error) {
-        console.error('Error fetching procesos:', error);
-        toast.error('Error al cargar expedientes disciplinarios');
-      }
-    };
     fetchProcesos();
   }, []);
 
@@ -436,7 +437,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
           ]
         }}
         buttons={[
-           {
+          {
             label: 'Nuevo Proceso',
             labelMobile: 'Nuevo',
             icon: <Plus className="w-4 h-4" />,
@@ -711,6 +712,10 @@ export function ModuloJuzgamientoDisciplinarioV3() {
       <ModalNuevoProcesoDisciplinario
         isOpen={modalNuevoProcesoOpen}
         onClose={() => setModalNuevoProcesoOpen(false)}
+        onSubmit={() => {
+          setModalNuevoProcesoOpen(false);
+          fetchProcesos(); // Re-fetch from backend
+        }}
       />
     </div>
   );

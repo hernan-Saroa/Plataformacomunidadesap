@@ -744,6 +744,11 @@ export class LegalService {
     async eliminarPlanMejoramiento(id: string): Promise<void> {
         return apiClient.delete(`${SERVICE_PREFIX}/planes-mejoramiento/${id}`);
     }
+
+    // ==================== JUZGAMIENTO DISCIPLINARIO ====================
+    async createJuzgamientoProceso(data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento`, data);
+    }
 }
 
 // Documento interface for frontend
