@@ -744,6 +744,11 @@ export class LegalService {
     async eliminarPlanMejoramiento(id: string): Promise<void> {
         return apiClient.delete(`${SERVICE_PREFIX}/planes-mejoramiento/${id}`);
     }
+
+    // ==================== JUZGAMIENTO DISCIPLINARIO ====================
+    async createJuzgamientoProceso(data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento`, data);
+    }
 }
 
 // Documento interface for frontend
@@ -974,7 +979,7 @@ export interface RiesgoAPI {
     controlesExistentes: { id: string; descripcion: string; efectividad: number; }[];
     planTratamiento: { accion: string; responsable: string; fechaLimite: Date; estado: string; avance: number; }[];
     responsable: string;
-    estado: 'ACTIVO' | 'ARCHIVADO' | 'CERRADO';
+    estado: 'ACTIVO' | 'ARCHIVADO' | 'ELIMINADO' | 'CERRADO';
     createdAt: string;
     updatedAt: string;
     // Provisión Contable
@@ -1060,6 +1065,10 @@ class RiesgosService {
 
     async eliminarPermanente(id: string): Promise<void> {
         await apiClient.delete(`${SERVICE_PREFIX}/riesgos/${id}/permanente`);
+    }
+
+    async marcarEliminado(id: string, motivo?: string): Promise<RiesgoAPI> {
+        return apiClient.patch<RiesgoAPI>(`${SERVICE_PREFIX}/riesgos/${id}/eliminar`, { motivo });
     }
 
     async getEstadisticas(): Promise<{
