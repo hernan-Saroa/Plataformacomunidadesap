@@ -880,7 +880,7 @@ export function VisorPDFCertificado({
   const salarioParaMostrar = incluirSalario ? salarioBase : 0;
   const salarioEnLetrasParaMostrar = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
   const incluirPrimaTecnica = incluirSalario && (certificado.incluyePrimaTecnica ?? false);
-  const primaTecnicaBase = normalizarMonto(certificado.technical_bonus ?? salarioBase * 0.2);
+  const primaTecnicaBase = normalizarMonto(certificado.technical_bonus ?? 0);
   const primaTecnicaParaMostrar = incluirPrimaTecnica ? primaTecnicaBase : 0;
   const primaTecnicaParrafo = incluirPrimaTecnica && primaTecnicaParaMostrar > 0
     ? `<p>Percibe mensualmente una prima tecnica de ($${formatearMonto(primaTecnicaParaMostrar)}) adicional a su asignacion basica mensual.</p>`

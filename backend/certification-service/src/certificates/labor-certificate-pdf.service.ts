@@ -205,10 +205,13 @@ export class LaborCertificatePdfService {
     if (!base || base === 'N/A' || encargoType !== 'E') {
       return base;
     }
-    if (/\bE$/i.test(base)) {
-      return base;
+    if (/\(\s*E\s*\)$/i.test(base)) {
+      return base.replace(/\(\s*E\s*\)$/i, '(E)');
     }
-    return `${base} E`;
+    if (/\sE$/i.test(base)) {
+      return base.replace(/\sE$/i, ' (E)');
+    }
+    return `${base} (E)`;
   }
 
   private isZeroValue(value: string): boolean {
@@ -533,9 +536,7 @@ export class LaborCertificatePdfService {
     }
 
     if (includeTechnicalBonus) {
-      const bonusBase =
-        this.normalizeMoneyValue(certificate.technical_bonus) ||
-        this.normalizeMoneyValue(salarioBase * 0.2);
+      const bonusBase = this.normalizeMoneyValue(certificate.technical_bonus);
       if (bonusBase > 0) {
         result = this.insertTechnicalBonus(result, bonusBase);
       }
