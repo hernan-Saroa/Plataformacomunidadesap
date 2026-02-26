@@ -2300,7 +2300,15 @@ export function DashboardKanbanOperativo({
       ultimaActuacion: 'Actualizado desde backend',
       fechaCreacion: ((proceso as any).createdAt || new Date().toISOString()).split('T')[0],
       tipo: 'proceso',
-      hechos: (proceso as any).news?.hechos || ''
+      hechos: (proceso as any).news?.hechos || '',
+      // ✅ NUEVO: Mapear proceso asociado desde la API
+      procesoAsociado: (proceso as any).procesoAsociado ? {
+        id: (proceso as any).procesoAsociado.id || '',
+        numeroProceso: (proceso as any).procesoAsociado.numeroProceso || '',
+        tipoAsociacion: (proceso as any).procesoAsociado.tipoAsociacion || 'similar',
+        fechaAsociacion: (proceso as any).procesoAsociado.fechaAsociacion || new Date().toISOString(),
+        justificacion: (proceso as any).procesoAsociado.justificacion || ''
+      } : undefined
     };
   };
 

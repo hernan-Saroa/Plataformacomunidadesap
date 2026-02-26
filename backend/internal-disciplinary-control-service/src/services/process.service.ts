@@ -285,8 +285,16 @@ export class ProcessService {
 
         return {
           ...p,
+          // ✅ Transformar campos planos a objeto anidado para el frontend
+          procesoAsociado: p.procesoAsociadoId ? {
+            id: p.procesoAsociadoId,
+            numeroProceso: p.procesoAsociadoNumero || '',
+            tipoAsociacion: p.procesoAsociadoTipo || 'similar',
+            fechaAsociacion: p.procesoAsociadoFecha ? new Date(p.procesoAsociadoFecha).toISOString() : new Date().toISOString(),
+            justificacion: p.procesoAsociadoJustificacion || ''
+          } : undefined,
           abogadoAsignadoNombre: p.abogadoAsignado?.nombreCompleto || 'Sin asignar',
-          // ✅ Incluir campos de proceso asociado
+          // ✅ Incluir campos de proceso asociado (planos para compatibilidad)
           procesoAsociadoId: p.procesoAsociadoId,
           procesoAsociadoNumero: p.procesoAsociadoNumero,
           procesoAsociadoTipo: p.procesoAsociadoTipo,
@@ -380,7 +388,15 @@ export class ProcessService {
 
     return {
       ...proceso,
-      // ✅ Incluir campos de proceso asociado
+      // ✅ Transformar campos planos a objeto anidado para el frontend
+      procesoAsociado: proceso.procesoAsociadoId ? {
+        id: proceso.procesoAsociadoId,
+        numeroProceso: proceso.procesoAsociadoNumero || '',
+        tipoAsociacion: proceso.procesoAsociadoTipo || 'similar',
+        fechaAsociacion: proceso.procesoAsociadoFecha ? new Date(proceso.procesoAsociadoFecha).toISOString() : new Date().toISOString(),
+        justificacion: proceso.procesoAsociadoJustificacion || ''
+      } : undefined,
+      // ✅ Incluir campos de proceso asociado (planos para compatibilidad)
       procesoAsociadoId: proceso.procesoAsociadoId,
       procesoAsociadoNumero: proceso.procesoAsociadoNumero,
       procesoAsociadoTipo: proceso.procesoAsociadoTipo,
@@ -423,7 +439,15 @@ export class ProcessService {
 
       return {
         ...p,
-        // ✅ Incluir campos de proceso asociado
+        // ✅ Transformar campos planos a objeto anidado para el frontend
+        procesoAsociado: p.procesoAsociadoId ? {
+          id: p.procesoAsociadoId,
+          numeroProceso: p.procesoAsociadoNumero || '',
+          tipoAsociacion: p.procesoAsociadoTipo || 'similar',
+          fechaAsociacion: p.procesoAsociadoFecha ? new Date(p.procesoAsociadoFecha).toISOString() : new Date().toISOString(),
+          justificacion: p.procesoAsociadoJustificacion || ''
+        } : undefined,
+        // ✅ Incluir campos de proceso asociado (planos para compatibilidad)
         procesoAsociadoId: p.procesoAsociadoId,
         procesoAsociadoNumero: p.procesoAsociadoNumero,
         procesoAsociadoTipo: p.procesoAsociadoTipo,
