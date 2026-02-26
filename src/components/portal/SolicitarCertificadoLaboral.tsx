@@ -1557,11 +1557,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                               Debes habilitar la informacion salarial para activar esta opcion.
                             </p>
                           )}
-                          {incluirSalario && primaTecnicaMetadata && !primaTecnicaMetadata.disponible && (
-                            <p className="text-xs text-amber-700 mt-1">
-                              No tienes Prima Tecnica registrada en este momento.
-                            </p>
-                          )}
                         </div>
                       </div>
 
@@ -1915,11 +1910,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                       {!incluirSalario && (
                         <p className="text-xs text-amber-700 mt-1">
                           Debes incluir la informacion salarial para habilitar la prima tecnica.
-                        </p>
-                      )}
-                      {incluirSalario && primaTecnicaMetadata && !primaTecnicaMetadata.disponible && (
-                        <p className="text-xs text-amber-700 mt-1">
-                          No tienes Prima Tecnica registrada en este momento.
                         </p>
                       )}
                     </div>
