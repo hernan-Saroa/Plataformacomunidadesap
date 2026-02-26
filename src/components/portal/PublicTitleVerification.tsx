@@ -239,6 +239,16 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       toast.error('Por favor ingresa el nombre completo del graduado');
       return;
     }
+    const providedNameTokens = graduateLastName
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (providedNameTokens.length < 2) {
+      toast.error(
+        'Ingresa al menos dos palabras del nombre del graduado en el orden correcto'
+      );
+      return;
+    }
     // Para graduados, el requesterName será el mismo que graduateLastName
     if (requesterType === 'empresa' && !companyDataLoaded) {
       toast.error('Debes validar el NIT para cargar la empresa');

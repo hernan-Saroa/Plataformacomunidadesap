@@ -258,7 +258,8 @@ export class GraduationCertificatesService {
       graduateId: graduate?.id,
       idNumber: dto.idNumber,
       idIssueDate,
-      fullName: graduate?.fullName || requesterName || dto.requesterName,
+      fullName:
+        this.getPreferredGraduateFullName(graduate) || requesterName || dto.requesterName,
       graduateLastName: graduateLastName || undefined,
       graduateEmail: graduate?.email,
       graduatePhone: graduate?.phone,
@@ -840,7 +841,17 @@ export class GraduationCertificatesService {
       .trim()
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private tokenizeName(value: string): string[] {
+    return this.normalizeName(value)
+      .split(' ')
+      .map((token) => token.trim())
+      .filter(Boolean);
   }
 
   private splitFullName(fullName?: string): { firstName: string; lastName: string } {
@@ -874,8 +885,10 @@ export class GraduationCertificatesService {
 
     if (options.lastNameNormalized) {
       const lastNameMatches = candidates.filter((graduate) =>
-        this.matchesLastName(graduate.fullName, options.lastNameNormalized || ''),
+        this.matchesLastName(graduate, options.lastNameNormalized || ''),
       );
+      // Regla de seguridad: si se aporta nombre para validación, debe coincidir
+      // según la regla de palabras en orden.
       if (!lastNameMatches.length) {
         return null;
       }
@@ -887,14 +900,20 @@ export class GraduationCertificatesService {
         (graduate) =>
           this.normalizeDateString(graduate.graduationDate) === options.gradDate,
       );
-      if (!gradDateMatches.length) {
-        return null;
+      // Si la fecha de grado no coincide exactamente, conservar candidatos por cédula.
+      if (gradDateMatches.length) {
+        candidates = gradDateMatches;
       }
-      candidates = gradDateMatches;
     }
 
     const scored = candidates.map((graduate) => {
       let score = 0;
+      if (
+        options.lastNameNormalized &&
+        this.matchesLastName(graduate, options.lastNameNormalized || '')
+      ) {
+        score += 2;
+      }
       if (
         options.issueDate &&
         this.normalizeDateString(graduate.idIssueDate) === options.issueDate
@@ -905,19 +924,113 @@ export class GraduationCertificatesService {
         options.gradDate &&
         this.normalizeDateString(graduate.graduationDate) === options.gradDate
       ) {
-        score += 1;
+        score += 2;
       }
       return { graduate, score };
     });
 
-    scored.sort((a, b) => b.score - a.score);
+    scored.sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      const aGrad = this.parseDate(a.graduate.graduationDate)?.getTime() || 0;
+      const bGrad = this.parseDate(b.graduate.graduationDate)?.getTime() || 0;
+      return bGrad - aGrad;
+    });
+
+    const bestScore = scored[0]?.score ?? 0;
+    const hasAdditionalCriteria = Boolean(
+      options.lastNameNormalized || options.gradDate || options.issueDate,
+    );
+
+    // Si el usuario sí envió datos de verificación adicionales y ninguno coincide,
+    // exigir revisión manual.
+    if (hasAdditionalCriteria && bestScore === 0) {
+      return null;
+    }
+
+    // Si existe mas de un graduado con la misma cédula y no hay ningún
+    // criterio adicional que permita desempatar, devolver null para revisión manual.
+    if (scored.length > 1 && bestScore === 0) {
+      return null;
+    }
+
+    // Si hay empate en el mejor puntaje entre múltiples graduados, no decidir automáticamente.
+    if (scored.length > 1 && scored[0]?.score === scored[1]?.score) {
+      return null;
+    }
+
     return scored[0]?.graduate || candidates[0] || null;
   }
 
-  private matchesLastName(fullName: string, lastNameNormalized: string): boolean {
+  private getGraduateNameVariants(graduate: Graduate): string[] {
+    const fullName = (graduate.fullName || '').trim();
+    const composedFromParts = `${(graduate.firstName || '').trim()} ${(graduate.lastName || '').trim()}`.trim();
+    // Priorizar siempre nombre armado por first_name + last_name.
+    // full_name puede venir desordenado desde integraciones.
+    if (composedFromParts) {
+      return [composedFromParts];
+    }
+    if (fullName) {
+      return [fullName];
+    }
+    return [];
+  }
+
+  private getPreferredGraduateFullName(graduate?: Graduate | null): string {
+    if (!graduate) return '';
+    const composedFromParts = `${(graduate.firstName || '').trim()} ${(graduate.lastName || '').trim()}`.trim();
+    if (composedFromParts) {
+      return composedFromParts;
+    }
+    return (graduate.fullName || '').trim();
+  }
+
+  private matchesLastName(graduate: Graduate, lastNameNormalized: string): boolean {
     if (!lastNameNormalized) return true;
-    const normalizedFullName = this.normalizeName(fullName);
-    return normalizedFullName.includes(lastNameNormalized);
+
+    const providedTokens = this.tokenizeName(lastNameNormalized);
+
+    // Regla de negocio solicitada: mínimo 2 palabras para validar nombre.
+    if (providedTokens.length < 2) {
+      return false;
+    }
+
+    const nameVariants = this.getGraduateNameVariants(graduate);
+    if (!nameVariants.length) return false;
+
+    for (const nameVariant of nameVariants) {
+      const fullNameTokens = this.tokenizeName(nameVariant);
+      if (!fullNameTokens.length || providedTokens.length > fullNameTokens.length) {
+        continue;
+      }
+
+      // Debe coincidir en orden, permitiendo palabras intermedias.
+      let cursor = 0;
+      let allFound = true;
+      for (const token of providedTokens) {
+        let foundAt = -1;
+        for (let i = cursor; i < fullNameTokens.length; i += 1) {
+          if (fullNameTokens[i] === token) {
+            foundAt = i;
+            break;
+          }
+        }
+
+        if (foundAt === -1) {
+          allFound = false;
+          break;
+        }
+
+        cursor = foundAt + 1;
+      }
+
+      if (allFound) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private normalizeRequesterType(input?: string): 'GRADUATE' | 'COMPANY' {
