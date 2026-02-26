@@ -7,14 +7,16 @@
  * ✅ Tooltips explicativos
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
 import { Card } from '../../../ui/card';
-import { toast } from 'sonner@2.0.3';
-import { 
-  Gavel, User, FileText, AlertTriangle, Calendar, 
+import { toast } from 'sonner';
+
+import { legalService } from '../../../../services/api/legal.service';
+import {
+  Gavel, User, FileText, AlertTriangle, Calendar,
   Save, X, Building, Info, CheckCircle
 } from 'lucide-react';
 
@@ -33,12 +35,12 @@ interface ModalNuevoProcesoDisciplinarioProps {
   onSubmit?: (proceso: any) => void;
 }
 
-export function ModalNuevoProcesoDisciplinario({ 
-  isOpen, 
+export function ModalNuevoProcesoDisciplinario({
+  isOpen,
   onClose,
-  onSubmit 
+  onSubmit
 }: ModalNuevoProcesoDisciplinarioProps) {
-  
+
   // ========== DATOS INICIALES ==========
   const initialData = {
     investigado: '',
@@ -102,6 +104,22 @@ export function ModalNuevoProcesoDisciplinario({
 
   const [guardando, setGuardando] = useState(false);
 
+  // ========== ABOGADOS DESDE BACKEND (legal-management-service) ==========
+  const [profesionales, setProfesionales] = useState<{ id: string; nombreCompleto: string; especialidad: string }[]>([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      legalService.getAbogados()
+        .then((data: any[]) => {
+          setProfesionales(data.filter((p: any) => p.estado === 'ACTIVO'));
+        })
+        .catch((err: any) => {
+          console.error('Error cargando abogados:', err);
+          setProfesionales([]);
+        });
+    }
+  }, [isOpen]);
+
   // ========== OPCIONES DE SELECTS ==========
   const tiposFalta = [
     { value: 'LEVE', label: '🟢 Leve - Sanción amonestación' },
@@ -121,18 +139,16 @@ export function ModalNuevoProcesoDisciplinario({
     { value: 'OTRA', label: 'Otra Dependencia' }
   ];
 
-  const investigadoresDisponibles = [
-    { value: 'CARLOS_MENDEZ', label: 'Dr. Carlos Méndez Ruiz' },
-    { value: 'ANA_LOPEZ', label: 'Dra. Ana López Sánchez' },
-    { value: 'ROBERTO_GARCIA', label: 'Dr. Roberto García Soto' },
-    { value: 'CONTROL_INTERNO', label: 'Jefe de Control Interno' }
-  ];
+  // ✅ Investigadores y Abogados desde backend (legal-management-service)
+  const investigadoresDisponibles = profesionales.map(p => ({
+    value: p.id,
+    label: `${p.nombreCompleto} (${p.especialidad || 'General'})`
+  }));
 
-  const abogadosDisponibles = [
-    { value: 'DR_CARLOS', label: 'Dr. Carlos Méndez' },
-    { value: 'DRA_ANA', label: 'Dra. Ana María López' },
-    { value: 'DR_ROBERTO', label: 'Dr. Roberto García' }
-  ];
+  const abogadosDisponibles = profesionales.map(p => ({
+    value: p.id,
+    label: `${p.nombreCompleto} (${p.especialidad || 'General'})`
+  }));
 
   // ========== HANDLERS ==========
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -149,38 +165,51 @@ export function ModalNuevoProcesoDisciplinario({
     setGuardando(true);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Obtener nombre del investigador seleccionado
+      const investigadorSeleccionado = profesionales.find(p => p.id === formData.investigador);
+      const investigadorNombre = investigadorSeleccionado?.nombreCompleto || 'Profesional Asignado';
 
-      const nuevoProceso = {
-        id: `PD-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 900) + 100)}`,
-        ...formData,
-        etapa: 'E1_AVOCAMIENTO',
-        diasRestantes: 90,
-        diasTotales: 90,
-        fechaInicio: formData.fechaApertura || new Date().toISOString().split('T')[0],
-        ultimaActuacion: {
-          fecha: new Date().toISOString(),
-          tipo: 'Auto de apertura',
-          descripcion: 'Auto de apertura de investigación disciplinaria',
-          responsable: formData.investigador,
-          estado: 'ACTIVO'
-        }
+      // Obtener label legible de la dependencia
+      const depLabel = dependenciasESAP.find(d => d.value === formData.dependencia)?.label || formData.dependencia;
+
+      // =============================================
+      // Crear expediente disciplinario via legal-management-service
+      // POST /legal/api/v1/juzgamiento -> JuzgamientoController.create()
+      // =============================================
+      const expedienteData = {
+        demandado: formData.investigado,           // Nombre del investigado
+        cargoInvestigado: formData.cargo,           // Cargo del investigado
+        dependenciaInvestigado: depLabel,           // Dependencia
+        tipoFalta: formData.tipoFalta,             // LEVE, GRAVE, GRAVISIMA
+        hechos: formData.descripcionHechos + (formData.observaciones ? `\n\nObservaciones: ${formData.observaciones}` : ''),
+        abogadoSustanciador: investigadorNombre,   // Investigador asignado
+        fechaRadicacion: new Date(formData.fechaApertura).toISOString(),
+        demandante: 'Oficina de Control Interno',  // Quien inicia
+        numeroIdDemandado: formData.identificacion, // CC del investigado
       };
 
+      console.log('⚖️ Creando proceso disciplinario...', expedienteData);
+      const proceso = await legalService.createJuzgamientoProceso(expedienteData);
+      console.log('✅ Proceso creado:', proceso.id, proceso.radicado);
+
+      // Notificar al padre y cerrar
       if (onSubmit) {
-        onSubmit(nuevoProceso);
+        onSubmit(proceso);
       }
 
       toast.success('✅ Proceso disciplinario creado', {
-        description: `Radicado: ${nuevoProceso.id}`,
+        description: `Radicado: ${proceso.radicado || proceso.id}`,
         duration: 4000
       });
 
       resetForm();
       onClose();
-    } catch (error) {
-      toast.error('❌ Error al guardar', {
-        description: 'Intente nuevamente'
+    } catch (error: any) {
+      console.error('❌ Error creando proceso disciplinario:', error);
+      const message = error?.response?.data?.message || error?.message || 'Intente nuevamente';
+      toast.error('❌ Error al crear proceso', {
+        description: message,
+        duration: 5000
       });
     } finally {
       setGuardando(false);
@@ -204,8 +233,8 @@ export function ModalNuevoProcesoDisciplinario({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleCancel}>
-      <DialogContent 
-        hideCloseButton 
+      <DialogContent
+        hideCloseButton
         className={`
           w-[100vw] sm:w-[95vw] md:w-[90vw] lg:w-[85vw] xl:max-w-[900px]
           ${keyboardVisible ? 'h-[60vh]' : 'h-auto max-h-[95vh] sm:max-h-[90vh]'}
@@ -238,7 +267,7 @@ export function ModalNuevoProcesoDisciplinario({
         {/* ==================== CONTENIDO CON SCROLL ==================== */}
         <div className="flex-1 overflow-y-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4 bg-gray-50">
           <div className="space-y-4 sm:space-y-6">
-            
+
             {/* ✅ PROGRESO DEL FORMULARIO */}
             <FormProgress completed={completedFields} total={totalFields} />
 
@@ -499,7 +528,7 @@ export function ModalNuevoProcesoDisciplinario({
               {completedFields}/{totalFields} completados
             </span>
           </div>
-          
+
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <Button
               type="button"
@@ -511,13 +540,13 @@ export function ModalNuevoProcesoDisciplinario({
               <X className="w-4 h-4 mr-2" />
               Cancelar
             </Button>
-            
+
             <Button
               type="button"
               onClick={handleSubmit}
               disabled={!isFormValid || guardando}
-              style={isFormValid && !guardando ? { 
-                background: 'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)' 
+              style={isFormValid && !guardando ? {
+                background: 'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)'
               } : {}}
               className={`w-full sm:w-auto ${!isFormValid || guardando ? 'opacity-50 cursor-not-allowed' : ''}`}
             >

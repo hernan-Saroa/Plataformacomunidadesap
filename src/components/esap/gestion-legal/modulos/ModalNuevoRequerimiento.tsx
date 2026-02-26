@@ -16,11 +16,7 @@ import {
 import { toast } from 'sonner';
 import { ocService, legalService } from '../../../../services/api/legal.service';
 
-interface Organismo {
-    id: string | number;
-    nombre: string;
-    sigla?: string;
-}
+
 
 interface TipoRequerimiento {
     id: string;
@@ -50,14 +46,13 @@ export function ModalNuevoRequerimiento({
     const [loadingData, setLoadingData] = useState(true);
 
     // Data loaded from backend API
-    const [organismos, setOrganismos] = useState<Organismo[]>([]);
     const [tiposRequerimiento, setTiposRequerimiento] = useState<TipoRequerimiento[]>([]);
     const [abogados, setAbogados] = useState<Abogado[]>([]);
 
     // Form state
     const [formData, setFormData] = useState({
         radicadoExterno: '',
-        organismoId: '',
+        organismoNombre: '',
         tipoRequerimiento: '',
         asunto: '',
         descripcion: '',
@@ -84,7 +79,6 @@ export function ModalNuevoRequerimiento({
 
             // Try to load from LocalStorage first (ConfiguracionesSIGL source)
             const storedTipos = localStorage.getItem('sigl-tipos-requerimientos');
-            const storedOrgs = localStorage.getItem('sigl-organismos-control');
 
             let tiposFn = async () => {
                 if (storedTipos) {
@@ -96,23 +90,11 @@ export function ModalNuevoRequerimiento({
                 return await ocService.getTiposRequerimientoOC();
             };
 
-            let orgsFn = async () => {
-                if (storedOrgs) {
-                    try {
-                        const parsed = JSON.parse(storedOrgs);
-                        return parsed.filter((o: any) => o.activo);
-                    } catch (e) { console.error('Error config organos LS', e); }
-                }
-                return await ocService.getOrganismosControl();
-            };
-
-            const [orgs, tipos, lawyers] = await Promise.all([
-                orgsFn(),
+            const [tipos, lawyers] = await Promise.all([
                 tiposFn(),
                 lawyersPromise
             ]);
 
-            setOrganismos(orgs || []);
             setTiposRequerimiento(tipos || []);
             setAbogados(lawyers.map((a: any) => ({
                 id: a.id,
@@ -145,8 +127,8 @@ export function ModalNuevoRequerimiento({
             toast.error('El número de oficio/radicado es obligatorio');
             return;
         }
-        if (!formData.organismoId) {
-            toast.error('Debe seleccionar un organismo de control');
+        if (!formData.organismoNombre.trim()) {
+            toast.error('Debe ingresar el órgano de control');
             return;
         }
         if (!formData.asunto.trim()) {
@@ -159,7 +141,7 @@ export function ModalNuevoRequerimiento({
         try {
             const payload = {
                 radicadoExterno: formData.radicadoExterno,
-                organismoId: formData.organismoId,
+                organismoId: formData.organismoNombre,
                 tipoRequerimiento: formData.tipoRequerimiento,
                 asunto: formData.asunto,
                 descripcion: formData.descripcion,
@@ -180,7 +162,7 @@ export function ModalNuevoRequerimiento({
             // Reset form
             setFormData({
                 radicadoExterno: '',
-                organismoId: '',
+                organismoNombre: '',
                 tipoRequerimiento: tiposRequerimiento.length > 0 ? tiposRequerimiento[0].id : '',
                 asunto: '',
                 descripcion: '',
@@ -244,26 +226,24 @@ export function ModalNuevoRequerimiento({
                                     />
                                 </div>
 
-                                <div className="space-y-2">
-                                    <Label htmlFor="organismoId" className="text-sm font-semibold flex items-center gap-1">
+                                <div className="space-y-1">
+                                    <Label htmlFor="organismoNombre" className="text-sm font-semibold flex items-center gap-1">
                                         <Building2 className="w-3 h-3" />
                                         Órgano de Control *
                                     </Label>
-                                    <Select
-                                        value={formData.organismoId}
-                                        onValueChange={(value) => handleChange('organismoId', value)}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Seleccione organismo..." />
-                                        </SelectTrigger>
-                                        <SelectContent className="z-[9999]">
-                                            {organismos.map((org: any) => (
-                                                <SelectItem key={org.id} value={String(org.id)}>
-                                                    {org.nombre}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <Input
+                                        id="organismoNombre"
+                                        placeholder=""
+                                        value={formData.organismoNombre}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            if (/^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s-]*$/.test(value)) {
+                                                handleChange('organismoNombre', value);
+                                            }
+                                        }}
+                                        required
+                                    />
+                                    <p className="text-xs text-gray-400 italic">Ej: Órgano de Control - Ciudad o ubicación</p>
                                 </div>
                             </div>
 

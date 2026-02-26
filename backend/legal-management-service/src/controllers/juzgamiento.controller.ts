@@ -46,6 +46,27 @@ export class JuzgamientoController {
 
     @Post()
     async create(@Body() data: Partial<Expediente>) {
+        // Auto-generar radicado PD-YYYY-NNNNN si no viene en el body
+        if (!data.radicado) {
+            const year = new Date().getFullYear();
+            const prefix = `PD-${year}-`;
+            // Buscar último radicado disciplinario del año actual
+            const allExpedientes = await this.expedienteService.listarExpedientes({
+                jurisdiccion: 'DISCIPLINARIO'
+            });
+            let maxSeq = 0;
+            for (const exp of allExpedientes) {
+                if (exp.radicado && exp.radicado.startsWith(prefix)) {
+                    const parts = exp.radicado.split('-');
+                    if (parts.length === 3) {
+                        const seq = parseInt(parts[2], 10);
+                        if (seq > maxSeq) maxSeq = seq;
+                    }
+                }
+            }
+            data.radicado = `${prefix}${String(maxSeq + 1).padStart(5, '0')}`;
+        }
+
         return this.expedienteService.crearExpediente({
             ...data,
             jurisdiccion: 'DISCIPLINARIO',
