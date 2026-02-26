@@ -186,6 +186,9 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
   const [modalError, setModalError] = useState<string | null>(null);
   const lastFiltersKeyRef = useRef('');
   const requestSequenceRef = useRef(0);
+  const primaTecnicaRequestRef = useRef(0);
+  const [primaTecnicaDisponible, setPrimaTecnicaDisponible] = useState(false);
+  const [validandoPrimaTecnica, setValidandoPrimaTecnica] = useState(false);
   const itemsPerPage = 5;
   const modalTotalPages = Math.max(1, Math.ceil(modalTotal / itemsPerPage));
   const parseDateOnly = (fechaStr: string) => {
@@ -464,14 +467,71 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
     }
   }, [modalPage, modalTotalPages]);
 
-  const handleSelectCertificado = (cert: CertificadoLaboralListado) => {
+  const validarDisponibilidadPrimaTecnica = async (documento: string) => {
+    const doc = String(documento || '').trim();
+    if (!doc) return false;
+
+    const response = await certificadosService.autoservicio.verificarDocumento(doc);
+    const solicitud = response?.solicitud || {};
+    const porcentaje = Number(
+      response?.technical_bonus_percentage ??
+        solicitud?.technical_bonus_percentage ??
+        0,
+    );
+    const valor = Number(
+      response?.technical_bonus_value ??
+        solicitud?.technical_bonus_value ??
+        0,
+    );
+    const disponible =
+      Boolean(
+        response?.technical_bonus_available ??
+          solicitud?.technical_bonus_available,
+      ) ||
+      porcentaje > 0 ||
+      valor > 0;
+
+    return disponible;
+  };
+
+  const handleSelectCertificado = async (cert: CertificadoLaboralListado) => {
     setCertificadoSeleccionado(cert);
     const incluyeSalario = cert.incluyeSalario !== false;
     setConfiguracion({
       incluyeSalario,
-      incluyePrimaTecnica: incluyeSalario && !!cert.incluyePrimaTecnica,
+      incluyePrimaTecnica: false,
     });
+    setPrimaTecnicaDisponible(false);
+    setValidandoPrimaTecnica(true);
     setStep('validar');
+
+    const requestId = ++primaTecnicaRequestRef.current;
+    try {
+      const disponible = await validarDisponibilidadPrimaTecnica(cert.empleado.documento);
+      if (requestId !== primaTecnicaRequestRef.current) return;
+
+      setPrimaTecnicaDisponible(disponible);
+      setConfiguracion((prev) => ({
+        ...prev,
+        incluyePrimaTecnica: prev.incluyeSalario && disponible && !!cert.incluyePrimaTecnica,
+      }));
+
+      if (!disponible) {
+        toast.info('Este empleado no tiene Prima Tecnica registrada.');
+      }
+    } catch (error) {
+      if (requestId !== primaTecnicaRequestRef.current) return;
+      setPrimaTecnicaDisponible(false);
+      setConfiguracion((prev) => ({
+        ...prev,
+        incluyePrimaTecnica: false,
+      }));
+      toast.warning('No pudimos validar la Prima Tecnica en este momento.');
+    } finally {
+      if (requestId === primaTecnicaRequestRef.current) {
+        setValidandoPrimaTecnica(false);
+      }
+    }
   };
 
   const handleDescargarCertificado = () => {
@@ -525,12 +585,15 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
       incluyeSalario: true,
       incluyePrimaTecnica: false,
     });
+    setPrimaTecnicaDisponible(false);
+    setValidandoPrimaTecnica(false);
     setModalPage(1);
     setModalItems([]);
     setModalTotal(0);
     setModalError(null);
     lastFiltersKeyRef.current = '';
     requestSequenceRef.current += 1;
+    primaTecnicaRequestRef.current += 1;
   };
 
   if (!isOpen) return null;
@@ -832,11 +895,19 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                           <Checkbox
                             id="prima-tecnica"
                             checked={configuracion.incluyeSalario && configuracion.incluyePrimaTecnica}
-                            disabled={!configuracion.incluyeSalario}
+                            disabled={
+                              !configuracion.incluyeSalario ||
+                              !primaTecnicaDisponible ||
+                              validandoPrimaTecnica
+                            }
                             onCheckedChange={(checked) =>
                               setConfiguracion({
                                 ...configuracion,
-                                incluyePrimaTecnica: checked === true && configuracion.incluyeSalario,
+                                incluyePrimaTecnica:
+                                  checked === true &&
+                                  configuracion.incluyeSalario &&
+                                  primaTecnicaDisponible &&
+                                  !validandoPrimaTecnica,
                               })
                             }
                           />
@@ -852,6 +923,16 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                             {!configuracion.incluyeSalario && (
                               <p className="text-xs text-amber-700 mt-1">
                                 Activa primero la informacion salarial.
+                              </p>
+                            )}
+                            {configuracion.incluyeSalario && validandoPrimaTecnica && (
+                              <p className="text-xs text-blue-700 mt-1">
+                                Validando disponibilidad de Prima Tecnica...
+                              </p>
+                            )}
+                            {configuracion.incluyeSalario && !validandoPrimaTecnica && !primaTecnicaDisponible && (
+                              <p className="text-xs text-amber-700 mt-1">
+                                Este empleado no tiene Prima Tecnica registrada en Directivos o Coordinadores.
                               </p>
                             )}
                           </div>
@@ -898,8 +979,11 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                   <Button
                     variant="outline"
                     onClick={() => {
+                      primaTecnicaRequestRef.current += 1;
                       setStep('buscar');
                       setCertificadoSeleccionado(null);
+                      setPrimaTecnicaDisponible(false);
+                      setValidandoPrimaTecnica(false);
                     }}
                   >
                     Atras
@@ -907,9 +991,13 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                   <Button
                     className="bg-[#003DA5] hover:bg-[#002873]"
                     onClick={handleDescargarCertificado}
-                    disabled={isGenerating}
+                    disabled={isGenerating || validandoPrimaTecnica}
                   >
-                    {isGenerating ? 'Generando...' : 'Generar Certificado'}
+                    {isGenerating
+                      ? 'Generando...'
+                      : validandoPrimaTecnica
+                        ? 'Validando...'
+                        : 'Generar Certificado'}
                   </Button>
                 </>
               )}

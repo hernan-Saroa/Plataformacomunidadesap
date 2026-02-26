@@ -880,10 +880,18 @@ export function VisorPDFCertificado({
   const salarioParaMostrar = incluirSalario ? salarioBase : 0;
   const salarioEnLetrasParaMostrar = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
   const incluirPrimaTecnica = incluirSalario && (certificado.incluyePrimaTecnica ?? false);
-  const primaTecnicaBase = normalizarMonto(certificado.technical_bonus ?? salarioBase * 0.2);
+  const primaTecnicaBase = normalizarMonto(certificado.technical_bonus ?? 0);
   const primaTecnicaParaMostrar = incluirPrimaTecnica ? primaTecnicaBase : 0;
+  const porcentajePrimaTecnica = salarioBase > 0 && primaTecnicaParaMostrar > 0
+    ? Number(((primaTecnicaParaMostrar / salarioBase) * 100).toFixed(2))
+    : 0;
+  const porcentajePrimaTexto = porcentajePrimaTecnica.toLocaleString('es-CO', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  const primaTecnicaEnLetras = primaTecnicaParaMostrar > 0 ? numeroALetras(primaTecnicaParaMostrar) : '';
   const primaTecnicaParrafo = incluirPrimaTecnica && primaTecnicaParaMostrar > 0
-    ? `<p>Percibe mensualmente una prima tecnica de ($${formatearMonto(primaTecnicaParaMostrar)}) adicional a su asignacion basica mensual.</p>`
+    ? `<p>Percibe una prima técnica en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignación básica mensual de ${primaTecnicaEnLetras} (${formatearMonto(primaTecnicaParaMostrar)}) pesos m/cte.</p>`
     : '';
 
   const qrToken =

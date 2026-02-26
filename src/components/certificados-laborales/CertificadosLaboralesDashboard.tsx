@@ -21,7 +21,8 @@ import {
   Briefcase,
   Settings,
   Mail,
-  History
+  History,
+  Percent,
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Badge } from '../ui/badge';
@@ -33,6 +34,7 @@ import { CertificadoDetalleModal } from './CertificadoDetalleModal';
 import { GenerarCertificadoModal } from './GenerarCertificadoModal';
 import { CertificadoDetallePanel } from './CertificadoDetallePanel';
 import { ModalHistorialCertificados } from './ModalHistorialCertificados';
+import { PrimaTecnicaModal } from './PrimaTecnicaModal';
 import React from 'react';
 import { certificadosService } from '../../services/api/certificados.service';
 import { formatCargoDisplay } from '../../utils/cargoFormatter';
@@ -330,6 +332,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   const [isDetalleOpen, setIsDetalleOpen] = useState(false);
   const [isGenerarOpen, setIsGenerarOpen] = useState(false);
   const [isHistorialOpen, setIsHistorialOpen] = useState(false);
+  const [isPrimaTecnicaOpen, setIsPrimaTecnicaOpen] = useState(false);
   const [expandedCertId, setExpandedCertId] = useState<string | null>(null);
 
   // Estado para certificados y loading
@@ -743,7 +746,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
             <button
               onClick={() => fetchCertificados(true)}
               disabled={isRefreshing}
-              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
+              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
               style={{
                 background: '#FFFFFF',
                 color: '#10B981',
@@ -776,8 +779,39 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
             </button>
 
             <button
+              onClick={() => setIsPrimaTecnicaOpen(true)}
+              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
+              style={{
+                background: '#FFFFFF',
+                color: '#4338CA',
+                border: '2px solid #C4B5FD',
+                borderRadius: '8px',
+                padding: '10px 16px',
+                fontSize: '13px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(67, 56, 202, 0.08)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#EEF2FF';
+                e.currentTarget.style.borderColor = '#A5B4FC';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#FFFFFF';
+                e.currentTarget.style.borderColor = '#C4B5FD';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              <span className="w-5 h-5 rounded-full bg-indigo-100/80 border border-indigo-200 flex items-center justify-center flex-shrink-0">
+                <Percent className="w-3.5 h-3.5" strokeWidth={2.4} />
+              </span>
+              <span>Prima Tecnica</span>
+            </button>
+
+            <button
               onClick={() => setIsGenerarOpen(true)}
-              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
+              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
               style={{
                 background: '#FFFFFF',
                 color: '#003DA5',
@@ -803,7 +837,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
             <button
               onClick={() => setIsHistorialOpen(true)}
-              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
+              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
               style={{
                 background: '#FFFFFF',
                 color: '#F97316',
@@ -823,7 +857,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                 e.currentTarget.style.transform = 'translateY(0)';
               }}
             >
-              <History className="w-5 h-5" strokeWidth={2} />
+              <History className="w-5 h-5 scale-110 flex-shrink-0" strokeWidth={2.3} />
               <span>Ver historial</span>
             </button>
           </div>
@@ -1374,6 +1408,11 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       <ModalHistorialCertificados
         isOpen={isHistorialOpen}
         onClose={() => setIsHistorialOpen(false)}
+      />
+
+      <PrimaTecnicaModal
+        isOpen={isPrimaTecnicaOpen}
+        onClose={() => setIsPrimaTecnicaOpen(false)}
       />
 
     </div>

@@ -142,6 +142,155 @@ export const certificadosService = {
         options || {},
       );
     },
+
+    /**
+     * Buscar personas en certificate_requests para asignar Prima Tecnica
+     */
+    async buscarCandidatosPrimaTecnica(
+      query: string,
+      limit: number = 10,
+    ): Promise<Array<{ requestId: string; fullName: string; idNumber: string }>> {
+      return apiClient.get(
+        `${SERVICE_PREFIX}/certificates/technical-bonus/search`,
+        { query, limit },
+      );
+    },
+
+    /**
+     * Listar registros de Prima Tecnica por categoria
+     */
+    async listarPrimaTecnica(
+      category: 'DIRECTIVOS' | 'COORDINADORES',
+    ): Promise<
+      Array<{
+        id: string;
+        category: 'DIRECTIVOS' | 'COORDINADORES';
+        request_id: string | null;
+        full_name: string;
+        id_number: string;
+        percentage: number;
+        created_by?: string | null;
+        updated_by?: string | null;
+        created_at: string;
+        updated_at: string;
+      }>
+    > {
+      return apiClient.get(
+        `${SERVICE_PREFIX}/certificates/technical-bonus`,
+        { category },
+      );
+    },
+
+    /**
+     * Crear o actualizar un registro de Prima Tecnica
+     */
+    async guardarPrimaTecnica(data: {
+      category: 'DIRECTIVOS' | 'COORDINADORES';
+      idNumber: string;
+      fullName?: string;
+      requestId?: string;
+      percentage: number;
+      updatedBy?: string;
+    }): Promise<{
+      id: string;
+      category: 'DIRECTIVOS' | 'COORDINADORES';
+      request_id: string | null;
+      full_name: string;
+      id_number: string;
+      percentage: number;
+      created_by?: string | null;
+      updated_by?: string | null;
+      created_at: string;
+      updated_at: string;
+      action: 'created' | 'updated';
+    }> {
+      return apiClient.post(`${SERVICE_PREFIX}/certificates/technical-bonus`, data);
+    },
+
+    /**
+     * Editar porcentaje de un registro de Prima Tecnica
+     */
+    async actualizarPrimaTecnica(
+      id: string,
+      data: {
+        percentage: number;
+        updatedBy?: string;
+      },
+    ): Promise<{
+      id: string;
+      category: 'DIRECTIVOS' | 'COORDINADORES';
+      request_id: string | null;
+      full_name: string;
+      id_number: string;
+      percentage: number;
+      created_by?: string | null;
+      updated_by?: string | null;
+      created_at: string;
+      updated_at: string;
+      action: 'updated';
+    }> {
+      return apiClient.put(`${SERVICE_PREFIX}/certificates/technical-bonus/${id}`, data);
+    },
+
+    /**
+     * Eliminar un registro de Prima Tecnica
+     */
+    async eliminarPrimaTecnica(id: string): Promise<{
+      id: string;
+      category: 'DIRECTIVOS' | 'COORDINADORES';
+      full_name: string;
+      id_number: string;
+      deleted: true;
+    }> {
+      return apiClient.delete(`${SERVICE_PREFIX}/certificates/technical-bonus/${id}`);
+    },
+
+    /**
+     * Carga masiva de Prima Tecnica con reporte por fila
+     */
+    async cargarPrimaTecnicaMasiva(data: {
+      category: 'DIRECTIVOS' | 'COORDINADORES';
+      rows: Array<{
+        rowNumber?: number;
+        fullName?: string;
+        idNumber?: string;
+        percentage?: number | string;
+      }>;
+      updatedBy?: string;
+    }): Promise<{
+      category: 'DIRECTIVOS' | 'COORDINADORES';
+      summary: {
+        total: number;
+        success: number;
+        failed: number;
+        created: number;
+        updated: number;
+      };
+      results: Array<{
+        rowNumber: number;
+        status: 'success' | 'error';
+        id_number?: string;
+        full_name?: string;
+        percentage?: number;
+        action?: 'created' | 'updated';
+        message: string;
+        record?: {
+          id: string;
+          category: 'DIRECTIVOS' | 'COORDINADORES';
+          request_id: string | null;
+          full_name: string;
+          id_number: string;
+          percentage: number;
+          created_by?: string | null;
+          updated_by?: string | null;
+          created_at: string;
+          updated_at: string;
+          action: 'created' | 'updated';
+        };
+      }>;
+    }> {
+      return apiClient.post(`${SERVICE_PREFIX}/certificates/technical-bonus/bulk`, data);
+    },
   },
 
   /**
@@ -214,7 +363,33 @@ export const certificadosService = {
       existe: boolean;
       tieneCertificado?: boolean;
       mensaje: string;
-      solicitud?: any;
+      technical_bonus_available?: boolean;
+      technical_bonus_percentage?: number;
+      technical_bonus_value?: number;
+      technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+      solicitud?: {
+        full_name?: string;
+        id_number?: string;
+        email?: string;
+        status?: string;
+        hiring_date?: string;
+        request_date?: string;
+        career_category?: string;
+        position_category?: string;
+        position_location?: string;
+        monthly_salary?: number | string;
+        salary_text?: string;
+        department?: string;
+        cod_cargo?: string;
+        cod_grade?: string;
+        campus?: string;
+        observations?: string;
+        technical_bonus_available?: boolean;
+        technical_bonus_percentage?: number;
+        technical_bonus_value?: number;
+        technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+        [key: string]: any;
+      };
       certificado?: any;
     }> {
       return apiClient.post(`${SERVICE_PREFIX}/certificates/autoservicio/verificar-documento`,
@@ -230,6 +405,28 @@ export const certificadosService = {
       mensaje: string;
       email: string;
       codigoTest?: string;
+      solicitud?: {
+        full_name?: string;
+        id_number?: string;
+        email?: string;
+        status?: string;
+        employment_status?: string;
+        career_category?: string;
+        hiring_date?: string;
+        position_category?: string;
+        position_location?: string;
+        monthly_salary?: number | string;
+        department?: string;
+        cod_cargo?: string;
+        cod_grade?: string;
+        campus?: string;
+        observations?: string;
+        technical_bonus_available?: boolean;
+        technical_bonus_percentage?: number;
+        technical_bonus_value?: number;
+        technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+        [key: string]: any;
+      };
     }> {
       return apiClient.post(`${SERVICE_PREFIX}/certificates/autoservicio/generar-codigo`,
         { documento },
