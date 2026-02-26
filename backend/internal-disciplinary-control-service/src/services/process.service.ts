@@ -52,6 +52,19 @@ export class ProcessService {
       // DEBUG LOGGING
       console.log(`[ProcessService] Assigning process to news ${noticia.id}. Status: ${noticia.estado}`);
 
+      // ✅ NUEVO: Verificar que no existe ya un proceso para esta noticia
+      const existingProcess = await this.processRepository.findOne({
+        where: { newsId: createProcessDto.newsId }
+      });
+
+      if (existingProcess) {
+        console.error(`[ProcessService] Ya existe un proceso para esta noticia: ${createProcessDto.newsId}`);
+        throw new HttpException(
+          'Ya existe un proceso disciplinario para esta noticia. No se puede crear otro.',
+          HttpStatus.CONFLICT,
+        );
+      }
+
       // DEBUG LOGGING
       console.log(`[ProcessService] Assigning process to news ${noticia.id}. Status: ${noticia.estado}`);
 

@@ -2174,6 +2174,7 @@ export function DashboardKanbanOperativo({
   const [profesionalSeleccionado, setProfesionalSeleccionado] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [areaDestinoRemision, setAreaDestinoRemision] = useState('');
+  const [isConvirtiendo, setIsConvirtiendo] = useState(false); // ✅ NUEVO: Estado para prevenir duplicados
 
   // ✅ NUEVO: Estado para entidades de remisión configuradas
   const [entidadesRemision, setEntidadesRemision] = useState<Array<{ id: string, nombre: string, correo: string, activo: boolean }>>([]);
@@ -2681,11 +2682,25 @@ export function DashboardKanbanOperativo({
   };
 
   const handleConfirmarConversion = async () => {
+    // ✅ NUEVO: Prevenir múltiples clics simultáneos
+    if (isConvirtiendo) {
+      return;
+    }
+
     if (!profesionalSeleccionado) {
       toast.error('Error', { description: 'Selecciona un profesional' });
       return;
     }
     if (!itemSeleccionado) return;
+
+    // ✅ NUEVO: Verificar si la noticia ya tiene proceso asociado (prevención adicional)
+    if ((itemSeleccionado as Noticia).procesoAsociado) {
+      toast.error('Esta noticia ya tiene un proceso asociado');
+      return;
+    }
+
+    // ✅ NUEVO: Activar estado de loading
+    setIsConvirtiendo(true);
 
     try {
       const abogadoId = `prof-${profesionalSeleccionado.toLowerCase().replace(/\s+/g, '-')}`;
@@ -2712,6 +2727,9 @@ export function DashboardKanbanOperativo({
     } catch (error) {
       console.error('Error convirtiendo noticia a proceso:', error);
       // fallback local para no bloquear operación en entornos sin endpoint
+    } finally {
+      // ✅ NUEVO: Siempre desactivar el estado de loading
+      setIsConvirtiendo(false);
     }
 
     const nuevoProceso: Proceso = {
@@ -3995,16 +4013,30 @@ export function DashboardKanbanOperativo({
                         onClick={() => setModalActivo(null)}
                         variant="outline"
                         className="flex-1"
+                        disabled={isConvirtiendo}
                       >
                         Cancelar
                       </Button>
                       <Button
                         onClick={handleConfirmarConversion}
+                        disabled={isConvirtiendo}
                         className="flex-1 font-bold"
-                        style={{ background: '#003DA5', color: '#FFFFFF' }}
+                        style={{ 
+                          background: isConvirtiendo ? '#9CA3AF' : '#003DA5', 
+                          color: '#FFFFFF'
+                        }}
                       >
-                        <Check className="w-4 h-4 mr-2" />
-                        Crear
+                        {isConvirtiendo ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                            Creando...
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-4 h-4 mr-2" />
+                            Crear
+                          </>
+                        )}
                       </Button>
                     </div>
                   </>
