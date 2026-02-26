@@ -83,6 +83,7 @@ interface PlanAnual {
   año?: number;
   estado?: string;
   responsable?: string;
+  jefeOCI?: { id?: string; nombre: string; cargo?: string };
   fechaCreacion?: string;
   roles: Rol[];
 }
@@ -165,61 +166,61 @@ export async function exportarPlanAnualExcel(plan: PlanAnual): Promise<Resultado
       logoCell.alignment = { horizontal: 'center', vertical: 'middle' };
     }
 
-    // --- SECCIÓN TÍTULO (Columnas C-H, Filas 1-3) ---
-    ws.mergeCells('C1:H1');
+    // --- SECCIÓN TÍTULO (Columnas C-J, Filas 1-3) ---
+    ws.mergeCells('C1:J1');
     const titleCell = ws.getCell('C1');
     titleCell.value = 'PLAN ANUAL DE AUDITORÍA INTERNA';
     titleCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: '000000' } };
     titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
     titleCell.border = { top: { style: 'thin' }, bottom: { style: 'thin' } };
 
-    ws.mergeCells('C2:H2');
+    ws.mergeCells('C2:J2');
     const subtitleCell = ws.getCell('C2');
     subtitleCell.value = 'Oficina de Control Interno de Gestión - OCIG';
     subtitleCell.font = { name: 'Calibri', size: 10, color: { argb: '444444' } };
     subtitleCell.alignment = { horizontal: 'center', vertical: 'middle' };
     subtitleCell.border = { bottom: { style: 'thin' } };
 
-    ws.mergeCells('C3:H3');
+    ws.mergeCells('C3:J3');
     const vigenciaCell = ws.getCell('C3');
     vigenciaCell.value = `Vigencia ${vigencia}`;
     vigenciaCell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: EXCEL_COLORS.primaryDark } };
     vigenciaCell.alignment = { horizontal: 'center', vertical: 'middle' };
     vigenciaCell.border = { bottom: { style: 'thin' } };
 
-    // --- SECCIÓN INFO (Columnas I-J, Filas 1-3) ---
-    ws.getCell('I1').value = 'CÓDIGO:';
-    ws.getCell('I1').font = { name: 'Calibri', size: 9, bold: true };
-    ws.getCell('I1').alignment = { horizontal: 'right', vertical: 'middle' };
-    ws.getCell('I1').border = { top: { style: 'thin' }, left: { style: 'thin' } };
+    // --- SECCIÓN INFO (Columnas K-L, Filas 1-3) ---
+    ws.getCell('K1').value = 'CÓDIGO:';
+    ws.getCell('K1').font = { name: 'Calibri', size: 9, bold: true };
+    ws.getCell('K1').alignment = { horizontal: 'right', vertical: 'middle' };
+    ws.getCell('K1').border = { top: { style: 'thin' }, left: { style: 'thin' } };
 
-    ws.getCell('J1').value = 'EM-PT-004';
-    ws.getCell('J1').font = { name: 'Calibri', size: 9, color: { argb: EXCEL_COLORS.primaryDark } };
-    ws.getCell('J1').alignment = { horizontal: 'left', vertical: 'middle' };
-    ws.getCell('J1').border = { top: { style: 'thin' }, right: { style: 'thin' } };
+    ws.getCell('L1').value = 'EM-PT-004';
+    ws.getCell('L1').font = { name: 'Calibri', size: 9, color: { argb: EXCEL_COLORS.primaryDark } };
+    ws.getCell('L1').alignment = { horizontal: 'left', vertical: 'middle' };
+    ws.getCell('L1').border = { top: { style: 'thin' }, right: { style: 'thin' } };
 
-    ws.getCell('I2').value = 'VERSIÓN:';
-    ws.getCell('I2').font = { name: 'Calibri', size: 9, bold: true };
-    ws.getCell('I2').alignment = { horizontal: 'right', vertical: 'middle' };
-    ws.getCell('I2').border = { left: { style: 'thin' } };
+    ws.getCell('K2').value = 'VERSIÓN:';
+    ws.getCell('K2').font = { name: 'Calibri', size: 9, bold: true };
+    ws.getCell('K2').alignment = { horizontal: 'right', vertical: 'middle' };
+    ws.getCell('K2').border = { left: { style: 'thin' } };
 
-    ws.getCell('J2').value = '3';
-    ws.getCell('J2').font = { name: 'Calibri', size: 9 };
-    ws.getCell('J2').alignment = { horizontal: 'left', vertical: 'middle' };
-    ws.getCell('J2').border = { right: { style: 'thin' } };
+    ws.getCell('L2').value = '3';
+    ws.getCell('L2').font = { name: 'Calibri', size: 9 };
+    ws.getCell('L2').alignment = { horizontal: 'left', vertical: 'middle' };
+    ws.getCell('L2').border = { right: { style: 'thin' } };
 
-    ws.getCell('I3').value = 'FECHA:';
-    ws.getCell('I3').font = { name: 'Calibri', size: 9, bold: true };
-    ws.getCell('I3').alignment = { horizontal: 'right', vertical: 'middle' };
-    ws.getCell('I3').border = { left: { style: 'thin' }, bottom: { style: 'thin' } };
+    ws.getCell('K3').value = 'FECHA:';
+    ws.getCell('K3').font = { name: 'Calibri', size: 9, bold: true };
+    ws.getCell('K3').alignment = { horizontal: 'right', vertical: 'middle' };
+    ws.getCell('K3').border = { left: { style: 'thin' }, bottom: { style: 'thin' } };
 
-    ws.getCell('J3').value = fechaCorta;
-    ws.getCell('J3').font = { name: 'Calibri', size: 9 };
-    ws.getCell('J3').alignment = { horizontal: 'left', vertical: 'middle' };
-    ws.getCell('J3').border = { right: { style: 'thin' }, bottom: { style: 'thin' } };
+    ws.getCell('L3').value = fechaCorta;
+    ws.getCell('L3').font = { name: 'Calibri', size: 9 };
+    ws.getCell('L3').alignment = { horizontal: 'left', vertical: 'middle' };
+    ws.getCell('L3').border = { right: { style: 'thin' }, bottom: { style: 'thin' } };
 
     // --- FILA 4: PROCESO ---
-    ws.mergeCells('A4:J4');
+    ws.mergeCells('A4:L4');
     const procesoCell = ws.getCell('A4');
     procesoCell.value = 'PROCESO: EVALUACIÓN, CONTROL Y MEJORA';
     procesoCell.font = { name: 'Calibri', size: 9, bold: true };
@@ -233,9 +234,14 @@ export async function exportarPlanAnualExcel(plan: PlanAnual): Promise<Resultado
     };
 
     // --- FILA 5: Info del plan ---
-    ws.mergeCells('A5:J5');
+    ws.mergeCells('A5:L5');
     const infoCell = ws.getCell('A5');
-    infoCell.value = `Estado: ${plan.estado || 'BORRADOR'} | Responsable: ${plan.responsable || 'Sin asignar'} | Generado: ${fechaGeneracion}`;
+    // Obtener responsable del plan (igual que en el PDF - usa jefeOCI.nombre)
+    const responsablePlan = plan.jefeOCI?.nombre 
+      || (plan as any).jefe_oci?.nombre 
+      || plan.responsable 
+      || 'Sin asignar';
+    infoCell.value = `Estado: ${plan.estado || 'BORRADOR'} | Responsable: ${responsablePlan} | Generado: ${fechaGeneracion}`;
     infoCell.font = { name: 'Calibri', size: 9, italic: true, color: { argb: '666666' } };
     infoCell.alignment = { horizontal: 'left', vertical: 'middle' };
     ws.getRow(5).height = 18;
@@ -244,7 +250,7 @@ export async function exportarPlanAnualExcel(plan: PlanAnual): Promise<Resultado
     ws.getRow(6).height = 8;
 
     // --- FILA 7: HEADERS DE TABLA ---
-    const headers = ['Rol', 'Nº', 'Actividad', 'Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Fin', 'Estado', '% Avance', 'Control'];
+    const headers = ['Rol', 'Nº', 'Actividad', 'Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Fin', 'Estado', '% Avance', 'Control', 'Evaluación', 'Seguimiento'];
     const headerRow = ws.getRow(7);
 
     headers.forEach((header, idx) => {
@@ -264,16 +270,18 @@ export async function exportarPlanAnualExcel(plan: PlanAnual): Promise<Resultado
 
     // --- Anchos de columna ---
     ws.columns = [
-      { width: 25 },  // Rol
+      { width: 22 },  // Rol
       { width: 5 },   // Nº
-      { width: 40 },  // Actividad
-      { width: 35 },  // Descripción
-      { width: 25 },  // Responsable
+      { width: 35 },  // Actividad
+      { width: 30 },  // Descripción
+      { width: 22 },  // Responsable
       { width: 12 },  // Fecha Inicio
       { width: 12 },  // Fecha Fin
-      { width: 15 },  // Estado
+      { width: 13 },  // Estado
       { width: 10 },  // % Avance
-      { width: 20 },  // Control
+      { width: 25 },  // Control
+      { width: 25 },  // Evaluación
+      { width: 35 },  // Seguimiento
     ];
 
     // --- DATOS DE ACTIVIDADES (empiezan en fila 8) ---
@@ -296,22 +304,29 @@ export async function exportarPlanAnualExcel(plan: PlanAnual): Promise<Resultado
         const dataRow = ws.getRow(rowNum);
         const isEven = (rowNum - 8) % 2 === 0;
 
-        // Obtener nombre del responsable
+        // Obtener nombre del responsable (soporta múltiples formatos del backend)
+        const actAny = a as any;
         let responsableNombre = '';
-        if (a.responsable) {
-          if (typeof a.responsable === 'string') {
-            responsableNombre = a.responsable;
-          } else if (typeof a.responsable === 'object' && a.responsable.nombre) {
-            responsableNombre = a.responsable.nombre;
+        if (actAny.responsable) {
+          if (typeof actAny.responsable === 'string') {
+            responsableNombre = actAny.responsable;
+          } else if (typeof actAny.responsable === 'object' && actAny.responsable.nombre) {
+            responsableNombre = actAny.responsable.nombre;
           }
         }
+        // Fallback a responsableNombre si existe
+        if (!responsableNombre && actAny.responsableNombre) {
+          responsableNombre = actAny.responsableNombre;
+        }
 
-        // Formatear fechas
-        const fechaInicio = a.fechaInicio ? new Date(a.fechaInicio).toLocaleDateString('es-CO') : '';
-        const fechaFin = a.fechaFin ? new Date(a.fechaFin).toLocaleDateString('es-CO') : '';
+        // Formatear fechas (soporta camelCase y snake_case)
+        const fechaInicioStr = actAny.fechaInicio || actAny.fecha_inicio || '';
+        const fechaFinStr = actAny.fechaFin || actAny.fecha_fin || '';
+        const fechaInicio = fechaInicioStr ? new Date(fechaInicioStr).toLocaleDateString('es-CO') : '';
+        const fechaFin = fechaFinStr ? new Date(fechaFinStr).toLocaleDateString('es-CO') : '';
 
-        // Porcentaje de avance
-        const porcentaje = a.porcentajeAvance ?? 0;
+        // Porcentaje de avance (soporta camelCase y snake_case)
+        const porcentaje = actAny.porcentajeAvance ?? actAny.porcentaje_avance ?? actAny.porcentaje ?? 0;
         sumaAvanceRol += porcentaje;
         sumaAvancePlan += porcentaje;
         totalActividadesPlan++;
@@ -320,13 +335,15 @@ export async function exportarPlanAnualExcel(plan: PlanAnual): Promise<Resultado
           rol.nombre,
           i + 1,
           a.nombre,
-          a.descripcion || '',
+          actAny.descripcion || '',
           responsableNombre,
           fechaInicio,
           fechaFin,
-          a.estado || '',
+          actAny.estado || '',
           porcentaje,
-          a.control || ''
+          actAny.control || '',
+          actAny.evaluacion || '',
+          actAny.seguimiento || ''
         ];
 
         rowData.forEach((value, colIdx) => {
@@ -455,15 +472,18 @@ export async function exportarPlanAnualExcel(plan: PlanAnual): Promise<Resultado
       right: { style: 'medium', color: { argb: '000000' } }
     };
 
-    totalRow.getCell(10).value = '';
-    totalRow.getCell(10).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryDark } };
-    totalRow.getCell(10).border = { top: { style: 'medium' }, bottom: { style: 'medium' }, left: { style: 'medium' }, right: { style: 'medium' } };
+    // Celdas vacías para Control, Evaluación y Seguimiento en fila de totales
+    [10, 11, 12].forEach(colIdx => {
+      totalRow.getCell(colIdx).value = '';
+      totalRow.getCell(colIdx).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryDark } };
+      totalRow.getCell(colIdx).border = { top: { style: 'medium' }, bottom: { style: 'medium' }, left: { style: 'medium' }, right: { style: 'medium' } };
+    });
     
     totalRow.height = 30;
 
     // --- PIE DE PÁGINA ---
     rowNum += 2;
-    ws.mergeCells(`A${rowNum}:J${rowNum}`);
+    ws.mergeCells(`A${rowNum}:L${rowNum}`);
     const footerCell = ws.getCell(`A${rowNum}`);
     footerCell.value = 'Escuela Superior de Administración Pública - ESAP | Oficina de Control Interno de Gestión';
     footerCell.font = { name: 'Calibri', size: 9, italic: true, color: { argb: '888888' } };

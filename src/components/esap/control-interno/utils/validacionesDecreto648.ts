@@ -23,6 +23,12 @@ export interface Actividad {
   fechaFin: string;
   porcentaje: number;
   estado: 'Pendiente' | 'En Ejecución' | 'Completada' | 'Retrasada';
+  // Campos de seguimiento y evaluación
+  control?: string;
+  evaluacion?: string;
+  seguimiento?: string;
+  // Observaciones del director
+  observacionesDirector?: string;
 }
 
 export interface RolDecreto {

@@ -937,8 +937,11 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       doc.text('EQUIPO AUDITOR:', 10, yPos);
       doc.setFont('helvetica', 'normal');
       const equipoAuditores = plan.roles
-        .flatMap(rol => rol.actividades.map(act => act.responsableNombre))
-        .filter((nombre, index, arr) => arr.indexOf(nombre) === index)
+        .flatMap(rol => rol.actividades.map(act => {
+          const actAny = act as any;
+          return actAny.responsable?.nombre || actAny.responsable || actAny.responsableNombre || '';
+        }))
+        .filter((nombre, index, arr) => nombre && arr.indexOf(nombre) === index)
         .join(', ') || 'Por definir';
       // Dividir texto largo en múltiples líneas
       const equipoLines = doc.splitTextToSize(equipoAuditores, 140);
@@ -1013,11 +1016,18 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       const tableData: any[] = [];
       plan.roles.forEach(rol => {
         rol.actividades.forEach(actividad => {
+          // Obtener nombre del responsable (puede venir como 'responsable' o 'responsableNombre')
+          const actAny = actividad as any;
+          const nombreResponsable = actAny.responsable?.nombre 
+            || actAny.responsable 
+            || actAny.responsableNombre 
+            || 'Por asignar';
+          
           tableData.push([
             `${rol.nombre}: ${actividad.nombre}`,
-            actividad.responsableNombre || 'Por asignar',
-            actividad.responsableNombre || 'Por asignar',
-            actividad.fechaInicio || 'Por definir',
+            nombreResponsable,
+            nombreResponsable,
+            actAny.fechaInicio || actAny.fecha_inicio || 'Por definir',
             'Por definir',
             'Por definir'
           ]);
