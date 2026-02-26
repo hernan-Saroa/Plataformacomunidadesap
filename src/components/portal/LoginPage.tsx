@@ -5,6 +5,14 @@ import { toast } from 'sonner@2.0.3';
 import { ESAPLogo } from '../assets/ESAPLogo';
 import { ModalRecuperarContrasena } from './ModalRecuperarContrasena';
 import { authService } from '../../services/api/authService';
+import { de } from 'date-fns/locale';
+
+interface MicrosoftCallbackResponse {
+  code: string;
+  state: string;
+  error?: string;
+  errorDescription?: string;
+}
 
 interface Usuario {
   id: string;
@@ -28,11 +36,108 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
   const [showRecuperarModal, setShowRecuperarModal] = useState(false);
+  const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
+  const [microsoftLoginError, setMicrosoftLoginError] = useState<string | null>(null);
 
   // IMPORTANTE: Forzar tema claro en el login SIEMPRE
   useEffect(() => {
     document.documentElement.classList.remove('dark');
   }, []);
+
+  useEffect(() => {
+    const search = window.location.search;
+    if (!search || (!search.includes('code=') && !search.includes('error='))) return;
+
+    const processMicrosoftCallback = async () => {
+      setIsMicrosoftLoading(true);
+      setMicrosoftLoginError(null);
+      try {
+        const response = parseMicrosoftCallback(window.location.search);
+
+        if (response.error) {
+          throw new Error(resolveMicrosoftErrorMessage(response.error, response.errorDescription));
+        }
+
+        if (!response.code) {
+          throw new Error('Microsoft no retornó código de autorización.');
+        }
+
+        const expectedState = sessionStorage.getItem('ms_oauth_state');
+        if (!expectedState || expectedState !== response.state) {
+          throw new Error('Respuesta inválida de Microsoft (state).');
+        }
+
+        const clientId = import.meta.env.VITE_MICROSOFT_CLIENT_ID as string | undefined;
+        const tenantId = (import.meta.env.VITE_MICROSOFT_TENANT_ID as string | undefined) || 'common';
+        const redirectUri =
+          (import.meta.env.VITE_MICROSOFT_REDIRECT_URI as string | undefined) ||
+          window.location.origin + window.location.pathname;
+        const codeVerifier = sessionStorage.getItem('ms_pkce_verifier');
+        console.log('redirectUri: 1', redirectUri);
+
+        if (!clientId || !codeVerifier) {
+          throw new Error('No hay contexto PKCE para completar el login.');
+        }
+
+        const tokenResponse = await exchangeMicrosoftCode({
+          tenantId,
+          clientId,
+          code: response.code,
+          redirectUri,
+          codeVerifier,
+        });
+
+        if (!tokenResponse.id_token) {
+          throw new Error('Microsoft no retornó id_token.');
+        }
+
+        const payload = decodeJwtPayload(tokenResponse.id_token);
+        const email = (payload.preferred_username || payload.email || payload.upn || '').toLowerCase();
+
+        if (!email) {
+          throw new Error('Microsoft no retornó correo electrónico.');
+        }
+
+        const expectedNonce = sessionStorage.getItem('ms_oauth_nonce');
+        if (expectedNonce && payload.nonce && expectedNonce !== payload.nonce) {
+          throw new Error('Respuesta inválida de Microsoft (nonce).');
+        }
+
+        if (!email.endsWith('@esap.edu.co')) {
+          throw new Error('Solo se permiten cuentas institucionales @esap.edu.co.');
+        }
+
+        // Limpiar query de callback y datos temporales
+        history.replaceState(null, '', window.location.pathname);
+        sessionStorage.removeItem('ms_oauth_state');
+        sessionStorage.removeItem('ms_oauth_nonce');
+        sessionStorage.removeItem('ms_pkce_verifier');
+
+        const loginResponse = await authService.loginWithMicrosoft({
+          email,
+          idToken: tokenResponse.id_token,
+        });
+
+        toast.success('Inicio de sesión con Microsoft exitoso', {
+          description: `Bienvenido ${payload.name || email}`,
+          duration: 3500,
+        });
+
+        onLogin(loginResponse.user, loginResponse.accessToken, rememberMe);
+      } catch (error: any) {
+        console.error('Error en callback de Microsoft:', error);
+        setMicrosoftLoginError(error?.message || 'No fue posible completar el inicio de sesión con Microsoft.');
+        toast.error('No fue posible iniciar sesión con Microsoft', {
+          description: error?.message || 'Intenta nuevamente.',
+          duration: 5000,
+        });
+      } finally {
+        setIsMicrosoftLoading(false);
+      }
+    };
+
+    void processMicrosoftCallback();
+  }, [onLogin, rememberMe]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -183,7 +288,64 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   };
 
   const handleSocialLogin = (provider: string) => {
-    toast.info(`Inicio de sesión con ${provider} próximamente disponible`);
+    setMicrosoftLoginError(null);
+
+    if (provider !== 'Microsoft') {
+      toast.info(`Inicio de sesión con ${provider} próximamente disponible`);
+      return;
+    }
+
+    const clientId = import.meta.env.VITE_MICROSOFT_CLIENT_ID as string | undefined;
+    const tenantId = (import.meta.env.VITE_MICROSOFT_TENANT_ID as string | undefined) || 'common';
+    const redirectUri =
+      (import.meta.env.VITE_MICROSOFT_REDIRECT_URI as string | undefined) ||
+      window.location.origin + window.location.pathname;
+      console.log('redirectUri 2:', redirectUri);
+      debugger;
+
+    if (!clientId) {
+      toast.error('Falta configurar Microsoft OAuth', {
+        description: 'Define VITE_MICROSOFT_CLIENT_ID en tu entorno.',
+      });
+      return;
+    }
+
+    const launchMicrosoftAuth = async () => {
+      try {
+        const state = crypto.randomUUID();
+        const nonce = crypto.randomUUID();
+        const codeVerifier = generateCodeVerifier();
+        const codeChallenge = await generateCodeChallenge(codeVerifier);
+
+        sessionStorage.setItem('ms_oauth_state', state);
+        sessionStorage.setItem('ms_oauth_nonce', nonce);
+        sessionStorage.setItem('ms_pkce_verifier', codeVerifier);
+
+        const query = new URLSearchParams({
+          client_id: clientId,
+          response_type: 'code',
+          redirect_uri: redirectUri,
+          response_mode: 'query',
+          scope: 'openid profile email',
+          state,
+          nonce,
+          prompt: 'select_account',
+          code_challenge: codeChallenge,
+          code_challenge_method: 'S256',
+        });
+
+        setIsMicrosoftLoading(true);
+        window.location.assign(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${query.toString()}`);
+      } catch (error: any) {
+        console.error('Error iniciando OAuth Microsoft:', error);
+        setIsMicrosoftLoading(false);
+        toast.error('No se pudo iniciar el login con Microsoft', {
+          description: error?.message || 'Revisa la configuración OAuth.',
+        });
+      }
+    };
+
+    void launchMicrosoftAuth();
   };
 
   return (
@@ -248,13 +410,22 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
               transition={{ delay: 0.4 }}
               className="mb-5"
             >
+              {microsoftLoginError && (
+                <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {microsoftLoginError}
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={() => handleSocialLogin('Microsoft')}
+                disabled={isLoading || isMicrosoftLoading}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all group"
               >
                 <Building2 className="w-5 h-5 text-gray-600 group-hover:text-gray-900" />
-                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Iniciar sesión con Microsoft</span>
+                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
+                  {isMicrosoftLoading ? 'Conectando con Microsoft...' : 'Iniciar sesión con Microsoft'}
+                </span>
               </button>
             </motion.div>
 
@@ -596,4 +767,101 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
       />
     </div>
   );
+}
+
+function parseMicrosoftCallback(search: string): MicrosoftCallbackResponse {
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+
+  return {
+    code: params.get('code') || '',
+    state: params.get('state') || '',
+    error: params.get('error') || undefined,
+    errorDescription: params.get('error_description') || undefined,
+  };
+}
+
+function generateCodeVerifier(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return base64UrlEncode(bytes);
+}
+
+async function generateCodeChallenge(codeVerifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(codeVerifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return base64UrlEncode(new Uint8Array(digest));
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = '';
+  bytes.forEach((b) => {
+    binary += String.fromCharCode(b);
+  });
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function exchangeMicrosoftCode(params: {
+  tenantId: string;
+  clientId: string;
+  code: string;
+  redirectUri: string;
+  codeVerifier: string;
+}): Promise<{ id_token?: string }> {
+  const body = new URLSearchParams({
+    client_id: params.clientId,
+    grant_type: 'authorization_code',
+    code: params.code,
+    redirect_uri: params.redirectUri,
+    code_verifier: params.codeVerifier,
+    scope: 'openid profile email',
+  });
+
+  const response = await fetch(
+    `https://login.microsoftonline.com/${params.tenantId}/oauth2/v2.0/token`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body.toString(),
+    },
+  );
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error_description || data.error || 'No se pudo obtener token de Microsoft.');
+  }
+
+  return data as { id_token?: string };
+}
+
+function resolveMicrosoftErrorMessage(errorCode?: string, errorDescription?: string): string {
+  const code = (errorCode || '').toLowerCase();
+
+  const messages: Record<string, string> = {
+    access_denied: 'Cancelaste el inicio de sesión con Microsoft.',
+    temporarily_unavailable: 'Microsoft no está disponible en este momento. Intenta nuevamente en unos minutos.',
+    invalid_request: 'La solicitud de inicio de sesión es inválida. Revisa la configuración de la aplicación.',
+    unauthorized_client: 'La aplicación no está autorizada en Microsoft Entra ID.',
+    interaction_required: 'Microsoft requiere una interacción adicional. Intenta iniciar sesión nuevamente.',
+    login_required: 'Debes autenticarte en Microsoft para continuar.',
+    consent_required: 'Debes autorizar permisos de Microsoft para continuar.',
+  };
+
+  if (messages[code]) {
+    return messages[code];
+  }
+
+  return errorDescription || errorCode || 'No fue posible completar el inicio de sesión con Microsoft.';
+}
+
+function decodeJwtPayload(token: string): Record<string, any> {
+  const parts = token.split('.');
+  if (parts.length < 2) throw new Error('Token de Microsoft inválido.');
+
+  const base64Url = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64Url.padEnd(Math.ceil(base64Url.length / 4) * 4, '=');
+  const decoded = atob(padded);
+  return JSON.parse(decoded) as Record<string, any>;
 }

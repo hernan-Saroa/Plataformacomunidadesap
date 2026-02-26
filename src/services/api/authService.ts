@@ -15,6 +15,27 @@ import type {
 
 class AuthService {
   /**
+   * Login con Microsoft (OAuth)
+   */
+  async loginWithMicrosoft(payload: { email: string; idToken: string }): Promise<LoginResponse> {
+    const response = await apiClient.post<any>(
+      API_ENDPOINTS.AUTH.LOGIN_MICROSOFT,
+      payload,
+      { skipAuth: true },
+    );
+
+    const normalizedResponse: LoginResponse = {
+      ...response,
+      refreshToken: response.refreshToken || response.accessToken,
+    };
+
+    this.saveTokens(normalizedResponse.accessToken, normalizedResponse.refreshToken);
+    this.saveUserData(normalizedResponse.user);
+
+    return normalizedResponse;
+  }
+
+  /**
    * Login de usuario
    */
   async login(credentials: LoginCredentials): Promise<LoginResponse> {

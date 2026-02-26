@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { MicrosoftLoginDto } from './dto/microsoft-login.dto';
 import { NewPersonDto } from './dto/new-person.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -34,6 +35,13 @@ export class AuthController {
   @HttpCode(200)
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Public()
+  @Post('login/microsoft')
+  @HttpCode(200)
+  loginMicrosoft(@Body() dto: MicrosoftLoginDto) {
+    return this.authService.loginWithMicrosoft(dto);
   }
 
   @Post('new-person')

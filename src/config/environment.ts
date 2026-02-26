@@ -256,6 +256,7 @@ export const API_ENDPOINTS = {
   // Autenticación (auth-service)
   AUTH: {
     LOGIN: '/auth/api/v1/login',
+    LOGIN_MICROSOFT: '/auth/api/v1/login/microsoft',
     LOGOUT: '/auth/api/v1/logout',
     REFRESH: '/auth/api/v1/refresh',
     VERIFY: '/auth/api/v1/verify',
