@@ -9,10 +9,10 @@
  * FUENTE: Decreto 648 de 2017 - ESAP
  * RESPONSABLE: Mario Oswaldo Bernal (Jefe OCI)
  * 
- * CORRECCIÓN APLICADA:
- * - ROL 3: Actividades 20, 21, 22 (Relación Entes Control + Informes de Ley)
- * - ROL 4: Actividades 15, 16, 17 (Evaluación Gestión Riesgos)
- * - ROL 5: Actividades 18, 19 (Evaluación y Seguimiento)
+ * CORRECCIÓN APLICADA (26-Feb-2026):
+ * - ROL 3: Actividades 15, 16, 17 (Evaluación de la Gestión del Riesgo - 48)
+ * - ROL 4: Actividades 18, 19, 20 (Evaluación y Seguimiento - 60)
+ * - ROL 5: Actividades 21, 22, 23, 24 (Relación con Entes Externos de Control)
  */
 
 export interface ActividadOficial {
@@ -301,83 +301,20 @@ export const ROL_2_ENFOQUE_PREVENCION: RolOficial = {
 
 /**
  * ============================================
- * ROL 3: RELACIÓN ENTES CONTROL - CORREGIDO
+ * ROL 3: EVALUACIÓN DE LA GESTIÓN DEL RIESGO (48) - CORREGIDO
  * ============================================
  */
-export const ROL_3_RELACION_ENTES_CONTROL: RolOficial = {
+export const ROL_3_EVALUACION_RIESGOS: RolOficial = {
   numero: 3,
-  nombre: 'Relación Entes Control',
-  icono: '🤝',
-  color: '#F57C00',
-  responsable: 'Mario Oswaldo Bernal',
-  actividades: [
-    {
-      id: 20,
-      nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos sobre información requerida por órganos de control',
-      descripcion: 'Alertar a la primera línea de defensa sobre conductas generadoras de sanciones. Evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control',
-      fechaInicio: '2026-01-01',
-      fechaFin: '2026-12-31',
-      responsable: 'Mario Oswaldo Bernal',
-      control: 'Se hace seguimiento mensual',
-      evaluacion: '59% de avance',
-      seguimiento: [
-        {
-          descripcion: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del proceso respectivo',
-          fechas: 'Mensual'
-        }
-      ]
-    },
-    {
-      id: 21,
-      nombre: 'Adelantar de una manera armónica procesos de auditoría que lleve a cabo el organismo de control',
-      descripcion: 'Coordinación efectiva con entes de control externo',
-      fechaInicio: 'N/A',
-      fechaFin: 'N/A',
-      responsable: 'N/A',
-      control: 'N/A',
-      evaluacion: '59% de avance',
-      seguimiento: [
-        {
-          descripcion: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes',
-          fechas: 'Según visita de entes de control'
-        }
-      ]
-    },
-    {
-      id: 22,
-      nombre: 'Presentar informes y seguimientos de ley',
-      descripcion: 'Cumplimiento de todos los informes obligatorios establecidos en el cronograma anual',
-      fechaInicio: '2026-01-01',
-      fechaFin: '2026-12-31',
-      responsable: 'Mario Oswaldo Bernal',
-      control: 'Se hace seguimiento mensual',
-      evaluacion: '59% de avance',
-      seguimiento: [
-        {
-          descripcion: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes',
-          fechas: 'Mensual'
-        }
-      ]
-    }
-  ]
-};
-
-/**
- * ============================================
- * ROL 4: EVALUACIÓN GESTIÓN RIESGOS - CORREGIDO
- * ============================================
- */
-export const ROL_4_EVALUACION_RIESGOS: RolOficial = {
-  numero: 4,
-  nombre: 'Evaluación Gestión Riesgos',
+  nombre: 'Evaluación de la gestión del riesgo',
   icono: '⚠️',
-  color: '#E91E63',
+  color: '#FF6D00',
   responsable: 'Mario Oswaldo Bernal',
   actividades: [
     {
       id: 15,
-      nombre: 'Revisar la adecuación y/o actualización de la política de administración del riesgo y evaluar su implementación',
-      descripcion: 'Verificar que esté formalizada a través de acto administrativo o actuación administrativa',
+      nombre: 'Revisar la adecuación y/o actualización de la política de administración del riesgo y si se evalúa periódicamente su implementación',
+      descripcion: 'Verificar que esté formalizada a través de acto administrativo o actuación administrativa y que contenga (objetivo, alcance, niveles de aceptación del riesgo, niveles para calificar el impacto, tratamiento del riesgo)',
       fechaInicio: '2026-01-01',
       fechaFin: '2026-12-31',
       responsable: 'Mario Oswaldo Bernal',
@@ -392,8 +329,8 @@ export const ROL_4_EVALUACION_RIESGOS: RolOficial = {
     },
     {
       id: 16,
-      nombre: 'Promover escenarios para que la dirección comprenda el valor de la gestión de riesgos',
-      descripcion: 'Proporcionar la información de riesgos para que la alta dirección la utilice en la toma de decisiones',
+      nombre: 'Promover escenarios para que la dirección comprenda el valor de la gestión de riesgos como paso previo para promover el proceso en toda la organización. Proporcionar la información de riesgos para que la alta dirección la utilice en la toma de decisiones',
+      descripcion: 'Generar escenarios para que la dirección comprenda la importancia de la gestión de riesgos',
       fechaInicio: '2026-01-01',
       fechaFin: '2026-12-31',
       responsable: 'Mario Oswaldo Bernal',
@@ -408,8 +345,8 @@ export const ROL_4_EVALUACION_RIESGOS: RolOficial = {
     },
     {
       id: 17,
-      nombre: 'Evaluar prácticas actuales de gestión del riesgo para migrar a esquemas más efectivos',
-      descripcion: 'Articular ejercicios de seguimiento y monitoreo en el marco del Esquema de las líneas de defensa',
+      nombre: 'Evaluar prácticas actuales de gestión del riesgo para migrar a esquemas más efectivos. Articular ejercicios de seguimiento y monitoreo en el marco del Esquema de las líneas de defensa',
+      descripcion: 'Migrar a esquemas más efectivos y articular ejercicios de seguimiento y monitoreo',
       fechaInicio: '2026-01-01',
       fechaFin: '2026-12-31',
       responsable: 'Mario Oswaldo Bernal',
@@ -427,14 +364,14 @@ export const ROL_4_EVALUACION_RIESGOS: RolOficial = {
 
 /**
  * ============================================
- * ROL 5: EVALUACIÓN Y SEGUIMIENTO - CORREGIDO
+ * ROL 4: EVALUACIÓN Y SEGUIMIENTO (60) - CORREGIDO
  * ============================================
  */
-export const ROL_5_EVALUACION_SEGUIMIENTO: RolOficial = {
-  numero: 5,
-  nombre: 'Evaluación y Seguimiento',
-  icono: '🔍',
-  color: '#9C27B0',
+export const ROL_4_EVALUACION_SEGUIMIENTO: RolOficial = {
+  numero: 4,
+  nombre: 'Evaluación y seguimiento',
+  icono: '✓',
+  color: '#AA00FF',
   responsable: 'Mario Oswaldo Bernal',
   actividades: [
     {
@@ -468,6 +405,101 @@ export const ROL_5_EVALUACION_SEGUIMIENTO: RolOficial = {
           fechas: '30/04/2025, 31/08/2025, 31/12/2025'
         }
       ]
+    },
+    {
+      id: 20,
+      nombre: 'Establecer una estrategia de acompañamiento de la batería de indicadores y diseño de tableros de control',
+      descripcion: 'Fortalecer la medición del desempeño institucional a través del seguimiento de indicadores',
+      fechaInicio: '2026-01-01',
+      fechaFin: '2026-12-31',
+      responsable: 'Mario Oswaldo Bernal',
+      control: 'Se hace seguimiento semestral',
+      evaluacion: '60% de avance',
+      seguimiento: [
+        {
+          descripcion: 'Realizar capacitaciones y acompañamiento en el diseño de tableros de control',
+          fechas: '10/07/2025, 31/12/2025'
+        }
+      ]
+    }
+  ]
+};
+
+/**
+ * ============================================
+ * ROL 5: RELACIÓN CON ENTES EXTERNOS DE CONTROL - CORREGIDO
+ * ============================================
+ */
+export const ROL_5_RELACION_ENTES_CONTROL: RolOficial = {
+  numero: 5,
+  nombre: 'Relación con entes externos de control',
+  icono: '⚖️',
+  color: '#C62828',
+  responsable: 'Mario Oswaldo Bernal',
+  actividades: [
+    {
+      id: 21,
+      nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos o responsables del suministro de información, para evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control',
+      descripcion: 'Alertar sobre información requerida por organismos de control',
+      fechaInicio: '2026-01-01',
+      fechaFin: '2026-12-31',
+      responsable: 'Mario Oswaldo Bernal',
+      control: 'Se hace seguimiento mensual',
+      evaluacion: '59% de avance',
+      seguimiento: [
+        {
+          descripcion: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del proceso respectivo',
+          fechas: 'Mensual'
+        }
+      ]
+    },
+    {
+      id: 22,
+      nombre: 'Alertar a la primera línea de defensa, y en general, a los responsables del aporte de información requerida por órganos de control sobre estos efectos (Conductas generadoras de sanciones)',
+      descripcion: 'Alertar sobre conductas generadoras de sanciones ante órganos de control',
+      fechaInicio: '2026-01-01',
+      fechaFin: '2026-12-31',
+      responsable: 'Mario Oswaldo Bernal',
+      control: 'Se hace seguimiento mensual',
+      evaluacion: '59% de avance',
+      seguimiento: [
+        {
+          descripcion: 'Comunicar oportunamente a los líderes de procesos sobre posibles sanciones',
+          fechas: 'Mensual'
+        }
+      ]
+    },
+    {
+      id: 23,
+      nombre: 'Adelantar de una manera armónica procesos de auditoría que lleve a cabo el organismo de control',
+      descripcion: 'Coordinación efectiva con entes de control externo',
+      fechaInicio: 'N/A',
+      fechaFin: 'N/A',
+      responsable: 'N/A',
+      control: 'N/A',
+      evaluacion: '59% de avance',
+      seguimiento: [
+        {
+          descripcion: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes',
+          fechas: 'Según visita de entes de control'
+        }
+      ]
+    },
+    {
+      id: 24,
+      nombre: 'Presentar informes y seguimientos de ley',
+      descripcion: 'Cumplimiento de todos los informes obligatorios establecidos en el cronograma anual',
+      fechaInicio: '2026-01-01',
+      fechaFin: '2026-12-31',
+      responsable: 'Mario Oswaldo Bernal',
+      control: 'Se hace seguimiento mensual',
+      evaluacion: '59% de avance',
+      seguimiento: [
+        {
+          descripcion: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes',
+          fechas: 'Mensual'
+        }
+      ]
     }
   ]
 };
@@ -480,9 +512,9 @@ export const ROL_5_EVALUACION_SEGUIMIENTO: RolOficial = {
 export const ROLES_DECRETO_648_OFICIALES: RolOficial[] = [
   ROL_1_LIDERAZGO_ESTRATEGICO,
   ROL_2_ENFOQUE_PREVENCION,
-  ROL_3_RELACION_ENTES_CONTROL,
-  ROL_4_EVALUACION_RIESGOS,
-  ROL_5_EVALUACION_SEGUIMIENTO
+  ROL_3_EVALUACION_RIESGOS,
+  ROL_4_EVALUACION_SEGUIMIENTO,
+  ROL_5_RELACION_ENTES_CONTROL
 ];
 
 /**

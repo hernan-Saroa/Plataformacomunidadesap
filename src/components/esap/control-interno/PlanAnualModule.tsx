@@ -1014,7 +1014,7 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
 
       // Preparar datos de la tabla
       const tableData: any[] = [];
-      plan.roles.forEach(rol => {
+      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach(rol => {
         rol.actividades.forEach(actividad => {
           // Obtener nombre del responsable (puede venir como 'responsable' o 'responsableNombre')
           const actAny = actividad as any;
@@ -1200,7 +1200,7 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       ];
 
       const rolesRows: any[] = [];
-      plan.roles.forEach(rol => {
+      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach(rol => {
         if (rol.actividades.length === 0) {
           rolesRows.push([
             rol.nombre,
@@ -1252,7 +1252,7 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       ];
 
       const cronogramaRows: any[] = [];
-      plan.roles.forEach(rol => {
+      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach(rol => {
         rol.actividades.forEach(actividad => {
           cronogramaRows.push([
             `${rol.nombre}: ${actividad.nombre}`,
@@ -2818,7 +2818,7 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
             </h3>
 
             <div className="space-y-6">
-              {plan.roles.map((rol) => (
+              {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => (
             <div key={rol.id} className="border-l-4 pl-4" style={{ borderLeftColor: rol.color }}>
               <div className="flex items-center gap-3 mb-4">
                 <span className="text-3xl">{rol.icono}</span>

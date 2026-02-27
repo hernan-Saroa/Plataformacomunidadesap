@@ -284,5 +284,71 @@ export class PlanAnual5RolesController {
     }
     await this.service.deleteAdjunto(adjuntoId);
   }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // ENDPOINTS: VINCULACIÓN CON AUDITORÍAS - Rol 4 (Evaluación y Seguimiento)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Obtiene el cumplimiento del programa de auditorías para un año
+   * GET /plan-anual-5-roles/auditorias/cumplimiento/:año
+   */
+  @Get('auditorias/cumplimiento/:año')
+  async getCumplimientoAuditorias(@Param('año') año: string) {
+    const añoNum = parseInt(año, 10);
+    if (isNaN(añoNum) || añoNum < 2000 || añoNum > 2100) {
+      throw new BadRequestException('Año inválido');
+    }
+    return this.service.getCumplimientoAuditorias(añoNum);
+  }
+
+  /**
+   * Configura una actividad para cálculo automático de auditorías
+   * POST /plan-anual-5-roles/auditorias/configurar
+   */
+  @Post('auditorias/configurar')
+  @HttpCode(HttpStatus.OK)
+  async configurarActividadAuditorias(
+    @Body() body: { actividadId: string; año: number },
+    @Req() req: any,
+  ) {
+    if (!body.actividadId) {
+      throw new BadRequestException('actividadId es requerido');
+    }
+    if (!body.año || body.año < 2000 || body.año > 2100) {
+      throw new BadRequestException('Año inválido');
+    }
+    return this.service.configurarActividadAuditorias(
+      body.actividadId,
+      body.año,
+      req.user?.userId
+    );
+  }
+
+  /**
+   * Obtiene las auditorías vinculadas a una actividad
+   * GET /plan-anual-5-roles/actividades/:actividadId/auditorias
+   */
+  @Get('actividades/:actividadId/auditorias')
+  async getAuditoriasVinculadas(@Param('actividadId') actividadId: string) {
+    if (!actividadId || actividadId === 'undefined') {
+      throw new BadRequestException('actividadId es requerido');
+    }
+    return this.service.getAuditoriasVinculadas(actividadId);
+  }
+
+  /**
+   * Recalcula manualmente el cumplimiento de auditorías
+   * POST /plan-anual-5-roles/auditorias/recalcular/:año
+   */
+  @Post('auditorias/recalcular/:año')
+  @HttpCode(HttpStatus.OK)
+  async recalcularCumplimientoAuditorias(@Param('año') año: string) {
+    const añoNum = parseInt(año, 10);
+    if (isNaN(añoNum) || añoNum < 2000 || añoNum > 2100) {
+      throw new BadRequestException('Año inválido');
+    }
+    return this.service.recalcularCumplimientoAuditorias(añoNum);
+  }
 }
 
