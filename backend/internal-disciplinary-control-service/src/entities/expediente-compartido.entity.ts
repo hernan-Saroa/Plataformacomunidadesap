@@ -40,6 +40,7 @@ export class ExpedienteCompartido {
   procesoId: string;
 
   @Column({
+    name: 'tipo_compartido',
     type: 'enum',
     enum: TipoCompartido,
     default: TipoCompartido.LINK,
@@ -47,6 +48,7 @@ export class ExpedienteCompartido {
   tipoCompartido: TipoCompartido;
 
   @Column({
+    name: 'estado',
     type: 'enum',
     enum: EstadoCompartido,
     default: EstadoCompartido.ACTIVO,

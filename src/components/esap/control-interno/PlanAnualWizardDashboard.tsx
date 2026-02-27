@@ -23,6 +23,8 @@ import {
 // Hook para sincronizar evidencias con backend y API de auditores
 import { useSaveEvidencias, actividadesApi, planAnualApi, type CreateActividadDto } from './services/plan-anual';
 import { configuracionesProfesionalesOCIGApi } from './services/api';
+// Servicio para vinculación de auditorías con Rol 4
+import { controlInternoService } from '../../../services/api/controlInternoService';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { cargarConfiguracionPDF } from './utils/configuracionHelper';
 import { 
@@ -381,18 +383,36 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
         control: 'Se hace seguimiento trimestral.', 
         evaluacion: '60% avance', 
         seguimiento: 'Asesorar y suministrar herramientas como el diagrama causa efecto' 
+      },
+      { 
+        nombre: 'Establecer una estrategia de acompañamiento de la batería de indicadores y diseño de tableros de control', 
+        descripcion: 'Fortalecer la medición del desempeño institucional a través del seguimiento de indicadores', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Realizar capacitaciones y acompañamiento en el diseño de tableros de control' 
       }
     ],
     // ═══════════════════ ROL 5: RELACIÓN CON ENTES EXTERNOS DE CONTROL ═══════════════════
     5: [
       { 
-        nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos o responsables del suministro de información, para evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control. Alertar a la primera línea de defensa, y en general, a los responsables del aporte de información requerida por órganos de control sobre estos efectos (Conductas generadoras de sanciones)', 
+        nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos o responsables del suministro de información, para evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control', 
         descripcion: 'Alertar a responsables sobre información requerida por organismos de control', 
         fechaInicio: '2026-01-01', 
         fechaFin: '2026-12-31', 
         control: 'Se hace seguimiento mensual.', 
         evaluacion: '59% avance', 
         seguimiento: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del proceso respectivo' 
+      },
+      { 
+        nombre: 'Alertar a la primera línea de defensa, y en general, a los responsables del aporte de información requerida por órganos de control sobre estos efectos (Conductas generadoras de sanciones)', 
+        descripcion: 'Alertar sobre conductas generadoras de sanciones ante órganos de control', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento mensual.', 
+        evaluacion: '59% avance', 
+        seguimiento: 'Comunicar oportunamente a los líderes de procesos sobre posibles sanciones' 
       },
       { 
         nombre: 'Adelantar de una manera armónica procesos de auditoría que lleve a cabo el organismo de control', 
@@ -2012,7 +2032,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       let sumaAvanceTotal = 0;
       let totalActividadesCount = 0;
       
-      plan.roles.forEach((rol, rolIdx) => {
+      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach((rol, rolIdx) => {
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 61, 165);
@@ -2405,6 +2425,24 @@ function SeccionGestionYSeguimiento({
     actividadId: number | string;
     actividadNombre: string;
   } | null>(null);
+  
+  // ✅ NUEVO: Modal de edición de actividad (Decreto 648/2017)
+  const [modalEdicion, setModalEdicion] = useState<{
+    visible: boolean;
+    rolNumero: number;
+    actividad: Actividad;
+  } | null>(null);
+  const [formularioEdicion, setFormularioEdicion] = useState({
+    nombre: '',
+    descripcion: '',
+    control: '',
+    evaluacion: '',
+    seguimiento: '',
+    fechaInicio: '',
+    fechaFin: ''
+  });
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+  
   // ✅ NUEVO: Estado para controlar qué roles están colapsados/expandidos
   const [rolesColapsados, setRolesColapsados] = useState<Record<number, boolean>>({});
   const [formulario, setFormulario] = useState({
@@ -2419,6 +2457,41 @@ function SeccionGestionYSeguimiento({
   
   // Estado para indicar que se está guardando
   const [guardando, setGuardando] = useState(false);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NUEVO: Estado para cumplimiento de auditorías (Rol 4)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const [cumplimientoAuditorias, setCumplimientoAuditorias] = useState<{
+    totalProgramadas: number;
+    totalFinalizadas: number;
+    porcentajeCumplimiento: number;
+    desglosePorTipo: Record<string, { programadas: number; finalizadas: number; en_proceso: number; pendientes: number }>;
+    actividadId?: string;
+    cargando: boolean;
+  }>({
+    totalProgramadas: 0,
+    totalFinalizadas: 0,
+    porcentajeCumplimiento: 0,
+    desglosePorTipo: {},
+    cargando: true
+  });
+
+  // Cargar datos de cumplimiento de auditorías al montar el componente
+  useEffect(() => {
+    const cargarCumplimiento = async () => {
+      try {
+        const resultado = await controlInternoService.getCumplimientoAuditorias(plan.vigencia);
+        setCumplimientoAuditorias({
+          ...resultado,
+          cargando: false
+        });
+      } catch (error) {
+        console.error('[AUDITORÍAS] Error cargando cumplimiento:', error);
+        setCumplimientoAuditorias(prev => ({ ...prev, cargando: false }));
+      }
+    };
+    cargarCumplimiento();
+  }, [plan.vigencia]);
 
   // ✅ NUEVO: Función para toggle del colapso de un rol específico
   const toggleRolColapsado = (numeroRol: number) => {
@@ -2541,6 +2614,81 @@ function SeccionGestionYSeguimiento({
     } catch (error) {
       console.error('Error reactivando actividad:', error);
       toast.error('Error', { description: 'No se pudo reactivar la actividad' });
+    }
+  };
+
+  // ✅ NUEVO: Abrir modal de edición de actividad
+  const abrirModalEdicion = (actividad: Actividad, rolNumero: number) => {
+    setFormularioEdicion({
+      nombre: actividad.nombre || '',
+      descripcion: actividad.descripcion || '',
+      control: actividad.control || '',
+      evaluacion: actividad.evaluacion || '',
+      seguimiento: actividad.seguimiento || '',
+      fechaInicio: actividad.fechaInicio || '',
+      fechaFin: actividad.fechaFin || ''
+    });
+    setModalEdicion({ visible: true, rolNumero, actividad });
+  };
+
+  // ✅ NUEVO: Guardar edición de actividad
+  const guardarEdicionActividad = async () => {
+    if (!modalEdicion) return;
+    
+    setGuardandoEdicion(true);
+    try {
+      const payload = {
+        nombre: formularioEdicion.nombre,
+        descripcion: formularioEdicion.descripcion,
+        control: formularioEdicion.control,
+        evaluacion: formularioEdicion.evaluacion,
+        seguimiento: formularioEdicion.seguimiento,
+        fecha_inicio: formularioEdicion.fechaInicio,
+        fecha_fin: formularioEdicion.fechaFin
+      };
+      
+      console.log('✏️ [guardarEdicionActividad] Guardando:', payload);
+      const res = await actividadesApi.update(String(modalEdicion.actividad.id), payload as any);
+      
+      if (res.success) {
+        // Actualizar estado local
+        const planActualizado = {
+          ...plan,
+          roles: plan.roles.map(rol => {
+            if (rol.numero === modalEdicion.rolNumero) {
+              return {
+                ...rol,
+                actividades: rol.actividades.map(act => 
+                  act.id === modalEdicion.actividad.id 
+                    ? { 
+                        ...act, 
+                        nombre: formularioEdicion.nombre,
+                        descripcion: formularioEdicion.descripcion,
+                        control: formularioEdicion.control,
+                        evaluacion: formularioEdicion.evaluacion,
+                        seguimiento: formularioEdicion.seguimiento,
+                        fechaInicio: formularioEdicion.fechaInicio,
+                        fechaFin: formularioEdicion.fechaFin
+                      } 
+                    : act
+                )
+              };
+            }
+            return rol;
+          })
+        };
+        onActualizar(planActualizado);
+        toast.success('Actividad actualizada', { description: 'Los cambios se guardaron correctamente' });
+        setModalEdicion(null);
+        onRefetchPlan?.();
+      } else {
+        toast.error('Error al guardar', { description: res.error || 'No se pudieron guardar los cambios' });
+      }
+    } catch (error) {
+      console.error('Error guardando edición:', error);
+      toast.error('Error', { description: 'No se pudo guardar la edición' });
+    } finally {
+      setGuardandoEdicion(false);
     }
   };
 
@@ -3086,6 +3234,78 @@ function SeccionGestionYSeguimiento({
                       </div>
                     </div>
 
+                    {/* ════════════════════════════════════════════════════════════════
+                        NUEVO: SECCIÓN ESPECIAL ROL 4 - CUMPLIMIENTO PROGRAMA AUDITORÍAS
+                        ════════════════════════════════════════════════════════════════ */}
+                    {rol.numero === 4 && !cumplimientoAuditorias.cargando && (
+                      <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-violet-50 rounded-xl border-2 border-purple-200">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-8 h-8 rounded-lg bg-purple-600 flex items-center justify-center">
+                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-purple-900">📊 Cumplimiento Programa de Auditorías</h4>
+                            <p className="text-xs text-purple-600">Cálculo automático basado en auditorías finalizadas vs programadas</p>
+                          </div>
+                        </div>
+                        
+                        {/* Métricas principales */}
+                        <div className="grid grid-cols-3 gap-3 mb-3">
+                          <div className="bg-white rounded-lg p-3 text-center border border-purple-200 shadow-sm">
+                            <p className="text-xs text-gray-600 mb-1">Programadas</p>
+                            <p className="text-3xl font-bold text-purple-700">{cumplimientoAuditorias.totalProgramadas}</p>
+                            <p className="text-[10px] text-gray-500">auditorías totales</p>
+                          </div>
+                          <div className="bg-white rounded-lg p-3 text-center border border-green-200 shadow-sm">
+                            <p className="text-xs text-gray-600 mb-1">Finalizadas</p>
+                            <p className="text-3xl font-bold text-green-700">{cumplimientoAuditorias.totalFinalizadas}</p>
+                            <p className="text-[10px] text-gray-500">completadas</p>
+                          </div>
+                          <div className="bg-white rounded-lg p-3 text-center border border-blue-200 shadow-sm">
+                            <p className="text-xs text-gray-600 mb-1">Cumplimiento</p>
+                            <p className={`text-3xl font-bold ${
+                              cumplimientoAuditorias.porcentajeCumplimiento >= 80 ? 'text-green-700' : 
+                              cumplimientoAuditorias.porcentajeCumplimiento >= 50 ? 'text-yellow-600' : 'text-red-600'
+                            }`}>{cumplimientoAuditorias.porcentajeCumplimiento}%</p>
+                            <p className="text-[10px] text-gray-500">del programa</p>
+                          </div>
+                        </div>
+
+                        {/* Barra de progreso visual */}
+                        <div className="bg-gray-200 rounded-full h-3 overflow-hidden mb-3">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              cumplimientoAuditorias.porcentajeCumplimiento >= 80 ? 'bg-green-500' : 
+                              cumplimientoAuditorias.porcentajeCumplimiento >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${Math.min(cumplimientoAuditorias.porcentajeCumplimiento, 100)}%` }}
+                          />
+                        </div>
+
+                        {/* Desglose por tipo si hay datos */}
+                        {Object.keys(cumplimientoAuditorias.desglosePorTipo).length > 0 && (
+                          <div className="bg-white/70 rounded-lg p-3 border border-purple-100">
+                            <p className="text-xs font-semibold text-purple-800 mb-2">Desglose por Tipo:</p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                              {Object.entries(cumplimientoAuditorias.desglosePorTipo).map(([tipo, datos]) => (
+                                <div key={tipo} className="bg-purple-50 rounded p-2 text-center">
+                                  <p className="text-[10px] text-purple-600 capitalize">{tipo}</p>
+                                  <p className="text-sm font-bold text-purple-800">
+                                    {datos.finalizadas}/{datos.programadas}
+                                  </p>
+                                  <p className="text-[9px] text-purple-500">
+                                    {datos.en_proceso} en curso
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Barra de progreso */}
                     <div>
                       <SemaforoSeguimientoPAI 
@@ -3210,6 +3430,20 @@ function SeccionGestionYSeguimiento({
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
                       >
                         {actividadExpandida === actividad.id ? '✕ Cerrar' : '📝 Seguimiento'}
+                      </button>
+                      {/* ✅ NUEVO: Botón Editar actividad */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          abrirModalEdicion(actividad, rol.numero);
+                        }}
+                        className="px-3 py-2 text-sm rounded-lg font-medium border-2 flex items-center gap-1 transition-all bg-amber-100 hover:bg-amber-200 text-amber-700 border-amber-300"
+                        title="Editar actividad"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Editar
                       </button>
                       {/* Botón Desactivar/Activar actividad */}
                       <button
@@ -3715,6 +3949,190 @@ function SeccionGestionYSeguimiento({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         Sí, Reactivar
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ✅ NUEVO: Modal de edición de actividad (Decreto 648/2017) */}
+      <AnimatePresence>
+        {modalEdicion && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
+            onClick={() => setModalEdicion(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              {/* Header del modal */}
+              <div className="px-6 py-4 bg-gradient-to-r from-amber-500 to-amber-600 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Editar Actividad</h3>
+                    <p className="text-amber-100 text-sm">Decreto 648 de 2017 - Control Interno</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contenido del modal - scrollable */}
+              <div className="p-6 overflow-y-auto flex-1">
+                <div className="space-y-4">
+                  {/* Nombre de la actividad */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Nombre de la actividad *
+                    </label>
+                    <textarea
+                      value={formularioEdicion.nombre}
+                      onChange={(e) => setFormularioEdicion(prev => ({ ...prev, nombre: e.target.value }))}
+                      rows={2}
+                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
+                      placeholder="Nombre de la actividad según Decreto 648/2017"
+                    />
+                  </div>
+
+                  {/* Descripción */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Descripción
+                    </label>
+                    <textarea
+                      value={formularioEdicion.descripcion}
+                      onChange={(e) => setFormularioEdicion(prev => ({ ...prev, descripcion: e.target.value }))}
+                      rows={2}
+                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
+                      placeholder="Descripción detallada de la actividad"
+                    />
+                  </div>
+
+                  {/* Fechas */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">
+                        Fecha de inicio
+                      </label>
+                      <input
+                        type="date"
+                        value={formularioEdicion.fechaInicio}
+                        onChange={(e) => setFormularioEdicion(prev => ({ ...prev, fechaInicio: e.target.value }))}
+                        className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">
+                        Fecha de fin
+                      </label>
+                      <input
+                        type="date"
+                        value={formularioEdicion.fechaFin}
+                        onChange={(e) => setFormularioEdicion(prev => ({ ...prev, fechaFin: e.target.value }))}
+                        className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Control */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      🔍 Control (periodicidad)
+                    </label>
+                    <textarea
+                      value={formularioEdicion.control}
+                      onChange={(e) => setFormularioEdicion(prev => ({ ...prev, control: e.target.value }))}
+                      rows={2}
+                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
+                      placeholder="Ej: Se hace seguimiento semestral, cuatrimestral, mensual..."
+                    />
+                  </div>
+
+                  {/* Evaluación */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      📊 Evaluación
+                    </label>
+                    <textarea
+                      value={formularioEdicion.evaluacion}
+                      onChange={(e) => setFormularioEdicion(prev => ({ ...prev, evaluacion: e.target.value }))}
+                      rows={2}
+                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
+                      placeholder="Ej: 50% avance, 60% avance..."
+                    />
+                  </div>
+
+                  {/* Seguimiento */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      ✅ Seguimiento (tareas)
+                    </label>
+                    <textarea
+                      value={formularioEdicion.seguimiento}
+                      onChange={(e) => setFormularioEdicion(prev => ({ ...prev, seguimiento: e.target.value }))}
+                      rows={3}
+                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
+                      placeholder="Descripción de las tareas de seguimiento a realizar"
+                    />
+                  </div>
+                </div>
+
+                {/* Nota informativa */}
+                <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-800 flex items-start gap-2">
+                    <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>
+                      <strong>Nota:</strong> Las actividades del Plan Anual pueden editarse para ajustarlas a las necesidades específicas de la entidad, manteniendo el cumplimiento del Decreto 648 de 2017.
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Footer con botones de acción - fixed */}
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 shrink-0">
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => setModalEdicion(null)}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+                    disabled={guardandoEdicion}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={guardarEdicionActividad}
+                    disabled={guardandoEdicion || !formularioEdicion.nombre.trim()}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {guardandoEdicion ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Guardando...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Guardar Cambios
                       </>
                     )}
                   </button>

@@ -11,6 +11,7 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  Put,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -131,6 +132,23 @@ export class NewsController {
   @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
   async getById(@Param('id') id: string): Promise<DisciplinaryNews> {
     return await this.newsService.findById(id);
+  }
+
+  /**
+   * Actualizar datos de una noticia (edición por Profesional)
+   */
+  @Put(':id')
+  @ApiOperation({
+    summary: 'Editar Noticia Disciplinaria',
+    description: 'Actualiza los datos de una noticia y registra el cambio en el historial de auditoría',
+  })
+  @ApiResponse({ status: 200, description: 'Noticia actualizada', type: DisciplinaryNews })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async update(
+    @Param('id') id: string,
+    @Body() body: any,
+  ): Promise<DisciplinaryNews> {
+    return await this.newsService.update(id, body);
   }
 
   /**

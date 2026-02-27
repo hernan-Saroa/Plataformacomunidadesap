@@ -4,20 +4,41 @@ import {
   Post,
   Body,
   Param,
+  Query,
   UseGuards,
   Request,
   Ip,
+  Req,
 } from '@nestjs/common';
 import { CompartirExpedienteService } from '../services/compartir-expediente.service';
 import { CrearCompartidoDto, AccederCompartidoDto } from '../dtos/compartir-expediente.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Public } from '../auth/public.decorator';
+import type { Request as ExpressRequest } from 'express';
 
 @Controller('compartir-expediente')
 export class CompartirExpedienteController {
   constructor(
     private readonly compartirService: CompartirExpedienteService,
   ) {}
+
+  /**
+   * Obtener la URL base del frontend desde los headers
+   * Sigue el mismo patrón que graduation-certificates.controller
+   */
+  private getFrontendBaseUrl(req: ExpressRequest): string | undefined {
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    let frontendBaseUrl = origin;
+    if (!frontendBaseUrl && referer) {
+      try {
+        frontendBaseUrl = new URL(referer).origin;
+      } catch (_) {
+        frontendBaseUrl = undefined;
+      }
+    }
+    return frontendBaseUrl;
+  }
 
   /**
    * Crear un nuevo enlace compartido
@@ -28,15 +49,19 @@ export class CompartirExpedienteController {
     @Param('procesoId') procesoId: string,
     @Body() dto: CrearCompartidoDto,
     @Request() req: any,
+    @Req() expressReq: ExpressRequest,
   ) {
     const usuarioId = req.user?.id;
     const compartido = await this.compartirService.crearCompartido(procesoId, dto, usuarioId);
 
+    // Determinar la URL base del frontend desde los headers
+    const frontendBaseUrl = this.getFrontendBaseUrl(expressReq);
+
     return {
       id: compartido.id,
       token: compartido.tokenAcceso,
-      url: this.compartirService.generarUrlPublica(compartido.tokenAcceso),
-      urlQR: this.compartirService.generarUrlQR(compartido.tokenAcceso),
+      url: this.compartirService.generarUrlPublica(compartido.tokenAcceso, frontendBaseUrl),
+      urlQR: this.compartirService.generarUrlQR(compartido.tokenAcceso, frontendBaseUrl),
       tipoCompartido: compartido.tipoCompartido,
       requiereClave: compartido.requiereClave,
       tiempoExpiracionHoras: compartido.tiempoExpiracionHoras,
@@ -83,14 +108,16 @@ export class CompartirExpedienteController {
 
   /**
    * Verificar acceso a un enlace compartido (público)
+   * Cambiado a GET para evitar problemas con autenticación
    */
   @Public()
-  @Post('verificar')
+  @Get('verificar/:token')
   async verificarAcceso(
-    @Body() dto: AccederCompartidoDto,
+    @Param('token') token: string,
+    @Query('clave') clave: string,
     @Ip() ip: string,
   ) {
-    return this.compartirService.verificarAcceso(dto, ip);
+    return this.compartirService.verificarAcceso({ token, clave }, ip);
   }
 
   /**
@@ -99,8 +126,12 @@ export class CompartirExpedienteController {
    */
   @Public()
   @Get('publico/:token')
-  async obtenerExpedientePublico(@Param('token') token: string) {
-    return this.compartirService.obtenerExpedientePublico(token);
+  async obtenerExpedientePublico(
+    @Param('token') token: string,
+    @Req() req: ExpressRequest,
+  ) {
+    const frontendBaseUrl = this.getFrontendBaseUrl(req);
+    return this.compartirService.obtenerExpedientePublico(token, frontendBaseUrl);
   }
 
   /**
@@ -109,7 +140,11 @@ export class CompartirExpedienteController {
    */
   @Public()
   @Get('vista/:token')
-  async obtenerVistaPublica(@Param('token') token: string) {
-    return this.compartirService.obtenerExpedientePublico(token);
+  async obtenerVistaPublica(
+    @Param('token') token: string,
+    @Req() req: ExpressRequest,
+  ) {
+    const frontendBaseUrl = this.getFrontendBaseUrl(req);
+    return this.compartirService.obtenerExpedientePublico(token, frontendBaseUrl);
   }
 }

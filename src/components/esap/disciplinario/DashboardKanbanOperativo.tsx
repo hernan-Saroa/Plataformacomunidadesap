@@ -69,6 +69,12 @@ interface Noticia {
   prioridad: 'alta' | 'media' | 'baja';
   diasPendientes: number;
   tipo: 'noticia';
+  territorial?: string;
+  fechaHechos?: string;
+  fechaQueja?: string;
+  cargo?: string;
+  dependencia?: string;
+  conductaSeleccionada?: string;
   // ✅ NUEVO: Información de asociación a proceso
   procesoAsociado?: {
     id: string;
@@ -2247,7 +2253,19 @@ export function DashboardKanbanOperativo({
       estado: mapEstadoNoticia((noticia as any).estado),
       prioridad: 'media',
       diasPendientes: 0,
-      tipo: 'noticia'
+      tipo: 'noticia',
+      territorial: (noticia as any).territorial || '',
+      fechaHechos: (noticia as any).fechaHechos
+        ? new Date((noticia as any).fechaHechos).toISOString().split('T')[0]
+        : '',
+      fechaQueja: (noticia as any).fechaQueja
+        ? new Date((noticia as any).fechaQueja).toISOString().split('T')[0]
+        : ((noticia as any).fechaRecepcion || new Date().toISOString()).split('T')[0],
+      cargo: denunciadoRaw.cargo || '',
+      dependencia: denunciadoRaw.dependencia || (noticia as any).dependenciaDenunciado || '',
+      conductaSeleccionada: Array.isArray((noticia as any).conductas) && (noticia as any).conductas.length > 0
+        ? (noticia as any).conductas[0]
+        : ''
     };
   };
 
@@ -2300,7 +2318,15 @@ export function DashboardKanbanOperativo({
       ultimaActuacion: 'Actualizado desde backend',
       fechaCreacion: ((proceso as any).createdAt || new Date().toISOString()).split('T')[0],
       tipo: 'proceso',
-      hechos: (proceso as any).news?.hechos || ''
+      hechos: (proceso as any).news?.hechos || '',
+      // ✅ NUEVO: Mapear proceso asociado desde la API
+      procesoAsociado: (proceso as any).procesoAsociado ? {
+        id: (proceso as any).procesoAsociado.id || '',
+        numeroProceso: (proceso as any).procesoAsociado.numeroProceso || '',
+        tipoAsociacion: (proceso as any).procesoAsociado.tipoAsociacion || 'similar',
+        fechaAsociacion: (proceso as any).procesoAsociado.fechaAsociacion || new Date().toISOString(),
+        justificacion: (proceso as any).procesoAsociado.justificacion || ''
+      } : undefined
     };
   };
 
@@ -2580,72 +2606,125 @@ export function DashboardKanbanOperativo({
     const itemOriginal = items.find(item => item.id === noticiaAEditar.id);
     const esProceso = itemOriginal?.tipo === 'proceso';
 
-    // ✅ Persistir en backend si es proceso
-    if (esProceso) {
-      try {
+    // Persistir en backend
+    try {
+      const hechosTexto = data.hechosSeparados?.map((h: any, idx: number) =>
+        `Hecho ${idx + 1}: ${h.descripcion}`
+      ).join('\n\n') || data.descripcionHechos || '';
+
+      const denunciadoData = Array.isArray(data.denunciados) && data.denunciados.length > 0
+        ? data.denunciados[0]
+        : data.denunciado;
+
+      const denuncianteData = Array.isArray(data.denunciantes) && data.denunciantes.length > 0
+        ? data.denunciantes[0]
+        : data.denunciante;
+
+      console.log('[DEBUG-EDIT] origen raw:', data.origen, '| mapped:', mapearOrigenNoticia(data.origen));
+      console.log('[DEBUG-EDIT] fechaHechos:', data.fechaHechos, '| porDeterminar.fechaHechos:', data.porDeterminar?.fechaHechos);
+      console.log('[DEBUG-EDIT] territorial:', data.territorial);
+
+      if (esProceso) {
         await disciplinaryService.updateProcess(noticiaAEditar.id, {
-          hechos: data.hechosSeparados?.map((h: any, idx: number) =>
-            `Hecho ${idx + 1}: ${h.descripcion}`
-          ).join('\n\n') || data.descripcionHechos,
-          disciplinable: data.denunciado ? {
-            nombre: data.denunciado.nombre,
-            cargo: data.denunciado.cargo,
-            cedula: data.denunciado.identificacion,
+          hechos: hechosTexto,
+          disciplinable: denunciadoData ? {
+            nombre: denunciadoData.nombre,
+            cargo: denunciadoData.cargo,
+            cedula: denunciadoData.identificacion,
           } : undefined,
         } as any);
-      } catch (error: any) {
-        console.error('Error al actualizar proceso:', error);
-        toast.error('Error al guardar cambios', {
-          description: error?.message || 'No se pudo guardar en el servidor'
+      } else {
+        await disciplinaryService.updateNoticia(noticiaAEditar.id, {
+          // mapearOrigenNoticia convierte la etiqueta del SELECT ('Anónimo') al enum del backend ('ANONIMO')
+          origen: data.porDeterminar?.origen ? 'POR_DETERMINAR' : mapearOrigenNoticia(data.origen),
+          territorial: data.territorial,
+          hechos: hechosTexto,
+          fechaQueja: data.fechaQueja || undefined,
+          // Si porDeterminar.fechaHechos está marcado, enviamos null para borrar la fecha en DB
+          fechaHechos: data.porDeterminar?.fechaHechos ? null : (data.fechaHechos || undefined),
+          dependenciaDenunciado: denunciadoData?.dependencia || denunciadoData?.lugarHechos || '',
+          disciplinable: denunciadoData ? {
+            nombre: denunciadoData.nombre,
+            cargo: denunciadoData.cargo,
+            cedula: denunciadoData.identificacion,
+            dependencia: denunciadoData.dependencia || denunciadoData.lugarHechos,
+          } : undefined,
+          denunciante: denuncianteData ? {
+            nombre: denuncianteData.nombre,
+            cedula: denuncianteData.identificacion,
+            email: denuncianteData.correo || denuncianteData.email,
+            telefono: denuncianteData.telefono,
+            cargo: denuncianteData.cargo,
+          } : undefined,
+          conductas: data.conductaSeleccionada ? [data.conductaSeleccionada] : undefined,
         });
-        return;
       }
+    } catch (error: any) {
+      console.error('[EDIT] Error al actualizar:', error);
+      toast.error('Error al guardar cambios', {
+        description: error?.message || 'No se pudo guardar en el servidor'
+      });
+      return;
     }
 
-    // Actualizar la noticia o proceso en el estado
-    setItems(prevItems => prevItems.map(item => {
-      if (item.id === noticiaAEditar.id && esProceso) {
-        // Actualizar proceso - MISMOS CAMPOS EN TODOS LOS ESTADOS
-        return {
-          ...item,
-          denunciado: data.denunciado ? {
-            nombre: data.denunciado.nombre || 'Sin nombre',
-            tipoIdentificacion: 'CC' as const,
-            numeroIdentificacion: data.denunciado.identificacion || 'Sin identificación'
-          } : 'Sin información',
-          hechos: data.hechosSeparados?.map((h: any, idx: number) =>
-            `Hecho ${idx + 1}: ${h.descripcion}`
-          ).join('\\n\\n') || data.descripcionHechos,
-          hechosSeparados: data.hechosSeparados,
-          conductasSeleccionadas: data.conductasSeleccionadas,
-          cargo: data.denunciado?.cargo,
-          dependencia: data.denunciado?.dependencia,
-          territorial: data.territorial
-        };
+    if (esProceso) {
+      // Actualizar proceso en el estado local
+      setItems(prevItems => prevItems.map(item => {
+        if (item.id === noticiaAEditar.id && item.tipo === 'proceso') {
+          return {
+            ...item,
+            denunciado: data.denunciado ? {
+              nombre: data.denunciado.nombre || 'Sin nombre',
+              tipoIdentificacion: 'CC' as const,
+              numeroIdentificacion: data.denunciado.identificacion || 'Sin identificación'
+            } : 'Sin información',
+            hechos: data.hechosSeparados?.map((h: any, idx: number) =>
+              `Hecho ${idx + 1}: ${h.descripcion}`
+            ).join('\n\n') || data.descripcionHechos,
+            hechosSeparados: data.hechosSeparados,
+            conductasSeleccionadas: data.conductasSeleccionadas,
+            cargo: data.denunciado?.cargo,
+            dependencia: data.denunciado?.dependencia,
+            territorial: data.territorial
+          };
+        }
+        return item;
+      }));
+    } else {
+      // Para noticias: recargar del backend para que los datos queden siempre frescos
+      try {
+        const noticiasApi = await disciplinaryService.getAllNoticias();
+        const noticiasActualizadas = (noticiasApi || []).map(toNoticiaFromApi);
+        setItems(prev => {
+          const procesos = prev.filter(i => i.tipo === 'proceso');
+          return [...noticiasActualizadas, ...procesos];
+        });
+      } catch {
+        // Fallback: actualizar estado local
+        setItems(prevItems => prevItems.map(item => {
+          if (item.tipo === 'noticia' && item.id === noticiaAEditar.id) {
+            return {
+              ...item,
+              origen: data.origen,
+              fechaRecepcion: data.fechaQueja,
+              fechaHechos: data.fechaHechos,
+              territorial: data.territorial,
+              denunciado: data.denunciado ? {
+                nombre: data.denunciado.nombre || 'Sin nombre',
+                tipoIdentificacion: 'CC' as const,
+                numeroIdentificacion: data.denunciado.identificacion || 'Sin identificación'
+              } : 'Sin información',
+              hechos: data.hechosSeparados?.map((h: any, idx: number) =>
+                `Hecho ${idx + 1}: ${h.descripcion}`
+              ).join('\n\n') || data.descripcionHechos,
+              cargo: data.denunciado?.cargo,
+              dependencia: data.denunciado?.dependencia
+            };
+          }
+          return item;
+        }));
       }
-      if (item.tipo === 'noticia' && item.id === noticiaAEditar.id) {
-        return {
-          ...item,
-          origen: data.origen,
-          fechaRecepcion: data.fechaQueja,
-          fechaHechos: data.fechaHechos,
-          territorial: data.territorial,
-          denunciado: data.denunciado ? {
-            nombre: data.denunciado.nombre || 'Sin nombre',
-            tipoIdentificacion: 'CC' as const,
-            numeroIdentificacion: data.denunciado.identificacion || 'Sin identificación'
-          } : 'Sin información',
-          hechos: data.hechosSeparados?.map((h: any, idx: number) =>
-            `Hecho ${idx + 1}: ${h.descripcion}`
-          ).join('\n\n') || data.descripcionHechos,
-          hechosSeparados: data.hechosSeparados,
-          conductasSeleccionadas: data.conductasSeleccionadas,
-          cargo: data.denunciado.cargo,
-          dependencia: data.denunciado.dependencia
-        };
-      }
-      return item;
-    }));
+    }
 
     setMostrarModalEditar(false);
     setNoticiaAEditar(null);
@@ -4706,10 +4785,14 @@ export function DashboardKanbanOperativo({
             <ModalArchivarNoticia
               noticia={{
                 id: itemSeleccionado.id,
-                numeroRadicado: itemSeleccionado.numero,
-                denunciado: {
-                  nombre: itemSeleccionado.denunciado.nombre,
-                  identificacion: `${itemSeleccionado.denunciado.tipoIdentificacion} ${itemSeleccionado.denunciado.numeroIdentificacion}`
+                radicado: itemSeleccionado.numero,
+                disciplinable: {
+                  nombre: typeof itemSeleccionado.denunciado === 'string'
+                    ? itemSeleccionado.denunciado
+                    : itemSeleccionado.denunciado?.nombre || 'Sin nombre',
+                  cedula: typeof itemSeleccionado.denunciado === 'string'
+                    ? ''
+                    : itemSeleccionado.denunciado?.numeroIdentificacion || ''
                 }
               }}
               onClose={() => {

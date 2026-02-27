@@ -292,7 +292,7 @@ export function SeccionAsignarResponsablesMejorada({
           ROLES Y ACTIVIDADES
           ══════════════════════════════════════════════════════════════════════ */}
 
-      {plan.roles.map((rol) => {
+      {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => {
         const isExpanded = rolExpandido === rol.numero;
         const actividadesConPrincipal = rol.actividades.filter(a => a.responsable !== null).length;
         const actividadesConApoyo = rol.actividades.filter(a => (a.responsablesApoyo?.length || 0) > 0).length;

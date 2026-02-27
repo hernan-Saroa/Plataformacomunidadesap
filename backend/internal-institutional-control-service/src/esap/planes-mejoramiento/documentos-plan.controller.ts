@@ -150,4 +150,107 @@ export class DocumentosPlanController {
     }
     await this.documentosPlanService.remove(id);
   }
+
+  // ========================================================================
+  // ENDPOINTS PARA DOCUMENTOS POR ACCIÓN CORRECTIVA
+  // ========================================================================
+
+  /**
+   * POST /planes-mejoramiento/:planId/acciones/:accionId/documentos
+   * Crea un nuevo documento para una acción correctiva específica
+   */
+  @Post('acciones/:accionId')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = process.env.UPLOAD_PATH || './uploads/evidencias/temp';
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const randomName = Array(32)
+            .fill(null)
+            .map(() => Math.round(Math.random() * 16).toString(16))
+            .join('');
+          cb(null, `${randomName}${extname(file.originalname)}`);
+        },
+      }),
+      limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+    }),
+  )
+  @HttpCode(HttpStatus.CREATED)
+  async createParaAccion(
+    @Param('planId') planId: string,
+    @Param('accionId') accionId: string,
+    @UploadedFile() file: MulterFile,
+    @Body() body: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se proporcionó ningún archivo');
+    }
+
+    return await this.documentosPlanService.createParaAccion(
+      file,
+      planId,
+      accionId,
+      body.nombre || file.originalname,
+      body.descripcion,
+      body.tipoDocumento || 'evidencia_accion',
+      body.subidoPor || 'system',
+      body.subidoPorId ? parseInt(body.subidoPorId, 10) : undefined,
+    );
+  }
+
+  /**
+   * GET /planes-mejoramiento/:planId/acciones/:accionId/documentos
+   * Obtiene todos los documentos de una acción correctiva
+   */
+  @Get('acciones/:accionId')
+  async findByAccion(
+    @Param('planId') planId: string,
+    @Param('accionId') accionId: string,
+  ) {
+    return await this.documentosPlanService.findByAccion(planId, accionId);
+  }
+
+  /**
+   * GET /planes-mejoramiento/:planId/documentos/agrupados
+   * Obtiene todos los documentos del plan agrupados por acción
+   */
+  @Get('agrupados')
+  async findAgrupados(@Param('planId') planId: string) {
+    return await this.documentosPlanService.findByPlanAgrupados(planId);
+  }
+
+  /**
+   * POST /planes-mejoramiento/:planId/documentos/:id/validar
+   * Valida un documento (solo auditor)
+   */
+  @Post(':id/validar')
+  async validarDocumento(
+    @Param('planId') planId: string,
+    @Param('id') id: string,
+    @Body() body: {
+      estadoValidacion: 'ACEPTADA' | 'CON_OBSERVACIONES' | 'RECHAZADA';
+      validadoPor: string;
+      comentariosAuditor?: string;
+      solicitaNuevaEvidencia?: boolean;
+    },
+  ) {
+    const documento = await this.documentosPlanService.findOne(id);
+    if (documento.planMejoramientoId !== planId) {
+      throw new NotFoundException('Documento no pertenece al plan especificado');
+    }
+
+    return await this.documentosPlanService.validarDocumento(
+      id,
+      body.estadoValidacion,
+      body.validadoPor,
+      body.comentariosAuditor,
+      body.solicitaNuevaEvidencia || false,
+    );
+  }
 }

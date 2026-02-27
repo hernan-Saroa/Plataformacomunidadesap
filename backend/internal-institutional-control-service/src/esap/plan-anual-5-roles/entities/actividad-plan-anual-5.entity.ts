@@ -104,6 +104,27 @@ export class ActividadPlanAnual5 {
     longitudMinimaObservacion?: number;
   };
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CAMPOS PARA VINCULACIÓN CON AUDITORÍAS - Migración 148
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Column({ type: 'varchar', length: 50, name: 'tipo_calculo', default: 'manual' })
+  tipoCalculo: 'manual' | 'auditorias' | 'planes_mejoramiento';
+
+  @Column({ type: 'integer', name: 'total_auditorias_programadas', default: 0 })
+  totalAuditoriasProgramadas: number;
+
+  @Column({ type: 'integer', name: 'total_auditorias_finalizadas', default: 0 })
+  totalAuditoriasFinalizadas: number;
+
+  @Column({ type: 'jsonb', name: 'auditorias_por_tipo', nullable: true })
+  auditoriasPorTipo: {
+    regular?: { programadas: number; finalizadas: number; en_proceso: number; pendientes: number };
+    territorial?: { programadas: number; finalizadas: number; en_proceso: number; pendientes: number };
+    especial?: { programadas: number; finalizadas: number; en_proceso: number; pendientes: number };
+    seguimiento?: { programadas: number; finalizadas: number; en_proceso: number; pendientes: number };
+  };
+
   // Relación con adjuntos
   @OneToMany(() => AdjuntoActividadPlanAnual5, (adjunto) => adjunto.actividad, { cascade: true })
   adjuntos: AdjuntoActividadPlanAnual5[];
