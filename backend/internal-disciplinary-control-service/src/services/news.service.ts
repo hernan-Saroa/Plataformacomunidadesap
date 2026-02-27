@@ -156,6 +156,7 @@ export class NewsService {
     if (data.territorial) noticia.territorial = data.territorial;
     if (data.dependenciaDenunciado) noticia.dependenciaDenunciado = data.dependenciaDenunciado;
     if (data.hechos) noticia.hechos = data.hechos;
+    if (data.fechaQueja) noticia.fechaQueja = new Date(data.fechaQueja);
     if (data.denunciante) noticia.denunciante = data.denunciante;
     if (data.disciplinable) noticia.disciplinable = data.disciplinable;
     if (data.conductas) noticia.conductas = data.conductas;

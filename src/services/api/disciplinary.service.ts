@@ -237,6 +237,7 @@ class DisciplinaryService {
         disciplinable?: any;
         conductas?: string[];
         fechaHechos?: string | null;
+        fechaQueja?: string;
         usuario?: string;
     }): Promise<DisciplinaryNews> {
         return apiClient.put<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`, data);

@@ -71,6 +71,7 @@ interface Noticia {
   tipo: 'noticia';
   territorial?: string;
   fechaHechos?: string;
+  fechaQueja?: string;
   cargo?: string;
   dependencia?: string;
   conductaSeleccionada?: string;
@@ -2257,6 +2258,9 @@ export function DashboardKanbanOperativo({
       fechaHechos: (noticia as any).fechaHechos
         ? new Date((noticia as any).fechaHechos).toISOString().split('T')[0]
         : '',
+      fechaQueja: (noticia as any).fechaQueja
+        ? new Date((noticia as any).fechaQueja).toISOString().split('T')[0]
+        : ((noticia as any).fechaRecepcion || new Date().toISOString()).split('T')[0],
       cargo: denunciadoRaw.cargo || '',
       dependencia: denunciadoRaw.dependencia || (noticia as any).dependenciaDenunciado || '',
       conductaSeleccionada: Array.isArray((noticia as any).conductas) && (noticia as any).conductas.length > 0
@@ -2635,6 +2639,7 @@ export function DashboardKanbanOperativo({
           origen: data.porDeterminar?.origen ? undefined : mapearOrigenNoticia(data.origen),
           territorial: data.territorial,
           hechos: hechosTexto,
+          fechaQueja: data.fechaQueja || undefined,
           // Si porDeterminar.fechaHechos está marcado, enviamos null para borrar la fecha en DB
           fechaHechos: data.porDeterminar?.fechaHechos ? null : (data.fechaHechos || undefined),
           dependenciaDenunciado: denunciadoData?.dependencia || denunciadoData?.lugarHechos || '',
