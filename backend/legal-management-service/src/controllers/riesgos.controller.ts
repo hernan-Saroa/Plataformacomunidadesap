@@ -96,6 +96,14 @@ export class RiesgosController {
         return this.riesgosService.restaurar(id);
     }
 
+    @Patch(':id/eliminar')
+    async marcarEliminado(
+        @Param('id') id: string,
+        @Body('motivo') motivo?: string
+    ): Promise<Riesgo> {
+        return this.riesgosService.marcarEliminado(id, motivo);
+    }
+
     @Delete(':id/permanente')
     async eliminarPermanente(@Param('id') id: string): Promise<void> {
         return this.riesgosService.eliminarPermanente(id);

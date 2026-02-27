@@ -52,6 +52,19 @@ export class ProcessService {
       // DEBUG LOGGING
       console.log(`[ProcessService] Assigning process to news ${noticia.id}. Status: ${noticia.estado}`);
 
+      // ✅ NUEVO: Verificar que no existe ya un proceso para esta noticia
+      const existingProcess = await this.processRepository.findOne({
+        where: { newsId: createProcessDto.newsId }
+      });
+
+      if (existingProcess) {
+        console.error(`[ProcessService] Ya existe un proceso para esta noticia: ${createProcessDto.newsId}`);
+        throw new HttpException(
+          'Ya existe un proceso disciplinario para esta noticia. No se puede crear otro.',
+          HttpStatus.CONFLICT,
+        );
+      }
+
       // DEBUG LOGGING
       console.log(`[ProcessService] Assigning process to news ${noticia.id}. Status: ${noticia.estado}`);
 
@@ -272,7 +285,21 @@ export class ProcessService {
 
         return {
           ...p,
+          // ✅ Transformar campos planos a objeto anidado para el frontend
+          procesoAsociado: p.procesoAsociadoId ? {
+            id: p.procesoAsociadoId,
+            numeroProceso: p.procesoAsociadoNumero || '',
+            tipoAsociacion: p.procesoAsociadoTipo || 'similar',
+            fechaAsociacion: p.procesoAsociadoFecha ? new Date(p.procesoAsociadoFecha).toISOString() : new Date().toISOString(),
+            justificacion: p.procesoAsociadoJustificacion || ''
+          } : undefined,
           abogadoAsignadoNombre: p.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+          // ✅ Incluir campos de proceso asociado (planos para compatibilidad)
+          procesoAsociadoId: p.procesoAsociadoId,
+          procesoAsociadoNumero: p.procesoAsociadoNumero,
+          procesoAsociadoTipo: p.procesoAsociadoTipo,
+          procesoAsociadoFecha: p.procesoAsociadoFecha,
+          procesoAsociadoJustificacion: p.procesoAsociadoJustificacion,
           draftsCount,
           documentsCount,
           timePercentage: Math.round(timePercentage * 100) / 100
@@ -361,6 +388,20 @@ export class ProcessService {
 
     return {
       ...proceso,
+      // ✅ Transformar campos planos a objeto anidado para el frontend
+      procesoAsociado: proceso.procesoAsociadoId ? {
+        id: proceso.procesoAsociadoId,
+        numeroProceso: proceso.procesoAsociadoNumero || '',
+        tipoAsociacion: proceso.procesoAsociadoTipo || 'similar',
+        fechaAsociacion: proceso.procesoAsociadoFecha ? new Date(proceso.procesoAsociadoFecha).toISOString() : new Date().toISOString(),
+        justificacion: proceso.procesoAsociadoJustificacion || ''
+      } : undefined,
+      // ✅ Incluir campos de proceso asociado (planos para compatibilidad)
+      procesoAsociadoId: proceso.procesoAsociadoId,
+      procesoAsociadoNumero: proceso.procesoAsociadoNumero,
+      procesoAsociadoTipo: proceso.procesoAsociadoTipo,
+      procesoAsociadoFecha: proceso.procesoAsociadoFecha,
+      procesoAsociadoJustificacion: proceso.procesoAsociadoJustificacion,
       draftsCount,
       documentsCount,
       timePercentage: Math.round(timePercentage * 100) / 100
@@ -398,6 +439,20 @@ export class ProcessService {
 
       return {
         ...p,
+        // ✅ Transformar campos planos a objeto anidado para el frontend
+        procesoAsociado: p.procesoAsociadoId ? {
+          id: p.procesoAsociadoId,
+          numeroProceso: p.procesoAsociadoNumero || '',
+          tipoAsociacion: p.procesoAsociadoTipo || 'similar',
+          fechaAsociacion: p.procesoAsociadoFecha ? new Date(p.procesoAsociadoFecha).toISOString() : new Date().toISOString(),
+          justificacion: p.procesoAsociadoJustificacion || ''
+        } : undefined,
+        // ✅ Incluir campos de proceso asociado (planos para compatibilidad)
+        procesoAsociadoId: p.procesoAsociadoId,
+        procesoAsociadoNumero: p.procesoAsociadoNumero,
+        procesoAsociadoTipo: p.procesoAsociadoTipo,
+        procesoAsociadoFecha: p.procesoAsociadoFecha,
+        procesoAsociadoJustificacion: p.procesoAsociadoJustificacion,
         draftsCount,
         documentsCount,
         timePercentage: Math.round(timePercentage * 100) / 100
@@ -843,6 +898,59 @@ export class ProcessService {
     if (result.affected === 0) {
       throw new HttpException('Proceso no encontrado', HttpStatus.NOT_FOUND);
     }
+  }
+
+  /**
+   * ✅ NUEVO: Asocia un proceso a otro proceso disciplinario
+   */
+  async associateProcess(
+    procesoOrigenId: string,
+    procesoDestinoId: string,
+    tipoAsociacion: 'conexo' | 'similar' | 'consolidado',
+    justificacion: string,
+  ): Promise<DisciplinaryProcess> {
+    // Validar que el proceso origen existe
+    const procesoOrigen = await this.processRepository.findOne({
+      where: { id: procesoOrigenId },
+    });
+
+    if (!procesoOrigen) {
+      throw new HttpException('Proceso origen no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    // Validar que el proceso destino existe
+    const procesoDestino = await this.processRepository.findOne({
+      where: { id: procesoDestinoId },
+    });
+
+    if (!procesoDestino) {
+      throw new HttpException('Proceso destino no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    // Validar que no se intente asociar a sí mismo
+    if (procesoOrigenId === procesoDestinoId) {
+      throw new HttpException(
+        'Un proceso no puede asociarse a sí mismo',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Actualizar el proceso origen con la información del proceso asociado
+    procesoOrigen.procesoAsociadoId = procesoDestinoId;
+    procesoOrigen.procesoAsociadoNumero = procesoDestino.radicadoProceso;
+    procesoOrigen.procesoAsociadoTipo = tipoAsociacion;
+    procesoOrigen.procesoAsociadoFecha = new Date();
+    procesoOrigen.procesoAsociadoJustificacion = justificacion;
+
+    console.log('✅ Asociando proceso:', {
+      procesoOrigenId,
+      procesoDestinoId,
+      radicadoDestino: procesoDestino.radicadoProceso,
+      tipoAsociacion,
+      justificacion,
+    });
+
+    return await this.processRepository.save(procesoOrigen);
   }
 }
 

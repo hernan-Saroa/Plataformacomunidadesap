@@ -2054,7 +2054,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       variant="outline"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!evidencia.id || !evidencia.processId) {
+                        if (!evidencia.archivoUrl) {
                           toast.error('URL no disponible');
                           return;
                         }
@@ -2065,15 +2065,18 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                         const officeTypes = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
                         if (officeTypes.includes(tipoArchivo)) {
                           toast.info('Descargando archivo Office para visualización...');
+                          // Usar la URL del backend para descargar
+                          const downloadUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, false, evidencia.archivoNombre);
                           descargarArchivo(
-                            buildDownloadUrl(evidencia.processId, evidencia.id, false),
+                            downloadUrl,
                             evidencia.archivoNombre || 'documento'
                           );
                           return;
                         }
 
-                        // Para todos los demás formatos: streaming inline via el servicio disciplinario
-                        window.open(buildDownloadUrl(evidencia.processId, evidencia.id, true), '_blank');
+                        // Para todos los demás formatos: usar la URL del backend
+                        const viewUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, true, evidencia.archivoNombre);
+                        window.open(viewUrl, '_blank');
                       }}
                       title="Ver documento"
                       style={{ borderColor: '#003DA5', color: '#003DA5' }}
@@ -2086,13 +2089,15 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       variant="outline"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!evidencia.id || !evidencia.processId) {
+                        if (!evidencia.archivoUrl) {
                           toast.error('URL no disponible');
                           return;
                         }
 
+                        // Usar la URL del backend para descargar
+                        const downloadUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, false, evidencia.archivoNombre);
                         descargarArchivo(
-                          buildDownloadUrl(evidencia.processId, evidencia.id, false),
+                          downloadUrl,
                           evidencia.archivoNombre || 'evidencia'
                         );
                       }}

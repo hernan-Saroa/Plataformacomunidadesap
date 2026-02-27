@@ -768,7 +768,7 @@ export function ModuloPlanesMejoramientoV4() {
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Seleccionar ente" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="z-[9999]">
                         <SelectItem value="CONTRALORIA">🏛️ Contraloría General</SelectItem>
                         <SelectItem value="PROCURADURIA">⚖️ Procuraduría General</SelectItem>
                         <SelectItem value="OCI">🔍 Oficina Control Interno</SelectItem>

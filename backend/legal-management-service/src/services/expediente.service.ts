@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
 import { Expediente } from '../entities/expediente.entity';
@@ -7,6 +7,10 @@ import { Documento } from '../entities/documento.entity';
 import { Evidencia } from '../entities/evidencia.entity';
 import { DecisionDisciplinaria } from '../entities/decision-disciplinaria.entity';
 import { ExcepcionProcesal, TipoExcepcion, EstadoExcepcion } from '../entities/excepcion-procesal.entity';
+import { TareaExpediente } from '../entities/tarea-expediente.entity';
+import { NotaExpediente } from '../entities/nota-expediente.entity';
+import { Audiencia } from '../entities/audiencia.entity';
+import { Acta } from '../entities/acta.entity';
 
 @Injectable()
 export class ExpedienteService {
@@ -381,7 +385,8 @@ export class ExpedienteService {
     }
 
     /**
-     * Eliminar permanentemente un expediente de la BD
+     * Eliminar permanentemente un expediente de la BD.
+     * Elimina en cascada todas las entidades hijas asociadas dentro de una transacción.
      */
     async eliminarPermanente(id: string): Promise<void> {
         const expediente = await this.expedienteRepository.findOne({ where: { id } });
@@ -392,7 +397,43 @@ export class ExpedienteService {
             throw new ConflictException('Solo se pueden eliminar permanentemente expedientes que estén en estado ELIMINADO');
         }
 
-        await this.expedienteRepository.delete(id);
+        const logger = new Logger('ExpedienteService');
+        logger.log(`Eliminando permanentemente expediente ${id} y todas sus relaciones...`);
+
+        await this.expedienteRepository.manager.transaction(async (manager) => {
+            // 1. Entidades con @ManyToOne FK al expediente SIN onDelete CASCADE
+            await manager.delete(TareaExpediente, { expedienteId: id });
+            await manager.delete(NotaExpediente, { expedienteId: id });
+            await manager.delete(Evidencia, { expedienteId: id });
+            await manager.delete(Audiencia, { expedienteId: id });
+            await manager.delete(Acta, { expedienteId: id });
+            await manager.delete(DecisionDisciplinaria, { expedienteId: id });
+            await manager.delete(ExcepcionProcesal, { expedienteId: id });
+
+            // 2. Actuaciones (loose coupling - sin FK formal en BD)
+            await manager.delete(Actuacion, { expedienteId: id });
+
+            // 3. Oficios (sin relación ORM formal, solo columna plana)
+            await manager
+                .createQueryBuilder()
+                .delete()
+                .from('legal_management.oficios_enviados')
+                .where('expediente_id = :id', { id })
+                .execute();
+
+            // 4. Correos jurídicos (desvincular, no borrar — los correos pueden pertenecer a otros contextos)
+            //    Usamos SQL raw porque CorreoJuridico no mapea expediente_id como propiedad TypeORM
+            await manager.query(
+                `UPDATE legal_management.correos_juridicos SET expediente_id = NULL WHERE expediente_id = $1`,
+                [id]
+            );
+
+            // 5. Finalmente eliminar el expediente
+            //    Actor, Documento, Comentario, Auto se borran por ON DELETE CASCADE en BD
+            await manager.delete(Expediente, { id });
+
+            logger.log(`Expediente ${id} eliminado permanentemente con éxito.`);
+        });
     }
 
     async deleteExpediente(id: string): Promise<void> {

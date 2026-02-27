@@ -168,6 +168,23 @@ export class LaborCertificatePdfService {
     });
   }
 
+  private calculateTechnicalBonusPercentage(
+    bonusValue: number,
+    salaryBase: number,
+  ): number {
+    if (!Number.isFinite(bonusValue) || !Number.isFinite(salaryBase)) return 0;
+    if (bonusValue <= 0 || salaryBase <= 0) return 0;
+    return Number(((bonusValue / salaryBase) * 100).toFixed(2));
+  }
+
+  private formatPercentage(value: number): string {
+    if (!Number.isFinite(value) || value <= 0) return '0';
+    return value.toLocaleString('es-CO', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+  }
+
   private normalizeCodeValue(value?: string | number | null): string {
     if (value === null || value === undefined) return '';
     const raw = String(value).trim();
@@ -205,10 +222,13 @@ export class LaborCertificatePdfService {
     if (!base || base === 'N/A' || encargoType !== 'E') {
       return base;
     }
-    if (/\bE$/i.test(base)) {
-      return base;
+    if (/\(\s*E\s*\)$/i.test(base)) {
+      return base.replace(/\(\s*E\s*\)$/i, '(E)');
     }
-    return `${base} E`;
+    if (/\sE$/i.test(base)) {
+      return base.replace(/\sE$/i, ' (E)');
+    }
+    return `${base} (E)`;
   }
 
   private isZeroValue(value: string): boolean {
@@ -533,11 +553,13 @@ export class LaborCertificatePdfService {
     }
 
     if (includeTechnicalBonus) {
-      const bonusBase =
-        this.normalizeMoneyValue(certificate.technical_bonus) ||
-        this.normalizeMoneyValue(salarioBase * 0.2);
+      const bonusBase = this.normalizeMoneyValue(certificate.technical_bonus);
       if (bonusBase > 0) {
-        result = this.insertTechnicalBonus(result, bonusBase);
+        const bonusPercentage = this.calculateTechnicalBonusPercentage(
+          bonusBase,
+          salarioBase,
+        );
+        result = this.insertTechnicalBonus(result, bonusBase, bonusPercentage);
       }
     }
 
@@ -656,10 +678,17 @@ export class LaborCertificatePdfService {
     return result;
   }
 
-  private insertTechnicalBonus(html: string, bonusValue: number): string {
-    const bonusText = `<p>Percibe mensualmente una prima tecnica de ($${this.formatMoney(
+  private insertTechnicalBonus(
+    html: string,
+    bonusValue: number,
+    bonusPercentage: number,
+  ): string {
+    const bonusValueText = this.numeroALetras(bonusValue);
+    const bonusText = `<p>Percibe una prima técnica en un porcentaje igual al (${this.formatPercentage(
+      bonusPercentage,
+    )}%) sobre la asignación básica mensual de ${bonusValueText} (${this.formatMoney(
       bonusValue,
-    )}) adicional a su asignacion basica mensual.</p>`;
+    )}) pesos m/cte.</p>`;
 
     const expideRegex = /<(p|div|li)[^>]*>[\s\S]*?se expide[\s\S]*?<\/\1>/i;
     const bonusRegex = /<(p|div|li)[^>]*>[\s\S]*?prima\s+t(?:e|\u00e9)cnica[\s\S]*?<\/\1>/gi;
@@ -671,7 +700,7 @@ export class LaborCertificatePdfService {
       result = result.replace(bonusRegex, '');
     }
 
-    const bonusParagraph = existingBonus?.[0] || bonusText;
+    const bonusParagraph = bonusText;
 
     let lastSalaryMatch: RegExpExecArray | null = null;
     let match: RegExpExecArray | null = null;

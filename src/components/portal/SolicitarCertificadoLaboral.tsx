@@ -73,6 +73,14 @@ interface CertificadoGenerado {
   certificado_completo?: any; // Datos completos del certificado para el visor PDF
 }
 
+interface PrimaTecnicaMetadata {
+  documento: string;
+  disponible: boolean;
+  porcentaje: number;
+  valor: number;
+  categoria: 'DIRECTIVOS' | 'COORDINADORES' | null;
+}
+
 const formatearTiempo = (segundos: number): string => {
   const minutos = Math.floor(segundos / 60);
   const segs = segundos % 60;
@@ -276,6 +284,21 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       maximumFractionDigits: 0,
     });
 
+  const normalizarNumeroDecimal = (value?: string | number | null) => {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+
+    const cleaned = String(value)
+      .trim()
+      .replace(/\s+/g, '')
+      .replace(',', '.')
+      .replace(/[^\d.-]/g, '');
+    if (!cleaned) return 0;
+
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
   const normalizarBoolean = (value: unknown, fallback = false): boolean => {
     if (typeof value === 'boolean') return value;
     if (typeof value === 'number') return value === 1;
@@ -304,6 +327,50 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       codeLabel: 'Codigo',
     });
 
+  const construirMetadataPrimaTecnica = (
+    documento: string,
+    origen?: any,
+  ): PrimaTecnicaMetadata => {
+    const porcentaje = Number(
+      normalizarNumeroDecimal(
+        origen?.technical_bonus_percentage ??
+          origen?.technicalBonusPercentage ??
+          0,
+      ).toFixed(2),
+    );
+    const valor = Number(
+      normalizarNumeroDecimal(
+        origen?.technical_bonus_value ??
+          origen?.technicalBonusValue ??
+          origen?.technical_bonus ??
+          origen?.technicalBonus ??
+          0,
+      ).toFixed(2),
+    );
+
+    const disponibleBackend = normalizarBoolean(
+      origen?.technical_bonus_available ?? origen?.technicalBonusAvailable,
+      false,
+    );
+    const disponible = disponibleBackend || porcentaje > 0 || valor > 0;
+    const categoriaRaw = String(
+      origen?.technical_bonus_category ?? origen?.technicalBonusCategory ?? '',
+    ).trim()
+      .toUpperCase();
+    const categoria =
+      categoriaRaw === 'DIRECTIVOS' || categoriaRaw === 'COORDINADORES'
+        ? (categoriaRaw as 'DIRECTIVOS' | 'COORDINADORES')
+        : null;
+
+    return {
+      documento,
+      disponible,
+      porcentaje: disponible ? porcentaje : 0,
+      valor: disponible ? valor : 0,
+      categoria,
+    };
+  };
+
   const mapCertificadoExistente = (cert: any): CertificadoGenerado => {
     const templateSnapshot = cert?.template_snapshot || cert?.templateSnapshot || null;
     const templateType =
@@ -317,7 +384,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     const bonusBase = normalizarMonto(
       cert.technical_bonus ??
         cert.request?.technical_bonus ??
-        salarioBase * 0.2,
+        0,
     );
     const incluyeSalarioBackend = normalizarBoolean(
       cert.include_salary ??
@@ -422,6 +489,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
   const [certificadoExistente, setCertificadoExistente] = useState(false);
   const [incluirSalario, setIncluirSalario] = useState(true);
   const [incluirPrimaTecnica, setIncluirPrimaTecnica] = useState(false);
+  const [primaTecnicaMetadata, setPrimaTecnicaMetadata] = useState<PrimaTecnicaMetadata | null>(null);
+  const [validandoPrimaTecnica, setValidandoPrimaTecnica] = useState(false);
   const certificadoBaseRef = useRef<CertificadoGenerado | null>(null);
   
   // Paso 1: Ingreso de documento
@@ -515,7 +584,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     const empleadoCertificado = cert.certificado_completo?.empleado;
 
     const bonusBase = incluirPrima
-      ? normalizarMonto(cert.prima_tecnica ?? salarioBase * 0.2)
+      ? normalizarMonto(cert.prima_tecnica ?? 0)
       : 0;
 
     const certificadoActualizado: CertificadoGenerado = {
@@ -603,6 +672,120 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     setDigitosCodigo(nuevosDigitos);
   };
 
+  const consultarDocumento = async (documento: string) => {
+    const doc = String(documento || '').trim();
+    const verificacion = await certificadosService.autoservicio.verificarDocumento(doc);
+    const solicitudVerificada =
+      verificacion?.solicitud && typeof verificacion.solicitud === 'object'
+        ? verificacion.solicitud
+        : null;
+
+    const metadataOrigen = {
+      ...(verificacion || {}),
+      ...(solicitudVerificada || {}),
+    };
+    const metadata = construirMetadataPrimaTecnica(doc, metadataOrigen);
+    setPrimaTecnicaMetadata(metadata);
+
+    return { verificacion, solicitudVerificada, metadata };
+  };
+
+  const validarPrimaTecnicaPorDocumento = async (
+    documento: string,
+    opciones: {
+      mostrarToastExito?: boolean;
+      mostrarToastError?: boolean;
+    } = {},
+  ) => {
+    const doc = String(documento || '').trim();
+    if (!doc) {
+      if (opciones.mostrarToastError !== false) {
+        toast.error('Primero ingresa tu numero de documento.');
+      }
+      return false;
+    }
+
+    if (doc.length < 6) {
+      if (opciones.mostrarToastError !== false) {
+        toast.error('El numero de documento debe tener al menos 6 digitos.');
+      }
+      return false;
+    }
+
+    if (primaTecnicaMetadata?.documento === doc) {
+      if (!primaTecnicaMetadata.disponible) {
+        if (opciones.mostrarToastError !== false) {
+          toast.error(
+            'No tienes Prima Tecnica registrada. No es posible seleccionar esta opcion.',
+          );
+        }
+        return false;
+      }
+      if (opciones.mostrarToastExito) {
+        toast.success('Prima Tecnica habilitada para este documento.');
+      }
+      return true;
+    }
+
+    setValidandoPrimaTecnica(true);
+    try {
+      const { verificacion, metadata } = await consultarDocumento(doc);
+      if (!verificacion?.existe) {
+        if (opciones.mostrarToastError !== false) {
+          toast.error('No encontramos tu documento en la base de datos de ESAP.');
+        }
+        return false;
+      }
+
+      if (!metadata.disponible) {
+        if (opciones.mostrarToastError !== false) {
+          toast.error(
+            'No tienes Prima Tecnica registrada. No es posible seleccionar esta opcion.',
+          );
+        }
+        return false;
+      }
+
+      if (opciones.mostrarToastExito) {
+        toast.success('Prima Tecnica habilitada para este documento.');
+      }
+      return true;
+    } catch (error: any) {
+      if (opciones.mostrarToastError !== false) {
+        toast.error(
+          error?.response?.data?.message ||
+            error?.message ||
+            'No pudimos validar la Prima Tecnica en este momento.',
+        );
+      }
+      return false;
+    } finally {
+      setValidandoPrimaTecnica(false);
+    }
+  };
+
+  const handleTogglePrimaTecnica = async (checked: boolean | 'indeterminate') => {
+    const activar = checked === true;
+
+    if (!activar) {
+      setIncluirPrimaTecnica(false);
+      return;
+    }
+
+    if (!incluirSalario) {
+      setIncluirPrimaTecnica(false);
+      toast.error('Debes incluir la informacion salarial para habilitar Prima Tecnica.');
+      return;
+    }
+
+    const documentoIngresado = (numeroDocumentoRef.current || numeroDocumento).trim();
+    const permitido = await validarPrimaTecnicaPorDocumento(documentoIngresado, {
+      mostrarToastError: true,
+    });
+
+    setIncluirPrimaTecnica(permitido && incluirSalario);
+  };
+
   // PASO 1: Buscar empleado y enviar código
   const handleBuscarEmpleado = async () => {
     // Validaciones
@@ -632,7 +815,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
 
     try {
       // Verificar si existe, si ya tiene certificado activo y si es docente
-      const verificacion = await certificadosService.autoservicio.verificarDocumento(documentoIngresado);
+      const { verificacion, solicitudVerificada, metadata } = await consultarDocumento(documentoIngresado);
       if (!verificacion || typeof verificacion !== 'object' || !('existe' in verificacion)) {
         setBuscandoEmpleado(false);
         toast.error('No pudimos validar tu documento en este momento. Intenta nuevamente.');
@@ -645,8 +828,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         return;
       }
 
-      const solicitudVerificada =
-        verificacion.solicitud && typeof verificacion.solicitud === 'object' ? verificacion.solicitud : null;
       const estadoVerificacion = resolverEstadoLaboral(
         solicitudVerificada?.hiring_date ?? solicitudVerificada?.hiringDate,
         solicitudVerificada?.request_date ?? solicitudVerificada?.requestDate,
@@ -660,6 +841,15 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           description: 'Por favor comunícate con Talento Humano para validar tu situación laboral.',
           duration: 6000,
         });
+        return;
+      }
+
+      if (incluirSalario && incluirPrimaTecnica && !metadata.disponible) {
+        setBuscandoEmpleado(false);
+        setIncluirPrimaTecnica(false);
+        toast.error(
+          'No tienes Prima Tecnica registrada en tu informacion laboral. No es posible incluirla en el certificado.',
+        );
         return;
       }
 
@@ -689,6 +879,12 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
 
       // Crear objeto empleado desde la respuesta del backend
       const solicitud = response.solicitud && typeof response.solicitud === 'object' ? response.solicitud : {};
+      setPrimaTecnicaMetadata(
+        construirMetadataPrimaTecnica(documentoIngresado, {
+          ...(primaTecnicaMetadata || {}),
+          ...solicitud,
+        }),
+      );
       const templateType = resolverTemplateType(solicitud);
       const cargoNormalizado = construirCargoVisual(
         solicitud.career_category || solicitud.position_category,
@@ -780,10 +976,24 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         const bonusBase = normalizarMonto(
           cert.technical_bonus ??
             cert.request?.technical_bonus ??
-            salarioBase * 0.2,
+            0,
         );
         const incluyeSalarioFinal = incluirSalario;
-        const incluyePrimaFinal = incluyeSalarioFinal ? incluirPrimaTecnica : false;
+        const incluyePrimaBackend = normalizarBoolean(
+          cert.include_technical_bonus ??
+            cert.includeTechnicalBonus ??
+            cert.request?.include_technical_bonus ??
+            cert.request?.includeTechnicalBonus,
+          incluirPrimaTecnica,
+        );
+        const incluyePrimaFinal = incluyeSalarioFinal ? incluyePrimaBackend : false;
+        setPrimaTecnicaMetadata(
+          construirMetadataPrimaTecnica(numeroDocumento, {
+            ...cert,
+            ...(cert.request || {}),
+            technical_bonus: bonusBase,
+          }),
+        );
         const cargoFormateado = construirCargoVisual(
           cert.career_category || cert.position_category || empleadoEncontrado?.cargo,
           cert.cod_cargo || cert.codCargo,
@@ -983,6 +1193,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     setNumeroDocumento('');
     setIncluirSalario(true);
     setIncluirPrimaTecnica(false);
+    setPrimaTecnicaMetadata(null);
+    setValidandoPrimaTecnica(false);
     setDigitosCodigo(['', '', '', '', '', '']);
     setCodigoEnviado('');
     setEmpleadoEncontrado(null);
@@ -1280,6 +1492,10 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                               }
                               numeroDocumentoRef.current = limpio;
                               setEstadoLaboral(null);
+                              setPrimaTecnicaMetadata(null);
+                              if (incluirPrimaTecnica) {
+                                setIncluirPrimaTecnica(false);
+                              }
                             }}
                             className="h-12 pl-10 border-2"
                             maxLength={15}
@@ -1321,8 +1537,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                         <Checkbox
                           id="incluir-prima-tecnica-paso1"
                           checked={incluirSalario && incluirPrimaTecnica}
-                          disabled={!incluirSalario}
-                          onCheckedChange={(checked) => setIncluirPrimaTecnica(checked === true && incluirSalario)}
+                          disabled={!incluirSalario || validandoPrimaTecnica}
+                          onCheckedChange={handleTogglePrimaTecnica}
                           className="mt-1"
                         />
                         <div>
@@ -1676,8 +1892,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                     <Checkbox
                       id="toggle-prima-tecnica"
                       checked={incluirSalario && incluirPrimaTecnica}
-                      disabled={!incluirSalario}
-                      onCheckedChange={(checked) => setIncluirPrimaTecnica(checked === true && incluirSalario)}
+                      disabled={!incluirSalario || validandoPrimaTecnica}
+                      onCheckedChange={handleTogglePrimaTecnica}
                       className="mt-1"
                     />
                     <div>
@@ -1752,12 +1968,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                               <p className="text-gray-600 mb-1">Prima Tecnica</p>
                               <p className="font-bold text-gray-900">
                                 $
-                                {formatearMonto(
-                                  certificadoGenerado.prima_tecnica ??
-                                    normalizarMonto(
-                                      (certificadoGenerado.salario_original ?? certificadoGenerado.salario_actual ?? 0) * 0.2,
-                                    ),
-                                )}{' '}
+                                {formatearMonto(certificadoGenerado.prima_tecnica ?? 0)}{' '}
                                 COP
                               </p>
                             </div>

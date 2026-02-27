@@ -229,6 +229,11 @@ export default function App() {
 
   // Cargar sesión guardada al iniciar
   useEffect(() => {
+    // No restaurar sesión para rutas públicas de expediente compartido
+    if (window.location.pathname.startsWith('/expediente-compartido/')) {
+      return;
+    }
+
     const applySessionFromUser = (user: any) => {
       const userEmail = user?.person?.email || user?.email || '';
       const userName = user?.person?.first_name
@@ -398,6 +403,14 @@ export default function App() {
     ) {
       setCurrentView('solicitar-certificados-graduados');
       setVistaActual('solicitar-certificados-graduados');
+      return;
+    }
+
+    // Expediente compartido: no restaurar sesión, ir directamente a la página pública
+    if (window.location.pathname.startsWith('/expediente-compartido/')) {
+      // No restaurar sesión para rutas públicas de expediente compartido
+      // Esto permite ver el expediente sin necesidad de login
+      return;
     }
   }, []);
 
@@ -477,6 +490,7 @@ export default function App() {
   const handleLoginClick = () => {
     setCurrentView('login');
     setVistaActual('login');
+    navigate('/');
   };
 
   // ============================================

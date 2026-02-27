@@ -39,6 +39,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     // Evidencias de control institucional
     /^\/control-institucional\/api\/v\d+\/evidencias\/[^/]+\/preview/i,
     /^\/control-institucional\/api\/v\d+\/evidencias\/[^/]+\/download/i,
+    // Expediente compartido - control disciplinario (público)
+    /^\/control-disciplinario\/api\/v\d+\/compartir-expediente\/verificar/i,
+    /^\/control-disciplinario\/api\/v\d+\/compartir-expediente\/publico\/.+/i,
+    /^\/control-disciplinario\/api\/v\d+\/compartir-expediente\/vista\/.+/i,
   ];
 
   constructor(private readonly reflector: Reflector) {

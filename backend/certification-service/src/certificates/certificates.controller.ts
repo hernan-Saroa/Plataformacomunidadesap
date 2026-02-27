@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Req, Query, HttpCode, HttpStatus, Res, StreamableFile } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Req, Query, HttpCode, HttpStatus, Res, StreamableFile } from '@nestjs/common';
 import type { Response } from 'express';
 import { CertificatesService } from './certificates.service';
 import { CertificateRequest } from './certificate-request.entity';
@@ -7,6 +7,14 @@ import { Public } from '../auth/public.decorator';
 @Controller('certificates')
 export class CertificatesController {
   constructor(private readonly certificatesService: CertificatesService) {}
+
+  private resolveRequestUsername(req: any): string {
+    const headerUser = req?.headers?.['x-user-username'];
+    const normalizedHeaderUser = Array.isArray(headerUser)
+      ? String(headerUser[0] || '').trim()
+      : String(headerUser || '').trim();
+    return normalizedHeaderUser || req?.user?.username || '';
+  }
 
   // ============================================
   // SOLICITUDES DE CERTIFICADO
@@ -39,6 +47,85 @@ export class CertificatesController {
     @Body() data: Partial<CertificateRequest>,
   ) {
     return await this.certificatesService.updateSolicitud(id, data);
+  }
+
+  // ============================================
+  // PRIMA TECNICA
+  // ============================================
+
+  @Get('technical-bonus/search')
+  async searchTechnicalBonusCandidates(
+    @Query('query') query?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit = limit ? Number.parseInt(limit, 10) : 10;
+    return await this.certificatesService.searchTechnicalBonusCandidates(query || '', parsedLimit);
+  }
+
+  @Get('technical-bonus')
+  async getTechnicalBonusAssignments(@Query('category') category?: string) {
+    return await this.certificatesService.listTechnicalBonusAssignments(category || '');
+  }
+
+  @Post('technical-bonus')
+  async upsertTechnicalBonusAssignment(
+    @Body()
+    body: {
+      category: string;
+      idNumber: string;
+      fullName?: string;
+      requestId?: string;
+      percentage: number;
+      updatedBy?: string;
+    },
+    @Req() req: any,
+  ) {
+    return await this.certificatesService.upsertTechnicalBonusAssignment({
+      ...body,
+      updatedBy: body.updatedBy || this.resolveRequestUsername(req),
+    });
+  }
+
+  @Post('technical-bonus/bulk')
+  async bulkUpsertTechnicalBonusAssignments(
+    @Body()
+    body: {
+      category: string;
+      rows: Array<{
+        rowNumber?: number;
+        fullName?: string;
+        idNumber?: string;
+        percentage?: number | string;
+      }>;
+      updatedBy?: string;
+    },
+    @Req() req: any,
+  ) {
+    return await this.certificatesService.bulkUpsertTechnicalBonusAssignments({
+      ...body,
+      updatedBy: body.updatedBy || this.resolveRequestUsername(req),
+    });
+  }
+
+  @Put('technical-bonus/:id')
+  async updateTechnicalBonusAssignment(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      percentage: number;
+      updatedBy?: string;
+    },
+    @Req() req: any,
+  ) {
+    return await this.certificatesService.updateTechnicalBonusAssignment(id, {
+      percentage: body.percentage,
+      updatedBy: body.updatedBy || this.resolveRequestUsername(req),
+    });
+  }
+
+  @Delete('technical-bonus/:id')
+  async deleteTechnicalBonusAssignment(@Param('id') id: string) {
+    return await this.certificatesService.deleteTechnicalBonusAssignment(id);
   }
 
   // ============================================

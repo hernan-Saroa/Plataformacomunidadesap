@@ -795,9 +795,9 @@ Metodología DAFP - MECI
               </div>
             </div>
 
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-sm text-red-800">
-                <strong>⚠️ Atención:</strong> Esta acción es <strong>irreversible</strong>. El riesgo será eliminado permanentemente junto con todo su historial y documentos asociados.
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+              <p className="text-sm text-orange-800">
+                <strong>⚠️ Atención:</strong> El riesgo será enviado a la sección de <strong>Archivados</strong>. Podrás restaurarlo o eliminarlo permanentemente desde allí.
               </p>
             </div>
 
@@ -814,7 +814,7 @@ Metodología DAFP - MECI
                 className="flex-1 bg-red-600 hover:bg-red-700 text-white"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
-                Eliminar Permanentemente
+                Eliminar
               </Button>
             </div>
           </div>

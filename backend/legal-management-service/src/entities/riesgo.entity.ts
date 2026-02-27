@@ -4,7 +4,7 @@ import { Abogado } from './abogado.entity';
 export type TipoRiesgo = 'GESTION' | 'CORRUPCION' | 'SEGURIDAD_DIGITAL' | 'FISCAL';
 export type ZonaRiesgo = 'EXTREMO' | 'ALTO' | 'MODERADO' | 'BAJO';
 export type EtapaRiesgo = 'IDENTIFICADO' | 'ANALIZADO' | 'VALORADO' | 'TRATAMIENTO' | 'MONITOREO' | 'CERRADO' | 'MATERIALIZADO';
-export type EstadoRiesgo = 'ACTIVO' | 'ARCHIVADO' | 'CERRADO';
+export type EstadoRiesgo = 'ACTIVO' | 'ARCHIVADO' | 'ELIMINADO' | 'CERRADO';
 
 @Entity('riesgos', { schema: 'legal_management' })
 export class Riesgo {

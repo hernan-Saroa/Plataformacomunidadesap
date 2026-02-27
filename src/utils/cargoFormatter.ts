@@ -36,10 +36,13 @@ const agregarSufijoEncargo = (
   if (!base || base === 'N/A' || encargo !== 'E') {
     return base;
   }
-  if (/\bE$/i.test(base)) {
-    return base;
+  if (/\(\s*E\s*\)$/i.test(base)) {
+    return base.replace(/\(\s*E\s*\)$/i, '(E)');
   }
-  return `${base} E`;
+  if (/\sE$/i.test(base)) {
+    return base.replace(/\sE$/i, ' (E)');
+  }
+  return `${base} (E)`;
 };
 
 export const esCargoDocente = (value?: string | null): boolean =>
