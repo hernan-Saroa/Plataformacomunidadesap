@@ -1236,5 +1236,254 @@ export class PlanAnual5RolesService {
     const buffer = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
     return { buffer, nombre };
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MÉTODOS PARA VINCULACIÓN CON AUDITORÍAS - Rol 4 (Evaluación y Seguimiento)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Obtiene el cumplimiento del programa de auditorías para un año específico
+   */
+  async getCumplimientoAuditorias(año: number): Promise<{
+    totalProgramadas: number;
+    totalFinalizadas: number;
+    porcentajeCumplimiento: number;
+    desglosePorTipo: Record<string, { programadas: number; finalizadas: number; en_proceso: number; pendientes: number }>;
+    actividadId?: string;
+  }> {
+    // Usar la función SQL que creamos
+    const result = await this.dataSource.query(`
+      SELECT * FROM control_interno.fn_calcular_cumplimiento_auditorias(NULL, $1)
+    `, [año]);
+
+    if (result.length === 0) {
+      return {
+        totalProgramadas: 0,
+        totalFinalizadas: 0,
+        porcentajeCumplimiento: 0,
+        desglosePorTipo: {}
+      };
+    }
+
+    const row = result[0];
+    
+    // Buscar la actividad de auditorías del Rol 4 para este año
+    const actividad = await this.dataSource.query(`
+      SELECT a.id
+      FROM control_interno.actividad_plan_anual_5 a
+      INNER JOIN control_interno.rol_plan_anual_5 r ON a.rol_id = r.id
+      INNER JOIN control_interno.plan_anual_5_roles p ON r.plan_id = p.id
+      WHERE r.numero_rol = 4 
+        AND a.tipo_calculo = 'auditorias'
+        AND p.año = $1
+      LIMIT 1
+    `, [año]);
+
+    return {
+      totalProgramadas: row.total_programadas || 0,
+      totalFinalizadas: row.total_finalizadas || 0,
+      porcentajeCumplimiento: row.porcentaje_cumplimiento || 0,
+      desglosePorTipo: row.desglose_por_tipo || {},
+      actividadId: actividad[0]?.id
+    };
+  }
+
+  /**
+   * Configura una actividad como "de auditorías" para cálculo automático
+   */
+  async configurarActividadAuditorias(
+    actividadId: string,
+    año: number,
+    usuarioId?: string | number
+  ): Promise<ActividadPlanAnual5> {
+    // Verificar que la actividad existe y pertenece al Rol 4
+    const actividad = await this.dataSource.query(`
+      SELECT a.*, r.numero_rol, p.año
+      FROM control_interno.actividad_plan_anual_5 a
+      INNER JOIN control_interno.rol_plan_anual_5 r ON a.rol_id = r.id
+      INNER JOIN control_interno.plan_anual_5_roles p ON r.plan_id = p.id
+      WHERE a.id = $1
+    `, [actividadId]);
+
+    if (actividad.length === 0) {
+      throw new NotFoundException(`Actividad con ID ${actividadId} no encontrada`);
+    }
+
+    if (actividad[0].numero_rol !== 4) {
+      throw new BadRequestException('Solo se pueden configurar actividades del Rol 4 (Evaluación y Seguimiento) como actividades de auditorías');
+    }
+
+    // Desactivar cualquier otra actividad de auditorías para este año
+    await this.dataSource.query(`
+      UPDATE control_interno.actividad_plan_anual_5 a
+      SET tipo_calculo = 'manual'
+      FROM control_interno.rol_plan_anual_5 r,
+           control_interno.plan_anual_5_roles p
+      WHERE a.rol_id = r.id
+        AND r.plan_id = p.id
+        AND p.año = $1
+        AND a.tipo_calculo = 'auditorias'
+        AND a.id != $2
+    `, [año, actividadId]);
+
+    // Configurar esta actividad como "auditorías"
+    await this.dataSource.query(`
+      UPDATE control_interno.actividad_plan_anual_5
+      SET tipo_calculo = 'auditorias'
+      WHERE id = $1
+    `, [actividadId]);
+
+    // Vincular todas las auditorías del año a esta actividad
+    await this.dataSource.query(`
+      SELECT control_interno.fn_vincular_auditorias_actividad($1, $2)
+    `, [actividadId, año]);
+
+    // Calcular cumplimiento inicial
+    const cumplimiento = await this.getCumplimientoAuditorias(año);
+    
+    // Actualizar la actividad con los datos de cumplimiento
+    await this.dataSource.query(`
+      UPDATE control_interno.actividad_plan_anual_5
+      SET 
+        total_auditorias_programadas = $1,
+        total_auditorias_finalizadas = $2,
+        porcentaje_avance = $3,
+        auditorias_por_tipo = $4,
+        estado = CASE 
+          WHEN $3 >= 100 THEN 'completada'
+          WHEN $3 > 0 THEN 'en-progreso'
+          ELSE 'pendiente'
+        END,
+        updated_at = NOW()
+      WHERE id = $5
+    `, [
+      cumplimiento.totalProgramadas,
+      cumplimiento.totalFinalizadas,
+      cumplimiento.porcentajeCumplimiento,
+      JSON.stringify(cumplimiento.desglosePorTipo),
+      actividadId
+    ]);
+
+    // Registrar en historial
+    if (usuarioId) {
+      await this.registrarHistorial(
+        (await this.actividadRepository.findOne({ where: { id: actividadId }, relations: ['rol'] }))?.rol.planId || '',
+        TipoEventoPlanAnual.ACTIVIDAD_ACTUALIZADA,
+        `Actividad "${actividad[0].nombre}" configurada para cálculo automático de auditorías`,
+        String(usuarioId)
+      );
+    }
+
+    return this.actividadRepository.findOne({ where: { id: actividadId } }) as Promise<ActividadPlanAnual5>;
+  }
+
+  /**
+   * Obtiene el resumen de auditorías vinculadas a una actividad
+   */
+  async getAuditoriasVinculadas(actividadId: string): Promise<{
+    total: number;
+    auditorias: Array<{
+      id: string;
+      codigo: string;
+      nombre: string;
+      tipo: string;
+      estadoKanban: string;
+      progreso: number;
+      fechaInicio: Date;
+      fechaFin: Date;
+    }>;
+  }> {
+    const auditorias = await this.dataSource.query(`
+      SELECT 
+        id, codigo, nombre, tipo, estado_kanban as "estadoKanban",
+        progreso, fecha_inicio as "fechaInicio", fecha_fin as "fechaFin"
+      FROM control_interno.auditoria
+      WHERE actividad_plan_anual_id = $1
+        AND activa = true
+        AND archivada = false
+      ORDER BY fecha_inicio ASC
+    `, [actividadId]);
+
+    return {
+      total: auditorias.length,
+      auditorias
+    };
+  }
+
+  /**
+   * Recalcula manualmente el cumplimiento de auditorías para un año
+   */
+  async recalcularCumplimientoAuditorias(año: number): Promise<{
+    success: boolean;
+    actividadActualizada?: string;
+    cumplimiento: {
+      totalProgramadas: number;
+      totalFinalizadas: number;
+      porcentajeCumplimiento: number;
+    };
+  }> {
+    // Buscar la actividad de auditorías del Rol 4
+    const actividadResult = await this.dataSource.query(`
+      SELECT a.id
+      FROM control_interno.actividad_plan_anual_5 a
+      INNER JOIN control_interno.rol_plan_anual_5 r ON a.rol_id = r.id
+      INNER JOIN control_interno.plan_anual_5_roles p ON r.plan_id = p.id
+      WHERE r.numero_rol = 4 
+        AND a.tipo_calculo = 'auditorias'
+        AND p.año = $1
+      LIMIT 1
+    `, [año]);
+
+    if (actividadResult.length === 0) {
+      // No hay actividad configurada, solo obtener estadísticas
+      const cumplimiento = await this.getCumplimientoAuditorias(año);
+      return {
+        success: true,
+        cumplimiento: {
+          totalProgramadas: cumplimiento.totalProgramadas,
+          totalFinalizadas: cumplimiento.totalFinalizadas,
+          porcentajeCumplimiento: cumplimiento.porcentajeCumplimiento
+        }
+      };
+    }
+
+    const actividadId = actividadResult[0].id;
+    
+    // Recalcular
+    const cumplimiento = await this.getCumplimientoAuditorias(año);
+    
+    // Actualizar la actividad
+    await this.dataSource.query(`
+      UPDATE control_interno.actividad_plan_anual_5
+      SET 
+        total_auditorias_programadas = $1,
+        total_auditorias_finalizadas = $2,
+        porcentaje_avance = $3,
+        auditorias_por_tipo = $4,
+        estado = CASE 
+          WHEN $3 >= 100 THEN 'completada'
+          WHEN $3 > 0 THEN 'en-progreso'
+          ELSE 'pendiente'
+        END,
+        updated_at = NOW()
+      WHERE id = $5
+    `, [
+      cumplimiento.totalProgramadas,
+      cumplimiento.totalFinalizadas,
+      cumplimiento.porcentajeCumplimiento,
+      JSON.stringify(cumplimiento.desglosePorTipo),
+      actividadId
+    ]);
+
+    return {
+      success: true,
+      actividadActualizada: actividadId,
+      cumplimiento: {
+        totalProgramadas: cumplimiento.totalProgramadas,
+        totalFinalizadas: cumplimiento.totalFinalizadas,
+        porcentajeCumplimiento: cumplimiento.porcentajeCumplimiento
+      }
+    };
+  }
 }
 

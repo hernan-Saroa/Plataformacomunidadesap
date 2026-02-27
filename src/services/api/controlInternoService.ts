@@ -969,6 +969,64 @@ class ControlInternoService {
   }
 
   // ==========================================================================
+  // VINCULACIÓN: AUDITORÍAS ↔ ROL 4 (EVALUACIÓN Y SEGUIMIENTO)
+  // ==========================================================================
+
+  /**
+   * Obtiene el cumplimiento del programa de auditorías para un año
+   */
+  async getCumplimientoAuditorias(año: number): Promise<{
+    totalProgramadas: number;
+    totalFinalizadas: number;
+    porcentajeCumplimiento: number;
+    desglosePorTipo: Record<string, { programadas: number; finalizadas: number; en_proceso: number; pendientes: number }>;
+    actividadId?: string;
+  }> {
+    return client.get(`/plan-anual-5-roles/auditorias/cumplimiento/${año}`);
+  }
+
+  /**
+   * Configura una actividad para cálculo automático de auditorías
+   */
+  async configurarActividadAuditorias(actividadId: string, año: number): Promise<any> {
+    return client.post('/plan-anual-5-roles/auditorias/configurar', { actividadId, año });
+  }
+
+  /**
+   * Obtiene las auditorías vinculadas a una actividad
+   */
+  async getAuditoriasVinculadas(actividadId: string): Promise<{
+    total: number;
+    auditorias: Array<{
+      id: string;
+      codigo: string;
+      nombre: string;
+      tipo: string;
+      estadoKanban: string;
+      progreso: number;
+      fechaInicio: Date;
+      fechaFin: Date;
+    }>;
+  }> {
+    return client.get(`/plan-anual-5-roles/actividades/${actividadId}/auditorias`);
+  }
+
+  /**
+   * Recalcula manualmente el cumplimiento de auditorías para un año
+   */
+  async recalcularCumplimientoAuditorias(año: number): Promise<{
+    success: boolean;
+    actividadActualizada?: string;
+    cumplimiento: {
+      totalProgramadas: number;
+      totalFinalizadas: number;
+      porcentajeCumplimiento: number;
+    };
+  }> {
+    return client.post(`/plan-anual-5-roles/auditorias/recalcular/${año}`, {});
+  }
+
+  // ==========================================================================
   // PLANES DE MEJORAMIENTO
   // ==========================================================================
   

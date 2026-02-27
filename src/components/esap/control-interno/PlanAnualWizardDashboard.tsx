@@ -23,6 +23,8 @@ import {
 // Hook para sincronizar evidencias con backend y API de auditores
 import { useSaveEvidencias, actividadesApi, planAnualApi, type CreateActividadDto } from './services/plan-anual';
 import { configuracionesProfesionalesOCIGApi } from './services/api';
+// Servicio para vinculación de auditorías con Rol 4
+import { controlInternoService } from '../../../services/api/controlInternoService';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { cargarConfiguracionPDF } from './utils/configuracionHelper';
 import { 
@@ -2456,6 +2458,41 @@ function SeccionGestionYSeguimiento({
   // Estado para indicar que se está guardando
   const [guardando, setGuardando] = useState(false);
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NUEVO: Estado para cumplimiento de auditorías (Rol 4)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const [cumplimientoAuditorias, setCumplimientoAuditorias] = useState<{
+    totalProgramadas: number;
+    totalFinalizadas: number;
+    porcentajeCumplimiento: number;
+    desglosePorTipo: Record<string, { programadas: number; finalizadas: number; en_proceso: number; pendientes: number }>;
+    actividadId?: string;
+    cargando: boolean;
+  }>({
+    totalProgramadas: 0,
+    totalFinalizadas: 0,
+    porcentajeCumplimiento: 0,
+    desglosePorTipo: {},
+    cargando: true
+  });
+
+  // Cargar datos de cumplimiento de auditorías al montar el componente
+  useEffect(() => {
+    const cargarCumplimiento = async () => {
+      try {
+        const resultado = await controlInternoService.getCumplimientoAuditorias(plan.vigencia);
+        setCumplimientoAuditorias({
+          ...resultado,
+          cargando: false
+        });
+      } catch (error) {
+        console.error('[AUDITORÍAS] Error cargando cumplimiento:', error);
+        setCumplimientoAuditorias(prev => ({ ...prev, cargando: false }));
+      }
+    };
+    cargarCumplimiento();
+  }, [plan.vigencia]);
+
   // ✅ NUEVO: Función para toggle del colapso de un rol específico
   const toggleRolColapsado = (numeroRol: number) => {
     setRolesColapsados(prev => ({
@@ -3196,6 +3233,78 @@ function SeccionGestionYSeguimiento({
                         <p className="text-[10px] text-blue-600">promedio</p>
                       </div>
                     </div>
+
+                    {/* ════════════════════════════════════════════════════════════════
+                        NUEVO: SECCIÓN ESPECIAL ROL 4 - CUMPLIMIENTO PROGRAMA AUDITORÍAS
+                        ════════════════════════════════════════════════════════════════ */}
+                    {rol.numero === 4 && !cumplimientoAuditorias.cargando && (
+                      <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-violet-50 rounded-xl border-2 border-purple-200">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-8 h-8 rounded-lg bg-purple-600 flex items-center justify-center">
+                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-purple-900">📊 Cumplimiento Programa de Auditorías</h4>
+                            <p className="text-xs text-purple-600">Cálculo automático basado en auditorías finalizadas vs programadas</p>
+                          </div>
+                        </div>
+                        
+                        {/* Métricas principales */}
+                        <div className="grid grid-cols-3 gap-3 mb-3">
+                          <div className="bg-white rounded-lg p-3 text-center border border-purple-200 shadow-sm">
+                            <p className="text-xs text-gray-600 mb-1">Programadas</p>
+                            <p className="text-3xl font-bold text-purple-700">{cumplimientoAuditorias.totalProgramadas}</p>
+                            <p className="text-[10px] text-gray-500">auditorías totales</p>
+                          </div>
+                          <div className="bg-white rounded-lg p-3 text-center border border-green-200 shadow-sm">
+                            <p className="text-xs text-gray-600 mb-1">Finalizadas</p>
+                            <p className="text-3xl font-bold text-green-700">{cumplimientoAuditorias.totalFinalizadas}</p>
+                            <p className="text-[10px] text-gray-500">completadas</p>
+                          </div>
+                          <div className="bg-white rounded-lg p-3 text-center border border-blue-200 shadow-sm">
+                            <p className="text-xs text-gray-600 mb-1">Cumplimiento</p>
+                            <p className={`text-3xl font-bold ${
+                              cumplimientoAuditorias.porcentajeCumplimiento >= 80 ? 'text-green-700' : 
+                              cumplimientoAuditorias.porcentajeCumplimiento >= 50 ? 'text-yellow-600' : 'text-red-600'
+                            }`}>{cumplimientoAuditorias.porcentajeCumplimiento}%</p>
+                            <p className="text-[10px] text-gray-500">del programa</p>
+                          </div>
+                        </div>
+
+                        {/* Barra de progreso visual */}
+                        <div className="bg-gray-200 rounded-full h-3 overflow-hidden mb-3">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              cumplimientoAuditorias.porcentajeCumplimiento >= 80 ? 'bg-green-500' : 
+                              cumplimientoAuditorias.porcentajeCumplimiento >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${Math.min(cumplimientoAuditorias.porcentajeCumplimiento, 100)}%` }}
+                          />
+                        </div>
+
+                        {/* Desglose por tipo si hay datos */}
+                        {Object.keys(cumplimientoAuditorias.desglosePorTipo).length > 0 && (
+                          <div className="bg-white/70 rounded-lg p-3 border border-purple-100">
+                            <p className="text-xs font-semibold text-purple-800 mb-2">Desglose por Tipo:</p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                              {Object.entries(cumplimientoAuditorias.desglosePorTipo).map(([tipo, datos]) => (
+                                <div key={tipo} className="bg-purple-50 rounded p-2 text-center">
+                                  <p className="text-[10px] text-purple-600 capitalize">{tipo}</p>
+                                  <p className="text-sm font-bold text-purple-800">
+                                    {datos.finalizadas}/{datos.programadas}
+                                  </p>
+                                  <p className="text-[9px] text-purple-500">
+                                    {datos.en_proceso} en curso
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Barra de progreso */}
                     <div>
