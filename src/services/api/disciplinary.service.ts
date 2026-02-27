@@ -228,6 +228,20 @@ class DisciplinaryService {
         return apiClient.upload<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
     }
 
+    async updateNoticia(id: string, data: {
+        origen?: string;
+        territorial?: string;
+        dependenciaDenunciado?: string;
+        hechos?: string;
+        denunciante?: any;
+        disciplinable?: any;
+        conductas?: string[];
+        fechaHechos?: string | null;
+        usuario?: string;
+    }): Promise<DisciplinaryNews> {
+        return apiClient.put<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`, data);
+    }
+
     async getNoticiasPendientes(): Promise<DisciplinaryNews[]> {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news/pending-assignment`);
     }

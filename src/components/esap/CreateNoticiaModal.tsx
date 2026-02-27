@@ -128,10 +128,25 @@ const CONDUCTAS_INDISCIPLINARIAS = [
   'Otro' // ✅ MODIFICADO: Se eliminó "(especificar en descripción)" - ahora se muestra campo de texto
 ];
 
+// Mapa de valores DB (enum) → etiqueta de display para el SELECT
+const ORIGEN_DB_A_LABEL: Record<string, string> = {
+  ANONIMO: 'Anónimo',
+  QUEJOSO: 'Quejoso',
+  OFICIO: 'De oficio',
+  REMISION: 'Remisión por competencia',
+};
+
 export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode }: CreateNoticiaModalProps) {
   const [currentStep, setCurrentStep] = useState(1);
+
+  // En edición, el origen llega como valor de enum (ej: 'ANONIMO'). Lo convertimos a la
+  // etiqueta que muestra el SELECT (ej: 'Anónimo') para que la opción quede seleccionada.
+  const origenInicial = isEditMode && noticiaToEdit?.origen
+    ? (ORIGEN_DB_A_LABEL[noticiaToEdit.origen] ?? noticiaToEdit.origen)
+    : '';
+
   const [formData, setFormData] = useState({
-    origen: noticiaToEdit?.origen || '',
+    origen: origenInicial,
     fechaQueja: noticiaToEdit?.fechaRecepcion || new Date().toISOString().split('T')[0],
     usarFechaActual: !noticiaToEdit,
     fechaHechos: noticiaToEdit?.fechaHechos || '',
@@ -148,9 +163,19 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   });
 
   // ✅ NUEVO: Estado para manejar múltiples hechos separados
-  const [hechosSeparados, setHechosSeparados] = useState<{ id: string; descripcion: string; fecha?: string }[]>(
-    noticiaToEdit?.hechosSeparados || []
-  );
+  const [hechosSeparados, setHechosSeparados] = useState<{ id: string; descripcion: string; fecha?: string }[]>(() => {
+    if (noticiaToEdit?.hechosSeparados?.length > 0) return noticiaToEdit.hechosSeparados;
+    if (isEditMode && noticiaToEdit?.hechos) {
+      return noticiaToEdit.hechos
+        .split(/\n\n/)
+        .filter((p: string) => p.trim())
+        .map((part: string, idx: number) => ({
+          id: `edit-hecho-${idx}`,
+          descripcion: part.replace(/^Hecho \d+:\s*/i, '').trim() || part.trim()
+        }));
+    }
+    return [];
+  });
   const [hechoActual, setHechoActual] = useState('');
 
   // ✅ NUEVO: Estado para conducta seleccionada y campo personalizado
@@ -188,7 +213,21 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   };
 
   // ✅ NUEVO: Estado para múltiples denunciados
-  const [denunciados, setDenunciados] = useState<Denunciado[]>([]);
+  const [denunciados, setDenunciados] = useState<Denunciado[]>(() => {
+    if (!isEditMode || !noticiaToEdit) return [];
+    const denunciadoObj = noticiaToEdit.denunciado && typeof noticiaToEdit.denunciado !== 'string'
+      ? noticiaToEdit.denunciado
+      : null;
+    const nombre = denunciadoObj?.nombre || '';
+    if (!nombre || nombre === 'Sin denunciado') return [];
+    return [{
+      id: 'edit-0',
+      nombre,
+      identificacion: denunciadoObj?.numeroIdentificacion || '',
+      cargo: noticiaToEdit.cargo || '',
+      lugarHechos: noticiaToEdit.dependencia || ''
+    }];
+  });
   const [currentDenunciado, setCurrentDenunciado] = useState<Denunciado>({
     id: '',
     nombre: '',
@@ -197,7 +236,25 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     lugarHechos: '' // ✅ Cambiado de 'dependencia' a 'lugarHechos'
   });
 
-  const [denunciantes, setDenunciantes] = useState<Denunciante[]>([]);
+  const [denunciantes, setDenunciantes] = useState<Denunciante[]>(() => {
+    if (!isEditMode || !noticiaToEdit) return [];
+    const denuncianteObj = noticiaToEdit.denunciante && typeof noticiaToEdit.denunciante !== 'string'
+      ? noticiaToEdit.denunciante
+      : null;
+    const nombre = denuncianteObj?.nombre || '';
+    if (!nombre || nombre === 'Sin denunciante' || nombre === 'Anonimo') return [];
+    return [{
+      id: 'edit-0',
+      nombre,
+      identificacion: denuncianteObj?.numeroIdentificacion || '',
+      direccion: '',
+      telefono: '',
+      correo: '',
+      cargo: '',
+      entidad: '',
+      tipo: 'Denunciante' as const
+    }];
+  });
   const [currentDenunciante, setCurrentDenunciante] = useState<Denunciante>({
     id: '',
     nombre: '',
@@ -234,8 +291,10 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   const [porDeterminar, setPorDeterminar] = useState({
     // Paso 1
     origen: false,
-    territorial: false,
-    fechaHechos: false,
+    // En edición: si el valor guardado es 'Por determinar', mostrar el checkbox marcado
+    territorial: isEditMode ? (noticiaToEdit?.territorial === 'Por determinar') : false,
+    // En modo edición, si no hay fechaHechos guardada se marca "Por determinar" para no bloquear el wizard
+    fechaHechos: isEditMode ? !noticiaToEdit?.fechaHechos : false,
     // Paso 2 - Denunciado actual
     denunciadoNombre: false,
     denunciadoIdentificacion: false,
@@ -261,7 +320,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       // Paso 1
       if (campo === 'origen') handleChange('origen', 'Por determinar');
       if (campo === 'territorial') handleChange('territorial', 'Por determinar');
-      if (campo === 'fechaHechos') handleChange('fechaHechos', '');
+      // fechaHechos: no limpiar el valor guardado, solo ocultar el input (porDeterminar controla la visibilidad)
       
       // Paso 2 - Denunciado
       if (campo === 'denunciadoNombre') setCurrentDenunciado({ ...currentDenunciado, nombre: 'Por determinar' });
@@ -281,7 +340,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       // Limpiar cuando se desmarca
       if (campo === 'origen') handleChange('origen', '');
       if (campo === 'territorial') handleChange('territorial', '');
-      if (campo === 'fechaHechos') handleChange('fechaHechos', '');
+      // fechaHechos: al desmarcar, mostrar el input con el valor que ya había (no limpiar)
       
       if (campo === 'denunciadoNombre') setCurrentDenunciado({ ...currentDenunciado, nombre: '' });
       if (campo === 'denunciadoIdentificacion') setCurrentDenunciado({ ...currentDenunciado, identificacion: '' });
@@ -469,8 +528,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   const validateStep2 = () => {
     const newErrors: Record<string, string> = {};
 
-    // ✅ Validar que hay al menos un denunciado agregado
-    if (denunciados.length === 0) {
+    // En modo edición, los datos del denunciado se mantienen del original si no se agrega uno nuevo
+    if (!isEditMode && denunciados.length === 0) {
       newErrors.denunciados = 'Debe agregar al menos un denunciado';
     }
 
@@ -487,17 +546,16 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   const validateStep4 = () => {
     const newErrors: Record<string, string> = {};
 
-    // ✅ Validar que hay al menos un hecho agregado
-    if (hechosSeparados.length === 0) {
+    // En modo edición, hechos y conducta son opcionales (se preservan del original)
+    if (!isEditMode && hechosSeparados.length === 0) {
       newErrors.hechos = 'Debe agregar al menos un hecho disciplinario';
     }
-    
-    // ✅ NUEVO: Validar conducta seleccionada
-    if (!conductaSeleccionada) {
+
+    if (!isEditMode && !conductaSeleccionada) {
       newErrors.conductas = 'Debe seleccionar una conducta indisciplinaria';
     }
-    
-    // ✅ NUEVO: Si seleccionó "Otro", validar que especificó la conducta con mínimo de caracteres
+
+    // Si seleccionó "Otro", validar descripción (aplica siempre)
     if (conductaSeleccionada === 'Otro') {
       if (!conductaPersonalizada.trim()) {
         newErrors.conductas = 'Debe especificar la conducta indisciplinaria';
@@ -533,7 +591,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   };
 
   const handleSave = () => {
-    if (!validateStep4()) return;
+    const valid = validateStep4();
+    if (!valid) return;
 
     const dataToSave = {
       ...formData,
@@ -785,7 +844,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                 )}
 
                 {/* ✅ CÁLCULO AUTOMÁTICO DE CADUCIDAD (5 AÑOS) */}
-                {formData.fechaHechos && (
+                {formData.fechaHechos && !porDeterminar.fechaHechos && (
                   <div className="mt-4 space-y-3">
                     {/* Fecha de Caducidad */}
                     <div className={`p-4 rounded-lg border-2 ${
