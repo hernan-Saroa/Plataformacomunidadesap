@@ -13,11 +13,16 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { Permissions } from '../../auth/decorators/permissions.decorator';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import { PlanesMejoramientoService } from './planes-mejoramiento.service';
 import { CreatePlanMejoramientoDto } from './dto/create-plan-mejoramiento.dto';
 import { UpdatePlanMejoramientoDto } from './dto/update-plan-mejoramiento.dto';
@@ -50,6 +55,8 @@ export class PlanesMejoramientoController {
    * Lista todos los planes de mejoramiento con filtros opcionales
    */
   @Get()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
   findAll(
     @Query('estado') estado?: string,
     @Query('area') area?: string,
@@ -62,6 +69,8 @@ export class PlanesMejoramientoController {
    * Obtiene un plan por ID
    */
   @Get(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
   findOne(@Param('id') id: string) {
     return this.planesMejoramientoService.findOne(id);
   }
@@ -71,6 +80,8 @@ export class PlanesMejoramientoController {
    * Obtiene el plan de mejoramiento de un hallazgo
    */
   @Get('hallazgo/:hallazgoId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
   findByHallazgo(@Param('hallazgoId') hallazgoId: string) {
     return this.planesMejoramientoService.findByHallazgo(hallazgoId);
   }
@@ -80,6 +91,8 @@ export class PlanesMejoramientoController {
    * Crea un nuevo plan de mejoramiento
    */
   @Post()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_CREATE)
   create(@Body() createDto: CreatePlanMejoramientoDto) {
     return this.planesMejoramientoService.create(createDto);
   }
@@ -89,6 +102,8 @@ export class PlanesMejoramientoController {
    * Actualiza un plan de mejoramiento
    */
   @Put(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_EDIT)
   update(@Param('id') id: string, @Body() updateDto: UpdatePlanMejoramientoDto) {
     return this.planesMejoramientoService.update(id, updateDto);
   }
@@ -98,6 +113,8 @@ export class PlanesMejoramientoController {
    * Elimina un plan de mejoramiento
    */
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.planesMejoramientoService.delete(id);
@@ -108,6 +125,8 @@ export class PlanesMejoramientoController {
    * Aprueba un plan de mejoramiento
    */
   @Post(':id/aprobar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_APPROVE)
   aprobar(
     @Param('id') id: string,
     @Body() body: { observaciones?: string; aprobadoPor?: string },
@@ -120,6 +139,8 @@ export class PlanesMejoramientoController {
    * Rechaza un plan de mejoramiento
    */
   @Post(':id/rechazar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_APPROVE)
   rechazar(@Param('id') id: string, @Body() rechazarDto: RechazarPlanDto) {
     return this.planesMejoramientoService.rechazar(id, rechazarDto.motivo_rechazo);
   }
@@ -129,6 +150,8 @@ export class PlanesMejoramientoController {
    * Obtiene el seguimiento de un plan
    */
   @Get(':id/seguimiento')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
   getSeguimiento(@Param('id') id: string) {
     return this.planesMejoramientoService.getSeguimiento(id);
   }
@@ -138,6 +161,8 @@ export class PlanesMejoramientoController {
    * Registra el avance de un plan (crea o actualiza seguimiento trimestral)
    */
   @Post(':id/avance')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_FOLLOW_UP)
   registrarAvance(@Param('id') id: string, @Body() avanceDto: RegistrarAvanceDto) {
     return this.planesMejoramientoService.registrarAvance(id, avanceDto);
   }
@@ -147,6 +172,8 @@ export class PlanesMejoramientoController {
    * Obtiene el semáforo de cumplimiento de un plan
    */
   @Get(':id/semaforo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
   async getSemaforo(@Param('id') id: string) {
     const plan = await this.planesMejoramientoService.findOne(id);
     // Calcular cumplimiento promedio
@@ -178,6 +205,8 @@ export class PlanesMejoramientoController {
    * Crea una acción correctiva en un plan
    */
   @Post(':planId/acciones')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_EDIT)
   createAccion(@Param('planId') planId: string, @Body() createDto: CreateAccionDto) {
     return this.planesMejoramientoService.createAccion(planId, createDto);
   }
@@ -187,6 +216,8 @@ export class PlanesMejoramientoController {
    * Actualiza una acción correctiva
    */
   @Put(':planId/acciones/:accionId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_EDIT)
   updateAccion(
     @Param('planId') planId: string,
     @Param('accionId') accionId: string,
@@ -200,6 +231,8 @@ export class PlanesMejoramientoController {
    * Elimina una acción correctiva
    */
   @Delete(':planId/acciones/:accionId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_EDIT)
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteAccion(@Param('planId') planId: string, @Param('accionId') accionId: string) {
     return this.planesMejoramientoService.deleteAccion(planId, accionId);
@@ -210,6 +243,8 @@ export class PlanesMejoramientoController {
    * Carga evidencia en una acción (solo metadata, para URLs externas)
    */
   @Post(':planId/acciones/:accionId/evidencias')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_EDIT)
   async cargarEvidencia(
     @Param('planId') planId: string,
     @Param('accionId') accionId: string,
@@ -248,6 +283,8 @@ export class PlanesMejoramientoController {
    * Sube archivo de evidencia y lo asocia a la acción (multipart/form-data)
    */
   @Post(':planId/acciones/:accionId/evidencias/upload')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_EDIT)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -318,6 +355,8 @@ export class PlanesMejoramientoController {
    * Valida una evidencia de una acción
    */
   @Post(':planId/acciones/:accionId/evidencias/:evidenciaId/validar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_FOLLOW_UP)
   async validarEvidencia(
     @Param('planId') planId: string,
     @Param('accionId') accionId: string,
@@ -351,6 +390,8 @@ export class PlanesMejoramientoController {
    * Crea un registro de seguimiento para una acción
    */
   @Post(':planId/seguimientos/:seguimientoId/registros')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_FOLLOW_UP)
   createRegistroSeguimiento(
     @Param('planId') planId: string,
     @Param('seguimientoId') seguimientoId: string,
@@ -373,6 +414,8 @@ export class PlanesMejoramientoController {
    * Obtiene todos los eventos del timeline de un plan
    */
   @Get(':planId/eventos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
   async getEventosTimeline(@Param('planId') planId: string) {
     try {
       const eventos = await this.planesMejoramientoService.getEventosTimeline(planId);
@@ -390,6 +433,8 @@ export class PlanesMejoramientoController {
    * Crea un nuevo evento en el timeline
    */
   @Post(':planId/eventos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_EDIT)
   async createEventoTimeline(
     @Param('planId') planId: string,
     @Body() createDto: CreateEventoTimelineDto,

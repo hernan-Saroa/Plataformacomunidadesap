@@ -25,6 +25,9 @@ import { AprobarAmpliacionPlazoDto } from './dto/aprobar-ampliacion-plazo.dto';
 import { RechazarAmpliacionPlazoDto } from './dto/rechazar-ampliacion-plazo.dto';
 import { FaseAuditoria, EstadoKanban } from './entities/auditoria.entity';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { Permissions } from '../../auth/decorators/permissions.decorator';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtService } from '@nestjs/jwt';
@@ -86,6 +89,8 @@ export class AuditoriasController {
    * Obtiene todas las auditorías con filtros opcionales
    */
   @Get()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   findAll(
     @Query('tipo') tipo?: string,
     @Query('fase') fase?: string,
@@ -111,6 +116,8 @@ export class AuditoriasController {
    * Obtiene estadísticas generales de auditorías
    */
   @Get('estadisticas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   getEstadisticas() {
     return this.auditoriasService.getEstadisticas();
   }
@@ -120,6 +127,8 @@ export class AuditoriasController {
    * Obtiene auditorías por fase (útil para Kanban)
    */
   @Get('fase/:fase')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   findByFase(@Param('fase') fase: FaseAuditoria) {
     return this.auditoriasService.findByFase(fase);
   }
@@ -130,6 +139,8 @@ export class AuditoriasController {
    * Crea una nueva nota para una auditoría
    */
   @Post(':id/notas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   @HttpCode(HttpStatus.CREATED)
   createNota(@Param('id') id: string, @Body() createDto: CreateNotaDto) {
     return this.auditoriasService.createNota(id, createDto);
@@ -140,6 +151,8 @@ export class AuditoriasController {
    * Actualiza una nota existente
    */
   @Patch(':id/notas/:notaId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   updateNota(
     @Param('id') id: string,
     @Param('notaId') notaId: string,
@@ -153,6 +166,8 @@ export class AuditoriasController {
    * Elimina una nota (soft delete)
    */
   @Delete(':id/notas/:notaId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_DELETE, CIP.AUDITORIA_EDIT)
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteNota(@Param('id') id: string, @Param('notaId') notaId: string) {
     return this.auditoriasService.deleteNota(id, notaId);
@@ -163,6 +178,8 @@ export class AuditoriasController {
    * Marca o desmarca una nota como importante
    */
   @Patch(':id/notas/:notaId/importante')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   toggleImportanteNota(@Param('id') id: string, @Param('notaId') notaId: string) {
     return this.auditoriasService.toggleImportanteNota(id, notaId);
   }
@@ -172,6 +189,8 @@ export class AuditoriasController {
    * Aprueba una auditoría
    */
   @Post(':id/aprobar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_APPROVE)
   @HttpCode(HttpStatus.OK)
   aprobar(
     @Param('id') id: string, 
@@ -194,6 +213,8 @@ export class AuditoriasController {
    * Rechaza una auditoría
    */
   @Post(':id/rechazar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_APPROVE)
   @HttpCode(HttpStatus.OK)
   rechazar(@Param('id') id: string, @Body() body: { justificacion: string }) {
     if (!body.justificacion || body.justificacion.trim().length < 20) {
@@ -207,6 +228,8 @@ export class AuditoriasController {
    * Solicita modificación de una auditoría
    */
   @Post(':id/modificacion')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   @HttpCode(HttpStatus.OK)
   solicitarModificacion(@Param('id') id: string, @Body() body: { observaciones: string }) {
     if (!body.observaciones || body.observaciones.trim().length < 20) {

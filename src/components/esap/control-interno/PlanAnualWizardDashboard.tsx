@@ -1176,7 +1176,7 @@ function Paso2({
 
       {/* Roles configurables */}
       <div className="space-y-4">
-        {rolesConfig.map((rol) => {
+        {[...rolesConfig].sort((a, b) => a.numero - b.numero).map((rol) => {
           const isExpanded = rolExpandido === rol.numero;
           const actividadesBase = getActividadesPorRol(rol.numero);
           const totalRol = rol.actividadesSeleccionadas.length + rol.actividadesCustom.length;
@@ -1844,7 +1844,7 @@ function Paso3({ vigencia, jefeOCI, rolesConfig }: any) {
         <div className="mt-6 pt-6 border-t border-gray-200">
           <h4 className="font-bold text-gray-900 mb-4">Detalle por rol</h4>
           <div className="space-y-3">
-            {rolesConfig.map((rol: any) => {
+            {[...rolesConfig].sort((a: any, b: any) => a.numero - b.numero).map((rol: any) => {
               const numActividades = (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0);
               if (numActividades === 0) return null;
               
@@ -1902,8 +1902,17 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const [auditores, setAuditores] = useState<Auditor[]>([]);
   const [cargandoAuditores, setCargandoAuditores] = useState(true);
   
-  const { puedeRealizar } = useControlInternoPermissions();
-  const puedeAprobarPlan = puedeRealizar('planificacion', 'approve');
+  // Permisos del Plan Anual (sistema flexible basado en permisos, no roles)
+  const { puedeRealizar, esSuperUsuario } = useControlInternoPermissions();
+  const puedeAprobarPlan = puedeRealizar('plan-anual', 'approve');
+  const puedeActivarPlan = puedeRealizar('plan-anual', 'activate');
+  const puedeEditarPlan = puedeRealizar('plan-anual', 'edit');
+  const puedeAsignarActividades = puedeRealizar('plan-anual', 'assign');
+  const puedeExportarPlan = puedeRealizar('plan-anual', 'export');
+  const puedeSeguimiento = puedeRealizar('plan-anual', 'follow-up');
+  const puedeEliminarPlan = puedeRealizar('plan-anual', 'delete');
+  // Permiso compuesto: editar O seguimiento para gestionar evidencias
+  const puedeGestionarEvidencias = puedeEditarPlan || puedeSeguimiento;
 
   // Cargar auditores desde backend al montar el componente (profesionales OCIG configurados)
   useEffect(() => {
@@ -2359,13 +2368,13 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           </div>
         )}
 
-        {/* Tabs */}
+        {/* Tabs - Filtradas según permisos */}
         <div className="flex gap-2 border-b border-gray-200">
           {[
-            { id: 'gestion', label: 'Gestión y Seguimiento', icon: <TrendingUp className="w-4 h-4" /> },
-            { id: 'asignar', label: 'Asignar responsables', icon: <Users className="w-4 h-4" /> },
-            { id: 'aprobar', label: 'Aprobación', icon: <FileCheck className="w-4 h-4" /> }
-          ].map((tab) => (
+            { id: 'gestion', label: 'Gestión y Seguimiento', icon: <TrendingUp className="w-4 h-4" />, visible: true },
+            { id: 'asignar', label: 'Asignar responsables', icon: <Users className="w-4 h-4" />, visible: puedeAsignarActividades },
+            { id: 'aprobar', label: 'Aprobación', icon: <FileCheck className="w-4 h-4" />, visible: puedeAprobarPlan }
+          ].filter(tab => tab.visible).map((tab) => (
             <button
               key={tab.id}
               onClick={() => setSeccion(tab.id as any)}
@@ -2382,7 +2391,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         <div className="max-w-7xl mx-auto">
           <AnimatePresence mode="wait">
             {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} />}
-            {seccion === 'asignar' && <SeccionAsignar key="asignar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} auditores={auditores} cargandoAuditores={cargandoAuditores} />}
+            {seccion === 'asignar' && <SeccionAsignar key="asignar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} auditores={auditores} cargandoAuditores={cargandoAuditores} puedeAsignar={puedeAsignarActividades} />}
             {seccion === 'aprobar' && <SeccionAprobacion key="aprobar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} puedeAprobarPlan={puedeAprobarPlan} />}
           </AnimatePresence>
         </div>
@@ -2457,6 +2466,16 @@ function SeccionGestionYSeguimiento({
   
   // Estado para indicar que se está guardando
   const [guardando, setGuardando] = useState(false);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PERMISOS: Sistema flexible basado en permisos para Control Interno
+  // ═══════════════════════════════════════════════════════════════════════════
+  const { puedeRealizar, esSuperUsuario } = useControlInternoPermissions();
+  const puedeEditarPlan = puedeRealizar('plan-anual', 'edit');
+  const puedeSeguimiento = puedeRealizar('plan-anual', 'follow-up');
+  const puedeEliminarPlan = puedeRealizar('plan-anual', 'delete');
+  // Permiso compuesto: editar O seguimiento para gestionar evidencias
+  const puedeGestionarEvidencias = puedeEditarPlan || puedeSeguimiento;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // NUEVO: Estado para cumplimiento de auditorías (Rol 4)
@@ -3238,36 +3257,36 @@ function SeccionGestionYSeguimiento({
                         NUEVO: SECCIÓN ESPECIAL ROL 4 - CUMPLIMIENTO PROGRAMA AUDITORÍAS
                         ════════════════════════════════════════════════════════════════ */}
                     {rol.numero === 4 && !cumplimientoAuditorias.cargando && (
-                      <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-violet-50 rounded-xl border-2 border-purple-200">
+                      <div className="mt-4 p-4 bg-gradient-to-r from-[#F0F6FF] to-[#E6F0FF] rounded-xl border-2 border-[#003DA5]/30">
                         <div className="flex items-center gap-2 mb-3">
-                          <div className="w-8 h-8 rounded-lg bg-purple-600 flex items-center justify-center">
+                          <div className="w-8 h-8 rounded-lg bg-[#003DA5] flex items-center justify-center">
                             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                             </svg>
                           </div>
                           <div>
-                            <h4 className="font-bold text-purple-900">📊 Cumplimiento Programa de Auditorías</h4>
-                            <p className="text-xs text-purple-600">Cálculo automático basado en auditorías finalizadas vs programadas</p>
+                            <h4 className="font-bold text-[#003DA5]">📊 Cumplimiento Programa de Auditorías</h4>
+                            <p className="text-xs text-[#002B75]">Cálculo automático basado en auditorías finalizadas vs programadas</p>
                           </div>
                         </div>
                         
                         {/* Métricas principales */}
                         <div className="grid grid-cols-3 gap-3 mb-3">
-                          <div className="bg-white rounded-lg p-3 text-center border border-purple-200 shadow-sm">
+                          <div className="bg-white rounded-lg p-3 text-center border border-[#003DA5]/20 shadow-sm">
                             <p className="text-xs text-gray-600 mb-1">Programadas</p>
-                            <p className="text-3xl font-bold text-purple-700">{cumplimientoAuditorias.totalProgramadas}</p>
+                            <p className="text-3xl font-bold text-[#003DA5]">{cumplimientoAuditorias.totalProgramadas}</p>
                             <p className="text-[10px] text-gray-500">auditorías totales</p>
                           </div>
-                          <div className="bg-white rounded-lg p-3 text-center border border-green-200 shadow-sm">
+                          <div className="bg-white rounded-lg p-3 text-center border border-[#C89F3C]/30 shadow-sm">
                             <p className="text-xs text-gray-600 mb-1">Finalizadas</p>
-                            <p className="text-3xl font-bold text-green-700">{cumplimientoAuditorias.totalFinalizadas}</p>
+                            <p className="text-3xl font-bold text-[#C89F3C]">{cumplimientoAuditorias.totalFinalizadas}</p>
                             <p className="text-[10px] text-gray-500">completadas</p>
                           </div>
-                          <div className="bg-white rounded-lg p-3 text-center border border-blue-200 shadow-sm">
+                          <div className="bg-white rounded-lg p-3 text-center border border-[#003DA5]/20 shadow-sm">
                             <p className="text-xs text-gray-600 mb-1">Cumplimiento</p>
                             <p className={`text-3xl font-bold ${
                               cumplimientoAuditorias.porcentajeCumplimiento >= 80 ? 'text-green-700' : 
-                              cumplimientoAuditorias.porcentajeCumplimiento >= 50 ? 'text-yellow-600' : 'text-red-600'
+                              cumplimientoAuditorias.porcentajeCumplimiento >= 50 ? 'text-[#C89F3C]' : 'text-red-600'
                             }`}>{cumplimientoAuditorias.porcentajeCumplimiento}%</p>
                             <p className="text-[10px] text-gray-500">del programa</p>
                           </div>
@@ -3278,7 +3297,7 @@ function SeccionGestionYSeguimiento({
                           <div 
                             className={`h-full rounded-full transition-all duration-500 ${
                               cumplimientoAuditorias.porcentajeCumplimiento >= 80 ? 'bg-green-500' : 
-                              cumplimientoAuditorias.porcentajeCumplimiento >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                              cumplimientoAuditorias.porcentajeCumplimiento >= 50 ? 'bg-[#C89F3C]' : 'bg-red-500'
                             }`}
                             style={{ width: `${Math.min(cumplimientoAuditorias.porcentajeCumplimiento, 100)}%` }}
                           />
@@ -3286,16 +3305,16 @@ function SeccionGestionYSeguimiento({
 
                         {/* Desglose por tipo si hay datos */}
                         {Object.keys(cumplimientoAuditorias.desglosePorTipo).length > 0 && (
-                          <div className="bg-white/70 rounded-lg p-3 border border-purple-100">
-                            <p className="text-xs font-semibold text-purple-800 mb-2">Desglose por Tipo:</p>
+                          <div className="bg-white/70 rounded-lg p-3 border border-[#003DA5]/10">
+                            <p className="text-xs font-semibold text-[#003DA5] mb-2">Desglose por Tipo:</p>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                               {Object.entries(cumplimientoAuditorias.desglosePorTipo).map(([tipo, datos]) => (
-                                <div key={tipo} className="bg-purple-50 rounded p-2 text-center">
-                                  <p className="text-[10px] text-purple-600 capitalize">{tipo}</p>
-                                  <p className="text-sm font-bold text-purple-800">
+                                <div key={tipo} className="bg-[#F0F6FF] rounded p-2 text-center">
+                                  <p className="text-[10px] text-[#002B75] capitalize">{tipo}</p>
+                                  <p className="text-sm font-bold text-[#003DA5]">
                                     {datos.finalizadas}/{datos.programadas}
                                   </p>
-                                  <p className="text-[9px] text-purple-500">
+                                  <p className="text-[9px] text-[#002B75]/70">
                                     {datos.en_proceso} en curso
                                   </p>
                                 </div>
@@ -3431,45 +3450,48 @@ function SeccionGestionYSeguimiento({
                       >
                         {actividadExpandida === actividad.id ? '✕ Cerrar' : '📝 Seguimiento'}
                       </button>
-                      {/* ✅ NUEVO: Botón Editar actividad */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          abrirModalEdicion(actividad, rol.numero);
-                        }}
-                        className="px-3 py-2 text-sm rounded-lg font-medium border-2 flex items-center gap-1 transition-all bg-amber-100 hover:bg-amber-200 text-amber-700 border-amber-300"
-                        title="Editar actividad"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                        Editar
-                      </button>
-                      {/* Botón Desactivar/Activar actividad */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          console.log('🔘 Click en botón desactivar/activar:', {
-                            actividadId: actividad.id,
-                            actividadNombre: actividad.nombre,
-                            activo: actividad.activo,
-                            rolNumero: rol.numero
-                          });
-                          setModalConfirmacion({
-                            visible: true,
-                            tipo: actividad.activo === false ? 'activar' : 'desactivar',
-                            rolNumero: rol.numero,
-                            actividadId: actividad.id,
-                            actividadNombre: actividad.nombre
-                          });
-                        }}
-                        className={`px-3 py-2 text-sm rounded-lg font-medium border-2 flex items-center gap-1 transition-all ${
-                          actividad.activo === false 
-                            ? 'bg-green-100 hover:bg-green-200 text-green-700 border-green-300' 
-                            : 'bg-red-100 hover:bg-red-200 text-red-700 border-red-300'
-                        }`}
-                        title={actividad.activo === false ? 'Reactivar actividad' : 'Desactivar actividad'}
-                      >
+                      {/* ✅ NUEVO: Botón Editar actividad - Solo visible si tiene permiso de edición */}
+                      {puedeEditarPlan && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            abrirModalEdicion(actividad, rol.numero);
+                          }}
+                          className="px-3 py-2 text-sm rounded-lg font-medium border-2 flex items-center gap-1 transition-all bg-amber-100 hover:bg-amber-200 text-amber-700 border-amber-300"
+                          title="Editar actividad"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Editar
+                        </button>
+                      )}
+                      {/* Botón Desactivar/Activar actividad - Solo visible si tiene permiso de edición o eliminación */}
+                      {(puedeEditarPlan || puedeEliminarPlan) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            console.log('🔘 Click en botón desactivar/activar:', {
+                              actividadId: actividad.id,
+                              actividadNombre: actividad.nombre,
+                              activo: actividad.activo,
+                              rolNumero: rol.numero
+                            });
+                            setModalConfirmacion({
+                              visible: true,
+                              tipo: actividad.activo === false ? 'activar' : 'desactivar',
+                              rolNumero: rol.numero,
+                              actividadId: actividad.id,
+                              actividadNombre: actividad.nombre
+                            });
+                          }}
+                          className={`px-3 py-2 text-sm rounded-lg font-medium border-2 flex items-center gap-1 transition-all ${
+                            actividad.activo === false 
+                              ? 'bg-green-100 hover:bg-green-200 text-green-700 border-green-300' 
+                              : 'bg-red-100 hover:bg-red-200 text-red-700 border-red-300'
+                          }`}
+                          title={actividad.activo === false ? 'Reactivar actividad' : 'Desactivar actividad'}
+                        >
                         {actividad.activo === false ? (
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -3481,6 +3503,7 @@ function SeccionGestionYSeguimiento({
                         )}
                         {actividad.activo === false ? 'Reactivar' : 'Desactivar'}
                       </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3704,17 +3727,20 @@ function SeccionGestionYSeguimiento({
                               </div>
                             )}
                             
-                            <button
-                              onClick={() => setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero })}
-                              className={`w-full px-4 py-3 text-white rounded-lg font-semibold flex items-center justify-center gap-2 ${
-                                actividad.configuracionEvidencias 
-                                  ? 'bg-green-600 hover:bg-green-700' 
-                                  : 'bg-blue-600 hover:bg-blue-700'
-                              }`}
-                            >
-                              <Paperclip className="w-5 h-5" />
-                              Gestionar evidencias y observaciones
-                            </button>
+                            {/* Botón Gestionar evidencias - Solo visible si puede editar o hacer seguimiento */}
+                            {puedeGestionarEvidencias && (
+                              <button
+                                onClick={() => setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero })}
+                                className={`w-full px-4 py-3 text-white rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                                  actividad.configuracionEvidencias 
+                                    ? 'bg-green-600 hover:bg-green-700' 
+                                    : 'bg-blue-600 hover:bg-blue-700'
+                                }`}
+                              >
+                                <Paperclip className="w-5 h-5" />
+                                Gestionar evidencias y observaciones
+                              </button>
+                            )}
                             <div className="mt-3 text-sm text-center">
                               {actividad.adjuntos && actividad.adjuntos.length > 0 && (
                                 <span className="text-green-700 font-semibold">
@@ -3729,22 +3755,23 @@ function SeccionGestionYSeguimiento({
                             </div>
                           </div>
 
-                          {/* Botones */}
-                          <div className="flex gap-3">
-                            <button
-                              onClick={() => guardarSeguimiento(rol.numero, actividad.id)}
-                              disabled={guardando}
-                              className={`flex-1 px-6 py-3 text-white rounded-lg font-semibold flex items-center justify-center gap-2 ${
-                                guardando 
-                                  ? 'bg-gray-400 cursor-not-allowed' 
-                                  : 'bg-green-600 hover:bg-green-700'
-                              }`}
-                            >
-                              {guardando ? (
-                                <>
-                                  <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                          {/* Botones de seguimiento - Solo visibles si puede editar o hacer seguimiento */}
+                          {puedeGestionarEvidencias && (
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() => guardarSeguimiento(rol.numero, actividad.id)}
+                                disabled={guardando}
+                                className={`flex-1 px-6 py-3 text-white rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                                  guardando 
+                                    ? 'bg-gray-400 cursor-not-allowed' 
+                                    : 'bg-green-600 hover:bg-green-700'
+                                }`}
+                              >
+                                {guardando ? (
+                                  <>
+                                    <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
                                   </svg>
                                   Guardando...
                                 </>
@@ -3765,7 +3792,8 @@ function SeccionGestionYSeguimiento({
                             >
                               Cancelar
                             </button>
-                          </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </motion.div>
@@ -4150,7 +4178,7 @@ function SeccionGestionYSeguimiento({
 // SECCIÓN 2: ASIGNAR RESPONSABLES
 // ════════════════════════════════════════════════════════════════════════════
 
-function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargandoAuditores }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; auditores: Auditor[]; cargandoAuditores: boolean }) {
+function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargandoAuditores, puedeAsignar = true }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; auditores: Auditor[]; cargandoAuditores: boolean; puedeAsignar?: boolean }) {
   console.log('📋 [SeccionAsignar] Plan recibido:', plan);
   console.log('📋 [SeccionAsignar] Roles con IDs:', plan.roles.map(r => ({ numero: r.numero, id: r.id, nombre: r.nombre, actividades: r.actividades.length })));
   console.log('📋 [SeccionAsignar] Auditores disponibles:', auditores.length);
@@ -4418,25 +4446,32 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                               <span>📅 Fin: {new Date(actividad.fechaFin).toLocaleDateString('es-CO')}</span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <select
-                              value={actividad.responsable?.nombre || ''}
-                              onChange={(e) => {
-                                const auditor = auditores.find(a => a.nombre === e.target.value);
-                                if (auditor) asignarResponsable(rol.numero, actividad.id, auditor);
-                              }}
-                              className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 min-w-[280px] text-sm"
-                              onClick={(e) => e.stopPropagation()}
-                              disabled={cargandoAuditores || asignandoId === actividad.id}
-                            >
-                              <option value="">🔹 Sin asignar</option>
-                              {auditores.map((auditor) => (
-                                <option key={auditor.id} value={auditor.nombre}>
-                                  👤 {auditor.nombre} - {auditor.cargo}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
+                          {/* Select de asignación - Solo si tiene permiso */}
+                          {puedeAsignar ? (
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={actividad.responsable?.nombre || ''}
+                                onChange={(e) => {
+                                  const auditor = auditores.find(a => a.nombre === e.target.value);
+                                  if (auditor) asignarResponsable(rol.numero, actividad.id, auditor);
+                                }}
+                                className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 min-w-[280px] text-sm"
+                                onClick={(e) => e.stopPropagation()}
+                                disabled={cargandoAuditores || asignandoId === actividad.id}
+                              >
+                                <option value="">🔹 Sin asignar</option>
+                                {auditores.map((auditor) => (
+                                  <option key={auditor.id} value={auditor.nombre}>
+                                    👤 {auditor.nombre} - {auditor.cargo}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : (
+                            <div className="px-4 py-2 bg-gray-100 rounded-lg text-sm text-gray-600">
+                              {actividad.responsable?.nombre || 'Sin asignar'}
+                            </div>
+                          )}
                         </div>
                       ))
                     )}
@@ -4531,18 +4566,21 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                         </div>
                       </motion.div>
                     ) : (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMostrarFormNuevaActividad(rol.numero);
-                        }}
-                        className="w-full px-4 py-3 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 rounded-lg text-gray-600 hover:text-blue-600 font-medium flex items-center justify-center gap-2 transition-colors"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Agregar actividad adicional
-                      </button>
+                      /* Botón agregar actividad - Solo si tiene permiso de asignación */
+                      puedeAsignar && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMostrarFormNuevaActividad(rol.numero);
+                          }}
+                          className="w-full px-4 py-3 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 rounded-lg text-gray-600 hover:text-blue-600 font-medium flex items-center justify-center gap-2 transition-colors"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Agregar actividad adicional
+                        </button>
+                      )
                     )}
                   </div>
                 </motion.div>
@@ -5834,7 +5872,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
           <button
             onClick={() => cambiarEstado('APROBADO')}
             disabled={!puedeAprobar || !puedeAprobarPlan || guardando}
-            title={!puedeAprobarPlan ? 'Solo el Jefe OCI puede aprobar el plan' : undefined}
+            title={!puedeAprobarPlan ? 'No tiene permisos para aprobar el plan' : undefined}
             className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Check className="w-5 h-5" />
@@ -5844,7 +5882,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
           <button
             onClick={() => cambiarEstado('VIGENTE')}
             disabled={!puedeActivar || !puedeAprobarPlan || guardando}
-            title={!puedeAprobarPlan ? 'Solo el Jefe OCI puede activar el plan' : undefined}
+            title={!puedeAprobarPlan ? 'No tiene permisos para activar el plan' : undefined}
             className="w-full px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <CheckCircle2 className="w-5 h-5" />

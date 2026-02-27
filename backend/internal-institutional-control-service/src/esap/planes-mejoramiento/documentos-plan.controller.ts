@@ -12,12 +12,17 @@ import {
   HttpStatus,
   Res,
   NotFoundException,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import type { Response } from 'express';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { Permissions } from '../../auth/decorators/permissions.decorator';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import { DocumentosPlanService } from './documentos-plan.service';
 
 // Tipo para el archivo subido
@@ -42,6 +47,8 @@ export class DocumentosPlanController {
    * Crea un nuevo documento para un plan de mejoramiento
    */
   @Post()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_EDIT)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -89,6 +96,8 @@ export class DocumentosPlanController {
    * Obtiene todos los documentos de un plan
    */
   @Get()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
   async findAll(@Param('planId') planId: string) {
     return await this.documentosPlanService.findByPlan(planId);
   }
@@ -98,6 +107,8 @@ export class DocumentosPlanController {
    * Obtiene un documento específico
    */
   @Get(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
   async findOne(@Param('planId') planId: string, @Param('id') id: string) {
     const documento = await this.documentosPlanService.findOne(id);
     if (documento.planMejoramientoId !== planId) {
@@ -111,6 +122,8 @@ export class DocumentosPlanController {
    * Descarga un documento
    */
   @Get(':id/descargar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
   async download(
     @Param('planId') planId: string,
     @Param('id') id: string,
@@ -142,6 +155,8 @@ export class DocumentosPlanController {
    * Elimina un documento
    */
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_EDIT)
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('planId') planId: string, @Param('id') id: string) {
     const documento = await this.documentosPlanService.findOne(id);
@@ -160,6 +175,8 @@ export class DocumentosPlanController {
    * Crea un nuevo documento para una acción correctiva específica
    */
   @Post('acciones/:accionId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_EDIT)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -209,6 +226,8 @@ export class DocumentosPlanController {
    * Obtiene todos los documentos de una acción correctiva
    */
   @Get('acciones/:accionId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
   async findByAccion(
     @Param('planId') planId: string,
     @Param('accionId') accionId: string,
@@ -221,6 +240,8 @@ export class DocumentosPlanController {
    * Obtiene todos los documentos del plan agrupados por acción
    */
   @Get('agrupados')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
   async findAgrupados(@Param('planId') planId: string) {
     return await this.documentosPlanService.findByPlanAgrupados(planId);
   }
@@ -230,6 +251,8 @@ export class DocumentosPlanController {
    * Valida un documento (solo auditor)
    */
   @Post(':id/validar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_FOLLOW_UP)
   async validarDocumento(
     @Param('planId') planId: string,
     @Param('id') id: string,
