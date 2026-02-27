@@ -243,6 +243,8 @@ export class AuditoriasController {
    * Obtiene todas las auditorías para el Kanban con todas las relaciones
    */
   @Get('kanban/all')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   findAllKanban() {
     return this.auditoriasService.findAllKanban();
   }
@@ -252,6 +254,8 @@ export class AuditoriasController {
    * Obtiene todas las auditorías archivadas para el Kanban
    */
   @Get('kanban/archivadas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   findAllKanbanArchivadas() {
     return this.auditoriasService.findAllKanbanArchivadas();
   }
@@ -262,6 +266,8 @@ export class AuditoriasController {
    * Retorna el ID_TERCERO que se usa como FK
    */
   @Get('personas/buscar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   async buscarPersona(@Query('numeroIdentificacion') numeroIdentificacion: string) {
     if (!numeroIdentificacion) {
       throw new BadRequestException('El número de identificación es requerido');
@@ -281,6 +287,8 @@ export class AuditoriasController {
    * Obtiene todas las personas disponibles para ser auditores
    */
   @Get('personas/disponibles')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   async obtenerPersonasDisponibles() {
     return this.auditoriasService.obtenerPersonasDisponibles();
   }
@@ -290,6 +298,8 @@ export class AuditoriasController {
    * Busca una auditoría por código
    */
   @Get('codigo/:codigo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   findByCodigo(@Param('codigo') codigo: string) {
     return this.auditoriasService.findByCodigo(codigo);
   }
@@ -299,6 +309,8 @@ export class AuditoriasController {
    * Obtiene todos los hallazgos de una auditoría
    */
   @Get(':id/hallazgos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   getHallazgosByAuditoria(@Param('id') id: string) {
     return this.hallazgosService.findByAuditoria(id);
   }
@@ -308,6 +320,8 @@ export class AuditoriasController {
    * Obtiene todas las notas de una auditoría
    */
   @Get(':id/notas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   getNotasByAuditoria(@Param('id') id: string) {
     return this.auditoriasService.getNotasByAuditoria(id);
   }
@@ -317,6 +331,8 @@ export class AuditoriasController {
    * Obtiene una auditoría por ID
    */
   @Get(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   findOne(@Param('id') id: string) {
     return this.auditoriasService.findOne(id);
   }
@@ -326,6 +342,8 @@ export class AuditoriasController {
    * Crea una nueva auditoría
    */
   @Post()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_CREATE)
   create(@Body() createDto: CreateAuditoriaDto) {
     return this.auditoriasService.create(createDto);
   }
@@ -335,6 +353,8 @@ export class AuditoriasController {
    * Actualiza una auditoría existente
    */
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   update(@Param('id') id: string, @Body() updateDto: UpdateAuditoriaDto) {
     return this.auditoriasService.update(id, updateDto);
   }
@@ -344,6 +364,8 @@ export class AuditoriasController {
    * Actualiza una auditoría existente (alias de PATCH)
    */
   @Put(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   updatePut(@Param('id') id: string, @Body() updateDto: UpdateAuditoriaDto) {
     return this.auditoriasService.update(id, updateDto);
   }
@@ -353,6 +375,8 @@ export class AuditoriasController {
    * Actualiza el progreso de una auditoría
    */
   @Patch(':id/progreso')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   updateProgreso(
     @Param('id') id: string,
     @Body('progreso') progreso: number,
@@ -365,6 +389,8 @@ export class AuditoriasController {
    * Actualiza la fase de una auditoría
    */
   @Patch(':id/fase')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   updateFase(
     @Param('id') id: string,
     @Body('fase') fase: FaseAuditoria,
@@ -378,6 +404,8 @@ export class AuditoriasController {
    * Acepta tanto valores en español ('Plan Anual', 'Planeación') como normalizados
    */
   @Patch(':id/estado-kanban')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   updateEstadoKanban(
     @Param('id') id: string,
     @Body('estadoKanban') estadoKanban: string,
@@ -390,6 +418,8 @@ export class AuditoriasController {
    * Incrementa el contador de hallazgos
    */
   @Post(':id/hallazgos/incrementar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   incrementarHallazgos(@Param('id') id: string) {
     return this.auditoriasService.incrementarHallazgos(id);
   }
@@ -399,6 +429,8 @@ export class AuditoriasController {
    * Decrementa el contador de hallazgos
    */
   @Post(':id/hallazgos/decrementar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   decrementarHallazgos(@Param('id') id: string) {
     return this.auditoriasService.decrementarHallazgos(id);
   }
@@ -408,6 +440,8 @@ export class AuditoriasController {
    * Elimina una auditoría
    */
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.auditoriasService.delete(id);
@@ -419,6 +453,8 @@ export class AuditoriasController {
    * RN-031.2: Solo Auditor Líder asignado a la auditoría puede solicitar
    */
   @Post(':id/ampliar-plazo/solicitar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   @HttpCode(HttpStatus.OK)
   solicitarAmpliacionPlazo(
     @Param('id') id: string,
@@ -500,6 +536,8 @@ export class AuditoriasController {
    * Útil para que el Jefe OCI vea todas las solicitudes que requieren aprobación
    */
   @Get('ampliar-plazo/pendientes')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   getSolicitudesAmpliacionPendientes() {
     return this.auditoriasService.getSolicitudesAmpliacionPendientes();
   }
@@ -509,6 +547,8 @@ export class AuditoriasController {
    * Obtiene el historial completo de cambios de una auditoría
    */
   @Get(':id/historial')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   getHistorialAuditoria(@Param('id') id: string) {
     return this.auditoriasService.getHistorialAuditoria(id);
   }
