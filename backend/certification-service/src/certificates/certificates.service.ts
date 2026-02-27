@@ -2028,7 +2028,9 @@ export class CertificatesService {
       verificacion.solicitud.status,
     );
     if (employmentStatus === 'INACTIVO') {
-      throw new BadRequestException('Actualmente no tienes un contrato activo en la ESAP.');
+      throw new BadRequestException(
+        'Si tu certificado no se encuentra disponible o tienes inquietudes, escribenos a talento.humano@esap.edu.co.',
+      );
     }
 
     // Generar codigo de 6 digitos
@@ -2121,7 +2123,9 @@ export class CertificatesService {
       solicitud.status,
     );
     if (employmentStatus === 'INACTIVO') {
-      throw new BadRequestException('Actualmente no tienes un contrato activo en la ESAP.');
+      throw new BadRequestException(
+        'Si tu certificado no se encuentra disponible o tienes inquietudes, escribenos a talento.humano@esap.edu.co.',
+      );
     }
 
     // Generar el certificado

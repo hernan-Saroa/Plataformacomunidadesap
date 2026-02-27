@@ -837,9 +837,9 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       if (estadoVerificacion === 'inactivo') {
         setBuscandoEmpleado(false);
         setEstadoLaboral('inactivo');
-        toast.error('Actualmente no tienes un contrato activo en la ESAP.', {
-          description: 'Por favor comunícate con Talento Humano para validar tu situación laboral.',
-          duration: 6000,
+        toast.error('Certificado no disponible', {
+          description: 'Si tu certificado no se encuentra disponible o tienes inquietudes, escribenos a talento.humano@esap.edu.co.',
+          duration: 7000,
         });
         return;
       }
@@ -1579,13 +1579,22 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                         )}
                       </Button>
                       {estadoLaboral === 'inactivo' && (
-                        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">
+                        <div className="mt-4 rounded-xl border border-red-200 bg-gradient-to-r from-red-50 via-rose-50 to-pink-50 p-4 shadow-sm">
                           <div className="flex items-start gap-3">
-                            <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                            <div className="text-sm">
-                              <p className="font-semibold">Actualmente no tienes un contrato activo en la ESAP.</p>
-                              <p className="text-red-700 mt-1">
-                                Por favor comunícate con Talento Humano.
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-red-200 bg-white/80 flex-shrink-0">
+                              <Mail className="w-4 h-4 text-red-700" />
+                            </div>
+                            <div className="text-sm text-red-900">
+                              <p className="font-semibold">Certificado no disponible</p>
+                              <p className="mt-1 leading-relaxed text-red-800">
+                                Si tu certificado no se encuentra disponible o tienes inquietudes, escribenos a{' '}
+                                <a
+                                  href="mailto:talento.humano@esap.edu.co"
+                                  className="font-semibold text-red-900 underline decoration-red-400 underline-offset-2 hover:text-red-700"
+                                >
+                                  talento.humano@esap.edu.co
+                                </a>
+                                .
                               </p>
                             </div>
                           </div>
