@@ -950,6 +950,7 @@ class DisciplinaryService {
 
     /**
      * Verificar acceso a un enlace compartido (público)
+     * Cambiado a GET para evitar problemas con autenticación
      */
     async verificarAccesoCompartido(token: string, clave?: string): Promise<{
         tieneAcceso: boolean;
@@ -957,7 +958,7 @@ class DisciplinaryService {
         expediente?: { id: string; radicado: string };
         mensaje?: string;
     }> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/compartir-expediente/verificar`, { token, clave });
+        return apiClient.get<any>(`${SERVICE_PREFIX}/compartir-expediente/verificar/${token}`, { clave: clave || '' }, { skipAuth: true });
     }
 
     /**
@@ -974,7 +975,7 @@ class DisciplinaryService {
             fechaVencimientoEtapa: string;
         };
     }> {
-        return apiClient.get<any>(`${SERVICE_PREFIX}/compartir-expediente/publico/${token}`);
+        return apiClient.get<any>(`${SERVICE_PREFIX}/compartir-expediente/publico/${token}`, undefined, { skipAuth: true });
     }
 }
 

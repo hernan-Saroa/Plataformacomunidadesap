@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Param,
+  Query,
   UseGuards,
   Request,
   Ip,
@@ -107,14 +108,16 @@ export class CompartirExpedienteController {
 
   /**
    * Verificar acceso a un enlace compartido (público)
+   * Cambiado a GET para evitar problemas con autenticación
    */
   @Public()
-  @Post('verificar')
+  @Get('verificar/:token')
   async verificarAcceso(
-    @Body() dto: AccederCompartidoDto,
+    @Param('token') token: string,
+    @Query('clave') clave: string,
     @Ip() ip: string,
   ) {
-    return this.compartirService.verificarAcceso(dto, ip);
+    return this.compartirService.verificarAcceso({ token, clave }, ip);
   }
 
   /**
