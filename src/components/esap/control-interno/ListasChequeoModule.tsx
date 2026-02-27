@@ -227,11 +227,29 @@ const mapApiDocumentoToBiblioteca = (doc: any): DocumentoBiblioteca => {
     ? formatFileSize(doc.tamanioBytes)
     : doc?.tamano || doc?.fileSizeFormatted || 'N/A';
   
+  // Mapear etapa del backend a etapaKanban del frontend
+  const etapaToKanban: Record<string, EtapaKanban> = {
+    'planeacion': 'PLANEACION',
+    'planificacion': 'PLANEACION',
+    'PLANEACION': 'PLANEACION',
+    'ejecucion': 'EJECUCION',
+    'EJECUCION': 'EJECUCION',
+    'comunicacion': 'COMUNICACION',
+    'comunicacion_resultados': 'COMUNICACION',
+    'COMUNICACION': 'COMUNICACION',
+    'seguimiento': 'SEGUIMIENTO',
+    'SEGUIMIENTO': 'SEGUIMIENTO',
+    'cierre': 'CIERRE',
+    'CIERRE': 'CIERRE',
+  };
+  const etapaKanban = doc?.etapa ? etapaToKanban[doc.etapa] : undefined;
+  
   return {
     id: docId,
     nombre,
     descripcion,
     categoria: mapApiTipoToCategoria(tipo),
+    etapaKanban,
     archivoUrl: doc?.archivoUrl || doc?.url || doc?.fileUrl || doc?.rutaArchivo || '#',
     urlPreview,
     urlDownload,
@@ -520,12 +538,23 @@ function BibliotecaDocumentos({ documentos, setDocumentos, isLoading, loadError 
   // ═══════════════════════════════════════════════════════════════════
   const handleSubirDocumento = async (nuevoDocumento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File }) => {
     try {
+      // Mapear etapaKanban del frontend a etapa del backend
+      const etapaKanbanToBackend: Record<string, string> = {
+        'PLANEACION': 'planeacion',
+        'EJECUCION': 'ejecucion',
+        'COMUNICACION': 'comunicacion',
+        'SEGUIMIENTO': 'seguimiento',
+        'CIERRE': 'cierre',
+      };
+      const etapaBackend = nuevoDocumento.etapaKanban ? etapaKanbanToBackend[nuevoDocumento.etapaKanban] : undefined;
+
       const creado = await controlInternoService.createDocumento(
         nuevoDocumento.file,
         {
           nombre: nuevoDocumento.nombre,
           descripcion: nuevoDocumento.descripcion,
           tipoDocumento: mapCategoriaToApiTipo(nuevoDocumento.categoria),
+          etapa: etapaBackend,
           subidoPor: nuevoDocumento.subidoPor
         }
       );

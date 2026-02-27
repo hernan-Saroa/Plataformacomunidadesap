@@ -10,7 +10,14 @@ import {
   Put,
   Query,
   NotFoundException,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import { PlanesMejoramientoService } from './planes-mejoramiento.service';
 import { CreatePlanMejoramientoDto } from './dto/create-plan-mejoramiento.dto';
 import { UpdatePlanMejoramientoDto } from './dto/update-plan-mejoramiento.dto';
@@ -20,6 +27,19 @@ import { RegistrarAvanceDto } from './dto/registrar-avance.dto';
 import { CreateRegistroSeguimientoDto } from './dto/create-registro-seguimiento.dto';
 import { CreateEventoTimelineDto } from './dto/create-evento-timeline.dto';
 import { RechazarPlanDto } from './dto/rechazar-plan.dto';
+
+// Tipo para el archivo subido
+interface MulterFile {
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  size: number;
+  destination: string;
+  filename: string;
+  path: string;
+  buffer: Buffer;
+}
 
 @Controller('planes-mejoramiento')
 export class PlanesMejoramientoController {
@@ -187,7 +207,7 @@ export class PlanesMejoramientoController {
 
   /**
    * POST /planes-mejoramiento/:planId/acciones/:accionId/evidencias
-   * Carga evidencia en una acción
+   * Carga evidencia en una acción (solo metadata, para URLs externas)
    */
   @Post(':planId/acciones/:accionId/evidencias')
   async cargarEvidencia(
@@ -221,6 +241,76 @@ export class PlanesMejoramientoController {
     return this.planesMejoramientoService.updateAccion(planId, accionId, {
       evidencias,
     } as any);
+  }
+
+  /**
+   * POST /planes-mejoramiento/:planId/acciones/:accionId/evidencias/upload
+   * Sube archivo de evidencia y lo asocia a la acción (multipart/form-data)
+   */
+  @Post(':planId/acciones/:accionId/evidencias/upload')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = process.env.UPLOAD_PATH || './uploads/evidencias/acciones';
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const randomName = Array(32)
+            .fill(null)
+            .map(() => Math.round(Math.random() * 16).toString(16))
+            .join('');
+          cb(null, `${randomName}${extname(file.originalname)}`);
+        },
+      }),
+      limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+    }),
+  )
+  async subirEvidenciaArchivo(
+    @Param('planId') planId: string,
+    @Param('accionId') accionId: string,
+    @UploadedFile() file: MulterFile,
+    @Body() body: { descripcion?: string; subidoPor?: string },
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se proporcionó ningún archivo');
+    }
+
+    const plan = await this.planesMejoramientoService.findOne(planId);
+    const accion = plan.acciones.find((a) => a.id === accionId);
+    
+    if (!accion) {
+      throw new NotFoundException(`Acción con ID ${accionId} no encontrada en el plan ${planId}`);
+    }
+
+    // Crear nueva evidencia con datos del archivo
+    const nuevaEvidencia = {
+      id: Date.now().toString(),
+      nombre: file.originalname,
+      tipo: file.mimetype,
+      url: `/uploads/evidencias/acciones/${file.filename}`,
+      fecha: new Date().toISOString(),
+      validado: false,
+      tamanio: file.size,
+      descripcion: body.descripcion || '',
+      subidoPor: body.subidoPor || 'system',
+    };
+
+    const evidencias = [...(accion.evidencias || []), nuevaEvidencia];
+
+    const accionActualizada = await this.planesMejoramientoService.updateAccion(planId, accionId, {
+      evidencias,
+    } as any);
+
+    return {
+      success: true,
+      message: 'Evidencia cargada exitosamente',
+      evidencia: nuevaEvidencia,
+      accion: accionActualizada,
+    };
   }
 
   /**

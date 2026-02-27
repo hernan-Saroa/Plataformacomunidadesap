@@ -43,7 +43,9 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('plan.roles', 'roles')
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
-      .orderBy('plan.año', 'DESC');
+      .orderBy('plan.año', 'DESC')
+      .addOrderBy('roles.rol_numero', 'ASC')
+      .addOrderBy('actividades.created_at', 'ASC');
 
     if (year) {
       query.where('plan.año = :year', { year });
@@ -53,10 +55,15 @@ export class PlanAnual5RolesService {
   }
 
   async findOne(id: string): Promise<PlanAnual5Roles> {
-    const plan = await this.planRepository.findOne({
-      where: { id },
-      relations: ['roles', 'roles.actividades', 'roles.actividades.adjuntos'],
-    });
+    const plan = await this.planRepository
+      .createQueryBuilder('plan')
+      .leftJoinAndSelect('plan.roles', 'roles')
+      .leftJoinAndSelect('roles.actividades', 'actividades')
+      .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
+      .where('plan.id = :id', { id })
+      .orderBy('roles.rol_numero', 'ASC')
+      .addOrderBy('actividades.created_at', 'ASC')
+      .getOne();
 
     if (!plan) {
       throw new NotFoundException(`Plan Anual con ID ${id} no encontrado`);
@@ -66,10 +73,15 @@ export class PlanAnual5RolesService {
   }
 
   async findByYear(year: number): Promise<PlanAnual5Roles | null> {
-    return this.planRepository.findOne({
-      where: { año: year },
-      relations: ['roles', 'roles.actividades', 'roles.actividades.adjuntos'],
-    });
+    return this.planRepository
+      .createQueryBuilder('plan')
+      .leftJoinAndSelect('plan.roles', 'roles')
+      .leftJoinAndSelect('roles.actividades', 'actividades')
+      .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
+      .where('plan.año = :year', { year })
+      .orderBy('roles.rol_numero', 'ASC')
+      .addOrderBy('actividades.created_at', 'ASC')
+      .getOne();
   }
 
   async create(createDto: CreatePlanAnual5RolesDto, usuarioId?: string): Promise<PlanAnual5Roles> {

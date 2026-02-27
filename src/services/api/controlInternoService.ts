@@ -1046,8 +1046,93 @@ class ControlInternoService {
     return client.delete(`/planes-mejoramiento/${planId}/acciones/${accionId}`);
   }
 
+  // ==========================================================================
+  // DOCUMENTOS DE PLAN DE MEJORAMIENTO (Por Acción)
+  // ==========================================================================
+
   /**
-   * Cargar evidencia en una acción
+   * Subir documento/evidencia para una acción correctiva específica
+   * Usa el campo JSONB 'evidencias' de la entidad AccionCorrectiva
+   */
+  async subirDocumentoAccion(
+    planId: string,
+    accionId: string,
+    archivo: File,
+    metadata: {
+      nombre?: string;
+      descripcion?: string;
+      tipoDocumento?: string;
+      subidoPor: string;
+      subidoPorId?: number;
+    },
+    onProgress?: (progress: number) => void
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', archivo);
+    if (metadata.descripcion) formData.append('descripcion', metadata.descripcion);
+    formData.append('subidoPor', metadata.subidoPor);
+
+    // Usar endpoint de evidencias JSONB en AccionCorrectiva
+    return client.upload<any>(`/planes-mejoramiento/${planId}/acciones/${accionId}/evidencias/upload`, formData, onProgress);
+  }
+
+  /**
+   * Obtener evidencias/documentos de una acción correctiva (desde JSONB)
+   */
+  async getDocumentosAccion(planId: string, accionId: string): Promise<any[]> {
+    // Obtener el plan y extraer las evidencias de la acción
+    const plan = await this.getPlanMejoramiento(planId);
+    const accion = plan?.acciones?.find((a: any) => a.id === accionId);
+    return accion?.evidencias || [];
+  }
+
+  /**
+   * Obtener todos los documentos del plan agrupados por acción
+   */
+  async getDocumentosPlanAgrupados(planId: string): Promise<{
+    documentosGenerales: any[];
+    documentosPorAccion: { accionId: string; documentos: any[] }[];
+  }> {
+    return client.get<any>(`/planes-mejoramiento/${planId}/documentos/agrupados`);
+  }
+
+  /**
+   * Validar documento de una acción (auditor)
+   */
+  async validarDocumentoAccion(
+    planId: string,
+    documentoId: string,
+    data: {
+      estadoValidacion: 'ACEPTADA' | 'CON_OBSERVACIONES' | 'RECHAZADA';
+      validadoPor: string;
+      comentariosAuditor?: string;
+      solicitaNuevaEvidencia?: boolean;
+    }
+  ): Promise<any> {
+    return client.post<any>(`/planes-mejoramiento/${planId}/documentos/${documentoId}/validar`, data);
+  }
+
+  /**
+   * Descargar documento
+   */
+  async descargarDocumentoAccion(planId: string, documentoId: string): Promise<Blob> {
+    const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/planes-mejoramiento/${planId}/documentos/${documentoId}/descargar`;
+    const token = localStorage.getItem('esap_auth_token');
+    
+    const response = await fetch(url, {
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Error al descargar documento: ${response.status}`);
+    }
+    
+    return response.blob();
+  }
+
+  /**
+   * Cargar evidencia en una acción (metadata, sin archivo)
+   * @deprecated Usar subirDocumentoAccion en su lugar
    */
   async cargarEvidenciaAccion(planId: string, accionId: string, evidencia: any): Promise<any> {
     return client.post<any>(`/planes-mejoramiento/${planId}/acciones/${accionId}/evidencias`, evidencia);
