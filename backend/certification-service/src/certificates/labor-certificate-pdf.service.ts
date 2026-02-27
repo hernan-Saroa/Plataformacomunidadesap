@@ -686,7 +686,7 @@ export class LaborCertificatePdfService {
     const bonusValueText = this.numeroALetras(bonusValue);
     const bonusText = `<p>Percibe una prima técnica en un porcentaje igual al (${this.formatPercentage(
       bonusPercentage,
-    )}%) sobre la asignación básica mensual de ${bonusValueText} (${this.formatMoney(
+    )}%) sobre la asignación básica mensual de ${bonusValueText} ($${this.formatMoney(
       bonusValue,
     )}) pesos m/cte.</p>`;
 
