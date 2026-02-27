@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DisciplinaryNews, NewsStatus } from '../entities/disciplinary-news.entity';
+import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto';
 import { ReturnNewsDto } from '../dtos/return-news.dto';
 import { SequenceService } from './sequence.service';
@@ -22,6 +23,8 @@ export class NewsService {
   constructor(
     @InjectRepository(DisciplinaryNews)
     private newsRepository: Repository<DisciplinaryNews>,
+    @InjectRepository(DisciplinaryProcess)
+    private processRepository: Repository<DisciplinaryProcess>,
     private sequenceService: SequenceService,
     private storageService: StorageService,
   ) { }
@@ -216,6 +219,47 @@ export class NewsService {
     const noticia = await this.findById(id);
     await this.storageService.deleteExpediente(noticia.radicado);
     await this.newsRepository.delete(id);
+  }
+
+  /**
+   * Asocia una noticia a un proceso existente
+   */
+  async associateNewsToProcess(
+    newsId: string,
+    procesoDestinoId: string,
+    justificacion: string,
+  ): Promise<DisciplinaryNews> {
+    const noticia = await this.findById(newsId);
+
+    const proceso = await this.processRepository.findOne({
+      where: { id: procesoDestinoId },
+    });
+    if (!proceso) {
+      throw new HttpException('Proceso destino no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    noticia.procesoAsociadoId = procesoDestinoId;
+    noticia.procesoAsociadoNumero = proceso.radicadoProceso;
+    noticia.procesoAsociadoFecha = new Date();
+    noticia.procesoAsociadoJustificacion = justificacion;
+
+    // Registrar en auditoría
+    const historyEntry = {
+      id: Date.now().toString(),
+      tipo: 'asociacion',
+      usuario: 'Sistema',
+      fecha: new Date().toISOString(),
+      observaciones: `Noticia asociada al proceso ${proceso.radicadoProceso}. Justificación: ${justificacion}`,
+    };
+    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+
+    console.log('✅ Asociando noticia a proceso:', {
+      newsId,
+      procesoDestinoId,
+      radicadoProceso: proceso.radicadoProceso,
+    });
+
+    return await this.newsRepository.save(noticia);
   }
 
   /**

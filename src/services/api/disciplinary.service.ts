@@ -397,7 +397,7 @@ class DisciplinaryService {
     async downloadFileFromUrl(url: string, filename: string): Promise<void> {
         // Verificar si la URL ya es absoluta (contiene protocolo)
         let fullUrl: string;
-        
+
         if (/^https?:\/\//i.test(url)) {
             // URL ya es absoluta, usarla directamente
             fullUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
@@ -875,29 +875,6 @@ class DisciplinaryService {
         return apiClient.upload<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/upload-files`, formData);
     }
 
-    // ==================== ASOCIACIONES ====================
-    
-    /**
-     * Asociar una noticia a un proceso disciplinario existente
-     */
-    async asociarNoticiaAProceso(noticiaId: string, procesoId: string, justificacion: string): Promise<DisciplinaryNews> {
-        return apiClient.post<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${noticiaId}/associate-process`, {
-            procesoId,
-            justificacion
-        });
-    }
-
-    /**
-     * Asociar un proceso disciplinario a otro proceso
-     */
-    async asociarProcesoAProceso(procesoOrigenId: string, procesoDestinoId: string, tipoAsociacion: string, justificacion: string): Promise<DisciplinaryProcess> {
-        return apiClient.post<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${procesoOrigenId}/associate-process`, {
-            procesoDestinoId,
-            tipoAsociacion,
-            justificacion
-        });
-    }
-
     // ==================== COMPARTIR EXPEDIENTE ====================
 
     /**
@@ -930,7 +907,7 @@ class DisciplinaryService {
         const token = localStorage.getItem('esap_auth_token');
         console.log('[DEBUG] Token available:', !!token);
         console.log('[DEBUG] Token prefix:', token?.substring(0, 20));
-        
+
         return apiClient.post<any>(`${SERVICE_PREFIX}/compartir-expediente/${procesoId}`, data);
     }
 
@@ -975,6 +952,28 @@ class DisciplinaryService {
         };
     }> {
         return apiClient.get<any>(`${SERVICE_PREFIX}/compartir-expediente/publico/${token}`);
+    }
+
+    // --- ASOCIACIONES ---
+
+    async asociarNoticiaAProceso(noticiaId: string, procesoId: string, justificacion: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-news/${noticiaId}/associate-process`, {
+            procesoDestinoId: procesoId,
+            justificacion,
+        });
+    }
+
+    async asociarProcesoAProceso(
+        procesoOrigenId: string,
+        procesoDestinoId: string,
+        tipoAsociacion: 'conexo' | 'similar' | 'consolidado',
+        justificacion: string,
+    ): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/disciplinary-processes/${procesoOrigenId}/associate-process`, {
+            procesoDestinoId,
+            tipoAsociacion,
+            justificacion,
+        });
     }
 }
 
