@@ -4785,10 +4785,14 @@ export function DashboardKanbanOperativo({
             <ModalArchivarNoticia
               noticia={{
                 id: itemSeleccionado.id,
-                numeroRadicado: itemSeleccionado.numero,
-                denunciado: {
-                  nombre: itemSeleccionado.denunciado.nombre,
-                  identificacion: `${itemSeleccionado.denunciado.tipoIdentificacion} ${itemSeleccionado.denunciado.numeroIdentificacion}`
+                radicado: itemSeleccionado.numero,
+                disciplinable: {
+                  nombre: typeof itemSeleccionado.denunciado === 'string'
+                    ? itemSeleccionado.denunciado
+                    : itemSeleccionado.denunciado?.nombre || 'Sin nombre',
+                  cedula: typeof itemSeleccionado.denunciado === 'string'
+                    ? ''
+                    : itemSeleccionado.denunciado?.numeroIdentificacion || ''
                 }
               }}
               onClose={() => {
