@@ -134,6 +134,7 @@ const ORIGEN_DB_A_LABEL: Record<string, string> = {
   QUEJOSO: 'Quejoso',
   OFICIO: 'De oficio',
   REMISION: 'Remisión por competencia',
+  POR_DETERMINAR: 'Por determinar',
 };
 
 export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode }: CreateNoticiaModalProps) {
@@ -290,7 +291,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   // ✅ NUEVO: Estado para campos "Por determinar"
   const [porDeterminar, setPorDeterminar] = useState({
     // Paso 1
-    origen: false,
+    // En edición: si el origen guardado es POR_DETERMINAR, mostrar el checkbox marcado
+    origen: isEditMode ? (noticiaToEdit?.origen === 'POR_DETERMINAR') : false,
     // En edición: si el valor guardado es 'Por determinar', mostrar el checkbox marcado
     territorial: isEditMode ? (noticiaToEdit?.territorial === 'Por determinar') : false,
     // En modo edición, si no hay fechaHechos guardada se marca "Por determinar" para no bloquear el wizard

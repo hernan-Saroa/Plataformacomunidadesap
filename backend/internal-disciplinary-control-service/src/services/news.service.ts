@@ -150,9 +150,11 @@ export class NewsService {
     if (data.denunciante) cambios.push('Datos de denunciante modificados');
     if (data.disciplinable) cambios.push('Datos de disciplinable modificados');
 
-    // Aplicar cambios (solo valores válidos de enum para origen)
+    // Aplicar cambios (todos los valores del enum incluido POR_DETERMINAR)
     const validOrigens = Object.values(NewsOrigin);
-    if (data.origen && validOrigens.includes(data.origen)) noticia.origen = data.origen;
+    if (data.origen !== undefined) {
+      if (validOrigens.includes(data.origen)) noticia.origen = data.origen;
+    }
     if (data.territorial) noticia.territorial = data.territorial;
     if (data.dependenciaDenunciado) noticia.dependenciaDenunciado = data.dependenciaDenunciado;
     if (data.hechos) noticia.hechos = data.hechos;

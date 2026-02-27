@@ -13,6 +13,7 @@ export enum NewsOrigin {
   QUEJOSO = 'QUEJOSO',
   OFICIO = 'OFICIO',
   REMISION = 'REMISION',
+  POR_DETERMINAR = 'POR_DETERMINAR',
 }
 
 export enum NewsStatus {
@@ -51,6 +52,7 @@ export class DisciplinaryNews {
   @Column({
     type: 'enum',
     enum: NewsOrigin,
+    nullable: true,
   })
   origen: NewsOrigin;
 

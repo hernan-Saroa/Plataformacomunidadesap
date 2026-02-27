@@ -2636,7 +2636,7 @@ export function DashboardKanbanOperativo({
       } else {
         await disciplinaryService.updateNoticia(noticiaAEditar.id, {
           // mapearOrigenNoticia convierte la etiqueta del SELECT ('Anónimo') al enum del backend ('ANONIMO')
-          origen: data.porDeterminar?.origen ? undefined : mapearOrigenNoticia(data.origen),
+          origen: data.porDeterminar?.origen ? 'POR_DETERMINAR' : mapearOrigenNoticia(data.origen),
           territorial: data.territorial,
           hechos: hechosTexto,
           fechaQueja: data.fechaQueja || undefined,
