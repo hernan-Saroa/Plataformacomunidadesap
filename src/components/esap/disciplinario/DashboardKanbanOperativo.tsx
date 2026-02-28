@@ -2442,11 +2442,20 @@ export function DashboardKanbanOperativo({
       if (item.etapaActual !== nuevaEtapa) {
         const etapaAnterior = item.etapaActual;
 
-        // ✅ Interceptar transición Recepción → Valoración para asignar profesional
+        // ✅ Interceptar transición Recepción → Valoración para asignar profesional (solo si no tiene asignado)
         if (etapaAnterior === 'Recepción' && nuevaEtapa === 'Valoración') {
-          setItemSeleccionado(item);
-          setModalActivo('asignar-profesional');
-          return;
+          const proceso = item as Proceso;
+          const nombreAsignado = typeof proceso.profesionalAsignado === 'string'
+            ? proceso.profesionalAsignado
+            : proceso.profesionalAsignado?.nombre;
+          const tieneAsignado = nombreAsignado && nombreAsignado !== 'Sin asignar' && nombreAsignado.trim() !== '';
+
+          if (!tieneAsignado) {
+            setItemSeleccionado(item);
+            setModalActivo('asignar-profesional');
+            return;
+          }
+          // Si ya tiene profesional asignado, continúa con el cambio de etapa normal
         }
 
         // ✅ Optimistic UI update (inmediato)
