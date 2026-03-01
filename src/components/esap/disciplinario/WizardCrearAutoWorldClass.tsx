@@ -33,6 +33,7 @@ const TIPOS_AUTOS_MOCK: TipoAuto[] = [
     nombre: 'Auto de Apertura de Investigación Disciplinaria',
     descripcion: 'Auto mediante el cual se ordena la apertura de la investigación disciplinaria formal',
     etapa: 'INVESTIGACION',
+    tipo: 'AUTO_APERTURA_INVESTIGACION',
     plantilla: {
       id: 'plantilla-1-1',
       nombre: 'Plantilla Auto Apertura Estándar',
@@ -53,6 +54,7 @@ const TIPOS_AUTOS_MOCK: TipoAuto[] = [
     nombre: 'Auto de Formulación de Cargos',
     descripcion: 'Auto mediante el cual se formulan los cargos al investigado',
     etapa: 'CARGOS',
+    tipo: 'AUTO_FORMULACION_PLIEGO',
     plantilla: {
       id: 'plantilla-2-1',
       nombre: 'Plantilla Formulación Cargos Estándar',
@@ -73,6 +75,7 @@ const TIPOS_AUTOS_MOCK: TipoAuto[] = [
     nombre: 'Auto de Archivo Definitivo',
     descripcion: 'Auto mediante el cual se ordena el archivo definitivo de la investigación',
     etapa: 'INVESTIGACION',
+    tipo: 'AUTO_ARCHIVO',
     plantilla: {
       id: 'plantilla-3-1',
       nombre: 'Plantilla Archivo Definitivo',

@@ -46,6 +46,8 @@ import { exportarUniversoAuditablePDF, exportarUniversoAuditableExcel } from './
 import { convertirProcesoAFormularioDafp as convertirProcesoAFormulario } from './utils/procesoAuditableConverters';
 // ✅ HOOK DE CONFIGURACIÓN DE PROFESIONALES OCIG (backend)
 import { useConfiguracionProfesionales, type ProfesionalOCIG } from './services/useConfiguracionProfesionales';
+// ✅ HOOK DE PERMISOS FLEXIBLE
+import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS LOCALES (re-exportados desde hooks)
@@ -103,6 +105,12 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
     profesionalesOCIG,
     loading: loadingProfesionales,
   } = useConfiguracionProfesionales();
+
+  // ✅ PERMISOS FLEXIBLES - Control de acceso UI
+  const { puedeRealizar } = useControlInternoPermissions();
+  const puedeCrearProceso = puedeRealizar('planificacion', 'create');
+  const puedeEditarProceso = puedeRealizar('planificacion', 'edit');
+  const puedeEliminarProceso = puedeRealizar('planificacion', 'delete');
 
   const loading = loadingProcesos || loadingAuditorias;
   const error = errorProcesos || errorAuditorias;
@@ -354,6 +362,9 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
                 }}
                 onEliminarProceso={handleEliminarProceso}
                 onGuardarEvaluacion={editarProceso}
+                puedeCrear={puedeCrearProceso}
+                puedeEditar={puedeEditarProceso}
+                puedeEliminar={puedeEliminarProceso}
               />
             )}
             {tabActiva === 'programa' && (
@@ -468,6 +479,10 @@ interface TabUniversoAuditableProps {
   onEliminarProceso: (id: string) => void;
   // ✅ Nueva prop para guardar evaluaciones DAFP directamente al backend
   onGuardarEvaluacion?: (id: string, datos: any) => Promise<boolean>;
+  // ✅ PERMISOS - Control de visibilidad de acciones
+  puedeCrear?: boolean;
+  puedeEditar?: boolean;
+  puedeEliminar?: boolean;
 }
 
 function TabUniversoAuditable({
@@ -482,7 +497,10 @@ function TabUniversoAuditable({
   onAgregarProceso,
   onEditarProceso,
   onEliminarProceso,
-  onGuardarEvaluacion
+  onGuardarEvaluacion,
+  puedeCrear = true,
+  puedeEditar = true,
+  puedeEliminar = true
 }: TabUniversoAuditableProps) {
   // ✅ DELEGAMOS TODO AL COMPONENTE RESPONSIVE WORLD-CLASS
   return (
@@ -499,6 +517,9 @@ function TabUniversoAuditable({
       onEditarProceso={onEditarProceso as any}
       onEliminarProceso={onEliminarProceso}
       onGuardarEvaluacion={onGuardarEvaluacion}
+      puedeCrear={puedeCrear}
+      puedeEditar={puedeEditar}
+      puedeEliminar={puedeEliminar}
     />
   );
 }

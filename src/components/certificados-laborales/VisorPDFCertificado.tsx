@@ -891,7 +891,7 @@ export function VisorPDFCertificado({
   });
   const primaTecnicaEnLetras = primaTecnicaParaMostrar > 0 ? numeroALetras(primaTecnicaParaMostrar) : '';
   const primaTecnicaParrafo = incluirPrimaTecnica && primaTecnicaParaMostrar > 0
-    ? `<p>Percibe una prima técnica en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignación básica mensual de ${primaTecnicaEnLetras} (${formatearMonto(primaTecnicaParaMostrar)}) pesos m/cte.</p>`
+    ? `<p>Percibe una prima técnica en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignación básica mensual de ${primaTecnicaEnLetras} ($${formatearMonto(primaTecnicaParaMostrar)}) pesos m/cte.</p>`
     : '';
 
   const qrToken =

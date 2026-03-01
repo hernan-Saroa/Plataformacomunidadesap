@@ -186,6 +186,10 @@ export class Auditoria {
   @Column({ name: 'actividades_pendientes', type: 'integer', default: 0 })
   actividadesPendientes: number;
 
+  // Vinculación con la actividad del Plan Anual (Rol 4 - Evaluación y Seguimiento)
+  @Column({ name: 'actividad_plan_anual_id', type: 'uuid', nullable: true })
+  actividadPlanAnualId?: string;
+
   // Foreign Keys a auth.personas (ID_TERCERO es NUMERIC/BIGINT, no UUID)
   @Column({ name: 'auditor_lider_id', type: 'bigint', nullable: true })
   auditorLiderId?: number | null;

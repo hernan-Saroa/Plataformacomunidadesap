@@ -64,6 +64,9 @@ import { useTareas } from './TareasContext';
 // ✅ INTEGRACIÓN: Hook para cargar auditorías y auditores del backend
 import { useAuditoriasKanban, type AuditoriaKanban, type AuditorDisponible } from './services/useAuditoriasKanban';
 
+// ✅ PERMISOS: Hook de control de acceso
+import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
+
 // ============ TIPOS ============
 
 type EstadoAuditoria =
@@ -819,6 +822,12 @@ interface TarjetaAuditoriaProps {
   contarHallazgos: (auditoriaId: string) => number;
   contarHallazgosCriticos: (auditoriaId: string) => number;
   contarTareasPendientes: (auditoriaId: string) => number;
+  // ✅ PERMISOS - Control de visibilidad de acciones
+  puedeEditar?: boolean;
+  puedeEliminar?: boolean;
+  puedeAprobar?: boolean;
+  puedeArchivar?: boolean;
+  puedeAsignar?: boolean;
 }
 
 function TarjetaAuditoria({ 
@@ -839,7 +848,12 @@ function TarjetaAuditoria({
   onToggleColapso,
   contarHallazgos,
   contarHallazgosCriticos,
-  contarTareasPendientes
+  contarTareasPendientes,
+  puedeEditar = true,
+  puedeEliminar = true,
+  puedeAprobar = true,
+  puedeArchivar = true,
+  puedeAsignar = true
 }: TarjetaAuditoriaProps) {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'auditoria',
@@ -1243,7 +1257,7 @@ function TarjetaAuditoria({
           {/* Acciones de Gestión */}
           <div className="pt-2 border-t border-gray-200 mt-2">
             {/* 🎯 ACCIONES PRINCIPALES - RESPONSIVE */}
-            <div className="grid grid-cols-2 gap-1 sm:gap-1.5 mb-2">
+            <div className={`grid ${puedeEditar ? 'grid-cols-2' : 'grid-cols-1'} gap-1 sm:gap-1.5 mb-2`}>
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1256,6 +1270,7 @@ function TarjetaAuditoria({
                 <Eye className="w-3 h-3 mr-0.5 sm:mr-1 flex-shrink-0" />
                 <span className="truncate">Ver</span>
               </Button>
+              {puedeEditar && (
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1269,6 +1284,7 @@ function TarjetaAuditoria({
                 <Edit className="w-3 h-3 mr-0.5 sm:mr-1 flex-shrink-0" />
                 <span className="truncate">Editar</span>
               </Button>
+              )}
             </div>
 
             {/* NUEVO: Botón Crear Plan de Mejoramiento - SOLO si está Finalizada con hallazgos */}
@@ -1314,6 +1330,7 @@ function TarjetaAuditoria({
               </button>
 
               {/* Asignar auditor - SIEMPRE DISPONIBLE excepto Finalizada */}
+              {puedeAsignar && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1336,8 +1353,10 @@ function TarjetaAuditoria({
                 <UserPlus className="w-3.5 h-3.5 text-gray-600" />
                 <span className="text-[9px] text-gray-600 font-medium">Auditor</span>
               </button>
+              )}
 
               {/* Enviar a aprobación - SOLO en Comunicación y Seguimiento */}
+              {puedeAprobar && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1368,6 +1387,7 @@ function TarjetaAuditoria({
                     : 'text-gray-400'
                 }`}>Aprobar</span>
               </button>
+              )}
 
               {/* Exportar - SOLO disponible desde Ejecución en adelante */}
               <button
@@ -1398,6 +1418,7 @@ function TarjetaAuditoria({
               </button>
 
               {/* Archivar - SOLO en Finalizada */}
+              {puedeArchivar && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1424,8 +1445,10 @@ function TarjetaAuditoria({
                   auditoria.estado === 'Finalizada' ? 'text-orange-600' : 'text-gray-400'
                 }`}>Archiv</span>
               </button>
+              )}
 
               {/* Eliminar - SOLO en Planeación (no iniciada) */}
+              {puedeEliminar && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1452,6 +1475,7 @@ function TarjetaAuditoria({
                   auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual' ? 'text-red-600' : 'text-gray-400'
                 }`}>Elim</span>
               </button>
+              )}
             </div>
 
             {/* Botones Notas y Auditoría */}
@@ -1775,6 +1799,14 @@ export function GestionAuditoriasKanbanSimple() {
   // ✅ CONTEXTOS GLOBALES
   const { contarHallazgos, contarHallazgosCriticos } = useHallazgos();
   const { contarTareas, contarTareasPendientes, contarTareasCompletadas, verificarFaseCompleta, contarTareasPendientesPorFase, cargarTareas } = useTareas();
+  
+  // ✅ PERMISOS: Control de acceso flexible
+  const { puedeRealizar } = useControlInternoPermissions();
+  const puedeEditarAuditoria = puedeRealizar('auditorias', 'edit');
+  const puedeEliminarAuditoria = puedeRealizar('auditorias', 'delete');
+  const puedeAprobarAuditoria = puedeRealizar('auditorias', 'approve');
+  const puedeAsignarAuditoria = puedeRealizar('auditorias', 'assign') || puedeRealizar('auditorias', 'edit');
+  const puedeArchivarAuditoria = puedeRealizar('auditorias', 'edit');
   
   // ✅ HOOK BACKEND: Cargar auditorías y auditores desde el backend
   const {

@@ -13,12 +13,17 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { existsSync, mkdirSync, renameSync } from 'fs';
 import type { Response } from 'express';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { Permissions } from '../../auth/decorators/permissions.decorator';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 
 // Tipo para el archivo subido
 interface MulterFile {
@@ -46,6 +51,8 @@ export class DocumentosController {
    * Lista todos los documentos con filtros opcionales
    */
   @Get()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_VIEW)
   findAll(
     @Query('auditoriaId') auditoriaId?: string,
     @Query('hallazgoId') hallazgoId?: string,
@@ -69,6 +76,8 @@ export class DocumentosController {
    * Obtiene un documento por ID
    */
   @Get(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_VIEW)
   findOne(@Param('id') id: string) {
     return this.documentosService.findOne(id);
   }
@@ -78,6 +87,8 @@ export class DocumentosController {
    * Crea un nuevo documento (sube archivo y crea registro)
    */
   @Post()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_CREATE)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -149,6 +160,8 @@ export class DocumentosController {
    * Actualiza un documento existente
    */
   @Put(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_EDIT)
   update(@Param('id') id: string, @Body() updateDto: UpdateDocumentoDto) {
     return this.documentosService.update(id, updateDto);
   }
@@ -158,6 +171,8 @@ export class DocumentosController {
    * Elimina un documento
    */
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.documentosService.delete(id);
@@ -168,6 +183,8 @@ export class DocumentosController {
    * Descarga un documento
    */
   @Get(':id/download')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_VIEW)
   async download(@Param('id') id: string, @Res() res: Response) {
     const documento = await this.documentosService.findOne(id);
     const path = require('path');
@@ -192,6 +209,8 @@ export class DocumentosController {
    * Previsualiza un documento (si es imagen o PDF)
    */
   @Get(':id/preview')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_VIEW)
   async preview(@Param('id') id: string, @Res() res: Response) {
     const documento = await this.documentosService.findOne(id);
     const path = require('path');
@@ -221,6 +240,8 @@ export class DocumentosController {
    * Obtiene el historial de versiones de un documento
    */
   @Get(':id/versiones')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_VIEW)
   getHistorialVersiones(@Param('id') id: string) {
     return this.documentosService.getHistorialVersiones(id);
   }
@@ -230,6 +251,8 @@ export class DocumentosController {
    * Obtiene todos los documentos de una auditoría
    */
   @Get('auditoria/:auditoriaId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_VIEW)
   getDocumentosPorAuditoria(@Param('auditoriaId') auditoriaId: string) {
     return this.documentosService.findAll({ auditoriaId });
   }
@@ -239,6 +262,8 @@ export class DocumentosController {
    * Obtiene documentos por auditoría y etapa
    */
   @Get('auditoria/:auditoriaId/etapa/:etapa')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_VIEW)
   getDocumentosPorEtapa(
     @Param('auditoriaId') auditoriaId: string,
     @Param('etapa') etapa: EtapaDocumento,
@@ -251,6 +276,8 @@ export class DocumentosController {
    * Marca un documento como sincronizado con servidor G:
    */
   @Post(':id/sincronizar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_EDIT)
   marcarSincronizado(
     @Param('id') id: string,
     @Body() body: { rutaServidorG: string },

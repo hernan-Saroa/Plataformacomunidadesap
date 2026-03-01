@@ -9,7 +9,12 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { Permissions } from '../../auth/decorators/permissions.decorator';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import { ProgramaAnualService } from './programa-anual.service';
 import { CreateProgramaAnualDto } from './dto/create-programa-anual.dto';
 import { UpdateProgramaAnualDto } from './dto/update-programa-anual.dto';
@@ -25,6 +30,8 @@ export class ProgramaAnualController {
    * Lista todos los programas anuales
    */
   @Get()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW)
   findAll(@Query('year') year?: string) {
     const yearNum = year ? parseInt(year, 10) : undefined;
     return this.programaAnualService.findAll(yearNum);
@@ -35,6 +42,8 @@ export class ProgramaAnualController {
    * Obtiene un programa anual por ID
    */
   @Get(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW)
   findOne(@Param('id') id: string) {
     return this.programaAnualService.findOne(id);
   }
@@ -44,6 +53,8 @@ export class ProgramaAnualController {
    * Crea un nuevo programa anual
    */
   @Post()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_CREATE)
   @HttpCode(HttpStatus.CREATED)
   create(@Body() createDto: CreateProgramaAnualDto) {
     return this.programaAnualService.create(createDto);
@@ -54,6 +65,8 @@ export class ProgramaAnualController {
    * Actualiza un programa anual
    */
   @Put(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT)
   update(@Param('id') id: string, @Body() updateDto: UpdateProgramaAnualDto) {
     return this.programaAnualService.update(id, updateDto);
   }
@@ -63,6 +76,8 @@ export class ProgramaAnualController {
    * Elimina un programa anual
    */
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.programaAnualService.delete(id);
@@ -73,6 +88,8 @@ export class ProgramaAnualController {
    * Importa auditorías priorizadas desde el Universo de Auditorías
    */
   @Post(':id/importar-auditorias')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT)
   importarAuditorias(
     @Param('id') id: string,
     @Body() body: { procesoIds: string[] },
@@ -85,6 +102,8 @@ export class ProgramaAnualController {
    * Obtiene las auditorías de un programa
    */
   @Get(':id/auditorias')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW)
   getAuditoriasPrograma(@Param('id') id: string) {
     return this.programaAnualService.getAuditoriasPrograma(id);
   }
@@ -94,6 +113,8 @@ export class ProgramaAnualController {
    * Obtiene el cronograma de un programa
    */
   @Get(':id/cronograma')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW)
   getCronograma(@Param('id') id: string) {
     return this.programaAnualService.getCronograma(id);
   }
@@ -103,6 +124,8 @@ export class ProgramaAnualController {
    * Amplía el plazo de una auditoría
    */
   @Post('auditorias/:auditoriaId/ampliar-plazo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_APPROVE)
   ampliarPlazo(
     @Param('auditoriaId') auditoriaId: string,
     @Body() ampliarDto: AmpliarPlazoDto,

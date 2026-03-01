@@ -969,6 +969,64 @@ class ControlInternoService {
   }
 
   // ==========================================================================
+  // VINCULACIÓN: AUDITORÍAS ↔ ROL 4 (EVALUACIÓN Y SEGUIMIENTO)
+  // ==========================================================================
+
+  /**
+   * Obtiene el cumplimiento del programa de auditorías para un año
+   */
+  async getCumplimientoAuditorias(año: number): Promise<{
+    totalProgramadas: number;
+    totalFinalizadas: number;
+    porcentajeCumplimiento: number;
+    desglosePorTipo: Record<string, { programadas: number; finalizadas: number; en_proceso: number; pendientes: number }>;
+    actividadId?: string;
+  }> {
+    return client.get(`/plan-anual-5-roles/auditorias/cumplimiento/${año}`);
+  }
+
+  /**
+   * Configura una actividad para cálculo automático de auditorías
+   */
+  async configurarActividadAuditorias(actividadId: string, año: number): Promise<any> {
+    return client.post('/plan-anual-5-roles/auditorias/configurar', { actividadId, año });
+  }
+
+  /**
+   * Obtiene las auditorías vinculadas a una actividad
+   */
+  async getAuditoriasVinculadas(actividadId: string): Promise<{
+    total: number;
+    auditorias: Array<{
+      id: string;
+      codigo: string;
+      nombre: string;
+      tipo: string;
+      estadoKanban: string;
+      progreso: number;
+      fechaInicio: Date;
+      fechaFin: Date;
+    }>;
+  }> {
+    return client.get(`/plan-anual-5-roles/actividades/${actividadId}/auditorias`);
+  }
+
+  /**
+   * Recalcula manualmente el cumplimiento de auditorías para un año
+   */
+  async recalcularCumplimientoAuditorias(año: number): Promise<{
+    success: boolean;
+    actividadActualizada?: string;
+    cumplimiento: {
+      totalProgramadas: number;
+      totalFinalizadas: number;
+      porcentajeCumplimiento: number;
+    };
+  }> {
+    return client.post(`/plan-anual-5-roles/auditorias/recalcular/${año}`, {});
+  }
+
+  // ==========================================================================
   // PLANES DE MEJORAMIENTO
   // ==========================================================================
   
@@ -1046,8 +1104,93 @@ class ControlInternoService {
     return client.delete(`/planes-mejoramiento/${planId}/acciones/${accionId}`);
   }
 
+  // ==========================================================================
+  // DOCUMENTOS DE PLAN DE MEJORAMIENTO (Por Acción)
+  // ==========================================================================
+
   /**
-   * Cargar evidencia en una acción
+   * Subir documento/evidencia para una acción correctiva específica
+   * Usa el campo JSONB 'evidencias' de la entidad AccionCorrectiva
+   */
+  async subirDocumentoAccion(
+    planId: string,
+    accionId: string,
+    archivo: File,
+    metadata: {
+      nombre?: string;
+      descripcion?: string;
+      tipoDocumento?: string;
+      subidoPor: string;
+      subidoPorId?: number;
+    },
+    onProgress?: (progress: number) => void
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', archivo);
+    if (metadata.descripcion) formData.append('descripcion', metadata.descripcion);
+    formData.append('subidoPor', metadata.subidoPor);
+
+    // Usar endpoint de evidencias JSONB en AccionCorrectiva
+    return client.upload<any>(`/planes-mejoramiento/${planId}/acciones/${accionId}/evidencias/upload`, formData, onProgress);
+  }
+
+  /**
+   * Obtener evidencias/documentos de una acción correctiva (desde JSONB)
+   */
+  async getDocumentosAccion(planId: string, accionId: string): Promise<any[]> {
+    // Obtener el plan y extraer las evidencias de la acción
+    const plan = await this.getPlanMejoramiento(planId);
+    const accion = plan?.acciones?.find((a: any) => a.id === accionId);
+    return accion?.evidencias || [];
+  }
+
+  /**
+   * Obtener todos los documentos del plan agrupados por acción
+   */
+  async getDocumentosPlanAgrupados(planId: string): Promise<{
+    documentosGenerales: any[];
+    documentosPorAccion: { accionId: string; documentos: any[] }[];
+  }> {
+    return client.get<any>(`/planes-mejoramiento/${planId}/documentos/agrupados`);
+  }
+
+  /**
+   * Validar documento de una acción (auditor)
+   */
+  async validarDocumentoAccion(
+    planId: string,
+    documentoId: string,
+    data: {
+      estadoValidacion: 'ACEPTADA' | 'CON_OBSERVACIONES' | 'RECHAZADA';
+      validadoPor: string;
+      comentariosAuditor?: string;
+      solicitaNuevaEvidencia?: boolean;
+    }
+  ): Promise<any> {
+    return client.post<any>(`/planes-mejoramiento/${planId}/documentos/${documentoId}/validar`, data);
+  }
+
+  /**
+   * Descargar documento
+   */
+  async descargarDocumentoAccion(planId: string, documentoId: string): Promise<Blob> {
+    const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/planes-mejoramiento/${planId}/documentos/${documentoId}/descargar`;
+    const token = localStorage.getItem('esap_auth_token');
+    
+    const response = await fetch(url, {
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Error al descargar documento: ${response.status}`);
+    }
+    
+    return response.blob();
+  }
+
+  /**
+   * Cargar evidencia en una acción (metadata, sin archivo)
+   * @deprecated Usar subirDocumentoAccion en su lugar
    */
   async cargarEvidenciaAccion(planId: string, accionId: string, evidencia: any): Promise<any> {
     return client.post<any>(`/planes-mejoramiento/${planId}/acciones/${accionId}/evidencias`, evidencia);

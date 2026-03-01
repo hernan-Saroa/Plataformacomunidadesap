@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { DisciplinaryNews, NewsStatus } from '../entities/disciplinary-news.entity';
+import { DisciplinaryNews, NewsStatus, NewsOrigin } from '../entities/disciplinary-news.entity';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto';
 import { ReturnNewsDto } from '../dtos/return-news.dto';
@@ -125,6 +125,69 @@ export class NewsService {
       where: { estado: NewsStatus.RADICADA },
       order: { fechaRecepcion: 'DESC' },
     });
+  }
+
+  /**
+   * Actualiza los datos de una noticia (edición por Profesional)
+   * Registra los cambios en el historial de auditoría
+   */
+  async update(id: string, data: any): Promise<DisciplinaryNews> {
+    const noticia = await this.findById(id);
+
+    // Rastrear campos modificados para trazabilidad
+    const cambios: string[] = [];
+    if (data.origen && data.origen !== noticia.origen) {
+      cambios.push(`Origen: ${noticia.origen} → ${data.origen}`);
+    }
+    if (data.territorial && data.territorial !== noticia.territorial) {
+      cambios.push(`Territorial: ${noticia.territorial} → ${data.territorial}`);
+    }
+    if (data.hechos && data.hechos !== noticia.hechos) {
+      cambios.push('Hechos modificados');
+    }
+    if (data.fechaHechos === null) {
+      cambios.push('Fecha de hechos: eliminada (por determinar)');
+    } else if (data.fechaHechos) {
+      cambios.push(`Fecha de hechos: ${data.fechaHechos}`);
+    }
+    if (data.denunciante) cambios.push('Datos de denunciante modificados');
+    if (data.disciplinable) cambios.push('Datos de disciplinable modificados');
+
+    // Aplicar cambios (todos los valores del enum incluido POR_DETERMINAR)
+    const validOrigens = Object.values(NewsOrigin);
+    if (data.origen !== undefined) {
+      if (validOrigens.includes(data.origen)) noticia.origen = data.origen;
+    }
+    if (data.territorial) noticia.territorial = data.territorial;
+    if (data.dependenciaDenunciado) noticia.dependenciaDenunciado = data.dependenciaDenunciado;
+    if (data.hechos) noticia.hechos = data.hechos;
+    if (data.fechaQueja) noticia.fechaQueja = new Date(data.fechaQueja);
+    if (data.denunciante) noticia.denunciante = data.denunciante;
+    if (data.disciplinable) noticia.disciplinable = data.disciplinable;
+    if (data.conductas) noticia.conductas = data.conductas;
+    if (data.fechaHechos === null) {
+      // Limpiar fecha cuando el usuario selecciona "Por determinar"
+      (noticia as any).fechaHechos = null;
+      (noticia as any).fechaCaducidad = null;
+    } else if (data.fechaHechos) {
+      noticia.fechaHechos = new Date(data.fechaHechos);
+      noticia.fechaCaducidad = new Date(data.fechaHechos);
+      noticia.fechaCaducidad.setFullYear(noticia.fechaCaducidad.getFullYear() + 5);
+    }
+
+    // Registrar en historial de auditoría
+    const historyEntry = {
+      id: Date.now().toString(),
+      tipo: 'edicion',
+      usuario: data.usuario || 'Profesional',
+      fecha: new Date().toISOString(),
+      observaciones: cambios.length > 0
+        ? `Campos modificados: ${cambios.join(', ')}`
+        : 'Noticia actualizada',
+    };
+    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+
+    return await this.newsRepository.save(noticia);
   }
 
   /**
