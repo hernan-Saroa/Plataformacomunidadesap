@@ -18,6 +18,7 @@ import { TerminoProcesal } from './entities/termino-procesal.entity';
 import { DiaFestivo } from './entities/dia-festivo.entity';
 import { ReglaAlerta } from './entities/regla-alerta.entity';
 import { AlertaEnviada } from './entities/alerta-enviada.entity';
+import { EntidadRemision } from './entities/entidad-remision.entity';
 
 // Controllers
 import { NewsController } from './controllers/news.controller';
@@ -67,6 +68,8 @@ import { DisciplinaryExportService } from './services/disciplinary-export.servic
 import { CompartirExpedienteController } from './controllers/compartir-expediente.controller';
 import { CompartirExpedienteService } from './services/compartir-expediente.service';
 import { ExpedienteCompartido } from './entities/expediente-compartido.entity';
+import { EntidadRemisionController } from './controllers/entidad-remision.controller';
+import { EntidadRemisionService } from './services/entidad-remision.service';
 
 @Module({
   imports: [
@@ -90,6 +93,7 @@ import { ExpedienteCompartido } from './entities/expediente-compartido.entity';
       AlertaEnviada,
       AutoConfiguration,
       ExpedienteCompartido,
+      EntidadRemision,
     ]),
   ],
   controllers: [
@@ -109,6 +113,7 @@ import { ExpedienteCompartido } from './entities/expediente-compartido.entity';
     DisciplinaryExportController,
     AutosConfigurationController,
     CompartirExpedienteController,
+    EntidadRemisionController,
   ],
   providers: [
     AppService,
@@ -130,6 +135,7 @@ import { ExpedienteCompartido } from './entities/expediente-compartido.entity';
     PdfModifierService,
     AutosConfigurationService,
     CompartirExpedienteService,
+    EntidadRemisionService,
   ],
 })
 export class AppModule { }

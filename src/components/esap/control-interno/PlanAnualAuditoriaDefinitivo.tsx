@@ -1266,6 +1266,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       });
       
       // Transformar datos del backend al formato del frontend
+      // ✅ IMPORTANTE: Ordenar roles por rol_numero para mantener el orden del Decreto 648/2017
+      const rolesOrdenados = [...planDesdeBackend.roles].sort((a, b) => a.rol_numero - b.rol_numero);
+      
       const planTransformado: PlanAnual = {
         id: planDesdeBackend.id,
         vigencia: planDesdeBackend.año,
@@ -1275,7 +1278,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         fechaCreacion: planDesdeBackend.fecha_creacion,
         fechaAprobacion: null,
         actaCICC: null,
-        roles: planDesdeBackend.roles.map(rol => ({
+        roles: rolesOrdenados.map(rol => ({
           id: rol.id, // ID del rol desde el backend (requerido para crear actividades)
           numero: rol.rol_numero,
           nombre: rol.nombre,

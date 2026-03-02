@@ -13,6 +13,7 @@ import { Signer } from './certificates/signer.entity';
 import { TemplateConfig } from './certificates/template-config.entity';
 import { TemplateConfigChange } from './certificates/template-config-change.entity';
 import { Firmante } from './certificates/firmante.entity';
+import { TechnicalBonusAssignment } from './certificates/technical-bonus-assignment.entity';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -27,7 +28,17 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
       password: process.env.DB_PASS,
       database: process.env.DB_NAME,
       schema: process.env.DB_SCHEMA,
-      entities: [CertificateRequest, Certificate, CertificateValidation, CertificateTemplate, Signer, TemplateConfig, TemplateConfigChange, Firmante],
+      entities: [
+        CertificateRequest,
+        Certificate,
+        CertificateValidation,
+        CertificateTemplate,
+        Signer,
+        TemplateConfig,
+        TemplateConfigChange,
+        Firmante,
+        TechnicalBonusAssignment,
+      ],
       synchronize: false, // Using existing schema
     }),
     CertificatesModule,

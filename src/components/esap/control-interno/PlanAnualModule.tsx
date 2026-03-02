@@ -937,8 +937,11 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       doc.text('EQUIPO AUDITOR:', 10, yPos);
       doc.setFont('helvetica', 'normal');
       const equipoAuditores = plan.roles
-        .flatMap(rol => rol.actividades.map(act => act.responsableNombre))
-        .filter((nombre, index, arr) => arr.indexOf(nombre) === index)
+        .flatMap(rol => rol.actividades.map(act => {
+          const actAny = act as any;
+          return actAny.responsable?.nombre || actAny.responsable || actAny.responsableNombre || '';
+        }))
+        .filter((nombre, index, arr) => nombre && arr.indexOf(nombre) === index)
         .join(', ') || 'Por definir';
       // Dividir texto largo en múltiples líneas
       const equipoLines = doc.splitTextToSize(equipoAuditores, 140);
@@ -1011,13 +1014,20 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
 
       // Preparar datos de la tabla
       const tableData: any[] = [];
-      plan.roles.forEach(rol => {
+      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach(rol => {
         rol.actividades.forEach(actividad => {
+          // Obtener nombre del responsable (puede venir como 'responsable' o 'responsableNombre')
+          const actAny = actividad as any;
+          const nombreResponsable = actAny.responsable?.nombre 
+            || actAny.responsable 
+            || actAny.responsableNombre 
+            || 'Por asignar';
+          
           tableData.push([
             `${rol.nombre}: ${actividad.nombre}`,
-            actividad.responsableNombre || 'Por asignar',
-            actividad.responsableNombre || 'Por asignar',
-            actividad.fechaInicio || 'Por definir',
+            nombreResponsable,
+            nombreResponsable,
+            actAny.fechaInicio || actAny.fecha_inicio || 'Por definir',
             'Por definir',
             'Por definir'
           ]);
@@ -1190,7 +1200,7 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       ];
 
       const rolesRows: any[] = [];
-      plan.roles.forEach(rol => {
+      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach(rol => {
         if (rol.actividades.length === 0) {
           rolesRows.push([
             rol.nombre,
@@ -1242,7 +1252,7 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       ];
 
       const cronogramaRows: any[] = [];
-      plan.roles.forEach(rol => {
+      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach(rol => {
         rol.actividades.forEach(actividad => {
           cronogramaRows.push([
             `${rol.nombre}: ${actividad.nombre}`,
@@ -2808,7 +2818,7 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
             </h3>
 
             <div className="space-y-6">
-              {plan.roles.map((rol) => (
+              {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => (
             <div key={rol.id} className="border-l-4 pl-4" style={{ borderLeftColor: rol.color }}>
               <div className="flex items-center gap-3 mb-4">
                 <span className="text-3xl">{rol.icono}</span>

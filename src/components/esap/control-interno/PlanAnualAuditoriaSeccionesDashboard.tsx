@@ -47,7 +47,7 @@ export function SeccionResumen({ plan, totalActividades, actividadesAsignadas, a
       <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
         <h2 className="text-xl font-bold text-gray-900 mb-6">Resumen por roles (Decreto 648/2017)</h2>
         <div className="grid grid-cols-5 gap-4">
-          {plan.roles.map((rol: any) => {
+          {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol: any) => {
             const asignadas = rol.actividades.filter((a: any) => a.responsable !== null).length;
             const completadas = rol.actividades.filter((a: any) => a.estado === 'COMPLETADA').length;
             const avance = Math.round(
@@ -149,7 +149,7 @@ export function SeccionAsignar({ plan, onAsignarResponsable, AUDITORES }: any) {
         </div>
       </div>
 
-      {plan.roles.map((rol: any) => {
+      {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol: any) => {
         const sinAsignar = rol.actividades.filter((a: any) => a.responsable === null);
         
         return (
@@ -235,7 +235,7 @@ export function SeccionSeguimiento({ plan, onActualizarAvance }: any) {
       exit={{ opacity: 0, y: -20 }}
       className="space-y-4"
     >
-      {plan.roles.map((rol: any) => (
+      {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol: any) => (
         <div key={rol.numero} className="bg-white rounded-xl border-2 border-gray-200 p-6">
           <div className="flex items-center gap-3 mb-4">
             <div

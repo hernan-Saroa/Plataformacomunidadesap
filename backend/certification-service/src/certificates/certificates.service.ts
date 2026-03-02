@@ -9,6 +9,10 @@ import { CertificateValidation } from './certificate-validation.entity';
 import { CertificateGeneratorService } from './certificate-generator.service';
 import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
 import { TemplateConfigService } from './template-config.service';
+import {
+  TechnicalBonusAssignment,
+  type TechnicalBonusCategory,
+} from './technical-bonus-assignment.entity';
 
 type TemplateType = 'docente' | 'administrador';
 
@@ -34,6 +38,39 @@ type ValidationGeoContext = {
   geoRegion?: string;
   geoCity?: string;
   geoTimezone?: string;
+};
+
+type SearchTechnicalBonusCandidate = {
+  requestId: string;
+  fullName: string;
+  idNumber: string;
+};
+
+type UpsertTechnicalBonusPayload = {
+  category: string;
+  idNumber: string;
+  fullName?: string;
+  requestId?: string;
+  percentage: number;
+  updatedBy?: string;
+};
+
+type UpdateTechnicalBonusPayload = {
+  percentage: number;
+  updatedBy?: string;
+};
+
+type BulkTechnicalBonusRowPayload = {
+  rowNumber?: number;
+  fullName?: string;
+  idNumber?: string;
+  percentage?: number | string;
+};
+
+type BulkTechnicalBonusPayload = {
+  category: string;
+  rows: BulkTechnicalBonusRowPayload[];
+  updatedBy?: string;
 };
 
 @Injectable()
@@ -73,6 +110,148 @@ export class CertificatesService {
       if (['false', '0', 'no', 'n'].includes(normalized)) return false;
     }
     return fallback;
+  }
+
+  private sanitizeIdNumber(value?: string | null): string {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const digits = raw.replace(/\D+/g, '');
+    if (digits) return digits;
+    return raw.replace(/\s+/g, '').toUpperCase();
+  }
+
+  private parseTechnicalBonusCategory(value?: string | null): TechnicalBonusCategory {
+    const normalized = this.normalizeTemplateText(value || '').replace(/\s+/g, '');
+    if (normalized === 'directivos' || normalized === 'directivo') {
+      return 'DIRECTIVOS';
+    }
+    if (normalized === 'coordinadores' || normalized === 'coordinador') {
+      return 'COORDINADORES';
+    }
+    throw new BadRequestException('Categoria invalida. Usa Directivos o Coordinadores.');
+  }
+
+  private mapTechnicalBonusAssignment(item: TechnicalBonusAssignment) {
+    return {
+      id: item.id,
+      category: item.category,
+      request_id: item.request_id,
+      full_name: item.full_name,
+      id_number: item.id_number,
+      percentage: Number(item.percentage || 0),
+      created_by: item.created_by,
+      updated_by: item.updated_by,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+    };
+  }
+
+  private parseNumericValue(value?: string | number | null): number {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : 0;
+    }
+
+    const normalized = String(value)
+      .trim()
+      .replace(/\s+/g, '')
+      .replace(',', '.');
+    if (!normalized) return 0;
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private roundToTwoDecimals(value: number): number {
+    return Number(value.toFixed(2));
+  }
+
+  private resolveTechnicalBonusAmount(monthlySalaryRaw: string | number | null | undefined, percentageRaw: string | number | null | undefined): number {
+    const monthlySalary = this.parseNumericValue(monthlySalaryRaw);
+    const percentage = this.parseNumericValue(percentageRaw);
+
+    if (monthlySalary <= 0 || percentage <= 0) {
+      return 0;
+    }
+
+    return this.roundToTwoDecimals(monthlySalary * (percentage / 100));
+  }
+
+  private async resolveTechnicalBonusForRequest(
+    request?: Pick<CertificateRequest, 'id_number' | 'monthly_salary'> | null,
+  ): Promise<{
+    available: boolean;
+    percentage: number;
+    value: number;
+    category: TechnicalBonusCategory | null;
+    assignmentId: string | null;
+  }> {
+    const idNumber = this.sanitizeIdNumber(request?.id_number || '');
+    if (!idNumber) {
+      return {
+        available: false,
+        percentage: 0,
+        value: 0,
+        category: null,
+        assignmentId: null,
+      };
+    }
+
+    const assignment = await this.technicalBonusRepo.findOne({
+      where: {
+        id_number: Raw(
+          (alias) =>
+            `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+          { idNumber },
+        ),
+      },
+      order: { updated_at: 'DESC' },
+    });
+
+    if (!assignment) {
+      return {
+        available: false,
+        percentage: 0,
+        value: 0,
+        category: null,
+        assignmentId: null,
+      };
+    }
+
+    const percentage = this.roundToTwoDecimals(this.parseNumericValue(assignment.percentage));
+    const value = this.resolveTechnicalBonusAmount(request?.monthly_salary, percentage);
+    const available = percentage > 0;
+
+    return {
+      available,
+      percentage: available ? percentage : 0,
+      value,
+      category: assignment.category,
+      assignmentId: assignment.id,
+    };
+  }
+
+  private extractExceptionMessage(error: any, fallback: string): string {
+    const response =
+      error && typeof error.getResponse === 'function' ? error.getResponse() : undefined;
+
+    if (typeof response === 'string' && response.trim()) {
+      return response.trim();
+    }
+
+    if (response && typeof response === 'object') {
+      const message = (response as any).message;
+      if (Array.isArray(message) && message.length) {
+        const first = String(message[0] || '').trim();
+        if (first) return first;
+      }
+      if (typeof message === 'string' && message.trim()) {
+        return message.trim();
+      }
+    }
+
+    const message = String(error?.message || '').trim();
+    return message || fallback;
   }
 
   private resolveTemplateTypeFromText(value: string): TemplateType {
@@ -271,6 +450,8 @@ export class CertificatesService {
     private templateRepo: Repository<CertificateTemplate>,
     @InjectRepository(CertificateValidation)
     private validationRepo: Repository<CertificateValidation>,
+    @InjectRepository(TechnicalBonusAssignment)
+    private technicalBonusRepo: Repository<TechnicalBonusAssignment>,
     private certificateGenerator: CertificateGeneratorService,
     private laborPdfService: LaborCertificatePdfService,
     private templateConfigService: TemplateConfigService,
@@ -504,6 +685,341 @@ export class CertificatesService {
   }
 
   // ============================================
+  // TECHNICAL BONUS (PRIMA TECNICA)
+  // ============================================
+
+  async searchTechnicalBonusCandidates(query: string, limit = 10): Promise<SearchTechnicalBonusCandidate[]> {
+    const normalizedQuery = String(query || '').trim();
+    if (!normalizedQuery || normalizedQuery.length < 2) {
+      return [];
+    }
+
+    const safeLimit = Math.min(Math.max(limit || 10, 1), 200);
+    const searchTerm = `%${normalizedQuery.toLowerCase()}%`;
+    const idNeedle = normalizedQuery.replace(/\D+/g, '');
+
+    const qb = this.requestRepo.createQueryBuilder('request');
+    qb
+      .orderBy('COALESCE(request.request_date, request.updated_at, request.created_at)', 'DESC')
+      .addOrderBy('request.updated_at', 'DESC')
+      .addOrderBy('request.created_at', 'DESC')
+      .take(safeLimit * 4);
+
+    if (idNeedle) {
+      qb.where('LOWER(request.full_name) LIKE :searchTerm', { searchTerm }).orWhere(
+        `REPLACE(REPLACE(REPLACE(request.id_number, '.', ''), '-', ''), ' ', '') LIKE :idNeedle`,
+        {
+          idNeedle: `%${idNeedle}%`,
+        },
+      );
+    } else {
+      qb.where('LOWER(request.full_name) LIKE :searchTerm', { searchTerm });
+    }
+
+    const matches = await qb.getMany();
+
+    const uniqueByDoc = new Map<string, CertificateRequest>();
+    for (const request of matches) {
+      const normalizedId = this.sanitizeIdNumber(request.id_number);
+      const key = normalizedId || String(request.id_number || '').trim();
+      if (!key || uniqueByDoc.has(key)) {
+        continue;
+      }
+      uniqueByDoc.set(key, request);
+    }
+
+    return Array.from(uniqueByDoc.values())
+      .slice(0, safeLimit)
+      .map((request) => ({
+        requestId: request.id,
+        fullName: request.full_name,
+        idNumber: this.sanitizeIdNumber(request.id_number) || request.id_number,
+      }));
+  }
+
+  async listTechnicalBonusAssignments(categoryRaw: string) {
+    const category = this.parseTechnicalBonusCategory(categoryRaw);
+    const assignments = await this.technicalBonusRepo.find({
+      where: { category },
+      order: {
+        updated_at: 'DESC',
+        full_name: 'ASC',
+      },
+    });
+
+    return assignments.map((item) => this.mapTechnicalBonusAssignment(item));
+  }
+
+  async upsertTechnicalBonusAssignment(payload: UpsertTechnicalBonusPayload) {
+    const category = this.parseTechnicalBonusCategory(payload.category);
+    const idNumber = this.sanitizeIdNumber(payload.idNumber);
+    const percentageRaw = Number(payload.percentage);
+
+    if (!idNumber) {
+      throw new BadRequestException('El numero de identificacion es obligatorio.');
+    }
+
+    if (!Number.isFinite(percentageRaw) || percentageRaw <= 0 || percentageRaw > 100) {
+      throw new BadRequestException('El porcentaje debe ser mayor a 0 y menor o igual a 100.');
+    }
+
+    const existingGlobalAssignment = await this.technicalBonusRepo.findOne({
+      where: { id_number: idNumber },
+      order: { updated_at: 'DESC' },
+    });
+    if (existingGlobalAssignment && existingGlobalAssignment.category !== category) {
+      const categoryLabel =
+        existingGlobalAssignment.category === 'DIRECTIVOS'
+          ? 'Directivos'
+          : 'Coordinadores';
+      throw new BadRequestException(
+        `La persona ya tiene Prima Tecnica registrada en ${categoryLabel}.`,
+      );
+    }
+
+    const percentage = Number(percentageRaw.toFixed(2));
+
+    let request: CertificateRequest | null = null;
+    if (payload.requestId) {
+      request = await this.requestRepo.findOne({ where: { id: payload.requestId } });
+    }
+
+    if (!request) {
+      request = await this.requestRepo.findOne({
+        where: {
+          id_number: Raw(
+            (alias) =>
+              `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+            { idNumber },
+          ),
+        },
+        order: {
+          request_date: 'DESC',
+          updated_at: 'DESC',
+          created_at: 'DESC',
+        },
+      });
+    }
+
+    if (!request) {
+      throw new NotFoundException(
+        'No se encontro la persona en la base de datos de solicitudes laborales (usuarios con contrato laboral).',
+      );
+    }
+
+    const fullName = String(payload.fullName || request.full_name || '').trim();
+    if (!fullName) {
+      throw new BadRequestException('El nombre completo es obligatorio.');
+    }
+
+    const updatedBy = String(payload.updatedBy || '').trim() || null;
+    let assignment = await this.technicalBonusRepo.findOne({
+      where: { category, id_number: idNumber },
+    });
+    const isUpdate = Boolean(assignment);
+
+    if (!assignment) {
+      assignment = this.technicalBonusRepo.create({
+        category,
+        request_id: request.id,
+        full_name: fullName,
+        id_number: idNumber,
+        percentage,
+        created_by: updatedBy,
+        updated_by: updatedBy,
+      });
+    } else {
+      assignment.request_id = request.id;
+      assignment.full_name = fullName;
+      assignment.percentage = percentage;
+      assignment.updated_by = updatedBy;
+      if (!assignment.created_by && updatedBy) {
+        assignment.created_by = updatedBy;
+      }
+    }
+
+    const saved = await this.technicalBonusRepo.save(assignment);
+
+    return {
+      ...this.mapTechnicalBonusAssignment(saved),
+      action: isUpdate ? 'updated' : 'created',
+    };
+  }
+
+  async bulkUpsertTechnicalBonusAssignments(payload: BulkTechnicalBonusPayload) {
+    const category = this.parseTechnicalBonusCategory(payload.category);
+    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    const updatedBy = String(payload.updatedBy || '').trim() || undefined;
+
+    if (!rows.length) {
+      throw new BadRequestException('Debes enviar al menos una fila para la carga masiva.');
+    }
+
+    if (rows.length > 1000) {
+      throw new BadRequestException('La carga masiva permite maximo 1000 filas por archivo.');
+    }
+
+    const seenDocumentRows = new Map<string, number>();
+    const results: Array<{
+      rowNumber: number;
+      status: 'success' | 'error';
+      id_number?: string;
+      full_name?: string;
+      percentage?: number;
+      action?: 'created' | 'updated';
+      message: string;
+      record?: any;
+    }> = [];
+
+    let created = 0;
+    let updated = 0;
+    let failed = 0;
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index] || {};
+      const parsedRowNumber = Number(row.rowNumber);
+      const rowNumber =
+        Number.isFinite(parsedRowNumber) && parsedRowNumber > 0
+          ? Math.trunc(parsedRowNumber)
+          : index + 2;
+
+      const idNumber = this.sanitizeIdNumber(row.idNumber);
+      const fullName = String(row.fullName || '').trim() || undefined;
+      const percentageValue = String(row.percentage ?? '').replace(',', '.').trim();
+      const percentage = Number(percentageValue);
+
+      try {
+        if (!idNumber) {
+          throw new BadRequestException('Numero de documento vacio o invalido.');
+        }
+
+        const duplicateRowNumber = seenDocumentRows.get(idNumber);
+        if (duplicateRowNumber) {
+          throw new BadRequestException(
+            `Documento repetido en el archivo. Ya fue incluido en la fila ${duplicateRowNumber}.`,
+          );
+        }
+        seenDocumentRows.set(idNumber, rowNumber);
+
+        if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100) {
+          throw new BadRequestException('El porcentaje debe ser mayor a 0 y menor o igual a 100.');
+        }
+
+        const record = await this.upsertTechnicalBonusAssignment({
+          category,
+          idNumber,
+          percentage,
+          updatedBy,
+        });
+
+        if (record.action === 'created') {
+          created += 1;
+        } else {
+          updated += 1;
+        }
+
+        results.push({
+          rowNumber,
+          status: 'success',
+          id_number: record.id_number,
+          full_name: record.full_name,
+          percentage: record.percentage,
+          action: record.action === 'created' ? 'created' : 'updated',
+          message:
+            record.action === 'created'
+              ? 'Registro creado correctamente.'
+              : 'Registro actualizado correctamente.',
+          record,
+        });
+      } catch (error: any) {
+        failed += 1;
+        results.push({
+          rowNumber,
+          status: 'error',
+          id_number: idNumber || undefined,
+          full_name: fullName,
+          message: this.extractExceptionMessage(
+            error,
+            'Error inesperado al procesar la fila.',
+          ),
+        });
+      }
+    }
+
+    const success = rows.length - failed;
+    return {
+      category,
+      summary: {
+        total: rows.length,
+        success,
+        failed,
+        created,
+        updated,
+      },
+      results,
+    };
+  }
+
+  async updateTechnicalBonusAssignment(id: string, payload: UpdateTechnicalBonusPayload) {
+    const recordId = String(id || '').trim();
+    if (!recordId) {
+      throw new BadRequestException('El id del registro es obligatorio.');
+    }
+
+    const percentageRaw = Number(payload.percentage);
+    if (!Number.isFinite(percentageRaw) || percentageRaw <= 0 || percentageRaw > 100) {
+      throw new BadRequestException('El porcentaje debe ser mayor a 0 y menor o igual a 100.');
+    }
+    const percentage = Number(percentageRaw.toFixed(2));
+
+    const assignment = await this.technicalBonusRepo.findOne({
+      where: { id: recordId },
+    });
+
+    if (!assignment) {
+      throw new NotFoundException('No se encontro el registro de Prima Tecnica.');
+    }
+
+    const updatedBy = String(payload.updatedBy || '').trim() || null;
+    assignment.percentage = percentage;
+    assignment.updated_by = updatedBy;
+    if (!assignment.created_by && updatedBy) {
+      assignment.created_by = updatedBy;
+    }
+
+    const saved = await this.technicalBonusRepo.save(assignment);
+    return {
+      ...this.mapTechnicalBonusAssignment(saved),
+      action: 'updated' as const,
+    };
+  }
+
+  async deleteTechnicalBonusAssignment(id: string) {
+    const recordId = String(id || '').trim();
+    if (!recordId) {
+      throw new BadRequestException('El id del registro es obligatorio.');
+    }
+
+    const assignment = await this.technicalBonusRepo.findOne({
+      where: { id: recordId },
+    });
+
+    if (!assignment) {
+      throw new NotFoundException('No se encontro el registro de Prima Tecnica.');
+    }
+
+    await this.technicalBonusRepo.remove(assignment);
+
+    return {
+      id: assignment.id,
+      category: assignment.category,
+      full_name: assignment.full_name,
+      id_number: assignment.id_number,
+      deleted: true as const,
+    };
+  }
+
+  // ============================================
   // CERTIFICATES
   // ============================================
 
@@ -731,6 +1247,13 @@ export class CertificatesService {
     const includeTechnicalBonus = includeSalary
       ? this.normalizeBoolean(options.includeTechnicalBonus, false)
       : false;
+    const technicalBonus = await this.resolveTechnicalBonusForRequest(request);
+
+    if (includeTechnicalBonus && !technicalBonus.available) {
+      throw new BadRequestException(
+        'No tienes Prima Tecnica registrada en este momento. No es posible incluirla en el certificado.',
+      );
+    }
 
     const certificate = this.certificateRepo.create({
       verification_code,
@@ -743,7 +1266,7 @@ export class CertificatesService {
       position_category: request.position_category,
       position_location: request.position_location,
       monthly_salary: request.monthly_salary,
-      technical_bonus: Number(request.monthly_salary || 0) * 0.2,
+      technical_bonus: technicalBonus.value,
       include_salary: includeSalary,
       include_technical_bonus: includeTechnicalBonus,
       salary_text: request.salary_text,
@@ -1439,6 +1962,16 @@ export class CertificatesService {
       };
     }
 
+    const technicalBonus = await this.resolveTechnicalBonusForRequest(solicitud);
+    const solicitudResponse = {
+      ...solicitud,
+      technical_bonus_available: technicalBonus.available,
+      technical_bonus_percentage: technicalBonus.percentage,
+      technical_bonus_value: technicalBonus.value,
+      technical_bonus_category: technicalBonus.category,
+      technical_bonus_assignment_id: technicalBonus.assignmentId,
+    };
+
     // Verificar si ya tiene un certificado generado
     const certificadoExistente = await this.certificateRepo.findOne({
       where: { request_id: solicitud.id },
@@ -1451,8 +1984,12 @@ export class CertificatesService {
         existe: true,
         tieneCertificado: true,
         mensaje: 'Ya tienes un certificado generado',
-        solicitud: solicitud,
+        solicitud: solicitudResponse,
         certificado: certificadoExistente,
+        technical_bonus_available: technicalBonus.available,
+        technical_bonus_percentage: technicalBonus.percentage,
+        technical_bonus_value: technicalBonus.value,
+        technical_bonus_category: technicalBonus.category,
       };
     }
 
@@ -1460,7 +1997,11 @@ export class CertificatesService {
       existe: true,
       tieneCertificado: false,
       mensaje: 'Documento encontrado, puedes solicitar tu certificado',
-      solicitud: solicitud,
+      solicitud: solicitudResponse,
+      technical_bonus_available: technicalBonus.available,
+      technical_bonus_percentage: technicalBonus.percentage,
+      technical_bonus_value: technicalBonus.value,
+      technical_bonus_category: technicalBonus.category,
     };
   }
 
@@ -1487,7 +2028,9 @@ export class CertificatesService {
       verificacion.solicitud.status,
     );
     if (employmentStatus === 'INACTIVO') {
-      throw new BadRequestException('Actualmente no tienes un contrato activo en la ESAP.');
+      throw new BadRequestException(
+        'Si tu certificado no se encuentra disponible o tienes inquietudes, escribenos a talento.humano@esap.edu.co.',
+      );
     }
 
     // Generar codigo de 6 digitos
@@ -1527,6 +2070,17 @@ export class CertificatesService {
         cod_grade: verificacion.solicitud.cod_grade,
         campus: verificacion.solicitud.campus,
         observations: verificacion.solicitud.observations,
+        technical_bonus_available: this.normalizeBoolean(
+          (verificacion.solicitud as any).technical_bonus_available,
+          false,
+        ),
+        technical_bonus_percentage: this.roundToTwoDecimals(
+          this.parseNumericValue((verificacion.solicitud as any).technical_bonus_percentage),
+        ),
+        technical_bonus_value: this.roundToTwoDecimals(
+          this.parseNumericValue((verificacion.solicitud as any).technical_bonus_value),
+        ),
+        technical_bonus_category: (verificacion.solicitud as any).technical_bonus_category || null,
       },
     };
   }
@@ -1569,7 +2123,9 @@ export class CertificatesService {
       solicitud.status,
     );
     if (employmentStatus === 'INACTIVO') {
-      throw new BadRequestException('Actualmente no tienes un contrato activo en la ESAP.');
+      throw new BadRequestException(
+        'Si tu certificado no se encuentra disponible o tienes inquietudes, escribenos a talento.humano@esap.edu.co.',
+      );
     }
 
     // Generar el certificado

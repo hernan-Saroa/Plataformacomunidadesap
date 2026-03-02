@@ -11,7 +11,12 @@ import {
   HttpStatus,
   ParseUUIDPipe,
   ParseIntPipe,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { Permissions } from '../../auth/decorators/permissions.decorator';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import { ConfiguracionesProfesionalesOCIGService } from './configuraciones-profesionales-ocig.service';
 import {
   CreateConfiguracionProfesionalOCIGDto,
@@ -26,6 +31,8 @@ export class ConfiguracionesProfesionalesOCIGController {
   ) {}
 
   @Get()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.CONFIG_MANAGE)
   async findAll(
     @Query('includeInactive') includeInactive?: string,
   ): Promise<ConfiguracionProfesionalOCIGResponseDto[]> {
@@ -37,6 +44,8 @@ export class ConfiguracionesProfesionalesOCIGController {
    * Devuelve personas que AÚN NO están en configuracion_profesionales_ocig
    */
   @Get('candidatos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.CONFIG_MANAGE)
   async buscarCandidatos(
     @Query('busqueda') busqueda?: string,
   ): Promise<any[]> {
@@ -44,6 +53,8 @@ export class ConfiguracionesProfesionalesOCIGController {
   }
 
   @Get('lideres')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.CONFIG_MANAGE)
   async findLideresPotenciales(): Promise<
     ConfiguracionProfesionalOCIGResponseDto[]
   > {
@@ -51,6 +62,8 @@ export class ConfiguracionesProfesionalesOCIGController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.CONFIG_MANAGE)
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ConfiguracionProfesionalOCIGResponseDto> {
@@ -58,6 +71,8 @@ export class ConfiguracionesProfesionalesOCIGController {
   }
 
   @Get('tercero/:idTercero')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.CONFIG_MANAGE)
   async findByIdTercero(
     @Param('idTercero', ParseIntPipe) idTercero: number,
   ): Promise<ConfiguracionProfesionalOCIGResponseDto | null> {
@@ -65,6 +80,8 @@ export class ConfiguracionesProfesionalesOCIGController {
   }
 
   @Post()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.CONFIG_MANAGE)
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Body() createDto: CreateConfiguracionProfesionalOCIGDto,
@@ -73,6 +90,8 @@ export class ConfiguracionesProfesionalesOCIGController {
   }
 
   @Put(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.CONFIG_MANAGE)
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateDto: UpdateConfiguracionProfesionalOCIGDto,
@@ -81,6 +100,8 @@ export class ConfiguracionesProfesionalesOCIGController {
   }
 
   @Put('tercero/:idTercero')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.CONFIG_MANAGE)
   async updateByIdTercero(
     @Param('idTercero', ParseIntPipe) idTercero: number,
     @Body() updateDto: UpdateConfiguracionProfesionalOCIGDto,
@@ -89,12 +110,16 @@ export class ConfiguracionesProfesionalesOCIGController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.CONFIG_MANAGE)
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.service.remove(id);
   }
 
   @Delete('tercero/:idTercero')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.CONFIG_MANAGE)
   @HttpCode(HttpStatus.NO_CONTENT)
   async removeByIdTercero(
     @Param('idTercero', ParseIntPipe) idTercero: number,

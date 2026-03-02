@@ -228,6 +228,21 @@ class DisciplinaryService {
         return apiClient.upload<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
     }
 
+    async updateNoticia(id: string, data: {
+        origen?: string;
+        territorial?: string;
+        dependenciaDenunciado?: string;
+        hechos?: string;
+        denunciante?: any;
+        disciplinable?: any;
+        conductas?: string[];
+        fechaHechos?: string | null;
+        fechaQueja?: string;
+        usuario?: string;
+    }): Promise<DisciplinaryNews> {
+        return apiClient.put<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`, data);
+    }
+
     async getNoticiasPendientes(): Promise<DisciplinaryNews[]> {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news/pending-assignment`);
     }
@@ -397,7 +412,7 @@ class DisciplinaryService {
     async downloadFileFromUrl(url: string, filename: string): Promise<void> {
         // Verificar si la URL ya es absoluta (contiene protocolo)
         let fullUrl: string;
-        
+
         if (/^https?:\/\//i.test(url)) {
             // URL ya es absoluta, usarla directamente
             fullUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
@@ -875,29 +890,6 @@ class DisciplinaryService {
         return apiClient.upload<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/upload-files`, formData);
     }
 
-    // ==================== ASOCIACIONES ====================
-    
-    /**
-     * Asociar una noticia a un proceso disciplinario existente
-     */
-    async asociarNoticiaAProceso(noticiaId: string, procesoId: string, justificacion: string): Promise<DisciplinaryNews> {
-        return apiClient.post<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${noticiaId}/associate-process`, {
-            procesoId,
-            justificacion
-        });
-    }
-
-    /**
-     * Asociar un proceso disciplinario a otro proceso
-     */
-    async asociarProcesoAProceso(procesoOrigenId: string, procesoDestinoId: string, tipoAsociacion: string, justificacion: string): Promise<DisciplinaryProcess> {
-        return apiClient.post<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${procesoOrigenId}/associate-process`, {
-            procesoDestinoId,
-            tipoAsociacion,
-            justificacion
-        });
-    }
-
     // ==================== COMPARTIR EXPEDIENTE ====================
 
     /**
@@ -930,7 +922,7 @@ class DisciplinaryService {
         const token = localStorage.getItem('esap_auth_token');
         console.log('[DEBUG] Token available:', !!token);
         console.log('[DEBUG] Token prefix:', token?.substring(0, 20));
-        
+
         return apiClient.post<any>(`${SERVICE_PREFIX}/compartir-expediente/${procesoId}`, data);
     }
 
@@ -950,6 +942,7 @@ class DisciplinaryService {
 
     /**
      * Verificar acceso a un enlace compartido (público)
+     * Cambiado a GET para evitar problemas con autenticación
      */
     async verificarAccesoCompartido(token: string, clave?: string): Promise<{
         tieneAcceso: boolean;
@@ -957,7 +950,7 @@ class DisciplinaryService {
         expediente?: { id: string; radicado: string };
         mensaje?: string;
     }> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/compartir-expediente/verificar`, { token, clave });
+        return apiClient.get<any>(`${SERVICE_PREFIX}/compartir-expediente/verificar/${token}`, { clave: clave || '' }, { skipAuth: true });
     }
 
     /**
@@ -974,7 +967,29 @@ class DisciplinaryService {
             fechaVencimientoEtapa: string;
         };
     }> {
-        return apiClient.get<any>(`${SERVICE_PREFIX}/compartir-expediente/publico/${token}`);
+        return apiClient.get<any>(`${SERVICE_PREFIX}/compartir-expediente/publico/${token}`, undefined, { skipAuth: true });
+    }
+
+    // --- ASOCIACIONES ---
+
+    async asociarNoticiaAProceso(noticiaId: string, procesoId: string, justificacion: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-news/${noticiaId}/associate-process`, {
+            procesoDestinoId: procesoId,
+            justificacion,
+        });
+    }
+
+    async asociarProcesoAProceso(
+        procesoOrigenId: string,
+        procesoDestinoId: string,
+        tipoAsociacion: 'conexo' | 'similar' | 'consolidado',
+        justificacion: string,
+    ): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/disciplinary-processes/${procesoOrigenId}/associate-process`, {
+            procesoDestinoId,
+            tipoAsociacion,
+            justificacion,
+        });
     }
 }
 

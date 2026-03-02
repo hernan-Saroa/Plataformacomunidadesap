@@ -285,44 +285,110 @@ export async function generarPDFPlanAnual(plan: PlanAnual, configuracion: Config
     doc.text(descLines, margin + 3, currentY);
     currentY += descLines.length * 4 + 5;
 
-    // Tabla de actividades
+    // Tabla de actividades con información completa
     if (rol.actividades.length > 0) {
-      const actividadesData = rol.actividades.map((act) => [
-        act.nombre,
-        act.responsableNombre,
-        formatearFecha(act.fechaInicio),
-        formatearFecha(act.fechaFin),
-        `${act.porcentaje}%`,
-        act.estado
-      ]);
+      // Para cada actividad, creamos una tabla detallada
+      rol.actividades.forEach((act, actIdx) => {
+        // Verificar si necesitamos nueva página
+        if (currentY > pageHeight - 80) {
+          doc.addPage();
+          currentY = margin;
+        }
 
-      autoTable(doc, {
-        startY: currentY,
-        head: [['Actividad', 'Responsable', 'Inicio', 'Fin', 'Avance', 'Estado']],
-        body: actividadesData,
-        theme: 'striped',
-        headStyles: {
-          fillColor: rolColor,
-          textColor: [255, 255, 255],
-          fontSize: 9,
-          fontStyle: 'bold'
-        },
-        styles: {
-          fontSize: 8,
-          cellPadding: 2
-        },
-        columnStyles: {
-          0: { cellWidth: 50 },
-          1: { cellWidth: 35 },
-          2: { cellWidth: 25 },
-          3: { cellWidth: 25 },
-          4: { cellWidth: 15 },
-          5: { cellWidth: 25 }
-        },
-        margin: { left: margin + 3, right: margin }
+        // Header de la actividad
+        doc.setFillColor(245, 245, 245);
+        doc.rect(margin + 3, currentY, pageWidth - 2 * margin - 6, 8, 'F');
+        doc.setTextColor(60, 60, 60);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Actividad ${actIdx + 1}: ${act.nombre}`, margin + 5, currentY + 5);
+        currentY += 12;
+
+        // Obtener nombre del responsable (puede venir como objeto o string)
+        const actAny = act as any;
+        const nombreResponsable = actAny.responsable?.nombre || act.responsableNombre || 'Sin asignar';
+        const cargoResponsable = actAny.responsable?.cargo || '';
+        const responsableCompleto = cargoResponsable 
+          ? `${nombreResponsable} - ${cargoResponsable}` 
+          : nombreResponsable;
+
+        // Datos básicos de la actividad
+        const datosBasicos = [
+          ['Responsable', responsableCompleto],
+          ['Fecha Inicio', formatearFecha(act.fechaInicio)],
+          ['Fecha Fin', formatearFecha(act.fechaFin)],
+          ['Avance', `${act.porcentaje}%`],
+          ['Estado', act.estado]
+        ];
+
+        autoTable(doc, {
+          startY: currentY,
+          head: [],
+          body: datosBasicos,
+          theme: 'plain',
+          styles: {
+            fontSize: 8,
+            cellPadding: 2
+          },
+          columnStyles: {
+            0: { fontStyle: 'bold', cellWidth: 35 },
+            1: { cellWidth: 'auto' }
+          },
+          margin: { left: margin + 5, right: margin }
+        });
+
+        currentY = (doc as any).lastAutoTable.finalY + 3;
+
+        // Descripción (si existe)
+        if (act.descripcion && act.descripcion.trim()) {
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(80, 80, 80);
+          doc.text('Descripción:', margin + 5, currentY);
+          currentY += 4;
+          doc.setFont('helvetica', 'normal');
+          const descLines = doc.splitTextToSize(act.descripcion, pageWidth - 2 * margin - 10);
+          doc.text(descLines, margin + 5, currentY);
+          currentY += descLines.length * 3.5 + 2;
+        }
+
+        // Seguimiento y Evaluación (campos críticos)
+        const camposSeguimiento: [string, string | undefined][] = [
+          ['Control', (act as any).control],
+          ['Evaluación', (act as any).evaluacion],
+          ['Seguimiento', (act as any).seguimiento],
+          ['Observaciones Director', (act as any).observacionesDirector]
+        ];
+
+        const camposConValor = camposSeguimiento.filter(([, valor]) => valor && valor.trim());
+
+        if (camposConValor.length > 0) {
+          doc.setFillColor(254, 249, 231);
+          doc.rect(margin + 3, currentY, pageWidth - 2 * margin - 6, 6, 'F');
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(156, 110, 0);
+          doc.text('SEGUIMIENTO Y EVALUACIÓN DE TAREA', margin + 5, currentY + 4);
+          currentY += 9;
+
+          camposConValor.forEach(([label, valor]) => {
+            if (currentY > pageHeight - 30) {
+              doc.addPage();
+              currentY = margin;
+            }
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(60, 60, 60);
+            doc.text(`${label}:`, margin + 5, currentY);
+            currentY += 4;
+            doc.setFont('helvetica', 'normal');
+            const lines = doc.splitTextToSize(valor!, pageWidth - 2 * margin - 10);
+            doc.text(lines, margin + 5, currentY);
+            currentY += lines.length * 3.5 + 3;
+          });
+        }
+
+        currentY += 5;
       });
-
-      currentY = (doc as any).lastAutoTable.finalY + 8;
     } else {
       doc.setTextColor(239, 68, 68);
       doc.setFontSize(9);

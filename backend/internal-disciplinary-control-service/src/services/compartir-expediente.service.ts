@@ -174,7 +174,7 @@ export class CompartirExpedienteService {
   /**
    * Obtener datos completos del proceso compartido (sin información sensible)
    */
-  async obtenerExpedientePublico(token: string): Promise<{
+  async obtenerExpedientePublico(token: string, frontendBaseUrl?: string): Promise<{
     token: string;
     requiereClave: boolean;
     proceso: {
@@ -184,6 +184,7 @@ export class CompartirExpedienteService {
       estado: string;
       fechaVencimientoEtapa: Date;
     };
+    urlBase: string;
   }> {
     const compartido = await this.obtenerPorToken(token);
 
@@ -207,6 +208,14 @@ export class CompartirExpedienteService {
       throw new NotFoundException('Proceso no encontrado');
     }
 
+    // Usar la URL base proporcionada o detectar automáticamente
+    const baseUrl = frontendBaseUrl ||
+      process.env.PUBLIC_APP_URL ||
+      process.env.PUBLIC_FRONTEND_URL ||
+      process.env.FRONTEND_URL ||
+      process.env.FRONTEND_BASE_URL ||
+      'https://esap.edu.co';
+
     // Retornar información pública del proceso
     return {
       token: compartido.tokenAcceso,
@@ -218,6 +227,7 @@ export class CompartirExpedienteService {
         estado: proceso.estado,
         fechaVencimientoEtapa: proceso.fechaVencimientoEtapa,
       },
+      urlBase: baseUrl,
     };
   }
 
@@ -248,17 +258,31 @@ export class CompartirExpedienteService {
 
   /**
    * Generar URL pública para acceder al expediente
+   * Usa el mismo patrón que certification-service y academic-registration-service
+   * Permite pasar frontendBaseUrl como parámetro o usar variables de entorno
    */
-  generarUrlPublica(token: string): string {
-    // Ajustar según la URL pública de la aplicación
-    const baseUrl = process.env.PUBLIC_APP_URL || 'https://esap.edu.co';
+  generarUrlPublica(token: string, frontendBaseUrl?: string): string {
+    // El orden de prioridad es:
+    // 1. frontendBaseUrl pasado como parámetro (del header x-forwarded-host o similar)
+    // 2. PUBLIC_APP_URL (variable de entorno custom)
+    // 3. PUBLIC_FRONTEND_URL (variable de entorno estándar)
+    // 4. FRONTEND_URL (variable de entorno alternativa)
+    // 5. FRONTEND_BASE_URL (variable de entorno alternativa)
+    // 6. Fallback: https://esap.edu.co
+    const baseUrl =
+      frontendBaseUrl ||
+      process.env.PUBLIC_APP_URL ||
+      process.env.PUBLIC_FRONTEND_URL ||
+      process.env.FRONTEND_URL ||
+      process.env.FRONTEND_BASE_URL ||
+      'https://esap.edu.co';
     return `${baseUrl}/expediente-compartido/${token}`;
   }
 
   /**
    * Generar código QR (retorna la URL que debe codificarse)
    */
-  generarUrlQR(token: string): string {
-    return this.generarUrlPublica(token);
+  generarUrlQR(token: string, frontendBaseUrl?: string): string {
+    return this.generarUrlPublica(token, frontendBaseUrl);
   }
 }
