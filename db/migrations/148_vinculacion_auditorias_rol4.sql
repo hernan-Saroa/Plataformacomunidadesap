@@ -69,35 +69,36 @@ DECLARE
     v_total_finalizadas INTEGER := 0;
     v_desglose JSONB := '{}';
 BEGIN
-    -- Contar auditorías por tipo y estado
+    -- Calcular totales consolidados primero
     SELECT 
-        COUNT(*),
-        SUM(CASE WHEN estado_kanban = 'Finalizada' THEN 1 ELSE 0 END),
-        jsonb_object_agg(
-            COALESCE(tipo, 'regular'),
-            jsonb_build_object(
-                'programadas', COUNT(*),
-                'finalizadas', SUM(CASE WHEN estado_kanban = 'Finalizada' THEN 1 ELSE 0 END),
-                'en_proceso', SUM(CASE WHEN estado_kanban IN ('Planeación', 'Ejecución', 'Comunicación', 'Seguimiento') THEN 1 ELSE 0 END),
-                'pendientes', SUM(CASE WHEN estado_kanban = 'Plan Anual' THEN 1 ELSE 0 END)
-            )
-        )
-    INTO v_total_programadas, v_total_finalizadas, v_desglose
-    FROM control_interno.auditoria
-    WHERE activa = true 
-      AND archivada = false
-      AND EXTRACT(YEAR FROM fecha_inicio) = p_año
-    GROUP BY COALESCE(tipo, 'regular');
-
-    -- Calcular totales consolidados
-    SELECT 
-        COUNT(*),
-        SUM(CASE WHEN estado_kanban = 'Finalizada' THEN 1 ELSE 0 END)
+        COUNT(*)::INTEGER,
+        SUM(CASE WHEN estado_kanban = 'Finalizada' THEN 1 ELSE 0 END)::INTEGER
     INTO v_total_programadas, v_total_finalizadas
     FROM control_interno.auditoria
     WHERE activa = true 
       AND archivada = false
       AND EXTRACT(YEAR FROM fecha_inicio) = p_año;
+
+    -- Calcular desglose por tipo usando subquery (corrige error de aggregate anidado)
+    SELECT COALESCE(
+        jsonb_object_agg(tipo_grupo, stats),
+        '{}'::jsonb
+    ) INTO v_desglose
+    FROM (
+        SELECT 
+            COALESCE(tipo, 'regular') as tipo_grupo,
+            jsonb_build_object(
+                'programadas', COUNT(*)::INTEGER,
+                'finalizadas', SUM(CASE WHEN estado_kanban = 'Finalizada' THEN 1 ELSE 0 END)::INTEGER,
+                'en_proceso', SUM(CASE WHEN estado_kanban IN ('Planeación', 'Ejecución', 'Comunicación', 'Seguimiento') THEN 1 ELSE 0 END)::INTEGER,
+                'pendientes', SUM(CASE WHEN estado_kanban = 'Plan Anual' THEN 1 ELSE 0 END)::INTEGER
+            ) as stats
+        FROM control_interno.auditoria
+        WHERE activa = true 
+          AND archivada = false
+          AND EXTRACT(YEAR FROM fecha_inicio) = p_año
+        GROUP BY COALESCE(tipo, 'regular')
+    ) subq;
 
     RETURN QUERY SELECT 
         COALESCE(v_total_programadas, 0),
@@ -132,9 +133,9 @@ BEGIN
     FROM control_interno.actividad_plan_anual_5 a
     INNER JOIN control_interno.rol_plan_anual_5 r ON a.rol_id = r.id
     INNER JOIN control_interno.plan_anual_5_roles p ON r.plan_id = p.id
-    WHERE r.numero_rol = 4 
+    WHERE r.rol_numero = 4 
       AND a.tipo_calculo = 'auditorias'
-      AND p.año = v_año
+      AND p.ano = v_año
     LIMIT 1;
 
     -- Si existe una actividad de auditorías, actualizarla

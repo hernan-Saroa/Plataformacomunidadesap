@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Shield,
   LayoutDashboard,
@@ -16,6 +16,8 @@ import { ListasChequeoProvider } from "./listas-chequeo/ListasChequeoContext";
 import { HallazgosProvider } from "./HallazgosContext";
 import { TareasProvider } from "./TareasContext";
 import { toast } from "sonner";
+
+import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 
 // ✅ HOOK DE BACKEND - Planes de mejoramiento para badge
 import { usePlanesMejoramiento } from './services/usePlanesMejoramiento';
@@ -81,75 +83,124 @@ function ControlInternoContent({
 }: ControlInternoContentProps) {
   const { auditoriaSeleccionada } = useIntegracionAuditoriaPlanes();
   
+  // ✅ HOOK DE PERMISOS - Para filtrar submódulos
+  const { puedeAcceder, esSuperUsuario } = useControlInternoPermissions();
+  
   // ✅ HOOK DE BACKEND - Total de planes para badge
   const { planes: planesBackend, loading: loadingPlanes } = usePlanesMejoramiento();
 
-  // Calcular menuItems dinámicamente con badge
-  const menuItems: MenuItem[] = [
-    // ━━━━━━━━━━━ 1. PLAN ANUAL ━━━━━━━━━━━
-    {
-      id: "plan-operativo",
-      label: "Plan Anual",
-      subtitle: "QUÉ auditar • Plan de trabajo anual",
-      icon: <ClipboardList className="w-5 h-5" />,
-      color: "#2962FF", // Azul corporativo
-    },
-    
-    // ━━━━━━━━━━━ 2. UNIVERSO AUDITABLE ━━━━━━━━━━━
-    {
-      id: "universo-auditable",
-      label: "Universo Auditable",
-      subtitle: "DÓNDE auditar • Programa Anual",
-      icon: <Layers className="w-5 h-5" />,
-      color: "#003DA5", // Azul ESAP
-    },
-    
-    // ━━━━━━━━━━━ 3. AUDITORÍAS OCIG ━━━━━━━━━━━
-    {
-      id: "dashboard",
-      label: "Auditorías OCIG",
-      subtitle: "Centro de comando integrado",
-      icon: <LayoutDashboard className="w-5 h-5" />,
-      color: "#10B981", // Verde - Principal
-    },
-    
-    // ━━━━━━━━━━━ 4. BIBLIOTECA (RF007) ━━━━━━━━━━━
-    {
-      id: "listas-chequeo",
-      label: "Biblioteca",
-      subtitle: "Plantillas • Requisitos • Cumplimiento",
-      icon: <FileText className="w-5 h-5" />,
-      color: "#6366F1", // Azul claro - Requisitos
-    },
-    
-    // ━━━━━━━━━━━ 5. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
-    {
-      id: "planes-mejoramiento",
-      label: "Planes de Mejoramiento",
-      subtitle: "Formulación • Seguimiento",
-      icon: <AlertTriangle className="w-5 h-5" />,
-      color: "#EF4444", // Rojo - Hallazgos
-      badge: loadingPlanes ? 0 : planesBackend.length // ✅ Total de planes del backend
-    },
-    
-    // ━━━━━━━━━━━ 6. EXPEDIENTES (RF013) ━━━━━━━━━━━
-    {
-      id: "expedientes",
-      label: "Expedientes",
-      subtitle: "Archivo • Búsqueda • Expedientes",
-      icon: <FolderOpen className="w-5 h-5" />,
-      color: "#0891B2", // Cyan - Documental
-    },
-    
-    // ━━━━━━━━━━━ 7. CONFIGURACIONES ━━━━━━━━━━━
-    {
-      id: "config-auditorias",
-      label: "Configuraciones",
-      subtitle: "Notificaciones • Auditoría • Kanban • Config",
-      icon: <Settings className="w-5 h-5" />,
-      color: "#059669", // Verde oscuro - Config
-    },
-  ];
+  // Mapeo de IDs de sección a módulos de permisos
+  const MAPEO_SECCION_MODULO: Record<string, string> = {
+    'plan-operativo': 'plan-anual',
+    'universo-auditable': 'planificacion',
+    'dashboard': 'auditorias',
+    'listas-chequeo': 'auditorias', // Usa mismo permiso que auditorías
+    'planes-mejoramiento': 'planes-mejoramiento',
+    'expedientes': 'expedientes',
+    'config-auditorias': 'configuraciones',
+  };
+
+  // Calcular menuItems dinámicamente con badge y filtrado por permisos
+  const menuItems: MenuItem[] = useMemo(() => {
+    const todosLosMenus: MenuItem[] = [
+      // ━━━━━━━━━━━ 1. PLAN ANUAL ━━━━━━━━━━━
+      {
+        id: "plan-operativo",
+        label: "Plan Anual",
+        subtitle: "QUÉ auditar • Plan de trabajo anual",
+        icon: <ClipboardList className="w-5 h-5" />,
+        color: "#2962FF", // Azul corporativo
+      },
+      
+      // ━━━━━━━━━━━ 2. UNIVERSO AUDITABLE ━━━━━━━━━━━
+      {
+        id: "universo-auditable",
+        label: "Universo Auditable",
+        subtitle: "DÓNDE auditar • Programa Anual",
+        icon: <Layers className="w-5 h-5" />,
+        color: "#003DA5", // Azul ESAP
+      },
+      
+      // ━━━━━━━━━━━ 3. AUDITORÍAS OCIG ━━━━━━━━━━━
+      {
+        id: "dashboard",
+        label: "Auditorías OCIG",
+        subtitle: "Centro de comando integrado",
+        icon: <LayoutDashboard className="w-5 h-5" />,
+        color: "#10B981", // Verde - Principal
+      },
+      
+      // ━━━━━━━━━━━ 4. BIBLIOTECA (RF007) ━━━━━━━━━━━
+      {
+        id: "listas-chequeo",
+        label: "Biblioteca",
+        subtitle: "Plantillas • Requisitos • Cumplimiento",
+        icon: <FileText className="w-5 h-5" />,
+        color: "#6366F1", // Azul claro - Requisitos
+      },
+      
+      // ━━━━━━━━━━━ 5. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
+      {
+        id: "planes-mejoramiento",
+        label: "Planes de Mejoramiento",
+        subtitle: "Formulación • Seguimiento",
+        icon: <AlertTriangle className="w-5 h-5" />,
+        color: "#EF4444", // Rojo - Hallazgos
+        badge: loadingPlanes ? 0 : planesBackend.length // ✅ Total de planes del backend
+      },
+      
+      // ━━━━━━━━━━━ 6. EXPEDIENTES (RF013) ━━━━━━━━━━━
+      {
+        id: "expedientes",
+        label: "Expedientes",
+        subtitle: "Archivo • Búsqueda • Expedientes",
+        icon: <FolderOpen className="w-5 h-5" />,
+        color: "#0891B2", // Cyan - Documental
+      },
+      
+      // ━━━━━━━━━━━ 7. CONFIGURACIONES ━━━━━━━━━━━
+      {
+        id: "config-auditorias",
+        label: "Configuraciones",
+        subtitle: "Notificaciones • Auditoría • Kanban • Config",
+        icon: <Settings className="w-5 h-5" />,
+        color: "#059669", // Verde oscuro - Config
+      },
+    ];
+
+    // Si es superusuario, mostrar todo
+    if (esSuperUsuario) {
+      return todosLosMenus;
+    }
+
+    // Filtrar menús según permisos
+    return todosLosMenus.filter(menu => {
+      const modulo = MAPEO_SECCION_MODULO[menu.id];
+      if (!modulo) return false;
+      return puedeAcceder(modulo);
+    });
+  }, [esSuperUsuario, puedeAcceder, loadingPlanes, planesBackend.length]);
+
+  // Log de depuración de permisos
+  useEffect(() => {
+    console.log('🔐 [ControlInternoFull] Permisos:', {
+      esSuperUsuario,
+      menuItemsCount: menuItems.length,
+      menuIds: menuItems.map(m => m.id),
+      seccionActiva
+    });
+  }, [menuItems, esSuperUsuario, seccionActiva]);
+
+  // Si la sección activa no está en los menús disponibles, navegar a la primera disponible
+  useEffect(() => {
+    if (menuItems.length > 0) {
+      const seccionDisponible = menuItems.some(m => m.id === seccionActiva);
+      if (!seccionDisponible) {
+        console.log('⚠️ [ControlInternoFull] Sección no accesible, redirigiendo a:', menuItems[0].id);
+        setSeccionActiva(menuItems[0].id as SeccionActiva);
+      }
+    }
+  }, [menuItems, seccionActiva, setSeccionActiva]);
 
   const renderSeccion = () => {
     switch (seccionActiva) {

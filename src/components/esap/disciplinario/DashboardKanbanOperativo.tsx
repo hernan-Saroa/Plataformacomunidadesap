@@ -2254,6 +2254,13 @@ export function DashboardKanbanOperativo({
       prioridad: 'media',
       diasPendientes: 0,
       tipo: 'noticia',
+      // ✅ Mapear proceso asociado desde la API (persistencia tras F5)
+      procesoAsociado: (noticia as any).procesoAsociadoId ? {
+        id: (noticia as any).procesoAsociadoId,
+        numeroProceso: (noticia as any).procesoAsociadoNumero || '',
+        fechaAsociacion: (noticia as any).procesoAsociadoFecha || new Date().toISOString(),
+        justificacion: (noticia as any).procesoAsociadoJustificacion || ''
+      } : undefined,
       territorial: (noticia as any).territorial || '',
       fechaHechos: (noticia as any).fechaHechos
         ? new Date((noticia as any).fechaHechos).toISOString().split('T')[0]
@@ -2378,8 +2385,26 @@ export function DashboardKanbanOperativo({
 
         if (cancelled) return;
 
+        // 🔍 DEBUG: Verificar datos de asociación desde API
+        console.log('📋 [DEBUG] Noticias raw desde API:', (noticiasApi || []).map((n: any) => ({
+          id: n.id,
+          radicado: n.radicado,
+          procesoAsociadoId: n.procesoAsociadoId,
+          procesoAsociadoNumero: n.procesoAsociadoNumero,
+          procesoAsociadoFecha: n.procesoAsociadoFecha,
+          procesoAsociadoJustificacion: n.procesoAsociadoJustificacion,
+        })));
+
         const noticias = (noticiasApi || []).map(toNoticiaFromApi);
         const procesos = (procesosApi || []).map(toProcesoFromApi);
+
+        // 🔍 DEBUG: Verificar datos después del mapeo
+        console.log('📋 [DEBUG] Noticias mapeadas (procesoAsociado):', noticias.map(n => ({
+          id: n.id,
+          numero: n.numero,
+          procesoAsociado: n.procesoAsociado,
+        })));
+
         setItems([...noticias, ...procesos]);
       } catch (error) {
         console.error('Error cargando submódulo de procesos desde API:', error);
@@ -2442,11 +2467,20 @@ export function DashboardKanbanOperativo({
       if (item.etapaActual !== nuevaEtapa) {
         const etapaAnterior = item.etapaActual;
 
-        // ✅ Interceptar transición Recepción → Valoración para asignar profesional
+        // ✅ Interceptar transición Recepción → Valoración para asignar profesional (solo si no tiene asignado)
         if (etapaAnterior === 'Recepción' && nuevaEtapa === 'Valoración') {
-          setItemSeleccionado(item);
-          setModalActivo('asignar-profesional');
-          return;
+          const proceso = item as Proceso;
+          const nombreAsignado = typeof proceso.profesionalAsignado === 'string'
+            ? proceso.profesionalAsignado
+            : proceso.profesionalAsignado?.nombre;
+          const tieneAsignado = nombreAsignado && nombreAsignado !== 'Sin asignar' && nombreAsignado.trim() !== '';
+
+          if (!tieneAsignado) {
+            setItemSeleccionado(item);
+            setModalActivo('asignar-profesional');
+            return;
+          }
+          // Si ya tiene profesional asignado, continúa con el cambio de etapa normal
         }
 
         // ✅ Optimistic UI update (inmediato)
@@ -3168,6 +3202,15 @@ export function DashboardKanbanOperativo({
     if (!proceso || !noticia) {
       toast.error('Error al asociar noticia');
       return;
+    }
+
+    // Persistir la asociación en el backend
+    try {
+      await disciplinaryService.asociarNoticiaAProceso(noticiaId, procesoId, justificacion);
+      console.log('✅ Asociación noticia-proceso persistida en backend');
+    } catch (error) {
+      console.error('❌ Error al persistir asociación en backend:', error);
+      // No bloqueamos la UI, continuamos con la actualización local
     }
 
     // Actualizar la noticia con información del proceso asociado
@@ -4100,8 +4143,8 @@ export function DashboardKanbanOperativo({
                         onClick={handleConfirmarConversion}
                         disabled={isConvirtiendo}
                         className="flex-1 font-bold"
-                        style={{ 
-                          background: isConvirtiendo ? '#9CA3AF' : '#003DA5', 
+                        style={{
+                          background: isConvirtiendo ? '#9CA3AF' : '#003DA5',
                           color: '#FFFFFF'
                         }}
                       >

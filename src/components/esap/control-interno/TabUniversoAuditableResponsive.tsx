@@ -93,6 +93,10 @@ interface TabUniversoAuditableResponsiveProps {
   onEliminarProceso: (id: string) => void;
   // ✅ Nueva prop para guardar evaluaciones DAFP directamente al backend
   onGuardarEvaluacion?: (id: string, datos: any) => Promise<boolean>;
+  // ✅ PERMISOS - Control de visibilidad de acciones
+  puedeCrear?: boolean;
+  puedeEditar?: boolean;
+  puedeEliminar?: boolean;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -125,7 +129,10 @@ export function TabUniversoAuditableResponsive({
   onAgregarProceso,
   onEditarProceso,
   onEliminarProceso,
-  onGuardarEvaluacion
+  onGuardarEvaluacion,
+  puedeCrear = true,
+  puedeEditar = true,
+  puedeEliminar = true
 }: TabUniversoAuditableResponsiveProps) {
   
   const { isMobile, isTablet } = useResponsive();
@@ -420,6 +427,7 @@ export function TabUniversoAuditableResponsive({
       width: '120px',
       render: (_, proceso) => (
         <div className="flex items-center justify-center gap-2">
+          {puedeEditar && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -430,6 +438,8 @@ export function TabUniversoAuditableResponsive({
           >
             <Edit2 className="w-4 h-4" />
           </button>
+          )}
+          {puedeEliminar && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -442,6 +452,7 @@ export function TabUniversoAuditableResponsive({
           >
             <Trash2 className="w-4 h-4" />
           </button>
+          )}
         </div>
       )
     }
@@ -523,7 +534,9 @@ export function TabUniversoAuditableResponsive({
         </div>
 
         {/* Botones de acción - Touch-friendly */}
+        {(puedeEditar || puedeEliminar) && (
         <div className="flex gap-2 pt-4 border-t border-gray-200">
+          {puedeEditar && (
           <button
             onClick={() => onEditarProceso(proceso)}
             className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-semibold min-h-[44px] hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
@@ -531,6 +544,8 @@ export function TabUniversoAuditableResponsive({
             <Edit2 className="w-4 h-4" />
             <span>Editar</span>
           </button>
+          )}
+          {puedeEliminar && (
           <button
             onClick={() => {
               if (confirm(`¿Eliminar "${proceso.nombre}"?`)) {
@@ -542,7 +557,9 @@ export function TabUniversoAuditableResponsive({
             <Trash2 className="w-4 h-4" />
             <span>Eliminar</span>
           </button>
+          )}
         </div>
+        )}
       </MobileCard>
     );
   };
@@ -700,6 +717,7 @@ export function TabUniversoAuditableResponsive({
                 Procesos del universo auditable institucional según el MECI
               </p>
             </div>
+            {puedeCrear && (
             <button
               onClick={onAgregarProceso}
               className="w-full sm:w-auto px-6 py-3 sm:py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 hover:shadow-lg transition-all min-h-[44px] sm:min-h-0"
@@ -708,6 +726,7 @@ export function TabUniversoAuditableResponsive({
               <span className="hidden sm:inline">Agregar Proceso</span>
               <span className="sm:hidden">Agregar</span>
             </button>
+            )}
           </div>
         </div>
 

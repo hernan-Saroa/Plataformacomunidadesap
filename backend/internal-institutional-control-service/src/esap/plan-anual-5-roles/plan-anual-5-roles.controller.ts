@@ -13,7 +13,6 @@ import {
   BadRequestException,
   UseGuards,
   Req,
-  ForbiddenException,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { PlanAnual5RolesService } from './plan-anual-5-roles.service';
@@ -21,6 +20,9 @@ import { CreatePlanAnual5RolesDto } from './dto/create-plan-anual-5-roles.dto';
 import { CreateActividadDto } from './dto/create-actividad.dto';
 import { CreateAdjuntoDto } from './dto/create-adjunto.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { Permissions } from '../../auth/decorators/permissions.decorator';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 
 @Controller('plan-anual-5-roles')
 export class PlanAnual5RolesController {
@@ -29,6 +31,8 @@ export class PlanAnual5RolesController {
   // ============ ENDPOINTS PÚBLICOS (Solo lectura) ============
   
   @Get()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW)
   async findAll(@Query('year') year?: string) {
     const yearNum = year ? parseInt(year, 10) : undefined;
     return this.service.findAll(yearNum);
@@ -36,12 +40,16 @@ export class PlanAnual5RolesController {
 
   // Rutas específicas deben ir ANTES de las genéricas
   @Get('year/:year')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW)
   async findByYear(@Param('year') year: string) {
     const yearNum = parseInt(year, 10);
     return this.service.findByYear(yearNum);
   }
 
   @Get(':planId/roles')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW)
   async getRoles(@Param('planId') planId: string) {
     if (!planId || planId === 'undefined') {
       throw new BadRequestException('planId es requerido');
@@ -50,6 +58,8 @@ export class PlanAnual5RolesController {
   }
 
   @Get(':id/export/excel')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EXPORT)
   async exportExcel(@Param('id') id: string, @Res() res: Response) {
     if (!id || id === 'undefined') {
       throw new BadRequestException('id es requerido');
@@ -61,6 +71,8 @@ export class PlanAnual5RolesController {
   }
 
   @Get(':id/export/pdf')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EXPORT)
   async exportPdf(@Param('id') id: string) {
     if (!id || id === 'undefined') {
       throw new BadRequestException('id es requerido');
@@ -69,6 +81,8 @@ export class PlanAnual5RolesController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW)
   async findOne(@Param('id') id: string) {
     if (!id || id === 'undefined') {
       throw new BadRequestException('id es requerido');
@@ -76,26 +90,20 @@ export class PlanAnual5RolesController {
     return this.service.findOne(id);
   }
 
-  // ============ ENDPOINTS PROTEGIDOS (Requieren autenticación) ============
+  // ============ ENDPOINTS PROTEGIDOS (Requieren permisos específicos) ============
 
   @Post()
-  // @UseGuards(JwtAuthGuard) // Temporalmente deshabilitado
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_CREATE)
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createDto: CreatePlanAnual5RolesDto, @Req() req: any) {
-    // Validación de roles temporalmente deshabilitada
-    // const user = req.user;
-    // 
-    // if (!user || !this.tienePermisoCrearPlan(user)) {
-    //   throw new ForbiddenException('No tienes permisos para crear Plan Anual. Se requiere rol de Jefe OTIC, Jefe OCI o Administrador.');
-    // }
-
-    // Pasar usuarioId al servicio para auditoría (temporalmente undefined)
     return this.service.create(createDto, req.user?.userId);
   }
 
   // Ruta genérica de actualización debe ir ANTES de las rutas con parámetros dinámicos
   @Put(':id')
-  // @UseGuards(JwtAuthGuard) // Temporalmente deshabilitado
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT)
   async update(
     @Param('id') id: string,
     @Body() updateDto: Partial<CreatePlanAnual5RolesDto>,
@@ -104,52 +112,80 @@ export class PlanAnual5RolesController {
     if (!id || id === 'undefined') {
       throw new BadRequestException('id es requerido');
     }
-    
-    const user = req.user;
-    
-    // Validaciones de rol temporalmente deshabilitadas
-    // // Si se está aprobando el plan, verificar que sea Jefe OCI o Admin
-    // if (updateDto.estado === 'aprobado') {
-    //   if (!this.puedeAprobarPlan(user)) {
-    //     throw new ForbiddenException('Solo el Jefe OCI o Administradores pueden aprobar planes anuales.');
-    //   }
-    // } else if (!this.tienePermisoEditarPlan(user)) {
-    //   throw new ForbiddenException('No tienes permisos para editar Plan Anual.');
-    // }
-
-    return this.service.update(id, updateDto, user?.userId);
+    return this.service.update(id, updateDto, req.user?.userId);
   }
 
-  // Rutas específicas de actividades deben ir DESPUÉS de las genéricas
+  // Endpoint especial para aprobar - requiere permiso específico
+  @Put(':id/aprobar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_APPROVE)
+  async aprobar(
+    @Param('id') id: string,
+    @Body() body: { observaciones?: string },
+    @Req() req: any,
+  ) {
+    if (!id || id === 'undefined') {
+      throw new BadRequestException('id es requerido');
+    }
+    return this.service.update(id, { estado: 'aprobado', ...body }, req.user?.userId);
+  }
+
+  // Endpoint especial para activar - requiere permiso específico
+  @Put(':id/activar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_ACTIVATE)
+  async activar(
+    @Param('id') id: string,
+    @Req() req: any,
+  ) {
+    if (!id || id === 'undefined') {
+      throw new BadRequestException('id es requerido');
+    }
+    return this.service.update(id, { estado: 'activo' }, req.user?.userId);
+  }
+
+  // Rutas específicas de actividades
   @Post(':rolId/actividades')
-  // @UseGuards(JwtAuthGuard) // Temporalmente deshabilitado
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT, CIP.PLAN_ANUAL_CREATE)
   @HttpCode(HttpStatus.CREATED)
   async addActividad(
     @Param('rolId') rolId: string,
     @Body() createDto: CreateActividadDto,
     @Req() req: any,
   ) {
-    const user = req.user;
-    return this.service.addActividad(rolId, createDto, user?.userId);
+    return this.service.addActividad(rolId, createDto, req.user?.userId);
   }
 
   @Put('actividades/:actividadId')
-  // @UseGuards(JwtAuthGuard) // Temporalmente deshabilitado
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT)
   async updateActividad(
     @Param('actividadId') actividadId: string,
     @Body() updateDto: Partial<CreateActividadDto>,
     @Req() req: any,
   ) {
-    const user = req.user;
-    return this.service.updateActividad(actividadId, updateDto, user?.userId);
+    return this.service.updateActividad(actividadId, updateDto, req.user?.userId);
+  }
+
+  // Asignar auditor a actividad
+  @Put('actividades/:actividadId/asignar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_ASSIGN)
+  async asignarAuditor(
+    @Param('actividadId') actividadId: string,
+    @Body() body: { auditorId: string },
+    @Req() req: any,
+  ) {
+    return this.service.updateActividad(actividadId, { auditorId: body.auditorId }, req.user?.userId);
   }
 
   @Delete('actividades/:actividadId')
-  // @UseGuards(JwtAuthGuard) // Temporalmente deshabilitado
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_DELETE, CIP.PLAN_ANUAL_EDIT)
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteActividad(@Param('actividadId') actividadId: string, @Req() req: any) {
-    const user = req.user;
-    await this.service.deleteActividad(actividadId, user?.userId);
+    await this.service.deleteActividad(actividadId, req.user?.userId);
   }
 
   // Métodos auxiliares para validar permisos
@@ -247,6 +283,8 @@ export class PlanAnual5RolesController {
   // ============ ENDPOINT DE INDICADORES (US-003) ============
   
   @Get(':planId/indicadores')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW, CIP.PLAN_ANUAL_FOLLOW_UP)
   async getIndicadores(@Param('planId') planId: string) {
     if (!planId || planId === 'undefined') {
       throw new BadRequestException('planId es requerido');
@@ -257,6 +295,8 @@ export class PlanAnual5RolesController {
   // ============ ENDPOINTS DE ADJUNTOS ============
 
   @Get('actividades/:actividadId/adjuntos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW)
   async getAdjuntos(@Param('actividadId') actividadId: string) {
     if (!actividadId || actividadId === 'undefined') {
       throw new BadRequestException('actividadId es requerido');
@@ -265,6 +305,8 @@ export class PlanAnual5RolesController {
   }
 
   @Post('actividades/:actividadId/adjuntos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT)
   @HttpCode(HttpStatus.CREATED)
   async addAdjunto(
     @Param('actividadId') actividadId: string,
@@ -277,6 +319,8 @@ export class PlanAnual5RolesController {
   }
 
   @Delete('adjuntos/:adjuntoId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_DELETE, CIP.PLAN_ANUAL_EDIT)
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteAdjunto(@Param('adjuntoId') adjuntoId: string) {
     if (!adjuntoId || adjuntoId === 'undefined') {
@@ -294,6 +338,8 @@ export class PlanAnual5RolesController {
    * GET /plan-anual-5-roles/auditorias/cumplimiento/:año
    */
   @Get('auditorias/cumplimiento/:año')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW, CIP.PLAN_ANUAL_FOLLOW_UP)
   async getCumplimientoAuditorias(@Param('año') año: string) {
     const añoNum = parseInt(año, 10);
     if (isNaN(añoNum) || añoNum < 2000 || añoNum > 2100) {
@@ -307,6 +353,8 @@ export class PlanAnual5RolesController {
    * POST /plan-anual-5-roles/auditorias/configurar
    */
   @Post('auditorias/configurar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT)
   @HttpCode(HttpStatus.OK)
   async configurarActividadAuditorias(
     @Body() body: { actividadId: string; año: number },
@@ -330,6 +378,8 @@ export class PlanAnual5RolesController {
    * GET /plan-anual-5-roles/actividades/:actividadId/auditorias
    */
   @Get('actividades/:actividadId/auditorias')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW)
   async getAuditoriasVinculadas(@Param('actividadId') actividadId: string) {
     if (!actividadId || actividadId === 'undefined') {
       throw new BadRequestException('actividadId es requerido');
@@ -342,6 +392,8 @@ export class PlanAnual5RolesController {
    * POST /plan-anual-5-roles/auditorias/recalcular/:año
    */
   @Post('auditorias/recalcular/:año')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT)
   @HttpCode(HttpStatus.OK)
   async recalcularCumplimientoAuditorias(@Param('año') año: string) {
     const añoNum = parseInt(año, 10);

@@ -357,6 +357,32 @@ export class PlanAnual5RolesService {
       [{ campo: 'actividad', valorAnterior: '', valorNuevo: createDto.nombre }]
     );
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // AUTO-CONFIGURAR ACTIVIDAD DE AUDITORÍAS SI ES DEL ROL 4
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const nombreLower = createDto.nombre.toLowerCase();
+      const esActividadAuditorias = 
+        rol.rol_numero === 4 && 
+        (nombreLower.includes('auditoría') || 
+         nombreLower.includes('auditoria') || 
+         nombreLower.includes('programa de auditor'));
+
+      if (esActividadAuditorias) {
+        console.log(`[addActividad] 🔗 Auto-configurando actividad ${saved.id} como actividad de auditorías (Rol 4)`);
+        
+        // Usar la función SQL para configurar
+        await this.dataSource.query(`
+          SELECT control_interno.fn_configurar_actividad_auditorias_plan($1, $2)
+        `, [rol.planId, rol.plan.año]);
+        
+        console.log(`[addActividad] ✅ Actividad de auditorías configurada automáticamente`);
+      }
+    } catch (autoConfigError) {
+      // No fallar la creación si la auto-configuración falla
+      console.error('[addActividad] ⚠️ Error en auto-configuración de auditorías:', autoConfigError);
+    }
+
     // Recargar la actividad con relaciones
     return this.actividadRepository.findOne({
       where: { id: saved.id },
@@ -1273,9 +1299,9 @@ export class PlanAnual5RolesService {
       FROM control_interno.actividad_plan_anual_5 a
       INNER JOIN control_interno.rol_plan_anual_5 r ON a.rol_id = r.id
       INNER JOIN control_interno.plan_anual_5_roles p ON r.plan_id = p.id
-      WHERE r.numero_rol = 4 
+      WHERE r.rol_numero = 4 
         AND a.tipo_calculo = 'auditorias'
-        AND p.año = $1
+        AND p.ano = $1
       LIMIT 1
     `, [año]);
 
@@ -1298,7 +1324,7 @@ export class PlanAnual5RolesService {
   ): Promise<ActividadPlanAnual5> {
     // Verificar que la actividad existe y pertenece al Rol 4
     const actividad = await this.dataSource.query(`
-      SELECT a.*, r.numero_rol, p.año
+      SELECT a.*, r.rol_numero, p.ano
       FROM control_interno.actividad_plan_anual_5 a
       INNER JOIN control_interno.rol_plan_anual_5 r ON a.rol_id = r.id
       INNER JOIN control_interno.plan_anual_5_roles p ON r.plan_id = p.id
@@ -1309,7 +1335,7 @@ export class PlanAnual5RolesService {
       throw new NotFoundException(`Actividad con ID ${actividadId} no encontrada`);
     }
 
-    if (actividad[0].numero_rol !== 4) {
+    if (actividad[0].rol_numero !== 4) {
       throw new BadRequestException('Solo se pueden configurar actividades del Rol 4 (Evaluación y Seguimiento) como actividades de auditorías');
     }
 
@@ -1321,7 +1347,7 @@ export class PlanAnual5RolesService {
            control_interno.plan_anual_5_roles p
       WHERE a.rol_id = r.id
         AND r.plan_id = p.id
-        AND p.año = $1
+        AND p.ano = $1
         AND a.tipo_calculo = 'auditorias'
         AND a.id != $2
     `, [año, actividadId]);
@@ -1428,9 +1454,9 @@ export class PlanAnual5RolesService {
       FROM control_interno.actividad_plan_anual_5 a
       INNER JOIN control_interno.rol_plan_anual_5 r ON a.rol_id = r.id
       INNER JOIN control_interno.plan_anual_5_roles p ON r.plan_id = p.id
-      WHERE r.numero_rol = 4 
+      WHERE r.rol_numero = 4 
         AND a.tipo_calculo = 'auditorias'
-        AND p.año = $1
+        AND p.ano = $1
       LIMIT 1
     `, [año]);
 

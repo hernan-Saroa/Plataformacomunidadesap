@@ -108,4 +108,17 @@ export class DisciplinaryNews {
     (process) => process.news,
   )
   processes: DisciplinaryProcess[];
+
+  // Campos para asociar noticia a un proceso existente
+  @Column({ name: 'proceso_asociado_id', type: 'uuid', nullable: true })
+  procesoAsociadoId: string | null;
+
+  @Column({ name: 'proceso_asociado_numero', type: 'varchar', length: 50, nullable: true })
+  procesoAsociadoNumero: string | null;
+
+  @Column({ name: 'proceso_asociado_fecha', type: 'timestamp', nullable: true })
+  procesoAsociadoFecha: Date | null;
+
+  @Column({ name: 'proceso_asociado_justificacion', type: 'text', nullable: true })
+  procesoAsociadoJustificacion: string | null;
 }
