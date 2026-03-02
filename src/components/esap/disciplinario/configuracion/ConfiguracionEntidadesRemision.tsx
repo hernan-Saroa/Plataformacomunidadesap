@@ -2,18 +2,14 @@
  * CONFIGURACIÓN DE ENTIDADES DE REMISIÓN
  * Componente modular para gestionar entidades de remisión por competencia
  * Control Interno Disciplinario
+ * 
+ * CONECTADO AL BACKEND - Persistente
  */
 
-import { useState } from 'react';
-import { Plus, AlertCircle, Trash2, Save, RotateCcw, Mail, Edit3, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, AlertCircle, Trash2, Save, RotateCcw, Mail, Edit3, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-
-interface EntidadRemision {
-  id: string;
-  nombre: string;
-  correo: string;
-  activo: boolean;
-}
+import { entidadesRemisionService, EntidadRemision } from '../../../../services/api/entidadesRemisionService';
 
 const ENTIDADES_REMISION_DEFECTO: EntidadRemision[] = [
   { id: 'procuraduria', nombre: 'Procuraduría General de la Nación', correo: 'contacto@procuraduria.gov.co', activo: true },
@@ -25,12 +21,42 @@ const ENTIDADES_REMISION_DEFECTO: EntidadRemision[] = [
 ];
 
 export function ConfiguracionEntidadesRemision() {
-  const [entidades, setEntidades] = useState<EntidadRemision[]>(ENTIDADES_REMISION_DEFECTO);
+  const [entidades, setEntidades] = useState<EntidadRemision[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [entidadEdicion, setEntidadEdicion] = useState<EntidadRemision | null>(null);
   const [formEntidad, setFormEntidad] = useState({ nombre: '', correo: '' });
   const [erroresForm, setErroresForm] = useState({ nombre: '', correo: '' });
+
+  // Cargar entidades desde el backend
+  useEffect(() => {
+    cargarEntidades();
+  }, []);
+
+  const cargarEntidades = async () => {
+    try {
+      setLoading(true);
+      const data = await entidadesRemisionService.getAll();
+      setEntidades(data);
+    } catch (error) {
+      console.error('Error al cargar entidades:', error);
+      // Si hay error, usar datos por defecto en localStorage como fallback
+      try {
+        const localData = localStorage.getItem('disciplinario-entidades-remision');
+        if (localData) {
+          setEntidades(JSON.parse(localData));
+        } else {
+          setEntidades(ENTIDADES_REMISION_DEFECTO);
+        }
+      } catch {
+        setEntidades(ENTIDADES_REMISION_DEFECTO);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const abrirModalNuevaEntidad = () => {
     setEntidadEdicion(null);
@@ -82,69 +108,102 @@ export function ConfiguracionEntidadesRemision() {
     return esValido;
   };
 
-  const guardarEntidad = () => {
+  const guardarEntidad = async () => {
     if (!validarFormulario()) {
       toast.error('Por favor corrige los errores del formulario');
       return;
     }
 
-    if (entidadEdicion) {
-      setEntidades(entidades.map(e => 
-        e.id === entidadEdicion.id 
-          ? { ...e, nombre: formEntidad.nombre.trim(), correo: formEntidad.correo.trim() }
-          : e
-      ));
-      toast.success('Entidad actualizada correctamente');
-    } else {
-      const nuevaEntidad: EntidadRemision = {
-        id: `entidad-${Date.now()}`,
-        nombre: formEntidad.nombre.trim(),
-        correo: formEntidad.correo.trim(),
-        activo: true,
-      };
-      setEntidades([...entidades, nuevaEntidad]);
-      toast.success('Entidad agregada correctamente');
+    try {
+      if (entidadEdicion) {
+        // Editar entidad existente
+        const updated = await entidadesRemisionService.update(entidadEdicion.id, {
+          nombre: formEntidad.nombre.trim(),
+          correo: formEntidad.correo.trim(),
+        });
+        setEntidades(entidades.map(e => e.id === entidadEdicion.id ? updated : e));
+        toast.success('Entidad actualizada correctamente');
+      } else {
+        // Crear nueva entidad
+        const created = await entidadesRemisionService.create({
+          nombre: formEntidad.nombre.trim(),
+          correo: formEntidad.correo.trim(),
+        });
+        setEntidades([...entidades, created]);
+        toast.success('Entidad agregada correctamente');
+      }
+    } catch (error: any) {
+      console.error('Error al guardar entidad:', error);
+      toast.error(error.message || 'Error al guardar la entidad');
     }
 
-    setCambiosPendientes(true);
     setShowModal(false);
     setEntidadEdicion(null);
     setFormEntidad({ nombre: '', correo: '' });
   };
 
-  const eliminarEntidad = (entidad: EntidadRemision) => {
+  const eliminarEntidad = async (entidad: EntidadRemision) => {
     if (window.confirm(`¿Estás seguro de eliminar la entidad "${entidad.nombre}"?`)) {
-      setEntidades(entidades.filter(e => e.id !== entidad.id));
-      setCambiosPendientes(true);
-      toast.success('Entidad eliminada correctamente');
+      try {
+        await entidadesRemisionService.delete(entidad.id);
+        setEntidades(entidades.filter(e => e.id !== entidad.id));
+        toast.success('Entidad eliminada correctamente');
+      } catch (error: any) {
+        console.error('Error al eliminar entidad:', error);
+        toast.error(error.message || 'Error al eliminar la entidad');
+      }
     }
   };
 
-  const actualizarEntidad = (entidadId: string, cambios: Partial<EntidadRemision>) => {
-    setEntidades(entidades.map(e => 
-      e.id === entidadId ? { ...e, ...cambios } : e
-    ));
-    setCambiosPendientes(true);
+  const actualizarEntidad = async (entidadId: string, activo: boolean) => {
+    try {
+      const updated = await entidadesRemisionService.toggleActivo(entidadId, activo);
+      setEntidades(entidades.map(e => e.id === entidadId ? updated : e));
+    } catch (error: any) {
+      console.error('Error al cambiar estado:', error);
+      toast.error(error.message || 'Error al cambiar el estado de la entidad');
+    }
   };
 
-  const guardarConfiguraciones = () => {
+  const guardarConfiguraciones = async () => {
     try {
+      setSaving(true);
+      // Guardar en localStorage como backup
       localStorage.setItem('disciplinario-entidades-remision', JSON.stringify(entidades));
       setCambiosPendientes(false);
       toast.success('Configuraciones guardadas correctamente');
     } catch (error) {
       console.error('❌ Error al guardar:', error);
       toast.error('Error al guardar configuraciones');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const restablecerDefecto = () => {
+  const restablecerDefecto = async () => {
     if (window.confirm('¿Está seguro de restablecer a valores por defecto?')) {
-      setEntidades(ENTIDADES_REMISION_DEFECTO);
-      setCambiosPendientes(true);
-      toast.success('Configuraciones restablecidas');
+      try {
+        // Intentar crear seed en el backend
+        await entidadesRemisionService.seed();
+        await cargarEntidades();
+        toast.success('Configuraciones restablecidas');
+      } catch (error) {
+        // Si falla el backend, usar datos por defecto locales
+        setEntidades(ENTIDADES_REMISION_DEFECTO);
+        localStorage.setItem('disciplinario-entidades-remision', JSON.stringify(ENTIDADES_REMISION_DEFECTO));
+        toast.success('Configuraciones restablecidas (modo local)');
+      }
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <span className="ml-2 text-gray-600">Cargando entidades de remisión...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 space-y-6">
@@ -172,13 +231,13 @@ export function ConfiguracionEntidadesRemision() {
           </button>
           <button
             onClick={guardarConfiguraciones}
-            disabled={!cambiosPendientes}
+            disabled={!cambiosPendientes || saving}
             className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ 
               background: cambiosPendientes ? 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' : '#9CA3AF',
             }}
           >
-            <Save className="w-4 h-4" />
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Guardar Cambios
           </button>
         </div>
@@ -234,7 +293,7 @@ export function ConfiguracionEntidadesRemision() {
                 <input
                   type="checkbox"
                   checked={entidad.activo}
-                  onChange={(e) => actualizarEntidad(entidad.id, { activo: e.target.checked })}
+                  onChange={(e) => actualizarEntidad(entidad.id, e.target.checked)}
                   className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                 />
                 <span className="text-xs font-semibold text-gray-700">
@@ -254,9 +313,12 @@ export function ConfiguracionEntidadesRemision() {
         <div className="flex gap-3">
           <AlertCircle className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm text-purple-800">
+            <p className="text-sm purple-800">
               <span className="font-bold">Nota:</span> Estas entidades aparecerán en el menú desplegable del modal{' '}
               <span className="font-bold">"Remitir por Competencia"</span>. El correo se auto-completa al seleccionar la entidad.
+            </p>
+            <p className="text-xs text-purple-600 mt-1">
+              Los cambios se guardan en el backend de forma persistente.
             </p>
           </div>
         </div>

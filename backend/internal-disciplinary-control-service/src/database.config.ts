@@ -50,6 +50,7 @@ import { AlertaEnviada } from './entities/alerta-enviada.entity';
 import { PlantillaAuto } from './entities/plantilla-auto.entity';
 import { AutoConfiguration } from './entities/auto-configuration.entity';
 import { ExpedienteCompartido } from './entities/expediente-compartido.entity';
+import { EntidadRemision } from './entities/entidad-remision.entity';
 
 export const databaseConfig: TypeOrmModuleOptions = {
   type: 'postgres',
@@ -76,6 +77,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
     AlertaEnviada,
     AutoConfiguration,
     ExpedienteCompartido,
+    EntidadRemision,
   ],
   synchronize: false,
   logging: false,
