@@ -2,13 +2,16 @@
  * MODAL: REMITIR POR COMPETENCIA
  * Permite remitir una noticia disciplinaria a otra área/entidad
  * Genera un nuevo número RC (Remisión por Competencia)
+ * Usa las entidades de remisión configuradas en la base de datos
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { X, Send, AlertCircle, Info } from 'lucide-react';
+import { X, Send, AlertCircle, Info, Loader2, Mail } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
+import { entidadesRemisionService, EntidadRemision } from '../../../services/api/entidadesRemisionService';
+import { toast } from 'sonner';
 
 interface ModalRemitirCompetenciaProps {
   noticia: {
@@ -19,26 +22,77 @@ interface ModalRemitirCompetenciaProps {
     }[];
   };
   onClose: () => void;
-  onConfirm: (data: { areaDestino: string; justificacion: string; numeroRC: string }) => void;
+  onConfirm: (data: { 
+    areaDestino: string; 
+    justificacion: string; 
+    numeroRC: string;
+    entidadId: string;
+    emailDestinatario: string;
+  }) => void;
 }
 
-const AREAS_DESTINO = [
-  { value: '', label: 'Seleccionar área...' },
-  { value: 'procuraduria', label: 'Procuraduría General de la Nación' },
-  { value: 'contraloria', label: 'Contraloría General de la República' },
-  { value: 'fiscalia', label: 'Fiscalía General de la Nación' },
-  { value: 'defensoria', label: 'Defensoría del Pueblo' },
-  { value: 'personeria', label: 'Personería Municipal' },
-  { value: 'otra-entidad', label: 'Otra Entidad Competente' }
-];
-
 export function ModalRemitirCompetencia({ noticia, onClose, onConfirm }: ModalRemitirCompetenciaProps) {
+  const [entidades, setEntidades] = useState<EntidadRemision[]>([]);
+  const [loadingEntidades, setLoadingEntidades] = useState(true);
+  const [entidadSeleccionada, setEntidadSeleccionada] = useState<EntidadRemision | null>(null);
   const [areaDestino, setAreaDestino] = useState('');
   const [justificacion, setJustificacion] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Cargar entidades de remisión desde el backend
+  useEffect(() => {
+    const cargarEntidades = async () => {
+      try {
+        setLoadingEntidades(true);
+        const entidadesData = await entidadesRemisionService.getActivas();
+        setEntidades(entidadesData);
+        
+        // Si hay entidades disponibles, seleccionar la primera por defecto
+        if (entidadesData.length > 0) {
+          setEntidadSeleccionada(entidadesData[0]);
+          setAreaDestino(entidadesData[0].nombre);
+        }
+      } catch (error) {
+        console.error('Error al cargar entidades de remisión:', error);
+        toast.error('Error al cargar las entidades de remisión. Usando datos locales.');
+        // Fallback: datos quemados en caso de error
+        setEntidades([]);
+      } finally {
+        setLoadingEntidades(false);
+      }
+    };
+
+    cargarEntidades();
+  }, []);
+
+  const handleEntidadChange = (entidadId: string) => {
+    const entidad = entidades.find(e => e.id === entidadId);
+    if (entidad) {
+      setEntidadSeleccionada(entidad);
+      setAreaDestino(entidad.nombre);
+    }
+  };
+
+  const handleRecargarEntidades = async () => {
+    try {
+      setLoadingEntidades(true);
+      const entidadesData = await entidadesRemisionService.getActivas();
+      setEntidades(entidadesData);
+      
+      if (entidadesData.length > 0) {
+        setEntidadSeleccionada(entidadesData[0]);
+        setAreaDestino(entidadesData[0].nombre);
+      }
+    } catch (error) {
+      console.error('Error al recargar entidades:', error);
+      toast.error('Error al recargar las entidades de remisión');
+    } finally {
+      setLoadingEntidades(false);
+    }
+  };
+
   const handleSubmit = () => {
-    if (!areaDestino || !justificacion.trim()) {
+    if (!areaDestino || !justificacion.trim() || !entidadSeleccionada) {
       return;
     }
 
@@ -53,7 +107,9 @@ export function ModalRemitirCompetencia({ noticia, onClose, onConfirm }: ModalRe
       onConfirm({
         areaDestino,
         justificacion: justificacion.trim(),
-        numeroRC
+        numeroRC,
+        entidadId: entidadSeleccionada.id,
+        emailDestinatario: entidadSeleccionada.correo
       });
       setIsSubmitting(false);
       onClose();
@@ -114,6 +170,7 @@ export function ModalRemitirCompetencia({ noticia, onClose, onConfirm }: ModalRe
                 <p className="text-sm text-blue-700 leading-relaxed">
                   Esta noticia no es competencia del área de Control Interno Disciplinario. Se generará
                   un nuevo número <strong>RC (Remisión por Competencia)</strong> y se remitirá al área correspondiente.
+                  Se enviará un correo electrónico con la información de la noticia a la entidad destino.
                 </p>
               </div>
             </div>
@@ -121,22 +178,63 @@ export function ModalRemitirCompetencia({ noticia, onClose, onConfirm }: ModalRe
 
           {/* Formulario */}
           <div className="space-y-4">
-            {/* Área de Destino */}
+            {/* Área de Destino - Ahora con entidades de la BD */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Área/Entidad de Destino <span className="text-red-500">*</span>
               </label>
-              <select
-                value={areaDestino}
-                onChange={(e) => setAreaDestino(e.target.value)}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              >
-                {AREAS_DESTINO.map(area => (
-                  <option key={area.value} value={area.value}>
-                    {area.label}
-                  </option>
-                ))}
-              </select>
+              
+              {loadingEntidades ? (
+                <div className="flex items-center gap-2 text-gray-500 p-4 border border-gray-200 rounded-lg">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Cargando entidades...</span>
+                </div>
+              ) : entidades.length > 0 ? (
+                <div className="space-y-3">
+                  <select
+                    value={entidadSeleccionada?.id || ''}
+                    onChange={(e) => handleEntidadChange(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  >
+                    {entidades.map(entidad => (
+                      <option key={entidad.id} value={entidad.id}>
+                        {entidad.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  
+                  {/* Mostrar correo de la entidad seleccionada */}
+                  {entidadSeleccionada && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                      <Mail className="w-4 h-4 text-gray-500" />
+                      <span className="font-medium">Correo destino:</span>
+                      <span className="text-purple-700 font-semibold">{entidadSeleccionada.correo}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // Fallback si no hay entidades en la BD - mostrar SOLO mensaje de error sin opciones alternativas
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-red-900 mb-1">
+                        No hay entidades de remisión configuradas
+                      </p>
+                      <p className="text-sm text-red-700 mb-3">
+                        Para remitir por competencia, primero debe configurar las entidades de remisión en la sección de configuración del sistema.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleRecargarEntidades}
+                        className="text-sm text-blue-600 hover:text-blue-700 underline"
+                      >
+                        Reintentar carga de entidades
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Justificación */}
@@ -148,8 +246,9 @@ export function ModalRemitirCompetencia({ noticia, onClose, onConfirm }: ModalRe
                 value={justificacion}
                 onChange={(e) => setJustificacion(e.target.value)}
                 rows={4}
-                placeholder="Explica por qué esta noticia no corresponde a Control Interno Disciplinario y debe ser remitida..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                disabled={entidades.length === 0}
+                placeholder={entidades.length === 0 ? "Configure entidades de remisión primero..." : "Explica por qué esta noticia no corresponde a Control Interno Disciplinario y debe ser remitida..."}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
               <p className="text-xs text-gray-500 mt-1">
                 {justificacion.length} caracteres
@@ -169,11 +268,20 @@ export function ModalRemitirCompetencia({ noticia, onClose, onConfirm }: ModalRe
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!areaDestino || !justificacion.trim() || isSubmitting}
-            className="bg-purple-600 hover:bg-purple-700 text-white"
+            disabled={!areaDestino || !justificacion.trim() || isSubmitting || entidades.length === 0}
+            className="bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
           >
-            <Send className="w-4 h-4 mr-2" />
-            {isSubmitting ? 'Remitiendo...' : 'Remitir'}
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Remitiendo...
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4 mr-2" />
+                Remitir
+              </>
+            )}
           </Button>
         </div>
       </motion.div>

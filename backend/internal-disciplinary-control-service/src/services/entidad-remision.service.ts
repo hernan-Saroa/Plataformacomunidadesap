@@ -12,12 +12,22 @@ export class EntidadRemisionService {
   ) {}
 
   async findAll(): Promise<EntidadRemision[]> {
+    // Verificar si hay entidades, si no, ejecutar seed automáticamente
+    const count = await this.entidadRepo.count();
+    if (count === 0) {
+      await this.seed();
+    }
     return this.entidadRepo.find({
       order: { nombre: 'ASC' },
     });
   }
 
   async findAllActivas(): Promise<EntidadRemision[]> {
+    // Verificar si hay entidades, si no, ejecutar seed automáticamente
+    const count = await this.entidadRepo.count();
+    if (count === 0) {
+      await this.seed();
+    }
     return this.entidadRepo.find({
       where: { activo: true },
       order: { nombre: 'ASC' },

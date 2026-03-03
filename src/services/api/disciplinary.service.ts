@@ -267,6 +267,32 @@ class DisciplinaryService {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/archive`, { reason });
     }
 
+    /**
+     * Remitir noticia por competencia a otra entidad
+     * Envía un correo con la información de la noticia a la entidad destinataria
+     */
+    async remitirPorCompetencia(data: {
+        newsId: string;
+        emailDestinatario: string;
+        entidadDestino: string;
+        justificacion: string;
+        usuarioRemision?: string;
+    }): Promise<{
+        success: boolean;
+        message: string;
+        newsId: string;
+        emailEnviado: string;
+        fechaRemision: Date;
+    }> {
+        return apiClient.post<{
+            success: boolean;
+            message: string;
+            newsId: string;
+            emailEnviado: string;
+            fechaRemision: Date;
+        }>(`${SERVICE_PREFIX}/disciplinary-processes/remitir-competencia`, data);
+    }
+
 
 
     // --- PROCESOS ---
