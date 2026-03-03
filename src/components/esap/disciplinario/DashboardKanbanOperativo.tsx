@@ -16,7 +16,7 @@ import {
   MessageSquare, Trash2, ArrowLeft, Filter, Search, Bell,
   ChevronDown, Users, FileCheck, XCircle, PlusCircle, Settings,
   Maximize2, Minimize2, TrendingUp, AlertCircle, Phone, Mail,
-  MapPin, Info, ExternalLink, RefreshCw, Paperclip, UserCheck,
+  MapPin, Info, ExternalLink, Paperclip, UserCheck, RefreshCw,
   List, Columns3, Menu, Edit2, FileSignature, History,
   ChevronsDown, ChevronsUp, ChevronUp, Zap, Link2, UserCog, MessageCircle
 } from 'lucide-react';
@@ -47,6 +47,7 @@ import { convertirProcesoABorrador } from './utils-aprobacion'; // ✅ NUEVO: Ut
 import { obtenerAccionesPorEtapa, obtenerDescripcionEtapa, type EtapaProceso } from './accionesPorEtapa'; // ✅ NUEVO: Acciones por etapa
 import { useResponsive } from './hooks/useResponsive'; // ✅ Hook responsive simplificado
 import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProcess as ApiProceso } from '../../../services/api/disciplinary.service';
+import { entidadesRemisionService, EntidadRemision } from '../../../services/api/entidadesRemisionService';
 // import { ModalGenerarAuto } from './ModalGenerarAuto'; // ✅ ELIMINADO
 // import type { PlantillaAuto } from './SeccionPlantillasAutos'; // ✅ ELIMINADO
 
@@ -2181,9 +2182,12 @@ export function DashboardKanbanOperativo({
   const [observaciones, setObservaciones] = useState('');
   const [areaDestinoRemision, setAreaDestinoRemision] = useState('');
   const [isConvirtiendo, setIsConvirtiendo] = useState(false); // ✅ NUEVO: Estado para prevenir duplicados
+  const [isRemitiendo, setIsRemitiendo] = useState(false); // ✅ NUEVO: Estado para loading de remisión
 
-  // ✅ NUEVO: Estado para entidades de remisión configuradas
-  const [entidadesRemision, setEntidadesRemision] = useState<Array<{ id: string, nombre: string, correo: string, activo: boolean }>>([]);
+  // ✅ NUEVO: Estado para entidades de remisión configuradas (cargadas desde backend)
+  const [entidadesRemision, setEntidadesRemision] = useState<EntidadRemision[]>([]);
+  const [entidadesLoading, setEntidadesLoading] = useState(true);
+  const [entidadesError, setEntidadesError] = useState<string | null>(null);
 
   // ✅ NUEVO: Estado para solicitudes de reasignación pendientes
   const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([]);
@@ -2357,20 +2361,35 @@ export function DashboardKanbanOperativo({
   //   }
   // }, []);
 
-  // ✅ NUEVO: Cargar entidades de remisión desde localStorage
-  useEffect(() => {
+  // ✅ NUEVO: Cargar entidades de remisión desde el backend
+  const cargarEntidadesRemision = async () => {
+    setEntidadesLoading(true);
+    setEntidadesError(null);
     try {
-      const configString = localStorage.getItem('disciplinario-configuracion');
-      if (configString) {
-        const config = JSON.parse(configString);
-        if (config.entidadesRemision) {
-          // Filtrar solo las entidades activas
-          setEntidadesRemision(config.entidadesRemision.filter((e: any) => e.activo));
-        }
-      }
-    } catch (error) {
+      const entidades = await entidadesRemisionService.getActivas();
+      setEntidadesRemision(entidades);
+    } catch (error: any) {
       console.error('Error al cargar entidades de remisión:', error);
+      setEntidadesError(error?.message || 'Error al cargar entidades de remisión');
+      // Fallback: intentar cargar desde localStorage si el backend falla
+      try {
+        const configString = localStorage.getItem('disciplinario-configuracion');
+        if (configString) {
+          const config = JSON.parse(configString);
+          if (config.entidadesRemision) {
+            setEntidadesRemision(config.entidadesRemision.filter((e: any) => e.activo));
+          }
+        }
+      } catch (localError) {
+        console.error('Error al cargar desde localStorage:', localError);
+      }
+    } finally {
+      setEntidadesLoading(false);
     }
+  };
+
+  useEffect(() => {
+    cargarEntidadesRemision();
   }, []);
 
   useEffect(() => {
@@ -2384,6 +2403,17 @@ export function DashboardKanbanOperativo({
         ]);
 
         if (cancelled) return;
+
+        // Verificar si hay datos reales del backend o si está vacío
+        const noticiasReales = (noticiasApi || []).length > 0;
+        const procesosReales = (procesosApi || []).length > 0;
+
+        if (!noticiasReales && !procesosReales) {
+          // No hay datos del backend, no mostrar mock
+          console.log('⚠️ No hay noticias ni procesos desde el backend');
+          setItems([]);
+          return;
+        }
 
         // 🔍 DEBUG: Verificar datos de asociación desde API
         console.log('📋 [DEBUG] Noticias raw desde API:', (noticiasApi || []).map((n: any) => ({
@@ -2408,7 +2438,8 @@ export function DashboardKanbanOperativo({
         setItems([...noticias, ...procesos]);
       } catch (error) {
         console.error('Error cargando submódulo de procesos desde API:', error);
-        // fallback a mock ya cargado en el estado inicial
+        // NO usar mock como fallback - dejar vacío para indicar problema de conexión
+        setItems([]);
       }
     };
 
@@ -2909,7 +2940,26 @@ export function DashboardKanbanOperativo({
     setModalActivo('devolver-competencia');
   };
 
-  const handleConfirmarDevolucionCompetencia = () => {
+  // ✅ Función para validar UUID
+  const isValidUUID = (id: string): boolean => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(id);
+  };
+
+  const handleConfirmarDevolucionCompetencia = async () => {
+    // ✅ Validar que no esté ya remitiendo
+    if (isRemitiendo) {
+      return;
+    }
+
+    // ✅ Validar que el ID de la noticia sea un UUID válido
+    if (!itemSeleccionado?.id || !isValidUUID(itemSeleccionado.id)) {
+      toast.error('Error de Configuración', {
+        description: 'La noticia seleccionada no tiene un ID válido. Por favor, recargue los datos desde el servidor e intente nuevamente.'
+      });
+      return;
+    }
+
     // Validar que se haya seleccionado un área
     if (!areaDestinoRemision) {
       toast.error('Error de Validación', {
@@ -2925,27 +2975,43 @@ export function DashboardKanbanOperativo({
       return;
     }
 
-    // Generar nuevo número RC (Remisión por Competencia)
-    const año = new Date().getFullYear();
-    const numeroRC = `RC-${año}-${String(Math.floor(Math.random() * 9000) + 1000).padStart(4, '0')}`;
-
     // ✅ Obtener nombre y correo de la entidad configurada
     const entidadSeleccionada = entidadesRemision.find(e => e.id === areaDestinoRemision);
     const nombreArea = entidadSeleccionada?.nombre || areaDestinoRemision;
     const correoArea = entidadSeleccionada?.correo || '';
 
-    toast.success('Remitido por Competencia', {
-      description: correoArea
-        ? `${itemSeleccionado.numero} → ${numeroRC}\nEntidad: ${nombreArea}\nCorreo: ${correoArea}`
-        : `${itemSeleccionado.numero} → ${numeroRC} (${nombreArea})`
-    });
+    // ✅ Llamar al backend para remitir por competencia
+    setIsRemitiendo(true);
+    try {
+      await disciplinaryService.remitirPorCompetencia({
+        newsId: itemSeleccionado.id,
+        emailDestinatario: correoArea,
+        entidadDestino: nombreArea,
+        justificacion: observaciones
+      });
 
-    // Remover la noticia del listado (ya que fue remitida a otra área)
-    setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
-    setModalActivo(null);
-    setItemSeleccionado(null);
-    setAreaDestinoRemision('');
-    setObservaciones('');
+      toast.success('Remitido por Competencia', {
+        description: correoArea
+          ? `${itemSeleccionado.numero} → ${nombreArea}\nCorreo: ${correoArea}`
+          : `${itemSeleccionado.numero} → ${nombreArea}`
+      });
+
+      // Remover la noticia del listado (ya que fue remitida a otra área)
+      setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
+    } catch (error: any) {
+      console.error('Error al remitir por competencia:', error);
+      // Si el backend falla, todavía permitimos la operación local (para entornos sin endpoint)
+      toast.warning('Remisión local', {
+        description: `${itemSeleccionado.numero} → ${nombreArea} (sin conexión al servidor)`
+      });
+      setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
+    } finally {
+      setIsRemitiendo(false);
+      setModalActivo(null);
+      setItemSeleccionado(null);
+      setAreaDestinoRemision('');
+      setObservaciones('');
+    }
   };
 
   const handleArchivarNoticia = (noticia: Noticia) => {
@@ -4254,37 +4320,53 @@ export function DashboardKanbanOperativo({
                         </div>
                       </div>
 
-                      <div>
-                        <label className="text-sm font-bold text-gray-700 mb-2 block">
-                          Área/Entidad de Destino *
-                        </label>
-                        <select
-                          value={areaDestinoRemision}
-                          onChange={(e) => setAreaDestinoRemision(e.target.value)}
-                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 font-semibold"
-                        >
-                          <option value="">Seleccionar área/entidad...</option>
-                          {entidadesRemision.length > 0 ? (
-                            entidadesRemision.map((entidad) => (
+                      {/* ✅ Carga de entidades desde backend */}
+                      {entidadesLoading ? (
+                        <div className="flex items-center justify-center p-4">
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+                          <span className="ml-2 text-sm text-gray-600">Cargando entidades...</span>
+                        </div>
+                      ) : entidadesError ? (
+                        <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                          <p className="text-sm text-red-700 font-semibold">Error al cargar entidades</p>
+                          <p className="text-xs text-red-600 mt-1">{entidadesError}</p>
+                          <button
+                            onClick={cargarEntidadesRemision}
+                            className="mt-2 px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700"
+                          >
+                            Reintentar
+                          </button>
+                        </div>
+                      ) : entidadesRemision.length === 0 ? (
+                        <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                          <p className="text-sm text-amber-700 font-semibold">⚠️ No hay entidades de remisión configuradas</p>
+                          <p className="text-xs text-amber-600 mt-1">
+                            Para remitir noticias por competencia, primero debe configurar las entidades en la sección de configuración del sistema.
+                          </p>
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="text-sm font-bold text-gray-700 mb-2 block">
+                            Área/Entidad de Destino *
+                          </label>
+                          <select
+                            value={areaDestinoRemision}
+                            onChange={(e) => setAreaDestinoRemision(e.target.value)}
+                            className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 font-semibold"
+                            disabled={false}
+                          >
+                            <option value="">Seleccionar área/entidad...</option>
+                            {entidadesRemision.map((entidad) => (
                               <option key={entidad.id} value={entidad.id}>
                                 {entidad.nombre}
                               </option>
-                            ))
-                          ) : (
-                            <>
-                              <option value="personeria">Personería Municipal</option>
-                              <option value="contraloria">Contraloría</option>
-                              <option value="procuraduria">Procuraduría</option>
-                              <option value="fiscalia">Fiscalía General de la Nación</option>
-                            </>
-                          )}
-                        </select>
-                        {entidadesRemision.length === 0 && (
+                            ))}
+                          </select>
                           <p className="text-xs text-gray-500 mt-1">
-                            💡 Configura entidades personalizadas en <span className="font-bold">Configuración → Entidades de Remisión</span>
+                            💡 Selecciona una de las {entidadesRemision.length} entidades configuradas
                           </p>
-                        )}
-                      </div>
+                        </div>
+                      )}
 
                       <div>
                         <label className="text-sm font-bold text-gray-700 mb-2 block">
@@ -4306,10 +4388,20 @@ export function DashboardKanbanOperativo({
                       </Button>
                       <Button
                         onClick={handleConfirmarDevolucionCompetencia}
+                        disabled={isRemitiendo || !areaDestinoRemision || !observaciones.trim()}
                         className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold"
                       >
-                        <Send className="w-4 h-4 mr-2" />
-                        Remitir
+                        {isRemitiendo ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                            Enviando...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4 mr-2" />
+                            Remitir
+                          </>
+                        )}
                       </Button>
                     </div>
                   </>
