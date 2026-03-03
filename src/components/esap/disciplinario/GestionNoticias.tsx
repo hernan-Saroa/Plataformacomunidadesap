@@ -1851,41 +1851,46 @@ export function GestionNoticias() {
 
         {showRemitirCompetenciaModal && noticiaSeleccionada && (
           <ModalRemitirCompetencia
-            noticia={noticiaSeleccionada}
+            noticia={{
+              id: noticiaSeleccionada.id,
+              numeroRadicado: noticiaSeleccionada.numeroRadicado || noticiaSeleccionada.radicado || '',
+              disciplinable: Array.isArray(noticiaSeleccionada.disciplinable) 
+                ? noticiaSeleccionada.disciplinable 
+                : noticiaSeleccionada.disciplinable 
+                  ? [noticiaSeleccionada.disciplinable] 
+                  : []
+            }}
             onClose={() => {
               setShowRemitirCompetenciaModal(false);
               setNoticiaSeleccionada(null);
             }}
-            onConfirm={(data) => {
-              // Actualizar la noticia: cambiar el número de ND a RC
-              setNoticias(noticias.map(n => {
-                if (n.id === noticiaSeleccionada?.id) {
-                  return {
-                    ...n,
-                    radicado: data.numeroRC,
-                    origen: 'Remisión por competencia' as const,
-                    estado: 'devuelto' as const,
-                    estadoLabel: 'Devuelto' as const,
-                    historialAuditoria: [
-                      ...n.historialAuditoria,
-                      {
-                        id: Date.now().toString(),
-                        tipo: 'devolucion' as const,
-                        usuario: 'Sistema',
-                        fecha: new Date().toISOString(),
-                        observaciones: `Remitido por competencia a: ${data.areaDestino}. Justificación: ${data.justificacion}`
-                      }
-                    ]
-                  };
-                }
-                return n;
-              }));
+            onConfirm={async (data) => {
+              try {
+                setLoading(true);
+                
+                // Llamar al backend para remitir por competencia
+                await disciplinaryService.remitirPorCompetencia({
+                  newsId: noticiaSeleccionada.id,
+                  emailDestinatario: data.emailDestinatario,
+                  entidadDestino: data.areaDestino,
+                  justificacion: data.justificacion,
+                  usuarioRemision: 'Sistema'
+                });
 
-              toast.success('Remitido por Competencia', {
-                description: `La noticia ahora tiene el número ${data.numeroRC} y ha sido remitida a ${data.areaDestino}.`
-              });
-              setShowRemitirCompetenciaModal(false);
-              setNoticiaSeleccionada(null);
+                // Actualizar la lista de noticias
+                await loadNoticias();
+
+                toast.success('Remitido por Competencia', {
+                  description: `La noticia ha sido remitida a ${data.areaDestino} y se ha enviado un correo a ${data.emailDestinatario}.`
+                });
+                setShowRemitirCompetenciaModal(false);
+                setNoticiaSeleccionada(null);
+              } catch (error) {
+                console.error('Error al remitir por competencia:', error);
+                toast.error('Error al remitir la noticia por competencia');
+              } finally {
+                setLoading(false);
+              }
             }}
           />
         )}
