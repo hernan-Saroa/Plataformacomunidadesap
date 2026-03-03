@@ -605,7 +605,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEv
               <Label>Archivo</Label>
               <Input
                 type="file"
-                accept=".pdf,.doc,.docx,.jpg,.png"
+                accept=".pdf,.doc,.docx,.jpg,.png,.zip"
                 onChange={e => setSelectedFile(e.target.files?.[0] || null)}
               />
               {selectedFile && (
