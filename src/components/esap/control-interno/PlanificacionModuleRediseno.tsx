@@ -6,7 +6,7 @@
  * 🎯 ESTRUCTURA MODULAR:
  * Este componente se divide en DOS módulos independientes:
  * 
- * 1. **UNIVERSO AUDITABLE** (con Programa Anual):
+ * 1. **PROGRAMA DE AUDITORÍA** (con Programa Anual):
  *    - Tab 1: Universo Auditable - DÓNDE se puede auditar (45 procesos)
  *    - Tab 2: Programa Anual - CUÁNDO auditar (16 calendarizadas)
  * 
@@ -152,11 +152,11 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa', onNav
   // Determinar título y subtítulo según la vista
   const tituloModulo = vista === 'plan-operativo' 
     ? 'Plan Anual de Auditoría OCIG' 
-    : 'Universo Auditable';
+    : 'Programa de Auditoría';
   
   const subtituloModulo = vista === 'plan-operativo'
     ? 'Gestión del Plan Anual de Auditoría Interna - Qué procesos se auditarán'
-    : 'Identificación del Universo Auditable y Programación Anual';
+    : 'Gestión del Universo Auditable y Programación Anual';
 
   return (
     <div className="h-full flex flex-col bg-gray-50">

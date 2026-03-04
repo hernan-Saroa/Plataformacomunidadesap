@@ -26,8 +26,10 @@ export interface AuditoriaBackendDTO {
   territorial: string;
   sede: string;
   responsable: string;
-  fechaInicio: string; // ISO 8601: "2026-02-17"
-  fechaFin: string;    // ISO 8601: "2026-02-28"
+  fechaInicio: string; // ISO 8601: "2026-02-17" - Inicio de Planeación
+  fechaFinPlaneacion?: string; // ISO 8601: "2026-02-20" - Fin de Planeación / Inicio de Ejecución
+  fechaFinEjecucion?: string; // ISO 8601: "2026-02-25" - Fin de Ejecución / Inicio de Comunicación
+  fechaFin: string;    // ISO 8601: "2026-02-28" - Fin de Comunicación
   
   // Campos opcionales
   descripcion?: string;
@@ -81,6 +83,8 @@ export interface AuditoriaFormData {
   
   // Fechas
   fechaInicio: string;
+  fechaFinPlaneacion?: string; // Fin de Planeación / Inicio de Ejecución
+  fechaFinEjecucion?: string; // Fin de Ejecución / Inicio de Comunicación
   fechaFin: string;
   periodicidad?: string;
   
@@ -146,6 +150,8 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
   // Formatear fechas a ISO 8601
   const fechaInicio = formatearFechaISO(form.fechaInicio);
   const fechaFin = formatearFechaISO(form.fechaFin);
+  const fechaFinPlaneacion = form.fechaFinPlaneacion ? formatearFechaISO(form.fechaFinPlaneacion) : undefined;
+  const fechaFinEjecucion = form.fechaFinEjecucion ? formatearFechaISO(form.fechaFinEjecucion) : undefined;
   
   return {
     // Campos obligatorios
@@ -155,6 +161,8 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     sede: form.sede || form.territorial || 'Sede Principal',
     responsable: form.auditorLider || form.responsable || 'Por asignar',
     fechaInicio,
+    fechaFinPlaneacion,
+    fechaFinEjecucion,
     fechaFin,
     
     // Campos opcionales

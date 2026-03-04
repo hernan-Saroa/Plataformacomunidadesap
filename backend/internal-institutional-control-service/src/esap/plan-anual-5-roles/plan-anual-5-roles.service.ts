@@ -92,7 +92,7 @@ export class PlanAnual5RolesService {
     }
 
     // Crear el plan
-    const plan = this.planRepository.create({
+    const plan: PlanAnual5Roles = this.planRepository.create({
       año: createDto.año,
       responsable: createDto.responsable,
       responsable_id: createDto.responsable_id,
@@ -102,7 +102,7 @@ export class PlanAnual5RolesService {
       fecha_creacion: new Date(),
     });
 
-    const savedPlan = await this.planRepository.save(plan);
+    const savedPlan: PlanAnual5Roles = await this.planRepository.save(plan);
 
     // Obtener roles del template desde la BD (NO desde memoria)
     const rolesTemplate = await this.getRolesTemplate();
@@ -176,10 +176,10 @@ export class PlanAnual5RolesService {
 
     if (updateDto.estado !== undefined && updateDto.estado !== plan.estado) {
       cambios.push({ campo: 'estado', valorAnterior: plan.estado, valorNuevo: updateDto.estado });
-      plan.estado = updateDto.estado;
+      plan.estado = updateDto.estado as 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' | 'activo';
     }
 
-    const savedPlan = await this.planRepository.save(plan);
+    const savedPlan: PlanAnual5Roles = await this.planRepository.save(plan);
 
     // Registrar en historial si hubo cambios
     if (cambios.length > 0) {

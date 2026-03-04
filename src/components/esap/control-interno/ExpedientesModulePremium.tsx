@@ -292,14 +292,38 @@ function VistaExpedientes() {
       // 2. Para cada auditoría, cargar sus documentos
       const expedientesConDocs = await Promise.all(
         auditorias.map(async (auditoria: any) => {
+          const documentos: Documento[] = [];
+
           try {
             const docsBackend = await controlInternoService.getDocumentosByAuditoria(auditoria.id);
-            const documentos = docsBackend.map(mapDocumentoBackend);
-            return mapAuditoriaToExpediente(auditoria, documentos);
+            documentos.push(...docsBackend.map(mapDocumentoBackend));
           } catch {
-            // Si falla cargar docs, devolver expediente sin docs
-            return mapAuditoriaToExpediente(auditoria, []);
+            // Si falla el endpoint de docs, continuar sin ellos
           }
+
+          // ✅ Inyectar documento de cierre desde el campo JSONB de la auditoría
+          // (no está en la tabla documentos — se guarda aparte en /finalizar)
+          const dc = auditoria.documentoCierre || auditoria.documento_cierre;
+          if (dc?.url) {
+            const baseUrl = getFilesBaseUrl();
+            documentos.unshift({
+              id: 'doc-cierre-' + auditoria.id,
+              nombre: dc.nombre || 'Documento de Cierre',
+              nombreArchivo: dc.nombre || 'documento_cierre',
+              tipo: 'cierre',
+              tipoMime: dc.tipo || 'application/pdf',
+              tamanio: dc.tamano ? formatFileSize(dc.tamano) : 'N/A',
+              tamanioBytes: dc.tamano || 0,
+              fechaCreacion: (dc.fechaCarga || auditoria.fechaFinalizacion || auditoria.updatedAt || '')
+                .split('T')[0],
+              autor: dc.cargadoPor || auditoria.finalizadaPor || 'Sistema',
+              fase: 'CIERRE' as FaseAuditoria,
+              rutaArchivo: dc.url?.startsWith('http') ? dc.url : `${baseUrl}${dc.url}`,
+              descripcion: `📌 Documento de cierre oficial${auditoria.observacionesCierre ? ': ' + auditoria.observacionesCierre : ''}`,
+            });
+          }
+
+          return mapAuditoriaToExpediente(auditoria, documentos);
         })
       );
       
@@ -714,9 +738,9 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
   const handleDescargarDocumento = (doc: Documento, e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // Construir URL de descarga del backend
+    // Para doc de cierre usar la URL directa guardada en rutaArchivo
     const baseUrl = getFilesBaseUrl();
-    const downloadUrl = `${baseUrl}/documentos/${doc.id}/download`;
+    const downloadUrl = doc.rutaArchivo || `${baseUrl}/documentos/${doc.id}/download`;
     
     // Abrir descarga en nueva ventana
     window.open(downloadUrl, '_blank');
@@ -1145,9 +1169,10 @@ function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps)
   const [error, setError] = useState<string | null>(null);
 
   // Construir URLs del backend
+  // Para documento de cierre, la URL real está en rutaArchivo (campo JSONB)
   const baseUrl = getFilesBaseUrl();
-  const previewUrl = `${baseUrl}/documentos/${documento.id}/preview`;
-  const downloadUrl = `${baseUrl}/documentos/${documento.id}/download`;
+  const previewUrl = documento.rutaArchivo || `${baseUrl}/documentos/${documento.id}/preview`;
+  const downloadUrl = documento.rutaArchivo || `${baseUrl}/documentos/${documento.id}/download`;
 
   // Verificar si el documento se puede previsualizar
   const tipoMime = documento.tipoMime || 'application/octet-stream';

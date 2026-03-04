@@ -30,11 +30,11 @@ import { PlanesMejoramientoModuleRediseno } from "./PlanesMejoramientoModuleRedi
 import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
 import { ConfiguracionesModulePremium } from "./ConfiguracionesModulePremium";  // VERSIÓN PREMIUM
 import { ListasChequeoModule } from "./ListasChequeoModule";  // RF007 - Biblioteca (vista 18_feb)
-import { UniversoAuditableUnificado } from "./UniversoAuditableUnificado";  // ✨ NUEVO: Universo Auditable + Programa Anual
+import { UniversoAuditableUnificado } from "./UniversoAuditableUnificado";  // ✨ NUEVO: Programa de Auditoría (incluye Universo Auditable)
 
 type SeccionActiva =
   | "dashboard"                      // KANBAN DASHBOARD - CENTRO DE COMANDO
-  | "universo-auditable"             // ✨ NUEVO: Universo Auditable + Programa Anual
+  | "universo-auditable"             // ✨ NUEVO: Programa de Auditoría (incluye Universo Auditable)
   | "plan-operativo"                 // ✨ NUEVO: Plan Anual (independiente)
   | "listas-chequeo"                 // RF007 - LISTAS DE CHEQUEO DIGITALES
   | "planes-mejoramiento"            // RF010-011 (2 tabs)
@@ -112,10 +112,10 @@ function ControlInternoContent({
         color: "#2962FF", // Azul corporativo
       },
       
-      // ━━━━━━━━━━━ 2. UNIVERSO AUDITABLE ━━━━━━━━━━━
+      // ━━━━━━━━━━━ 2. PROGRAMA DE AUDITORÍA ━━━━━━━━━━━
       {
         id: "universo-auditable",
-        label: "Universo Auditable",
+        label: "Programa de Auditoría",
         subtitle: "DÓNDE auditar • Programa Anual",
         icon: <Layers className="w-5 h-5" />,
         color: "#003DA5", // Azul ESAP

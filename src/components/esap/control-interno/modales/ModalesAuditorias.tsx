@@ -81,6 +81,8 @@ export interface Auditoria {
   proceso?: string;
   responsable: string;
   fechaInicio: string;
+  fechaFinPlaneacion?: string; // Fin de Planeación / Inicio de Ejecución
+  fechaFinEjecucion?: string; // Fin de Ejecución / Inicio de Comunicación
   fechaFin: string;
   estado?: string;
   progreso?: number;
@@ -149,6 +151,8 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
     tipo: 'SEDE',
     responsable: '',
     fechaInicio: '',
+    fechaFinPlaneacion: '',
+    fechaFinEjecucion: '',
     fechaFin: '',
     proceso: '',
     objetivo: '',
@@ -170,18 +174,21 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
   // Cargar datos cuando cambia la auditoría o se abre el modal
   useEffect(() => {
     if (isOpen && auditoria) {
-      console.log('[ModalEdicion] Cargando auditoría:', auditoria);
-      console.log('[ModalEdicion] objetivos raw:', auditoria.objetivos);
-      console.log('[ModalEdicion] criterios raw:', auditoria.criterios);
+      const fechaInicioFormatted = formatDateForInput(auditoria.fechaInicio);
+      const fechaFinPlaneacionFormatted = formatDateForInput(auditoria.fechaFinPlaneacion);
+      const fechaFinEjecucionFormatted = formatDateForInput(auditoria.fechaFinEjecucion);
+      const fechaFinFormatted = formatDateForInput(auditoria.fechaFin);
+      
       setFormData({
         ...auditoria,
-        fechaInicio: formatDateForInput(auditoria.fechaInicio),
-        fechaFin: formatDateForInput(auditoria.fechaFin),
+        fechaInicio: fechaInicioFormatted,
+        fechaFinPlaneacion: fechaFinPlaneacionFormatted,
+        fechaFinEjecucion: fechaFinEjecucionFormatted,
+        fechaFin: fechaFinFormatted,
       });
+      
       const objParsed = parseObjetivos(auditoria.objetivos);
       const critParsed = parseCriterios(auditoria.criterios);
-      console.log('[ModalEdicion] objetivos parseados:', objParsed);
-      console.log('[ModalEdicion] criterios parseados:', critParsed);
       setObjetivosList(objParsed);
       setCriteriosList(critParsed);
     } else if (!isOpen) {
@@ -191,6 +198,8 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
         tipo: 'SEDE',
         responsable: '',
         fechaInicio: '',
+        fechaFinPlaneacion: '',
+        fechaFinEjecucion: '',
         fechaFin: '',
         proceso: '',
         objetivo: '',
@@ -282,6 +291,39 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
     if (!formData.fechaInicio || !formData.fechaFin) {
       toast.error('Las fechas son obligatorias');
       return;
+    }
+    
+    // Validar cronograma de 3 etapas (Planeación → Ejecución → Comunicación)
+    if (formData.fechaFinPlaneacion) {
+      const inicio = new Date(formData.fechaInicio);
+      const finPlaneacion = new Date(formData.fechaFinPlaneacion);
+      if (finPlaneacion <= inicio) {
+        toast.error('La fecha de fin de Planeación debe ser posterior al inicio de la auditoría');
+        return;
+      }
+    }
+    
+    if (formData.fechaFinEjecucion) {
+      if (!formData.fechaFinPlaneacion) {
+        toast.error('Debe especificar la fecha de fin de Planeación antes de la fecha de fin de Ejecución');
+        return;
+      }
+      const finPlaneacion = new Date(formData.fechaFinPlaneacion);
+      const finEjecucion = new Date(formData.fechaFinEjecucion);
+      if (finEjecucion <= finPlaneacion) {
+        toast.error('La fecha de fin de Ejecución debe ser posterior al fin de Planeación');
+        return;
+      }
+    }
+    
+    // Validar que la fecha fin (fin de Comunicación) sea posterior al fin de Ejecución
+    if (formData.fechaFinEjecucion) {
+      const finEjecucion = new Date(formData.fechaFinEjecucion);
+      const fechaFin = new Date(formData.fechaFin);
+      if (fechaFin <= finEjecucion) {
+        toast.error('La fecha de fin de la auditoría (fin de Comunicación) debe ser posterior al fin de Ejecución');
+        return;
+      }
     }
     
     // Incluir objetivos y criterios como arrays
@@ -457,7 +499,26 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                 />
               </div>
 
-              {/* Fecha Inicio */}
+              {/* Banner Informativo Cronograma 3 Etapas */}
+              <div className="xl:col-span-2">
+                <div className="bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <Clock className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-blue-900 mb-1">
+                        📋 Cronograma de 3 Etapas Obligatorias
+                      </p>
+                      <ul className="text-xs text-blue-800 space-y-1">
+                        <li>• <strong>Planeación:</strong> Desde Fecha de Inicio hasta Fin de Planeación</li>
+                        <li>• <strong>Ejecución:</strong> Desde Fin de Planeación hasta Fin de Ejecución (trabajo de campo)</li>
+                        <li>• <strong>Comunicación:</strong> Desde Fin de Ejecución hasta Fecha de Finalización (informes)</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Fecha Inicio de Planeación */}
               <div>
                 <label className="block text-base font-semibold text-gray-900 mb-2">
                   Fecha Inicio <span className="text-red-500">*</span>
@@ -472,9 +533,46 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                     required
                   />
                 </div>
+                <p className="text-xs text-gray-500 mt-1">Inicio de la etapa de Planeación</p>
               </div>
 
-              {/* Fecha Fin */}
+              {/* Fin Planeación / Inicio Ejecución */}
+              <div>
+                <label className="block text-base font-semibold text-gray-900 mb-2">
+                  Fin Planeación / Inicio Ejecución
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="date"
+                    value={formData.fechaFinPlaneacion || ''}
+                    onChange={(e) => setFormData({ ...formData, fechaFinPlaneacion: e.target.value })}
+                    min={formData.fechaInicio || undefined}
+                    className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] transition-all text-base"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Marca el inicio del trabajo de campo</p>
+              </div>
+
+              {/* Fin Ejecución / Inicio Comunicación */}
+              <div>
+                <label className="block text-base font-semibold text-gray-900 mb-2">
+                  Fin Ejecución / Inicio Comunicación
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="date"
+                    value={formData.fechaFinEjecucion || ''}
+                    onChange={(e) => setFormData({ ...formData, fechaFinEjecucion: e.target.value })}
+                    min={formData.fechaFinPlaneacion || formData.fechaInicio || undefined}
+                    className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] transition-all text-base"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Marca el inicio de elaboración del informe</p>
+              </div>
+
+              {/* Fecha Fin de Auditoría */}
               <div>
                 <label className="block text-base font-semibold text-gray-900 mb-2">
                   Fecha Fin <span className="text-red-500">*</span>
@@ -485,10 +583,12 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                     type="date"
                     value={formData.fechaFin}
                     onChange={(e) => setFormData({ ...formData, fechaFin: e.target.value })}
+                    min={formData.fechaFinEjecucion || formData.fechaFinPlaneacion || formData.fechaInicio || undefined}
                     className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] transition-all text-base"
                     required
                   />
                 </div>
+                <p className="text-xs text-gray-500 mt-1">Fin de la etapa de Comunicación</p>
               </div>
             </div>
 

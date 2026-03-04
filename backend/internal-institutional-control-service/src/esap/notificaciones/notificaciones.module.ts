@@ -9,6 +9,7 @@ import { PreferenciaNotificacion } from './entities/preferencia-notificacion.ent
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { PlanMejoramiento } from '../planes-mejoramiento/entities/plan-mejoramiento.entity';
 import { SeguimientoTrimestral } from '../planes-mejoramiento/entities/seguimiento-trimestral.entity';
+import { AuthModule } from '../../auth/auth.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { SeguimientoTrimestral } from '../planes-mejoramiento/entities/seguimien
       PlanMejoramiento,
       SeguimientoTrimestral,
     ]),
+    AuthModule,
   ],
   controllers: [NotificacionesController],
   providers: [

@@ -69,7 +69,32 @@ async function bootstrap() {
     
     // Habilitar CORS
     app.enableCors({
-      origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'],
+      origin: (origin, callback) => {
+        // Permitir requests sin origin (como Postman, curl, etc)
+        if (!origin) return callback(null, true);
+        
+        // Lista de orígenes permitidos
+        const allowedOrigins = [
+          'http://localhost:3000',
+          'http://localhost:5173',
+          'http://localhost:5174',
+          'http://127.0.0.1:5173',
+          'http://127.0.0.1:5174',
+          'http://127.0.0.1:3000'
+        ];
+        
+        // En desarrollo, permitir cualquier localhost
+        if (process.env.NODE_ENV === 'development' && origin.includes('localhost')) {
+          return callback(null, true);
+        }
+        
+        if (allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          console.log('⚠️  CORS bloqueado para origen:', origin);
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Accept-Charset'],

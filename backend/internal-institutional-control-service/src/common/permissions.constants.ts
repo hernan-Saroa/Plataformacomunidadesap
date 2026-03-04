@@ -47,6 +47,13 @@ export const ControlInternoPermissions = {
   PLANES_MEJ_DELETE: 'control-interno.planes-mejoramiento.manage',
   PLANES_MEJ_APPROVE: 'control-interno.planes-mejoramiento.manage',
   PLANES_MEJ_FOLLOW_UP: 'control-interno.planes-mejoramiento.follow-up',
+  
+  // Alias para compatibilidad con controladores
+  PLAN_MEJORAMIENTO_VIEW: 'control-interno.planes-mejoramiento.view',
+  PLAN_MEJORAMIENTO_CREATE: 'control-interno.planes-mejoramiento.create',
+  PLAN_MEJORAMIENTO_EDIT: 'control-interno.planes-mejoramiento.edit',
+  PLAN_MEJORAMIENTO_DELETE: 'control-interno.planes-mejoramiento.delete',
+  PLAN_MEJORAMIENTO_FOLLOW_UP: 'control-interno.planes-mejoramiento.follow-up',
 
   // ═══════════════════════════════════════════════════════════════
   // HALLAZGOS
