@@ -52,11 +52,19 @@ export class UpdateAuditoriaDto {
 
   @IsDateString()
   @IsOptional()
-  fechaInicio?: string;
+  fechaInicio?: string; // Inicio de Planeación
 
   @IsDateString()
   @IsOptional()
-  fechaFin?: string;
+  fechaFinPlaneacion?: string; // Fin de Planeación / Inicio de Ejecución
+
+  @IsDateString()
+  @IsOptional()
+  fechaFinEjecucion?: string; // Fin de Ejecución / Inicio de Comunicación
+
+  @IsDateString()
+  @IsOptional()
+  fechaFin?: string; // Fin de Comunicación (fin de auditoría)
 
   @IsInt()
   @Min(0)

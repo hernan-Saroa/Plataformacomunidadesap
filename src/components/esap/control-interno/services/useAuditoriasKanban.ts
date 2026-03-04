@@ -56,6 +56,8 @@ export interface AuditoriaKanban {
   auditorLider: Persona;
   auditorAsignado: Persona;
   fechaInicio: string;
+  fechaFinPlaneacion?: string; // Fin de Planeación / Inicio de Ejecución
+  fechaFinEjecucion?: string; // Fin de Ejecución / Inicio de Comunicación
   fechaFin: string;
   progreso: number;
   hallazgos: number;
@@ -350,6 +352,8 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     auditorLider,
     auditorAsignado,
     fechaInicio: formatearFecha(auditoriaBackend.fechaInicio),
+    fechaFinPlaneacion: auditoriaBackend.fechaFinPlaneacion ? formatearFecha(auditoriaBackend.fechaFinPlaneacion) : undefined,
+    fechaFinEjecucion: auditoriaBackend.fechaFinEjecucion ? formatearFecha(auditoriaBackend.fechaFinEjecucion) : undefined,
     fechaFin: formatearFecha(auditoriaBackend.fechaFin),
     progreso,
     // Asegurar que hallazgos sea un número
@@ -370,7 +374,7 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
       criterio: typeof crit === 'string' ? crit : (crit.criterio || '')
     })),
     calificacionRiesgo: auditoriaBackend.calificacionRiesgo || `Riesgo ${mapearRiesgo(auditoriaBackend.nivelRiesgo)}`,
-    documentos: auditoriaBackend.totalDocumentos || auditoriaBackend.documentosCount || 0,
+    documentos: (auditoriaBackend.totalDocumentos || auditoriaBackend.documentosCount || 0) + (auditoriaBackend.documentoCierre?.url ? 1 : 0),
     informes: auditoriaBackend.totalInformes || auditoriaBackend.informesCount || 0,
     tareas: auditoriaBackend.totalTareas || auditoriaBackend.tareasCount || 0,
     tipo: (auditoriaBackend.tipoKanban as TipoAuditoria) || mapearTipo(auditoriaBackend.tipo),
@@ -385,7 +389,9 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     } : undefined,
     actividadesCompletas: true,
     actividadesPendientes: 0,
-    auditorLiderId: auditoriaBackend.auditorLiderId
+    auditorLiderId: auditoriaBackend.auditorLiderId,
+    // ✅ Preservar documento de cierre del backend para pasarlo al Expediente
+    documentoCierre: auditoriaBackend.documentoCierre || null,
   };
 }
 
@@ -412,6 +418,26 @@ interface UseAuditoriasKanbanResult {
   // ✅ NUEVOS: Métodos para aprobación
   aprobarAuditoria: (id: string, comentarios?: string) => Promise<boolean>;
   rechazarAuditoria: (id: string, justificacion: string) => Promise<boolean>;
+  // ✅ NUEVOS: Métodos para hallazgos
+  getHallazgos: (auditoriaId: string) => Promise<any[]>;
+  crearHallazgo: (auditoriaId: string, data: {
+    titulo?: string;
+    categoria: string;
+    tipo?: string;
+    area: string;
+    descripcion: string;
+    criterioIncumplido: string;
+    fechaDeteccion: string;
+    responsable?: string;
+  }) => Promise<boolean>;
+  // ✅ NUEVO: Método para finalizar auditoría con documento
+  finalizarAuditoria: (
+    id: string,
+    archivo: File,
+    observaciones: string,
+    finalizadaPor: string,
+    finalizadaPorId: number
+  ) => Promise<boolean>;
 }
 
 export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
@@ -703,6 +729,34 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
   }, [auditorias, fetchAuditorias]);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // ✅ NUEVO: Finalizar auditoría con documento de cierre
+  // ─────────────────────────────────────────────────────────────────────────
+  const finalizarAuditoria = useCallback(async (
+    id: string,
+    archivo: File,
+    observaciones: string,
+    finalizadaPor: string,
+    finalizadaPorId: number
+  ): Promise<boolean> => {
+    try {
+      await controlInternoService.finalizarAuditoria(
+        id,
+        archivo,
+        observaciones,
+        finalizadaPor,
+        finalizadaPorId
+      );
+      toast.success('Auditoría finalizada exitosamente');
+      await fetchAuditorias();
+      return true;
+    } catch (err: any) {
+      console.error('[useAuditoriasKanban] Error al finalizar auditoría:', err);
+      toast.error(err.message || 'Error al finalizar auditoría');
+      return false;
+    }
+  }, [fetchAuditorias]);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Cargar datos al montar (solo una vez)
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -729,7 +783,9 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
     rechazarAuditoria,
     // ✅ Métodos de hallazgos
     getHallazgos,
-    crearHallazgo
+    crearHallazgo,
+    // ✅ Método de finalización
+    finalizarAuditoria
   };
 }
 

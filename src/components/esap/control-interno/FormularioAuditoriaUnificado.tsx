@@ -97,10 +97,11 @@ export interface AuditoriaUnificadaFormData {
   equipoAuditores: string[];
   supervisorAsignado: string;
   
-  // 4. PROGRAMACIÓN
-  fechaInicio: string;
-  fechaFin: string;
-  periodicidad: 'unica' | 'trimestral' | 'semestral' | 'anual';
+  // 4. PROGRAMACIÓN (3 etapas: Planeación, Ejecución, Comunicación)
+  fechaInicio: string; // Inicio de la etapa de Planeación
+  fechaFinPlaneacion?: string; // Fin de Planeación / Inicio de Ejecución
+  fechaFinEjecucion?: string; // Fin de Ejecución / Inicio de Comunicación
+  fechaFin: string; // Fin de Comunicación (fin de auditoría)
   hitos: HitoAuditoria[];
   
   // 5. OBJETIVOS Y CRITERIOS
@@ -279,8 +280,9 @@ export function FormularioAuditoriaUnificado({
     equipoAuditores: initialData?.equipoAuditores || [],
     supervisorAsignado: initialData?.supervisorAsignado || '',
     fechaInicio: initialData?.fechaInicio || '',
+    fechaFinPlaneacion: initialData?.fechaFinPlaneacion || '',
+    fechaFinEjecucion: initialData?.fechaFinEjecucion || '',
     fechaFin: initialData?.fechaFin || '',
-    periodicidad: initialData?.periodicidad || 'unica',
     hitos: initialData?.hitos || [],
     objetivos: initialData?.objetivos || [],
     criteriosAuditoria: initialData?.criteriosAuditoria || [],
@@ -323,7 +325,6 @@ export function FormularioAuditoriaUnificado({
       try {
         // Usar profesionales configurados en OCIG en lugar de personas disponibles genéricas
         const response = await configuracionesProfesionalesOCIGApi.getAll();
-        console.log('[FormularioAuditoria] Profesionales OCIG Response:', response);
         
         if (response.success && response.data && response.data.length > 0) {
           const auditores = response.data
@@ -334,7 +335,6 @@ export function FormularioAuditoriaUnificado({
               cargo: config.rolOcig || 'Auditor'
             }));
           setAuditoresDisponibles(auditores);
-          console.log('[FormularioAuditoria] Profesionales OCIG cargados:', auditores.length, auditores);
         } else {
           console.warn('[FormularioAuditoria] No hay profesionales OCIG configurados, usando fallback');
         }
@@ -481,6 +481,43 @@ export function FormularioAuditoriaUnificado({
       toast.error('Debe especificar las fechas de inicio y fin');
       setPasoActual(4);
       return;
+    }
+    
+    // Validar cronograma de 3 etapas
+    if (formData.fechaFinPlaneacion) {
+      const inicio = new Date(formData.fechaInicio);
+      const finPlaneacion = new Date(formData.fechaFinPlaneacion);
+      if (finPlaneacion <= inicio) {
+        toast.error('La fecha de fin de Planeación debe ser posterior al inicio de la auditoría');
+        setPasoActual(4);
+        return;
+      }
+    }
+    
+    if (formData.fechaFinEjecucion) {
+      if (!formData.fechaFinPlaneacion) {
+        toast.error('Debe especificar la fecha de fin de Planeación antes de la fecha de fin de Ejecución');
+        setPasoActual(4);
+        return;
+      }
+      const finPlaneacion = new Date(formData.fechaFinPlaneacion);
+      const finEjecucion = new Date(formData.fechaFinEjecucion);
+      if (finEjecucion <= finPlaneacion) {
+        toast.error('La fecha de fin de Ejecución debe ser posterior al fin de Planeación');
+        setPasoActual(4);
+        return;
+      }
+    }
+    
+    // Validar que la fecha fin (fin de Comunicación) sea posterior al fin de Ejecución
+    if (formData.fechaFinEjecucion) {
+      const finEjecucion = new Date(formData.fechaFinEjecucion);
+      const fechaFin = new Date(formData.fechaFin);
+      if (fechaFin <= finEjecucion) {
+        toast.error('La fecha de fin de la auditoría (fin de Comunicación) debe ser posterior al fin de Ejecución');
+        setPasoActual(4);
+        return;
+      }
     }
 
     if (formData.objetivos.length === 0) {
@@ -1151,17 +1188,31 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center mb-6">
         <Calendar className="w-12 h-12 mx-auto mb-3" style={{ color: '#003DA5' }} />
-        <h3 className="text-xl font-black text-gray-900">Programación y Fechas</h3>
+        <h3 className="text-xl font-black text-gray-900">Progr amación y Fechas</h3>
         <p className="text-sm text-gray-600 mt-1">
-          Defina el periodo de ejecución y periodicidad
+          Defina el cronograma de las 3 etapas: Planeación, Ejecución y Comunicación
         </p>
       </div>
 
       <Card className="p-6 border-2 border-gray-200">
         <div className="space-y-4">
-          {/* Fechas */}
+          {/* Información de etapas */}
+          <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 mb-4">
+            <p className="text-sm text-blue-800 font-medium mb-2">📋 Cronograma de 3 Etapas Obligatorias</p>
+            <ul className="text-xs text-blue-700 space-y-1">
+              <li>• <strong>Planeación:</strong> Desde Fecha de Inicio hasta Fin de Planeación</li>
+              <li>• <strong>Ejecución:</strong> Desde Fin de Planeación hasta Fin de Ejecución</li>
+              <li>• <strong>Comunicación:</strong> Desde Fin de Ejecución hasta Fecha de Finalización</li>
+            </ul>
+          </div>
+
+          {/* Fechas de las etapas */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FieldWrapper label="Fecha de Inicio" required>
+            <FieldWrapper 
+              label="Inicio de Planeación" 
+              required
+              helpText="Fecha de inicio de la auditoría"
+            >
               <Input
                 type="date"
                 value={formData.fechaInicio}
@@ -1170,59 +1221,82 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
               />
             </FieldWrapper>
 
-            <FieldWrapper label="Fecha de Finalización" required>
+            <FieldWrapper 
+              label="Fin de Planeación / Inicio de Ejecución"
+              helpText="Marca el inicio del trabajo de campo"
+            >
+              <Input
+                type="date"
+                value={formData.fechaFinPlaneacion || ''}
+                onChange={(e) => onChange('fechaFinPlaneacion', e.target.value)}
+                className="border-gray-300"
+                min={formData.fechaInicio || undefined}
+              />
+            </FieldWrapper>
+
+            <FieldWrapper 
+              label="Fin de Ejecución / Inicio de Comunicación"
+              helpText="Marca el inicio de elaboración del informe"
+            >
+              <Input
+                type="date"
+                value={formData.fechaFinEjecucion || ''}
+                onChange={(e) => onChange('fechaFinEjecucion', e.target.value)}
+                className="border-gray-300"
+                min={formData.fechaFinPlaneacion || formData.fechaInicio || undefined}
+              />
+            </FieldWrapper>
+
+            <FieldWrapper 
+              label="Finalización de la Auditoría" 
+              required
+              helpText="Fin de la etapa de Comunicación"
+            >
               <Input
                 type="date"
                 value={formData.fechaFin}
                 onChange={(e) => onChange('fechaFin', e.target.value)}
                 className="border-gray-300"
+                min={formData.fechaFinEjecucion || formData.fechaFinPlaneacion || formData.fechaInicio || undefined}
               />
             </FieldWrapper>
           </div>
-
-          {/* Periodicidad */}
-          <FieldWrapper
-            label="Periodicidad"
-            required
-            helpText="Frecuencia de ejecución de la auditoría"
-          >
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { value: 'unica', label: 'Única' },
-                { value: 'trimestral', label: 'Trimestral' },
-                { value: 'semestral', label: 'Semestral' },
-                { value: 'anual', label: 'Anual' }
-              ].map(periodo => (
-                <button
-                  key={periodo.value}
-                  type="button"
-                  onClick={() => onChange('periodicidad', periodo.value)}
-                  className={`
-                    px-4 py-3 rounded-lg border-2 transition-all font-medium text-sm
-                    ${
-                      formData.periodicidad === periodo.value
-                        ? 'border-blue-600 bg-blue-50 text-blue-700'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                    }
-                  `}
-                >
-                  {periodo.label}
-                </button>
-              ))}
-            </div>
-          </FieldWrapper>
 
           {/* Duración estimada */}
           {formData.fechaInicio && formData.fechaFin && (
             <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
               <p className="text-sm text-blue-700">
-                <strong>Duración estimada:</strong>{' '}
+                <strong>Duración total:</strong>{' '}
                 {Math.ceil(
                   (new Date(formData.fechaFin).getTime() - new Date(formData.fechaInicio).getTime()) /
                     (1000 * 60 * 60 * 24)
                 )}{' '}
                 días
               </p>
+              {formData.fechaFinPlaneacion && (
+                <p className="text-xs text-blue-600 mt-1">
+                  Planeación: {Math.ceil(
+                    (new Date(formData.fechaFinPlaneacion).getTime() - new Date(formData.fechaInicio).getTime()) /
+                      (1000 * 60 * 60 * 24)
+                  )} días
+                </p>
+              )}
+              {formData.fechaFinEjecucion && formData.fechaFinPlaneacion && (
+                <p className="text-xs text-blue-600">
+                  Ejecución: {Math.ceil(
+                    (new Date(formData.fechaFinEjecucion).getTime() - new Date(formData.fechaFinPlaneacion).getTime()) /
+                      (1000 * 60 * 60 * 24)
+                  )} días
+                </p>
+              )}
+              {formData.fechaFinEjecucion && formData.fechaFin && (
+                <p className="text-xs text-blue-600">
+                  Comunicación: {Math.ceil(
+                    (new Date(formData.fechaFin).getTime() - new Date(formData.fechaFinEjecucion).getTime()) /
+                      (1000 * 60 * 60 * 24)
+                  )} días
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -2003,13 +2077,32 @@ function Paso9VinculacionPlan({ formData, onChange }: PasoProps) {
             <p className="text-gray-600">Área:</p>
             <p className="font-bold text-gray-900">{formData.areaObjetivo || 'Sin asignar'}</p>
           </div>
-          <div>
-            <p className="text-gray-600">Periodo:</p>
-            <p className="font-bold text-gray-900">
-              {formData.fechaInicio && formData.fechaFin
-                ? `${formData.fechaInicio} - ${formData.fechaFin}`
-                : 'Sin asignar'}
-            </p>
+          <div className="md:col-span-2">
+            <p className="text-gray-600 mb-1">Cronograma de Etapas:</p>
+            <div className="space-y-1">
+              {formData.fechaInicio && (
+                <p className="text-xs text-gray-700">
+                  <strong>Planeación:</strong> {formData.fechaInicio}
+                  {formData.fechaFinPlaneacion && ` → ${formData.fechaFinPlaneacion}`}
+                </p>
+              )}
+              {formData.fechaFinPlaneacion && (
+                <p className="text-xs text-gray-700">
+                  <strong>Ejecución:</strong> {formData.fechaFinPlaneacion}
+                  {formData.fechaFinEjecucion && ` → ${formData.fechaFinEjecucion}`}
+                </p>
+              )}
+              {formData.fechaFinEjecucion && formData.fechaFin && (
+                <p className="text-xs text-gray-700">
+                  <strong>Comunicación:</strong> {formData.fechaFinEjecucion} → {formData.fechaFin}
+                </p>
+              )}
+              {!formData.fechaFinPlaneacion && !formData.fechaFinEjecucion && formData.fechaInicio && formData.fechaFin && (
+                <p className="text-xs text-gray-700">
+                  {formData.fechaInicio} → {formData.fechaFin}
+                </p>
+              )}
+            </div>
           </div>
           <div>
             <p className="text-gray-600">Objetivos:</p>

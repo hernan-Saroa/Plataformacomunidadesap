@@ -214,6 +214,8 @@ export function ModalFormularioAuditoria({
     auditorLider: normalizarAuditorId(initialData?.auditorLider),
     auditorAsignado: normalizarAuditorId(initialData?.auditorAsignado),
     fechaInicio: initialData?.fechaInicio || '',
+    fechaFinPlaneacion: (initialData as any)?.fechaFinPlaneacion || '',
+    fechaFinEjecucion: (initialData as any)?.fechaFinEjecucion || '',
     fechaFin: initialData?.fechaFin || '',
     objetivos: initialData?.objetivos || [],
     alcance: initialData?.alcance || '',
@@ -797,12 +799,18 @@ export function ModalFormularioAuditoria({
                       Periodo de Ejecución
                     </h3>
 
+                    <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <p className="text-xs text-blue-800 font-medium mb-1">📋 Cronograma de 3 Etapas</p>
+                      <p className="text-xs text-blue-700">Planeación → Ejecución → Comunicación</p>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Fecha Inicio */}
+                      {/* Fecha Inicio de Planeación */}
                       <FieldWrapper
-                        label="Fecha de Inicio"
+                        label="Inicio de Planeación"
                         error={touched.fechaInicio ? getFieldError(errors, 'Fecha de inicio') : null}
                         required
+                        helpText="Fecha de inicio de la auditoría"
                       >
                         <Input
                           type="date"
@@ -817,17 +825,45 @@ export function ModalFormularioAuditoria({
                         />
                       </FieldWrapper>
 
-                      {/* Fecha Fin */}
+                      {/* Fecha Fin de Planeación / Inicio de Ejecución */}
                       <FieldWrapper
-                        label="Fecha de Fin"
+                        label="Fin Planeación / Inicio Ejecución"
+                        helpText="Marca el inicio del trabajo de campo"
+                      >
+                        <Input
+                          type="date"
+                          value={(formData as any).fechaFinPlaneacion || ''}
+                          onChange={(e) => handleChange('fechaFinPlaneacion', e.target.value)}
+                          min={formData.fechaInicio || undefined}
+                        />
+                      </FieldWrapper>
+
+                      {/* Fecha Fin de Ejecución / Inicio de Comunicación */}
+                      <FieldWrapper
+                        label="Fin Ejecución / Inicio Comunicación"
+                        helpText="Marca el inicio de elaboración del informe"
+                      >
+                        <Input
+                          type="date"
+                          value={(formData as any).fechaFinEjecucion || ''}
+                          onChange={(e) => handleChange('fechaFinEjecucion', e.target.value)}
+                          min={(formData as any).fechaFinPlaneacion || formData.fechaInicio || undefined}
+                        />
+                      </FieldWrapper>
+
+                      {/* Fecha Fin de la Auditoría */}
+                      <FieldWrapper
+                        label="Finalización de la Auditoría"
                         error={touched.fechaFin ? getFieldError(errors, 'Fecha de fin') : null}
                         required
+                        helpText="Fin de la etapa de Comunicación"
                       >
                         <Input
                           type="date"
                           value={formData.fechaFin}
                           onChange={(e) => handleChange('fechaFin', e.target.value)}
                           onBlur={() => handleBlur('fechaFin')}
+                          min={(formData as any).fechaFinEjecucion || (formData as any).fechaFinPlaneacion || formData.fechaInicio || undefined}
                           className={
                             hasFieldError(errors, 'Fecha de fin') && touched.fechaFin
                               ? 'border-red-500 focus:ring-red-500'
