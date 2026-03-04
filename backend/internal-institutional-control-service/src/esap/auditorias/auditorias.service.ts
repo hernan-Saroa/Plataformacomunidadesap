@@ -1212,7 +1212,8 @@ export class AuditoriasService {
     const estadoAnterior = auditoria.estadoKanban;
 
     // Construir URL del archivo (ajustar según configuración del servidor)
-    const baseUrl = process.env.BASE_URL || 'http://localhost:4000';
+    const port = process.env.PORT || '3007';
+    const baseUrl = process.env.BASE_URL || `http://localhost:${port}`;
     const fileUrl = `${baseUrl}/uploads/auditorias/cierre/${file.filename}`;
 
     // Actualizar estado a Finalizada
