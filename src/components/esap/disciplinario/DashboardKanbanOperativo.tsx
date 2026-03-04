@@ -234,12 +234,7 @@ const NOTICIAS_MOCK: Noticia[] = [
 // ✅ Usar procesos completos importados (12 procesos en 6 estados)
 const PROCESOS_MOCK: Proceso[] = PROCESOS_KANBAN_COMPLETO;
 
-const PROFESIONALES = [
-  'Juan Carlos Pérez',
-  'Ana María López',
-  'Carlos Rodríguez',
-  'María García'
-];
+const PROFESIONALES: { id: string; nombre: string }[] = [];
 
 // ==================== COMPONENTE TARJETA DE NOTICIA ====================
 interface TarjetaNoticiaProps {
@@ -2189,6 +2184,10 @@ export function DashboardKanbanOperativo({
   const [entidadesLoading, setEntidadesLoading] = useState(true);
   const [entidadesError, setEntidadesError] = useState<string | null>(null);
 
+  // ✅ NUEVO: Estado para profesionales cargados desde el backend
+  const [profesionalesList, setProfesionalesList] = useState<{ id: string; nombre: string }[]>([]);
+  const [profesionalesLoading, setProfesionalesLoading] = useState(true);
+
   // ✅ NUEVO: Estado para solicitudes de reasignación pendientes
   const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([]);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<any>(null);
@@ -2388,8 +2387,33 @@ export function DashboardKanbanOperativo({
     }
   };
 
+  // ✅ NUEVO: Cargar profesionales desde el backend
+  const cargarProfesionales = async () => {
+    setProfesionalesLoading(true);
+    try {
+      const profesionales = await disciplinaryService.getProfesionales();
+      // Mapear al formato esperado: { id, nombre }
+      const profesionalesFormateados = profesionales.map((p: any) => ({
+        id: p.id,
+        nombre: p.nombreCompleto || p.nombre || p.email
+      }));
+      setProfesionalesList(profesionalesFormateados);
+    } catch (error: any) {
+      console.error('Error al cargar profesionales:', error);
+      // Fallback vacío si falla
+      setProfesionalesList([]);
+    } finally {
+      setProfesionalesLoading(false);
+    }
+  };
+
   useEffect(() => {
     cargarEntidadesRemision();
+  }, []);
+
+  // ✅ NUEVO: Cargar profesionales al inicio
+  useEffect(() => {
+    cargarProfesionales();
   }, []);
 
   useEffect(() => {
@@ -2843,15 +2867,21 @@ export function DashboardKanbanOperativo({
       return;
     }
 
+    // ✅ NUEVO: Obtener el nombre del profesional seleccionado (disponible en todo el ámbito)
+    const profesionalObj = profesionalesList.find((p: any) => p.id === profesionalSeleccionado);
+    const nombreProfesional = profesionalObj?.nombre || profesionalSeleccionado;
+
     // ✅ NUEVO: Activar estado de loading
     setIsConvirtiendo(true);
 
+    let procesoCreado = false;
+
     try {
-      const abogadoId = `prof-${profesionalSeleccionado.toLowerCase().replace(/\s+/g, '-')}`;
+      const abogadoId = profesionalSeleccionado;
       const procesoApi = await disciplinaryService.asignarProceso({
         newsId: itemSeleccionado.id,
         abogadoId,
-        abogadoNombre: profesionalSeleccionado
+        abogadoNombre: nombreProfesional
       });
 
       const nuevoProceso = toProcesoFromApi(procesoApi);
@@ -2862,12 +2892,12 @@ export function DashboardKanbanOperativo({
       ]);
 
       toast.success('Proceso Creado', {
-        description: `${nuevoProceso.numeroProceso} → ${profesionalSeleccionado}`
+        description: `${nuevoProceso.numeroProceso} → ${nombreProfesional}`
       });
 
       setModalActivo(null);
       setItemSeleccionado(null);
-      return;
+      procesoCreado = true;
     } catch (error) {
       console.error('Error convirtiendo noticia a proceso:', error);
       // fallback local para no bloquear operación en entornos sin endpoint
@@ -2876,37 +2906,45 @@ export function DashboardKanbanOperativo({
       setIsConvirtiendo(false);
     }
 
-    const nuevoProceso: Proceso = {
-      id: `p${Date.now()}`,
-      numeroProceso: `PD-2025-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
-      noticiaOrigen: itemSeleccionado.numero,
-      denunciado: itemSeleccionado.denunciado,
-      cedula: '00000000',
-      etapaActual: 'Recepción',
-      estadoActual: 'En Gestión',
-      profesionalAsignado: profesionalSeleccionado,
-      semaforo: 'verde',
-      diasRestantes: 30,
-      porcentajeTiempo: 0,
-      borradores: [],
-      documentos: [],
-      pendienteAprobacion: false,
-      ultimaActuacion: 'Noticia convertida',
-      fechaCreacion: new Date().toISOString().split('T')[0],
-      tipo: 'proceso'
-    };
+    // ✅ Fallback local: crear proceso sin llamar al backend
+    if (!procesoCreado) {
+      const nuevoProceso: Proceso = {
+        id: `p${Date.now()}`,
+        numeroProceso: `P-2025-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
+        noticiaOrigen: itemSeleccionado.numero,
+        denunciante: itemSeleccionado.denunciante,
+        denunciado: itemSeleccionado.denunciado,
+        cedula: typeof itemSeleccionado.denunciado === 'object' ? itemSeleccionado.denunciado.numeroIdentificacion : '00000000',
+        etapaActual: 'Recepción',
+        estadoActual: 'En Gestión',
+        profesionalAsignado: {
+          nombre: nombreProfesional,
+          tipoIdentificacion: 'CC',
+          numeroIdentificacion: profesionalSeleccionado
+        },
+        semaforo: 'verde',
+        diasRestantes: 30,
+        porcentajeTiempo: 0,
+        borradores: [],
+        documentos: [],
+        pendienteAprobacion: false,
+        ultimaActuacion: 'Noticia convertida',
+        fechaCreacion: new Date().toISOString().split('T')[0],
+        tipo: 'proceso'
+      };
 
-    setItems(prev => [
-      ...prev.filter(i => i.id !== itemSeleccionado.id),
-      nuevoProceso
-    ]);
+      setItems(prev => [
+        ...prev.filter(i => i.id !== itemSeleccionado.id),
+        nuevoProceso
+      ]);
 
-    toast.success('Proceso Creado', {
-      description: `${nuevoProceso.numeroProceso} → ${profesionalSeleccionado}`
-    });
+      toast.success('Proceso Creado (local)', {
+        description: `${nuevoProceso.numeroProceso} → ${nombreProfesional}`
+      });
 
-    setModalActivo(null);
-    setItemSeleccionado(null);
+      setModalActivo(null);
+      setItemSeleccionado(null);
+    }
   };
 
   const handleDevolverNoticia = (noticia: Noticia) => {
@@ -4170,16 +4208,33 @@ export function DashboardKanbanOperativo({
                         <label className="text-sm font-bold text-gray-700 mb-2 block">
                           Profesional *
                         </label>
-                        <select
-                          value={profesionalSeleccionado}
-                          onChange={(e) => setProfesionalSeleccionado(e.target.value)}
-                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">Seleccionar...</option>
-                          {PROFESIONALES.map((prof) => (
-                            <option key={prof} value={prof}>{prof}</option>
-                          ))}
-                        </select>
+                        {profesionalesLoading ? (
+                          <div className="flex items-center justify-center p-4">
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                            <span className="ml-2 text-sm text-gray-500">Cargando profesionales...</span>
+                          </div>
+                        ) : profesionalesList.length === 0 ? (
+                          <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                            <p className="text-sm text-amber-700">No hay profesionales disponibles</p>
+                            <button
+                              onClick={cargarProfesionales}
+                              className="mt-2 px-3 py-1.5 bg-amber-600 text-white text-xs rounded-lg hover:bg-amber-700"
+                            >
+                              Reintentar
+                            </button>
+                          </div>
+                        ) : (
+                          <select
+                            value={profesionalSeleccionado}
+                            onChange={(e) => setProfesionalSeleccionado(e.target.value)}
+                            className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">Seleccionar...</option>
+                            {profesionalesList.map((prof: any) => (
+                              <option key={prof.id} value={prof.id}>{prof.nombre}</option>
+                            ))}
+                          </select>
+                        )}
                       </div>
 
                       <div>
