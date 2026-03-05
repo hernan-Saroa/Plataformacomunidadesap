@@ -68,6 +68,83 @@ interface ComunicacionUnificada {
   };
 }
 
+interface ModuloDestinoUI {
+  id: string;
+  nombre: string;
+  nombreCorto: string;
+  color: string;
+  aliases: string[];
+}
+
+const MODULOS_DESTINO_UI: ModuloDestinoUI[] = [
+  {
+    id: 'defensa-judicial',
+    nombre: 'Defensa Judicial',
+    nombreCorto: 'Defensa',
+    color: '#DC2626',
+    aliases: ['defensa judicial', 'defensa', 'judicial']
+  },
+  {
+    id: 'asesoria-juridica',
+    nombre: 'Asesoría Jurídica',
+    nombreCorto: 'Asesoría',
+    color: '#7C3AED',
+    aliases: ['asesoria juridica', 'asesoría jurídica', 'asesoria', 'consultas']
+  },
+  {
+    id: 'juzgamiento',
+    nombre: 'Juzgamiento Disciplinario',
+    nombreCorto: 'Disciplinario',
+    color: '#EA580C',
+    aliases: ['juzgamiento', 'disciplinario']
+  },
+  {
+    id: 'organos-control',
+    nombre: 'Órganos de Control',
+    nombreCorto: 'Org. Control',
+    color: '#0284C7',
+    aliases: ['organos de control', 'órganos de control', 'control']
+  },
+  {
+    id: 'procesos-coactivos',
+    nombre: 'Procesos Coactivos',
+    nombreCorto: 'Coactivos',
+    color: '#059669',
+    aliases: ['procesos coactivos', 'coactivos']
+  },
+  {
+    id: 'terminos-informes',
+    nombre: 'Términos e Informes',
+    nombreCorto: 'Términos',
+    color: '#6B7280',
+    aliases: ['terminos e informes', 'términos e informes', 'terminos', 'informes']
+  }
+];
+
+const normalizarTexto = (value?: string) =>
+  (value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+const getConfianzaPercent = (value?: number) => {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 0;
+  return value <= 1 ? Math.round(value * 100) : Math.round(value);
+};
+
+const getModuloDestinoUI = (moduloSugerido?: string): ModuloDestinoUI | undefined => {
+  const normalized = normalizarTexto(moduloSugerido);
+  if (!normalized) return undefined;
+
+  return MODULOS_DESTINO_UI.find((mod) =>
+    normalizarTexto(mod.id) === normalized ||
+    normalizarTexto(mod.nombre) === normalized ||
+    normalizarTexto(mod.nombreCorto) === normalized ||
+    mod.aliases.some((alias) => normalizarTexto(alias) === normalized)
+  );
+};
+
 // DATOS MOCK UNIFICADOS (REDUCIDOS PARA OPTIMIZACIÓN)
 const comunicacionesUnificadas: ComunicacionUnificada[] = [
   // ═══════════════════════════════════════════════════════════════════════════
@@ -537,6 +614,9 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   const totalNoLeidas = comunicaciones.filter(c => !c.leida && c.estado !== 'ARCHIVADA').length;
   const totalUrgentes = comunicaciones.filter(c => c.urgente && c.estado !== 'ARCHIVADA').length;
   const totalArchivadas = comunicaciones.filter(c => c.estado === 'ARCHIVADA').length;
+  const totalIAAltaConfianza = comunicaciones.filter(
+    (c) => c.estado !== 'ARCHIVADA' && c.clasificacionIA && getConfianzaPercent(c.clasificacionIA.confianza) >= 90
+  ).length;
 
   const contadoresTabs = {
     judiciales: comunicaciones.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA').length,
@@ -730,8 +810,8 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
           <ModuleHeader
-            title={isMobile ? 'Centro Comunicaciones' : 'Centro de Comunicaciones Jurídicas'}
-            subtitle="Buzón unificado inteligente con clasificación automática"
+            title={isMobile ? 'Centro Clasificación' : 'Centro de Clasificación y Despacho'}
+            subtitle="Clasifique y enrute comunicaciones al módulo jurídico correspondiente"
             toggleView={{
               current: tipoVista,
               onChange: (view) => setTipoVista(view as VistaModulo),
@@ -751,29 +831,24 @@ export function ModuloCentroComunicacionesJuridicasV3() {
             variant="icon"
             sections={[
               {
-                label: "Módulo Unificado",
-                content: "Este módulo integra dos buzones anteriormente separados: 'Buzón de Notificaciones Judiciales' (notificaciones oficiales de juzgados y despachos) y 'Buzón Oficina Jurídica' (correos electrónicos entrantes con clasificación inteligente).",
+                label: "Propósito",
+                content: "Este módulo no reemplaza el correo institucional. Centraliza notificaciones judiciales, oficios y correos jurídicos para su clasificación y enrutamiento.",
                 type: "info"
               },
               {
-                label: "📬 Judiciales",
-                content: "Notificaciones oficiales de juzgados: demandas, autos, citaciones, requerimientos procesales con radicado externo.",
-                type: "default"
-              },
-              {
-                label: "📧 Correos",
-                content: "Emails entrantes con clasificación IA automática que sugiere el módulo destino según el contenido (Asesoría Jurídica, Órganos de Control, etc.).",
+                label: "Clasificación IA",
+                content: "Cada comunicación se analiza para sugerir tipo, módulo destino y nivel de confianza. El usuario valida y continúa la gestión.",
                 type: "premium"
               },
               {
-                label: "📄 Oficios",
-                content: "Comunicaciones internas de ESAP: circulares, oficios, memorandos de áreas administrativas.",
-                type: "default"
+                label: "Despacho",
+                content: "Desde el expediente de comunicación se puede vincular directamente al proceso o submódulo objetivo sin cambiar el backend actual.",
+                type: "success"
               },
               {
-                label: "Beneficios de la Unificación",
-                content: "Un solo punto de acceso para todas las comunicaciones jurídicas, búsqueda global unificada, vista transversal de urgentes y archivadas, y gestión eficiente con acciones masivas.",
-                type: "success"
+                label: "Alertas y prioridad",
+                content: "La vista prioriza urgentes y no leídas, facilitando la atención de términos críticos y requerimientos externos.",
+                type: "warning"
               }
             ]}
           />
@@ -784,7 +859,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       <ModuleMetrics
         metrics={[
           {
-            label: 'No Leídas',
+            label: 'Por Clasificar',
             value: totalNoLeidas,
             icon: <Mail className="w-5 h-5 text-blue-600" />,
             color: '#003DA5'
@@ -794,6 +869,12 @@ export function ModuloCentroComunicacionesJuridicasV3() {
             value: totalUrgentes,
             icon: <AlertTriangle className="w-5 h-5 text-red-600" />,
             color: '#DC2626'
+          },
+          {
+            label: 'IA Alta Confianza',
+            value: totalIAAltaConfianza,
+            icon: <Sparkles className="w-5 h-5 text-purple-600" />,
+            color: '#7C3AED'
           },
           {
             label: 'Archivadas',
@@ -865,7 +946,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
-              placeholder="Buscar comunicaciones..."
+              placeholder="Buscar por asunto, remitente, ID o tipo detectado..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               className="pl-10"
@@ -1092,9 +1173,10 @@ function VistaInbox({
               checked={seleccionadas.size === comunicaciones.length && comunicaciones.length > 0}
               onCheckedChange={onSeleccionarTodas}
             />
-            <span className="text-sm text-gray-600">
-              {comunicaciones.length} comunicaciones
-            </span>
+            <div>
+              <p className="text-sm font-semibold text-gray-700">Comunicaciones pendientes</p>
+              <p className="text-xs text-gray-500">{comunicaciones.length} comunicación(es)</p>
+            </div>
           </div>
 
           {/* Lista de comunicaciones */}
@@ -1172,12 +1254,14 @@ function ItemComunicacion({
     OFICIO: <FileText className="w-4 h-4 text-gray-600" />,
     ENVIADO: <Send className="w-4 h-4 text-gray-600" />
   };
+  const moduloSugerido = getModuloDestinoUI(comunicacion.clasificacionIA?.moduloSugerido);
+  const confianzaPct = getConfianzaPercent(comunicacion.clasificacionIA?.confianza);
 
   return (
     <div
       className={`
-        p-3 cursor-pointer transition-colors flex gap-3
-        ${seleccionada ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-gray-50'}
+        p-3 cursor-pointer transition-colors flex gap-3 border-l-4
+        ${seleccionada ? 'bg-blue-50 border-l-[#003DA5]' : 'hover:bg-gray-50 border-l-transparent'}
         ${!comunicacion.leida ? 'bg-blue-50/30' : ''}
       `}
       onClick={() => onSeleccionar(comunicacion)}
@@ -1191,25 +1275,20 @@ function ItemComunicacion({
       </div>
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2 mb-1">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center gap-1.5">
             {iconoTipo[comunicacion.tipo]}
             <span className={`text-sm truncate ${!comunicacion.leida ? 'font-bold text-gray-900' : 'text-gray-700'}`}>
               {comunicacion.remitente}
             </span>
             {comunicacion.urgente && (
-              <Badge className="bg-red-100 text-red-700 text-xs">
+              <Badge className="bg-red-100 text-red-700 text-[10px] px-1.5 py-0">
                 Urgente
               </Badge>
             )}
-            {comunicacion.clasificacionIA && (
-              <Badge className="bg-purple-100 text-purple-700 text-xs flex items-center gap-1">
-                <Sparkles className="w-3 h-3" />
-                IA
-              </Badge>
-            )}
+            {!comunicacion.leida && <div className="w-2 h-2 rounded-full bg-[#003DA5]" />}
           </div>
-          <span className="text-xs text-gray-500 flex-shrink-0">
+          <span className="text-[10px] text-gray-400 flex-shrink-0">
             {comunicacion.fechaRadicacion.toLocaleDateString('es-CO', { month: 'short', day: 'numeric' })}
           </span>
         </div>
@@ -1221,17 +1300,33 @@ function ItemComunicacion({
         </div>
 
         <div className="flex items-center gap-2 text-xs text-gray-500">
-          {comunicacion.despachoOrigen && (
-            <span className="truncate">{comunicacion.despachoOrigen}</span>
+          {(comunicacion.despachoOrigen || comunicacion.destinatario) && (
+            <span className="truncate">{comunicacion.despachoOrigen || comunicacion.destinatario}</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 mt-1">
+          {moduloSugerido && (
+            <div
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold"
+              style={{ backgroundColor: `${moduloSugerido.color}15`, color: moduloSugerido.color }}
+            >
+              <Sparkles className="w-3 h-3" />
+              {moduloSugerido.nombreCorto}
+            </div>
+          )}
+          {!!comunicacion.clasificacionIA && (
+            <span className={`text-[10px] font-semibold ${
+              confianzaPct >= 90 ? 'text-green-600' : confianzaPct >= 80 ? 'text-yellow-600' : 'text-gray-400'
+            }`}>
+              {confianzaPct}% confianza
+            </span>
           )}
           {comunicacion.documentosAdjuntos.length > 0 && (
-            <>
-              <span>•</span>
-              <span className="flex items-center gap-1">
-                <FileText className="w-3 h-3" />
-                {comunicacion.documentosAdjuntos.length}
-              </span>
-            </>
+            <span className="text-[10px] text-gray-400 flex items-center gap-0.5 ml-auto">
+              <Paperclip className="w-3 h-3" />
+              {comunicacion.documentosAdjuntos.length}
+            </span>
           )}
         </div>
       </div>
@@ -1269,6 +1364,8 @@ function VistaPreviaComunicacion({
     OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700' },
     ENVIADO: { label: 'Enviado', color: 'bg-gray-100 text-gray-700' }
   };
+  const moduloSugerido = getModuloDestinoUI(comunicacion.clasificacionIA?.moduloSugerido);
+  const confianzaPct = getConfianzaPercent(comunicacion.clasificacionIA?.confianza);
 
   return (
     <div className="p-4">
@@ -1301,22 +1398,33 @@ function VistaPreviaComunicacion({
         </div>
       </div>
 
-      {/* Clasificación IA - COMENTADO: No implementado aún, pendiente para futuras versiones */}
-      {/* 
       {comunicacion.clasificacionIA && (
-        <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+        <div className="mb-4 p-4 rounded-xl border-2" style={{
+          borderColor: `${(moduloSugerido?.color || '#7C3AED')}30`,
+          backgroundColor: `${(moduloSugerido?.color || '#7C3AED')}08`
+        }}>
           <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="w-4 h-4 text-purple-600" />
-            <span className="text-sm font-bold text-purple-900">Clasificación Inteligente</span>
+            <div className="p-1.5 rounded-lg bg-purple-100">
+              <Sparkles className="w-4 h-4 text-purple-600" />
+            </div>
+            <div className="flex-1">
+              <span className="text-sm font-bold text-purple-900">Clasificación IA</span>
+              <p className="text-xs text-gray-500">{comunicacion.clasificacionIA.tipoDetectado}</p>
+            </div>
+            <Badge className={`text-xs ${
+              confianzaPct >= 90 ? 'bg-green-100 text-green-700' : confianzaPct >= 80 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'
+            }`}>
+              {confianzaPct}% confianza
+            </Badge>
           </div>
-          <div className="text-xs text-purple-700 space-y-1">
-            <p><strong>Tipo detectado:</strong> {comunicacion.clasificacionIA.tipoDetectado}</p>
-            <p><strong>Módulo sugerido:</strong> {comunicacion.clasificacionIA.moduloSugerido}</p>
-            <p><strong>Confianza:</strong> {comunicacion.clasificacionIA.confianza}%</p>
+          <div className="p-3 rounded-lg bg-white border border-gray-200 text-xs">
+            <p className="text-gray-500 mb-1">Módulo sugerido</p>
+            <p className="font-semibold" style={{ color: moduloSugerido?.color || '#374151' }}>
+              {moduloSugerido?.nombre || comunicacion.clasificacionIA.moduloSugerido}
+            </p>
           </div>
         </div>
       )}
-      */}
 
       {/* Radicado externo */}
       {comunicacion.radicadoExterno && (

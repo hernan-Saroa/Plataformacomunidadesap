@@ -867,7 +867,7 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
             </th>
             <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Solicitante</th>
             <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Abogado Asignado</th>
-            <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Acciones</th>
+            <th className="px-4 py-3 text-center text-sm font-bold text-gray-500">Acciones</th>
           </tr>
         </thead>
         <tbody>
@@ -896,29 +896,35 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
               <td className="px-4 py-3 text-sm text-gray-500">{consulta.temaJuridico}</td>
               <td className="px-4 py-3 text-sm text-gray-500">{consulta.solicitante}</td>
               <td className="px-4 py-3 text-sm text-gray-500">{consulta.abogadoAsignado}</td>
-              <td className="px-4 py-3 text-sm text-gray-500">
-                <Button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); onAbrirExpediente(consulta); }}
-                  // onClick={(e: React.MouseEvent) => { 
-                  //   e.stopPropagation(); 
-                  //   onAbrirExpediente(consulta);
-                  // }}
-                  size="sm"
-                  className="w-full text-xs font-bold truncate"
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
-                >
-                  <Archive className="w-3 h-3 mr-1 flex-shrink-0" /><span className="truncate">Expediente</span>
-                </Button>
-                {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_DELETE) && (
-                  <Button
-                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid || consulta.id); }}
-                    size="sm"
-                    variant="outline"
-                    className="mt-1 w-full text-xs text-red-600 bg-red-50 hover:bg-red-100 border-red-200"
+              <td className="px-4 py-3 text-center">
+                <div className="flex items-center gap-1 justify-center">
+                  <button
+                    onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      onAbrirExpediente(consulta);
+                    }}
+                    className="relative group p-2 rounded-lg text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
                   >
-                    <Trash2 className="w-3 h-3 mr-1" /> Eliminar
-                  </Button>
-                )}
+                    <FolderOpen className="w-4 h-4" />
+                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg">
+                      Expediente
+                    </span>
+                  </button>
+                  {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_DELETE) && (
+                    <button
+                      onClick={(e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        onEliminar(consulta.uuid || consulta.id);
+                      }}
+                      className="relative group p-2 rounded-lg text-orange-500 hover:bg-orange-50 transition-all"
+                    >
+                      <Archive className="w-4 h-4" />
+                      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg">
+                        Archivar
+                      </span>
+                    </button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}
@@ -938,7 +944,7 @@ function TarjetasConsultas({ consultas, onAbrirExpediente, onEliminar }: Tarjeta
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {consultas.map((consulta) => (
-        <Card key={consulta.id} className="bg-white border border-gray-200 hover:shadow-md transition-all flex flex-col w-full" style={{ height: '680px', minHeight: '680px', maxHeight: '680px' }}>
+        <Card key={consulta.id} className="bg-white border border-gray-200 hover:shadow-md transition-all flex flex-col w-full" style={{ height: '520px', minHeight: '520px', maxHeight: '520px' }}>
           <div className="h-1 flex-shrink-0" style={{ background: '#003DA5' }} />
 
           <div className="p-2.5 flex-1 flex flex-col overflow-y-auto min-h-0">
@@ -994,10 +1000,14 @@ function TarjetasConsultas({ consultas, onAbrirExpediente, onEliminar }: Tarjeta
               </Badge>
             </div>
 
-            <div className="grid grid-cols-2 gap-1.5 mb-1.5">
+            <div className="grid grid-cols-3 gap-1.5 mb-1.5">
               <div className="text-center p-1.5 rounded-lg bg-gray-50 border border-gray-100">
                 <p className="text-xs font-bold text-gray-700">{consulta.documentosAdjuntos?.length || 0}</p>
                 <p className="text-xs text-gray-500">Docs</p>
+              </div>
+              <div className="text-center p-1.5 rounded-lg bg-gray-50 border border-gray-100">
+                <p className="text-xs font-bold text-gray-700">{consulta.normativaAplicable?.length || 0}</p>
+                <p className="text-xs text-gray-500">Normas</p>
               </div>
               <div className="text-center p-1.5 rounded-lg bg-gray-50 border border-gray-100">
                 <p className="text-xs font-bold text-gray-700">{Math.round(((consulta.diasTotales - consulta.diasRestantes) / consulta.diasTotales) * 100)}%</p>
@@ -1005,25 +1015,80 @@ function TarjetasConsultas({ consultas, onAbrirExpediente, onEliminar }: Tarjeta
               </div>
             </div>
 
-            <div className="space-y-1 pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
-              <div className="flex gap-2">
-                <Button
+            <div className="mb-1.5">
+              <p className="text-xs text-gray-500 mb-0.5">Normativa:</p>
+              <p className="text-xs text-gray-700 line-clamp-1">{consulta.normativaAplicable?.[0] || 'N/A'}</p>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
+              <div className="flex items-center gap-0.5">
+                <button
                   onClick={(e: React.MouseEvent) => { e.stopPropagation(); onAbrirExpediente(consulta); }}
-                  size="sm"
-                  className="flex-1 text-xs font-bold truncate"
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
+                  className="relative group p-2 rounded-lg text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
                 >
-                  <Archive className="w-3 h-3 mr-1 flex-shrink-0" /><span className="truncate">Expediente</span>
-                </Button>
-                <Button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid || consulta.id); }}
-                  size="sm"
-                  variant="outline"
-                  className="px-2 bg-red-50 hover:bg-red-100 text-red-600 border-red-200"
-                  title="Eliminar Consulta"
+                  <FolderOpen className="w-4 h-4" />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
+                    Expediente
+                  </span>
+                </button>
+                <button
+                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Documentos Soporte', { description: consulta.id }); }}
+                  className="relative group p-2 rounded-lg text-gray-500 hover:text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
                 >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                  <FileText className="w-4 h-4" />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
+                    Soporte
+                  </span>
+                </button>
+                <button
+                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Normativa Aplicable', { description: consulta.id }); }}
+                  className="relative group p-2 rounded-lg text-gray-500 hover:text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
+                >
+                  <Scale className="w-4 h-4" />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
+                    Normativa
+                  </span>
+                </button>
+                <button
+                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Oficios', { description: consulta.id }); }}
+                  className="relative group p-2 rounded-lg text-gray-500 hover:text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
+                >
+                  <Mail className="w-4 h-4" />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
+                    Oficios
+                  </span>
+                </button>
+                <button
+                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Respuesta', { description: consulta.id }); }}
+                  className="relative group p-2 rounded-lg text-gray-500 hover:text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
+                >
+                  <Send className="w-4 h-4" />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
+                    Respuesta
+                  </span>
+                </button>
+                <button
+                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Comentarios', { description: consulta.id }); }}
+                  className="relative group p-2 rounded-lg text-gray-500 hover:text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
+                    Comentarios
+                  </span>
+                </button>
+              </div>
+              <div className="flex items-center gap-0.5 pl-1 ml-1 border-l border-gray-200">
+                {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_DELETE) && (
+                  <button
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid || consulta.id); }}
+                    className="relative group p-2 rounded-lg text-orange-500 hover:bg-orange-50 transition-all"
+                  >
+                    <Archive className="w-4 h-4" />
+                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
+                      Archivar
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
           </div>

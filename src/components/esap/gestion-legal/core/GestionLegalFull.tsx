@@ -183,8 +183,8 @@ export function GestionLegalFull() {
     // MÓDULOS DE SOPORTE
     {
       id: 'centro-comunicaciones',
-      label: 'Centro de Comunicaciones Jurídicas',
-      subtitle: 'Radicación y notificaciones jurídicas',
+      label: 'Centro de Comunicaciones',
+      subtitle: 'Radicación y notificaciones',
       icon: <Inbox className="w-5 h-5" />,
       color: '#3B82F6',
       visible: authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_MANAGE),

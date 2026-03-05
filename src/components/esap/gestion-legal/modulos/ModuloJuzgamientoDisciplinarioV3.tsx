@@ -35,10 +35,6 @@ import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalProcesoDisciplinario } from './ModalProcesoDisciplinario';
 import { ModalComunicaciones } from './ModalComunicaciones';
-import { ModalAutos } from './ModalAutos';
-import { ModalEvidencias } from './ModalEvidencias';
-import { ModalOficios } from './ModalOficios';
-import { ModalActas } from './ModalActas';
 import { ModalNuevoProcesoDisciplinario } from './ModalNuevoProcesoDisciplinario';
 
 import { VistaListaJuzgamiento } from './VistaListaJuzgamiento';
@@ -425,7 +421,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
     <div className="space-y-3 md:space-y-4">
       {/* Header con ModuleHeader */}
       <ModuleHeader
-        title={isMobile ? 'Kanban Operativo' : 'Tablero Kanban Operativo'}
+        title="Juzgamiento Disciplinario"
         subtitle="Gestión visual de procesos disciplinarios"
         toggleView={{
           current: tipoVista,
@@ -514,6 +510,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
       <ModuleFilters
         searchValue={busqueda}
         onSearchChange={setBusqueda}
+        searchPlaceholder="Buscar por radicado, disciplinado o tipo de falta..."
         filters={[
           {
             label: 'Etapa',
@@ -522,7 +519,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
             type: 'select',
             options: [
               { label: 'Todas', value: 'TODAS' },
-              ...etapas.map(e => ({ label: e.nombre, value: e.nombre }))
+              ...etapas.map(e => ({ label: e.nombre, value: e.valor }))
             ]
           },
           {
@@ -538,6 +535,11 @@ export function ModuloJuzgamientoDisciplinarioV3() {
             ]
           }
         ]}
+        onClearFilters={() => {
+          setBusqueda('');
+          setFiltroEtapa('TODAS');
+          setFiltroGravedad('TODAS');
+        }}
       />
 
       {/* Tablero Kanban - IGUAL A DEFENSA JUDICIAL */}
@@ -829,10 +831,6 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
   // Estados para modales
   const [modalProcesoOpen, setModalProcesoOpen] = useState(false);
   const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
-  const [modalAutosOpen, setModalAutosOpen] = useState(false);
-  const [modalEvidenciasOpen, setModalEvidenciasOpen] = useState(false);
-  const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
-  const [modalActasOpen, setModalActasOpen] = useState(false);
 
   // Drag and Drop
   const [{ isDragging }, drag] = useDrag({
@@ -959,69 +957,26 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
             <p className="text-xs text-gray-500">📅 {proceso.fechaActualizacion.toLocaleDateString('es-CO')}</p>
           </div>
 
-          <div className="space-y-1 pt-2 border-t border-gray-200">
+          <div className="grid grid-cols-2 gap-1 pt-1.5 border-t border-gray-200">
             <Button
               onClick={() => setModalProcesoOpen(true)}
               size="sm"
-              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
+              className="w-full text-[10px] py-1.5 font-bold h-auto"
               style={{ background: '#003DA5', color: '#FFFFFF' }}
             >
-              <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1 flex-shrink-0`} />
+              <FolderOpen className="w-3 h-3 mr-1 flex-shrink-0" />
               Expediente
             </Button>
-
-            <div className="grid grid-cols-2 gap-1">
-              <Button
-                onClick={() => setModalAutosOpen(true)}
-                size="sm"
-                variant="outline"
-                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-              >
-                <Gavel className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-                Autos
-              </Button>
-
-              <Button
-                onClick={() => setModalEvidenciasOpen(true)}
-                size="sm"
-                variant="outline"
-                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-              >
-                <Paperclip className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-                Evidencias
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-1">
-              <Button
-                onClick={() => setModalOficiosOpen(true)}
-                size="sm"
-                variant="outline"
-                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-              >
-                <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-                Oficios
-              </Button>
-
-              <Button
-                onClick={() => setModalActasOpen(true)}
-                size="sm"
-                variant="outline"
-                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-              >
-                <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-                Actas
-              </Button>
-            </div>
 
             <Button
               onClick={() => setModalComunicacionesOpen(true)}
               size="sm"
-              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-              style={{ background: '#003DA5', color: '#FFFFFF' }}
+              variant="outline"
+              className="w-full text-[10px] py-1.5 font-bold border h-auto"
+              style={{ borderColor: '#003DA5', color: '#003DA5' }}
             >
-              <MessageSquare className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-              Comentarios del Proceso
+              <MessageSquare className="w-3 h-3 mr-1 flex-shrink-0" />
+              Comunic.
             </Button>
           </div>
         </div>
@@ -1036,32 +991,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
           onClose={() => setModalComunicacionesOpen(false)}
           expediente={expedienteParaModales as any}
         />
-        <ModalAutos
-          isOpen={modalAutosOpen}
-          onClose={() => setModalAutosOpen(false)}
-          expediente={expedienteParaModales as any}
-          modulo='juzgamiento-disciplinario'
-        />
-        <ModalEvidencias
-          isOpen={modalEvidenciasOpen}
-          onClose={() => setModalEvidenciasOpen(false)}
-          expediente={expedienteParaModales as any}
-          modulo='juzgamiento-disciplinario'
-        />
-        <ModalOficios
-          isOpen={modalOficiosOpen}
-          onClose={() => setModalOficiosOpen(false)}
-          expediente={expedienteParaModales as any}
-          modulo='juzgamiento-disciplinario'
-        />
-        <ModalActas
-          isOpen={modalActasOpen}
-          onClose={() => setModalActasOpen(false)}
-          expediente={expedienteParaModales as any}
-          modulo='juzgamiento-disciplinario'
-        />
       </Card>
     </div>
   );
 }
-

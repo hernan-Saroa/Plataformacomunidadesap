@@ -8,7 +8,6 @@
  */
 
 import { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
 import {
   Plus, FileText, FolderOpen, AlertTriangle, Clock, Calendar,
   User, MoreVertical, Eye, ChevronDown, Users, Settings,
@@ -21,14 +20,6 @@ import {
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '../../../ui/dialog';
 import { toast } from 'sonner';
 
 import { legalService } from '../../../../services/api/legal.service';
@@ -55,6 +46,20 @@ import { Permissions } from '../../../../enums/permissions';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
 import { usePermisos, PERMISOS } from '../config/PermisosContext';
+import { useResponsive } from '../../../../hooks/useResponsive';
+import {
+  ESAP_TOKENS,
+  KanbanCard,
+  KanbanCardHeader,
+  KanbanCardInfoSection,
+  KanbanCardInfoRow,
+  KanbanCardProfesional,
+  KanbanCardMetrics,
+  KanbanActionSection,
+  KanbanActionRowPrimary,
+  KanbanButtonPrimary,
+  KanbanButtonSecondary,
+} from '../../design-system/KanbanDesignStandard';
 
 type VistaModulo = 'kanban' | 'lista' | 'archivados';
 
@@ -73,8 +78,8 @@ export function ModuloDefensaJudicialV3() {
   // ✅ Estado para cambiar entre vista normal y archivados
   const [vistaActual, setVistaActual] = useState<'activos' | 'archivados'>('activos');
 
-  const [isMobile, setIsMobile] = useState(false);
-  const [isTablet, setIsTablet] = useState(false);
+  const { isMobile, isTablet, isLg, isXl, width: screenWidth } = useResponsive();
+  const isSmallDesktop = isLg || (isXl && screenWidth < 1440);
   const [tipoVista, setTipoVista] = useState<VistaModulo>('kanban');
   const [modalNuevaDemandaOpen, setModalNuevaDemandaOpen] = useState(false);
   const [busqueda, setBusqueda] = useState('');
@@ -155,20 +160,6 @@ export function ModuloDefensaJudicialV3() {
       loadArchivados();
     }
   }, [tipoVista]);
-
-
-  // Detectar tamaño de pantalla
-  useEffect(() => {
-    const checkScreenSize = () => {
-      const width = window.innerWidth;
-      setIsMobile(width < 768);
-      setIsTablet(width >= 768 && width < 1024);
-    };
-
-    checkScreenSize();
-    window.addEventListener('resize', checkScreenSize);
-    return () => window.removeEventListener('resize', checkScreenSize);
-  }, []);
 
   // Cargar expedientes desde el backend
   const loadExpedientes = async () => {
@@ -559,6 +550,14 @@ export function ModuloDefensaJudicialV3() {
     return []
   };
 
+  const useFluidKanban = !isMobile && !isTablet;
+  const getKanbanColumnWidth = () => {
+    if (isMobile) return 260;
+    if (isTablet) return 270;
+    return 0;
+  };
+  const kanbanColumnWidth = getKanbanColumnWidth();
+
   return (
     <div className="space-y-3 md:space-y-4">
       {/* Header con Info Tooltip */}
@@ -694,12 +693,11 @@ export function ModuloDefensaJudicialV3() {
       {/* ✅ Banner de Días Hábiles - Indicador prominente */}
       <IndicadorDiasHabiles className="animate-fade-in" />
 
-      {/* Tablero Kanban - IGUAL A DISCIPLINARIO */}
+      {/* Tablero Kanban - Diseño migrado desde SuperApp Gestión Legal */}
       {tipoVista === 'kanban' && (
         <DndProvider backend={HTML5Backend}>
           <div className="relative">
-            {/* Indicador de scroll en mobile/tablet */}
-            {(isMobile || isTablet) && (
+            {!useFluidKanban && (
               <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
                 <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
                   <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
@@ -722,6 +720,9 @@ export function ModuloDefensaJudicialV3() {
                   etapa={etapa}
                   isMobile={isMobile}
                   isTablet={isTablet}
+                  isSmallDesktop={isSmallDesktop}
+                  columnWidth={kanbanColumnWidth}
+                  useFluid={useFluidKanban}
                   onRefresh={loadExpedientes}
                   onMoverExpediente={handleMoverExpediente}
                 />
@@ -772,11 +773,22 @@ interface ColumnaKanbanProps {
   };
   isMobile: boolean;
   isTablet: boolean;
+  isSmallDesktop: boolean;
+  columnWidth: number;
+  useFluid: boolean;
   onMoverExpediente: (expedienteId: string, nuevaEtapa: string) => void;
   onRefresh?: () => void;
 }
 
-function ColumnaKanban({ etapa, isMobile, isTablet, onMoverExpediente, onRefresh }: ColumnaKanbanProps) {
+function ColumnaKanban({
+  etapa,
+  isMobile,
+  isSmallDesktop,
+  columnWidth,
+  useFluid,
+  onMoverExpediente,
+  onRefresh
+}: ColumnaKanbanProps) {
   const [{ isOver }, drop] = useDrop({
     accept: ItemTypes.EXPEDIENTE,
     drop: (item: { id: string }) => onMoverExpediente(item.id, etapa.valor),
@@ -785,29 +797,25 @@ function ColumnaKanban({ etapa, isMobile, isTablet, onMoverExpediente, onRefresh
     }),
   });
 
-  const backgroundColor = isOver ? '#F0F7FF' : 'transparent';
-  const borderColor = isOver ? '#2962FF' : 'transparent';
-
-  // Cast drop ref to any to avoid React 18 type conflict with React DnD
-  const dropRef = drop as unknown as React.LegacyRef<HTMLDivElement>;
+  const backgroundColor = isOver ? ESAP_TOKENS.colors.primaryLight : ESAP_TOKENS.colors.surfaceAlt;
+  const borderColor = isOver ? ESAP_TOKENS.colors.primary : 'transparent';
 
   return (
-    <motion.div
+    <div
       className="flex-shrink-0"
       initial={{ width: 320 }}
       animate={{ width: 320 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
     >
       <Card className="h-full border border-gray-200 bg-white">
-        {/* Header de Columna */}
-        <div className={`${isMobile ? 'p-3' : 'p-4'} border-b bg-gray-50`}>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 flex-1">
-              <div className={`${isMobile ? 'p-1.5' : 'p-2'} rounded-lg bg-white border border-gray-200`}>
+        <div className={`${isMobile ? 'p-2.5' : isSmallDesktop ? 'p-2.5' : 'p-3'} border-b bg-gray-50`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <div className="p-1.5 rounded-lg bg-white border border-gray-200 flex-shrink-0">
                 {etapa.icono}
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className={`font-black ${isMobile ? 'text-xs' : 'text-sm'} text-gray-800`}>
+                <h3 className="font-black text-xs text-gray-800 truncate">
                   {etapa.nombre}
                 </h3>
                 <p className="text-[10px] text-gray-500 flex items-center gap-1">
@@ -816,19 +824,18 @@ function ColumnaKanban({ etapa, isMobile, isTablet, onMoverExpediente, onRefresh
                 </p>
               </div>
             </div>
-            <Badge className={`font-semibold ${isMobile ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1'} bg-white border border-gray-200 text-gray-700`}>
+            <Badge className="font-semibold text-xs px-1.5 py-0.5 bg-white border border-gray-200 text-gray-700 flex-shrink-0 ml-1">
               {etapa.expedientes.length}
             </Badge>
           </div>
         </div>
 
-        {/* Lista de Expedientes */}
         <div
-          ref={dropRef}
-          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`}
+          ref={drop}
+          className={`${isMobile ? 'p-2' : isSmallDesktop ? 'p-1.5' : 'p-2'} space-y-2 overflow-y-auto`}
           style={{
-            minHeight: isMobile ? '400px' : '500px',
-            maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 280px)',
+            minHeight: isMobile ? '350px' : '400px',
+            maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 340px)',
             backgroundColor: backgroundColor,
             borderLeft: `3px solid ${borderColor}`,
             borderRight: `3px solid ${borderColor}`,
@@ -840,6 +847,7 @@ function ColumnaKanban({ etapa, isMobile, isTablet, onMoverExpediente, onRefresh
               key={expediente.id}
               expediente={expediente}
               isMobile={isMobile}
+              isCompact={isSmallDesktop}
               onRefresh={onRefresh}
               onMoverExpediente={onMoverExpediente}
               etapaActual={etapa.valor}
@@ -856,7 +864,7 @@ function ColumnaKanban({ etapa, isMobile, isTablet, onMoverExpediente, onRefresh
           )}
         </div>
       </Card>
-    </motion.div>
+    </div>
   );
 }
 
@@ -864,56 +872,20 @@ function ColumnaKanban({ etapa, isMobile, isTablet, onMoverExpediente, onRefresh
 interface TarjetaExpedienteProps {
   expediente: ExpedienteJudicial;
   isMobile: boolean;
+  isCompact?: boolean;
   onRefresh?: () => void;
   onMoverExpediente: (expedienteId: string, nuevaEtapa: string) => void;
-  etapaActual: string;
+  etapaActual: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS';
 }
 
-function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente, etapaActual }: TarjetaExpedienteProps) {
-  // Estados para modales
+function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh, onMoverExpediente, etapaActual }: TarjetaExpedienteProps) {
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
-  const [modalAutosOpen, setModalAutosOpen] = useState(false);
-  const [modalEvidenciasOpen, setModalEvidenciasOpen] = useState(false);
-  const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
-  const [modalActasOpen, setModalActasOpen] = useState(false);
-  const [showEliminarModal, setShowEliminarModal] = useState(false);
 
-  const puedeEliminar = true; // authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_MANAGE);
-
-  // Handler para abrir modal de expediente
   const handleAbrirExpediente = () => {
     setModalExpedienteOpen(true);
   };
 
-  // Handler para abrir modal de eliminar
-  const handleEliminarExpediente = () => {
-    setShowEliminarModal(true);
-  };
-
-  // Confirmar eliminación del expediente
-  const confirmarEliminar = async () => {
-    const id = expediente.uuid || expediente.id;
-    if (!id) {
-      toast.error('No se encontró el ID del expediente');
-      return;
-    }
-
-    try {
-      // Usar soft delete para mover a "Eliminados" en la vista de archivos
-      await legalService.eliminarExpedienteSoft(id, 'Eliminado desde Kanban', 'Usuario Actual');
-      toast.success('Expediente movido a papelera', {
-        description: `Radicado ${expediente.id}`
-      });
-      setShowEliminarModal(false);
-      onRefresh?.();
-    } catch (error) {
-      console.error('Error eliminando expediente:', error);
-      toast.error('No se pudo eliminar el expediente');
-    }
-  };
-
-  // Determinar semáforo
   const getSemaforoColor = (diasRestantes: number) => {
     if (diasRestantes <= 5) return { color: '#DC2626', label: 'Vencido' };
     if (diasRestantes <= 15) return { color: '#F59E0B', label: 'Próximo' };
@@ -921,10 +893,10 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
   };
 
   const semaforo = getSemaforoColor(expediente.diasRestantes);
-  const porcentajeTiempo = Math.round(((expediente.diasTotales - expediente.diasRestantes) / expediente.diasTotales) * 100);
+  const porcentajeTiempo = Math.min(100, Math.max(0, Math.round(((expediente.diasTotales - expediente.diasRestantes) / expediente.diasTotales) * 100)));
+  const procesoVencido = expediente.diasRestantes < 0;
   const ultimaActuacion = expediente.ultimaActuacion?.descripcion || `Expediente en etapa de ${expediente.etapa}`;
 
-  // Drag and Drop
   const [{ isDragging }, drag] = useDrag({
     type: ItemTypes.EXPEDIENTE,
     item: { id: expediente.id, etapa: etapaActual },
@@ -933,308 +905,135 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
     }),
   });
 
-  // Cast drag ref
-  const dragRef = drag as unknown as React.LegacyRef<HTMLDivElement>;
-
   const opacity = isDragging ? 0.5 : 1;
 
   return (
-    <div ref={dragRef} style={{ opacity, cursor: 'move' }}>
-      <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
-        <div className="h-1" style={{ background: '#003DA5' }} />
-
-        <div className={`${isMobile ? 'p-2.5' : 'p-3'}`}>
-          <div className="flex items-start justify-between mb-2">
-            <div className="flex items-center gap-2 flex-1 min-w-0">
+    <div ref={drag} style={{ opacity, cursor: 'move' }}>
+      <KanbanCard
+        accentColor={ESAP_TOKENS.colors.primary}
+        isDragging={isDragging}
+      >
+        <KanbanCardHeader
+          icon={<Scale className="w-4 h-4" style={{ color: ESAP_TOKENS.colors.primary }} />}
+          iconBg={ESAP_TOKENS.colors.primaryLight}
+          title={expediente.id}
+          titleColor={ESAP_TOKENS.colors.primary}
+          subtitle={expediente.medioControl}
+          rightContent={
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200" style={{ fontSize: '10px' }}>
               <div
-                className={`${isMobile ? 'p-1' : 'p-1.5'} rounded-lg flex-shrink-0`}
-                style={{ background: '#E0EDFF' }}
-              >
-                <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h4 className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} truncate`} style={{ color: '#003DA5' }}>
-                  {expediente.id}
-                </h4>
-                <p className="text-xs text-gray-600 truncate">{expediente.medioControl}</p>
-              </div>
-            </div>
-            {puedeEliminar && (
-              <Button
-                size="icon"
-                variant="ghost"
-                title="Eliminar expediente"
-                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                onClick={(e: any) => {
-                  e.stopPropagation();
-                  handleEliminarExpediente();
+                className="w-1.5 h-1.5 rounded-full ring-2 ring-offset-1"
+                style={{
+                  background: semaforo.color,
+                  ringColor: `${semaforo.color}33`
                 }}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            )}
-          </div>
-
-          <div className="mb-2 pb-2 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-0.5">👤 Partes Procesales:</p>
-
-            {/* Demandantes */}
-            {expediente.demandantes && expediente.demandantes.length > 0 ? (
-              <div className="mb-1.5">
-                <p className="text-xs font-semibold text-orange-700 mb-0.5">Demandante(s):</p>
-                <div className="space-y-0.5">
-                  {expediente.demandantes.map((demandante, idx) => (
-                    <p key={idx} className={`font-bold ${isMobile ? 'text-xs' : 'text-xs'} text-gray-900 line-clamp-1`}>
-                      • {demandante.nombre}
-                    </p>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-                {expediente.demandante}
-              </p>
-            )}
-
-            {/* Demandados */}
-            {expediente.demandados && expediente.demandados.length > 0 && (
-              <div className="mb-1.5">
-                <p className="text-xs font-semibold text-red-700 mb-0.5">Demandado(s):</p>
-                <div className="space-y-0.5">
-                  {expediente.demandados.map((demandado, idx) => (
-                    <p key={idx} className={`font-bold ${isMobile ? 'text-xs' : 'text-xs'} text-gray-900 line-clamp-1`}>
-                      • {demandado.nombre} <span className="text-[10px] text-gray-600">({demandado.cargo})</span>
-                    </p>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Otros Actores */}
-            {expediente.otrosActores && expediente.otrosActores.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-blue-700 mb-0.5">Otros Actores:</p>
-                <div className="space-y-0.5">
-                  {expediente.otrosActores.map((actor, idx) => (
-                    <p key={idx} className={`font-bold ${isMobile ? 'text-xs' : 'text-xs'} text-gray-900 line-clamp-1`}>
-                      • {actor.nombre} <span className="text-[10px] text-gray-600">({actor.rol})</span>
-                    </p>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="mb-2 pb-2 border-b border-gray-200">
-            <div className="flex items-center gap-2">
-              <Avatar className={`${isMobile ? 'w-5 h-5' : 'w-6 h-6'} flex-shrink-0`}>
-                <AvatarFallback
-                  className="text-xs"
-                  style={{ background: '#E0EDFF', color: '#003DA5' }}
-                >
-                  {(expediente.abogadoAsignado || 'ESAP')
-                    .split(' ')
-                    .map((n) => n[0])
-                    .join('')
-                    .substring(0, 2)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500">👨‍💼 Profesional:</p>
-                <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-                  {expediente.abogadoAsignado || 'No asignado'}
-                </p>
-              </div>
+              />
+              <span className="font-bold" style={{ color: semaforo.color }}>
+                {expediente.diasRestantes}d
+              </span>
             </div>
-          </div>
+          }
+        />
 
-          <div className="flex items-center gap-1.5 mb-2">
-            <Badge
-              className="text-xs flex items-center gap-1 font-semibold bg-gray-50 border border-gray-200"
-              style={{ color: semaforo.color }}
-            >
-              <div className="w-2 h-2 rounded-full" style={{ background: semaforo.color }} />
-              {expediente.diasRestantes} días
-            </Badge>
-          </div>
+        <KanbanCardInfoSection>
+          <KanbanCardInfoRow
+            label="Dte:"
+            value={
+              expediente.demandantes && expediente.demandantes.length > 0
+                ? `${expediente.demandantes[0].nombre}${expediente.demandantes.length > 1 ? ` +${expediente.demandantes.length - 1}` : ''}`
+                : expediente.demandante
+            }
+          />
+          {expediente.demandados && expediente.demandados.length > 0 && (
+            <KanbanCardInfoRow
+              label="Ddo:"
+              value={`${expediente.demandados[0].nombre}${expediente.demandados.length > 1 ? ` +${expediente.demandados.length - 1}` : ''}`}
+            />
+          )}
+          <KanbanCardInfoRow
+            label="Juzgado:"
+            value={expediente.juzgado}
+          />
+          {expediente.cuantia && expediente.cuantia !== '0' && (
+            <KanbanCardInfoRow
+              label="Cuantía:"
+              value={`$${Number(expediente.cuantia).toLocaleString('es-CO')}`}
+            />
+          )}
+        </KanbanCardInfoSection>
 
-          <div className="grid grid-cols-3 gap-1.5 mb-2">
-            <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-              <p className="text-xs font-bold text-gray-700">{expediente.documentos?.length || 0}</p>
-              <p className="text-xs text-gray-500">Docs</p>
-            </div>
-            <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-              <p className="text-xs font-bold text-gray-700">{expediente.diasTotales - expediente.diasRestantes}</p>
-              <p className="text-xs text-gray-500">Días</p>
-            </div>
-            <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-              <p className="text-xs font-bold text-gray-700">{porcentajeTiempo}%</p>
-              <p className="text-xs text-gray-500">Tiempo</p>
-            </div>
-          </div>
+        <KanbanCardProfesional
+          nombre={expediente.abogadoAsignado || expediente.abogadoResponsable || 'No asignado'}
+        />
 
-          <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
-            <p className="text-xs font-semibold mb-1 flex items-center gap-1.5" style={{ color: '#003DA5' }}>
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#003DA5' }}></span>
+        <KanbanCardMetrics
+          items={[
+            {
+              icon: <FileText className="w-3.5 h-3.5" />,
+              label: `${expediente.documentos?.length || 0} docs`,
+              color: ESAP_TOKENS.colors.text.secondary,
+            },
+            {
+              icon: <Clock className="w-3.5 h-3.5" />,
+              label: `${expediente.diasTotales - expediente.diasRestantes}d`,
+              color: ESAP_TOKENS.colors.text.secondary,
+            },
+            {
+              icon: <AlertCircle className="w-3.5 h-3.5" />,
+              label: `${porcentajeTiempo}%`,
+              color: procesoVencido ? ESAP_TOKENS.colors.danger : ESAP_TOKENS.colors.text.secondary,
+            },
+          ]}
+        />
+
+        {!isCompact && (
+          <div
+            className="mb-2.5 p-2 rounded-lg border"
+            style={{
+              backgroundColor: ESAP_TOKENS.colors.primaryLight,
+              borderColor: '#BFDBFE'
+            }}
+          >
+            <p className="text-[10px] font-bold mb-0.5 flex items-center gap-1" style={{ color: ESAP_TOKENS.colors.primary }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ESAP_TOKENS.colors.primary }} />
               ÚLTIMA ACTUACIÓN
             </p>
-            <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-700 line-clamp-2 mb-1`}>{ultimaActuacion}</p>
-            <p className="text-xs text-gray-500">📅 {expediente.fechaActualizacion.toLocaleDateString('es-CO')}</p>
+            <p className="text-xs text-gray-700 line-clamp-2">
+              {ultimaActuacion}
+            </p>
           </div>
+        )}
 
-          <div className="space-y-1 pt-2 border-t border-gray-200">
-            <Button
+        <KanbanActionSection>
+          <KanbanActionRowPrimary>
+            <KanbanButtonPrimary
+              icon={<FolderOpen className="w-3.5 h-3.5" />}
               onClick={handleAbrirExpediente}
-              size="sm"
-              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-              style={{ background: '#003DA5', color: '#FFFFFF' }}
             >
-              <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1 flex-shrink-0`} />
               Expediente
-            </Button>
-
-            <div className="grid grid-cols-2 gap-1">
-              <Button
-                onClick={() => setModalAutosOpen(true)}
-                size="sm"
-                variant="outline"
-                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-              >
-                <Scale className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-                Autos
-              </Button>
-
-              <Button
-                onClick={() => setModalEvidenciasOpen(true)}
-                size="sm"
-                variant="outline"
-                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-              >
-                <Paperclip className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-                Evidencias
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-1">
-              <Button
-                onClick={() => setModalOficiosOpen(true)}
-                size="sm"
-                variant="outline"
-                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-              >
-                <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-                Oficios
-              </Button>
-
-              <Button
-                onClick={() => setModalActasOpen(true)}
-                size="sm"
-                variant="outline"
-                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-              >
-                <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-                Actas
-              </Button>
-            </div>
-
-            <Button
+            </KanbanButtonPrimary>
+            <KanbanButtonSecondary
+              icon={<MessageSquare className="w-3.5 h-3.5" />}
               onClick={() => setModalComunicacionesOpen(true)}
-              size="sm"
-              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-              style={{ background: '#003DA5', color: '#FFFFFF' }}
             >
-              <MessageSquare className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-              Comunicaciones del Proceso
-            </Button>
-          </div>
-        </div>
+              Comunic.
+            </KanbanButtonSecondary>
+          </KanbanActionRowPrimary>
+        </KanbanActionSection>
+      </KanbanCard>
 
-        <ModalExpediente
-          isOpen={modalExpedienteOpen}
-          onClose={() => setModalExpedienteOpen(false)}
-          expediente={expediente}
-          onUpdate={onRefresh}
-        />
+      <ModalExpediente
+        isOpen={modalExpedienteOpen}
+        onClose={() => setModalExpedienteOpen(false)}
+        expediente={expediente}
+        onUpdate={onRefresh}
+      />
 
-        <ModalComunicaciones
-          isOpen={modalComunicacionesOpen}
-          onClose={() => setModalComunicacionesOpen(false)}
-          expediente={expediente}
-        />
-
-        <ModalAutos
-          isOpen={modalAutosOpen}
-          onClose={() => setModalAutosOpen(false)}
-          expediente={expediente}
-          modulo='defensa-judicial'
-        />
-
-        <ModalEvidencias
-          isOpen={modalEvidenciasOpen}
-          onClose={() => setModalEvidenciasOpen(false)}
-          expediente={expediente}
-          modulo='defensa-judicial'
-        />
-
-        <ModalOficios
-          isOpen={modalOficiosOpen}
-          onClose={() => setModalOficiosOpen(false)}
-          expediente={expediente}
-          modulo='defensa-judicial'
-        />
-
-        <ModalActas
-          isOpen={modalActasOpen}
-          onClose={() => setModalActasOpen(false)}
-          expediente={expediente}
-          modulo='defensa-judicial'
-        />
-
-        {/* Modal de confirmación de eliminación */}
-        <Dialog open={showEliminarModal} onOpenChange={setShowEliminarModal}>
-          <DialogContent
-            className="sm:max-w-[380px] w-[90vw] !max-w-[380px] !w-auto p-0 overflow-hidden"
-            style={{ maxWidth: '380px', width: '100%' }}
-          >
-            <DialogHeader className="p-4 pb-2">
-              <DialogTitle className="flex items-center gap-2 text-base text-red-600">
-                <Trash2 className="w-5 h-5" />
-                Eliminar Expediente
-              </DialogTitle>
-            </DialogHeader>
-
-            <div className="p-4 pt-0">
-              <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-red-800">
-                  <p className="font-semibold">¿Eliminar este expediente?</p>
-                  <p className="text-xs mt-1 opacity-80">
-                    Se moverá a la papelera. Podrá restaurarlo o eliminarlo permanentemente desde la vista de Archivados.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 p-4 pt-0 bg-gray-50/50">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowEliminarModal(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                size="sm"
-                className="bg-red-600 hover:bg-red-700 text-white"
-                onClick={confirmarEliminar}
-              >
-                <Trash2 className="w-4 h-4 mr-1" />
-                Eliminar
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </Card>
+      <ModalComunicaciones
+        isOpen={modalComunicacionesOpen}
+        onClose={() => setModalComunicacionesOpen(false)}
+        expediente={expediente}
+      />
     </div>
   );
 }

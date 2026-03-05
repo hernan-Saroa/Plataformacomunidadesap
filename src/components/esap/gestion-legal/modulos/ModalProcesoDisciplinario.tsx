@@ -33,6 +33,18 @@ import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
 import { ModalNuevaActuacion, type NuevaActuacionData } from './ModalNuevaActuacion';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { BarraProgresoExpediente } from '../core/BarraProgresoExpediente';
+import { FooterExpediente } from '../core/FooterExpediente';
+import { TabDocumentosExpediente } from '../core/TabDocumentosExpediente';
+import { TabActuacionesExpediente } from '../core/TabActuacionesExpediente';
+import { TabTareasExpediente } from '../core/TabTareasExpediente';
+import { TabNotasExpediente } from '../core/TabNotasExpediente';
+import type {
+  DocumentoExpediente,
+  ActuacionExpediente,
+  TareaExpediente,
+  NotaExpediente
+} from '../core/expedienteShared';
 
 // Tipo para Proceso Disciplinario
 interface ProcesoDisciplinario {
@@ -111,6 +123,43 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
   // ✅ Estado para el modal de nueva actuación
   const [modalNuevaActuacionOpen, setModalNuevaActuacionOpen] = useState(false);
+  const [modalCrearTareaAbierto, setModalCrearTareaAbierto] = useState(false);
+  const [modalEditarTareaAbierto, setModalEditarTareaAbierto] = useState(false);
+  const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
+  const [tareaEnEdicion, setTareaEnEdicion] = useState<TareaExpediente | null>(null);
+
+  const [tareas, setTareas] = useState<TareaExpediente[]>([
+    {
+      id: 1,
+      titulo: 'Recopilar soportes documentales',
+      descripcion: 'Consolidar documentos de gestión humana para el expediente',
+      vencimiento: '15/04/2026',
+      diasRestantes: 12,
+      prioridad: 'Alta',
+      responsable: proceso.abogadoAsignado || 'Investigador',
+      estado: 'Pendiente'
+    },
+    {
+      id: 2,
+      titulo: 'Validar notificación al disciplinado',
+      descripcion: 'Verificar constancia y trazabilidad de la notificación',
+      vencimiento: '20/04/2026',
+      diasRestantes: 17,
+      prioridad: 'Media',
+      responsable: proceso.abogadoAsignado || 'Investigador',
+      estado: 'En proceso'
+    }
+  ]);
+
+  const [notasInternas, setNotasInternas] = useState<NotaExpediente[]>([
+    {
+      id: 1,
+      fecha: new Date().toLocaleDateString('es-CO'),
+      autor: proceso.abogadoAsignado || 'Investigador',
+      nota: 'Seguimiento inicial del expediente disciplinario.',
+      tipo: 'Seguimiento'
+    }
+  ]);
 
   // Estado para el visor de documentos
   const [visorAbierto, setVisorAbierto] = useState(false);
@@ -471,6 +520,17 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     );
   }, [actuaciones]);
 
+  const actuacionesParaTab = useMemo<ActuacionExpediente[]>(() => {
+    return actuacionesTotales.map((act: any) => ({
+      id: act.id,
+      fecha: act.fecha || (act.fechaActuacion ? new Date(act.fechaActuacion).toLocaleDateString('es-CO') : ''),
+      tipo: act.tipo || act.tipoActuacion || 'ACTUACIÓN',
+      descripcion: act.descripcion || '',
+      responsable: act.responsable || 'Sistema',
+      estado: act.estado || 'PENDIENTE'
+    }));
+  }, [actuacionesTotales]);
+
 
   const handleAgregarPrueba = () => {
     if (fileInputRef.current) {
@@ -538,6 +598,50 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       console.error('Error saving actuacion:', error);
       toast.error('Error al guardar la actuación', { id: 'saving-actuacion' });
     }
+  };
+
+  const handleCrearTarea = () => {
+    const nuevaTarea: TareaExpediente = {
+      id: Date.now(),
+      titulo: 'Nueva tarea disciplinaria',
+      descripcion: 'Pendiente de edición',
+      vencimiento: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('es-CO'),
+      diasRestantes: 7,
+      prioridad: 'Media',
+      responsable: proceso.abogadoAsignado || 'Investigador',
+      estado: 'Pendiente'
+    };
+    setTareas(prev => [nuevaTarea, ...prev]);
+    setHasChanges(true);
+    setModalCrearTareaAbierto(false);
+    toast.success('Tarea creada');
+  };
+
+  const handleEditarTarea = (tarea: TareaExpediente) => {
+    setTareaEnEdicion(tarea);
+    setModalEditarTareaAbierto(true);
+    toast.info('Edición rápida habilitada para la tarea seleccionada');
+  };
+
+  const handleMarcarTareaCompletada = (tareaId: string | number) => {
+    setTareas(prev =>
+      prev.map(t => t.id === tareaId ? { ...t, estado: 'Completado', diasRestantes: 0 } : t)
+    );
+    setHasChanges(true);
+  };
+
+  const handleAgregarNota = () => {
+    const nuevaNota: NotaExpediente = {
+      id: Date.now(),
+      fecha: new Date().toLocaleDateString('es-CO'),
+      autor: proceso.abogadoAsignado || 'Investigador',
+      nota: 'Nota interna agregada desde el expediente disciplinario.',
+      tipo: 'Seguimiento'
+    };
+    setNotasInternas(prev => [nuevaNota, ...prev]);
+    setHasChanges(true);
+    setModalAgregarNotaAbierto(false);
+    toast.success('Nota interna agregada');
   };
 
   // ==================== FUNCIONES PARA ÚLTIMA ACTUACIÓN PROCESAL ====================
@@ -731,6 +835,59 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     }
   };
 
+  const documentosExpediente: DocumentoExpediente[] = useMemo(() => {
+    return documentos.map((doc: any) => ({
+      id: doc.id,
+      nombre: doc.documentoNombre || doc.nombre || doc.nombreArchivo || 'Documento',
+      fecha: doc.fechaActuacion ? new Date(doc.fechaActuacion).toLocaleDateString('es-CO') : (doc.fecha || ''),
+      tipo: doc.tipoActuacion || doc.tipo || 'DOCUMENTO',
+      tamaño: doc.tamaño || 'N/D',
+      firmante: doc.responsable || proceso.abogadoAsignado || 'Oficina Jurídica',
+      categoria: (doc.categoria || 'documentos').toLowerCase(),
+    }));
+  }, [documentos, proceso.abogadoAsignado]);
+
+  const handleUploadDocumentoDesdeTab = async (file: File, categoria: string, tipoDocumento: string) => {
+    try {
+      toast.loading('Subiendo documento...', { id: 'upload-documento-tab-jd' });
+      await legalService.createJuzgamientoActuacion(proceso.id, {
+        tipoActuacion: 'DOCUMENTO',
+        descripcion: `${tipoDocumento} (${categoria}): ${file.name}`,
+        fechaActuacion: new Date().toISOString(),
+        file,
+      });
+      const data = await legalService.getJuzgamientoActuaciones(proceso.id);
+      setActuaciones(Array.isArray(data) ? data : []);
+      setHasChanges(true);
+      toast.success('Documento cargado exitosamente', { id: 'upload-documento-tab-jd' });
+    } catch (error) {
+      console.error('Error uploading document from tab:', error);
+      toast.error('Error al subir documento', { id: 'upload-documento-tab-jd' });
+    }
+  };
+
+  const handleDescargarTodosDocumentos = async () => {
+    if (documentos.length === 0) {
+      toast.info('No hay documentos para descargar');
+      return;
+    }
+    toast.info(`Descarga masiva disponible próximamente (${documentos.length} documentos)`);
+  };
+
+  const handleNotificar = () => {
+    toast.success('Notificación enviada al equipo del proceso');
+  };
+
+  const handleCompartir = async () => {
+    const enlace = `${window.location.origin}/gestion-legal/juzgamiento/${proceso.id}`;
+    try {
+      await navigator.clipboard.writeText(enlace);
+      toast.success('Enlace copiado al portapapeles');
+    } catch {
+      toast.info('No se pudo copiar automáticamente', { description: enlace });
+    }
+  };
+
 
   return (
     <Dialog open={isOpen} onOpenChange={handleCerrar}>
@@ -754,6 +911,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           onClose={onClose}
         />
 
+        <BarraProgresoExpediente
+          diasTotales={proceso.diasTotales}
+          diasRestantes={proceso.diasRestantes}
+        />
+
         {/* ==================== TABS NAVIGATION ==================== */}
         <Tabs value={tabActivo} onValueChange={setTabActivo} className="flex-1 flex flex-col overflow-hidden">
           <div className="px-6 pt-4 border-b bg-gray-50">
@@ -773,11 +935,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 Hechos
               </TabsTrigger>
               <TabsTrigger
-                value="pruebas"
+                value="documento"
                 className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
               >
-                <Eye className="w-4 h-4 mr-2" />
-                Pruebas
+                <FileText className="w-4 h-4 mr-2" />
+                Documento
               </TabsTrigger>
               <TabsTrigger
                 value="actuaciones"
@@ -787,18 +949,18 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 Actuaciones
               </TabsTrigger>
               <TabsTrigger
-                value="decisiones"
+                value="tareas"
                 className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
               >
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Decisiones
+                <Calendar className="w-4 h-4 mr-2" />
+                Tareas
               </TabsTrigger>
               <TabsTrigger
-                value="documentos"
+                value="notas"
                 className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
               >
-                <FileText className="w-4 h-4 mr-2" />
-                Documentos
+                <Edit className="w-4 h-4 mr-2" />
+                Notas
               </TabsTrigger>
             </TabsList>
           </div>
@@ -921,386 +1083,100 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
             </Card>
           </TabsContent>
 
-          {/* ==================== TAB: PRUEBAS ==================== */}
-          <TabsContent value="pruebas" className="flex-1 overflow-y-auto p-6 space-y-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Material Probatorio</h3>
-              {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_PRUEBA) && (
-                <Button onClick={handleAgregarPrueba} style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                  <Plus className="w-4 h-4 mr-2" /> Agregar Prueba
-                </Button>
-              )}
-            </div>
-
-            {pruebas.length === 0 && <p className="text-gray-500 italic">No hay pruebas registradas.</p>}
-
-            {pruebas.map((prueba: any, index: number) => (
-              <Card key={prueba.id || index} className="p-4 hover:shadow-md transition-all border border-gray-200">
-                <div className="flex items-start gap-4">
-                  <div className="p-3 rounded-lg bg-blue-50">
-                    <FileText className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="font-bold text-lg mb-1">{prueba.documentoNombre || prueba.nombre || `Prueba #${index + 1}`}</h4>
-                    <p className="text-sm text-gray-600 mb-3">{prueba.descripcion} - {new Date(prueba.fechaActuacion).toLocaleDateString()}</p>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => handleVerPrueba(prueba)}>
-                        <Eye className="w-4 h-4 mr-1.5" /> Ver
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => handleDescargarDocumento(prueba)}>
-                        <Download className="w-4 h-4 mr-1.5" /> Descargar
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            ))}
+          {/* ==================== TAB: DOCUMENTO ==================== */}
+          <TabsContent value="documento" className="flex-1 overflow-y-auto p-6 space-y-4">
+            <TabDocumentosExpediente
+              expedienteId={proceso.id}
+              documentos={documentosExpediente}
+              setDocumentos={(_next) => {}}
+              profesionalAsignado={proceso.abogadoAsignado || 'Control Disciplinario'}
+              tituloSeccion="Documentos del Proceso Disciplinario"
+              moduloContexto="juzgamiento"
+              onUploadDocument={handleUploadDocumentoDesdeTab}
+              onViewDocument={(doc) => handleVerDocumento(doc)}
+              onDownloadDocument={(doc) => handleDescargarDocumento(doc)}
+              onDownloadAll={handleDescargarTodosDocumentos}
+              onHasChanges={() => setHasChanges(true)}
+            />
           </TabsContent>
 
           {/* ==================== TAB: ACTUACIONES ==================== */}
           <TabsContent value="actuaciones" className="flex-1 overflow-y-auto p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>
-                Historial de Actuaciones
-              </h3>
-
-              {/* ✅ BOTÓN AGREGAR ACTUACIÓN */}
-              <Button
-                onClick={() => setModalNuevaActuacionOpen(true)}
-                className="font-bold flex items-center gap-2"
-                style={{ background: '#003DA5', color: '#FFFFFF' }}
-              >
-                <Plus className="w-4 h-4" />
-                Agregar Actuación
-              </Button>
-            </div>
-
-            {/* Lista de actuaciones con estado dinámico */}
-            {actuaciones.length === 0 ? (
-              <Card className="p-8 text-center border-2 border-dashed border-gray-300">
-                <Clock className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <h4 className="font-bold text-lg text-gray-600 mb-2">
-                  Sin actuaciones registradas
-                </h4>
-                <p className="text-sm text-gray-500 mb-4">
-                  Aún no se han registrado actuaciones en este proceso disciplinario
-                </p>
-                <Button
-                  onClick={() => setModalNuevaActuacionOpen(true)}
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Registrar Primera Actuación
-                </Button>
-              </Card>
-            ) : (
-              <div className="space-y-3">
-                {actuaciones.map((act) => (
-                  <Card
-                    key={act.id}
-                    className="p-4 border-l-4 hover:shadow-md transition-all"
-                    style={{ borderLeftColor: act.colorBorde || (act.estado === 'COMPLETADA' ? '#10B981' : '#F59E0B') }}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 rounded-lg" style={{ background: `${act.colorBorde || '#F59E0B'}15` }}>
-                        <Clock className="w-5 h-5" style={{ color: act.colorBorde || '#F59E0B' }} />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span
-                                className="px-2 py-0.5 text-xs font-bold rounded-full"
-                                style={{
-                                  background: `${act.colorBorde || '#F59E0B'}20`,
-                                  color: act.colorBorde || '#F59E0B'
-                                }}
-                              >
-                                {act.tipo || act.tipoActuacion}
-                              </span>
-                              <span className="text-xs text-gray-500">📅 {act.fecha || (act.fechaActuacion ? new Date(act.fechaActuacion).toLocaleDateString('es-CO') : '')}</span>
-                            </div>
-                            <p className="font-bold text-sm text-gray-900 mb-1">{act.descripcion}</p>
-                            <p className="text-xs text-gray-600">
-                              👤 <span className="font-semibold">{act.responsable}</span>
-                            </p>
-                          </div>
-                          <span
-                            className={`px-2.5 py-1 text-xs font-bold rounded-full whitespace-nowrap ${act.estado === 'COMPLETADA'
-                              ? 'bg-green-100 text-green-800'
-                              : act.estado === 'EN_REVISION'
-                                ? 'bg-blue-100 text-blue-800'
-                                : 'bg-orange-100 text-orange-800'
-                              }`}
-                          >
-                            {act.estado === 'COMPLETADA' ? '✅ Completada' :
-                              act.estado === 'EN_REVISION' ? '🔍 En Revisión' : '⏳ Pendiente'}
-                          </span>
-                        </div>
-                        {/* ✅ Botones de acción por actuación */}
-                        <div className="flex gap-2 mt-2">
-                          {(act.documentoUrl || act.url) && (
-                            <Button size="sm" variant="outline" className="text-xs font-semibold" onClick={() => handleDescargarActuacion(act)}>
-                              <Download className="w-3 h-3 mr-1" /> Descargar Archivo
-                            </Button>
-                          )}
-                          <Button size="sm" variant="outline" className="text-xs font-semibold" onClick={() => handleGenerarPDFActuacion(act)}>
-                            <FileDown className="w-3 h-3 mr-1" /> Generar PDF
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
+            <TabActuacionesExpediente
+              actuaciones={actuacionesParaTab}
+              botonesAccion={[
+                {
+                  label: 'Decisión',
+                  icono: <CheckCircle className="w-3 h-3 mr-1" />,
+                  onClick: () => {
+                    setMostrarFormularioDecision(true);
+                    setHasChanges(true);
+                  },
+                  color: '#059669'
+                },
+                {
+                  label: 'Agregar Actuación',
+                  icono: <Plus className="w-3 h-3 mr-1" />,
+                  onClick: () => setModalNuevaActuacionOpen(true),
+                  color: '#003DA5'
+                }
+              ]}
+              decisiones={decisiones.map((decision: any) => ({
+                tipoDecision: decision.tipoDecision,
+                tipoFallo: decision.tipoFallo,
+                fecha: decision.fecha,
+                responsable: decision.responsable,
+                sancion: decision.sancion
+              }))}
+              labelRegistrar="Registrar Primera Actuación"
+              onRegistrarPrimera={() => setModalNuevaActuacionOpen(true)}
+            />
           </TabsContent>
 
-          {/* ==================== TAB: DECISIONES ==================== */}
-          <TabsContent value="decisiones" className="flex-1 overflow-y-auto p-6 space-y-6">
-
-            {/* Nota: Sección de Excepciones Procesales movida más abajo con UI preferida por el usuario */}
-
-            {/* ========== SECCIÓN: DECISIONES ========== */}
-            {decisiones.length === 0 ? (
-              <Card className="p-6 text-center">
-                <CheckCircle className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <h3 className="font-black text-xl mb-2 text-gray-600">Sin Decisiones Registradas</h3>
-                <p className="text-gray-500 mb-4">El proceso aún se encuentra en etapa de investigación</p>
-                {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION) && (
-                  <Button onClick={() => { setMostrarFormularioDecision(true); setHasChanges(true); }} style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                    <Plus className="w-4 h-4 mr-2" /> Registrar Decisión
-                  </Button>
-                )}
-              </Card>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Decisiones Registradas ({decisiones.length})</h3>
-                  {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION) && (
-                    <Button onClick={() => { setMostrarFormularioDecision(true); setHasChanges(true); }} style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                      <Plus className="w-4 h-4 mr-2" /> Nueva Decisión
-                    </Button>
-                  )}
-                </div>
-                {decisiones.map((decision, index) => (
-                  <Card key={index} className="p-6 border-2 border-blue-200">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h4 className="font-black text-xl" style={{ color: '#003DA5' }}>
-                            {decision.tipoDecision}
-                          </h4>
-                          <Badge
-                            className="font-bold"
-                            style={{
-                              background: decision.tipoFallo === 'Absolutoria' ? '#10B981' : '#EF4444',
-                              color: '#FFFFFF'
-                            }}
-                          >
-                            {decision.tipoFallo}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-gray-600">
-                          Decisión #{index + 1} • {decision.fecha}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-4">
-                      {decision.sancion && (
-                        <div className="p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
-                          <p className="text-sm font-bold text-orange-900 mb-1">⚖️ Sanción Impuesta</p>
-                          <p className="font-bold text-orange-800">{decision.sancion}</p>
-                        </div>
-                      )}
-
-                      <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                        <p className="text-sm font-bold text-blue-900 mb-2">📋 Consideraciones</p>
-                        <p className="text-sm text-gray-700 leading-relaxed">
-                          {decision.consideraciones}
-                        </p>
-                      </div>
-
-                      {decision.fundamentosJuridicos && (
-                        <div className="p-4 bg-gray-50 border-2 border-gray-200 rounded-lg">
-                          <p className="text-sm font-bold text-gray-900 mb-2">⚖️ Fundamentos Jurídicos</p>
-                          <p className="text-sm text-gray-700 leading-relaxed">
-                            {decision.fundamentosJuridicos}
-                          </p>
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="p-3 bg-white border border-gray-200 rounded-lg">
-                          <p className="text-xs text-gray-600 mb-1">Responsable</p>
-                          <p className="font-bold text-sm">{decision.responsable}</p>
-                        </div>
-                        <div className="p-3 bg-white border border-gray-200 rounded-lg">
-                          <p className="text-xs text-gray-600 mb-1">Cargo</p>
-                          <p className="font-bold text-sm">{decision.cargoResponsable}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2 pt-2">
-                        <Button size="sm" variant="outline" className="font-semibold" onClick={() => setDecisionSeleccionada(decision)}>
-                          <Eye className="w-3.5 h-3.5 mr-1.5" />
-                          Ver Detalle
-                        </Button>
-                        <Button size="sm" variant="outline" className="font-semibold" onClick={() => handleDescargarDecision(decision)}>
-                          <Download className="w-3.5 h-3.5 mr-1.5" />
-                          Descargar
-                        </Button>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {/* ==================== SECCIÓN: EXCEPCIONES PROCESALES ==================== */}
-            <div className="mt-8 pt-6 border-t-2 border-gray-200">
-              <Card className="p-5 border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-white">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-5 h-5 text-orange-600" />
-                    <h3 className="font-black text-lg text-orange-900">
-                      Excepciones Procesales ({excepciones.length})
-                    </h3>
-                  </div>
-                  <Button
-                    onClick={() => {
-                      setModalNuevaExcepcion(true);
-                      setHasChanges(true);
-                    }}
-                    className="bg-orange-600 hover:bg-orange-700 text-white font-semibold"
-                    size="sm"
-                  >
-                    <Plus className="w-4 h-4 mr-1.5" />
-                    Nueva Excepción
-                  </Button>
-                </div>
-
-                {excepciones.length === 0 ? (
-                  <div className="text-center py-6">
-                    <p className="text-orange-700 font-medium">
-                      No hay excepciones procesales registradas en este expediente
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3 mt-4">
-                    {excepciones.map((excepcion, index) => (
-                      <Card key={index} className="p-4 border-2 border-orange-300 bg-white">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <h4 className="font-bold text-base text-orange-900">
-                                {excepcion.tipo}
-                              </h4>
-                              <Badge
-                                variant="outline"
-                                className="text-xs font-semibold border-orange-400 text-orange-700"
-                              >
-                                {excepcion.estado}
-                              </Badge>
-                            </div>
-
-                            {/* Descripción */}
-                            <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                              <p className="text-xs font-bold text-gray-700 mb-1">📋 Descripción:</p>
-                              <p className="text-sm text-gray-700 leading-relaxed">
-                                {excepcion.descripcion}
-                              </p>
-                            </div>
-
-                            {/* Fundamento Legal */}
-                            {excepcion.fundamento && (
-                              <div className="mb-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
-                                <p className="text-xs font-bold text-orange-900 mb-1">⚖️ Fundamento Legal:</p>
-                                <p className="text-sm text-gray-700 leading-relaxed">
-                                  {excepcion.fundamento}
-                                </p>
-                              </div>
-                            )}
-
-                            {/* Metadata */}
-                            <div className="grid grid-cols-2 gap-2 text-xs">
-                              <div>
-                                <span className="text-gray-600">Fecha:</span>
-                                <span className="font-semibold ml-1">{excepcion.fecha}</span>
-                              </div>
-                              <div>
-                                <span className="text-gray-600">Presentada por:</span>
-                                <span className="font-semibold ml-1">{excepcion.responsable}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex gap-1 ml-3">
-                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                              <Eye className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            </div>
+          {/* ==================== TAB: TAREAS ==================== */}
+          <TabsContent value="tareas" className="flex-1 overflow-y-auto p-6 space-y-4">
+            <TabTareasExpediente
+              tareas={tareas}
+              setTareas={setTareas}
+              expedienteId={proceso.id}
+              onCrearTarea={() => {
+                setModalCrearTareaAbierto(true);
+                handleCrearTarea();
+              }}
+              onEditarTarea={handleEditarTarea}
+              onMarcarCompletada={handleMarcarTareaCompletada}
+            />
           </TabsContent>
 
-          {/* ==================== TAB: DOCUMENTOS ==================== */}
-          <TabsContent value="documentos" className="flex-1 overflow-y-auto p-6 space-y-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Documentos del Proceso</h3>
-              {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DOC_UPLOAD) && (
-                <Button onClick={handleAgregarDocumento} style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                  <Upload className="w-4 h-4 mr-2" /> Subir Documento
-                </Button>
-              )}
-            </div>
-
-            {documentos.length === 0 && <p className="text-gray-500 italic">No hay documentos registrados.</p>}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {documentos.map((doc) => (
-                <Card key={doc.id} className="p-4 hover:shadow-md transition-all">
-                  <div className="flex items-start gap-3">
-                    <FileText className="w-8 h-8 text-blue-600" />
-                    <div className="flex-1">
-                      <h4 className="font-bold mb-1">{doc.documentoNombre || doc.nombre || 'Documento'}</h4>
-                      <p className="text-xs text-gray-500">{doc.tamaño || 'Tamaño desconocido'} • {doc.fechaActuacion ? new Date(doc.fechaActuacion).toLocaleDateString() : (doc.fecha || 'Fecha desconocida')}</p>
-                      <div className="flex gap-2 mt-2">
-                        <Button size="sm" variant="outline" className="text-xs font-semibold border-blue-300 text-blue-600 hover:bg-blue-50" onClick={() => handleVerDocumento(doc)}>
-                          <Eye className="w-3 h-3 mr-1" /> Ver
-                        </Button>
-                        <Button size="sm" variant="outline" className="text-xs font-semibold border-orange-300 text-orange-600 hover:bg-orange-50" onClick={() => handleDescargarDocumento(doc)}>
-                          <Download className="w-3 h-3 mr-1" /> Descargar
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
+          {/* ==================== TAB: NOTAS ==================== */}
+          <TabsContent value="notas" className="flex-1 overflow-y-auto p-6 space-y-4">
+            <TabNotasExpediente
+              notas={notasInternas}
+              onAgregarNota={() => {
+                setModalAgregarNotaAbierto(true);
+                handleAgregarNota();
+              }}
+            />
           </TabsContent>
         </Tabs>
 
-        {/* ==================== FOOTER STICKY ==================== */}
-        <div className="flex-shrink-0 bg-gray-50 border-t px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <p className="text-sm text-gray-600"><span className="font-semibold">Última actualización:</span> {proceso.fechaActualizacion.toLocaleDateString('es-CO')}</p>
-            {hasChanges && <Badge className="bg-orange-100 text-orange-700 font-semibold text-xs">Cambios sin guardar</Badge>}
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleCerrar} className="font-semibold">Cerrar</Button>
-            {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT) && (
-              <Button onClick={handleGuardarCambios} disabled={!hasChanges} className="font-semibold" style={{ background: hasChanges ? '#003DA5' : '#9CA3AF', color: '#FFFFFF', cursor: hasChanges ? 'pointer' : 'not-allowed' }}>
-                <CheckCircle className="w-4 h-4 mr-2" /> Guardar Cambios
-              </Button>
-            )}
-          </div>
-        </div>
+        <FooterExpediente
+          expedienteId={proceso.id}
+          totalArchivos={documentosExpediente.length}
+          totalActuaciones={actuacionesTotales.length}
+          tercerConteo={{ label: 'tareas', valor: tareas.length, color: '#EA580C' }}
+          onClose={handleCerrar}
+          onNotificar={handleNotificar}
+          onCompartir={handleCompartir}
+          onDescargarPDF={handleDescargarPDF}
+          onGuardar={
+            authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT)
+              ? handleGuardarCambios
+              : undefined
+          }
+          hasChanges={hasChanges}
+          labelId="Proceso"
+        />
       </DialogContent>
 
       <FormularioRegistrarDecision

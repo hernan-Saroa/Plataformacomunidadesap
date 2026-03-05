@@ -10,6 +10,7 @@ import {
   Mail, Search, FileCheck, Send, X,
   Clock, FolderOpen, MessageSquare, Archive,
   Eye, ArrowUpDown, ChevronLeft, ChevronRight,
+  ChevronDown,
   Calendar, User, FileText, Download, Filter,
   Upload, Paperclip, Save, MoreVertical, Loader2
 } from 'lucide-react';
@@ -21,6 +22,7 @@ import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { ModuleFilters } from '../design-system/ModuleFilters';
 import { Input } from '../../../ui/input';
 import { Textarea } from '../../../ui/textarea';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
@@ -80,18 +82,21 @@ const getSemaforoColor = (dias: number) => {
   return '#10B981';
 };
 
+const ETAPAS_CONFIG = [
+  { valor: 'RECIBIDO' as const, nombre: 'Recibido', color: '#6B7280', bg: '#F3F4F6' },
+  { valor: 'EN_ANALISIS' as const, nombre: 'En análisis', color: '#F59E0B', bg: '#FFFBEB' },
+  { valor: 'EN_RESPUESTA' as const, nombre: 'En respuesta', color: '#3B82F6', bg: '#EFF6FF' },
+  { valor: 'ENVIADO' as const, nombre: 'Enviado', color: '#10B981', bg: '#ECFDF5' },
+];
+
 export function OrganosControl() {
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
 
-  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
+  const [tipoVista, setTipoVista] = useState<'lista' | 'archivados'>('lista');
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroOrganismo, setFiltroOrganismo] = useState<string>('');
-  const [filtroEtapa, setFiltroEtapa] = useState<string>('');
-  const [ordenamiento, setOrdenamiento] = useState<{ campo: string; direccion: 'asc' | 'desc' }>({
-    campo: 'diasRestantes',
-    direccion: 'asc'
-  });
+  const [filtroSemaforo, setFiltroSemaforo] = useState<string>('TODOS');
   const [paginaActual, setPaginaActual] = useState(1);
   const itemsPorPagina = 10;
 
@@ -363,13 +368,12 @@ export function OrganosControl() {
     <div className="space-y-4">
       {/* Header */}
       <ModuleHeader
-        title="Tablero Kanban Operativo"
-        subtitle="Gestión de requerimientos de órganos de control"
+        title="Órganos de Control"
+        subtitle="Gestión integral de requerimientos de órganos de control"
         toggleView={{
           current: tipoVista,
-          onChange: (view) => setTipoVista(view as 'kanban' | 'lista' | 'archivados'),
+          onChange: (view) => setTipoVista(view as 'lista' | 'archivados'),
           options: [
-            { label: 'Kanban', icon: <Columns3 className="w-4 h-4" />, value: 'kanban' },
             { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' },
             { label: 'Archivados', icon: <Archive className="w-4 h-4" />, value: 'archivados' }
           ]
@@ -381,9 +385,19 @@ export function OrganosControl() {
             variant="icon"
             sections={[
               {
-                label: "📋 Propósito",
-                content: "Gestión de requerimientos de Contraloría, Procuraduría, Fiscalía y otros órganos de control.",
-                type: "default"
+                label: "Propósito",
+                content: "Gestión centralizada de requerimientos de Contraloría, Procuraduría, Fiscalía y demás órganos de control.",
+                type: "info"
+              },
+              {
+                label: "Flujo de trabajo",
+                content: "Recibido → En análisis → En respuesta → Enviado. Puede actualizar la etapa desde la lista sin salir del módulo.",
+                type: "premium"
+              },
+              {
+                label: "Semáforo de términos",
+                content: "Rojo: vencido. Amarillo: 0-5 días. Verde: más de 5 días.",
+                type: "warning"
               }
             ]}
           />
@@ -400,15 +414,15 @@ export function OrganosControl() {
             color: 'blue'
           },
           {
-            label: 'Urgentes',
-            value: urgentes,
-            icon: <AlertCircle className="w-5 h-5" />,
-            color: 'red'
-          },
-          {
             label: 'Vencidos',
             value: vencidos,
             icon: <AlertTriangle className="w-5 h-5" />,
+            color: 'red'
+          },
+          {
+            label: 'Urgentes',
+            value: urgentes,
+            icon: <AlertCircle className="w-5 h-5" />,
             color: 'orange'
           },
           {
@@ -420,26 +434,6 @@ export function OrganosControl() {
         ]}
       />
 
-      {/* Tablero Kanban */}
-      {tipoVista === 'kanban' && (
-        <DndProvider backend={HTML5Backend}>
-          <div className="flex gap-4 overflow-x-auto pb-4">
-            {etapas.map((etapa) => (
-              <ColumnaKanban
-                key={etapa.nombre}
-                etapa={etapa}
-                onVerRequerimiento={handleVerRequerimiento}
-                onDocumentos={handleDocumentos}
-                onRespuesta={handleRespuesta}
-                onComentarios={handleComentarios}
-                onInsumo={handleInsumo}
-                onMoverRequerimiento={handleMoverRequerimiento}
-              />
-            ))}
-          </div>
-        </DndProvider>
-      )}
-
       {/* Vista Lista */}
       {tipoVista === 'lista' && (
         <VistaLista
@@ -448,18 +442,16 @@ export function OrganosControl() {
           setSearchTerm={setSearchTerm}
           filtroOrganismo={filtroOrganismo}
           setFiltroOrganismo={setFiltroOrganismo}
-          filtroEtapa={filtroEtapa}
-          setFiltroEtapa={setFiltroEtapa}
-          ordenamiento={ordenamiento}
-          setOrdenamiento={setOrdenamiento}
+          filtroSemaforo={filtroSemaforo}
+          setFiltroSemaforo={setFiltroSemaforo}
           paginaActual={paginaActual}
           setPaginaActual={setPaginaActual}
           itemsPorPagina={itemsPorPagina}
+          onCambiarEtapa={handleMoverRequerimiento}
           onVerRequerimiento={handleVerRequerimiento}
           onDocumentos={handleDocumentos}
           onRespuesta={handleRespuesta}
           onComentarios={handleComentarios}
-          onInsumo={handleInsumo}
         />
       )}
 
@@ -790,152 +782,130 @@ function VistaLista({
   setSearchTerm,
   filtroOrganismo,
   setFiltroOrganismo,
-  filtroEtapa,
-  setFiltroEtapa,
-  ordenamiento,
-  setOrdenamiento,
+  filtroSemaforo,
+  setFiltroSemaforo,
   paginaActual,
   setPaginaActual,
   itemsPorPagina,
+  onCambiarEtapa,
   onVerRequerimiento,
   onDocumentos,
   onRespuesta,
-  onComentarios,
-  onInsumo
+  onComentarios
 }: {
   requerimientos: Requerimiento[];
   searchTerm: string;
   setSearchTerm: (term: string) => void;
   filtroOrganismo: string;
   setFiltroOrganismo: (organismo: string) => void;
-  filtroEtapa: string;
-  setFiltroEtapa: (etapa: string) => void;
-  ordenamiento: { campo: string; direccion: 'asc' | 'desc' };
-  setOrdenamiento: (ordenamiento: { campo: string; direccion: 'asc' | 'desc' }) => void;
+  filtroSemaforo: string;
+  setFiltroSemaforo: (filtro: string) => void;
   paginaActual: number;
   setPaginaActual: (pagina: number) => void;
   itemsPorPagina: number;
+  onCambiarEtapa: (reqId: string, nuevaEtapa: 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO') => void;
   onVerRequerimiento: (req: Requerimiento) => void;
   onDocumentos: (req: Requerimiento) => void;
   onRespuesta: (req: Requerimiento) => void;
   onComentarios: (req: Requerimiento) => void;
-  onInsumo: (req: Requerimiento) => void;
 }) {
-  const organos = Array.from(new Set(requerimientos.map(r => r.organismo)));
-  const etapas = Array.from(new Set(requerimientos.map(r => r.etapa)));
+  const organos = Array.from(new Set(requerimientos.map((r) => r.organismo)));
 
-  const filtrarRequerimientos = (req: Requerimiento) => {
-    const matchesSearch = req.asunto.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.responsable.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesOrganismo = filtroOrganismo ? req.organismo === filtroOrganismo : true;
-    const matchesEtapa = filtroEtapa ? req.etapa === filtroEtapa : true;
-    return matchesSearch && matchesOrganismo && matchesEtapa;
-  };
+  const requerimientosFiltrados = requerimientos
+    .filter((req) => {
+      const q = searchTerm.toLowerCase();
+      const matchesSearch = !q ||
+        req.asunto.toLowerCase().includes(q) ||
+        req.id.toLowerCase().includes(q) ||
+        req.numeroOficio.toLowerCase().includes(q) ||
+        req.organismo.toLowerCase().includes(q) ||
+        req.responsable.toLowerCase().includes(q);
 
-  const requerimientosFiltrados = requerimientos.filter(filtrarRequerimientos);
+      const matchesOrganismo = !filtroOrganismo || req.organismo === filtroOrganismo;
 
-  const ordenarRequerimientos = (req1: Requerimiento, req2: Requerimiento) => {
-    if (ordenamiento.campo === 'diasRestantes') {
-      return ordenamiento.direccion === 'asc' ? req1.diasRestantes - req2.diasRestantes : req2.diasRestantes - req1.diasRestantes;
-    }
-    if (ordenamiento.campo === 'asunto') {
-      return ordenamiento.direccion === 'asc' ? req1.asunto.localeCompare(req2.asunto) : req2.asunto.localeCompare(req1.asunto);
-    }
-    return 0;
-  };
+      const matchesSemaforo =
+        filtroSemaforo === 'TODOS' ||
+        (filtroSemaforo === 'VENCIDO' && req.diasRestantes < 0) ||
+        (filtroSemaforo === 'URGENTE' && req.diasRestantes >= 0 && req.diasRestantes <= 5) ||
+        (filtroSemaforo === 'EN_TERMINO' && req.diasRestantes > 5);
 
-  const requerimientosOrdenados = [...requerimientosFiltrados].sort(ordenarRequerimientos);
+      return matchesSearch && matchesOrganismo && matchesSemaforo;
+    })
+    .sort((a, b) => a.diasRestantes - b.diasRestantes);
 
-  const requerimientosPaginados = requerimientosOrdenados.slice((paginaActual - 1) * itemsPorPagina, paginaActual * itemsPorPagina);
+  const requerimientosPaginados = requerimientosFiltrados.slice((paginaActual - 1) * itemsPorPagina, paginaActual * itemsPorPagina);
 
   const total = requerimientosFiltrados.length;
   const totalPaginas = Math.ceil(total / itemsPorPagina);
 
   return (
-    <Card className="p-4">
-      {/* Filtros y búsqueda */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-        <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-10 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
+    <div className="space-y-4">
+      <ModuleFilters
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Buscar por ID, oficio, asunto, organismo o responsable..."
+        filters={[
+          {
+            type: 'select',
+            value: filtroOrganismo,
+            onChange: setFiltroOrganismo,
+            options: [
+              { value: '', label: 'Todos los organismos' },
+              ...organos.map((o) => ({ value: o, label: o }))
+            ]
+          },
+          {
+            type: 'select',
+            value: filtroSemaforo,
+            onChange: setFiltroSemaforo,
+            options: [
+              { value: 'TODOS', label: 'Todos los estados' },
+              { value: 'VENCIDO', label: 'Vencidos' },
+              { value: 'URGENTE', label: 'Urgentes (0-5 días)' },
+              { value: 'EN_TERMINO', label: 'En término (>5 días)' }
+            ]
+          }
+        ]}
+        totalItems={requerimientos.length}
+        filteredItems={requerimientosFiltrados.length}
+        onClearFilters={() => {
+          setSearchTerm('');
+          setFiltroOrganismo('');
+          setFiltroSemaforo('TODOS');
+          setPaginaActual(1);
+        }}
+        counterText={`Mostrando ${requerimientosFiltrados.length} de ${requerimientos.length} requerimientos`}
+      />
 
-        <div className="relative">
-          <Building2 className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <select
-            value={filtroOrganismo}
-            onChange={(e) => setFiltroOrganismo(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-10 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="">Todos los órganos</option>
-            {organos.map(org => (
-              <option key={org} value={org}>{org}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="relative">
-          <Filter className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <select
-            value={filtroEtapa}
-            onChange={(e) => setFiltroEtapa(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-10 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="">Todas las etapas</option>
-            {etapas.map(etapa => (
-              <option key={etapa} value={etapa}>{etapa}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex gap-2">
-          <select
-            value={ordenamiento.campo}
-            onChange={(e) => setOrdenamiento({ ...ordenamiento, campo: e.target.value })}
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="diasRestantes">Días restantes</option>
-            <option value="asunto">Asunto</option>
-          </select>
-          <Button
-            onClick={() => setOrdenamiento({ ...ordenamiento, direccion: ordenamiento.direccion === 'asc' ? 'desc' : 'asc' })}
-            size="sm"
-            variant="outline"
-            className="px-3"
-          >
-            {ordenamiento.direccion === 'asc' ? '↑' : '↓'}
-          </Button>
-        </div>
-      </div>
-
-      {/* Tabla */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <Card className="overflow-hidden border border-gray-200">
+        <div className="overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">RADICADO</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Organismo</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Asunto</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Responsable</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Días restantes</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Docs</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Etapa</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Última actuación</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Acciones</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">ID / Oficio</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Organismo</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Asunto</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Responsable</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Término</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Etapa</th>
+              <th className="px-4 py-3 text-center text-sm font-bold text-gray-500">Acciones</th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {requerimientosPaginados.map(req => (
+          <tbody className="divide-y divide-gray-100">
+            {requerimientosPaginados.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-16 text-center text-gray-400">
+                  <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p>No se encontraron requerimientos</p>
+                </td>
+              </tr>
+            )}
+
+            {requerimientosPaginados.map((req) => (
               <tr key={req.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-3">
-                  <span className="font-bold text-sm" style={{ color: '#003DA5' }}>{req.numeroOficio}</span>
+                  <p className="font-bold text-sm" style={{ color: '#003DA5' }}>{req.id}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{req.numeroOficio}</p>
                 </td>
                 <td className="px-4 py-3">
                   <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
@@ -946,6 +916,9 @@ function VistaLista({
                   <p className="text-sm text-gray-900 font-medium line-clamp-2 max-w-xs">
                     {req.asunto}
                   </p>
+                  {req.ultimaActuacion && (
+                    <p className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">{req.ultimaActuacion}</p>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -964,24 +937,17 @@ function VistaLista({
                     border: `1px solid ${getSemaforoColor(req.diasRestantes)}`
                   }}>
                     <div className="w-2 h-2 rounded-full" style={{ background: getSemaforoColor(req.diasRestantes) }} />
-                    {Math.abs(req.diasRestantes)} días
+                    {req.diasRestantes < 0 ? `${Math.abs(req.diasRestantes)}d vencido` : `${req.diasRestantes}d restantes`}
                   </Badge>
                 </td>
                 <td className="px-4 py-3">
-                  <span className="text-sm font-semibold text-gray-700">{req.documentos || 0}</span>
+                  <SelectorEtapa
+                    etapaActual={req.etapa}
+                    onChange={(nuevaEtapa) => onCambiarEtapa(req.id, nuevaEtapa)}
+                  />
                 </td>
                 <td className="px-4 py-3">
-                  <Badge variant="outline" className="text-xs">
-                    {req.etapa}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3">
-                  <p className="text-xs text-gray-600 line-clamp-2 max-w-xs">
-                    {req.ultimaActuacion || 'Sin actuaciones'}
-                  </p>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-center gap-2">
+                  <div className="flex items-center justify-center gap-0.5">
                     <Button
                       size="sm"
                       variant="ghost"
@@ -993,12 +959,27 @@ function VistaLista({
                     <Button
                       size="sm"
                       variant="ghost"
+                      onClick={() => onDocumentos(req)}
+                      title="Documentos"
+                    >
+                      <FileCheck className="w-4 h-4 text-gray-600" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
                       onClick={() => onRespuesta(req)}
                       title="Responder"
                     >
                       <Send className="w-4 h-4 text-blue-600" />
                     </Button>
-
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => onComentarios(req)}
+                      title="Comentarios"
+                    >
+                      <MessageSquare className="w-4 h-4 text-gray-600" />
+                    </Button>
                   </div>
                 </td>
               </tr>
@@ -1006,6 +987,7 @@ function VistaLista({
           </tbody>
         </table>
       </div>
+      </Card>
 
       {/* Paginación */}
       {totalPaginas > 1 && (
@@ -1036,7 +1018,39 @@ function VistaLista({
           </div>
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 
+function SelectorEtapa({
+  etapaActual,
+  onChange
+}: {
+  etapaActual: Requerimiento['etapa'];
+  onChange: (etapa: Requerimiento['etapa']) => void;
+}) {
+  const config = ETAPAS_CONFIG.find((e) => e.valor === etapaActual) || ETAPAS_CONFIG[0];
+
+  return (
+    <div className="relative">
+      <select
+        value={etapaActual}
+        onChange={(e) => onChange(e.target.value as Requerimiento['etapa'])}
+        className="appearance-none text-xs font-semibold rounded-lg pl-3 pr-7 py-1.5 border cursor-pointer transition-all focus:ring-2 focus:ring-blue-300 focus:outline-none"
+        style={{
+          color: config.color,
+          backgroundColor: config.bg,
+          borderColor: `${config.color}40`
+        }}
+      >
+        {ETAPAS_CONFIG.map((e) => (
+          <option key={e.valor} value={e.valor}>{e.nombre}</option>
+        ))}
+      </select>
+      <ChevronDown
+        className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"
+        style={{ color: config.color }}
+      />
+    </div>
+  );
+}
