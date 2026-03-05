@@ -30,6 +30,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { toast } from 'sonner@2.0.3';
 import { SeccionPlantillasAutos, ETAPAS_PROCESO, type EtapaProcesoId } from './SeccionPlantillasAutos';
 import { ModalEdicionPlantillaAuto } from './ModalEdicionPlantillaAuto';
+import { useOficiosConfiguration } from '../../../hooks/useOficiosConfiguration';
 
 // ============ INTERFACES ============
 
@@ -1180,6 +1181,38 @@ function ConfiguracionOficios(props: any) {
   const [mostrarModalOficio, setMostrarModalOficio] = useState(false);
   const [oficiEdicion, setOficiEdicion] = useState<TipoOficio | null>(null);
 
+  // ✅ Usar el hook de configuración de oficios desde el backend
+  const { 
+    configurations: oficiosFromBackend, 
+    loading, 
+    error,
+    fetchConfigurations,
+    createConfiguration,
+    updateConfiguration,
+    deleteConfiguration,
+    toggleEstado 
+  } = useOficiosConfiguration();
+
+  // ✅ Cargar configuraciones al montar el componente
+  useEffect(() => {
+    fetchConfigurations();
+  }, [fetchConfigurations]);
+
+  // ✅ Sincronizar con el estado del padre si hay datos del backend
+  useEffect(() => {
+    if (oficiosFromBackend.length > 0) {
+      // Mapear del formato del backend al formato local
+      const mappedTipos: TipoOficio[] = oficiosFromBackend.map((oficio: any) => ({
+        id: oficio.id,
+        nombre: oficio.nombre,
+        codigo: oficio.codigo,
+        descripcion: oficio.descripcion,
+        activo: oficio.estado === 'activo'
+      }));
+      setTiposOficio(mappedTipos);
+    }
+  }, [oficiosFromBackend, setTiposOficio]);
+
   const abrirModalNuevo = () => {
     setOficiEdicion(null);
     setMostrarModalOficio(true);
@@ -1190,28 +1223,82 @@ function ConfiguracionOficios(props: any) {
     setMostrarModalOficio(true);
   };
 
-  const guardarOficio = (oficio: TipoOficio) => {
-    if (oficiEdicion) {
-      const nuevosTipos = tiposOficio.map((t: TipoOficio) =>
-        t.id === oficio.id ? oficio : t
-      );
-      setTiposOficio(nuevosTipos);
-      toast.success('Tipo de oficio actualizado');
-    } else {
-      setTiposOficio([...tiposOficio, oficio]);
-      toast.success('Tipo de oficio creado');
+  // ✅ Función para guardar que también sincroniza con el backend
+  const guardarOficio = async (oficio: TipoOficio) => {
+    try {
+      if (oficiEdicion) {
+        // Actualizar en backend
+        await updateConfiguration(oficio.id, {
+          nombre: oficio.nombre,
+          codigo: oficio.codigo,
+          descripcion: oficio.descripcion,
+          estado: oficio.activo ? 'activo' : 'inactivo'
+        });
+        // Actualizar estado local
+        const nuevosTipos = tiposOficio.map((t: TipoOficio) =>
+          t.id === oficio.id ? oficio : t
+        );
+        setTiposOficio(nuevosTipos);
+        toast.success('Tipo de oficio actualizado');
+      } else {
+        // Crear en backend
+        const newOficio = await createConfiguration({
+          tipo: oficio.nombre.toUpperCase().replace(/\s+/g, '_'),
+          nombre: oficio.nombre,
+          codigo: oficio.codigo,
+          descripcion: oficio.descripcion,
+          estado: oficio.activo ? 'activo' : 'inactivo'
+        });
+        // Agregar al estado local
+        setTiposOficio([...tiposOficio, { ...oficio, id: newOficio.id }]);
+        toast.success('Tipo de oficio creado');
+      }
+      setCambiosPendientes(true);
+      setMostrarModalOficio(false);
+    } catch (err) {
+      console.error('Error guardando oficio:', err);
+      toast.error('Error al guardar el tipo de oficio');
     }
-    setCambiosPendientes(true);
-    setMostrarModalOficio(false);
   };
 
-  const eliminarOficio = (id: string) => {
+  // ✅ Función para eliminar que también elimina del backend
+  const eliminarOficio = async (id: string) => {
     if (confirm('¿Estás seguro de eliminar este tipo de oficio?')) {
-      setTiposOficio(tiposOficio.filter((t: TipoOficio) => t.id !== id));
-      setCambiosPendientes(true);
-      toast.success('Tipo de oficio eliminado');
+      try {
+        await deleteConfiguration(id);
+        setTiposOficio(tiposOficio.filter((t: TipoOficio) => t.id !== id));
+        setCambiosPendientes(true);
+        toast.success('Tipo de oficio eliminado');
+      } catch (err) {
+        console.error('Error eliminando oficio:', err);
+        toast.error('Error al eliminar el tipo de oficio');
+      }
     }
   };
+
+  // ✅ Función para togglear estado
+  const toggleActivo = async (id: string) => {
+    try {
+      await toggleEstado(id);
+      const nuevosTipos = tiposOficio.map((t: TipoOficio) =>
+        t.id === id ? { ...t, activo: !t.activo } : t
+      );
+      setTiposOficio(nuevosTipos);
+      setCambiosPendientes(true);
+    } catch (err) {
+      console.error('Error toggling estado:', err);
+    }
+  };
+
+  // ✅ Mostrar estado de carga
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+        <span className="ml-3 text-gray-600">Cargando configuraciones...</span>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -1236,45 +1323,67 @@ function ConfiguracionOficios(props: any) {
         </div>
 
         <div className="space-y-3">
-          {tiposOficio.map((tipo: TipoOficio) => (
-            <div
-              key={tipo.id}
-              className="bg-white rounded-lg border-2 border-gray-200 p-3 sm:p-4 hover:border-purple-300 transition-all"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h4 className="font-bold text-gray-900 text-sm sm:text-base">{tipo.nombre}</h4>
-                    <span className="px-2 py-0.5 rounded text-xs font-mono bg-purple-100 text-purple-700">
-                      {tipo.codigo}
-                    </span>
+          {tiposOficio.length === 0 ? (
+            // ✅ Mostrar mensaje cuando no hay oficios en la BD
+            <div className="text-center py-12 px-4">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-purple-100 mb-4">
+                <Mail className="w-8 h-8 text-purple-600" />
+              </div>
+              <h4 className="text-lg font-semibold text-gray-900 mb-2">
+                No hay oficios configurados
+              </h4>
+              <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                Comienza configurando los tipos de oficios que se utilizarán para generar documentos oficiales en los procesos disciplinarios.
+              </p>
+              <button
+                onClick={abrirModalNuevo}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 font-semibold transition-all shadow-md"
+              >
+                <Plus className="w-5 h-5" />
+                Crear primer oficio
+              </button>
+            </div>
+          ) : (
+            tiposOficio.map((tipo: TipoOficio) => (
+              <div
+                key={tipo.id}
+                className="bg-white rounded-lg border-2 border-gray-200 p-3 sm:p-4 hover:border-purple-300 transition-all"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h4 className="font-bold text-gray-900 text-sm sm:text-base">{tipo.nombre}</h4>
+                      <span className="px-2 py-0.5 rounded text-xs font-mono bg-purple-100 text-purple-700">
+                        {tipo.codigo}
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-gray-600">{tipo.descripcion}</p>
                   </div>
-                  <p className="text-xs sm:text-sm text-gray-600">{tipo.descripcion}</p>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${
-                    tipo.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {tipo.activo ? 'Activo' : 'Inactivo'}
-                  </span>
-                  <button
-                    onClick={() => abrirModalEditar(tipo)}
-                    className="min-h-[44px] min-w-[44px] p-2 hover:bg-gray-100 rounded-lg transition-colors flex items-center justify-center"
-                    title="Editar"
-                  >
-                    <Edit3 className="w-4 h-4 text-gray-600" />
-                  </button>
-                  <button
-                    onClick={() => eliminarOficio(tipo.id)}
-                    className="min-h-[44px] min-w-[44px] p-2 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center"
-                    title="Eliminar"
-                  >
-                    <Trash2 className="w-4 h-4 text-red-600" />
-                  </button>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${
+                      tipo.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {tipo.activo ? 'Activo' : 'Inactivo'}
+                    </span>
+                    <button
+                      onClick={() => abrirModalEditar(tipo)}
+                      className="min-h-[44px] min-w-[44px] p-2 hover:bg-gray-100 rounded-lg transition-colors flex items-center justify-center"
+                      title="Editar"
+                    >
+                      <Edit3 className="w-4 h-4 text-gray-600" />
+                    </button>
+                    <button
+                      onClick={() => eliminarOficio(tipo.id)}
+                      className="min-h-[44px] min-w-[44px] p-2 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center"
+                      title="Eliminar"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-600" />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
 
         {/* Vista Previa */}

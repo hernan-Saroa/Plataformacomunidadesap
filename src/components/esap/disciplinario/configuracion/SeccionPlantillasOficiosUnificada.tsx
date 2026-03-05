@@ -85,6 +85,7 @@ export interface PlantillaArchivo {
   fechaCreacion: string;
   fechaModificacion: string;
   activo: boolean;
+  tipoArchivo?: string; // Opcional - tipo MIME del archivo
 }
 
 export interface TipoOficio {
@@ -92,7 +93,8 @@ export interface TipoOficio {
   nombre: string;
   descripcion: string;
   categoria: CategoriaOficioId;
-  plantilla: PlantillaArchivo | null; // ✅ SOLO UNA PLANTILLA POR TIPO
+  plantilla: PlantillaArchivo | null; // Una sola plantilla
+  plantillas?: PlantillaArchivo[]; // Array de plantillas (para modales)
   activo: boolean;
   orden: number;
   fechaCreacion: string;
@@ -136,7 +138,9 @@ export function SeccionPlantillasOficiosUnificada({
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const handleDescargarPlantilla = (plantilla: PlantillaArchivo) => {
+  const handleDescargarPlantilla = (plantilla: PlantillaArchivo | null) => {
+    if (!plantilla) return;
+    
     const link = document.createElement('a');
     link.href = plantilla.url;
     link.download = plantilla.nombreArchivo;

@@ -166,6 +166,13 @@ export class FilesController {
       return;
     }
 
+    // Then try in ./uploads/plantillas-oficios/{filename} (for oficio templates)
+    filePath = join(process.cwd(), 'uploads', 'plantillas-oficios', filename);
+    if (existsSync(filePath)) {
+      res.sendFile(filePath);
+      return;
+    }
+
     // Then try in ./uploads/expedientes/{radicado}/filename (for news attachments)
     // The filename might come as "ND-2026-001/archivo.pdf" or just "archivo.pdf"
     if (filename.includes('/')) {
