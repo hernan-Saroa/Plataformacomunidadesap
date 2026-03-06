@@ -128,38 +128,19 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
   const [tareaEnEdicion, setTareaEnEdicion] = useState<TareaExpediente | null>(null);
 
-  const [tareas, setTareas] = useState<TareaExpediente[]>([
-    {
-      id: 1,
-      titulo: 'Recopilar soportes documentales',
-      descripcion: 'Consolidar documentos de gestión humana para el expediente',
-      vencimiento: '15/04/2026',
-      diasRestantes: 12,
-      prioridad: 'Alta',
-      responsable: proceso.abogadoAsignado || 'Investigador',
-      estado: 'Pendiente'
-    },
-    {
-      id: 2,
-      titulo: 'Validar notificación al disciplinado',
-      descripcion: 'Verificar constancia y trazabilidad de la notificación',
-      vencimiento: '20/04/2026',
-      diasRestantes: 17,
-      prioridad: 'Media',
-      responsable: proceso.abogadoAsignado || 'Investigador',
-      estado: 'En proceso'
-    }
-  ]);
+  const [tareas, setTareas] = useState<TareaExpediente[]>([]);
 
-  const [notasInternas, setNotasInternas] = useState<NotaExpediente[]>([
-    {
-      id: 1,
-      fecha: new Date().toLocaleDateString('es-CO'),
-      autor: proceso.abogadoAsignado || 'Investigador',
-      nota: 'Seguimiento inicial del expediente disciplinario.',
-      tipo: 'Seguimiento'
-    }
-  ]);
+  const [notasInternas, setNotasInternas] = useState<NotaExpediente[]>([]);
+
+  // Form states for create tarea modal
+  const [formTareaTitulo, setFormTareaTitulo] = useState('');
+  const [formTareaDescripcion, setFormTareaDescripcion] = useState('');
+  const [formTareaPrioridad, setFormTareaPrioridad] = useState('media');
+  const [formTareaVencimiento, setFormTareaVencimiento] = useState('');
+
+  // Form states for create nota modal
+  const [formNotaContenido, setFormNotaContenido] = useState('');
+  const [formNotaTipo, setFormNotaTipo] = useState('seguimiento');
 
   // Estado para el visor de documentos
   const [visorAbierto, setVisorAbierto] = useState(false);
@@ -168,7 +149,8 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
   // Derived states for tabs options
   const pruebas = actuaciones.filter(a => a.tipoActuacion === 'EVIDENCIA');
-  const documentos = actuaciones.filter(a => a.tipoActuacion === 'DOCUMENTO');
+  // Include all actuaciones that have a document attachment (any type)
+  const documentos = actuaciones.filter(a => a.documentoUrl || a.tipoActuacion === 'DOCUMENTO' || a.tipoActuacion === 'ACTA' || a.tipoActuacion === 'OFICIO' || a.tipoActuacion === 'AUTO');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -203,6 +185,45 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         .catch(err => {
           console.error('Error loading exceptions:', err);
           setExcepciones([]);
+        });
+
+      // Cargar tareas del expediente
+      legalService.getJuzgamientoTareas(proceso.id)
+        .then(data => {
+          if (Array.isArray(data) && data.length > 0) {
+            const tareasMap: TareaExpediente[] = data.map((t: any) => ({
+              id: t.id,
+              titulo: t.titulo || 'Sin título',
+              descripcion: t.descripcion || '',
+              vencimiento: t.fechaVencimiento ? new Date(t.fechaVencimiento).toLocaleDateString('es-CO') : 'Sin fecha',
+              diasRestantes: t.fechaVencimiento ? Math.max(0, Math.ceil((new Date(t.fechaVencimiento).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0,
+              prioridad: t.prioridad === 'alta' ? 'Alta' : t.prioridad === 'baja' ? 'Baja' : 'Media',
+              responsable: t.responsableNombre || t.responsable?.nombre || proceso.abogadoAsignado || 'Investigador',
+              estado: t.estado === 'completada' ? 'Completado' : t.estado === 'en_proceso' ? 'En proceso' : 'Pendiente'
+            }));
+            setTareas(tareasMap);
+          }
+        })
+        .catch(err => {
+          console.error('Error loading tareas:', err);
+        });
+
+      // Cargar notas internas del expediente
+      legalService.getJuzgamientoNotas(proceso.id)
+        .then(data => {
+          if (Array.isArray(data) && data.length > 0) {
+            const notasMap: NotaExpediente[] = data.map((n: any) => ({
+              id: n.id,
+              fecha: n.createdAt ? new Date(n.createdAt).toLocaleDateString('es-CO') : new Date().toLocaleDateString('es-CO'),
+              autor: n.autorNombre || proceso.abogadoAsignado || 'Investigador',
+              nota: n.contenido || '',
+              tipo: n.tipo === 'importante' ? 'Importante' : n.tipo === 'alerta' ? 'Alerta' : 'Seguimiento'
+            }));
+            setNotasInternas(notasMap);
+          }
+        })
+        .catch(err => {
+          console.error('Error loading notas:', err);
         });
     }
   }, [proceso.id]);
@@ -600,48 +621,172 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     }
   };
 
-  const handleCrearTarea = () => {
-    const nuevaTarea: TareaExpediente = {
-      id: Date.now(),
-      titulo: 'Nueva tarea disciplinaria',
-      descripcion: 'Pendiente de edición',
-      vencimiento: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('es-CO'),
-      diasRestantes: 7,
-      prioridad: 'Media',
-      responsable: proceso.abogadoAsignado || 'Investigador',
-      estado: 'Pendiente'
-    };
-    setTareas(prev => [nuevaTarea, ...prev]);
-    setHasChanges(true);
-    setModalCrearTareaAbierto(false);
-    toast.success('Tarea creada');
+  const handleCrearTarea = async () => {
+    if (!formTareaTitulo.trim()) {
+      toast.error('El título de la tarea es obligatorio');
+      return;
+    }
+    try {
+      toast.loading('Creando tarea...', { id: 'crear-tarea' });
+      const fechaVencimiento = formTareaVencimiento
+        ? new Date(formTareaVencimiento).toISOString()
+        : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const usuarioActual = localStorage.getItem('esap_user_name') || proceso.abogadoAsignado || 'Investigador';
+
+      const res = await legalService.createJuzgamientoTarea(proceso.id, {
+        titulo: formTareaTitulo.trim(),
+        descripcion: formTareaDescripcion.trim() || undefined,
+        fechaVencimiento,
+        prioridad: formTareaPrioridad,
+        responsableNombre: usuarioActual,
+        creadoPor: usuarioActual
+      });
+
+      const diasCalc = formTareaVencimiento
+        ? Math.max(0, Math.ceil((new Date(formTareaVencimiento).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+        : 7;
+      const prioridadLabel = formTareaPrioridad === 'alta' ? 'Alta' : formTareaPrioridad === 'baja' ? 'Baja' : 'Media';
+
+      const nuevaTarea: TareaExpediente = {
+        id: res.id,
+        titulo: res.titulo || formTareaTitulo.trim(),
+        descripcion: res.descripcion || formTareaDescripcion.trim(),
+        vencimiento: new Date(fechaVencimiento).toLocaleDateString('es-CO'),
+        diasRestantes: diasCalc,
+        prioridad: prioridadLabel,
+        responsable: usuarioActual,
+        estado: 'Pendiente'
+      };
+      setTareas(prev => [nuevaTarea, ...prev]);
+      setHasChanges(true);
+      setModalCrearTareaAbierto(false);
+      // Reset form
+      setFormTareaTitulo('');
+      setFormTareaDescripcion('');
+      setFormTareaPrioridad('media');
+      setFormTareaVencimiento('');
+      toast.success('Tarea creada exitosamente', { id: 'crear-tarea' });
+    } catch (error) {
+      console.error('Error creating tarea:', error);
+      toast.error('Error al crear la tarea', { id: 'crear-tarea' });
+    }
   };
 
   const handleEditarTarea = (tarea: TareaExpediente) => {
     setTareaEnEdicion(tarea);
+    // Pre-fill form with existing values
+    setFormTareaTitulo(tarea.titulo);
+    setFormTareaDescripcion(tarea.descripcion || '');
+    setFormTareaPrioridad(tarea.prioridad === 'Alta' ? 'alta' : tarea.prioridad === 'Baja' ? 'baja' : 'media');
+    // Try to parse vencimiento date back to input format (yyyy-MM-dd)
+    try {
+      const parts = tarea.vencimiento.split('/');
+      if (parts.length === 3) {
+        setFormTareaVencimiento(`${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`);
+      }
+    } catch { setFormTareaVencimiento(''); }
     setModalEditarTareaAbierto(true);
-    toast.info('Edición rápida habilitada para la tarea seleccionada');
   };
 
-  const handleMarcarTareaCompletada = (tareaId: string | number) => {
-    setTareas(prev =>
-      prev.map(t => t.id === tareaId ? { ...t, estado: 'Completado', diasRestantes: 0 } : t)
-    );
-    setHasChanges(true);
+  const handleGuardarEdicionTarea = async () => {
+    if (!tareaEnEdicion || !formTareaTitulo.trim()) {
+      toast.error('El título de la tarea es obligatorio');
+      return;
+    }
+    try {
+      toast.loading('Guardando cambios...', { id: 'editar-tarea' });
+      const fechaVencimiento = formTareaVencimiento
+        ? new Date(formTareaVencimiento).toISOString()
+        : undefined;
+
+      await legalService.updateJuzgamientoTarea(proceso.id, String(tareaEnEdicion.id), {
+        titulo: formTareaTitulo.trim(),
+        descripcion: formTareaDescripcion.trim() || undefined,
+        prioridad: formTareaPrioridad,
+        fechaVencimiento,
+      });
+
+      const diasCalc = formTareaVencimiento
+        ? Math.max(0, Math.ceil((new Date(formTareaVencimiento).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+        : tareaEnEdicion.diasRestantes;
+      const prioridadLabel = formTareaPrioridad === 'alta' ? 'Alta' : formTareaPrioridad === 'baja' ? 'Baja' : 'Media';
+
+      setTareas(prev => prev.map(t => t.id === tareaEnEdicion.id ? {
+        ...t,
+        titulo: formTareaTitulo.trim(),
+        descripcion: formTareaDescripcion.trim(),
+        prioridad: prioridadLabel,
+        vencimiento: formTareaVencimiento ? new Date(formTareaVencimiento).toLocaleDateString('es-CO') : t.vencimiento,
+        diasRestantes: diasCalc,
+      } : t));
+
+      setHasChanges(true);
+      setModalEditarTareaAbierto(false);
+      setTareaEnEdicion(null);
+      // Reset form
+      setFormTareaTitulo('');
+      setFormTareaDescripcion('');
+      setFormTareaPrioridad('media');
+      setFormTareaVencimiento('');
+      toast.success('Tarea actualizada exitosamente', { id: 'editar-tarea' });
+    } catch (error) {
+      console.error('Error updating tarea:', error);
+      toast.error('Error al actualizar la tarea', { id: 'editar-tarea' });
+    }
   };
 
-  const handleAgregarNota = () => {
-    const nuevaNota: NotaExpediente = {
-      id: Date.now(),
-      fecha: new Date().toLocaleDateString('es-CO'),
-      autor: proceso.abogadoAsignado || 'Investigador',
-      nota: 'Nota interna agregada desde el expediente disciplinario.',
-      tipo: 'Seguimiento'
-    };
-    setNotasInternas(prev => [nuevaNota, ...prev]);
-    setHasChanges(true);
-    setModalAgregarNotaAbierto(false);
-    toast.success('Nota interna agregada');
+  const handleMarcarTareaCompletada = async (tareaId: string | number) => {
+    try {
+      toast.loading('Actualizando tarea...', { id: 'completar-tarea' });
+      await legalService.updateJuzgamientoTarea(proceso.id, String(tareaId), {
+        estado: 'completada'
+      });
+      setTareas(prev =>
+        prev.map(t => t.id === tareaId ? { ...t, estado: 'Completado', diasRestantes: 0 } : t)
+      );
+      setHasChanges(true);
+      toast.success('Tarea marcada como completada', { id: 'completar-tarea' });
+    } catch (error) {
+      console.error('Error completing tarea:', error);
+      toast.error('Error al completar la tarea', { id: 'completar-tarea' });
+    }
+  };
+
+  const handleAgregarNota = async () => {
+    if (!formNotaContenido.trim()) {
+      toast.error('El contenido de la nota es obligatorio');
+      return;
+    }
+    try {
+      toast.loading('Guardando nota...', { id: 'agregar-nota' });
+      const usuarioActual = localStorage.getItem('esap_user_name') || proceso.abogadoAsignado || 'Investigador';
+
+      const res = await legalService.createJuzgamientoNota(proceso.id, {
+        contenido: formNotaContenido.trim(),
+        tipo: formNotaTipo,
+        autorNombre: usuarioActual
+      });
+
+      const tipoLabel = formNotaTipo === 'importante' ? 'Importante' : formNotaTipo === 'alerta' ? 'Alerta' : 'Seguimiento';
+
+      const nuevaNota: NotaExpediente = {
+        id: res.id,
+        fecha: new Date().toLocaleDateString('es-CO'),
+        autor: usuarioActual,
+        nota: res.contenido || formNotaContenido.trim(),
+        tipo: tipoLabel
+      };
+      setNotasInternas(prev => [nuevaNota, ...prev]);
+      setHasChanges(true);
+      setModalAgregarNotaAbierto(false);
+      // Reset form
+      setFormNotaContenido('');
+      setFormNotaTipo('seguimiento');
+      toast.success('Nota interna guardada', { id: 'agregar-nota' });
+    } catch (error) {
+      console.error('Error creating nota:', error);
+      toast.error('Error al guardar la nota', { id: 'agregar-nota' });
+    }
   };
 
   // ==================== FUNCIONES PARA ÚLTIMA ACTUACIÓN PROCESAL ====================
@@ -788,27 +933,31 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
 
   // Document Handler Logic
-
-  // Document Handler Logic
-  // Updated for robustness: use blob for download, new tab for view
+  // Updated: now uses the built-in VisorDocumentoModal instead of window.open
   const handleVerDocumento = (doc: any) => {
     const url = doc.documentoUrl || doc.url || doc.archivoUrl;
     if (url) {
-      window.open(url, '_blank');
+      setDocumentoSeleccionado({
+        documentoUrl: url,
+        documentoNombre: doc.nombre || doc.documentoNombre || 'Documento',
+        descripcion: doc.tipo || doc.tipoDocumento || 'Documento del proceso'
+      });
+      setVisorAbierto(true);
     } else {
       toast.error('No hay documento para visualizar');
     }
   };
 
   const handleDescargarDocumento = async (doc: any) => {
-    const url = doc.documentoUrl || doc.url || doc.archivoUrl;
+    const rawUrl = doc.documentoUrl || doc.url || doc.archivoUrl;
     const nombreArchivo = doc.documentoNombre || doc.nombre || doc.nombreArchivo || `documento_${Date.now()}.pdf`;
 
-    if (url) {
+    if (rawUrl) {
       try {
         toast.loading('Iniciando descarga...', { id: 'downloading-doc-2' });
+        const fileUrl = getFileUrl(rawUrl);
 
-        const response = await fetch(url);
+        const response = await fetch(fileUrl);
         if (!response.ok) throw new Error('Network error');
 
         const blob = await response.blob();
@@ -836,23 +985,47 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   };
 
   const documentosExpediente: DocumentoExpediente[] = useMemo(() => {
+    // Map backend tipoActuacion to frontend category name
+    const categoriaFromTipo = (tipo: string): string => {
+      const map: Record<string, string> = {
+        'ACTA': 'actas',
+        'EVIDENCIA': 'evidencias',
+        'OFICIO': 'oficios',
+        'AUTO': 'autos',
+        'DOCUMENTO': 'documentos',
+      };
+      return map[tipo] || 'documentos';
+    };
     return documentos.map((doc: any) => ({
       id: doc.id,
       nombre: doc.documentoNombre || doc.nombre || doc.nombreArchivo || 'Documento',
       fecha: doc.fechaActuacion ? new Date(doc.fechaActuacion).toLocaleDateString('es-CO') : (doc.fecha || ''),
       tipo: doc.tipoActuacion || doc.tipo || 'DOCUMENTO',
       tamaño: doc.tamaño || 'N/D',
-      firmante: doc.responsable || proceso.abogadoAsignado || 'Oficina Jurídica',
-      categoria: (doc.categoria || 'documentos').toLowerCase(),
+      firmante: doc.responsable || doc.usuarioResponsable || proceso.abogadoAsignado || 'Oficina Jurídica',
+      categoria: categoriaFromTipo(doc.tipoActuacion || 'DOCUMENTO'),
+      url: doc.documentoUrl || doc.url || doc.archivoUrl || '',
     }));
   }, [documentos, proceso.abogadoAsignado]);
 
   const handleUploadDocumentoDesdeTab = async (file: File, categoria: string, tipoDocumento: string) => {
     try {
       toast.loading('Subiendo documento...', { id: 'upload-documento-tab-jd' });
+      // Map the UI category to tipoActuacion so documents are properly classified
+      const tipoActuacionMap: Record<string, string> = {
+        'actas': 'ACTA',
+        'evidencias': 'EVIDENCIA',
+        'oficios': 'OFICIO',
+        'autos': 'AUTO',
+        'documentos': 'DOCUMENTO',
+        'notificaciones': 'DOCUMENTO',
+        'recursos': 'DOCUMENTO',
+        'informes': 'DOCUMENTO',
+      };
+      const tipoActuacion = tipoActuacionMap[categoria] || 'DOCUMENTO';
       await legalService.createJuzgamientoActuacion(proceso.id, {
-        tipoActuacion: 'DOCUMENTO',
-        descripcion: `${tipoDocumento} (${categoria}): ${file.name}`,
+        tipoActuacion,
+        descripcion: `${tipoDocumento}: ${file.name}`,
         fechaActuacion: new Date().toISOString(),
         file,
       });
@@ -1088,7 +1261,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
             <TabDocumentosExpediente
               expedienteId={proceso.id}
               documentos={documentosExpediente}
-              setDocumentos={(_next) => {}}
+              setDocumentos={(_next) => { }}
               profesionalAsignado={proceso.abogadoAsignado || 'Control Disciplinario'}
               tituloSeccion="Documentos del Proceso Disciplinario"
               moduloContexto="juzgamiento"
@@ -1141,7 +1314,6 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
               expedienteId={proceso.id}
               onCrearTarea={() => {
                 setModalCrearTareaAbierto(true);
-                handleCrearTarea();
               }}
               onEditarTarea={handleEditarTarea}
               onMarcarCompletada={handleMarcarTareaCompletada}
@@ -1154,7 +1326,6 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
               notas={notasInternas}
               onAgregarNota={() => {
                 setModalAgregarNotaAbierto(true);
-                handleAgregarNota();
               }}
             />
           </TabsContent>
@@ -1475,6 +1646,242 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         onSave={handleGuardarActuacion}
         procesoId={proceso.id}
       />
+      {/* ==================== MODAL: CREAR TAREA ==================== */}
+      {modalCrearTareaAbierto && (
+        <Dialog open={modalCrearTareaAbierto} onOpenChange={(open) => {
+          setModalCrearTareaAbierto(open);
+          if (!open) { setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }
+        }}>
+          <DialogContent hideCloseButton className="w-[90vw] max-w-[500px] p-0">
+            <DialogTitle className="sr-only">Nueva Tarea</DialogTitle>
+            <DialogDescription className="sr-only">
+              Crear nueva tarea para el expediente {proceso.id}
+            </DialogDescription>
+
+            <ModalHeaderClean
+              titulo="Nueva Tarea"
+              subtitulo={`Proceso ${proceso.id}`}
+              icono={Calendar}
+              colorIcono="orange"
+              onClose={() => { setModalCrearTareaAbierto(false); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }}
+            />
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Título de la tarea *</label>
+                <input
+                  type="text"
+                  value={formTareaTitulo}
+                  onChange={(e) => setFormTareaTitulo(e.target.value)}
+                  placeholder="Ej: Recopilar soportes documentales"
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Descripción</label>
+                <textarea
+                  value={formTareaDescripcion}
+                  onChange={(e) => setFormTareaDescripcion(e.target.value)}
+                  placeholder="Describa los detalles de la tarea..."
+                  rows={3}
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Prioridad</label>
+                  <select
+                    value={formTareaPrioridad}
+                    onChange={(e) => setFormTareaPrioridad(e.target.value)}
+                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  >
+                    <option value="baja">Baja</option>
+                    <option value="media">Media</option>
+                    <option value="alta">Alta</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Fecha de vencimiento</label>
+                  <input
+                    type="date"
+                    value={formTareaVencimiento}
+                    onChange={(e) => setFormTareaVencimiento(e.target.value)}
+                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setModalCrearTareaAbierto(false); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }}>
+                Cancelar
+              </Button>
+              <Button
+                className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
+                onClick={handleCrearTarea}
+                disabled={!formTareaTitulo.trim()}
+              >
+                Crear Tarea
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ==================== MODAL: EDITAR TAREA ==================== */}
+      {modalEditarTareaAbierto && tareaEnEdicion && (
+        <Dialog open={modalEditarTareaAbierto} onOpenChange={(open) => {
+          setModalEditarTareaAbierto(open);
+          if (!open) { setTareaEnEdicion(null); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }
+        }}>
+          <DialogContent hideCloseButton className="w-[90vw] max-w-[500px] p-0">
+            <DialogTitle className="sr-only">Editar Tarea</DialogTitle>
+            <DialogDescription className="sr-only">
+              Editar tarea del expediente {proceso.id}
+            </DialogDescription>
+
+            <ModalHeaderClean
+              titulo="Editar Tarea"
+              subtitulo={`Proceso ${proceso.id}`}
+              icono={Edit}
+              colorIcono="orange"
+              onClose={() => { setModalEditarTareaAbierto(false); setTareaEnEdicion(null); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }}
+            />
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Título de la tarea *</label>
+                <input
+                  type="text"
+                  value={formTareaTitulo}
+                  onChange={(e) => setFormTareaTitulo(e.target.value)}
+                  placeholder="Ej: Recopilar soportes documentales"
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Descripción</label>
+                <textarea
+                  value={formTareaDescripcion}
+                  onChange={(e) => setFormTareaDescripcion(e.target.value)}
+                  placeholder="Describa los detalles de la tarea..."
+                  rows={3}
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Prioridad</label>
+                  <select
+                    value={formTareaPrioridad}
+                    onChange={(e) => setFormTareaPrioridad(e.target.value)}
+                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  >
+                    <option value="baja">Baja</option>
+                    <option value="media">Media</option>
+                    <option value="alta">Alta</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Fecha de vencimiento</label>
+                  <input
+                    type="date"
+                    value={formTareaVencimiento}
+                    onChange={(e) => setFormTareaVencimiento(e.target.value)}
+                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setModalEditarTareaAbierto(false); setTareaEnEdicion(null); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }}>
+                Cancelar
+              </Button>
+              <Button
+                className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
+                onClick={handleGuardarEdicionTarea}
+                disabled={!formTareaTitulo.trim()}
+              >
+                Guardar Cambios
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ==================== MODAL: AGREGAR NOTA ==================== */}
+      {modalAgregarNotaAbierto && (
+        <Dialog open={modalAgregarNotaAbierto} onOpenChange={(open) => {
+          setModalAgregarNotaAbierto(open);
+          if (!open) { setFormNotaContenido(''); setFormNotaTipo('seguimiento'); }
+        }}>
+          <DialogContent hideCloseButton className="w-[90vw] max-w-[500px] p-0">
+            <DialogTitle className="sr-only">Nueva Nota Interna</DialogTitle>
+            <DialogDescription className="sr-only">
+              Agregar nota interna al expediente {proceso.id}
+            </DialogDescription>
+
+            <ModalHeaderClean
+              titulo="Nueva Nota Interna"
+              subtitulo={`Proceso ${proceso.id}`}
+              icono={Edit}
+              colorIcono="yellow"
+              onClose={() => { setModalAgregarNotaAbierto(false); setFormNotaContenido(''); setFormNotaTipo('seguimiento'); }}
+            />
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Tipo de nota</label>
+                <select
+                  value={formNotaTipo}
+                  onChange={(e) => setFormNotaTipo(e.target.value)}
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                >
+                  <option value="seguimiento">📋 Seguimiento</option>
+                  <option value="importante">⚠️ Importante</option>
+                  <option value="alerta">🔔 Alerta</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Contenido de la nota *</label>
+                <textarea
+                  value={formNotaContenido}
+                  onChange={(e) => setFormNotaContenido(e.target.value)}
+                  placeholder="Escriba el contenido de la nota interna..."
+                  rows={5}
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 resize-none"
+                />
+              </div>
+
+              <Card className="p-3 bg-yellow-50 border-2 border-yellow-200">
+                <p className="text-xs text-yellow-800">
+                  <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+                  Las notas internas son visibles solo para el equipo jurídico y no forman parte del expediente oficial.
+                </p>
+              </Card>
+            </div>
+
+            <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setModalAgregarNotaAbierto(false); setFormNotaContenido(''); setFormNotaTipo('seguimiento'); }}>
+                Cancelar
+              </Button>
+              <Button
+                className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
+                onClick={handleAgregarNota}
+                disabled={!formNotaContenido.trim()}
+              >
+                Guardar Nota
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </Dialog>
   );
 }

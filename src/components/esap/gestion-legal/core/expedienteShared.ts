@@ -79,6 +79,7 @@ export interface DocumentoExpediente {
   tamaño: string;
   firmante?: string;
   categoria: string;
+  url?: string;
 }
 
 export interface ActuacionExpediente {

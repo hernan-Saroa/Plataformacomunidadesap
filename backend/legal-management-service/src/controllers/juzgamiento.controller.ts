@@ -1,13 +1,17 @@
-import { Controller, Get, Post, Body, Param, Put, Patch, Query, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Patch, Delete, Query, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ExpedienteService } from '../services/expediente.service';
 import { Expediente } from '../entities/expediente.entity';
+import { TareasNotasService } from '../services/tareas-notas.service';
 
 @Controller('juzgamiento')
 export class JuzgamientoController {
-    constructor(private readonly expedienteService: ExpedienteService) { }
+    constructor(
+        private readonly expedienteService: ExpedienteService,
+        private readonly tareasNotasService: TareasNotasService
+    ) { }
 
     @Get()
     async findAll(@Query('search') search?: string) {
@@ -209,6 +213,72 @@ export class JuzgamientoController {
     @Patch('excepciones/:id/resolver')
     async resolverExcepcion(@Param('id') id: string, @Body() data: any) {
         return this.expedienteService.resolverExcepcion(id, data);
+    }
+
+    // ==================== TAREAS DEL EXPEDIENTE ====================
+
+    @Get(':radicado/tareas')
+    async getTareas(@Param('radicado') radicado: string) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        return this.tareasNotasService.findTareasByExpediente(expediente.id);
+    }
+
+    @Post(':radicado/tareas')
+    async createTarea(
+        @Param('radicado') radicado: string,
+        @Body() body: any
+    ) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        return this.tareasNotasService.createTarea({
+            expedienteId: expediente.id,
+            titulo: body.titulo,
+            descripcion: body.descripcion,
+            fechaVencimiento: body.fechaVencimiento ? new Date(body.fechaVencimiento) : undefined,
+            prioridad: body.prioridad || 'media',
+            estado: body.estado || 'pendiente',
+            responsableNombre: body.responsableNombre,
+            creadoPor: body.creadoPor
+        });
+    }
+
+    @Patch(':radicado/tareas/:tareaId')
+    async updateTarea(
+        @Param('tareaId') tareaId: string,
+        @Body() body: any
+    ) {
+        return this.tareasNotasService.updateTarea(tareaId, body);
+    }
+
+    @Delete(':radicado/tareas/:tareaId')
+    async deleteTarea(@Param('tareaId') tareaId: string) {
+        await this.tareasNotasService.deleteTarea(tareaId);
+        return { message: 'Tarea eliminada' };
+    }
+
+    // ==================== NOTAS DEL EXPEDIENTE ====================
+
+    @Get(':radicado/notas')
+    async getNotas(@Param('radicado') radicado: string) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        return this.tareasNotasService.findNotasByExpediente(expediente.id);
+    }
+
+    @Post(':radicado/notas')
+    async createNota(
+        @Param('radicado') radicado: string,
+        @Body() body: any
+    ) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        return this.tareasNotasService.createNota({
+            expedienteId: expediente.id,
+            contenido: body.contenido,
+            tipo: body.tipo || 'general',
+            autorNombre: body.autorNombre
+        });
     }
 }
 
