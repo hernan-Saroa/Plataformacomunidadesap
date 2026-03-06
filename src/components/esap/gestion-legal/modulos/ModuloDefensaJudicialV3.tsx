@@ -806,6 +806,7 @@ function ColumnaKanban({
       initial={{ width: 320 }}
       animate={{ width: 320 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
+      style={{maxWidth: '320px'}}
     >
       <Card className="h-full border border-gray-200 bg-white">
         <div className={`${isMobile ? 'p-2.5' : isSmallDesktop ? 'p-2.5' : 'p-3'} border-b bg-gray-50`}>
