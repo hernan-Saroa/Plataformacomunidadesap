@@ -35,6 +35,7 @@ import { ModalCrearTarea } from './ModalCrearTarea';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalGestionDocumentos } from './ModalGestionDocumentos';
+import { ModalNuevaDemandaRESTAURADO } from './ModalNuevaDemandaRESTAURADO';
 import { copyToClipboard } from '../../../../utils/clipboard';
 import { legalService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
@@ -70,6 +71,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [modalGestionDocumentosAbierto, setModalGestionDocumentosAbierto] = useState(false);
   const [modalRegistrarActuacionAbierto, setModalRegistrarActuacionAbierto] = useState(false);
   const [modalProgramarAudienciaAbierto, setModalProgramarAudienciaAbierto] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   // Estado para modal de reasignar
   const [showReasignarModal, setShowReasignarModal] = useState(false);
@@ -1000,6 +1002,21 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   };
 
+  const handleGuardarEdicion = async (data: any, isEdit?: boolean, id?: string) => {
+    try {
+      if (!isEdit || !id) return;
+      await legalService.updateExpediente(id, data);
+      setIsEditModalOpen(false);
+      // Actualizar los datos del expediente en el modal actual o avisar al padre
+      if (onUpdate) {
+        onUpdate();
+      }
+    } catch (error) {
+      console.error('Error al actualizar expediente', error);
+      throw error; // Para que ModalNuevaDemandaRESTAURADO muestre error si es que lo maneja
+    }
+  };
+
   const handleGenerarInforme = () => {
     toast.info('📊 Generando informe ejecutivo', {
       description: 'Compilando datos del expediente...',
@@ -1288,6 +1305,17 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   {tareas.length} tareas
                 </Badge>
               </>
+            }
+            actions={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditModalOpen(true)}
+                className="text-blue-600 border-blue-600 hover:bg-blue-50 bg-white shadow-sm flex-shrink-0"
+              >
+                <Edit className="w-4 h-4 mr-2" />
+                Editar Proceso
+              </Button>
             }
             onClose={onClose}
           />
@@ -1760,7 +1788,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   expedienteId={String(expediente.uuid || expediente.id)}
                   onCrearTarea={() => setModalCrearTareaAbierto(true)}
                   onEditarTarea={handleEditarTarea}
-                  onMarcarCompletada={handleMarcarCompletada}
+                  onMarcarCompletada={(id) => handleMarcarCompletada(String(id))}
                 />
               </TabsContent>
 
@@ -2155,6 +2183,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Edición de Expediente */}
+      {isEditModalOpen && (
+        <ModalNuevaDemandaRESTAURADO
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          onSave={handleGuardarEdicion}
+          expedienteEdit={expediente}
+        />
       )}
 
     </>

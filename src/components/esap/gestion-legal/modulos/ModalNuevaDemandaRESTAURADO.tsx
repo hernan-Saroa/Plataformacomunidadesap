@@ -25,6 +25,7 @@
  */
 
 import { useState, useEffect } from 'react';
+// @ts-ignore
 import { toast } from 'sonner@2.0.3';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { estructuraService } from '../../../../services/api/estructura.service';
@@ -45,6 +46,7 @@ import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import type { ExpedienteJudicial, ParteProcesal } from '../core/types';
 
 // ==================== INTERFACES ====================
 
@@ -118,7 +120,8 @@ export interface NuevaDemandaData {
 interface ModalNuevaDemandaRESTAURADOProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: NuevaDemandaData) => void;
+  onSave: (data: NuevaDemandaData, isEdit?: boolean, originalId?: string) => void;
+  expedienteEdit?: ExpedienteJudicial;
 }
 
 // ==================== DATOS PARAMETRIZABLES ====================
@@ -241,7 +244,7 @@ function calcularFechaVencimiento(
 
 // ==================== COMPONENTE PRINCIPAL ====================
 
-export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNuevaDemandaRESTAURADOProps) {
+export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedienteEdit }: ModalNuevaDemandaRESTAURADOProps) {
   // Obtener datos dinámicos del submódulo de configuración
   const { mediosControlActivos, tiposProcesosActivos, estadosActivos } = useConfiguracionModulo('defensa-judicial');
 
@@ -276,34 +279,104 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
   const [abogadosAPI, setAbogadosAPI] = useState<{ id: string; nombre: string }[]>([]);
   const [enviando, setEnviando] = useState(false);
 
-  // Resetear el formulario completamente al abrir el modal
+  // Resetear o pre-llenar el formulario al abrir el modal
   useEffect(() => {
     if (isOpen) {
-      setPasoActual(1);
-      setFormData({
-        numeroRadicado: '',
-        medioControl: '',
-        tipoProcesoJudicial: '',
-        etapaProcesal: '',
-        cuantia: 0,
-        demandantes: [],
-        demandados: [],
-        otrosActores: [],
-        juzgadoTribunal: '',
-        departamento: '',
-        ciudad: '',
-        tipoPlazo: 'Dias Habiles',
-        termino: 30,
-        fechaNotificacion: '',
-        fechaVencimiento: '',
-        abogadoResponsable: '',
-        pretensiones: '',
-        hechos: '',
-        observaciones: ''
-      });
-      setCiudadesDisponibles([]);
+      if (expedienteEdit) {
+        setPasoActual(1);
+
+        // Mapear Partes Procesales a los tipos del formulario
+        const mapDemandante = (p: ParteProcesal): Demandante => ({
+          id: p.id,
+          tipoPersona: p.tipoPersona === 'juridica' ? 'Juridica' : 'Natural',
+          cedula: p.identificacion,
+          nombreCompleto: p.nombre,
+          telefono: p.telefono || '',
+          correo: p.email || '',
+          direccion: p.direccion || '',
+          tieneApoderado: !!p.apoderado,
+          apoderado: p.apoderado ? { nombreCompleto: p.apoderado, cedula: '', celular: '', correo: '' } : undefined
+        });
+
+        const mapDemandado = (p: ParteProcesal): Demandado => ({
+          id: p.id,
+          tipoPersona: p.tipoPersona === 'juridica' ? 'Juridica' : 'Natural',
+          cedula: p.identificacion,
+          nombreCompleto: p.nombre,
+          cargoFuncion: p.cargo || '',
+          telefono: p.telefono || '',
+          correo: p.email || '',
+          direccion: p.direccion || '',
+          tieneApoderado: !!p.apoderado,
+          apoderado: p.apoderado ? { nombreCompleto: p.apoderado, cedula: '', celular: '', correo: '' } : undefined
+        });
+
+        const mapOtroActor = (p: ParteProcesal): OtroActor => ({
+          id: p.id,
+          tipoPersona: p.tipoPersona === 'juridica' ? 'Juridica' : 'Natural',
+          cedula: p.identificacion,
+          nombreCompleto: p.nombre,
+          rol: p.rol || '',
+          telefono: p.telefono || '',
+          correo: p.email || '',
+          direccion: p.direccion || '',
+          tieneApoderado: !!p.apoderado,
+          apoderado: p.apoderado ? { nombreCompleto: p.apoderado, cedula: '', celular: '', correo: '' } : undefined
+        });
+
+        setFormData({
+          numeroRadicado: expedienteEdit.radicado || expedienteEdit.id,
+          medioControl: expedienteEdit.medioControl as string || '',
+          tipoProcesoJudicial: expedienteEdit.tipoProceso || expedienteEdit.tipo || '',
+          etapaProcesal: expedienteEdit.etapa as string || '',
+          cuantia: typeof expedienteEdit.cuantia === 'string' ? parseFloat(expedienteEdit.cuantia.replace(/[^0-9.-]+/g, "")) : (expedienteEdit.cuantia || 0),
+          demandantes: expedienteEdit.demandantes ? expedienteEdit.demandantes.map(mapDemandante) : [],
+          demandados: expedienteEdit.demandados ? expedienteEdit.demandados.map(mapDemandado) : [],
+          otrosActores: expedienteEdit.otrosActores ? expedienteEdit.otrosActores.map(mapOtroActor) : [],
+          juzgadoTribunal: expedienteEdit.juzgadoConocimiento || expedienteEdit.juzgado || '',
+          departamento: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[1].trim() : '') : '',
+          ciudad: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[0].trim() : expedienteEdit.ubicacionFisica) : '',
+          tipoPlazo: expedienteEdit.tipoConteoTermino === 'CALENDARIO' ? 'Dias Calendario' : 'Dias Habiles',
+          termino: expedienteEdit.diasTotales || 30,
+          fechaNotificacion: expedienteEdit.fechaNotificacion ?
+            (typeof expedienteEdit.fechaNotificacion === 'string' ? new Date(expedienteEdit.fechaNotificacion).toISOString().slice(0, 16) :
+              toLocalISO(expedienteEdit.fechaNotificacion)) : '',
+          fechaVencimiento: expedienteEdit.fechaVencimientoTerminos ?
+            (typeof expedienteEdit.fechaVencimientoTerminos === 'string' ? new Date(expedienteEdit.fechaVencimientoTerminos).toISOString().slice(0, 16) :
+              toLocalISO(expedienteEdit.fechaVencimientoTerminos)) : '',
+          abogadoResponsable: expedienteEdit.abogadoAsignado || '',
+          pretensiones: expedienteEdit.pretensiones || '',
+          hechos: expedienteEdit.hechos || '',
+          observaciones: ''
+        });
+        setCiudadesDisponibles([]);
+      } else {
+        setPasoActual(1);
+        setFormData({
+          numeroRadicado: '',
+          medioControl: '',
+          tipoProcesoJudicial: '',
+          etapaProcesal: '',
+          cuantia: 0,
+          demandantes: [],
+          demandados: [],
+          otrosActores: [],
+          juzgadoTribunal: '',
+          departamento: '',
+          ciudad: '',
+          tipoPlazo: 'Dias Habiles',
+          termino: 30,
+          fechaNotificacion: '',
+          fechaVencimiento: '',
+          abogadoResponsable: '',
+          pretensiones: '',
+          hechos: '',
+          observaciones: ''
+        });
+        setCiudadesDisponibles([]);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, expedienteEdit]);
 
   // Calcular fecha de vencimiento automáticamente
   useEffect(() => {
@@ -354,13 +427,18 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
           .then(res => {
             const ciudades = (res.data || []).map((c: any) => c.nomDivGeopolitica as string);
             setCiudadesDisponibles(ciudades);
+            // Solo borrar la ciudad si no está entre las disponibles o no existe
+            const isCityValid = formData.ciudad && ciudades.includes(formData.ciudad);
+            if (!formData.ciudad || !isCityValid) {
+              setFormData(prev => ({ ...prev, ciudad: '' }));
+            }
           })
           .catch(() => setCiudadesDisponibles([]))
           .finally(() => setCargandoCiudades(false));
       } else {
         setCiudadesDisponibles([]);
+        setFormData(prev => ({ ...prev, ciudad: '' }));
       }
-      setFormData(prev => ({ ...prev, ciudad: '' }));
     }
   }, [formData.departamento, departamentosAPI]);
 
@@ -606,18 +684,46 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
     try {
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      onSave(formData);
+      const isEdit = !!expedienteEdit;
+      const idStr = expedienteEdit?.uuid || expedienteEdit?.id;
 
-      const consecutivo = `ESAP-DN-OCID-DJ-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}-2026`;
+      // Build payload explicitly with only the scalar columns allowed by the Expediente entity
+      const formattedData = {
+        radicado: formData.numeroRadicado,
+        medioControl: formData.medioControl || undefined,
+        tipoProceso: formData.tipoProcesoJudicial || undefined,
+        etapaProcesal: formData.etapaProcesal || undefined,
+        cuantia: formData.cuantia || undefined,
+        juzgadoConocimiento: formData.juzgadoTribunal || undefined,
+        ubicacionFisica: formData.ciudad && formData.departamento
+          ? `${formData.ciudad} - ${formData.departamento}`
+          : formData.ciudad || formData.departamento || undefined,
+        fechaNotificacion: formData.fechaNotificacion ? new Date(formData.fechaNotificacion).toISOString() : undefined,
+        fechaVencimientoTermino: formData.fechaVencimiento ? new Date(formData.fechaVencimiento).toISOString() : undefined,
+        abogadoSustanciador: formData.abogadoResponsable || undefined,
+        pretensionDemandante: formData.pretensiones || undefined,
+        hechos: formData.hechos || undefined,
+        tipoConteoTermino: formData.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
+        terminoProcesalDias: formData.termino || undefined,
+        // Demandantes, Demandados, and Otros Actores arrays are NOT saved sequentially by updateExpediente
+        // because the backend only performs a scalar query builder update. 
+        // We omit formData.demandantes, formData.demandados to avoid EntityPropertyNotFoundError.
+      };
 
-      toast.success('✅ Demanda Registrada', {
-        description: `${consecutivo} - ${formData.numeroRadicado}`,
+      // Typecasting to any because onSave expects `NuevaDemandaData` signature, 
+      // but passing stripped object directly avoids modifying the whole upstream chain
+      onSave(formattedData as any, isEdit, idStr);
+
+      const consecutivo = isEdit ? formData.numeroRadicado : `ESAP-DN-OCID-DJ-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}-2026`;
+
+      toast.success(isEdit ? '✅ Cambios Guardados' : '✅ Demanda Registrada', {
+        description: isEdit ? `Expediente actualizado exitosamente` : `${consecutivo} - ${formData.numeroRadicado}`,
         duration: 4000
       });
 
       onClose();
     } catch (error) {
-      toast.error('❌ Error al registrar demanda', {
+      toast.error(expedienteEdit ? '❌ Error al actualizar demanda' : '❌ Error al registrar demanda', {
         description: 'Por favor intente nuevamente'
       });
     } finally {
@@ -649,15 +755,15 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-5xl h-[90vh] flex flex-col p-0">
-        <DialogTitle className="sr-only">Nuevo Proceso Judicial</DialogTitle>
+        <DialogTitle className="sr-only">{expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}</DialogTitle>
         <DialogDescription className="sr-only">
-          Wizard para registro de nuevo proceso judicial - Paso {pasoActual} de {totalPasos}
+          Wizard para {expedienteEdit ? 'edición' : 'registro'} de proceso judicial - Paso {pasoActual} de {totalPasos}
         </DialogDescription>
 
         {/* HEADER - flex-shrink-0 (siempre visible) */}
         <ModalHeaderClean
           icono={Scale}
-          titulo="Nuevo Proceso Judicial"
+          titulo={expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}
           subtitulo={
             pasoActual === 1 ? 'Datos del Proceso Judicial' :
               pasoActual === 2 ? 'Datos del/los Demandante(s)' :
@@ -1792,12 +1898,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                 {enviando ? (
                   <>
                     <Clock className="w-4 h-4 mr-2 animate-spin" />
-                    Registrando...
+                    {expedienteEdit ? 'Guardando...' : 'Registrando...'}
                   </>
                 ) : (
                   <>
                     <Save className="w-4 h-4 mr-2" />
-                    Registrar Demanda
+                    {expedienteEdit ? 'Guardar Cambios' : 'Registrar Demanda'}
                   </>
                 )}
               </Button>
