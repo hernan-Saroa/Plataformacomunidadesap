@@ -9,9 +9,10 @@
  * - Configuración (ACTUALIZADO CON PLANTILLAS DE AUTOS)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LayoutDashboard, CheckCircle, Archive, Clock, Users, Settings, Scale } from 'lucide-react';
 import { ModuleLayout, type MenuItem } from '../shared/ModuleLayout';
+import { toast } from 'sonner@2.0.3';
 
 // ✅ Importar todos los módulos especializados
 import { GestionProfesionalesWorldClass } from './GestionProfesionalesWorldClass'; // ✅ RF007 WORLD CLASS - Diseño actualizado
@@ -20,9 +21,62 @@ import { ModuloConfiguracionRelacionado } from './ModuloConfiguracionRelacionado
 import { RevisionAprobacionJefe } from './RevisionAprobacionJefe'; // ✅ RF004 100% Funcional
 import { ExpedientesElectronicosWorldClass } from './ExpedientesElectronicosWorldClass'; // ✅ RF005 100% Funcional - DISEÑO WORLD-CLASS
 import { GestionTerminosAlertas } from './GestionTerminosAlertas'; // ✅ RF006 - Vista alineada con diseño esperado
+import { GestionTerminosAlertasWorldClass } from './GestionTerminosAlertasWorldClass';
 import { DashboardKanbanOperativo } from './DashboardKanbanOperativo'; // ✅ Kanban Operativo Completo
+import type { BorradorPendiente } from './ModalRevisionAuto';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
+
+export interface ResultadoRevision {
+  borradorId: string;
+  procesoId: string;
+  accion: 'aprobado' | 'devuelto';
+  comentarios: string;
+  motivo?: string;
+  fecha: string;
+}
+
+const BORRADORES_INICIALES: BorradorPendiente[] = [
+  {
+    id: 'b1',
+    numeroProceso: 'P-120-2025',
+    titulo: 'Auto de Indagación Preliminar',
+    plantilla: 'Auto de Indagación Preliminar',
+    version: 2,
+    fechaEnvio: '2025-01-08T14:30:00',
+    profesional: { nombre: 'Juan Carlos Pérez', email: 'juan.perez@esap.edu.co' },
+    observacionesProfesional: 'Se adjuntan todos los documentos soporte. La conducta presunta está claramente configurada según el artículo 48 de la Ley 734.',
+    contenido: `AUTO DE APERTURA DE INDAGACIÓN PRELIMINAR\n\nPROCESO No: P-120-2025\nNOTICIA ORIGEN: ND-260\nDISCIPLINABLE: Juan Pérez Gómez\nIDENTIFICACIÓN: 1234567890\n\nLa Oficina de Control Interno Disciplinario de la ESAP, en uso de sus facultades legales,\n\nCONSIDERANDO:\n\nPRIMERO: Que mediante noticia disciplinaria No. ND-260 se puso en conocimiento presuntos hechos de acoso laboral.\n\nSEGUNDO: Que los hechos descritos ameritan indagación preliminar.\n\nRESUELVE:\n\nARTÍCULO PRIMERO: ABRIR INDAGACIÓN PRELIMINAR en contra de Juan Pérez Gómez.\n\nARTÍCULO SEGUNDO: NOTIFÍQUESE el presente auto al investigado.`,
+    denunciado: 'Juan Pérez Gómez',
+    etapa: 'Indagación Preliminar',
+    prioridad: 'alta',
+    estado: 'pendiente_revision',
+    tiempoEspera: '2h 15m',
+    historial: [
+      { id: 'h1', tipo: 'recibido', usuario: 'Juan Carlos Pérez', fecha: '2025-01-08T14:30:00', descripcion: 'Borrador enviado para revisión', detalles: { version: 2 } }
+    ]
+  },
+  {
+    id: 'b2',
+    numeroProceso: 'P-089-2024',
+    titulo: 'Auto de Inhibitorio',
+    plantilla: 'Auto de Inhibitorio',
+    version: 1,
+    fechaEnvio: '2025-01-07T10:15:00',
+    profesional: { nombre: 'María Torres', email: 'maria.torres@esap.edu.co' },
+    observacionesProfesional: 'Los hechos investigados no constituyen falta disciplinaria. Se recomienda archivo.',
+    contenido: `AUTO DE INHIBITORIO\n\nPROCESO No: P-089-2024\nNOTICIA ORIGEN: ND-178\n\nSe RESUELVE INHIBIRSE de iniciar investigación disciplinaria por no configurarse falta disciplinaria.`,
+    denunciado: 'María González Castro',
+    etapa: 'Valoración',
+    prioridad: 'media',
+    estado: 'en_revision',
+    tiempoEspera: '1d 4h',
+    historial: [
+      { id: 'h2', tipo: 'recibido', usuario: 'María Torres', fecha: '2025-01-07T10:15:00', descripcion: 'Borrador enviado para revisión' },
+      { id: 'h3', tipo: 'revision_iniciada', usuario: 'Jefe OCID', fecha: '2025-01-08T09:00:00', descripcion: 'Revisión iniciada' }
+    ]
+  }
+];
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ControlDisciplinarioFull() {
@@ -49,6 +103,8 @@ export function ControlDisciplinarioFull() {
   type Section = 'dashboard' | 'aprobacion' | 'expediente' | 'terminos' | 'profesionales' | 'config';
   const [currentSection, setCurrentSection] = useState<Section>('dashboard');
   const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
+  const [borradores, setBorradores] = useState<BorradorPendiente[]>(BORRADORES_INICIALES);
+  const [revisionLog, setRevisionLog] = useState<ResultadoRevision[]>([]);
 
   const hasPermissionBySection: Record<Section, boolean> = {
     dashboard: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_MANAGE),
@@ -72,7 +128,14 @@ export function ControlDisciplinarioFull() {
 
   const menuItems: MenuItem[] = [
     { id: 'dashboard', label: 'Procesos', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5', visible: hasPermissionBySection.dashboard },
-    { id: 'aprobacion', label: 'Revisión y Aprobación', icon: <CheckCircle className="w-5 h-5" />, color: '#10B981', visible: hasPermissionBySection.aprobacion },
+    {
+      id: 'aprobacion',
+      label: 'Revisión y Aprobación',
+      icon: <CheckCircle className="w-5 h-5" />,
+      color: '#10B981',
+      visible: hasPermissionBySection.aprobacion,
+      badge: borradores.filter(b => b.estado === 'pendiente_revision' || b.estado === 'en_revision').length || undefined
+    },
     { id: 'expediente', label: 'Expediente Electrónico', icon: <Archive className="w-5 h-5" />, color: '#8B5CF6', visible: hasPermissionBySection.expediente },
     { id: 'terminos', label: 'Términos y Alertas', icon: <Clock className="w-5 h-5" />, color: '#F59E0B', visible: hasPermissionBySection.terminos },
     { id: 'profesionales', label: 'Profesionales', icon: <Users className="w-5 h-5" />, color: '#003DA5', visible: hasPermissionBySection.profesionales },
@@ -92,6 +155,87 @@ export function ControlDisciplinarioFull() {
   const handleLimpiarFiltroProfesional = () => {
     setFiltroProfesional(null);
   };
+
+  const handleEnviarARevisionGlobal = useCallback((borrador: BorradorPendiente) => {
+    setBorradores(prev => {
+      const exists = prev.find(b => b.id === borrador.id);
+      if (exists) {
+        return prev.map(b => b.id === borrador.id ? { ...borrador, estado: 'pendiente_revision' as const } : b);
+      }
+      return [...prev, borrador];
+    });
+  }, []);
+
+  const handleNavigateToRevision = useCallback(() => {
+    setCurrentSection('aprobacion');
+  }, []);
+
+  const handleAprobarBorrador = useCallback((borradorId: string, comentarios: string) => {
+    const borrador = borradores.find(b => b.id === borradorId);
+    setBorradores(prev => prev.map(b =>
+      b.id === borradorId
+        ? {
+            ...b,
+            estado: 'aprobado' as const,
+            historial: [
+              ...b.historial,
+              {
+                id: `h-${Date.now()}`,
+                tipo: 'aprobado' as const,
+                usuario: 'Jefe OCID',
+                fecha: new Date().toISOString(),
+                descripcion: `Auto aprobado${comentarios ? `: ${comentarios}` : ''}`,
+              }
+            ]
+          }
+        : b
+    ));
+    setRevisionLog(prev => [...prev, {
+      borradorId,
+      procesoId: borrador?.numeroProceso || borradorId,
+      accion: 'aprobado',
+      comentarios,
+      fecha: new Date().toISOString(),
+    }]);
+    toast.success('Auto Aprobado exitosamente', {
+      description: `${borrador?.numeroProceso} — ${borrador?.titulo} · Firmado por el Jefe OCID`,
+      duration: 5000,
+    });
+  }, [borradores]);
+
+  const handleDevolverBorrador = useCallback((borradorId: string, motivo: string, comentarios: string, _archivos: File[]) => {
+    const borrador = borradores.find(b => b.id === borradorId);
+    setBorradores(prev => prev.map(b =>
+      b.id === borradorId
+        ? {
+            ...b,
+            estado: 'devuelto' as const,
+            historial: [
+              ...b.historial,
+              {
+                id: `h-${Date.now()}`,
+                tipo: 'devuelto' as const,
+                usuario: 'Jefe OCID',
+                fecha: new Date().toISOString(),
+                descripcion: `Devuelto: ${motivo}${comentarios ? ` — ${comentarios}` : ''}`,
+              }
+            ]
+          }
+        : b
+    ));
+    setRevisionLog(prev => [...prev, {
+      borradorId,
+      procesoId: borrador?.numeroProceso || borradorId,
+      accion: 'devuelto',
+      comentarios,
+      motivo,
+      fecha: new Date().toISOString(),
+    }]);
+    toast.warning('Auto Devuelto para corrección', {
+      description: `${borrador?.numeroProceso} — El profesional debe corregir y reenviar`,
+      duration: 5000,
+    });
+  }, [borradores]);
 
   return (
     <ModuleLayout
@@ -114,12 +258,22 @@ export function ControlDisciplinarioFull() {
       {currentSection === 'dashboard' && (
         <DashboardKanbanOperativo 
           onNavigateToExpediente={() => setCurrentSection('expediente')} 
-          filtroProfesionalId={filtroProfesional} 
+          filtroProfesionalId={filtroProfesional}
+          onEnviarARevision={handleEnviarARevisionGlobal}
+          onNavigateToRevision={handleNavigateToRevision}
+          revisionLog={revisionLog}
         />
       )}
-      {currentSection === 'aprobacion' && <RevisionAprobacionJefe />}
+      {currentSection === 'aprobacion' && (
+        <RevisionAprobacionJefe
+          borradores={borradores}
+          onAprobar={handleAprobarBorrador}
+          onDevolver={handleDevolverBorrador}
+        />
+      )}
       {currentSection === 'expediente' && <ExpedientesElectronicosWorldClass />}
       {currentSection === 'terminos' && <GestionTerminosAlertas />}
+      {/* {currentSection === 'terminos' && <GestionTerminosAlertasWorldClass />} */}
       {currentSection === 'profesionales' && <GestionProfesionalesWorldClass onVerProcesos={handleVerProcesosProfesional} />}
       {currentSection === 'config' && <ModuloConfiguracionPremium />}
     </ModuleLayout>

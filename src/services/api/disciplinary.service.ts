@@ -56,16 +56,16 @@ export interface DisciplinaryNews {
 
 // ... (other interfaces remain similar, can refine DisciplinaryProcess if needed)
 
-export interface CreateNewsDto {
-    origen: string; // Must be: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION'
-    territorial: string;
-    dependenciaDenunciado: string;
-    hechos: string;
-    denunciante: string; // JSON Stringified single object
-    disciplinable: string; // JSON Stringified single object
-    // Backend generates these automatically, don't send:
-    // radicado, fechaRecepcion, estado, observaciones
-}
+// export interface CreateNewsDto {
+//     origen: string; // Must be: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION'
+//     territorial: string;
+//     dependenciaDenunciado: string;
+//     hechos: string;
+//     denunciante: string; // JSON Stringified single object
+//     disciplinable: string; // JSON Stringified single object
+//     // Backend generates these automatically, don't send:
+//     // radicado, fechaRecepcion, estado, observaciones
+// }
 
 export interface DisciplinaryProcess {
     id: string;
@@ -142,6 +142,57 @@ export interface CreateAutoConfigurationDto {
 export interface UpdateAutoConfigurationDto {
     tipo?: string;
     nombre?: string;
+    estado?: 'activo' | 'inactivo';
+    plantilla?: string;
+    stage?: string;
+    orden?: number;
+    // Campos de plantilla
+    nombre_plantilla?: string;
+    descripcion_plantilla?: string;
+    version_plantilla?: string;
+    estado_plantilla?: string;
+}
+
+// ==================== CONFIGURACIÓN DE OFICIOS ====================
+
+// Tipo para configuración de oficios
+export interface OficioConfiguration {
+    id: string;
+    tipo: string;
+    nombre: string;
+    codigo: string;
+    descripcion: string;
+    estado: string;
+    plantilla?: string;
+    stage: string | null;
+    orden: number;
+    createdAt: string;
+    updatedAt: string;
+    // Campos de plantilla
+    nombre_plantilla?: string;
+    descripcion_plantilla?: string;
+    version_plantilla?: string;
+    estado_plantilla?: string;
+}
+
+// DTO para crear configuración de oficio
+export interface CreateOficioConfigurationDto {
+    tipo: string;
+    nombre: string;
+    codigo: string;
+    descripcion?: string;
+    estado?: 'activo' | 'inactivo';
+    plantilla?: string;
+    stage?: string;
+    orden?: number;
+}
+
+// DTO para actualizar configuración de oficio
+export interface UpdateOficioConfigurationDto {
+    tipo?: string;
+    nombre?: string;
+    codigo?: string;
+    descripcion?: string;
     estado?: 'activo' | 'inactivo';
     plantilla?: string;
     stage?: string;
@@ -914,6 +965,92 @@ class DisciplinaryService {
         const formData = new FormData();
         formData.append('file', file);
         return apiClient.upload<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/upload-files`, formData);
+    }
+
+    // ==================== CONFIGURACIÓN DE OFICIOS ====================
+
+    /**
+     * Obtener todas las configuraciones de oficios
+     */
+    async getOficiosConfiguration(): Promise<OficioConfiguration[]> {
+        return apiClient.get<OficioConfiguration[]>(`${SERVICE_PREFIX}/oficios-configuration`);
+    }
+
+    /**
+     * Obtener solo las configuraciones de oficios activas
+     */
+    async getOficiosConfigurationActive(): Promise<OficioConfiguration[]> {
+        return apiClient.get<OficioConfiguration[]>(`${SERVICE_PREFIX}/oficios-configuration/active`);
+    }
+
+    /**
+     * Obtener una configuración de oficio por ID
+     */
+    async getOficiosConfigurationById(id: string): Promise<OficioConfiguration> {
+        return apiClient.get<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/${id}`);
+    }
+
+    /**
+     * Obtener una configuración de oficio por tipo
+     */
+    async getOficiosConfigurationByTipo(tipo: string): Promise<OficioConfiguration> {
+        return apiClient.get<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/tipo/${tipo}`);
+    }
+
+    /**
+     * Obtener configuraciones de oficio por stage
+     */
+    async getOficiosConfigurationByStage(stage: string): Promise<OficioConfiguration[]> {
+        return apiClient.get<OficioConfiguration[]>(`${SERVICE_PREFIX}/oficios-configuration/stage/${stage}`);
+    }
+
+    /**
+     * Crear nueva configuración de oficio
+     */
+    async createOficioConfiguration(data: CreateOficioConfigurationDto): Promise<OficioConfiguration> {
+        return apiClient.post<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration`, data);
+    }
+
+    /**
+     * Actualizar configuración de oficio
+     */
+    async updateOficioConfiguration(id: string, data: UpdateOficioConfigurationDto): Promise<OficioConfiguration> {
+        return apiClient.put<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/${id}`, data);
+    }
+
+    /**
+     * Eliminar configuración de oficio
+     */
+    async deleteOficioConfiguration(id: string): Promise<void> {
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/oficios-configuration/${id}`);
+    }
+
+    /**
+     * Activar/desactivar configuración de oficio
+     */
+    async toggleOficioConfigurationEstado(id: string): Promise<OficioConfiguration> {
+        return apiClient.patch<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/${id}/toggle-estado`, {});
+    }
+
+    /**
+     * Subir plantilla Word para un oficio
+     */
+    async uploadOficioPlantilla(
+        id: string, 
+        file: File,
+        nombrePlantilla?: string,
+        descripcionPlantilla?: string,
+        versionPlantilla?: string,
+        estadoPlantilla?: string
+    ): Promise<OficioConfiguration> {
+        const formData = new FormData();
+        formData.append('file', file);
+        // Enviar campos adicionales del plantilla
+        if (nombrePlantilla) formData.append('nombre_plantilla', nombrePlantilla);
+        if (descripcionPlantilla) formData.append('descripcion_plantilla', descripcionPlantilla);
+        if (versionPlantilla) formData.append('version_plantilla', versionPlantilla);
+        if (estadoPlantilla) formData.append('estado_plantilla', estadoPlantilla);
+        return apiClient.upload<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/${id}/upload-files`, formData);
     }
 
     // ==================== COMPARTIR EXPEDIENTE ====================

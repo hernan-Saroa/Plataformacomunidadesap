@@ -24,6 +24,7 @@ export {
   ModalAprobarAuditoria,
   ModalCambiarEstado,
   ModalNotas,
+  ModalFinalizarAuditoria,
 } from './ModalesGestion';
 
 // Re-export default para compatibilidad

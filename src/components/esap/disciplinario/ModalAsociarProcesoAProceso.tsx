@@ -1,8 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { ResponsiveModal } from '@/components/ui/ResponsiveModal';
-import { ModalButtonPrimary, ModalButtonCancel, ModalButtonGroup } from '@/components/ui/ModalButtons';
-import { Search, Scale, AlertCircle, CheckCircle2, Link2, Info } from 'lucide-react';
-import { Badge } from '../../ui/badge';
+import { createPortal } from 'react-dom';
+import { motion } from 'motion/react';
+import { Search, Scale, AlertCircle, CheckCircle2, Link2, Info, X } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 
 /**
@@ -43,7 +42,7 @@ interface Proceso {
   noticiaOrigen: string;
   denunciante: Persona | string;
   denunciado: Persona | string;
-  etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo' | 'Segunda Instancia';
+  etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo';
   estadoActual: string;
   profesionalAsignado: Persona | string;
   semaforo: 'verde' | 'amarillo' | 'rojo';
@@ -102,13 +101,13 @@ export function ModalAsociarProcesoAProceso({
       procesosValidos = procesosValidos.filter(proceso => {
         const denunciadoNombre = typeof proceso.denunciado === 'string' 
           ? proceso.denunciado 
-          : proceso.denunciado.nombre;
+          : (proceso.denunciado?.nombre || 'Sin información');
         const denunciadoCedula = typeof proceso.denunciado === 'string' 
           ? '' 
-          : proceso.denunciado.numeroIdentificacion;
+          : (proceso.denunciado?.numeroIdentificacion || '');
         const profesionalNombre = typeof proceso.profesionalAsignado === 'string' 
           ? proceso.profesionalAsignado 
-          : proceso.profesionalAsignado.nombre;
+          : (proceso.profesionalAsignado?.nombre || 'Sin asignar');
 
         return proceso.numeroProceso.toLowerCase().includes(term) ||
                denunciadoNombre.toLowerCase().includes(term) ||
@@ -232,44 +231,53 @@ export function ModalAsociarProcesoAProceso({
 
   // Obtener nombre del denunciado
   const getDenunciadoNombre = (persona: Persona | string) => {
-    return typeof persona === 'string' ? persona : persona.nombre;
+    return typeof persona === 'string' ? persona : (persona?.nombre || 'Sin información');
   };
 
   const getDenunciadoCedula = (persona: Persona | string) => {
-    return typeof persona === 'string' ? '' : `${persona.tipoIdentificacion} ${persona.numeroIdentificacion}`;
+    return typeof persona === 'string' ? '' : `${persona?.tipoIdentificacion || ''} ${persona?.numeroIdentificacion || ''}`;
   };
 
-  return (
-    <ResponsiveModal
-      isOpen={isOpen}
-      onClose={handleClose}
-      title="Asociar Proceso a Proceso Existente"
-      size="lg"
-      zIndex={200}
-      disableBackdropClick={isSubmitting}
-      disableEscapeKey={isSubmitting}
-      footer={
-        <ModalButtonGroup>
-          <ModalButtonCancel onClick={handleClose} disabled={isSubmitting}>
-            Cancelar
-          </ModalButtonCancel>
-          <ModalButtonPrimary 
-            onClick={handleAsociar} 
-            isLoading={isSubmitting}
-            disabled={!procesoSeleccionado || !justificacion.trim() || justificacion.trim().length < 30}
-          >
-            <Link2 className="w-4 h-4 mr-2" />
-            Asociar Procesos
-          </ModalButtonPrimary>
-        </ModalButtonGroup>
-      }
+  if (!isOpen) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      onClick={(e) => !isSubmitting && e.target === e.currentTarget && handleClose()}
     >
-      <div className="space-y-6">
+      <motion.div
+        className="bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden"
+        style={{ maxWidth: 820, maxHeight: '88vh' }}
+        initial={{ opacity: 0, scale: 0.97, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.97, y: 12 }}
+        transition={{ duration: 0.2 }}
+      >
+        {/* Header */}
+        <div className="px-5 py-4 flex items-center justify-between flex-shrink-0"
+          style={{ background: 'linear-gradient(135deg, #001A6E 0%, #003DA5 100%)' }}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-xl bg-white/10 flex-shrink-0">
+              <Link2 className="w-5 h-5 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-white font-black text-base leading-none">Asociar Proceso a Proceso Existente</p>
+            </div>
+          </div>
+          <button onClick={handleClose} className="p-2 rounded-xl hover:bg-white/10 transition-colors flex-shrink-0 ml-3">
+            <X className="w-5 h-5 text-white" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      <div className="space-y-4">
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         {/* INFORMACIÓN DEL PROCESO ORIGEN */}
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
 
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
           <div className="flex items-start gap-3">
             <div className="flex-shrink-0 w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
               <Scale className="w-5 h-5 text-blue-700" />
@@ -299,7 +307,7 @@ export function ModalAsociarProcesoAProceso({
         {/* INFORMACIÓN IMPORTANTE */}
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
 
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
           <div className="flex items-start gap-2">
             <Info className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
             <div className="text-xs text-amber-800">
@@ -481,7 +489,7 @@ export function ModalAsociarProcesoAProceso({
                 const denunciadoCedula = getDenunciadoCedula(proceso.denunciado);
                 const profesionalNombre = typeof proceso.profesionalAsignado === 'string' 
                   ? proceso.profesionalAsignado 
-                  : proceso.profesionalAsignado.nombre;
+                  : (proceso.profesionalAsignado?.nombre || 'Sin asignar');
 
                 return (
                   <div
@@ -527,17 +535,19 @@ export function ModalAsociarProcesoAProceso({
                           </div>
 
                           {/* Semáforo */}
-                          <Badge 
-                            className={`
-                              text-xs px-2 py-0.5 font-semibold
-                              ${semaforoColor.bg} ${semaforoColor.border} ${semaforoColor.text}
-                            `}
+                          <span
+                            className="text-[10px] px-2 py-0.5 font-bold rounded-full border flex-shrink-0"
+                            style={{
+                              background: proceso.semaforo === 'verde' ? '#ECFDF5' : proceso.semaforo === 'amarillo' ? '#FFFBEB' : '#FEF2F2',
+                              color: proceso.semaforo === 'verde' ? '#059669' : proceso.semaforo === 'amarillo' ? '#D97706' : '#DC2626',
+                              borderColor: proceso.semaforo === 'verde' ? '#A7F3D0' : proceso.semaforo === 'amarillo' ? '#FDE68A' : '#FECACA',
+                            }}
                           >
                             {proceso.semaforo === 'verde' && '🟢'}
                             {proceso.semaforo === 'amarillo' && '🟡'}
                             {proceso.semaforo === 'rojo' && '🔴'}
                             {proceso.diasRestantes} días
-                          </Badge>
+                          </span>
                         </div>
 
                         {/* Grid de info */}
@@ -619,32 +629,24 @@ export function ModalAsociarProcesoAProceso({
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
 
         {procesoSeleccionadoData && justificacion.length >= 30 && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4">
             <div className="flex items-start gap-3">
-              <div className="flex-shrink-0">
-                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                  <AlertCircle className="w-5 h-5 text-green-700" />
-                </div>
+              <div className="w-9 h-9 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <CheckCircle2 className="w-5 h-5 text-green-700" />
               </div>
               <div className="flex-1">
-                <h4 className="font-bold text-sm text-green-900 mb-2">
-                  Resumen de Asociación
-                </h4>
+                <h4 className="font-bold text-sm text-green-900 mb-1.5">Resumen de Asociación</h4>
                 <div className="text-xs text-green-800 space-y-1">
-                  <p>
-                    <strong>Proceso Origen:</strong> {procesoOrigen.numeroProceso} ({procesoOrigen.etapaActual})
-                  </p>
-                  <p>
-                    <strong>Proceso Destino:</strong> {procesoSeleccionadoData.numeroProceso} ({procesoSeleccionadoData.etapaActual})
-                  </p>
-                  <p>
-                    <strong>Tipo de Asociación:</strong>{' '}
-                    <Badge className={`text-xs ${getTipoAsociacionColor(tipoAsociacion).bg} ${getTipoAsociacionColor(tipoAsociacion).text}`}>
+                  <p><strong>Proceso Origen:</strong> {procesoOrigen.numeroProceso} ({procesoOrigen.etapaActual})</p>
+                  <p><strong>Proceso Destino:</strong> {procesoSeleccionadoData.numeroProceso} ({procesoSeleccionadoData.etapaActual})</p>
+                  <p className="flex items-center gap-1.5">
+                    <strong>Tipo:</strong>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
                       {getTipoAsociacionLabel(tipoAsociacion)}
-                    </Badge>
+                    </span>
                   </p>
-                  <p className="pt-2 border-t border-green-200 text-green-700">
-                    Esta asociación quedará registrada en el historial de ambos procesos y permitirá un seguimiento conjunto de los mismos.
+                  <p className="pt-1.5 border-t border-green-200 text-green-700">
+                    Esta asociación quedará registrada en el historial de ambos procesos.
                   </p>
                 </div>
               </div>
@@ -652,7 +654,30 @@ export function ModalAsociarProcesoAProceso({
           </div>
         )}
       </div>
-    </ResponsiveModal>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+          <button
+            onClick={handleClose}
+            disabled={isSubmitting}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border border-gray-300 text-gray-600 hover:bg-gray-100 transition-all disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleAsociar}
+            disabled={!procesoSeleccionado || !justificacion.trim() || justificacion.trim().length < 30 || isSubmitting}
+            className="flex items-center gap-1.5 px-5 py-2 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40"
+            style={{ background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)' }}
+          >
+            <Link2 className="w-4 h-4" />
+            Asociar Procesos
+          </button>
+        </div>
+      </motion.div>
+    </div>,
+    document.body
   );
 }
 

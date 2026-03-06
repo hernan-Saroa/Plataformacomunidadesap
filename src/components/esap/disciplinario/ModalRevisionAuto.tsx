@@ -5,6 +5,7 @@
  */
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Eye, CheckCircle, XCircle, Edit2,
@@ -81,19 +82,20 @@ function ModalAprobacion({
   const [comentarios, setComentarios] = useState('');
   const [tipoFirma, setTipoFirma] = useState<'electronica' | 'digital' | 'local'>('local');
 
-  return (
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[10002]"
-      onClick={onCancel}
+      className="fixed inset-0 z-[250] flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
       <motion.div
-        initial={{ scale: 0.9, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.9, y: 20 }}
-        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.97, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.97, y: 12 }}
+        transition={{ duration: 0.2 }}
         className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6"
       >
         <div className="flex items-center gap-3 mb-6">
@@ -115,7 +117,7 @@ function ModalAprobacion({
           <label className="block text-sm font-semibold mb-2" style={{ color: '#374151' }}>
             Tipo de Firma
           </label>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
               onClick={() => setTipoFirma('local')}
               className={`p-3 rounded-xl border-2 transition-all ${
@@ -185,7 +187,8 @@ function ModalAprobacion({
           </button>
         </div>
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }
 
@@ -215,15 +218,16 @@ function ModalDevolucion({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[10002]"
-      onClick={onCancel}
+      className="fixed inset-0 z-[250] flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
       <motion.div
-        initial={{ scale: 0.9, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.9, y: 20 }}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto"
+        initial={{ opacity: 0, scale: 0.97, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.97, y: 12 }}
+        transition={{ duration: 0.2 }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[88vh] overflow-y-auto p-6"
       >
         <div className="flex items-center gap-3 mb-6">
           <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: '#FEE2E2' }}>
@@ -392,20 +396,22 @@ export function ModalRevisionAuto({
 
   const initials = getInitials(borrador.profesional.nombre);
 
-  return (
+  return createPortal(
     <>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 p-4 z-[9998]"
-        onClick={onClose}
+        className="fixed inset-0 z-[200] flex items-center justify-center"
+        style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+        onClick={(e) => e.target === e.currentTarget && onClose()}
       >
         <motion.div
-          initial={{ scale: 0.9, y: 20 }}
-          animate={{ scale: 1, y: 0 }}
-          onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col"
+          initial={{ opacity: 0, scale: 0.97, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+          className="bg-white rounded-2xl shadow-2xl w-full overflow-hidden flex flex-col"
+          style={{ width: '92vw', maxWidth: 720, maxHeight: '88vh' }}
         >
           {/* Header */}
           <div className="p-6 border-b" style={{ borderColor: '#E5E7EB' }}>
@@ -789,19 +795,18 @@ export function ModalRevisionAuto({
       <AnimatePresence>
         {showModalAprobar && (
           <ModalAprobacion
-            key="modal-aprobacion"
             onConfirm={handleConfirmarAprobacion}
             onCancel={() => setShowModalAprobar(false)}
           />
         )}
         {showModalDevolver && (
           <ModalDevolucion
-            key="modal-devolucion"
             onConfirm={handleConfirmarDevolucion}
             onCancel={() => setShowModalDevolver(false)}
           />
         )}
       </AnimatePresence>
-    </>
+    </>,
+    document.body
   );
 }

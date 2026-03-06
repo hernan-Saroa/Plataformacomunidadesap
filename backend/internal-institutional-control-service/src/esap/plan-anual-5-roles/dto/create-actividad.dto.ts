@@ -84,5 +84,9 @@ export class CreateActividadDto {
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+
+  @IsOptional()
+  @IsString()
+  auditorId?: string;
 }
 

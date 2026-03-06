@@ -57,9 +57,12 @@ import { StageConfiguration } from './entities/stage-configuration.entity';
 import { SystemConfiguration } from './entities/system-configuration.entity';
 import { PlantillaAuto } from './entities/plantilla-auto.entity';
 import { AutoConfiguration } from './entities/auto-configuration.entity';
+import { OficioConfiguration } from './entities/oficio-configuration.entity';
 import { ConfigurationController } from './controllers/configuration.controller';
 import { AutosConfigurationController } from './controllers/autos-configuration.controller';
+import { OficiosConfigurationController } from './controllers/oficio-configuration.controller';
 import { AutosConfigurationService } from './services/autos-configuration.service';
+import { OficiosConfigurationService } from './services/oficio-configuration.service';
 
 import { FilesController } from './controllers/files.controller';
 
@@ -92,6 +95,7 @@ import { EntidadRemisionService } from './services/entidad-remision.service';
       ReglaAlerta,
       AlertaEnviada,
       AutoConfiguration,
+      OficioConfiguration,
       ExpedienteCompartido,
       EntidadRemision,
     ]),
@@ -112,6 +116,7 @@ import { EntidadRemisionService } from './services/entidad-remision.service';
     JobsController,
     DisciplinaryExportController,
     AutosConfigurationController,
+    OficiosConfigurationController,
     CompartirExpedienteController,
     EntidadRemisionController,
   ],
@@ -134,6 +139,7 @@ import { EntidadRemisionService } from './services/entidad-remision.service';
     OnlyOfficeService,
     PdfModifierService,
     AutosConfigurationService,
+    OficiosConfigurationService,
     CompartirExpedienteService,
     EntidadRemisionService,
   ],

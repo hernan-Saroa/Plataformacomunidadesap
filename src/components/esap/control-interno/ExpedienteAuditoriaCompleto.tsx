@@ -21,7 +21,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 17 Febrero 2026
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, FileText, Calendar, Users, Target, Clock, CheckCircle,
@@ -282,6 +282,7 @@ const pestanas = [
 
 interface ExpedienteAuditoriaCompletoProps {
   auditoriaId?: string;
+  auditoriaDataInicial?: any; // Objeto completo de la auditoría (incluye documentoCierre)
   isOpen: boolean;
   onClose: () => void;
   tabInicial?: string;
@@ -289,6 +290,7 @@ interface ExpedienteAuditoriaCompletoProps {
 
 export function ExpedienteAuditoriaCompleto({
   auditoriaId,
+  auditoriaDataInicial,
   isOpen,
   onClose,
   tabInicial = 'general',
@@ -297,6 +299,8 @@ export function ExpedienteAuditoriaCompleto({
   const [auditoria, setAuditoria] = useState<Auditoria | null>(null);
   // ✅ CONECTADO AL BACKEND: Documentos se cargan del backend
   const [documentos, setDocumentos] = useState<DocumentoExpediente[]>([]);
+  // Ref para guardar el doc de cierre y re-inyectarlo en cada recarga
+  const documentoCierreRef = useRef<DocumentoExpediente | null>(null);
   const [loadingDocumentos, setLoadingDocumentos] = useState(false);
   const [historial, setHistorial] = useState<EventoHistorial[]>([]);
   // ✅ Iniciar en loading=true si hay auditoriaId
@@ -402,15 +406,52 @@ export function ExpedienteAuditoriaCompleto({
         setAuditoria(auditoriaBackend);
         
         // ✅ Cargar documentos de la auditoría desde el backend
+        const documentosFinales: DocumentoExpediente[] = [];
+
         try {
           const documentosData = await controlInternoService.getDocumentosByAuditoria(auditoriaId);
           const documentosMapeados = mapearDocumentosBackend(documentosData);
-          setDocumentos(documentosMapeados);
-          console.log(`[Expediente] ✅ Cargados ${documentosMapeados.length} documentos`);
+          documentosFinales.push(...documentosMapeados);
         } catch (docErr) {
           console.error('Error cargando documentos:', docErr);
-          setDocumentos([]);
         }
+
+        // ✅ Si existe documento de cierre, agregarlo SIEMPRE al inicio
+        // PRIORIDAD: auditoriaDataInicial (del Kanban, siempre actualizado) > data (de getAuditoriaById)
+        const documentoCierre = 
+          auditoriaDataInicial?.documentoCierre ||
+          data.documentoCierre ||
+          data.documento_cierre;
+        if (documentoCierre && documentoCierre.url) {
+          const serviceUrl = getServiceUrl('control-institucional');
+          const baseUrl = API_MODE === 'gateway'
+            ? `${serviceUrl}/control-institucional/api/v1`
+            : serviceUrl;
+
+          const docCierreEntry: DocumentoExpediente = {
+            id: 'doc-cierre',
+            nombre: documentoCierre.nombre || 'Documento de Cierre',
+            tipo: 'Informe',
+            fase: 'comunicacion',
+            fechaCarga: new Date(documentoCierre.fechaCarga || data.fechaFinalizacion || Date.now()),
+            cargadoPor: documentoCierre.cargadoPor || data.finalizadaPor || 'Sistema',
+            size: documentoCierre.tamano ? `${Math.round(documentoCierre.tamano / 1024)} KB` : 'N/A',
+            tipoMime: documentoCierre.tipo || 'application/pdf',
+            urlDownload: documentoCierre.url?.startsWith('http')
+              ? documentoCierre.url
+              : `${baseUrl}${documentoCierre.url}`,
+            urlPreview: documentoCierre.url?.startsWith('http')
+              ? documentoCierre.url
+              : `${baseUrl}${documentoCierre.url}`,
+            version: 1,
+            descripcion: `📌 Documento de cierre oficial de la auditoría${data.observacionesCierre ? ': ' + data.observacionesCierre : ''}`,
+          };
+          documentoCierreRef.current = docCierreEntry;
+          documentosFinales.unshift(docCierreEntry);
+        }
+
+        setDocumentos(documentosFinales);
+        console.log(`[Expediente] ✅ Cargados ${documentosFinales.length} documentos (cierre: ${!!documentoCierre})`);
         
         // ✅ Cargar historial de la auditoría desde el backend
         try {
@@ -578,6 +619,10 @@ export function ExpedienteAuditoriaCompleto({
     try {
       const documentosData = await controlInternoService.getDocumentosByAuditoria(auditoriaId);
       const documentosMapeados = mapearDocumentosBackend(documentosData);
+      // ✅ Re-inyectar el documento de cierre al inicio si existe
+      if (documentoCierreRef.current) {
+        documentosMapeados.unshift(documentoCierreRef.current);
+      }
       setDocumentos(documentosMapeados);
     } catch (err) {
       console.error('Error recargando documentos:', err);

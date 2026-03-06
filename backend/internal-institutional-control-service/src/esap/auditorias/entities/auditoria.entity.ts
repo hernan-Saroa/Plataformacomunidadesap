@@ -117,10 +117,16 @@ export class Auditoria {
   responsable: string;
 
   @Column({ type: 'date', name: 'fecha_inicio', nullable: false })
-  fechaInicio: Date;
+  fechaInicio: Date; // Inicio de la etapa de Planeación
+
+  @Column({ type: 'date', name: 'fecha_fin_planeacion', nullable: true })
+  fechaFinPlaneacion?: Date; // Fin de Planeación / Inicio de Ejecución
+
+  @Column({ type: 'date', name: 'fecha_fin_ejecucion', nullable: true })
+  fechaFinEjecucion?: Date; // Fin de Ejecución / Inicio de Comunicación
 
   @Column({ type: 'date', name: 'fecha_fin', nullable: false })
-  fechaFin: Date;
+  fechaFin: Date; // Fin de Comunicación (fin de auditoría)
 
   @Column({ type: 'integer', default: 0 })
   progreso: number; // 0-100
@@ -264,6 +270,31 @@ export class Auditoria {
 
   @Column({ name: 'aprobada_por_id', type: 'bigint', nullable: true })
   aprobadaPorId?: number; // ID del usuario que aprobó
+
+  // ============ CAMPOS DE FINALIZACIÓN ============
+  
+  @Column({ name: 'fecha_finalizacion', type: 'timestamp', nullable: true })
+  fechaFinalizacion?: Date;
+
+  @Column({ name: 'finalizada_por', type: 'varchar', length: 255, nullable: true })
+  finalizadaPor?: string; // Nombre del usuario que finalizó
+
+  @Column({ name: 'finalizada_por_id', type: 'bigint', nullable: true })
+  finalizadaPorId?: number; // ID del usuario que finalizó
+
+  // Documento de cierre (matriz/formato de cierre obligatorio)
+  @Column({ name: 'documento_cierre', type: 'jsonb', nullable: true })
+  documentoCierre?: {
+    nombre: string;
+    url: string;
+    tipo: string;
+    tamano: number;
+    fechaCarga: string;
+    cargadoPor?: string;
+  };
+
+  @Column({ name: 'observaciones_cierre', type: 'text', nullable: true })
+  observacionesCierre?: string;
 
   // Relaciones
   @OneToMany(() => ObjetivoAuditoria, (objetivo) => objetivo.auditoria)

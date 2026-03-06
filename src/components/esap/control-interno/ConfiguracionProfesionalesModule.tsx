@@ -311,7 +311,7 @@ export function ConfiguracionProfesionalesModule() {
               <li>Aquí solo se asignan al equipo OCIG y se configura su capacidad de trabajo</li>
               <li><strong>Capacidad Máxima:</strong> Número de auditorías que puede manejar simultáneamente</li>
               <li><strong>Carga Ponderada:</strong> Líder = 100%, Equipo = 30% del peso</li>
-              <li>La información se sincroniza con el módulo de <strong>Universo Auditable → Profesionales</strong></li>
+              <li>La información se sincroniza con el módulo de <strong>Programa de Auditoría → Profesionales</strong></li>
             </ul>
           </div>
         </div>

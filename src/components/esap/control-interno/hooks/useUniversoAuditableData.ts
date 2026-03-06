@@ -3,7 +3,7 @@
  * HOOK: useUniversoAuditableData
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Hook principal para integración con backend del módulo Universo Auditable.
+ * Hook principal para integración con backend del módulo Programa de Auditoría.
  * Reemplaza TODOS los datos mock con llamadas reales al API.
  * 
  * Usa: controlInternoService (src/services/api/controlInternoService.ts)

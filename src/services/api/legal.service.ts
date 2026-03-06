@@ -159,6 +159,43 @@ export class LegalService {
         });
     }
 
+    // ===== TAREAS (Juzgamiento) =====
+    async getJuzgamientoTareas(radicado: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/tareas`);
+    }
+
+    async createJuzgamientoTarea(radicado: string, data: {
+        titulo: string;
+        descripcion?: string;
+        fechaVencimiento?: string;
+        prioridad?: string;
+        responsableNombre?: string;
+        creadoPor?: string;
+    }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/tareas`, data);
+    }
+
+    async updateJuzgamientoTarea(radicado: string, tareaId: string, data: any): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/tareas/${tareaId}`, data);
+    }
+
+    async deleteJuzgamientoTarea(radicado: string, tareaId: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/juzgamiento/${radicado}/tareas/${tareaId}`);
+    }
+
+    // ===== NOTAS (Juzgamiento) =====
+    async getJuzgamientoNotas(radicado: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/notas`);
+    }
+
+    async createJuzgamientoNota(radicado: string, data: {
+        contenido: string;
+        tipo?: string;
+        autorNombre?: string;
+    }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/notas`, data);
+    }
+
     // Renaming getExpedienteById to getExpediente as per instruction, and adapting the signature
     async getExpediente(id: string): Promise<Expediente> {
         return apiClient.get<Expediente>(`${SERVICE_PREFIX}/expedientes/${id}`);

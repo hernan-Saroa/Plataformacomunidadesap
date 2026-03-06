@@ -24,10 +24,6 @@ import { toast } from 'sonner@2.0.3';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { WizardEnviarAlertas } from './WizardEnviarAlertas';
-import { WizardNuevoTermino } from './WizardNuevoTermino';
-import { VistaCalendario } from './VistaCalendario';
-import { VistaAlertas } from './VistaAlertas';
-import { VistaConfiguracion } from './VistaConfiguracion';
 
 // ============================================================================
 // INTERFACES
@@ -234,9 +230,6 @@ export function GestionTerminosAlertasWorldClass() {
   const [filtroResponsable, setFiltroResponsable] = useState<string>('todos');
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
   const [mostrarWizardAlertas, setMostrarWizardAlertas] = useState(false);
-  const [mostrarModalTermino, setMostrarModalTermino] = useState(false);
-  const [terminoEditando, setTerminoEditando] = useState<Termino | null>(null);
-  const [mesCalendario, setMesCalendario] = useState(new Date());
 
   // ============================================================================
   // CÁLCULO DE ESTADÍSTICAS
@@ -856,43 +849,6 @@ export function GestionTerminosAlertasWorldClass() {
             }
             return t;
           }));
-        }}
-      />
-
-      {/* Wizard de Nuevo Término */}
-      <WizardNuevoTermino
-        isOpen={mostrarModalTermino}
-        onClose={() => setMostrarModalTermino(false)}
-        onCrearTermino={(nuevoTermino) => {
-          // Calcular días restantes
-          const hoy = new Date();
-          const vencimiento = new Date(nuevoTermino.fechaVencimiento);
-          const diffTime = vencimiento.getTime() - hoy.getTime();
-          const diasRestantes = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          
-          // Determinar estado según días restantes
-          let estado: 'pendiente' | 'proximo_vencer' | 'vencido' | 'cumplido' | 'suspendido' = 'pendiente';
-          if (diasRestantes < 0) {
-            estado = 'vencido';
-          } else if (diasRestantes <= 2) {
-            estado = 'proximo_vencer';
-          }
-          
-          // Crear término completo
-          const terminoCompleto: Termino = {
-            ...nuevoTermino,
-            id: 't' + Date.now(),
-            diasRestantes,
-            estado,
-            alertaEnviada: false
-          };
-          
-          // Agregar a la lista
-          setTerminos(prev => [...prev, terminoCompleto]);
-          
-          toast.success('Término creado', {
-            description: `Se creó el término para ${nuevoTermino.numeroProceso}`
-          });
         }}
       />
     </div>

@@ -173,6 +173,8 @@ export class AuditoriasService {
       ...auditoria,
       fechaInicio: this.serializeDate(auditoria.fechaInicio),
       fechaFin: this.serializeDate(auditoria.fechaFin),
+      fechaFinPlaneacion: auditoria.fechaFinPlaneacion ? this.serializeDate(auditoria.fechaFinPlaneacion) : null,
+      fechaFinEjecucion: auditoria.fechaFinEjecucion ? this.serializeDate(auditoria.fechaFinEjecucion) : null,
       // Asegurar que checklistCompletados se devuelva como objeto (no string)
       checklistCompletados: auditoria.checklistCompletados 
         ? (typeof auditoria.checklistCompletados === 'string' 
@@ -379,10 +381,39 @@ export class AuditoriasService {
     // Parsear fechas sin conversión de zona horaria
     const fechaInicio = this.parseDateOnly(createDto.fechaInicio);
     const fechaFin = this.parseDateOnly(createDto.fechaFin);
+    
+    // Parsear fechas de las etapas si están presentes
+    const fechaFinPlaneacion = createDto.fechaFinPlaneacion 
+      ? this.parseDateOnly(createDto.fechaFinPlaneacion) 
+      : undefined;
+    const fechaFinEjecucion = createDto.fechaFinEjecucion 
+      ? this.parseDateOnly(createDto.fechaFinEjecucion) 
+      : undefined;
 
     // Validar que fechaFin sea posterior a fechaInicio
     if (fechaFin < fechaInicio) {
       throw new BadRequestException('La fecha de finalización debe ser posterior a la fecha de inicio');
+    }
+    
+    // Validar cronograma de 3 etapas si se proporcionan las fechas
+    if (fechaFinPlaneacion) {
+      if (fechaFinPlaneacion <= fechaInicio) {
+        throw new BadRequestException('La fecha de fin de Planeación debe ser posterior al inicio de la auditoría');
+      }
+    }
+    
+    if (fechaFinEjecucion) {
+      if (!fechaFinPlaneacion) {
+        throw new BadRequestException('Debe especificar la fecha de fin de Planeación antes de la fecha de fin de Ejecución');
+      }
+      if (fechaFinEjecucion <= fechaFinPlaneacion) {
+        throw new BadRequestException('La fecha de fin de Ejecución debe ser posterior al fin de Planeación');
+      }
+    }
+    
+    // Si se proporciona fechaFinEjecucion, validar que fechaFin sea posterior
+    if (fechaFinEjecucion && fechaFin <= fechaFinEjecucion) {
+      throw new BadRequestException('La fecha de fin de la auditoría (fin de Comunicación) debe ser posterior al fin de Ejecución');
     }
 
     // Generar código automático
@@ -403,6 +434,8 @@ export class AuditoriasService {
       codigo,
       fechaInicio: fechaInicio,
       fechaFin: fechaFin,
+      fechaFinPlaneacion: fechaFinPlaneacion,
+      fechaFinEjecucion: fechaFinEjecucion,
       fase: createDto.fase || FaseAuditoria.PLANEACION,
       prioridad: createDto.prioridad || PrioridadAuditoria.MEDIA,
       progreso: createDto.progreso ?? 0,
@@ -613,16 +646,43 @@ export class AuditoriasService {
     }
 
     // Validar fechas si se actualizan
-    if (updateDto.fechaInicio || updateDto.fechaFin) {
+    if (updateDto.fechaInicio || updateDto.fechaFin || updateDto.fechaFinPlaneacion || updateDto.fechaFinEjecucion) {
       const fechaInicio = updateDto.fechaInicio 
         ? this.parseDateOnly(updateDto.fechaInicio) 
         : auditoria.fechaInicio;
       const fechaFin = updateDto.fechaFin 
         ? this.parseDateOnly(updateDto.fechaFin) 
         : auditoria.fechaFin;
+      const fechaFinPlaneacion = updateDto.fechaFinPlaneacion 
+        ? this.parseDateOnly(updateDto.fechaFinPlaneacion) 
+        : auditoria.fechaFinPlaneacion;
+      const fechaFinEjecucion = updateDto.fechaFinEjecucion 
+        ? this.parseDateOnly(updateDto.fechaFinEjecucion) 
+        : auditoria.fechaFinEjecucion;
 
       if (fechaFin < fechaInicio) {
         throw new BadRequestException('La fecha de finalización debe ser posterior a la fecha de inicio');
+      }
+      
+      // Validar cronograma de 3 etapas
+      if (fechaFinPlaneacion) {
+        if (fechaFinPlaneacion <= fechaInicio) {
+          throw new BadRequestException('La fecha de fin de Planeación debe ser posterior al inicio de la auditoría');
+        }
+      }
+      
+      if (fechaFinEjecucion) {
+        if (!fechaFinPlaneacion) {
+          throw new BadRequestException('Debe especificar la fecha de fin de Planeación antes de la fecha de fin de Ejecución');
+        }
+        if (fechaFinEjecucion <= fechaFinPlaneacion) {
+          throw new BadRequestException('La fecha de fin de Ejecución debe ser posterior al fin de Planeación');
+        }
+      }
+      
+      // Si se proporciona fechaFinEjecucion, validar que fechaFin sea posterior
+      if (fechaFinEjecucion && fechaFin <= fechaFinEjecucion) {
+        throw new BadRequestException('La fecha de fin de la auditoría (fin de Comunicación) debe ser posterior al fin de Ejecución');
       }
     }
 
@@ -639,6 +699,16 @@ export class AuditoriasService {
     if (updateDto.responsable) auditoria.responsable = updateDto.responsable;
     if (updateDto.fechaInicio) auditoria.fechaInicio = this.parseDateOnly(updateDto.fechaInicio);
     if (updateDto.fechaFin) auditoria.fechaFin = this.parseDateOnly(updateDto.fechaFin);
+    if (updateDto.fechaFinPlaneacion !== undefined) {
+      auditoria.fechaFinPlaneacion = updateDto.fechaFinPlaneacion 
+        ? this.parseDateOnly(updateDto.fechaFinPlaneacion) 
+        : undefined;
+    }
+    if (updateDto.fechaFinEjecucion !== undefined) {
+      auditoria.fechaFinEjecucion = updateDto.fechaFinEjecucion 
+        ? this.parseDateOnly(updateDto.fechaFinEjecucion) 
+        : undefined;
+    }
     if (updateDto.progreso !== undefined) auditoria.progreso = updateDto.progreso;
     if (updateDto.prioridad) auditoria.prioridad = updateDto.prioridad as PrioridadAuditoria;
     if (updateDto.hallazgos !== undefined) auditoria.hallazgos = updateDto.hallazgos;
@@ -1084,12 +1154,14 @@ export class AuditoriasService {
       [EstadoKanban.COMUNICACION]: FaseAuditoria.REVISION,
       [EstadoKanban.SEGUIMIENTO]: FaseAuditoria.COMPLETADA,
       [EstadoKanban.FINALIZADA]: FaseAuditoria.COMPLETADA,
-    };
+    }
     auditoria.fase = estadoToFase[nuevoEstadoKanban];
     
-    // Si se finaliza, asegurar progreso al 100%
+    // NO PERMITIR cambiar a FINALIZADA sin usar el endpoint específico
     if (nuevoEstadoKanban === EstadoKanban.FINALIZADA) {
-      auditoria.progreso = 100;
+      throw new BadRequestException(
+        'Para finalizar una auditoría debe usar el endpoint /finalizar y adjuntar el documento de cierre obligatorio'
+      );
     }
 
     const saved = await this.auditoriaRepository.save(auditoria);
@@ -1112,6 +1184,133 @@ export class AuditoriasService {
 
     await this.historialRepository.save(historial);
     
+    // Serializar fechas para evitar problemas de zona horaria
+    return this.serializeAuditoria(saved) as any;
+  }
+
+  /**
+   * Finaliza una auditoría con documento de cierre obligatorio (con archivo)
+   * El documento debe ser una matriz o formato de cierre formal
+   */
+  async finalizarAuditoriaConArchivo(
+    id: string,
+    file: any,
+    observaciones: string,
+    finalizadaPor: string,
+    finalizadaPorId: number | null,
+  ): Promise<Auditoria> {
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    }
+
+    // Validar que no esté ya finalizada
+    if (auditoria.estadoKanban === EstadoKanban.FINALIZADA) {
+      throw new BadRequestException('La auditoría ya está finalizada');
+    }
+
+    const estadoAnterior = auditoria.estadoKanban;
+
+    // Construir URL del archivo (ajustar según configuración del servidor)
+    const port = process.env.PORT || '3007';
+    const baseUrl = process.env.BASE_URL || `http://localhost:${port}`;
+    const fileUrl = `${baseUrl}/uploads/auditorias/cierre/${file.filename}`;
+
+    // Actualizar estado a Finalizada
+    auditoria.estadoKanban = EstadoKanban.FINALIZADA;
+    auditoria.fase = FaseAuditoria.COMPLETADA;
+    auditoria.progreso = 100;
+    auditoria.fechaFinalizacion = new Date();
+    auditoria.documentoCierre = {
+      nombre: file.originalname,
+      url: fileUrl,
+      tipo: file.mimetype,
+      tamano: file.size,
+      fechaCarga: new Date().toISOString(),
+      cargadoPor: finalizadaPor,
+    };
+    auditoria.observacionesCierre = observaciones;
+    auditoria.finalizadaPor = finalizadaPor;
+    auditoria.finalizadaPorId = finalizadaPorId || undefined;
+
+    const saved = await this.auditoriaRepository.save(auditoria);
+
+    // ✅ Registrar en el historial
+    const ahora = new Date();
+    const fecha = ahora.toISOString().split('T')[0];
+    const hora = ahora.toTimeString().slice(0, 5);
+
+    const historial = new HistorialAuditoria();
+    historial.auditoriaId = id;
+    historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
+    historial.fecha = new Date(fecha);
+    historial.hora = hora;
+    historial.usuarioId = finalizadaPorId || 1;
+    historial.accion = 'Finalización de auditoría';
+    historial.descripcion = `Auditoría ${auditoria.codigo} finalizada. Documento de cierre: ${file.originalname}`;
+    historial.estadoAnterior = estadoAnterior || undefined;
+    historial.estadoNuevo = EstadoKanban.FINALIZADA;
+
+    await this.historialRepository.save(historial);
+
+    // Serializar fechas para evitar problemas de zona horaria
+    return this.serializeAuditoria(saved) as any;
+  }
+
+  /**
+   * Finaliza una auditoría con documento de cierre obligatorio
+   * El documento debe ser una matriz o formato de cierre formal
+   */
+  async finalizarAuditoria(id: string, finalizarDto: any): Promise<Auditoria> {
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    }
+
+    // Validar que se haya proporcionado el documento de cierre
+    if (!finalizarDto.documentoCierre || !finalizarDto.documentoCierre.url) {
+      throw new BadRequestException(
+        'El documento de cierre (matriz/formato) es obligatorio para finalizar la auditoría'
+      );
+    }
+
+    // Validar que no esté ya finalizada
+    if (auditoria.estadoKanban === EstadoKanban.FINALIZADA) {
+      throw new BadRequestException('La auditoría ya está finalizada');
+    }
+
+    const estadoAnterior = auditoria.estadoKanban;
+
+    // Actualizar estado a Finalizada
+    auditoria.estadoKanban = EstadoKanban.FINALIZADA;
+    auditoria.fase = FaseAuditoria.COMPLETADA;
+    auditoria.progreso = 100;
+    auditoria.fechaFinalizacion = new Date();
+    auditoria.documentoCierre = finalizarDto.documentoCierre;
+    auditoria.observacionesCierre = finalizarDto.observacionesCierre;
+    auditoria.finalizadaPor = finalizarDto.finalizadaPor;
+    auditoria.finalizadaPorId = finalizarDto.finalizadaPorId;
+
+    const saved = await this.auditoriaRepository.save(auditoria);
+
+    // ✅ Registrar en el historial
+    const ahora = new Date();
+    const fecha = ahora.toISOString().split('T')[0];
+    const hora = ahora.toTimeString().slice(0, 5);
+
+    const historial = new HistorialAuditoria();
+    historial.auditoriaId = id;
+    historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
+    historial.fecha = new Date(fecha);
+    historial.hora = hora;
+    historial.usuarioId = finalizarDto.finalizadaPorId || 1;
+    historial.accion = 'Finalización de auditoría';
+    historial.descripcion = `Auditoría ${auditoria.codigo} finalizada. Documento de cierre: ${finalizarDto.documentoCierre.nombre}`;
+    historial.estadoAnterior = estadoAnterior || undefined;
+    historial.estadoNuevo = EstadoKanban.FINALIZADA;
+
+    await this.historialRepository.save(historial);
+
     // Serializar fechas para evitar problemas de zona horaria
     return this.serializeAuditoria(saved) as any;
   }

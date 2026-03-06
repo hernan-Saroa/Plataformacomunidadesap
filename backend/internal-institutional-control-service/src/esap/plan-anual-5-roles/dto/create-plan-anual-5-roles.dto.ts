@@ -24,6 +24,6 @@ export class CreatePlanAnual5RolesDto {
 
   @IsOptional()
   @IsString()
-  estado?: 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado';
+  estado?: 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' | 'activo';
 }
 

@@ -35,6 +35,7 @@ import {
   ModalAprobarAuditoria,
   ModalCambiarEstado,
   ModalFormularioAuditoria,
+  ModalFinalizarAuditoria,
   type Auditoria as AuditoriaModal
 } from './modales';
 
@@ -107,6 +108,8 @@ interface Auditoria {
   auditorLider: Persona;
   auditorAsignado: Persona;
   fechaInicio: string;
+  fechaFinPlaneacion?: string; // Fin de Planeación / Inicio de Ejecución
+  fechaFinEjecucion?: string; // Fin de Ejecución / Inicio de Comunicación
   fechaFin: string;
   progreso: number;
   hallazgos: number;
@@ -118,6 +121,7 @@ interface Auditoria {
   documentos: number;
   informes: number;
   tareas: number;
+  documentoCierre?: any; // Campo JSONB del backend — necesario para el Expediente
   
   // Nuevos campos del formulario unificado
   tipo: TipoAuditoria;
@@ -1372,7 +1376,7 @@ function TarjetaAuditoria({
                 }`}
                 title={
                   auditoria.estado === 'Comunicación' || auditoria.estado === 'Seguimiento'
-                    ? 'Enviar informe a aprobación' 
+                    ? 'Aceptar hallazgos identificados' 
                     : 'Solo disponible en Comunicación/Seguimiento'
                 }
               >
@@ -1385,7 +1389,7 @@ function TarjetaAuditoria({
                   auditoria.estado === 'Comunicación' || auditoria.estado === 'Seguimiento'
                     ? 'text-green-600' 
                     : 'text-gray-400'
-                }`}>Aprobar</span>
+                }`}>Aceptar</span>
               </button>
               )}
 
@@ -1825,7 +1829,9 @@ export function GestionAuditoriasKanbanSimple() {
     getHistorial: getHistorialBackend,
     aprobarAuditoria: aprobarAuditoriaBackend,
     rechazarAuditoria: rechazarAuditoriaBackend,
-    getHallazgos
+    getHallazgos,
+    // ✅ FINALIZACIÓN: Método para finalizar auditoría con documento
+    finalizarAuditoria: finalizarAuditoriaBackend
   } = useAuditoriasKanban();
 
   // Estado local para auditorías (sincronizado con backend)
@@ -1845,6 +1851,8 @@ export function GestionAuditoriasKanbanSimple() {
   const [modalAsignarAuditorOpen, setModalAsignarAuditorOpen] = useState(false);
   const [modalCambiarEstadoOpen, setModalCambiarEstadoOpen] = useState(false);
   const [modalConfirmacionOpen, setModalConfirmacionOpen] = useState(false);
+  const [modalFinalizarOpen, setModalFinalizarOpen] = useState(false);
+  const [auditoriaParaFinalizar, setAuditoriaParaFinalizar] = useState<Auditoria | null>(null);
   const [tipoAccionConfirmacion, setTipoAccionConfirmacion] = useState<'archivar' | 'eliminar'>('archivar');
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
   const [tarjetasColapsadas, setTarjetasColapsadas] = useState<Set<string>>(new Set()); // NUEVO: Estado para tarjetas colapsadas
@@ -1888,6 +1896,8 @@ export function GestionAuditoriasKanbanSimple() {
         auditorAsignado: aud.auditorAsignado,
         auditorLiderId: aud.auditorLiderId, // ✅ Preservar ID del auditor líder
         fechaInicio: aud.fechaInicio,
+        fechaFinPlaneacion: aud.fechaFinPlaneacion, // ✅ Fecha fin de Planeación / Inicio Ejecución
+        fechaFinEjecucion: aud.fechaFinEjecucion, // ✅ Fecha fin de Ejecución / Inicio Comunicación
         fechaFin: aud.fechaFin,
         progreso: aud.progreso,
         hallazgos: aud.hallazgos,
@@ -1908,7 +1918,8 @@ export function GestionAuditoriasKanbanSimple() {
         territorialInfo: aud.territorialInfo,
         especial: aud.especial,
         actividadesCompletas: aud.actividadesCompletas,
-        actividadesPendientes: aud.actividadesPendientes
+        actividadesPendientes: aud.actividadesPendientes,
+        documentoCierre: aud.documentoCierre,
       } as Auditoria));
       setAuditorias(auditoriasTransformadas);
       console.log(`✅ [GestionAuditorias] ${auditoriasTransformadas.length} auditorías sincronizadas desde backend`);
@@ -2179,14 +2190,62 @@ export function GestionAuditoriasKanbanSimple() {
     }
   };
 
+  const handleFinalizar = async (archivo: File, comentarios: string) => {
+    if (!auditoriaParaFinalizar) return;
+
+    try {
+      console.log('[handleFinalizar] Finalizando auditoría:', auditoriaParaFinalizar.id);
+      console.log('[handleFinalizar] Archivo:', archivo.name, archivo.size);
+      console.log('[handleFinalizar] Comentarios:', comentarios);
+
+      // Obtener datos del usuario logueado
+      const usuarioStr = localStorage.getItem('usuario');
+      const usuario = usuarioStr ? JSON.parse(usuarioStr) : null;
+      const finalizadaPor = usuario?.nombre || 'Usuario';
+      const finalizadaPorId = usuario?.id || 1;
+
+      // ✅ Llamar al backend con documento de cierre
+      const exito = await finalizarAuditoriaBackend(
+        auditoriaParaFinalizar.id,
+        archivo,
+        comentarios,
+        finalizadaPor,
+        finalizadaPorId
+      );
+
+      if (exito) {
+        // Actualizar el estado local
+        setAuditorias(prev =>
+          prev.map(aud =>
+            aud.id === auditoriaParaFinalizar.id
+              ? { ...aud, estado: 'Finalizada' }
+              : aud
+          )
+        );
+
+        toast.success('✅ Auditoría Finalizada', {
+          description: `Documento "${archivo.name}" adjuntado correctamente`
+        });
+
+        setModalFinalizarOpen(false);
+        setAuditoriaParaFinalizar(null);
+      } else {
+        throw new Error('No se pudo finalizar la auditoría');
+      }
+    } catch (error: any) {
+      console.error('[handleFinalizar] Error:', error);
+      toast.error('Error al finalizar', {
+        description: error.message || 'No se pudo procesar la finalización de la auditoría'
+      });
+    }
+  };
+
   const handleModificacion = (auditoria: Auditoria, observaciones: string) => {
     console.log('Modificación:', auditoria, observaciones);
     // TODO: Implementar cuando se necesite
   };
 
   const handleCrearAuditoria = async (data: AuditoriaUnificadaFormData) => {
-    console.log('Crear auditoría OCIG:', data);
-    
     try {
       // Preparar datos para el backend
       const datosBackend = {
@@ -2205,11 +2264,12 @@ export function GestionAuditoriasKanbanSimple() {
         objetivos: data.objetivos || [],
         criteriosAuditoria: data.criteriosAuditoria || [], // El backend usa criteriosAuditoria
         equipoAuditores: data.equipoAuditores || [],
+        // ✅ Incluir fechas de cronograma de 3 etapas si están presentes
+        ...(data.fechaFinPlaneacion && { fechaFinPlaneacion: data.fechaFinPlaneacion }),
+        ...(data.fechaFinEjecucion && { fechaFinEjecucion: data.fechaFinEjecucion }),
         // ✅ NUEVO: Estado inicial del Kanban - todas las auditorías nuevas inician en "Plan Anual"
         estadoKanban: 'Plan Anual',
       };
-      
-      console.log('[handleCrearAuditoria] Enviando al backend:', datosBackend);
       
       const nuevaAuditoriaId = await crearAuditoriaBackend(datosBackend);
       
@@ -2253,6 +2313,8 @@ export function GestionAuditoriasKanbanSimple() {
       sede: data.territorial, // Sincronizar sede con territorial
       calificacionRiesgo: data.riesgo,
       fechaInicio: data.fechaInicio,
+      fechaFinPlaneacion: (data as any).fechaFinPlaneacion || undefined,
+      fechaFinEjecucion: (data as any).fechaFinEjecucion || undefined,
       fechaFin: data.fechaFin,
       alcance: data.descripcion, // Usar descripción como alcance si no hay campo separado
       // Incluir objetivos y criterios como arrays de strings
@@ -2278,6 +2340,8 @@ export function GestionAuditoriasKanbanSimple() {
                 territorial: data.territorial,
                 riesgo: data.riesgo as RiesgoAuditoria,
                 fechaInicio: data.fechaInicio,
+                fechaFinPlaneacion: (data as any).fechaFinPlaneacion,
+                fechaFinEjecucion: (data as any).fechaFinEjecucion,
                 fechaFin: data.fechaFin,
                 objetivos: (data.objetivos || []).map((obj: any, i: number) => ({
                   id: obj.id || `obj-${i}`,
@@ -2301,6 +2365,13 @@ export function GestionAuditoriasKanbanSimple() {
 
   const handleDrop = async (item: Auditoria, nuevoEstado: EstadoAuditoria) => {
     if (item.estado === nuevoEstado) return;
+
+    // 🎯 FINALIZACIÓN: Abrir modal para solicitar documento de cierre obligatorio
+    if (nuevoEstado === 'Finalizada') {
+      setAuditoriaParaFinalizar(item);
+      setModalFinalizarOpen(true);
+      return;
+    }
 
     const estadoAnterior = item.estado;
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
@@ -2392,6 +2463,15 @@ export function GestionAuditoriasKanbanSimple() {
   const handleGuardarCambioEstado = async (auditoriaId: string, nuevoEstado: EstadoAuditoria, comentario: string) => {
     const auditoriaActual = auditorias.find(a => a.id === auditoriaId);
     if (!auditoriaActual) return;
+
+    // 🎯 FINALIZACIÓN: Abrir modal para solicitar documento de cierre obligatorio
+    if (nuevoEstado === 'Finalizada') {
+      setModalCambiarEstadoOpen(false);
+      setAuditoriaSeleccionada(null);
+      setAuditoriaParaFinalizar(auditoriaActual);
+      setModalFinalizarOpen(true);
+      return;
+    }
 
     const estadoAnterior = auditoriaActual.estado;
 
@@ -3902,6 +3982,7 @@ export function GestionAuditoriasKanbanSimple() {
         {modalExpedienteOpen && (
           <ExpedienteAuditoriaCompleto
             auditoriaId={auditoriaSeleccionada?.id}
+            auditoriaDataInicial={auditoriaSeleccionada}
             isOpen={modalExpedienteOpen}
             onClose={() => {
               setModalExpedienteOpen(false);
@@ -3956,6 +4037,20 @@ export function GestionAuditoriasKanbanSimple() {
           />
         )}
 
+        {/* MODAL DE FINALIZAR - ✅ CON DOCUMENTO DE CIERRE OBLIGATORIO */}
+        {auditoriaParaFinalizar && (
+          <ModalFinalizarAuditoria
+            isOpen={modalFinalizarOpen}
+            onClose={() => {
+              setModalFinalizarOpen(false);
+              setAuditoriaParaFinalizar(null);
+            }}
+            auditoriaId={auditoriaParaFinalizar.id}
+            auditoriaTitulo={auditoriaParaFinalizar.titulo}
+            onFinalizar={handleFinalizar}
+          />
+        )}
+
         {/* MODAL DE FORMULARIO UNIFICADO - CREAR */}
         <FormularioAuditoriaUnificado
           open={modalFormularioOpen}
@@ -3976,9 +4071,6 @@ export function GestionAuditoriasKanbanSimple() {
               setAuditoriaParaEditar(null);
             }}
             auditoria={(() => {
-              // Log para debugging
-              console.log('[ModalEdicion] auditoriaParaEditar.criterios:', auditoriaParaEditar.criterios);
-              console.log('[ModalEdicion] auditoriaParaEditar.objetivos:', auditoriaParaEditar.objetivos);
               return {
                 id: auditoriaParaEditar.id,
                 codigo: auditoriaParaEditar.codigo,
@@ -3987,6 +4079,8 @@ export function GestionAuditoriasKanbanSimple() {
                 proceso: auditoriaParaEditar.descripcion,
                 responsable: auditoriaParaEditar.auditorLider?.nombre || 'Sin asignar',
                 fechaInicio: auditoriaParaEditar.fechaInicio,
+                fechaFinPlaneacion: auditoriaParaEditar.fechaFinPlaneacion,
+                fechaFinEjecucion: auditoriaParaEditar.fechaFinEjecucion,
                 fechaFin: auditoriaParaEditar.fechaFin,
                 estado: auditoriaParaEditar.estado,
                 progreso: auditoriaParaEditar.progreso || 0,
@@ -4005,6 +4099,8 @@ export function GestionAuditoriasKanbanSimple() {
                 territorial: data.tipo,
                 riesgo: auditoriaParaEditar.riesgo || 'Medio',
                 fechaInicio: data.fechaInicio,
+                fechaFinPlaneacion: data.fechaFinPlaneacion,
+                fechaFinEjecucion: data.fechaFinEjecucion,
                 fechaFin: data.fechaFin,
                 // Pasar arrays completos de objetivos y criterios
                 objetivos: (data as any).objetivos || [],

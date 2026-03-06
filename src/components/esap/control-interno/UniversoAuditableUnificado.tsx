@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * UNIVERSO AUDITABLE UNIFICADO - OCIG ESAP
+ * PROGRAMA DE AUDITORÍA - OCIG ESAP
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Módulo único y completo que integra:
@@ -175,7 +175,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-black mb-2" style={{ color: '#003DA5' }}>
-                Universo Auditable {vigencia}
+                Programa de Auditoría {vigencia}
               </h1>
               <p className="text-gray-600 text-lg">
                 Gestión integral del universo auditable y programa anual de auditorías
@@ -408,6 +408,8 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
               equipoAuditores: data.equipoAuditores,
               supervisorAsignado: data.supervisorAsignado,
               fechaInicio: data.fechaInicio,
+              fechaFinPlaneacion: data.fechaFinPlaneacion,
+              fechaFinEjecucion: data.fechaFinEjecucion,
               fechaFin: data.fechaFin,
               periodicidad: data.periodicidad,
               objetivos: data.objetivos,
