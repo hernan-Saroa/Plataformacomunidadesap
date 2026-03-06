@@ -593,7 +593,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos }: VistaTime
 
           return (
             <motion.div
-              key={solicitud.id}
+              key={solicitud.metadata?.uuid || `${solicitud.id}-${index}`}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.05 }}
@@ -769,7 +769,7 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
                 <div className="space-y-0.5 cursor-pointer">
                   {solicitudesDia.slice(0, 2).map(s => (
                     <div
-                      key={s.id}
+                      key={`cal-${s.metadata?.uuid || s.id}-${index}`}
                       className="text-[9px] px-1 py-0.5 rounded truncate"
                       style={{
                         backgroundColor: s.diasRestantes <= 2 ? '#DC2626' : s.diasRestantes <= 5 ? '#F59E0B' : '#10B981',
@@ -818,11 +818,11 @@ function VistaLista({ solicitudes, onVerDetalle, onVerDocumentos }: VistaListaPr
             </tr>
           </thead>
           <tbody>
-            {solicitudes.map((solicitud) => {
+            {solicitudes.map((solicitud, index) => {
               const semaforoColor = solicitud.diasRestantes <= 2 ? '#DC2626' : solicitud.diasRestantes <= 5 ? '#F59E0B' : '#10B981';
 
               return (
-                <tr key={solicitud.id} className="border-t border-gray-200 hover:bg-gray-50">
+                <tr key={solicitud.metadata?.uuid || `${solicitud.id}-${index}`} className="border-t border-gray-200 hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm text-gray-900 font-semibold">{solicitud.id}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">
                     <div className="line-clamp-2">{solicitud.asunto || 'Sin asunto'}</div>

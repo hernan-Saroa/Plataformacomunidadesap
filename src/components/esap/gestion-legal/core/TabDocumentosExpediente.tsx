@@ -145,7 +145,7 @@ export function TabDocumentosExpediente({
 
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.pdf,.doc,.docx,.jpg,.png,.xlsx,.xls';
+    input.accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx,.xls,.zip,.rar,.7z,.pptx,.ppt,.csv,.txt,.rtf';
 
     input.onchange = (e: any) => {
       const file = e.target?.files?.[0];
@@ -323,18 +323,16 @@ export function TabDocumentosExpediente({
               <button
                 key={cat.id}
                 onClick={() => setFiltroDocTipo(cat.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border-2 ${
-                  isActive
-                    ? 'text-white shadow-md'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                }`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border-2 ${isActive
+                  ? 'text-white shadow-md'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
                 style={isActive ? { background: cat.color, borderColor: cat.color } : {}}
               >
                 <IconComponent className="w-3.5 h-3.5" />
                 {cat.nombre}
-                <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${
-                  isActive ? 'bg-white/25' : 'bg-gray-100'
-                }`}>
+                <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${isActive ? 'bg-white/25' : 'bg-gray-100'
+                  }`}>
                   {count}
                 </span>
               </button>
@@ -411,8 +409,15 @@ export function TabDocumentosExpediente({
                         >
                           {catInfo?.nombre || 'General'}
                         </span>
-                        <span className="text-xs text-gray-500">{doc.tipo}</span>
-                        <span className="text-xs text-gray-400">•</span>
+                        {doc.etapa && (
+                          <span
+                            className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white"
+                            style={{ background: '#0D9488' }}
+                          >
+                            {doc.etapa}
+                          </span>
+                        )}
+                        {/* tipo ya se muestra en el badge de etapa */}
                         <span className="text-xs text-gray-500">{doc.tamaño}</span>
                         <span className="text-xs text-gray-400">•</span>
                         <span className="text-xs text-gray-500">{doc.fecha}</span>
@@ -538,11 +543,10 @@ export function TabDocumentosExpediente({
                       <button
                         key={cat.id}
                         onClick={() => setNuevaCategoria(cat.id)}
-                        className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 transition-all text-center ${
-                          isSelected
-                            ? 'shadow-md text-white'
-                            : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                        }`}
+                        className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 transition-all text-center ${isSelected
+                          ? 'shadow-md text-white'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                          }`}
                         style={isSelected ? { background: cat.color, borderColor: cat.color } : {}}
                       >
                         <CatIcon className="w-5 h-5" />
@@ -594,7 +598,7 @@ export function TabDocumentosExpediente({
                           Se archivará en: {catInfo.nombre}
                         </p>
                         <p className="text-xs text-gray-600">
-                          Formatos aceptados: PDF, DOC, DOCX, JPG, PNG, XLS, XLSX
+                          Formatos aceptados: PDF, DOC, DOCX, JPG, PNG, XLS, XLSX, ZIP, RAR, PPTX, CSV, TXT
                         </p>
                       </div>
                     </div>
@@ -686,7 +690,7 @@ export function TabDocumentosExpediente({
                             })()}
                             <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-white/20 text-white">
                               {plantillaDetalle.modulo === 'ambos' ? 'Ambos Módulos' :
-                               plantillaDetalle.modulo === 'defensa-judicial' ? 'Defensa Judicial' : 'Juzgamiento'}
+                                plantillaDetalle.modulo === 'defensa-judicial' ? 'Defensa Judicial' : 'Juzgamiento'}
                             </span>
                             <span className="text-xs text-blue-200">
                               v{plantillaDetalle.version} • {plantillaDetalle.formato}
@@ -789,18 +793,16 @@ export function TabDocumentosExpediente({
                         <button
                           key={cat.id}
                           onClick={() => setFiltroPlantillaCategoria(cat.id)}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border-2 ${
-                            isActive
-                              ? 'text-white shadow-md'
-                              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                          }`}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border-2 ${isActive
+                            ? 'text-white shadow-md'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                            }`}
                           style={isActive ? { background: cat.color, borderColor: cat.color } : {}}
                         >
                           <IconComponent className="w-3.5 h-3.5" />
                           {cat.nombre}
-                          <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${
-                            isActive ? 'bg-white/25' : 'bg-gray-100'
-                          }`}>
+                          <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${isActive ? 'bg-white/25' : 'bg-gray-100'
+                            }`}>
                             {count}
                           </span>
                         </button>
@@ -851,7 +853,7 @@ export function TabDocumentosExpediente({
                                   </span>
                                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">
                                     {plantilla.modulo === 'ambos' ? 'Ambos Módulos' :
-                                     plantilla.modulo === 'defensa-judicial' ? 'Defensa Judicial' : 'Juzgamiento'}
+                                      plantilla.modulo === 'defensa-judicial' ? 'Defensa Judicial' : 'Juzgamiento'}
                                   </span>
                                   <span className="text-[10px] text-gray-400">
                                     {plantilla.formato} • {plantilla.tamaño} • v{plantilla.version}

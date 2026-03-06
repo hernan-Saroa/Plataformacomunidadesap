@@ -20,6 +20,7 @@ import {
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../ui/dialog';
 import { toast } from 'sonner';
 
 import { legalService } from '../../../../services/api/legal.service';
@@ -57,8 +58,10 @@ import {
   KanbanCardMetrics,
   KanbanActionSection,
   KanbanActionRowPrimary,
+  KanbanActionRowTertiary,
   KanbanButtonPrimary,
   KanbanButtonSecondary,
+  KanbanButtonDestructive,
 } from '../../design-system/KanbanDesignStandard';
 
 type VistaModulo = 'kanban' | 'lista' | 'archivados';
@@ -738,6 +741,7 @@ export function ModuloDefensaJudicialV3() {
           expedientes={etapas.flatMap((e: any) => e.expedientes)}
           isMobile={isMobile}
           isTablet={isTablet}
+          onMoverExpediente={handleMoverExpediente}
         />
       )}
 
@@ -881,9 +885,34 @@ interface TarjetaExpedienteProps {
 function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh, onMoverExpediente, etapaActual }: TarjetaExpedienteProps) {
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
+  const [showEliminarModal, setShowEliminarModal] = useState(false);
+  const [motivoEliminar, setMotivoEliminar] = useState('');
+  const [eliminando, setEliminando] = useState(false);
 
   const handleAbrirExpediente = () => {
     setModalExpedienteOpen(true);
+  };
+
+  const handleEliminarDemanda = async () => {
+    if (!motivoEliminar.trim()) {
+      toast.error('⚠️ El motivo es obligatorio');
+      return;
+    }
+    try {
+      setEliminando(true);
+      const idToDelete = expediente.uuid || expediente.id;
+      await legalService.eliminarExpedienteSoft(idToDelete, motivoEliminar, 'usuario');
+      toast.success('🗑️ Demanda eliminada exitosamente', {
+        description: `Radicado: ${expediente.id} — Movida a archivados`
+      });
+      setShowEliminarModal(false);
+      onRefresh?.();
+    } catch (error) {
+      console.error('Error eliminando demanda:', error);
+      toast.error('❌ Error al eliminar la demanda');
+    } finally {
+      setEliminando(false);
+    }
   };
 
   const getSemaforoColor = (diasRestantes: number) => {
@@ -920,17 +949,27 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
           titleColor={ESAP_TOKENS.colors.primary}
           subtitle={expediente.medioControl}
           rightContent={
-            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200" style={{ fontSize: '10px' }}>
-              <div
-                className="w-1.5 h-1.5 rounded-full ring-2 ring-offset-1"
-                style={{
-                  background: semaforo.color,
-                  ringColor: `${semaforo.color}33`
-                }}
-              />
-              <span className="font-bold" style={{ color: semaforo.color }}>
-                {expediente.diasRestantes}d
-              </span>
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200" style={{ fontSize: '10px' }}>
+                <div
+                  className="w-1.5 h-1.5 rounded-full ring-2 ring-offset-1"
+                  style={{
+                    background: semaforo.color,
+                    ringColor: `${semaforo.color}33`
+                  }}
+                />
+                <span className="font-bold" style={{ color: semaforo.color }}>
+                  {expediente.diasRestantes}d
+                </span>
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); setMotivoEliminar(''); setShowEliminarModal(true); }}
+                disabled={eliminando}
+                title="Eliminar demanda"
+                className="p-1 rounded-md transition-all bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
             </div>
           }
         />
@@ -1019,6 +1058,7 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
               Comunic.
             </KanbanButtonSecondary>
           </KanbanActionRowPrimary>
+
         </KanbanActionSection>
       </KanbanCard>
 
@@ -1034,6 +1074,62 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
         onClose={() => setModalComunicacionesOpen(false)}
         expediente={expediente}
       />
+
+      {/* Modal de confirmación eliminar */}
+      <Dialog open={showEliminarModal} onOpenChange={setShowEliminarModal}>
+        <DialogContent
+          className="sm:max-w-[380px] w-[90vw] !max-w-[380px] !w-auto p-0 overflow-hidden"
+          style={{ maxWidth: '380px', width: '100%' }}
+        >
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Trash2 className="w-5 h-5 text-red-500" />
+              Eliminar Demanda
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="p-4 pt-2">
+            <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg mb-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-red-800">
+                <p className="font-semibold">¿Eliminar esta demanda?</p>
+                <p className="text-xs mt-1 opacity-80">Radicado: <strong>{expediente.id}</strong>. Será movida a la papelera y podrá restaurarla desde Archivados.</p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-700">Motivo de eliminación <span className="text-red-500">*</span></label>
+              <textarea
+                className="w-full text-sm p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+                rows={3}
+                placeholder="Indique la razón de la eliminación..."
+                value={motivoEliminar}
+                onChange={(e) => setMotivoEliminar(e.target.value)}
+                maxLength={500}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 p-4 pt-0 bg-gray-50/50">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEliminarModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={handleEliminarDemanda}
+              disabled={!motivoEliminar.trim() || eliminando}
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              {eliminando ? 'Eliminando...' : 'Eliminar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
