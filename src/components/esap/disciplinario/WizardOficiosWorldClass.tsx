@@ -27,6 +27,7 @@ import { CATEGORIAS_OFICIOS, type CategoriaOficioId, type TipoOficio } from './c
 import { BadgeNomenclatura } from './components/BadgeNomenclatura';
 import { generarNomenclatura, previsualizarNomenclatura, type DocumentoNomenclatura } from './utils/nomenclaturaDocumentos';
 import { useOficiosConfigurationActive } from '../../../hooks/useOficiosConfiguration';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
 // ==================== DATOS MOCK ====================
 const TIPOS_OFICIOS_MOCK: TipoOficio[] = [
@@ -132,6 +133,7 @@ interface Persona {
 }
 
 interface ProcesoCompleto {
+  id?: string;
   numeroProceso: string;
   denunciado: Persona;
   denunciante: Persona;
@@ -187,6 +189,7 @@ export function WizardOficiosWorldClass({
   const [archivoAdjunto, setArchivoAdjunto] = useState<File | null>(null);
   const [observacionesAdjunto, setObservacionesAdjunto] = useState('');
   const [subiendo, setSubiendo] = useState(false);
+  const [guardando, setGuardando] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Estados de Oficios Generados
@@ -260,18 +263,47 @@ export function WizardOficiosWorldClass({
   };
 
   const handleDescargarPlantilla = async () => {
-    if (!tipoSeleccionado?.plantilla) return;
+    // Verificar si hay plantilla disponible (del backend o local)
+    const tienePlantillaBackend = tipoSeleccionado?.plantilla?.url && tipoSeleccionado?.plantilla?.activo !== false;
+    const tienePlantillaLocal = tipoSeleccionado?.plantilla;
+    
+    if (!tipoSeleccionado?.plantilla) {
+      toast.error('No hay plantilla disponible para descargar');
+      return;
+    }
 
     setDescargando(true);
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    toast.success('Plantilla descargada correctamente', {
-      description: tipoSeleccionado.plantilla.nombreArchivo,
-      duration: 3000,
-    });
-    
-    setPlantillaDescargada(true);
-    setDescargando(false);
+
+    try {
+      // Si tiene plantilla del backend, descargar usando el servicio igual que en configuraciones
+      if (tienePlantillaBackend && tipoSeleccionado?.plantilla?.url) {
+        // Usar getFileUrl para procesar la URL (igual que en configuraciones)
+        const urlProcesada = disciplinaryService.getFileUrl(tipoSeleccionado.plantilla.url);
+        const nombreArchivo = tipoSeleccionado.plantilla.nombreArchivo || 'plantilla.docx';
+        
+        // Usar downloadFileFromUrl igual que en SeccionPlantillasAutosUnificada
+        await disciplinaryService.downloadFileFromUrl(urlProcesada, nombreArchivo);
+        
+        toast.success('Plantilla descargada correctamente', {
+          description: nombreArchivo,
+          duration: 3000,
+        });
+      } else if (tienePlantillaLocal && tipoSeleccionado?.plantilla) {
+        // Simular descarga para plantillas locales (mock)
+        await new Promise(resolve => setTimeout(resolve, 800));
+        toast.success('Plantilla descargada correctamente', {
+          description: tipoSeleccionado.plantilla.nombreArchivo,
+          duration: 3000,
+        });
+      }
+
+      setPlantillaDescargada(true);
+    } catch (error) {
+      console.error('Error al descargar plantilla:', error);
+      toast.error('Error al descargar la plantilla');
+    } finally {
+      setDescargando(false);
+    }
   };
 
   const handleSiguiente = () => {
@@ -332,33 +364,66 @@ export function WizardOficiosWorldClass({
     }
   };
 
-  const handleCrearOficio = () => {
-    // ✅ Generar nomenclatura única para el oficio
-    const nomenclatura = generarNomenclatura(
-      'OFICIO',
-      proceso.numeroProceso,
-      proceso.numeroProceso
-    );
-    setNomenclaturaGenerada(nomenclatura);
-
-    toast.success('Oficio creado exitosamente', {
-      description: `${nomenclatura.nomenclatura} - ${tipoSeleccionado?.nombre}`,
-      duration: 4000,
-    });
-    
-    if (onOficioCreado) {
-      onOficioCreado({
-        tipo: tipoSeleccionado?.nombre,
-        nomenclatura: nomenclatura.nomenclatura, // ✅ Incluir nomenclatura
-        fecha: fechaOficio,
-        destinatario,
-        asunto,
-        observaciones,
-        archivo: archivoAdjunto?.name
-      });
+  const handleCrearOficio = async () => {
+    if (!tipoSeleccionado) {
+      toast.error('Debes seleccionar un tipo de oficio');
+      return;
     }
-    
-    onClose();
+    if (!archivoAdjunto) {
+      toast.error('Debes adjuntar el archivo del oficio');
+      return;
+    }
+
+    setGuardando(true);
+
+    try {
+      // ✅ Subir archivo primero
+      toast.info('Subiendo archivo...', { duration: 2000 });
+      const uploadResult = await disciplinaryService.uploadFile(archivoAdjunto);
+      const documentUrl = uploadResult.url || uploadResult.filename;
+      console.log('✅ Archivo subido, documentUrl:', documentUrl);
+
+      // ✅ Crear el oficio en el backend
+      const oficioCreado = await disciplinaryService.createOficio(
+        proceso.id || proceso.numeroProceso, // Usar el ID real del proceso o el número como fallback
+        {
+          nombre: tipoSeleccionado.nombre,
+          destinatario: destinatario,
+          asunto: asunto,
+          descripcion: observaciones,
+          etapa: tipoSeleccionado.categoria,
+          categoria: tipoSeleccionado.categoria,
+          usuarioCarga: 'Sistema'
+        },
+        archivoAdjunto
+      );
+
+      toast.success('Oficio creado exitosamente', {
+        description: `${oficioCreado?.id || 'Oficio'} - ${tipoSeleccionado.nombre}`,
+        duration: 4000,
+      });
+      
+      if (onOficioCreado) {
+        onOficioCreado({
+          tipo: tipoSeleccionado.nombre,
+          id: oficioCreado?.id,
+          fecha: fechaOficio,
+          destinatario,
+          asunto,
+          observaciones,
+          archivo: archivoAdjunto.name
+        });
+      }
+      
+      onClose();
+    } catch (error) {
+      console.error('Error al crear oficio:', error);
+      toast.error('No se pudo crear el oficio', {
+        description: 'Verifica que el proceso exista en backend y vuelve a intentar'
+      });
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const resetearWizard = () => {
@@ -697,11 +762,11 @@ export function WizardOficiosWorldClass({
                     ) : (
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         {tiposFiltrados.map((tipo) => {
-                          const categoria = CATEGORIAS_OFICIOS[tipo.categoria];
-                          if (!categoria || !tipo.plantilla) return null;
+                          const categoria = CATEGORIAS_OFICIOS[tipo.categoria] || { nombre: 'Otro', color: '#6B7280', icon: FileText };
                           
                           const Icon = categoria.icon;
                           const seleccionado = tipoSeleccionado?.id === tipo.id;
+                          const tienePlantilla = !!tipo.plantilla;
 
                           return (
                             <motion.div
@@ -766,9 +831,13 @@ export function WizardOficiosWorldClass({
                                       >
                                         {categoria.nombre}
                                       </span>
-                                      {tipo.plantilla && (
+                                      {tipo.plantilla ? (
                                         <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700">
                                           v{tipo.plantilla.version}
+                                        </span>
+                                      ) : (
+                                        <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-red-100 text-red-700">
+                                          Sin plantilla
                                         </span>
                                       )}
                                     </div>
@@ -1363,11 +1432,12 @@ export function WizardOficiosWorldClass({
                 ) : (
                   <button
                     onClick={handleCrearOficio}
-                    className="flex-1 sm:flex-none px-6 py-3 rounded-xl font-bold text-sm text-white transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                    disabled={guardando}
+                    className="flex-1 sm:flex-none px-6 py-3 rounded-xl font-bold text-sm text-white transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                     style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)' }}
                   >
                     <Send className="w-4 h-4" />
-                    <span>Crear Oficio</span>
+                    <span>{guardando ? 'Guardando...' : 'Crear Oficio'}</span>
                   </button>
                 )}
               </div>

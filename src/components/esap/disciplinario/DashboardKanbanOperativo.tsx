@@ -19,7 +19,7 @@ import {
   MapPin, Info, ExternalLink, RefreshCw, Paperclip, UserCheck,
   List, Columns3, Menu, Edit2, FileSignature, History,
   ChevronsDown, ChevronsUp, ChevronUp, Zap, Link2, UserCog, MessageCircle,
-  ClipboardList, FileEdit
+  ClipboardList, FileEdit,Loader2
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -2116,6 +2116,7 @@ export function DashboardKanbanOperativo({
 
   // ✅ DATOS REALES: Se cargan desde Supabase al montar
   const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
   const [loadingData, setLoadingData] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
 
@@ -2299,6 +2300,8 @@ export function DashboardKanbanOperativo({
 
     const cargarProcesosYNoticias = async () => {
       try {
+        setLoading(true); // ✅ NUEVO: Iniciar estado de carga
+        
         const [noticiasApi, procesosApi] = await Promise.all([
           disciplinaryService.getAllNoticias(),
           disciplinaryService.getAllProcesos()
@@ -2314,6 +2317,7 @@ export function DashboardKanbanOperativo({
           // No hay datos del backend, no mostrar mock
           console.log('⚠️ No hay noticias ni procesos desde el backend');
           setItems([]);
+          setLoading(false); // ✅ NUEVO: Finalizar carga
           return;
         }
 
@@ -2338,10 +2342,12 @@ export function DashboardKanbanOperativo({
         })));
 
         setItems([...noticias, ...procesos]);
+        setLoading(false); // ✅ NUEVO: Finalizar carga exitosa
       } catch (error) {
         console.error('Error cargando submódulo de procesos desde API:', error);
         // NO usar mock como fallback - dejar vacío para indicar problema de conexión
         setItems([]);
+        setLoading(false); // ✅ NUEVO: Finalizar carga con error
       }
     };
 
@@ -3800,7 +3806,23 @@ export function DashboardKanbanOperativo({
         
 
         {/* Vista Kanban, Lista o Archivados según selección */}
-        {tipoVista === 'kanban' && (
+        {loading ? (
+          /* ✅ NUEVO: Loader mientras cargan noticias y procesos */
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center">
+              <Loader2 
+                className="w-12 h-12 mx-auto mb-4 animate-spin" 
+                style={{ color: '#003DA5' }} 
+              />
+              <p className="text-lg font-semibold text-gray-700">
+                Cargando noticias y procesos...
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                Obteniendo datos del servidor
+              </p>
+            </div>
+          </div>
+        ) : tipoVista === 'kanban' && (
           <div className="flex-1 overflow-hidden">
             {/* ═══ Contenedor Kanban estilo Trello: scroll horizontal + columnas fijas ═══ */}
             <div 
