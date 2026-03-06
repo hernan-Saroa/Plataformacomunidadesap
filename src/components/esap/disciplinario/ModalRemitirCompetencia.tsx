@@ -1,290 +1,242 @@
 /**
- * MODAL: REMITIR POR COMPETENCIA
- * Permite remitir una noticia disciplinaria a otra área/entidad
- * Genera un nuevo número RC (Remisión por Competencia)
- * Usa las entidades de remisión configuradas en la base de datos
+ * MODAL REMITIR POR COMPETENCIA — WORLD CLASS ESAP SIGL v5.0
+ * Permite remitir una noticia disciplinaria a otra entidad o area
+ * cuando no es competencia de Control Interno Disciplinario.
+ * Genera numero RC (Remision por Competencia) y registra en bitacora.
  */
 
-import { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { X, Send, AlertCircle, Info, Loader2, Mail } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
-import { entidadesRemisionService, EntidadRemision } from '../../../services/api/entidadesRemisionService';
-import { toast } from 'sonner';
+import { useState } from 'react';
+import { Send, AlertTriangle, FileText, Building2, Info, ExternalLink, Mail } from 'lucide-react';
+import { toast } from 'sonner@2.0.3';
+import {
+  WorldClassModal, WCLabel, WCSelect, WCTextarea, WCResumenBloque,
+  WCInfoBox, WCWarningBox, WCBotonPrimario, WCBotonSecundario, WCInput,
+} from './WorldClassModalBase';
 
-interface ModalRemitirCompetenciaProps {
-  noticia: {
-    id: string;
-    numeroRadicado: string;
-    disciplinable: {
-      nombre: string;
-    }[];
-  };
+interface NoticiaRemitirProps {
+  id: string;
+  numero: string;
+  origen: string;
+  fechaRecepcion: string;
+  denunciante: { nombre: string; identificacion?: string };
+  denunciado: { nombre: string; identificacion?: string; cargo?: string };
+  hechos?: string;
+}
+
+interface EntidadRemision {
+  id: string;
+  nombre: string;
+  correo: string;
+  activo: boolean;
+}
+
+interface Props {
+  noticia: NoticiaRemitirProps;
+  entidadesConfiguradas?: EntidadRemision[];
   onClose: () => void;
-  onConfirm: (data: { 
-    areaDestino: string; 
-    justificacion: string; 
-    numeroRC: string;
+  onConfirm: (datos: {
     entidadId: string;
-    emailDestinatario: string;
+    entidadNombre: string;
+    entidadCorreo: string;
+    tipoRemision: string;
+    justificacion: string;
+    fundamentoLegal: string;
+    numeroRC: string;
   }) => void;
 }
 
-export function ModalRemitirCompetencia({ noticia, onClose, onConfirm }: ModalRemitirCompetenciaProps) {
-  const [entidades, setEntidades] = useState<EntidadRemision[]>([]);
-  const [loadingEntidades, setLoadingEntidades] = useState(true);
-  const [entidadSeleccionada, setEntidadSeleccionada] = useState<EntidadRemision | null>(null);
-  const [areaDestino, setAreaDestino] = useState('');
+const ENTIDADES_POR_DEFECTO = [
+  { id: 'procuraduria',  nombre: 'Procuraduria General de la Nacion',    correo: 'quejas@procuraduria.gov.co' },
+  { id: 'personeria',    nombre: 'Personeria Municipal / Distrital',      correo: '' },
+  { id: 'contraloria',   nombre: 'Contraloria General de la Republica',   correo: '' },
+  { id: 'fiscalia',      nombre: 'Fiscalia General de la Nacion',         correo: '' },
+  { id: 'min-publico',   nombre: 'Ministerio Publico',                    correo: '' },
+  { id: 'oficina-control', nombre: 'Oficina de Control Interno Disciplinario (otra entidad)', correo: '' },
+];
+
+const TIPOS_REMISION = [
+  { value: 'sin-competencia',      label: 'Sin competencia disciplinaria' },
+  { value: 'factor-territorial',   label: 'Por factor territorial' },
+  { value: 'factor-funcional',     label: 'Por factor funcional (servidor de otra entidad)' },
+  { value: 'naturaleza-falta',     label: 'Por naturaleza de la falta (penal, fiscal)' },
+  { value: 'prelacion-competencia', label: 'Por prelacion de competencia (Procuraduria)' },
+];
+
+const FUNDAMENTOS_LEGALES = [
+  { value: 'art-2-ley-1952',    label: 'Art. 2 - Ley 1952 de 2019 (Titularidad de la accion)' },
+  { value: 'art-3-ley-1952',    label: 'Art. 3 - Ley 1952 de 2019 (Poder disciplinario preferente)' },
+  { value: 'art-12-ley-1952',   label: 'Art. 12 - Ley 1952 de 2019 (Competencia por factor territorial)' },
+  { value: 'art-13-ley-1952',   label: 'Art. 13 - Ley 1952 de 2019 (Competencia por factor funcional)' },
+  { value: 'art-75-ley-1952',   label: 'Art. 75 - Ley 1952 de 2019 (Conflicto de competencias)' },
+  { value: 'otro',              label: 'Otro fundamento (especificar en justificacion)' },
+];
+
+export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClose, onConfirm }: Props) {
+  const [entidadId, setEntidadId] = useState('');
+  const [tipoRemision, setTipoRemision] = useState('');
+  const [fundamentoLegal, setFundamentoLegal] = useState('');
   const [justificacion, setJustificacion] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [enviando, setEnviando] = useState(false);
 
-  // Cargar entidades de remisión desde el backend
-  useEffect(() => {
-    const cargarEntidades = async () => {
-      try {
-        setLoadingEntidades(true);
-        const entidadesData = await entidadesRemisionService.getActivas();
-        setEntidades(entidadesData);
-        
-        // Si hay entidades disponibles, seleccionar la primera por defecto
-        if (entidadesData.length > 0) {
-          setEntidadSeleccionada(entidadesData[0]);
-          setAreaDestino(entidadesData[0].nombre);
-        }
-      } catch (error) {
-        console.error('Error al cargar entidades de remisión:', error);
-        toast.error('Error al cargar las entidades de remisión. Usando datos locales.');
-        // Fallback: datos quemados en caso de error
-        setEntidades([]);
-      } finally {
-        setLoadingEntidades(false);
-      }
-    };
+  // Combinar entidades configuradas con las por defecto
+  const entidades = (entidadesConfiguradas && entidadesConfiguradas.length > 0)
+    ? entidadesConfiguradas.map(e => ({ id: e.id, nombre: e.nombre, correo: e.correo }))
+    : ENTIDADES_POR_DEFECTO;
 
-    cargarEntidades();
-  }, []);
+  const entidadSeleccionada = entidades.find(e => e.id === entidadId);
 
-  const handleEntidadChange = (entidadId: string) => {
-    const entidad = entidades.find(e => e.id === entidadId);
-    if (entidad) {
-      setEntidadSeleccionada(entidad);
-      setAreaDestino(entidad.nombre);
-    }
-  };
+  const esValido = entidadId
+    && tipoRemision
+    && fundamentoLegal
+    && justificacion.trim().length >= 20;
 
-  const handleRecargarEntidades = async () => {
-    try {
-      setLoadingEntidades(true);
-      const entidadesData = await entidadesRemisionService.getActivas();
-      setEntidades(entidadesData);
-      
-      if (entidadesData.length > 0) {
-        setEntidadSeleccionada(entidadesData[0]);
-        setAreaDestino(entidadesData[0].nombre);
-      }
-    } catch (error) {
-      console.error('Error al recargar entidades:', error);
-      toast.error('Error al recargar las entidades de remisión');
-    } finally {
-      setLoadingEntidades(false);
-    }
-  };
+  const handleRemitir = () => {
+    if (!entidadId) { toast.error('Validacion', { description: 'Selecciona la entidad de destino' }); return; }
+    if (!tipoRemision) { toast.error('Validacion', { description: 'Selecciona el tipo de remision' }); return; }
+    if (!fundamentoLegal) { toast.error('Validacion', { description: 'Selecciona el fundamento legal' }); return; }
+    if (justificacion.trim().length < 20) { toast.error('Validacion', { description: 'La justificacion debe tener al menos 20 caracteres' }); return; }
 
-  const handleSubmit = () => {
-    if (!areaDestino || !justificacion.trim() || !entidadSeleccionada) {
-      return;
-    }
+    setEnviando(true);
 
-    setIsSubmitting(true);
-
-    // Generar número RC
-    const year = new Date().getFullYear();
-    const numeroSecuencial = Math.floor(Math.random() * 9999).toString().padStart(4, '0');
-    const numeroRC = `RC-${year}-${numeroSecuencial}`;
+    // Generar numero RC
+    const anio = new Date().getFullYear();
+    const consecutivo = String(Math.floor(Math.random() * 9000) + 1000);
+    const numeroRC = `RC-${anio}-${consecutivo}`;
 
     setTimeout(() => {
       onConfirm({
-        areaDestino,
+        entidadId,
+        entidadNombre: entidadSeleccionada?.nombre || entidadId,
+        entidadCorreo: entidadSeleccionada?.correo || '',
+        tipoRemision,
         justificacion: justificacion.trim(),
+        fundamentoLegal,
         numeroRC,
-        entidadId: entidadSeleccionada.id,
-        emailDestinatario: entidadSeleccionada.correo
       });
-      setIsSubmitting(false);
-      onClose();
+      setEnviando(false);
     }, 500);
   };
 
-  return (
-    <div className="fixed inset-0 z-[111] flex items-start justify-center pt-16 sm:pt-20 p-4 bg-black/50">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+  const pie = (
+    <>
+      <WCBotonSecundario onClick={onClose}>Cancelar</WCBotonSecundario>
+      <button
+        onClick={handleRemitir}
+        disabled={!esValido || enviando}
+        className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold text-white transition-all"
+        style={{
+          background: esValido && !enviando ? '#7C3AED' : '#D1D5DB',
+          cursor: esValido && !enviando ? 'pointer' : 'not-allowed',
+        }}
       >
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-xl">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-              <Send className="w-5 h-5 text-purple-600" />
-            </div>
-            <h2 className="text-xl font-bold text-gray-900">
-              Remitir por Competencia
-            </h2>
+        <Send className="w-4 h-4" />
+        {enviando ? 'Remitiendo...' : 'Remitir por Competencia'}
+      </button>
+    </>
+  );
+
+  return (
+    <WorldClassModal
+      titulo="Remitir por Competencia"
+      subtitulo={noticia.numero}
+      icono={<Send className="w-5 h-5 text-white" />}
+      ancho={620}
+      pie={pie}
+      onCerrar={onClose}
+    >
+      {/* Resumen de la noticia */}
+      <WCResumenBloque
+        icono={<FileText className="w-4 h-4 text-orange-600" />}
+        etiqueta="NOTICIA A REMITIR"
+        titulo={noticia.numero}
+        subtitulo={`${noticia.denunciado.nombre} ${noticia.denunciado.identificacion ? '(' + noticia.denunciado.identificacion + ')' : ''}`}
+        descripcion={noticia.denunciado.cargo ? `Cargo: ${noticia.denunciado.cargo} · Origen: ${noticia.origen}` : `Origen: ${noticia.origen}`}
+      />
+
+      {/* Info contextual */}
+      <WCInfoBox>
+        <div className="flex items-start gap-2">
+          <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-600" />
+          <div>
+            <p className="font-bold text-blue-800 mb-0.5">Remision por competencia</p>
+            <p>Esta noticia sera remitida a la entidad competente. Se generara un numero RC (Remision por Competencia), se registrara en la bitacora y la noticia cambiara a estado &quot;Remitida&quot;.</p>
           </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
         </div>
+      </WCInfoBox>
 
-        {/* Contenido */}
-        <div className="p-6 space-y-6">
-          {/* Información de la Noticia */}
-          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-purple-900 mb-1">
-                  {noticia.numeroRadicado}
-                </p>
-                <p className="text-sm text-purple-700">
-                  {noticia.disciplinable[0]?.nombre || 'Sin nombre'}
-                </p>
-              </div>
-            </div>
+      {/* Entidad destino */}
+      <div>
+        <WCLabel required>Entidad / Area de destino</WCLabel>
+        <WCSelect value={entidadId} onChange={e => setEntidadId(e.target.value)}>
+          <option value="">Selecciona la entidad competente...</option>
+          {entidades.map(e => (
+            <option key={e.id} value={e.id}>{e.nombre}</option>
+          ))}
+        </WCSelect>
+        {entidadSeleccionada?.correo && (
+          <div className="flex items-center gap-1.5 mt-1.5 px-2.5 py-1.5 rounded-lg bg-purple-50 border border-purple-200">
+            <Mail className="w-3 h-3 text-purple-600" />
+            <span className="text-[11px] text-purple-700 font-medium">{entidadSeleccionada.correo}</span>
           </div>
+        )}
+        {(!entidadesConfiguradas || entidadesConfiguradas.length === 0) && (
+          <p className="text-[10px] text-gray-400 mt-1">
+            Puedes configurar entidades personalizadas en Configuracion &gt; Entidades de Remision
+          </p>
+        )}
+      </div>
 
-          {/* Explicación */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-start gap-3">
-              <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="font-semibold text-blue-900 mb-1">
-                  Remisión por Competencia
-                </p>
-                <p className="text-sm text-blue-700 leading-relaxed">
-                  Esta noticia no es competencia del área de Control Interno Disciplinario. Se generará
-                  un nuevo número <strong>RC (Remisión por Competencia)</strong> y se remitirá al área correspondiente.
-                  Se enviará un correo electrónico con la información de la noticia a la entidad destino.
-                </p>
-              </div>
-            </div>
-          </div>
+      {/* Tipo de remision */}
+      <div>
+        <WCLabel required>Tipo de remision</WCLabel>
+        <WCSelect value={tipoRemision} onChange={e => setTipoRemision(e.target.value)}>
+          <option value="">Selecciona el tipo...</option>
+          {TIPOS_REMISION.map(t => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </WCSelect>
+      </div>
 
-          {/* Formulario */}
-          <div className="space-y-4">
-            {/* Área de Destino - Ahora con entidades de la BD */}
+      {/* Fundamento legal */}
+      <div>
+        <WCLabel required>Fundamento legal</WCLabel>
+        <WCSelect value={fundamentoLegal} onChange={e => setFundamentoLegal(e.target.value)}>
+          <option value="">Selecciona el fundamento...</option>
+          {FUNDAMENTOS_LEGALES.map(f => (
+            <option key={f.value} value={f.value}>{f.label}</option>
+          ))}
+        </WCSelect>
+      </div>
+
+      {/* Justificacion */}
+      <div>
+        <WCLabel required>Justificacion de la remision</WCLabel>
+        <WCTextarea
+          value={justificacion}
+          onChange={e => setJustificacion(e.target.value)}
+          rows={3}
+          placeholder="Explica detalladamente por que esta noticia no corresponde a Control Interno Disciplinario y debe ser remitida a la entidad seleccionada..."
+        />
+        <div className="flex items-center justify-between mt-1">
+          <p className="text-[10px] text-gray-400">Minimo 20 caracteres</p>
+          <p className={`text-[10px] font-bold ${justificacion.trim().length >= 20 ? 'text-green-600' : 'text-gray-400'}`}>
+            {justificacion.trim().length}/20
+          </p>
+        </div>
+      </div>
+
+      {/* Warning si es Procuraduria */}
+      {entidadId === 'procuraduria' && (
+        <WCWarningBox>
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600" />
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Área/Entidad de Destino <span className="text-red-500">*</span>
-              </label>
-              
-              {loadingEntidades ? (
-                <div className="flex items-center gap-2 text-gray-500 p-4 border border-gray-200 rounded-lg">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">Cargando entidades...</span>
-                </div>
-              ) : entidades.length > 0 ? (
-                <div className="space-y-3">
-                  <select
-                    value={entidadSeleccionada?.id || ''}
-                    onChange={(e) => handleEntidadChange(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  >
-                    {entidades.map(entidad => (
-                      <option key={entidad.id} value={entidad.id}>
-                        {entidad.nombre}
-                      </option>
-                    ))}
-                  </select>
-                  
-                  {/* Mostrar correo de la entidad seleccionada */}
-                  {entidadSeleccionada && (
-                    <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg border border-gray-200">
-                      <Mail className="w-4 h-4 text-gray-500" />
-                      <span className="font-medium">Correo destino:</span>
-                      <span className="text-purple-700 font-semibold">{entidadSeleccionada.correo}</span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                // Fallback si no hay entidades en la BD - mostrar SOLO mensaje de error sin opciones alternativas
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-semibold text-red-900 mb-1">
-                        No hay entidades de remisión configuradas
-                      </p>
-                      <p className="text-sm text-red-700 mb-3">
-                        Para remitir por competencia, primero debe configurar las entidades de remisión en la sección de configuración del sistema.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={handleRecargarEntidades}
-                        className="text-sm text-blue-600 hover:text-blue-700 underline"
-                      >
-                        Reintentar carga de entidades
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Justificación */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Justificación de la Remisión <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                value={justificacion}
-                onChange={(e) => setJustificacion(e.target.value)}
-                rows={4}
-                disabled={entidades.length === 0}
-                placeholder={entidades.length === 0 ? "Configure entidades de remisión primero..." : "Explica por qué esta noticia no corresponde a Control Interno Disciplinario y debe ser remitida..."}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none disabled:bg-gray-100 disabled:cursor-not-allowed"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                {justificacion.length} caracteres
-              </p>
+              <p className="font-bold text-amber-800 mb-0.5">Remision a Procuraduria</p>
+              <p>La Procuraduria General de la Nacion ejerce el poder disciplinario preferente. Asegurate de remitir copia del expediente completo conforme al Art. 3 de la Ley 1952 de 2019.</p>
             </div>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3 rounded-b-xl">
-          <Button
-            onClick={onClose}
-            variant="outline"
-            disabled={isSubmitting}
-          >
-            Cancelar
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!areaDestino || !justificacion.trim() || isSubmitting || entidades.length === 0}
-            className="bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Remitiendo...
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4 mr-2" />
-                Remitir
-              </>
-            )}
-          </Button>
-        </div>
-      </motion.div>
-    </div>
+        </WCWarningBox>
+      )}
+    </WorldClassModal>
   );
 }
