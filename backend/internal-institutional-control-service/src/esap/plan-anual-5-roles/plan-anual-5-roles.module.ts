@@ -8,6 +8,7 @@ import { ActividadPlanAnual5 } from './entities/actividad-plan-anual-5.entity';
 import { AdjuntoActividadPlanAnual5 } from './entities/adjunto-actividad-plan-anual-5.entity';
 import { HistorialPlanAnual } from './entities/historial-plan-anual.entity';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
+import { AuthModule } from '../../auth/auth.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { NotificacionesModule } from '../notificaciones/notificaciones.module';
       HistorialPlanAnual,
     ]),
     NotificacionesModule,
+    AuthModule,
   ],
   controllers: [PlanAnual5RolesController],
   providers: [PlanAnual5RolesService],

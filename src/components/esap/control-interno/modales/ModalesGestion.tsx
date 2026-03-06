@@ -21,8 +21,8 @@
  * @date 30 Enero 2025
  */
 
-import React, { useState } from 'react';
-import { X, Check, Users, MessageSquare, FileText, Send, AlertCircle, Workflow } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, Check, Users, MessageSquare, FileText, Send, AlertCircle, Workflow, Info, Upload } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { type EstadoKanban } from '../utils/esapThemeOCIG';
 import { ModalBaseWorldClass } from '../ModalBaseWorldClass';
@@ -266,12 +266,32 @@ interface ModalAprobarAuditoriaProps {
 
 export function ModalAprobarAuditoria({ isOpen, onClose, auditoriaId, onAprobar }: ModalAprobarAuditoriaProps) {
   const [comentario, setComentario] = useState('');
+  const [error, setError] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // VALIDACIÓN: Comentario obligatorio
+    if (!comentario || comentario.trim().length === 0) {
+      setError('El comentario es obligatorio para aceptar el hallazgo');
+      toast.error('Comentario requerido', {
+        description: 'Debe ingresar un comentario explicando la aceptación del hallazgo'
+      });
+      return;
+    }
+    
+    if (comentario.trim().length < 10) {
+      setError('El comentario debe tener al menos 10 caracteres');
+      toast.error('Comentario muy corto', {
+        description: 'El comentario debe ser claro y descriptivo (mínimo 10 caracteres)'
+      });
+      return;
+    }
+    
+    setError('');
     onAprobar(comentario);
-    toast.success('Plan de Auditoría Aprobado', {
-      description: 'El plan ha sido aprobado y la auditoría puede iniciar su ejecución'
+    toast.success('Hallazgo Aceptado', {
+      description: 'La unidad auditada acepta el hallazgo. Se puede proceder con el plan de mejoramiento'
     });
     onClose();
     setComentario('');
@@ -291,10 +311,11 @@ export function ModalAprobarAuditoria({ isOpen, onClose, auditoriaId, onAprobar 
       <button
         type="submit"
         onClick={handleSubmit}
-        className="px-5 py-2.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:shadow-lg transition-all text-base font-medium flex items-center gap-2"
+        disabled={!comentario || comentario.trim().length < 10}
+        className="px-5 py-2.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:shadow-lg transition-all text-base font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <Check className="w-4 h-4" />
-        Aprobar Plan de Auditoría
+        Aceptar Hallazgo
       </button>
     </div>
   );
@@ -303,8 +324,8 @@ export function ModalAprobarAuditoria({ isOpen, onClose, auditoriaId, onAprobar 
     <ModalBaseWorldClass
       isOpen={isOpen}
       onClose={onClose}
-      title="Aprobar Plan de Auditoría"
-      subtitle="Autorizar el inicio de ejecución de la auditoría"
+      title="Aceptar Hallazgo de Auditoría"
+      subtitle="La unidad auditada debe aceptar o no aceptar el hallazgo identificado"
       size="md"
       headerIcon={headerIcon}
       footerActions={footerActions}
@@ -318,13 +339,13 @@ export function ModalAprobarAuditoria({ isOpen, onClose, auditoriaId, onAprobar 
             </div>
             <div>
               <h4 className="text-base font-semibold text-gray-900 mb-2">
-                ¿Qué significa "Aprobar el Plan de Auditoría"?
+                ¿Qué significa "Aceptar el Hallazgo"?
               </h4>
               <ul className="text-sm text-gray-700 space-y-1.5 list-disc list-inside">
-                <li>El <strong>plan preliminar de auditoría</strong> (alcance, objetivos, metodología) ha sido revisado</li>
-                <li>Se autoriza formalmente el <strong>inicio de la fase de ejecución</strong></li>
-                <li>El equipo auditor puede comenzar a <strong>realizar el trabajo de campo</strong></li>
-                <li>Se activa el <strong>cronograma de ejecución</strong> y se notifica a los responsables</li>
+                <li>La <strong>unidad auditada</strong> reconoce la situación identificada por el equipo auditor</li>
+                <li>Se compromete a implementar las <strong>acciones correctivas</strong> correspondientes</li>
+                <li>Al aceptar, se procede con la <strong>formulación del plan de mejoramiento</strong></li>
+                <li><strong>Importante:</strong> El comentario es obligatorio para justificar la aceptación</li>
               </ul>
             </div>
           </div>
@@ -338,11 +359,11 @@ export function ModalAprobarAuditoria({ isOpen, onClose, auditoriaId, onAprobar 
             </div>
             <div>
               <h4 className="text-base font-semibold text-gray-900 mb-2">
-                ¿Confirma la aprobación del plan?
+                ¿Confirma la aceptación del hallazgo?
               </h4>
               <p className="text-sm text-gray-700">
-                Al aprobar, la auditoría pasará de <span className="font-semibold text-blue-600">"Planificación"</span> a <span className="font-semibold text-green-600">"Ejecución"</span>, 
-                habilitando el trabajo de campo y notificando al equipo auditor y al proceso auditado.
+                Al aceptar, se reconoce el hallazgo identificado y se iniciará el proceso de
+                <span className="font-semibold text-blue-600"> formulación del Plan de Mejoramiento</span> con las acciones correctivas necesarias.
               </p>
             </div>
           </div>
@@ -351,22 +372,38 @@ export function ModalAprobarAuditoria({ isOpen, onClose, auditoriaId, onAprobar 
         {/* Campo de comentarios */}
         <div>
           <label className="block text-base font-semibold text-gray-900 mb-2">
-            Comentarios de Aprobación
-            <span className="text-sm text-gray-500 font-normal ml-2">(Opcional)</span>
+            Comentarios de Aceptación
+            <span className="text-sm text-red-600 font-bold ml-2">(*Obligatorio)</span>
           </label>
           <p className="text-sm text-gray-600 mb-3">
-            Agregue observaciones, recomendaciones o condiciones para la ejecución
+            Explique por qué la unidad auditada acepta el hallazgo y qué acciones implementará (mínimo 10 caracteres)
           </p>
+          {error && (
+            <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
           <textarea
             value={comentario}
-            onChange={(e) => setComentario(e.target.value)}
+            onChange={(e) => {
+              setComentario(e.target.value);
+              if (error) setError('');
+            }}
             rows={5}
-            className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-base resize-none"
-            placeholder="Ej: Se aprueba el plan de auditoría presentado. El equipo debe priorizar la revisión de controles financieros durante la primera semana de ejecución."
+            className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-2 transition-all text-base resize-none ${
+              error 
+                ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                : 'border-gray-300 focus:ring-green-500 focus:border-green-500'
+            }`}
+            placeholder="Ej: La Unidad acepta el hallazgo identificado. Se reconoce la debilidad en los controles financieros y se compromete a implementar las medidas correctivas sugeridas en un plazo de 30 días."
+            required
           />
           <div className="flex justify-between items-center mt-2">
-            <span className="text-sm text-gray-500">
-              {comentario.length} caracteres
+            <span className={`text-sm ${
+              comentario.length < 10 ? 'text-red-600 font-semibold' : 'text-gray-500'
+            }`}>
+              {comentario.length} / 10 caracteres mínimo {comentario.length >= 10 ? '✓' : ''}
             </span>
             {comentario.length > 0 && (
               <button
@@ -444,10 +481,10 @@ export function ModalCambiarEstado({ isOpen, onClose, auditoriaId, estadoActual,
       descripcion: 'Comunicación de resultados'
     },
     { 
-      value: 'cerrado', 
-      label: 'Cerrado', 
-      color: '#D5D8DC',
-      descripcion: 'Auditoría finalizada y cerrada'
+      value: 'finalizada', 
+      label: 'Finalizada', 
+      color: '#D5DBDB',
+      descripcion: 'Auditoría finalizada (requiere documento de cierre)'
     },
   ];
 
@@ -539,6 +576,20 @@ export function ModalCambiarEstado({ isOpen, onClose, auditoriaId, estadoActual,
             </div>
           </motion.label>
         ))}
+        
+        {/* Mensaje informativo sobre finalización */}
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-semibold text-blue-900 mb-1">Finalización de auditoría</p>
+              <p className="text-blue-700">
+                Al seleccionar <strong>"Finalizada"</strong>, se abrirá un modal donde deberá 
+                adjuntar obligatoriamente el documento o matriz de cierre de la auditoría.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </ModalBaseWorldClass>
   );
@@ -775,6 +826,251 @@ export function ModalNotas({ isOpen, onClose, auditoriaId, onGuardar, onLoadNota
 }
 
 // ═════════════════════════════════════════════════════════════════════════
+// 5. MODAL FINALIZAR AUDITORÍA - WORLD CLASS
+// ═════════════════════════════════════════════════════════════════════════
+
+interface ModalFinalizarAuditoriaProps {
+  isOpen: boolean;
+  onClose: () => void;
+  auditoriaId: string;
+  auditoriaTitulo: string;
+  onFinalizar: (archivo: File, comentarios: string) => Promise<void>;
+}
+
+export function ModalFinalizarAuditoria({ 
+  isOpen, 
+  onClose, 
+  auditoriaId, 
+  auditoriaTitulo, 
+  onFinalizar 
+}: ModalFinalizarAuditoriaProps) {
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [comentarios, setComentarios] = useState('');
+  const [error, setError] = useState('');
+  const [cargando, setCargando] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleArchivoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validar tamaño (máximo 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        setError('El archivo no debe superar 10 MB');
+        setArchivo(null);
+        return;
+      }
+      // Validar tipo
+      const tiposPermitidos = [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel'
+      ];
+      if (!tiposPermitidos.includes(file.type)) {
+        setError('Solo se permiten archivos PDF, Word o Excel');
+        setArchivo(null);
+        return;
+      }
+      setError('');
+      setArchivo(file);
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validar archivo obligatorio
+    if (!archivo) {
+      setError('Debe cargar el documento de cierre obligatorio');
+      return;
+    }
+
+    setCargando(true);
+    try {
+      await onFinalizar(archivo, comentarios);
+      toast.success('Auditoría Finalizada', {
+        description: 'El documento de cierre ha sido adjuntado correctamente'
+      });
+      onClose();
+      // Limpiar estado
+      setArchivo(null);
+      setComentarios('');
+      setError('');
+    } catch (err) {
+      toast.error('Error al finalizar', {
+        description: 'No se pudo procesar el documento de cierre'
+      });
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  const headerIcon = <Check className="w-5 h-5 text-[#003DA5]" />;
+
+  const footerActions = (
+    <div className="flex gap-3">
+      <button
+        type="button"
+        onClick={onClose}
+        disabled={cargando}
+        className="px-5 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-base font-medium disabled:opacity-50"
+      >
+        Cancelar
+      </button>
+      <button
+        type="submit"
+        onClick={handleSubmit}
+        disabled={!archivo || cargando}
+        className="px-5 py-2.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:shadow-lg transition-all text-base font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <Check className="w-4 h-4" />
+        {cargando ? 'Finalizando...' : 'Finalizar Auditoría'}
+      </button>
+    </div>
+  );
+
+  return (
+    <ModalBaseWorldClass
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Finalizar Auditoría"
+      subtitle={`Adjuntar documento de cierre para: ${auditoriaTitulo}`}
+      size="md"
+      headerIcon={headerIcon}
+      footerActions={footerActions}
+    >
+      <div className="space-y-4">
+        {/* Alerta informativa */}
+        <div className="p-4 bg-blue-50 border-l-4 border-blue-600 rounded-r-lg">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-semibold text-blue-900 mb-1">Documento de Cierre Obligatorio</p>
+              <p className="text-blue-700">
+                Debe adjuntar la matriz o formato de cierre de auditoría. Este documento quedará 
+                vinculado permanentemente al expediente.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Carga de archivo - Estilo mejorado */}
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-gray-900">
+            Documento de Cierre (*Obligatorio)
+          </label>
+          
+          {/* Input oculto */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleArchivoChange}
+            accept=".pdf,.doc,.docx,.xls,.xlsx"
+            className="hidden"
+            disabled={cargando}
+          />
+          
+          {/* Área de selección clickeable */}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              if (fileInputRef.current && !cargando) {
+                fileInputRef.current.click();
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (fileInputRef.current && !cargando) {
+                  fileInputRef.current.click();
+                }
+              }
+            }}
+            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
+              archivo
+                ? 'border-green-300 bg-green-50'
+                : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50'
+            } ${cargando ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {archivo ? (
+              <div className="space-y-2">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                  <FileText className="w-8 h-8 text-green-600" />
+                </div>
+                <p className="text-sm font-medium text-gray-900">{archivo.name}</p>
+                <p className="text-xs text-gray-500">
+                  {formatFileSize(archivo.size)}
+                </p>
+                {!cargando && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setArchivo(null);
+                    }}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Cambiar archivo
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto">
+                  <Upload className="w-8 h-8 text-gray-400" />
+                </div>
+                <p className="text-sm text-gray-700 font-medium">
+                  Haz clic para seleccionar o arrastra el archivo aquí
+                </p>
+                <p className="text-xs text-gray-500">
+                  PDF, Word, Excel (Máx. 10 MB)
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Error de validación */}
+        {error && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+            <p className="text-sm text-red-700 font-medium">{error}</p>
+          </div>
+        )}
+
+        {/* Comentarios opcionales */}
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-gray-900">
+            Comentarios de Cierre (Opcional)
+          </label>
+          <textarea
+            value={comentarios}
+            onChange={(e) => setComentarios(e.target.value)}
+            rows={4}
+            disabled={cargando}
+            className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] transition-all text-base resize-none disabled:opacity-50"
+            placeholder="Observaciones finales, conclusiones o comentarios adicionales sobre el cierre de la auditoría..."
+          />
+          <p className="text-xs text-gray-500">
+            {comentarios.length} caracteres
+          </p>
+        </div>
+      </div>
+    </ModalBaseWorldClass>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════
 // EXPORTS
 // ═════════════════════════════════════════════════════════════════════════
 
@@ -783,4 +1079,5 @@ export default {
   Aprobar: ModalAprobarAuditoria,
   CambiarEstado: ModalCambiarEstado,
   Notas: ModalNotas,
+  Finalizar: ModalFinalizarAuditoria,
 };

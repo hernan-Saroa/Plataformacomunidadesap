@@ -1837,6 +1837,28 @@ class ControlInternoService {
   }
 
   /**
+   * Finaliza una auditoría con documento de cierre
+   */
+  async finalizarAuditoria(
+    id: string, 
+    archivo: File, 
+    observaciones: string,
+    finalizadaPor: string,
+    finalizadaPorId: number
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', archivo);
+    formData.append('observaciones', observaciones);
+    formData.append('finalizadaPor', finalizadaPor);
+    formData.append('finalizadaPorId', finalizadaPorId.toString());
+
+    // Usar client.upload que maneja baseURL + servicePrefix automáticamente
+    // -> directo: http://localhost:3007/auditorias/:id/finalizar
+    // -> gateway: http://host/services/control-institucional/api/v1/auditorias/:id/finalizar
+    return client.upload<any>(`/auditorias/${id}/finalizar`, formData);
+  }
+
+  /**
    * Solicita modificación de una auditoría
    */
   async solicitarModificacionAuditoria(id: string, observaciones: string): Promise<any> {

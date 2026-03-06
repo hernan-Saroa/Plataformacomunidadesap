@@ -45,11 +45,19 @@ export class CreateAuditoriaDto {
 
   @IsDateString()
   @IsNotEmpty()
-  fechaInicio: string;
+  fechaInicio: string; // Inicio de Planeación
+
+  @IsDateString()
+  @IsOptional()
+  fechaFinPlaneacion?: string; // Fin de Planeación / Inicio de Ejecución
+
+  @IsDateString()
+  @IsOptional()
+  fechaFinEjecucion?: string; // Fin de Ejecución / Inicio de Comunicación
 
   @IsDateString()
   @IsNotEmpty()
-  fechaFin: string;
+  fechaFin: string; // Fin de Comunicación (fin de auditoría)
 
   @IsInt()
   @Min(0)

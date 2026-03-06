@@ -53,6 +53,8 @@ import { ModalDetallesProceso } from './ModalDetallesProceso'; // ✅ Modal Worl
 import { WizardConvertirProcesoWorldClass } from './WizardConvertirProcesoWorldClass'; // ✅ Wizard conversión con disponibilidad de profesionales
 import { ModalDetallesNoticia } from './ModalDetallesNoticia'; // ✅ Modal World Class detalles de noticia
 import { noticiasService, procesosService, ensureDataSeeded } from '../../../services/api/esapDataService'; // ✅ Datos desde Supabase (servidor v7 in-memory)
+import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProcess as ApiProceso } from '../../../services/api/disciplinary.service';
+import { entidadesRemisionService, EntidadRemision } from '../../../services/api/entidadesRemisionService';
 import {
   KanbanButtonPrimary,
   KanbanButtonSecondary,
@@ -260,13 +262,6 @@ type ModalType =
 // ==================== DATOS DESDE SUPABASE ====================
 // Los datos se cargan desde Supabase KV Store al montar el componente.
 // Ya no se usan mocks hardcodeados — ver seedData.tsx para los datos iniciales.
-
-const PROFESIONALES_NOMBRES = [
-  'Juan Carlos Pérez Rodríguez',
-  'Ana María Torres Gómez',
-  'Carlos Eduardo Martínez Silva',
-  'Sandra Milena Ramírez Castro'
-];
 
 // ==================== COMPONENTE TARJETA DE NOTICIA ====================
 interface TarjetaNoticiaProps {
@@ -2211,10 +2206,18 @@ export function DashboardKanbanOperativo({
   const [profesionalSeleccionado, setProfesionalSeleccionado] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [areaDestinoRemision, setAreaDestinoRemision] = useState('');
-  
-  // ✅ NUEVO: Estado para entidades de remisión configuradas
-  const [entidadesRemision, setEntidadesRemision] = useState<Array<{id: string, nombre: string, correo: string, activo: boolean}>>([]);
-  
+  const [isConvirtiendo, setIsConvirtiendo] = useState(false); // ✅ NUEVO: Estado para prevenir duplicados
+  const [isRemitiendo, setIsRemitiendo] = useState(false); // ✅ NUEVO: Estado para loading de remisión
+
+  // ✅ NUEVO: Estado para entidades de remisión configuradas (cargadas desde backend)
+  const [entidadesRemision, setEntidadesRemision] = useState<EntidadRemision[]>([]);
+  const [entidadesLoading, setEntidadesLoading] = useState(true);
+  const [entidadesError, setEntidadesError] = useState<string | null>(null);
+
+  // ✅ NUEVO: Estado para profesionales cargados desde el backend
+  const [profesionalesList, setProfesionalesList] = useState<{ id: string; nombre: string }[]>([]);
+  const [profesionalesLoading, setProfesionalesLoading] = useState(true);
+
   // ✅ NUEVO: Estado para solicitudes de reasignación pendientes
   const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([]);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<any>(null);
@@ -2233,6 +2236,119 @@ export function DashboardKanbanOperativo({
     } catch (error) {
       console.error('Error al cargar entidades de remisión:', error);
     }
+  }, []);
+
+  // ✅ NUEVO: Cargar entidades de remisión desde el backend
+  const cargarEntidadesRemision = async () => {
+    setEntidadesLoading(true);
+    setEntidadesError(null);
+    try {
+      const entidades = await entidadesRemisionService.getActivas();
+      setEntidadesRemision(entidades);
+    } catch (error: any) {
+      console.error('Error al cargar entidades de remisión:', error);
+      setEntidadesError(error?.message || 'Error al cargar entidades de remisión');
+      // Fallback: intentar cargar desde localStorage si el backend falla
+      try {
+        const configString = localStorage.getItem('disciplinario-configuracion');
+        if (configString) {
+          const config = JSON.parse(configString);
+          if (config.entidadesRemision) {
+            setEntidadesRemision(config.entidadesRemision.filter((e: any) => e.activo));
+          }
+        }
+      } catch (localError) {
+        console.error('Error al cargar desde localStorage:', localError);
+      }
+    } finally {
+      setEntidadesLoading(false);
+    }
+  };
+
+  // ✅ NUEVO: Cargar profesionales desde el backend
+  const cargarProfesionales = async () => {
+    setProfesionalesLoading(true);
+    try {
+      const profesionales = await disciplinaryService.getProfesionales();
+      // Mapear al formato esperado: { id, nombre }
+      const profesionalesFormateados = profesionales.map((p: any) => ({
+        id: p.id,
+        nombre: p.nombreCompleto || p.nombre || p.email
+      }));
+      setProfesionalesList(profesionalesFormateados);
+    } catch (error: any) {
+      console.error('Error al cargar profesionales:', error);
+      // Fallback vacío si falla
+      setProfesionalesList([]);
+    } finally {
+      setProfesionalesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    cargarEntidadesRemision();
+  }, []);
+
+  // ✅ NUEVO: Cargar profesionales al inicio
+  useEffect(() => {
+    cargarProfesionales();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const cargarProcesosYNoticias = async () => {
+      try {
+        const [noticiasApi, procesosApi] = await Promise.all([
+          disciplinaryService.getAllNoticias(),
+          disciplinaryService.getAllProcesos()
+        ]);
+
+        if (cancelled) return;
+
+        // Verificar si hay datos reales del backend o si está vacío
+        const noticiasReales = (noticiasApi || []).length > 0;
+        const procesosReales = (procesosApi || []).length > 0;
+
+        if (!noticiasReales && !procesosReales) {
+          // No hay datos del backend, no mostrar mock
+          console.log('⚠️ No hay noticias ni procesos desde el backend');
+          setItems([]);
+          return;
+        }
+
+        // 🔍 DEBUG: Verificar datos de asociación desde API
+        console.log('📋 [DEBUG] Noticias raw desde API:', (noticiasApi || []).map((n: any) => ({
+          id: n.id,
+          radicado: n.radicado,
+          procesoAsociadoId: n.procesoAsociadoId,
+          procesoAsociadoNumero: n.procesoAsociadoNumero,
+          procesoAsociadoFecha: n.procesoAsociadoFecha,
+          procesoAsociadoJustificacion: n.procesoAsociadoJustificacion,
+        })));
+
+        const noticias = (noticiasApi || []).map(toNoticiaFromApi);
+        const procesos = (procesosApi || []).map(toProcesoFromApi);
+
+        // 🔍 DEBUG: Verificar datos después del mapeo
+        console.log('📋 [DEBUG] Noticias mapeadas (procesoAsociado):', noticias.map(n => ({
+          id: n.id,
+          numero: n.numero,
+          procesoAsociado: n.procesoAsociado,
+        })));
+
+        setItems([...noticias, ...procesos]);
+      } catch (error) {
+        console.error('Error cargando submódulo de procesos desde API:', error);
+        // NO usar mock como fallback - dejar vacío para indicar problema de conexión
+        setItems([]);
+      }
+    };
+
+    cargarProcesosYNoticias();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ✅ Auto-activar vista compacta en mobile y tablet
@@ -2475,7 +2591,7 @@ export function DashboardKanbanOperativo({
     setMostrarModalEditar(true);
   };
 
-  const handleConfirmarConversion = () => {
+  const handleConfirmarConversion = async () => {
     if (!profesionalSeleccionado) {
       toast.error('Error', { description: 'Selecciona un profesional' });
       return;
@@ -2525,9 +2641,92 @@ export function DashboardKanbanOperativo({
     toast.success('Proceso Creado', {
       description: `${nuevoProceso.numeroProceso} → ${profesionalSeleccionado}`
     });
+    if (!itemSeleccionado) return;
 
-    setModalActivo(null);
-    setItemSeleccionado(null);
+    // ✅ NUEVO: Verificar si la noticia ya tiene proceso asociado (prevención adicional)
+    if ((itemSeleccionado as Noticia).procesoAsociado) {
+      toast.error('Esta noticia ya tiene un proceso asociado');
+      return;
+    }
+
+    // ✅ NUEVO: Obtener el nombre del profesional seleccionado (disponible en todo el ámbito)
+    const profesionalObj = profesionalesList.find((p: any) => p.id === profesionalSeleccionado);
+    const nombreProfesional = profesionalObj?.nombre || profesionalSeleccionado;
+
+    // ✅ NUEVO: Activar estado de loading
+    setIsConvirtiendo(true);
+
+    let procesoCreado = false;
+
+    try {
+      const abogadoId = profesionalSeleccionado;
+      const procesoApi = await disciplinaryService.asignarProceso({
+        newsId: itemSeleccionado.id,
+        abogadoId,
+        abogadoNombre: nombreProfesional
+      });
+
+      const nuevoProceso = toProcesoFromApi(procesoApi);
+
+      setItems(prev => [
+        ...prev.filter(i => i.id !== itemSeleccionado.id),
+        nuevoProceso
+      ]);
+
+      toast.success('Proceso Creado', {
+        description: `${nuevoProceso.numeroProceso} → ${nombreProfesional}`
+      });
+
+      setModalActivo(null);
+      setItemSeleccionado(null);
+      procesoCreado = true;
+    } catch (error) {
+      console.error('Error convirtiendo noticia a proceso:', error);
+      // fallback local para no bloquear operación en entornos sin endpoint
+    } finally {
+      // ✅ NUEVO: Siempre desactivar el estado de loading
+      setIsConvirtiendo(false);
+    }
+
+    // ✅ Fallback local: crear proceso sin llamar al backend
+    if (!procesoCreado) {
+      const nuevoProceso: Proceso = {
+        id: `p${Date.now()}`,
+        numeroProceso: `P-2025-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
+        noticiaOrigen: itemSeleccionado.numero,
+        denunciante: itemSeleccionado.denunciante,
+        denunciado: itemSeleccionado.denunciado,
+        cedula: typeof itemSeleccionado.denunciado === 'object' ? itemSeleccionado.denunciado.numeroIdentificacion : '00000000',
+        etapaActual: 'Recepción',
+        estadoActual: 'En Gestión',
+        profesionalAsignado: {
+          nombre: nombreProfesional,
+          tipoIdentificacion: 'CC',
+          numeroIdentificacion: profesionalSeleccionado
+        },
+        semaforo: 'verde',
+        diasRestantes: 30,
+        porcentajeTiempo: 0,
+        borradores: [],
+        documentos: [],
+        pendienteAprobacion: false,
+        ultimaActuacion: 'Noticia convertida',
+        fechaCreacion: new Date().toISOString().split('T')[0],
+        tipo: 'proceso'
+      };
+
+      setItems(prev => [
+        ...prev.filter(i => i.id !== itemSeleccionado.id),
+        nuevoProceso
+      ]);
+
+      toast.success('Proceso Creado (local)', {
+        description: `${nuevoProceso.numeroProceso} → ${nombreProfesional}`
+      });
+
+      setModalActivo(null);
+      setItemSeleccionado(null);
+    }
   };
 
   // ✅ NUEVO: Handler del wizard de conversión con datos enriquecidos
@@ -3750,8 +3949,164 @@ export function DashboardKanbanOperativo({
 
                 {/* Modal: Devolver Noticia → World Class Component */}
                 {/* MOVIDO A COMPONENTE INDEPENDIENTE: ModalDevolverNoticia */}
+                <div>
+                  <label className="text-sm font-bold text-gray-700 mb-2 block">
+                    Profesional *
+                  </label>
+                  {profesionalesLoading ? (
+                    <div className="flex items-center justify-center p-4">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                      <span className="ml-2 text-sm text-gray-500">Cargando profesionales...</span>
+                    </div>
+                  ) : profesionalesList.length === 0 ? (
+                    <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                      <p className="text-sm text-amber-700">No hay profesionales disponibles</p>
+                      <button
+                        onClick={cargarProfesionales}
+                        className="mt-2 px-3 py-1.5 bg-amber-600 text-white text-xs rounded-lg hover:bg-amber-700"
+                      >
+                        Reintentar
+                      </button>
+                    </div>
+                  ) : (
+                    <select
+                      value={profesionalSeleccionado}
+                      onChange={(e) => setProfesionalSeleccionado(e.target.value)}
+                      className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Seleccionar...</option>
+                      {profesionalesList.map((prof: any) => (
+                        <option key={prof.id} value={prof.id}>{prof.nombre}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
 
                 {/* Modal: Devolver por Competencia → World Class Component */}
+                {modalActivo === 'devolver-competencia' && itemSeleccionado && (
+                  <>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-xl bg-purple-100">
+                          <Send className="w-6 h-6 text-purple-600" />
+                        </div>
+                        <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-black text-gray-900`}>
+                          Remitir por Competencia
+                        </h3>
+                      </div>
+                      <button onClick={() => setModalActivo(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                        <X className="w-5 h-5 text-gray-600" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="p-4 bg-purple-50 rounded-xl border-2 border-purple-200">
+                        <p className="text-sm font-bold mb-1 text-purple-900">{itemSeleccionado.numero}</p>
+                        <p className="text-sm text-gray-700">{itemSeleccionado.denunciado.nombre}</p>
+                        <p className="text-xs text-gray-600">
+                          {itemSeleccionado.denunciado.tipoIdentificacion} {itemSeleccionado.denunciado.numeroIdentificacion}
+                        </p>
+                      </div>
+
+                      <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="flex items-start gap-2">
+                          <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-bold text-blue-900 mb-1">Remisión por Competencia</p>
+                            <p className="text-xs text-blue-700">
+                              Esta noticia no es competencia del área de Control Interno Disciplinario.
+                              Se generará un nuevo número RC (Remisión por Competencia) y se remitirá al área correspondiente.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ✅ Carga de entidades desde backend */}
+                      {entidadesLoading ? (
+                        <div className="flex items-center justify-center p-4">
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+                          <span className="ml-2 text-sm text-gray-600">Cargando entidades...</span>
+                        </div>
+                      ) : entidadesError ? (
+                        <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                          <p className="text-sm text-red-700 font-semibold">Error al cargar entidades</p>
+                          <p className="text-xs text-red-600 mt-1">{entidadesError}</p>
+                          <button
+                            onClick={cargarEntidadesRemision}
+                            className="mt-2 px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700"
+                          >
+                            Reintentar
+                          </button>
+                        </div>
+                      ) : entidadesRemision.length === 0 ? (
+                        <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                          <p className="text-sm text-amber-700 font-semibold">⚠️ No hay entidades de remisión configuradas</p>
+                          <p className="text-xs text-amber-600 mt-1">
+                            Para remitir noticias por competencia, primero debe configurar las entidades en la sección de configuración del sistema.
+                          </p>
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="text-sm font-bold text-gray-700 mb-2 block">
+                            Área/Entidad de Destino *
+                          </label>
+                          <select
+                            value={areaDestinoRemision}
+                            onChange={(e) => setAreaDestinoRemision(e.target.value)}
+                            className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 font-semibold"
+                            disabled={false}
+                          >
+                            <option value="">Seleccionar área/entidad...</option>
+                            {entidadesRemision.map((entidad) => (
+                              <option key={entidad.id} value={entidad.id}>
+                                {entidad.nombre}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-gray-500 mt-1">
+                            💡 Selecciona una de las {entidadesRemision.length} entidades configuradas
+                          </p>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="text-sm font-bold text-gray-700 mb-2 block">
+                          Justificación de la Remisión *
+                        </label>
+                        <textarea
+                          value={observaciones}
+                          onChange={(e) => setObservaciones(e.target.value)}
+                          className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          rows={4}
+                          placeholder="Explica por qué esta noticia no corresponde a Control Interno Disciplinario y debe ser remitida..."
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 mt-6">
+                      <Button onClick={() => setModalActivo(null)} variant="outline" className="flex-1">
+                        Cancelar
+                      </Button>
+                      <Button
+                        onClick={handleConfirmarDevolucionCompetencia}
+                        disabled={isRemitiendo || !areaDestinoRemision || !observaciones.trim()}
+                        className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                      >
+                        {isRemitiendo ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                            Enviando...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4 mr-2" />
+                            Remitir
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                )}
                 {/* MOVIDO A COMPONENTE INDEPENDIENTE: ModalRemitirCompetencia */}
 
                 {/* Modal: Archivar Noticia - REEMPLAZADO POR COMPONENTE MODAL COMPLETO */}

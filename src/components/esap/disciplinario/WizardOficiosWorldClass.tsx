@@ -14,18 +14,19 @@
  * ✅ Feedback visual instantáneo
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  X, Mail, FileText, Download, Upload, CheckCircle, AlertCircle,
+  X, Mail, FileText, Download, Upload, CheckCircle, AlertCircle, AlertTriangle,
   Calendar, User, Send, Search, Clock, Paperclip, Eye, Shield,
   Sparkles, Zap, Star, FileCheck, MessageSquare, Building2,
-  AlertTriangle, Info, Tag
+  Info, Tag
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { CATEGORIAS_OFICIOS, type CategoriaOficioId, type TipoOficio } from './configuracion/SeccionPlantillasOficiosUnificada';
 import { BadgeNomenclatura } from './components/BadgeNomenclatura';
 import { generarNomenclatura, previsualizarNomenclatura, type DocumentoNomenclatura } from './utils/nomenclaturaDocumentos';
+import { useOficiosConfigurationActive } from '../../../hooks/useOficiosConfiguration';
 
 // ==================== DATOS MOCK ====================
 const TIPOS_OFICIOS_MOCK: TipoOficio[] = [
@@ -39,9 +40,12 @@ const TIPOS_OFICIOS_MOCK: TipoOficio[] = [
       nombre: 'Plantilla Notificación Auto Personal',
       descripcion: 'Para notificar autos mediante oficio personal',
       nombreArchivo: 'OFICIO_NOTIFICACION_AUTO_v2024.docx',
+      url: '',
+      tamano: 0,
       tipoArchivo: 'docx',
       version: '1.5',
       fechaCreacion: '2024-01-10',
+      fechaModificacion: '2024-01-10',
       activo: true
     },
     activo: true,
@@ -59,9 +63,12 @@ const TIPOS_OFICIOS_MOCK: TipoOficio[] = [
       nombre: 'Plantilla Requerimiento Información Estándar',
       descripcion: 'Para solicitar información a entidades del Estado',
       nombreArchivo: 'OFICIO_REQUERIMIENTO_INFO_v2024.docx',
+      url: '',
+      tamano: 0,
       tipoArchivo: 'docx',
       version: '2.0',
       fechaCreacion: '2024-01-15',
+      fechaModificacion: '2024-01-15',
       activo: true
     },
     activo: true,
@@ -79,9 +86,12 @@ const TIPOS_OFICIOS_MOCK: TipoOficio[] = [
       nombre: 'Plantilla Citación Audiencia',
       descripcion: 'Para citar a audiencias disciplinarias',
       nombreArchivo: 'OFICIO_CITACION_AUDIENCIA_v2024.docx',
+      url: '',
+      tamano: 0,
       tipoArchivo: 'docx',
       version: '1.8',
       fechaCreacion: '2024-01-20',
+      fechaModificacion: '2024-01-20',
       activo: true
     },
     activo: true,
@@ -99,9 +109,12 @@ const TIPOS_OFICIOS_MOCK: TipoOficio[] = [
       nombre: 'Plantilla Remisión Procuraduría',
       descripcion: 'Para remitir casos a Procuraduría',
       nombreArchivo: 'OFICIO_REMISION_PROCURADURIA_v2024.docx',
+      url: '',
+      tamano: 0,
       tipoArchivo: 'docx',
       version: '1.3',
       fechaCreacion: '2024-02-01',
+      fechaModificacion: '2024-02-01',
       activo: true
     },
     activo: true,
@@ -179,8 +192,60 @@ export function WizardOficiosWorldClass({
   // Estados de Oficios Generados
   const [oficiosGenerados] = useState<OficioGenerado[]>([]);
 
-  // Datos
-  const tiposOficios = TIPOS_OFICIOS_MOCK;
+  // Hook para obtener configuraciones de oficios del backend
+  const { configurations: tiposOficiosBackend, loading: loadingTipos, refetch: recargarTipos } = useOficiosConfigurationActive();
+
+  // Efecto para cargar datos al montar
+  useEffect(() => {
+    console.log('🔵 [WizardOficiosWorldClass] Montado, recargando tipos...');
+    recargarTipos();
+  }, []);
+
+  // Combinar datos mock con datos del backend - SOLO ACTIVOS
+  const tiposOficios = useMemo(() => {
+    if (tiposOficiosBackend.length > 0) {
+      // Filtrar solo activos y mapear
+      return tiposOficiosBackend
+        .filter((config: any) => config.estado === 'activo')
+        .map((config: any) => ({
+          id: config.id,
+          nombre: config.codigo || config.nombre, // Usar código como nombre si existe
+          descripcion: config.descripcion_plantilla || config.descripcion || `Tipo de oficio: ${config.tipo}`,
+          categoria: mapStageToCategoria(config.stage),
+          plantilla: config.plantilla ? {
+            id: config.id,
+            nombre: config.nombre_plantilla || 'Plantilla',
+            descripcion: config.descripcion_plantilla || '',
+            nombreArchivo: config.nombre_plantilla || 'plantilla.docx',
+            url: config.plantilla,
+            tamano: 0,
+            tipoArchivo: 'docx',
+            version: config.version_plantilla || '1.0',
+            fechaCreacion: config.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+            fechaModificacion: config.updatedAt?.split('T')[0] || '',
+            activo: config.estado_plantilla === 'activo'
+          } : null,
+          activo: config.estado === 'activo',
+          orden: config.orden,
+          codigo: config.codigo, // Guardar código para mostrar
+          fechaCreacion: config.createdAt?.split('T')[0] || '',
+          fechaModificacion: config.updatedAt?.split('T')[0] || ''
+        }));
+    }
+    // Si no hay datos del backend, usar mocks (solo activos)
+    return TIPOS_OFICIOS_MOCK.filter(t => t.activo);
+  }, [tiposOficiosBackend]);
+
+  // Función para mapear stage a categoría
+  function mapStageToCategoria(stage: string | null): CategoriaOficioId {
+    if (!stage) return 'COMUNICACION_EXTERNA';
+    const stageMap: Record<string, CategoriaOficioId> = {
+      'INDAGACION_PREVIA': 'NOTIFICACION',
+      'INVESTIGACION': 'COMUNICACION_EXTERNA',
+      'JUZGAMIENTO': 'CITACION'
+    };
+    return stageMap[stage] || 'COMUNICACION_EXTERNA';
+  }
 
   // ==================== EFECTOS ====================
   useEffect(() => {
@@ -320,8 +385,7 @@ export function WizardOficiosWorldClass({
     const cumpleFiltroCategoria = filtroCategoria === 'todas' || tipo.categoria === filtroCategoria;
     const cumpleBusqueda = tipo.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
                            tipo.descripcion.toLowerCase().includes(busqueda.toLowerCase());
-    const tienePlantilla = tipo.plantilla !== null;
-    return cumpleFiltroCategoria && cumpleBusqueda && tienePlantilla;
+    return cumpleFiltroCategoria && cumpleBusqueda;
   });
 
   // ==================== RENDER ====================
@@ -613,7 +677,12 @@ export function WizardOficiosWorldClass({
                     </div>
 
                     {/* Grid de Tipos Premium */}
-                    {tiposFiltrados.length === 0 ? (
+                    {loadingTipos ? (
+                      <div className="flex flex-col items-center justify-center py-20">
+                        <div className="w-12 h-12 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mb-4" />
+                        <p className="text-sm font-medium text-gray-600">Cargando tipos de oficios...</p>
+                      </div>
+                    ) : tiposFiltrados.length === 0 ? (
                       <div className="text-center py-20">
                         <div className="w-20 h-20 mx-auto mb-5 rounded-full bg-gray-100 flex items-center justify-center">
                           <AlertCircle className="w-10 h-10 text-gray-300" />
@@ -708,7 +777,7 @@ export function WizardOficiosWorldClass({
                               </div>
 
                               {/* Sección de Descarga de Plantilla */}
-                              {seleccionado && tipo.plantilla && (
+                              {seleccionado && tipo.plantilla ? (
                                 <motion.div
                                   initial={{ opacity: 0, height: 0 }}
                                   animate={{ opacity: 1, height: 'auto' }}
@@ -807,7 +876,60 @@ export function WizardOficiosWorldClass({
                                     </div>
                                   </motion.div>
                                 </motion.div>
-                              )}
+                              ) : seleccionado && !tipo.plantilla ? (
+                                <motion.div
+                                  initial={{ opacity: 0, height: 0 }}
+                                  animate={{ opacity: 1, height: 'auto' }}
+                                  exit={{ opacity: 0, height: 0 }}
+                                  transition={{ duration: 0.3 }}
+                                  className="border-t-2 border-amber-100 bg-gradient-to-r from-amber-50/50 to-yellow-50/50 p-4"
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                                      <div className="p-1.5 rounded-lg bg-amber-100">
+                                        <AlertCircle className="w-4 h-4 text-amber-700" />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-xs font-bold text-gray-900 truncate">
+                                          Sin plantilla configurada
+                                        </p>
+                                        <p className="text-xs text-gray-600">
+                                          Este tipo de oficio no tiene plantilla asociada. Puede crear el oficio sin usar plantilla.
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-xl"
+                                  >
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className="p-1.5 rounded-lg bg-blue-100">
+                                          <Tag className="w-4 h-4 text-blue-700" />
+                                        </div>
+                                        <div>
+                                          <p className="text-xs font-bold text-gray-900 mb-0.5">
+                                            Nomenclatura Asignada:
+                                          </p>
+                                          <p className="text-xs text-gray-600">
+                                            Se generará automáticamente al crear el oficio
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <BadgeNomenclatura 
+                                        nomenclatura={previsualizarNomenclatura('OFICIO')}
+                                        tipo="OFICIO"
+                                        size="sm"
+                                        showIcon={true}
+                                        showCopy={false}
+                                      />
+                                    </div>
+                                  </motion.div>
+                                </motion.div>
+                              ) : null}
 
                               {!seleccionado && (
                                 <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">

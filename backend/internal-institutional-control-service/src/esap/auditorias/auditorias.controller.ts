@@ -13,7 +13,13 @@ import {
   BadRequestException,
   UseGuards,
   Req,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import { AuditoriasService } from './auditorias.service';
 import { HallazgosService } from '../hallazgos/hallazgos.service';
 import { CreateAuditoriaDto } from './dto/create-auditoria.dto';
@@ -23,6 +29,7 @@ import { UpdateNotaDto } from './dto/update-nota.dto';
 import { SolicitarAmpliacionPlazoDto } from './dto/solicitar-ampliacion-plazo.dto';
 import { AprobarAmpliacionPlazoDto } from './dto/aprobar-ampliacion-plazo.dto';
 import { RechazarAmpliacionPlazoDto } from './dto/rechazar-ampliacion-plazo.dto';
+import { FinalizarAuditoriaDto } from './dto/finalizar-auditoria.dto';
 import { FaseAuditoria, EstadoKanban } from './entities/auditoria.entity';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
@@ -402,6 +409,7 @@ export class AuditoriasController {
    * PATCH /esap/auditorias/:id/estado-kanban
    * Actualiza el estado Kanban de una auditoría (para drag & drop)
    * Acepta tanto valores en español ('Plan Anual', 'Planeación') como normalizados
+   * IMPORTANTE: No permite cambiar a 'Finalizada' directamente (usar endpoint /finalizar)
    */
   @Patch(':id/estado-kanban')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -411,6 +419,68 @@ export class AuditoriasController {
     @Body('estadoKanban') estadoKanban: string,
   ) {
     return this.auditoriasService.updateEstadoKanban(id, estadoKanban);
+  }
+
+  /**
+   * POST /esap/auditorias/:id/finalizar
+   * Finaliza una auditoría con documento de cierre obligatorio
+   * Requiere cargar matriz/formato de cierre (archivo multipart)
+   */
+  @Post(':id/finalizar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = process.env.UPLOAD_PATH || './uploads/auditorias/cierre';
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const randomName = Array(32)
+            .fill(null)
+            .map(() => Math.round(Math.random() * 16).toString(16))
+            .join('');
+          cb(null, `${randomName}${extname(file.originalname)}`);
+        },
+      }),
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+      fileFilter: (req, file, cb) => {
+        const allowedTypes = [
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+        ];
+        if (allowedTypes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Solo se permiten archivos PDF, Word o Excel'), false);
+        }
+      },
+    }),
+  )
+  finalizarAuditoria(
+    @Param('id') id: string,
+    @UploadedFile() file: any,
+    @Body() body: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException(
+        'El documento de cierre es obligatorio para finalizar la auditoría',
+      );
+    }
+    return this.auditoriasService.finalizarAuditoriaConArchivo(
+      id,
+      file,
+      body.observaciones || '',
+      body.finalizadaPor || 'Sistema',
+      body.finalizadaPorId ? parseInt(body.finalizadaPorId, 10) : null,
+    );
   }
 
   /**

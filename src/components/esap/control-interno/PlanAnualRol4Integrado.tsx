@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * ROL 4 - PLAN ANUAL INTEGRADO CON UNIVERSO AUDITABLE
+ * ROL 4 - PLAN ANUAL INTEGRADO CON PROGRAMA DE AUDITORÍA
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Integración completa del Rol 4 del Plan Anual de Auditoría con:
