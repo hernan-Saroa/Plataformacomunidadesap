@@ -39,7 +39,7 @@ export class RequerimientoOC {
     @Column({ type: 'text', nullable: true })
     descripcion: string;
 
-    @Column({ name: 'fecha_recepcion', type: 'timestamp' })
+    @Column({ name: 'fecha_recepcion', type: 'date' })
     fechaRecepcion: Date;
 
     @Column({ name: 'unidad_tiempo', length: 20, default: 'DIAS_HABILES' })
@@ -48,7 +48,7 @@ export class RequerimientoOC {
     @Column({ name: 'plazo_otorgado', default: 15 })
     plazoOtorgado: number;
 
-    @Column({ name: 'fecha_vencimiento', type: 'timestamp' })
+    @Column({ name: 'fecha_vencimiento', type: 'date' })
     fechaVencimiento: Date;
 
     @Column({ name: 'funcionario_responsable', length: 200, nullable: true })

@@ -16,6 +16,8 @@ export class CreateDocumentoDto {
     numeroFolios?: number;
     confidencial?: boolean;
     subidoPor?: string;
+    categoria?: string;
+    etapa?: string;
 }
 
 export class UpdateDocumentoDto {
@@ -26,6 +28,8 @@ export class UpdateDocumentoDto {
     fechaDocumento?: string;
     numeroFolios?: number;
     confidencial?: boolean;
+    categoria?: string;
+    etapa?: string;
 }
 
 @Injectable()
@@ -60,6 +64,8 @@ export class DocumentoService {
             numeroFolios: dto.numeroFolios,
             confidencial: dto.confidencial || false,
             subidoPor: dto.subidoPor,
+            categoria: dto.categoria || 'documentos',
+            etapa: dto.etapa || undefined,
         });
         return this.documentoRepository.save(documento);
     }
@@ -77,6 +83,7 @@ export class DocumentoService {
         if (dto.fechaDocumento !== undefined) documento.fechaDocumento = new Date(dto.fechaDocumento);
         if (dto.numeroFolios !== undefined) documento.numeroFolios = dto.numeroFolios;
         if (dto.confidencial !== undefined) documento.confidencial = dto.confidencial;
+        if (dto.categoria !== undefined) documento.categoria = dto.categoria;
 
         return this.documentoRepository.save(documento);
     }

@@ -276,6 +276,35 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
   const [abogadosAPI, setAbogadosAPI] = useState<{ id: string; nombre: string }[]>([]);
   const [enviando, setEnviando] = useState(false);
 
+  // Resetear el formulario completamente al abrir el modal
+  useEffect(() => {
+    if (isOpen) {
+      setPasoActual(1);
+      setFormData({
+        numeroRadicado: '',
+        medioControl: '',
+        tipoProcesoJudicial: '',
+        etapaProcesal: '',
+        cuantia: 0,
+        demandantes: [],
+        demandados: [],
+        otrosActores: [],
+        juzgadoTribunal: '',
+        departamento: '',
+        ciudad: '',
+        tipoPlazo: 'Dias Habiles',
+        termino: 30,
+        fechaNotificacion: '',
+        fechaVencimiento: '',
+        abogadoResponsable: '',
+        pretensiones: '',
+        hechos: '',
+        observaciones: ''
+      });
+      setCiudadesDisponibles([]);
+    }
+  }, [isOpen]);
+
   // Calcular fecha de vencimiento automáticamente
   useEffect(() => {
     if (formData.fechaNotificacion && formData.termino) {
@@ -474,13 +503,13 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
           return false;
         }
         for (const dem of formData.demandantes) {
-          if (!dem.cedula || !dem.nombreCompleto || !dem.correo) {
+          if (!dem.nombreCompleto) {
             toast.error('⚠️ Información incompleta', {
-              description: 'Complete todos los campos obligatorios de los demandantes'
+              description: 'El nombre completo es obligatorio para los demandantes'
             });
             return false;
           }
-          if (!EMAIL_REGEX.test(dem.correo)) {
+          if (dem.correo && !EMAIL_REGEX.test(dem.correo)) {
             toast.error('⚠️ Correo inválido', {
               description: `El correo "${dem.correo}" del demandante ${dem.nombreCompleto || ''} no es válido`
             });
@@ -503,13 +532,13 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
           return false;
         }
         for (const dem of formData.demandados) {
-          if (!dem.cedula || !dem.nombreCompleto || !dem.correo) {
+          if (!dem.nombreCompleto) {
             toast.error('⚠️ Información incompleta', {
-              description: 'Complete todos los campos obligatorios de los demandados'
+              description: 'El nombre completo es obligatorio para los demandados'
             });
             return false;
           }
-          if (!EMAIL_REGEX.test(dem.correo)) {
+          if (dem.correo && !EMAIL_REGEX.test(dem.correo)) {
             toast.error('⚠️ Correo inválido', {
               description: `El correo "${dem.correo}" del demandado ${dem.nombreCompleto || ''} no es válido`
             });
@@ -620,15 +649,15 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-5xl h-[90vh] flex flex-col p-0">
-        <DialogTitle className="sr-only">Nueva Demanda Judicial</DialogTitle>
+        <DialogTitle className="sr-only">Nuevo Proceso Judicial</DialogTitle>
         <DialogDescription className="sr-only">
-          Wizard para registro de nueva demanda judicial - Paso {pasoActual} de {totalPasos}
+          Wizard para registro de nuevo proceso judicial - Paso {pasoActual} de {totalPasos}
         </DialogDescription>
 
         {/* HEADER - flex-shrink-0 (siempre visible) */}
         <ModalHeaderClean
           icono={Scale}
-          titulo="Nueva Demanda Judicial"
+          titulo="Nuevo Proceso Judicial"
           subtitulo={
             pasoActual === 1 ? 'Datos del Proceso Judicial' :
               pasoActual === 2 ? 'Datos del/los Demandante(s)' :

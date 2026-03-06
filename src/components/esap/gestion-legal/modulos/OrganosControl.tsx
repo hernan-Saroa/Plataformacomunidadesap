@@ -879,114 +879,110 @@ function VistaLista({
 
       <Card className="overflow-hidden border border-gray-200">
         <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">ID / Oficio</th>
-              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Organismo</th>
-              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Asunto</th>
-              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Responsable</th>
-              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Término</th>
-              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Etapa</th>
-              <th className="px-4 py-3 text-center text-sm font-bold text-gray-500">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {requerimientosPaginados.length === 0 && (
+          <table className="w-full">
+            <thead className="bg-gray-50">
               <tr>
-                <td colSpan={7} className="px-4 py-16 text-center text-gray-400">
-                  <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p>No se encontraron requerimientos</p>
-                </td>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">ID / Oficio</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Organismo</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Asunto</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Responsable</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Término</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Etapa</th>
+                <th className="px-4 py-3 text-center text-sm font-bold text-gray-500">Acciones</th>
               </tr>
-            )}
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {requerimientosPaginados.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-16 text-center text-gray-400">
+                    <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p>No se encontraron requerimientos</p>
+                  </td>
+                </tr>
+              )}
 
-            {requerimientosPaginados.map((req) => (
-              <tr key={req.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3">
-                  <p className="font-bold text-sm" style={{ color: '#003DA5' }}>{req.id}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{req.numeroOficio}</p>
-                </td>
-                <td className="px-4 py-3">
-                  <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
-                    {req.organismo}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3">
-                  <p className="text-sm text-gray-900 font-medium line-clamp-2 max-w-xs">
-                    {req.asunto}
-                  </p>
-                  {req.ultimaActuacion && (
-                    <p className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-xs">{req.ultimaActuacion}</p>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <Avatar className="w-7 h-7">
-                      <AvatarFallback className="text-xs" style={{ background: '#E0EDFF', color: '#003DA5' }}>
-                        {req.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm text-gray-700">{req.responsable}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <Badge className="text-xs flex items-center gap-1 font-semibold w-fit" style={{
-                    color: getSemaforoColor(req.diasRestantes),
-                    backgroundColor: `${getSemaforoColor(req.diasRestantes)}20`,
-                    border: `1px solid ${getSemaforoColor(req.diasRestantes)}`
-                  }}>
-                    <div className="w-2 h-2 rounded-full" style={{ background: getSemaforoColor(req.diasRestantes) }} />
-                    {req.diasRestantes < 0 ? `${Math.abs(req.diasRestantes)}d vencido` : `${req.diasRestantes}d restantes`}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3">
-                  <SelectorEtapa
-                    etapaActual={req.etapa}
-                    onChange={(nuevaEtapa) => onCambiarEtapa(req.id, nuevaEtapa)}
-                  />
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-center gap-0.5">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onVerRequerimiento(req)}
-                      title="Ver Detalle"
-                    >
-                      <Eye className="w-4 h-4 text-gray-600" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onDocumentos(req)}
-                      title="Documentos"
-                    >
-                      <FileCheck className="w-4 h-4 text-gray-600" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onRespuesta(req)}
-                      title="Responder"
-                    >
-                      <Send className="w-4 h-4 text-blue-600" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onComentarios(req)}
-                      title="Comentarios"
-                    >
-                      <MessageSquare className="w-4 h-4 text-gray-600" />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+              {requerimientosPaginados.map((req) => (
+                <tr key={req.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <p className="font-bold text-sm" style={{ color: '#003DA5' }}>{req.numeroOficio}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                      {req.organismo}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-sm text-gray-900 font-medium line-clamp-2 max-w-xs">
+                      {req.asunto}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <Avatar className="w-7 h-7">
+                        <AvatarFallback className="text-xs" style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                          {req.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm text-gray-700">{req.responsable}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge className="text-xs flex items-center gap-1 font-semibold w-fit" style={{
+                      color: getSemaforoColor(req.diasRestantes),
+                      backgroundColor: `${getSemaforoColor(req.diasRestantes)}20`,
+                      border: `1px solid ${getSemaforoColor(req.diasRestantes)}`
+                    }}>
+                      <div className="w-2 h-2 rounded-full" style={{ background: getSemaforoColor(req.diasRestantes) }} />
+                      {req.diasRestantes < 0 ? `${Math.abs(req.diasRestantes)}d vencido` : `${req.diasRestantes}d restantes`}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <SelectorEtapa
+                      etapaActual={req.etapa}
+                      onChange={(nuevaEtapa) => onCambiarEtapa(req.id, nuevaEtapa)}
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-center gap-0.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onVerRequerimiento(req)}
+                        title="Ver Detalle"
+                      >
+                        <Eye className="w-4 h-4 text-gray-600" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onDocumentos(req)}
+                        title="Documentos"
+                      >
+                        <FileCheck className="w-4 h-4 text-gray-600" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onRespuesta(req)}
+                        title="Responder"
+                      >
+                        <Send className="w-4 h-4 text-blue-600" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onComentarios(req)}
+                        title="Comentarios"
+                      >
+                        <MessageSquare className="w-4 h-4 text-gray-600" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       {/* Paginación */}

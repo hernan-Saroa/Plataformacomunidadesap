@@ -5,7 +5,7 @@
  * ✅ Tabs funcionales con lógica de negocio profesional
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { legalService, correosJuridicosService } from '../../../../services/api/legal.service';
@@ -72,6 +72,12 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [respuestaTexto, setRespuestaTexto] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Estados para workflow firmado/sin firmar
+  const [showFirmadoModal, setShowFirmadoModal] = useState(false);
+  const [firmadoSelection, setFirmadoSelection] = useState<boolean | null>(null);
+  const [replacingDocId, setReplacingDocId] = useState<string | null>(null);
+  const replaceFileInputRef = useRef<HTMLInputElement>(null);
 
   // Cargar documentos al abrir o cambiar de consulta
   useEffect(() => {
@@ -379,7 +385,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       toast.loading('Agregando comentario...');
       await legalService.crearComentarioConsulta(consulta.uuid, {
         mensaje: nuevoComentario,
-        usuario: 'Usuario Actual', // Idealmente obtener del contexto de auth
+        usuario: user ? (user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Usuario') : 'Usuario',
         cargo: 'Funcionario'
       });
       setNuevoComentario('');
@@ -621,7 +627,27 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   };
 
   /**
-   * Subir nuevo documento al expediente
+   * Abrir modal para seleccionar si el documento está firmado o no
+   */
+  const handleIniciarSubida = () => {
+    setFirmadoSelection(null);
+    setShowFirmadoModal(true);
+  };
+
+  /**
+   * Confirmar selección de firmado y abrir selector de archivo
+   */
+  const handleConfirmarFirmado = () => {
+    if (firmadoSelection === null) {
+      toast.warning('Seleccione si el documento está firmado o sin firmar');
+      return;
+    }
+    setShowFirmadoModal(false);
+    fileInputRef.current?.click();
+  };
+
+  /**
+   * Subir nuevo documento al expediente con indicador de firmado
    */
   const handleSubirDocumento = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -632,18 +658,47 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     formData.append('archivo', file);
     formData.append('nombre', file.name);
     formData.append('tipoDocumento', 'adjunto');
+    formData.append('firmado', firmadoSelection ? 'true' : 'false');
 
     try {
       await legalService.uploadDocumentoConsulta(consulta.uuid, formData);
-      toast.success('✅ Documento subido exitosamente');
+      toast.success(firmadoSelection ? '✅ Documento firmado subido exitosamente' : '✅ Documento sin firmar subido exitosamente');
       await loadDocumentos();
     } catch (error) {
       console.error('Error subiendo documento:', error);
       toast.error('Error al subir el documento');
     } finally {
       setUploadingDoc(false);
+      setFirmadoSelection(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  /**
+   * Reemplazar documento sin firmar con versión firmada
+   */
+  const handleReemplazarConFirmado = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !replacingDocId) return;
+
+    setUploadingDoc(true);
+    const formData = new FormData();
+    formData.append('archivo', file);
+
+    try {
+      await legalService.replaceDocumentoConsulta(replacingDocId, formData);
+      toast.success('✅ Documento reemplazado con versión firmada');
+      await loadDocumentos();
+    } catch (error) {
+      console.error('Error reemplazando documento:', error);
+      toast.error('Error al reemplazar el documento');
+    } finally {
+      setUploadingDoc(false);
+      setReplacingDocId(null);
+      if (replaceFileInputRef.current) {
+        replaceFileInputRef.current.value = '';
       }
     }
   };
@@ -1000,7 +1055,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                         Descargar Todos (ZIP)
                       </Button>
                       {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
-                        <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDoc}>
+                        <Button variant="outline" size="sm" onClick={handleIniciarSubida} disabled={uploadingDoc}>
                           <Upload className="w-4 h-4 mr-2" />
                           {uploadingDoc ? 'Subiendo...' : 'Subir Documento'}
                         </Button>
@@ -1008,15 +1063,83 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                     </div>
                   </div>
 
+                  {/* Input oculto para reemplazar con firmado */}
+                  <input
+                    ref={replaceFileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={handleReemplazarConFirmado}
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                  />
+
+                  {/* Modal de selección firmado/sin firmar */}
+                  {showFirmadoModal && (
+                    <Card className="p-5 border-2 border-blue-200 bg-blue-50/50 mb-4">
+                      <h4 className="font-bold text-sm text-gray-900 mb-3 flex items-center gap-2">
+                        <FileCheck className="w-5 h-5 text-blue-600" />
+                        ¿El documento está firmado?
+                      </h4>
+                      <div className="flex gap-3 mb-4">
+                        <button
+                          onClick={() => setFirmadoSelection(true)}
+                          className={`flex-1 p-4 rounded-xl border-2 transition-all text-center ${firmadoSelection === true
+                            ? 'border-green-500 bg-green-50 shadow-md'
+                            : 'border-gray-200 bg-white hover:border-green-300'
+                            }`}
+                        >
+                          <CheckCircle className={`w-8 h-8 mx-auto mb-2 ${firmadoSelection === true ? 'text-green-600' : 'text-gray-400'}`} />
+                          <p className="font-bold text-sm">Firmado</p>
+                          <p className="text-xs text-gray-500 mt-1">El documento ya tiene firma</p>
+                        </button>
+                        <button
+                          onClick={() => setFirmadoSelection(false)}
+                          className={`flex-1 p-4 rounded-xl border-2 transition-all text-center ${firmadoSelection === false
+                            ? 'border-amber-500 bg-amber-50 shadow-md'
+                            : 'border-gray-200 bg-white hover:border-amber-300'
+                            }`}
+                        >
+                          <AlertCircle className={`w-8 h-8 mx-auto mb-2 ${firmadoSelection === false ? 'text-amber-600' : 'text-gray-400'}`} />
+                          <p className="font-bold text-sm">Sin Firmar</p>
+                          <p className="text-xs text-gray-500 mt-1">Pendiente de firma — podrá reemplazarlo después</p>
+                        </button>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setShowFirmadoModal(false)}>
+                          Cancelar
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleConfirmarFirmado}
+                          disabled={firmadoSelection === null}
+                          className="bg-[#003DA5] hover:bg-[#002d7a] text-white"
+                        >
+                          <Upload className="w-4 h-4 mr-2" />
+                          Seleccionar Archivo
+                        </Button>
+                      </div>
+                    </Card>
+                  )}
+
                   <div className="space-y-2">
                     {documentos.map((doc) => (
-                      <Card key={doc.id} className="p-4 hover:shadow-md transition-shadow">
+                      <Card key={doc.id} className={`p-4 hover:shadow-md transition-shadow ${!doc.firmado ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-green-400'}`}>
                         <div className="flex items-center gap-4">
-                          <div className="p-3 rounded-lg bg-blue-50">
-                            <FileText className="w-6 h-6 text-blue-600" />
+                          <div className={`p-3 rounded-lg ${doc.firmado ? 'bg-green-50' : 'bg-amber-50'}`}>
+                            <FileText className={`w-6 h-6 ${doc.firmado ? 'text-green-600' : 'text-amber-600'}`} />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-bold text-sm truncate">{doc.nombre}</p>
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <p className="font-bold text-sm truncate">{doc.nombre}</p>
+                              {doc.firmado ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white bg-green-500 flex items-center gap-1 flex-shrink-0">
+                                  <CheckCircle className="w-3 h-3" /> Firmado
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white bg-amber-500 flex items-center gap-1 flex-shrink-0">
+                                  <AlertCircle className="w-3 h-3" /> Sin Firmar
+                                </span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-2 text-xs text-gray-500">
                               {doc.tamanoBytes ? (
                                 <span>{(Number(doc.tamanoBytes) / (1024 * 1024)).toFixed(2)} MB</span>
@@ -1030,7 +1153,23 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                             </div>
                           </div>
                           <div className="flex-shrink-0 flex items-center gap-2">
-                            {/* Botón Ver - Abrir en nueva pestaña directamente */}
+                            {/* Botón Subir Firmado — solo para docs sin firmar */}
+                            {!doc.firmado && authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-300 font-bold"
+                                onClick={() => {
+                                  setReplacingDocId(doc.id);
+                                  replaceFileInputRef.current?.click();
+                                }}
+                                disabled={uploadingDoc}
+                              >
+                                <Upload className="w-4 h-4 mr-1" />
+                                Subir Firmado
+                              </Button>
+                            )}
+                            {/* Botón Ver */}
                             <Button
                               variant="ghost"
                               size="sm"

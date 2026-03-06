@@ -6,7 +6,7 @@
  * ✅ Header con botones parametrizables
  */
 
-import { Calendar, User, Activity, Plus, Clock, MapPin } from 'lucide-react';
+import { Calendar, User, Activity, Plus, Clock, MapPin, Trash2, Download, Paperclip, ExternalLink } from 'lucide-react';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
 import { Card } from '../../../ui/card';
@@ -46,6 +46,7 @@ interface TabActuacionesExpedienteProps {
   /** Audiencias programadas (Defensa Judicial) */
   audienciasProgramadas?: AudienciaProgramada[];
   onReasignarAudiencia?: (audiencia: AudienciaProgramada) => void;
+  onEliminarAudiencia?: (id: string | number) => void;
   /** Decisiones registradas (Juzgamiento Disciplinario) */
   decisiones?: DecisionRegistrada[];
   /** Label para botón vacío */
@@ -58,6 +59,7 @@ export function TabActuacionesExpediente({
   botonesAccion,
   audienciasProgramadas,
   onReasignarAudiencia,
+  onEliminarAudiencia,
   decisiones,
   labelRegistrar = 'Registrar Primera Actuación',
   onRegistrarPrimera
@@ -138,14 +140,27 @@ export function TabActuacionesExpediente({
                     </div>
                   </div>
                   {onReasignarAudiencia && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onReasignarAudiencia(audiencia)}
-                      className="text-orange-600 border-orange-300 hover:bg-orange-50 font-bold"
-                    >
-                      🔄 Reasignar
-                    </Button>
+                    <div className="flex flex-col gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onReasignarAudiencia(audiencia)}
+                        className="text-orange-600 border-orange-300 hover:bg-orange-50 font-bold text-xs"
+                      >
+                        🔄 Reasignar
+                      </Button>
+                      {onEliminarAudiencia && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onEliminarAudiencia(audiencia.id)}
+                          className="text-red-600 border-red-300 hover:bg-red-50 font-bold text-xs"
+                        >
+                          <Trash2 className="w-3 h-3 mr-1" />
+                          Eliminar
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
               </Card>
@@ -223,7 +238,7 @@ export function TabActuacionesExpediente({
 
               <Card className={`p-4 ${idx === 0 ? 'border-2 border-blue-500 shadow-md' : 'border border-gray-200'}`}>
                 <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Badge
                       className="text-xs font-bold"
                       style={{
@@ -233,9 +248,20 @@ export function TabActuacionesExpediente({
                     >
                       {actuacion.fecha}
                     </Badge>
+                    {actuacion.hora && (
+                      <Badge variant="outline" className="text-xs font-semibold">
+                        <Clock className="w-2.5 h-2.5 mr-1" />
+                        {actuacion.hora}
+                      </Badge>
+                    )}
                     <Badge variant="outline" className="text-xs font-semibold">
                       {actuacion.tipo}
                     </Badge>
+                    {actuacion.origen && actuacion.origen !== 'MANUAL' && (
+                      <Badge className="text-xs font-bold bg-indigo-100 text-indigo-700">
+                        {actuacion.origen}
+                      </Badge>
+                    )}
                   </div>
                   {idx === 0 && (
                     <Badge className="text-xs bg-green-100 text-green-700 font-bold animate-pulse">
@@ -246,24 +272,54 @@ export function TabActuacionesExpediente({
                 <p className="text-sm font-bold text-gray-900 mb-2">
                   {actuacion.descripcion}
                 </p>
+
+                {/* Documento adjunto */}
+                {actuacion.documentoUrl && (
+                  <div className="mb-2 p-2 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Paperclip className="w-3.5 h-3.5 text-blue-600" />
+                      <span className="text-xs font-bold text-blue-800 truncate max-w-[200px]">
+                        {actuacion.documentoNombre || 'Documento adjunto'}
+                      </span>
+                    </div>
+                    <a
+                      href={actuacion.documentoUrl.startsWith('http') ? actuacion.documentoUrl : `${window.location.origin}${actuacion.documentoUrl}`}
+                      download={actuacion.documentoNombre || 'documento'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      <Download className="w-3 h-3" />
+                      Descargar
+                    </a>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-600 flex items-center gap-1.5">
-                    <User className="w-3 h-3" />
-                    {actuacion.responsable}
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <p className="text-xs text-gray-600 flex items-center gap-1.5">
+                      <User className="w-3 h-3" />
+                      {actuacion.responsable}
+                    </p>
+                    {actuacion.createdAt && (
+                      <p className="text-xs text-gray-400">
+                        Registrado: {actuacion.createdAt}
+                      </p>
+                    )}
+                  </div>
                   <Badge
                     className="text-xs font-semibold"
                     style={{
                       background: actuacion.estado === 'Completado' || actuacion.estado === 'COMPLETADA'
                         ? '#D1FAE5'
                         : actuacion.estado === 'Programado'
-                        ? '#EDE9FE'
-                        : '#FEF3C7',
+                          ? '#EDE9FE'
+                          : '#FEF3C7',
                       color: actuacion.estado === 'Completado' || actuacion.estado === 'COMPLETADA'
                         ? '#065F46'
                         : actuacion.estado === 'Programado'
-                        ? '#5B21B6'
-                        : '#92400E'
+                          ? '#5B21B6'
+                          : '#92400E'
                     }}
                   >
                     {actuacion.estado === 'COMPLETADA' ? 'Completado' : actuacion.estado}

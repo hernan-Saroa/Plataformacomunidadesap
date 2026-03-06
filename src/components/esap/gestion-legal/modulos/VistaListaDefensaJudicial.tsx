@@ -14,6 +14,8 @@ import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { toast } from 'sonner@2.0.3';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalExpediente } from './ModalExpediente';
@@ -22,9 +24,11 @@ interface VistaListaProps {
   expedientes: ExpedienteJudicial[];
   isMobile: boolean;
   isTablet: boolean;
+  onMoverExpediente?: (id: string, etapa: string) => void;
 }
 
-export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet }: VistaListaProps) {
+export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet, onMoverExpediente }: VistaListaProps) {
+  const { estadosActivos } = useConfiguracionModulo('defensa-judicial');
   const [ordenarPor, setOrdenarPor] = useState<'fecha' | 'dias' | 'etapa' | 'demandante'>('dias');
   const [direccionOrden, setDireccionOrden] = useState<'asc' | 'desc'>('asc');
   const [paginaActual, setPaginaActual] = useState(1);
@@ -43,7 +47,7 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet }: V
   // Ordenar expedientes
   const expedientesOrdenados = [...expedientes].sort((a, b) => {
     let comparacion = 0;
-    
+
     switch (ordenarPor) {
       case 'fecha':
         comparacion = a.fechaActualizacion.getTime() - b.fechaActualizacion.getTime();
@@ -58,7 +62,7 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet }: V
         comparacion = a.demandante.localeCompare(b.demandante);
         break;
     }
-    
+
     return direccionOrden === 'asc' ? comparacion : -comparacion;
   });
 
@@ -135,13 +139,15 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet }: V
         {expedientesPaginados.map((expediente) => {
           const semaforo = getSemaforoColor(expediente.diasRestantes);
           const etapaConfig = getEtapaConfig(expediente.etapa);
-          
+
           return (
-            <FilaExpedienteMobile 
-              key={expediente.id} 
+            <FilaExpedienteMobile
+              key={expediente.id}
               expediente={expediente}
               semaforo={semaforo}
               etapaConfig={etapaConfig}
+              estadosActivos={estadosActivos}
+              onMoverExpediente={onMoverExpediente}
             />
           );
         })}
@@ -208,8 +214,8 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet }: V
                   <FileText className="w-3.5 h-3.5" />
                   Expediente
                   {ordenarPor === 'demandante' && (
-                    direccionOrden === 'asc' ? 
-                      <ChevronsUp className="w-3 h-3" /> : 
+                    direccionOrden === 'asc' ?
+                      <ChevronsUp className="w-3 h-3" /> :
                       <ChevronsDown className="w-3 h-3" />
                   )}
                 </button>
@@ -232,8 +238,8 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet }: V
                   <Filter className="w-3.5 h-3.5" />
                   Etapa
                   {ordenarPor === 'etapa' && (
-                    direccionOrden === 'asc' ? 
-                      <ChevronsUp className="w-3 h-3" /> : 
+                    direccionOrden === 'asc' ?
+                      <ChevronsUp className="w-3 h-3" /> :
                       <ChevronsDown className="w-3 h-3" />
                   )}
                 </button>
@@ -256,8 +262,8 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet }: V
                   <Clock className="w-3.5 h-3.5" />
                   Plazo
                   {ordenarPor === 'dias' && (
-                    direccionOrden === 'asc' ? 
-                      <ChevronsUp className="w-3 h-3" /> : 
+                    direccionOrden === 'asc' ?
+                      <ChevronsUp className="w-3 h-3" /> :
                       <ChevronsDown className="w-3 h-3" />
                   )}
                 </button>
@@ -280,8 +286,8 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet }: V
                   <Calendar className="w-3.5 h-3.5" />
                   Última Actualización
                   {ordenarPor === 'fecha' && (
-                    direccionOrden === 'asc' ? 
-                      <ChevronsUp className="w-3 h-3" /> : 
+                    direccionOrden === 'asc' ?
+                      <ChevronsUp className="w-3 h-3" /> :
                       <ChevronsDown className="w-3 h-3" />
                   )}
                 </button>
@@ -301,7 +307,7 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet }: V
             {expedientesPaginados.map((expediente, index) => {
               const semaforo = getSemaforoColor(expediente.diasRestantes);
               const etapaConfig = getEtapaConfig(expediente.etapa);
-              
+
               return (
                 <FilaExpedienteTabla
                   key={expediente.id}
@@ -309,6 +315,8 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet }: V
                   semaforo={semaforo}
                   etapaConfig={etapaConfig}
                   index={index}
+                  estadosActivos={estadosActivos}
+                  onMoverExpediente={onMoverExpediente}
                 />
               );
             })}
@@ -356,7 +364,7 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet }: V
                   } else {
                     pagina = paginaActual - 2 + i;
                   }
-                  
+
                   return (
                     <Button
                       key={pagina}
@@ -402,12 +410,14 @@ interface FilaExpedienteTablaProps {
   semaforo: { bg: string; border: string; text: string };
   etapaConfig: { bg: string; border: string; text: string; icono: React.ReactNode };
   index: number;
+  estadosActivos: { id: string; nombre: string }[];
+  onMoverExpediente?: (id: string, etapa: string) => void;
 }
 
-function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index }: FilaExpedienteTablaProps) {
+function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index, estadosActivos, onMoverExpediente }: FilaExpedienteTablaProps) {
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [menuAccionesOpen, setMenuAccionesOpen] = useState(false);
-  
+
   const formatCuantia = (cuantia: number | undefined) => {
     if (!cuantia) return 'No determinada';
     return new Intl.NumberFormat('es-CO', {
@@ -459,7 +469,7 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index }: FilaE
                 {expediente.demandante}
               </p>
             )}
-            
+
             {/* Demandados */}
             {expediente.demandados && expediente.demandados.length > 0 && (
               <div className="mt-1 pt-1 border-t border-gray-200">
@@ -471,7 +481,7 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index }: FilaE
                 ))}
               </div>
             )}
-            
+
             {/* Otros Actores */}
             {expediente.otrosActores && expediente.otrosActores.length > 0 && (
               <div className="mt-1 pt-1 border-t border-gray-200">
@@ -488,24 +498,36 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index }: FilaE
 
         {/* Etapa */}
         <td className="px-4 py-3">
-          <Badge 
-            className="text-xs font-semibold flex items-center gap-1 w-fit"
-            style={{ 
-              backgroundColor: etapaConfig.bg,
-              border: `1px solid ${etapaConfig.border}`,
-              color: etapaConfig.text
-            }}
+          <Select
+            value={expediente.etapa}
+            onValueChange={(value) => onMoverExpediente && onMoverExpediente(expediente.id, value)}
           >
-            {etapaConfig.icono}
-            {expediente.etapa}
-          </Badge>
+            <SelectTrigger
+              className="h-auto py-1 px-2.5 border rounded-full font-semibold focus:ring-0 w-fit text-xs"
+              style={{
+                backgroundColor: etapaConfig.bg,
+                borderColor: etapaConfig.border,
+                color: etapaConfig.text
+              }}
+            >
+              <div className="flex items-center gap-1.5 flex-1 min-w-0 pr-2">
+                {etapaConfig.icono}
+                <SelectValue />
+              </div>
+            </SelectTrigger>
+            <SelectContent className="z-[100000]">
+              {estadosActivos.map(estado => (
+                <SelectItem key={estado.id} value={estado.nombre}>{estado.nombre}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </td>
 
         {/* Profesional */}
         <td className="px-4 py-3">
           <div className="flex items-center gap-2">
             <Avatar className="w-7 h-7">
-              <AvatarFallback 
+              <AvatarFallback
                 className="text-xs"
                 style={{ background: '#E0EDFF', color: '#003DA5' }}
               >
@@ -520,14 +542,14 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index }: FilaE
 
         {/* Días Restantes */}
         <td className="px-4 py-3">
-          <div 
+          <div
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border"
-            style={{ 
+            style={{
               backgroundColor: semaforo.bg,
               borderColor: semaforo.border
             }}
           >
-            <div 
+            <div
               className="w-2.5 h-2.5 rounded-full"
               style={{ backgroundColor: semaforo.border }}
             />
@@ -576,11 +598,11 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index }: FilaE
               >
                 <MoreVertical className="w-3.5 h-3.5" />
               </Button>
-              
+
               {menuAccionesOpen && (
                 <>
-                  <div 
-                    className="fixed inset-0 z-40" 
+                  <div
+                    className="fixed inset-0 z-40"
                     onClick={() => setMenuAccionesOpen(false)}
                   />
                   <Card className="absolute right-0 top-full mt-1 z-50 w-48 p-1 shadow-lg border border-gray-200">
@@ -668,12 +690,14 @@ interface FilaExpedienteMobileProps {
   expediente: ExpedienteJudicial;
   semaforo: { bg: string; border: string; text: string };
   etapaConfig: { bg: string; border: string; text: string; icono: React.ReactNode };
+  estadosActivos: { id: string; nombre: string }[];
+  onMoverExpediente?: (id: string, etapa: string) => void;
 }
 
-function FilaExpedienteMobile({ expediente, semaforo, etapaConfig }: FilaExpedienteMobileProps) {
+function FilaExpedienteMobile({ expediente, semaforo, etapaConfig, estadosActivos, onMoverExpediente }: FilaExpedienteMobileProps) {
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [expandido, setExpandido] = useState(false);
-  
+
   const formatCuantia = (cuantia: number | undefined) => {
     if (!cuantia) return 'No determinada';
     return new Intl.NumberFormat('es-CO', {
@@ -688,7 +712,7 @@ function FilaExpedienteMobile({ expediente, semaforo, etapaConfig }: FilaExpedie
     <>
       <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
         <div className="h-1" style={{ background: '#003DA5' }} />
-        
+
         <div className="p-3">
           {/* Header */}
           <div className="flex items-start justify-between mb-2">
@@ -703,17 +727,29 @@ function FilaExpedienteMobile({ expediente, semaforo, etapaConfig }: FilaExpedie
                 <p className="text-xs text-gray-600 truncate">{expediente.medioControl}</p>
               </div>
             </div>
-            <Badge 
-              className="text-xs font-semibold flex items-center gap-1 flex-shrink-0"
-              style={{ 
-                backgroundColor: etapaConfig.bg,
-                border: `1px solid ${etapaConfig.border}`,
-                color: etapaConfig.text
-              }}
+            <Select
+              value={expediente.etapa}
+              onValueChange={(value) => onMoverExpediente && onMoverExpediente(expediente.id, value)}
             >
-              {etapaConfig.icono}
-              {expediente.etapa}
-            </Badge>
+              <SelectTrigger
+                className="h-auto py-1 px-2.5 border rounded-full font-semibold focus:ring-0 flex-shrink-0 text-xs w-auto min-w-[120px]"
+                style={{
+                  backgroundColor: etapaConfig.bg,
+                  borderColor: etapaConfig.border,
+                  color: etapaConfig.text
+                }}
+              >
+                <div className="flex items-center gap-1 flex-1 pr-1">
+                  {etapaConfig.icono}
+                  <SelectValue />
+                </div>
+              </SelectTrigger>
+              <SelectContent className="z-[100000]">
+                {estadosActivos.map(estado => (
+                  <SelectItem key={estado.id} value={estado.nombre}>{estado.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Demandante */}
@@ -730,7 +766,7 @@ function FilaExpedienteMobile({ expediente, semaforo, etapaConfig }: FilaExpedie
               <p className="text-xs text-gray-500 mb-1">👨‍💼 Profesional:</p>
               <div className="flex items-center gap-1.5">
                 <Avatar className="w-5 h-5">
-                  <AvatarFallback 
+                  <AvatarFallback
                     className="text-xs"
                     style={{ background: '#E0EDFF', color: '#003DA5' }}
                   >
@@ -744,14 +780,14 @@ function FilaExpedienteMobile({ expediente, semaforo, etapaConfig }: FilaExpedie
             </div>
             <div>
               <p className="text-xs text-gray-500 mb-1">⏰ Plazo:</p>
-              <div 
+              <div
                 className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border"
-                style={{ 
+                style={{
                   backgroundColor: semaforo.bg,
                   borderColor: semaforo.border
                 }}
               >
-                <div 
+                <div
                   className="w-2 h-2 rounded-full"
                   style={{ backgroundColor: semaforo.border }}
                 />

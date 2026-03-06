@@ -583,6 +583,10 @@ export class LegalService {
         return apiClient.delete(`${SERVICE_PREFIX}/consultas-juridicas/documentos/${documentoId}`);
     }
 
+    async replaceDocumentoConsulta(documentoId: string, formData: FormData): Promise<any> {
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/consultas-juridicas/documentos/${documentoId}/replace`, formData);
+    }
+
     getDocumentosConsultaDownloadUrl(consultaId: string): string {
         const baseUrl = getServiceUrl('legal');
         // Direct mode: localhost:3008/consultas-juridicas/...

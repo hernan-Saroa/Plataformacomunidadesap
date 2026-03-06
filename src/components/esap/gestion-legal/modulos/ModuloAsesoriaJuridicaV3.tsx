@@ -250,7 +250,7 @@ export function ModuloAsesoriaJuridicaV3() {
     }
   };
 
-  const handleDeleteConsulta = async (uuid: string) => {
+  const handleArchivarConsulta = async (uuid: string) => {
     const confirmado = await confirm({
       title: 'Archivar Consulta',
       description: '¿Estás seguro de archivar esta consulta? Se moverá a la pestaña de Archivados y podrá ser consultada allí.',
@@ -261,10 +261,36 @@ export function ModuloAsesoriaJuridicaV3() {
 
     if (!confirmado) return;
 
+    const toastId = toast.loading('Archivando consulta...');
+    try {
+      const usuarioNombre = usuario ? usuario.nombre : 'Usuario Sistema';
+      await legalService.archivarConsulta(uuid, 'Archivado desde listado', usuarioNombre);
+      toast.success('Consulta archivada exitosamente', { id: toastId });
+      setModalExpedienteOpen(false);
+      setConsultaSeleccionada(null);
+      loadConsultas();
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al archivar', { id: toastId });
+    }
+  };
+
+  const handleEliminarConsulta = async (uuid: string) => {
+    const confirmado = await confirm({
+      title: 'Eliminar Consulta',
+      description: '¿Estás seguro de eliminar esta consulta? Se marcará como eliminada y podrá ser restaurada desde Archivados.',
+      variant: 'danger',
+      confirmText: 'Eliminar',
+      cancelText: 'Cancelar'
+    });
+
+    if (!confirmado) return;
+
     const toastId = toast.loading('Eliminando consulta...');
     try {
-      await legalService.deleteConsultaJuridica(uuid);
-      toast.success('Consulta eliminada (movida a archivados)', { id: toastId });
+      const usuarioNombre = usuario ? usuario.nombre : 'Usuario Sistema';
+      await legalService.eliminarConsultaSoft(uuid, 'Eliminado desde listado', usuarioNombre);
+      toast.success('Consulta eliminada', { id: toastId });
       setModalExpedienteOpen(false);
       setConsultaSeleccionada(null);
       loadConsultas();
@@ -580,14 +606,16 @@ export function ModuloAsesoriaJuridicaV3() {
           direccionOrden={direccionOrden}
           onOrdenar={handleOrdenar}
           onAbrirExpediente={handleAbrirExpediente}
-          onEliminar={handleDeleteConsulta}
+          onArchivar={handleArchivarConsulta}
+          onEliminar={handleEliminarConsulta}
         />
       )}
       {tipoVista === 'tarjetas' && (
         <TarjetasConsultas
           consultas={consultasFiltradas}
           onAbrirExpediente={handleAbrirExpediente}
-          onEliminar={handleDeleteConsulta}
+          onArchivar={handleArchivarConsulta}
+          onEliminar={handleEliminarConsulta}
         />
       )}
       {tipoVista === 'archivados' && (
@@ -791,10 +819,11 @@ interface TablaConsultasProps {
   direccionOrden: 'asc' | 'desc';
   onOrdenar: (columna: OrdenColumna) => void;
   onAbrirExpediente: (consulta: ConsultaJuridica) => void;
+  onArchivar: (uuid: string) => void;
   onEliminar: (uuid: string) => void;
 }
 
-function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirExpediente, onEliminar }: TablaConsultasProps) {
+function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirExpediente, onArchivar, onEliminar }: TablaConsultasProps) {
   return (
     <Card className="bg-white border border-gray-200">
       <table className="w-full">
@@ -906,23 +935,37 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
                     className="relative group p-2 rounded-lg text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
                   >
                     <FolderOpen className="w-4 h-4" />
-                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg">
+                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-50">
                       Expediente
                     </span>
                   </button>
                   {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_DELETE) && (
-                    <button
-                      onClick={(e: React.MouseEvent) => {
-                        e.stopPropagation();
-                        onEliminar(consulta.uuid || consulta.id);
-                      }}
-                      className="relative group p-2 rounded-lg text-orange-500 hover:bg-orange-50 transition-all"
-                    >
-                      <Archive className="w-4 h-4" />
-                      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg">
-                        Archivar
-                      </span>
-                    </button>
+                    <>
+                      <button
+                        onClick={(e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          onArchivar(consulta.uuid || consulta.id);
+                        }}
+                        className="relative group p-2 rounded-lg text-orange-500 hover:bg-orange-50 transition-all"
+                      >
+                        <Archive className="w-4 h-4" />
+                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-50">
+                          Archivar
+                        </span>
+                      </button>
+                      <button
+                        onClick={(e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          onEliminar(consulta.uuid || consulta.id);
+                        }}
+                        className="relative group p-2 rounded-lg text-red-500 hover:bg-red-50 transition-all"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-50">
+                          Eliminar
+                        </span>
+                      </button>
+                    </>
                   )}
                 </div>
               </td>
@@ -937,10 +980,11 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
 interface TarjetasConsultasProps {
   consultas: ConsultaJuridica[];
   onAbrirExpediente: (consulta: ConsultaJuridica) => void;
+  onArchivar: (uuid: string) => void;
   onEliminar: (uuid: string) => void;
 }
 
-function TarjetasConsultas({ consultas, onAbrirExpediente, onEliminar }: TarjetasConsultasProps) {
+function TarjetasConsultas({ consultas, onAbrirExpediente, onArchivar, onEliminar }: TarjetasConsultasProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {consultas.map((consulta) => (
@@ -1031,63 +1075,29 @@ function TarjetasConsultas({ consultas, onAbrirExpediente, onEliminar }: Tarjeta
                     Expediente
                   </span>
                 </button>
-                <button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Documentos Soporte', { description: consulta.id }); }}
-                  className="relative group p-2 rounded-lg text-gray-500 hover:text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
-                >
-                  <FileText className="w-4 h-4" />
-                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
-                    Soporte
-                  </span>
-                </button>
-                <button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Normativa Aplicable', { description: consulta.id }); }}
-                  className="relative group p-2 rounded-lg text-gray-500 hover:text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
-                >
-                  <Scale className="w-4 h-4" />
-                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
-                    Normativa
-                  </span>
-                </button>
-                <button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Oficios', { description: consulta.id }); }}
-                  className="relative group p-2 rounded-lg text-gray-500 hover:text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
-                >
-                  <Mail className="w-4 h-4" />
-                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
-                    Oficios
-                  </span>
-                </button>
-                <button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Respuesta', { description: consulta.id }); }}
-                  className="relative group p-2 rounded-lg text-gray-500 hover:text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
-                >
-                  <Send className="w-4 h-4" />
-                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
-                    Respuesta
-                  </span>
-                </button>
-                <button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Comentarios', { description: consulta.id }); }}
-                  className="relative group p-2 rounded-lg text-gray-500 hover:text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
-                    Comentarios
-                  </span>
-                </button>
               </div>
               <div className="flex items-center gap-0.5 pl-1 ml-1 border-l border-gray-200">
                 {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_DELETE) && (
-                  <button
-                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid || consulta.id); }}
-                    className="relative group p-2 rounded-lg text-orange-500 hover:bg-orange-50 transition-all"
-                  >
-                    <Archive className="w-4 h-4" />
-                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
-                      Archivar
-                    </span>
-                  </button>
+                  <>
+                    <button
+                      onClick={(e: React.MouseEvent) => { e.stopPropagation(); onArchivar(consulta.uuid || consulta.id); }}
+                      className="relative group p-2 rounded-lg text-orange-500 hover:bg-orange-50 transition-all"
+                    >
+                      <Archive className="w-4 h-4" />
+                      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
+                        Archivar
+                      </span>
+                    </button>
+                    <button
+                      onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid || consulta.id); }}
+                      className="relative group p-2 rounded-lg text-red-500 hover:bg-red-50 transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
+                        Eliminar
+                      </span>
+                    </button>
+                  </>
                 )}
               </div>
             </div>

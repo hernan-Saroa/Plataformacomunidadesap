@@ -75,6 +75,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [showReasignarModal, setShowReasignarModal] = useState(false);
   const [showArchivarModal, setShowArchivarModal] = useState(false); // Modal de confirmación archivar
   const [motivoArchivo, setMotivoArchivo] = useState(''); // Motivo de archivo
+  const [showEliminarModal, setShowEliminarModal] = useState(false); // Modal de confirmación eliminar
+  const [motivoEliminar, setMotivoEliminar] = useState(''); // Motivo de eliminación
   const [abogados, setAbogados] = useState<any[]>([]);
   const [loadingAbogados, setLoadingAbogados] = useState(false);
   const [selectedAbogado, setSelectedAbogado] = useState('');
@@ -123,6 +125,20 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   }, [showReasignarModal, modalProgramarAudienciaAbierto]);
 
+  // Helper: inferir categoría del tipo de documento (fallback si BD no tiene la columna aún)
+  const inferirCategoria = (tipo: string): string => {
+    if (!tipo) return 'documentos';
+    const t = tipo.toLowerCase();
+    if (t.includes('acta')) return 'actas';
+    if (t.includes('evidencia') || t.includes('prueba')) return 'evidencias';
+    if (t.includes('auto')) return 'autos';
+    if (t.includes('oficio')) return 'oficios';
+    if (t.includes('comunicacion') || t.includes('comunicación') || t.includes('memorando')) return 'comunicaciones';
+    if (t.includes('notificacion') || t.includes('notificación') || t.includes('citacion') || t.includes('citación') || t.includes('edicto')) return 'notificaciones';
+    if (t.includes('pericial') || t.includes('testimonial') || t.includes('inspección') || t.includes('inspeccion')) return 'pruebas';
+    return 'documentos';
+  };
+
   const loadDocumentos = async (id: string) => {
     try {
       setLoadingDocumentos(true);
@@ -136,7 +152,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         tamaño: d.archivoTamano ? formatBytes(d.archivoTamano) : 'N/A',
         firmante: d.subidoPor || 'Sistema',
         url: d.archivoUrl,
-        descripcion: d.descripcion
+        descripcion: d.descripcion,
+        categoria: d.categoria || inferirCategoria(d.tipo),
+        etapa: d.etapa || null
       }));
       setDocumentos(mapped);
     } catch (error) {
@@ -261,14 +279,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         lugar: a.ubicacion || 'Sede Judicial',
         modalidad: a.modalidad,
         linkReunion: a.linkReunion,
-        abogadoResponsable: a.abogadoId || expediente.abogadoAsignado, // Use ID for select
-        nombreAbogado: a.nombreAbogado || 'Abogado Asignado', // Helper for display
+        abogadoResponsable: a.nombreAbogado || expediente.abogadoAsignado || 'Abogado Asignado',
         estado: a.estado || 'Programada',
         historial: a.historial || [],
-        observaciones: a.notasPreparacion, // Map notes
-        objetivo: a.objetivo // If exists in backend, otherwise it might be lost. 
-        // Backend entity doesn't have 'objetivo'. 'notasPreparacion' is likely 'observaciones'.
-        // 'juez' is also missing in entity.
+        observaciones: a.notasPreparacion,
+        objetivo: a.objetivo
       }));
       setAudienciasProgramadas(mapped);
     } catch (error) {
@@ -576,6 +591,38 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   };
 
+  // Handler para eliminar el expediente - abre modal de confirmación
+  const handleEliminar = () => {
+    setMotivoEliminar('');
+    setShowEliminarModal(true);
+  };
+
+  // Confirmar eliminación del expediente
+  const confirmarEliminar = async () => {
+    if (!motivoEliminar.trim()) {
+      toast.error('⚠️ El motivo es obligatorio');
+      return;
+    }
+
+    try {
+      toast.loading('🗑️ Eliminando expediente...', { id: 'eliminar-exp' });
+      const usuario = 'Usuario Actual';
+
+      await legalService.eliminarExpedienteSoft(expediente.uuid || expediente.id, motivoEliminar, usuario);
+
+      toast.success('✅ Expediente eliminado correctamente', {
+        id: 'eliminar-exp',
+        description: 'El expediente ha sido movido a la papelera'
+      });
+      setShowEliminarModal(false);
+      onClose();
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error eliminando:', error);
+      toast.error('❌ Error al eliminar el expediente', { id: 'eliminar-exp' });
+    }
+  };
+
   const handleCompartir = async () => {
     const expedienteUrl = `${window.location.origin}/gestion-legal/defensa-judicial?expediente=${encodeURIComponent(expediente.id)}`;
 
@@ -753,6 +800,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       formData.append('tipo', tipoDocumento || 'DOCUMENTO_GENERAL');
       formData.append('origen', 'CARGA_DIRECTA');
       formData.append('categoria', categoria);
+      // Enviar la etapa procesal actual del expediente
+      const etapaActual = expediente.etapa || '';
+      if (etapaActual) {
+        formData.append('etapa', etapaActual);
+      }
 
       await legalService.crearDocumento(formData);
       toast.success('✅ Documento cargado exitosamente');
@@ -1612,10 +1664,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                             <p className="text-xs text-gray-500 mb-1">Identificación</p>
                             <p className="text-sm font-bold text-gray-900">{parte.identificacion}</p>
                           </div>
-                          <div>
-                            <p className="text-xs text-gray-500 mb-1">Apoderado</p>
-                            <p className="text-sm font-bold text-gray-900">{parte.apoderado}</p>
-                          </div>
+                          {parte.apoderado && (
+                            <div className="col-span-2">
+                              <div className="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                                <p className="text-xs font-bold text-indigo-700 mb-1 flex items-center gap-1">
+                                  📜 Apoderado
+                                </p>
+                                <p className="text-sm font-bold text-gray-900">{parte.apoderado}</p>
+                              </div>
+                            </div>
+                          )}
                           {/* <div>
                           <p className="text-xs text-gray-500 mb-1">Notificaciones</p>
                           <Badge variant="outline" className="text-xs">
@@ -1688,6 +1746,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     setAudienciaAReasignar(audiencia);
                     setModalProgramarAudienciaAbierto(true);
                   }}
+                  onEliminarAudiencia={(id) => handleEliminarAudiencia(id.toString())}
                   labelRegistrar="Registrar Primera Actuación"
                   onRegistrarPrimera={() => setModalRegistrarActuacionAbierto(true)}
                 />
@@ -1752,11 +1811,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleDescargarPDF}
-                  className="font-bold text-xs"
+                  onClick={handleEliminar}
+                  className="font-bold text-xs text-red-600 border-red-300 hover:bg-red-50"
                 >
-                  <Download className="w-3 h-3 mr-1" />
-                  PDF
+                  <Trash2 className="w-3.5 h-3.5 mr-1" />
+                  Eliminar
                 </Button>
               </div>
             </div>
@@ -1883,6 +1942,62 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
             >
               <Archive className="w-4 h-4 mr-1" />
               Archivar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==================== MODAL DE CONFIRMACIÓN ELIMINAR ==================== */}
+      <Dialog open={showEliminarModal} onOpenChange={setShowEliminarModal}>
+        <DialogContent
+          className="sm:max-w-[380px] w-[90vw] !max-w-[380px] !w-auto p-0 overflow-hidden"
+          style={{ maxWidth: '380px', width: '100%' }}
+        >
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Trash2 className="w-5 h-5 text-red-500" />
+              Eliminar Expediente
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="p-4 pt-2">
+            <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg mb-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-red-800">
+                <p className="font-semibold">¿Eliminar este expediente?</p>
+                <p className="text-xs mt-1 opacity-80">El expediente será movido a la papelera. Podrá restaurarlo desde la vista de Archivados.</p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-700">Motivo de eliminación <span className="text-red-500">*</span></label>
+              <textarea
+                className="w-full text-sm p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+                rows={3}
+                placeholder="Indique la razón de la eliminación..."
+                value={motivoEliminar}
+                onChange={(e) => setMotivoEliminar(e.target.value)}
+                maxLength={500}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 p-4 pt-0 bg-gray-50/50">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEliminarModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={confirmarEliminar}
+              disabled={!motivoEliminar.trim()}
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              Eliminar
             </Button>
           </div>
         </DialogContent>

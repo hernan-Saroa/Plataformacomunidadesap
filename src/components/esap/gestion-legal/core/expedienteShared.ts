@@ -80,6 +80,8 @@ export interface DocumentoExpediente {
   firmante?: string;
   categoria: string;
   url?: string;
+  descripcion?: string;
+  etapa?: string;
 }
 
 export interface ActuacionExpediente {
@@ -91,6 +93,11 @@ export interface ActuacionExpediente {
   estado: string;
   colorBorde?: string;
   hora?: string;
+  origen?: string;
+  documentoUrl?: string;
+  documentoNombre?: string;
+  metadata?: any;
+  createdAt?: string;
 }
 
 export interface TareaExpediente {

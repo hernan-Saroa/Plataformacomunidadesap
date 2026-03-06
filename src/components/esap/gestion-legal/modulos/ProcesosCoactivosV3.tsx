@@ -137,6 +137,10 @@ export function ModuloProcesosCoactivosV3() {
   const [modalArchivar, setModalArchivar] = useState(false);
   const [procesoParaArchivar, setProcesoParaArchivar] = useState<ProcesoCoactivo | null>(null);
 
+  // Estados para modal de eliminación
+  const [modalEliminar, setModalEliminar] = useState(false);
+  const [procesoParaEliminar, setProcesoParaEliminar] = useState<ProcesoCoactivo | null>(null);
+
   // Cargar archivados
   const loadArchivados = async () => {
     try {
@@ -191,10 +195,7 @@ export function ModuloProcesosCoactivosV3() {
 
   // ✅ Función para eliminar permanentemente un proceso
   const handleEliminarPermanente = async (itemId: string) => {
-    if (!confirm('¿Está seguro de eliminar permanentemente este proceso? Esta acción NO se puede deshacer.')) return;
-
     try {
-      // Usamos 'Eliminación definitiva desde papelera' como motivo automático
       await procesosCoactivosService.eliminarPermanente(itemId, usuario?.nombre || 'Usuario', 'Eliminación definitiva desde papelera');
       toast.success('Proceso eliminado permanentemente');
       loadArchivados();
@@ -293,17 +294,22 @@ export function ModuloProcesosCoactivosV3() {
   const handleEliminarProceso = async (procesoId: string) => {
     const proceso = procesos.find(p => p.id === procesoId);
     if (!proceso) return;
+    setProcesoParaEliminar(proceso);
+    setModalEliminar(true);
+  };
 
-    if (confirm(`¿Está seguro de enviar a la papelera el proceso "${proceso.radicado}"?\n\nPodrá restaurarlo desde la vista de Archivados.`)) {
-      try {
-        // Usamos eliminarPermanente que en backend hace soft delete si no está ya eliminado
-        await procesosCoactivosService.eliminarPermanente(procesoId, usuario?.nombre || 'Usuario', 'Eliminación desde lista activa');
-        toast.success('Proceso movido a papelera');
-        loadProcesos(); // Recargar lista y stats
-      } catch (error) {
-        console.error('Error eliminando proceso:', error);
-        toast.error('Error al mover a papelera');
-      }
+  // ✅ Confirmar eliminación
+  const confirmEliminar = async () => {
+    if (!procesoParaEliminar) return;
+    try {
+      await procesosCoactivosService.eliminarPermanente(procesoParaEliminar.id, usuario?.nombre || 'Usuario', 'Eliminación desde lista activa');
+      toast.success('Proceso movido a papelera');
+      setModalEliminar(false);
+      setProcesoParaEliminar(null);
+      loadProcesos();
+    } catch (error) {
+      console.error('Error eliminando proceso:', error);
+      toast.error('Error al mover a papelera');
     }
   };
 
@@ -512,6 +518,51 @@ export function ModuloProcesosCoactivosV3() {
               onConfirm={confirmArchivar}
               proceso={procesoParaArchivar}
             />
+          )}
+
+          {/* Modal Eliminar */}
+          {procesoParaEliminar && modalEliminar && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden"
+              >
+                <div className="p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                      <Trash2 className="w-6 h-6 text-red-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">Eliminar Proceso</h3>
+                      <p className="text-sm text-gray-500">Esta acción enviará el proceso a la papelera</p>
+                    </div>
+                  </div>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                    <p className="text-sm text-red-800">
+                      ¿Está seguro de eliminar el proceso <strong>"{procesoParaEliminar.radicado}"</strong> del deudor <strong>{procesoParaEliminar.deudor.nombre}</strong>?
+                    </p>
+                    <p className="text-xs text-red-600 mt-2">
+                      Podrá restaurarlo desde la vista de Archivados.
+                    </p>
+                  </div>
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => { setModalEliminar(false); setProcesoParaEliminar(null); }}
+                      className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={confirmEliminar}
+                      className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
+                    >
+                      Sí, Eliminar
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
           )}
         </>
       )}
