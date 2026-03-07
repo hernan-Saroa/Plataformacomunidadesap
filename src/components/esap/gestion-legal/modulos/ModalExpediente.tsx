@@ -1384,9 +1384,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       <Badge
                         variant="outline"
                         className={`font-semibold text-xs border-2 ${(expediente as any).nivelRiesgo === 'Alto' ? 'border-red-500 text-red-700 bg-red-50' :
-                            (expediente as any).nivelRiesgo === 'Medio' ? 'border-amber-500 text-amber-700 bg-amber-50' :
-                              (expediente as any).nivelRiesgo === 'Bajo' ? 'border-green-500 text-green-700 bg-green-50' :
-                                'border-gray-200 text-gray-500 bg-gray-50'
+                          (expediente as any).nivelRiesgo === 'Medio' ? 'border-amber-500 text-amber-700 bg-amber-50' :
+                            (expediente as any).nivelRiesgo === 'Bajo' ? 'border-green-500 text-green-700 bg-green-50' :
+                              'border-gray-200 text-gray-500 bg-gray-50'
                           }`}
                       >
                         {(expediente as any).nivelRiesgo || 'No evaluado'}
@@ -1395,13 +1395,21 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     <div>
                       <p className="text-xs text-gray-500 mb-1">🏦 Provisión Contable</p>
                       <p className={`text-sm font-bold ${(expediente as any).nivelRiesgo === 'Alto' ? 'text-red-600' :
-                          (expediente as any).nivelRiesgo === 'Medio' ? 'text-amber-600' :
-                            'text-gray-500'
+                        (expediente as any).nivelRiesgo === 'Medio' ? 'text-amber-600' :
+                          'text-gray-500'
                         }`}>
                         {(expediente as any).provisionContable ? formatCuantia((expediente as any).provisionContable) : '$0'}
                       </p>
                     </div>
                   </div>
+
+                  {/* Justificación de la Provisión Contable */}
+                  {(expediente as any).observacionProvision && (
+                    <div className="mt-4 pt-3 border-t border-blue-100">
+                      <p className="text-xs text-gray-500 mb-1 font-semibold">📝 Justificación de la Provisión Contable</p>
+                      <p className="text-sm text-gray-800 italic">{(expediente as any).observacionProvision}</p>
+                    </div>
+                  )}
                 </Card>
 
                 {/* Información del Proceso */}
