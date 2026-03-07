@@ -632,6 +632,32 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         return true;
 
       case 4:
+        for (const actor of formData.otrosActores) {
+          if (!actor.nombreCompleto) {
+            toast.error('⚠️ Información incompleta', {
+              description: 'El nombre completo o razón social es obligatorio para los otros actores'
+            });
+            return false;
+          }
+          if (!actor.rol) {
+            toast.error('⚠️ Información incompleta', {
+              description: `Debe especificar el rol para el actor ${actor.nombreCompleto}`
+            });
+            return false;
+          }
+          if (actor.correo && !EMAIL_REGEX.test(actor.correo)) {
+            toast.error('⚠️ Correo inválido', {
+              description: `El correo "${actor.correo}" de ${actor.nombreCompleto} no es válido`
+            });
+            return false;
+          }
+          if (actor.telefono && actor.telefono.length < 7) {
+            toast.error('⚠️ Teléfono inválido', {
+              description: `El teléfono de ${actor.nombreCompleto} debe tener al menos 7 dígitos`
+            });
+            return false;
+          }
+        }
         return true;
 
       case 5:
@@ -644,9 +670,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         return true;
 
       case 6:
-        if (!formData.fechaNotificacion || !formData.abogadoResponsable) {
-          toast.error('⚠️ Asignación incompleta', {
-            description: 'Complete todos los campos de fechas y asignación'
+        if (!formData.fechaNotificacion) {
+          toast.error('⚠️ Fechas incompletas', {
+            description: 'Verifique los campos obligatorios de fechas'
           });
           return false;
         }
@@ -687,32 +713,36 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
       const isEdit = !!expedienteEdit;
       const idStr = expedienteEdit?.uuid || expedienteEdit?.id;
 
-      // Build payload explicitly with only the scalar columns allowed by the Expediente entity
-      const formattedData = {
-        radicado: formData.numeroRadicado,
-        medioControl: formData.medioControl || undefined,
-        tipoProceso: formData.tipoProcesoJudicial || undefined,
-        etapaProcesal: formData.etapaProcesal || undefined,
-        cuantia: formData.cuantia || undefined,
-        juzgadoConocimiento: formData.juzgadoTribunal || undefined,
-        ubicacionFisica: formData.ciudad && formData.departamento
-          ? `${formData.ciudad} - ${formData.departamento}`
-          : formData.ciudad || formData.departamento || undefined,
-        fechaNotificacion: formData.fechaNotificacion ? new Date(formData.fechaNotificacion).toISOString() : undefined,
-        fechaVencimientoTermino: formData.fechaVencimiento ? new Date(formData.fechaVencimiento).toISOString() : undefined,
-        abogadoSustanciador: formData.abogadoResponsable || undefined,
-        pretensionDemandante: formData.pretensiones || undefined,
-        hechos: formData.hechos || undefined,
-        tipoConteoTermino: formData.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
-        terminoProcesalDias: formData.termino || undefined,
-        // Demandantes, Demandados, and Otros Actores arrays are NOT saved sequentially by updateExpediente
-        // because the backend only performs a scalar query builder update. 
-        // We omit formData.demandantes, formData.demandados to avoid EntityPropertyNotFoundError.
-      };
+      let finalPayload: any;
 
-      // Typecasting to any because onSave expects `NuevaDemandaData` signature, 
-      // but passing stripped object directly avoids modifying the whole upstream chain
-      onSave(formattedData as any, isEdit, idStr);
+      if (isEdit) {
+        // Build payload explicitly with only the scalar columns allowed by the Expediente entity
+        finalPayload = {
+          radicado: formData.numeroRadicado,
+          medioControl: formData.medioControl || undefined,
+          tipoProceso: formData.tipoProcesoJudicial || undefined,
+          etapaProcesal: formData.etapaProcesal || undefined,
+          cuantia: formData.cuantia || undefined,
+          juzgadoConocimiento: formData.juzgadoTribunal || undefined,
+          ubicacionFisica: formData.ciudad && formData.departamento
+            ? `${formData.ciudad} - ${formData.departamento}`
+            : formData.ciudad || formData.departamento || undefined,
+          fechaNotificacion: formData.fechaNotificacion ? new Date(formData.fechaNotificacion).toISOString() : undefined,
+          fechaVencimientoTermino: formData.fechaVencimiento ? new Date(formData.fechaVencimiento).toISOString() : undefined,
+          abogadoSustanciador: formData.abogadoResponsable === 'Sin asignar (Temporal)' ? null : (formData.abogadoResponsable || undefined),
+          pretensionDemandante: formData.pretensiones || undefined,
+          hechos: formData.hechos || undefined,
+          tipoConteoTermino: formData.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
+          terminoProcesalDias: formData.termino || undefined,
+          // Demandantes, Demandados, and Otros Actores arrays are NOT saved sequentially by updateExpediente
+        };
+      } else {
+        // For creations, the parent component strictly expects the full NuevaDemandaData signature
+        // to properly construct the complex CreateExpedienteDto payload.
+        finalPayload = { ...formData };
+      }
+
+      onSave(finalPayload, isEdit, idStr);
 
       const consecutivo = isEdit ? formData.numeroRadicado : `ESAP-DN-OCID-DJ-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}-2026`;
 
@@ -1458,7 +1488,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
                           <div className="md:col-span-2 space-y-2">
                             <Label className="text-sm font-bold text-gray-700">
-                              {actor.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'}
+                              {actor.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'} <span className="text-red-500">*</span>
                             </Label>
                             <Input
                               placeholder={actor.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
@@ -1473,7 +1503,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           </div>
 
                           <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Rol</Label>
+                            <Label className="text-sm font-bold text-gray-700">Rol <span className="text-red-500">*</span></Label>
                             <Input
                               placeholder="Ej: Tercero interviniente, Litisconsorte, etc."
                               value={actor.rol}
@@ -1744,7 +1774,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
                     <div className="space-y-2">
                       <Label htmlFor="abogadoResponsable" className="text-sm font-bold text-gray-700">
-                        Abogado Responsable <span className="text-red-500">*</span>
+                        Abogado Defensor <span className="text-gray-400 font-normal ml-1">(Opcional)</span>
                       </Label>
                       <Select
                         value={formData.abogadoResponsable}
@@ -1754,6 +1784,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           <SelectValue placeholder="Seleccione abogado..." />
                         </SelectTrigger>
                         <SelectContent className="z-[100000]">
+                          <SelectItem value="Sin asignar (Temporal)" className="text-gray-500 italic">Sin asignar (Temporal)</SelectItem>
                           {abogadosAPI.map(abog => (
                             <SelectItem key={abog.id} value={abog.nombre}>{abog.nombre}</SelectItem>
                           ))}
