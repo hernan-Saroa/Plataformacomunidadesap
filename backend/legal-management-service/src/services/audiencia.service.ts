@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { Audiencia } from '../entities/audiencia.entity';
@@ -10,6 +10,8 @@ import { ActuacionService } from './actuacion.service';
 
 @Injectable()
 export class AudienciaService {
+    private readonly logger = new Logger(AudienciaService.name);
+
     constructor(
         @InjectRepository(Audiencia)
         private audienciaRepo: Repository<Audiencia>,
@@ -137,6 +139,70 @@ export class AudienciaService {
             },
             abogado.nombreCompleto
         );
+
+        // ENVIAR NOTIFICACIÓN AL ENCARGADO
+        if (abogado.email) {
+            try {
+                const mailPayload = {
+                    to: abogado.email,
+                    subject: `Nueva audiencia programada: ${dto.titulo}`,
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                            <h2 style="color: #003DA5;">Notificación de Audiencia Programada</h2>
+                            <p>Estimado(a) <strong>${abogado.nombreCompleto}</strong>,</p>
+                            <p>Se le informa que ha sido asignado(a) a una nueva audiencia en el expediente <strong>${expediente.radicado || expediente.id}</strong>.</p>
+                            
+                            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                                <tr>
+                                    <td style="padding: 10px; border-bottom: 1px solid #eee; width: 30%;"><strong>Título:</strong></td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #eee;">${dto.titulo}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px; border-bottom: 1px solid #eee;"><strong>Fecha y Hora:</strong></td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #eee;">${new Date(dto.fechaHoraInicio).toLocaleString('es-CO')}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px; border-bottom: 1px solid #eee;"><strong>Modalidad:</strong></td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #eee;">${dto.modalidad}</td>
+                                </tr>
+                                ${dto.ubicacion ? `
+                                <tr>
+                                    <td style="padding: 10px; border-bottom: 1px solid #eee;"><strong>Lugar:</strong></td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #eee;">${dto.ubicacion}</td>
+                                </tr>` : ''}
+                                ${dto.linkReunion ? `
+                                <tr>
+                                    <td style="padding: 10px; border-bottom: 1px solid #eee;"><strong>Enlace virtual:</strong></td>
+                                    <td style="padding: 10px; border-bottom: 1px solid #eee;"><a href="${dto.linkReunion}" style="color: #003DA5;">Vincularse con este enlace</a></td>
+                                </tr>` : ''}
+                            </table>
+                            
+                            <p style="font-size: 12px; color: #666; margin-top: 30px;">
+                                Este es un mensaje automatizado desde la Plataforma Integrada ESAP. Por favor, no responda a este correo.
+                            </p>
+                        </div>
+                    `
+                };
+
+                // Síncrono esperado para notificar status al front
+                const res = await fetch('http://localhost:3009/api/v1/emails/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(mailPayload)
+                });
+
+                if (!res.ok) {
+                    this.logger.error(`Fallo envío notificación HTTP ${res.status}`);
+                    (saved as any)._notificationError = true;
+                } else {
+                    this.logger.log(`Notificación de audiencia enviada a ${abogado.email}`);
+                    (saved as any)._notificationError = false;
+                }
+            } catch (err) {
+                this.logger.error('Error estructurando o enviando notificación al abogado', err);
+                (saved as any)._notificationError = true;
+            }
+        }
 
         return saved;
     }

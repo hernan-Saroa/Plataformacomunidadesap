@@ -888,6 +888,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         // CREATE
         savedAudiencia = await legalService.createAudiencia(dataToSend);
         toast.success('✅ Audiencia programada exitosamente');
+
+        // Revisar si hubo error en notificaciones (flag interna del backend)
+        if (savedAudiencia._notificationError) {
+          toast.warning('⚠️ La audiencia se guardó, pero el servicio de notificaciones está caído. No se pudo enviar el correo al abogado.');
+        }
       }
 
       setModalProgramarAudienciaAbierto(false);
@@ -1357,7 +1362,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     <Briefcase className="w-4 h-4" />
                     RESUMEN EJECUTIVO
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div>
                       <p className="text-xs text-gray-500 mb-1">🏛️ Juzgado</p>
                       <p className="text-sm font-bold text-gray-900">{expediente.juzgadoConocimiento}</p>
@@ -1372,6 +1377,28 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         {expediente.fechaNotificacion
                           ? new Date(expediente.fechaNotificacion).toLocaleDateString('es-CO')
                           : ''}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">⚠️ Nivel de Riesgo</p>
+                      <Badge
+                        variant="outline"
+                        className={`font-semibold text-xs border-2 ${(expediente as any).nivelRiesgo === 'Alto' ? 'border-red-500 text-red-700 bg-red-50' :
+                            (expediente as any).nivelRiesgo === 'Medio' ? 'border-amber-500 text-amber-700 bg-amber-50' :
+                              (expediente as any).nivelRiesgo === 'Bajo' ? 'border-green-500 text-green-700 bg-green-50' :
+                                'border-gray-200 text-gray-500 bg-gray-50'
+                          }`}
+                      >
+                        {(expediente as any).nivelRiesgo || 'No evaluado'}
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">🏦 Provisión Contable</p>
+                      <p className={`text-sm font-bold ${(expediente as any).nivelRiesgo === 'Alto' ? 'text-red-600' :
+                          (expediente as any).nivelRiesgo === 'Medio' ? 'text-amber-600' :
+                            'text-gray-500'
+                        }`}>
+                        {(expediente as any).provisionContable ? formatCuantia((expediente as any).provisionContable) : '$0'}
                       </p>
                     </div>
                   </div>

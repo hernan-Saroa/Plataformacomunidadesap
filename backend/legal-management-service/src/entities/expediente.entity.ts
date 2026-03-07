@@ -52,7 +52,19 @@ export class Expediente {
     @Column('numeric', { precision: 15, scale: 2, nullable: true })
     cuantia: number;
 
-    // Campos adicionales para Dashboard
+    // Campos para Dashboard y Conciliación
+    @Column({ name: 'nivel_riesgo', nullable: true })
+    nivelRiesgo: string;
+
+    @Column('numeric', { name: 'provision_contable', precision: 15, scale: 2, nullable: true })
+    provisionContable: number;
+
+    @Column({ name: 'fecha_estimacion_provision', type: 'timestamp', nullable: true })
+    fechaEstimacionProvision: Date;
+
+    @Column({ name: 'observacion_provision', type: 'text', nullable: true })
+    observacionProvision: string;
+
     @Column({ name: 'abogado_sustanciador', nullable: true })
     abogadoSustanciador: string;
 

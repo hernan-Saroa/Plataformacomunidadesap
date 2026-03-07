@@ -101,6 +101,10 @@ export interface NuevaDemandaData {
   tipoProcesoJudicial: string;
   etapaProcesal: string;
   cuantia: number;
+  nivelRiesgo: string;
+  provisionContable: number;
+  fechaEstimacionProvision: string;
+  observacionesProvision: string;
   demandantes: Demandante[];
   demandados: Demandado[];
   otrosActores: OtroActor[];
@@ -257,6 +261,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     tipoProcesoJudicial: '',
     etapaProcesal: '',
     cuantia: 0,
+    nivelRiesgo: '',
+    provisionContable: 0,
+    fechaEstimacionProvision: '',
+    observacionesProvision: '',
     demandantes: [],
     demandados: [],
     otrosActores: [],
@@ -330,6 +338,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           tipoProcesoJudicial: expedienteEdit.tipoProceso || expedienteEdit.tipo || '',
           etapaProcesal: expedienteEdit.etapa as string || '',
           cuantia: typeof expedienteEdit.cuantia === 'string' ? parseFloat(expedienteEdit.cuantia.replace(/[^0-9.-]+/g, "")) : (expedienteEdit.cuantia || 0),
+          nivelRiesgo: (expedienteEdit as any).nivelRiesgo || '',
+          provisionContable: (expedienteEdit as any).provisionContable || 0,
+          fechaEstimacionProvision: (expedienteEdit as any).fechaEstimacionProvision ? new Date((expedienteEdit as any).fechaEstimacionProvision).toISOString().split('T')[0] : '',
+          observacionesProvision: (expedienteEdit as any).observacionProvision || '',
           demandantes: expedienteEdit.demandantes ? expedienteEdit.demandantes.map(mapDemandante) : [],
           demandados: expedienteEdit.demandados ? expedienteEdit.demandados.map(mapDemandado) : [],
           otrosActores: expedienteEdit.otrosActores ? expedienteEdit.otrosActores.map(mapOtroActor) : [],
@@ -358,6 +370,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           tipoProcesoJudicial: '',
           etapaProcesal: '',
           cuantia: 0,
+          nivelRiesgo: '',
+          provisionContable: 0,
+          fechaEstimacionProvision: '',
+          observacionesProvision: '',
           demandantes: [],
           demandados: [],
           otrosActores: [],
@@ -676,6 +692,15 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           });
           return false;
         }
+
+        // NUEVA REGLA DE NEGOCIO: La fecha de estimación contable no puede ser anterior a la notificación
+        if (formData.fechaEstimacionProvision && new Date(formData.fechaEstimacionProvision) < new Date(formData.fechaNotificacion)) {
+          toast.error('⚠️ Inconsistencia de fechas', {
+            description: 'La Fecha de Estimación de la Provisión no puede ser anterior a la Fecha de Notificación de la demanda.'
+          });
+          return false;
+        }
+
         return true;
 
       case 7:
@@ -705,6 +730,16 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   const handleSubmit = async () => {
     if (!validarPasoActual()) return;
 
+    // Validación transversal: La fecha de estimación contable no puede ser anterior a la notificación
+    if (formData.fechaEstimacionProvision && formData.fechaNotificacion) {
+      if (new Date(formData.fechaEstimacionProvision) < new Date(formData.fechaNotificacion)) {
+        toast.error('⚠️ Inconsistencia de fechas', {
+          description: 'La Fecha de Estimación de la Provisión no puede ser anterior a la Fecha de Notificación de la demanda. Corríjala en el Paso 1 o Paso 6.'
+        });
+        return;
+      }
+    }
+
     setEnviando(true);
 
     try {
@@ -723,6 +758,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           tipoProceso: formData.tipoProcesoJudicial || undefined,
           etapaProcesal: formData.etapaProcesal || undefined,
           cuantia: formData.cuantia || undefined,
+          nivelRiesgo: formData.nivelRiesgo || undefined,
+          provisionContable: formData.provisionContable || undefined,
+          fechaEstimacionProvision: formData.fechaEstimacionProvision ? new Date(formData.fechaEstimacionProvision).toISOString() : undefined,
+          observacionProvision: formData.observacionesProvision || undefined,
           juzgadoConocimiento: formData.juzgadoTribunal || undefined,
           ubicacionFisica: formData.ciudad && formData.departamento
             ? `${formData.ciudad} - ${formData.departamento}`
@@ -979,6 +1018,95 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           }}
                         />
                       </div>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* NUEVO BLOQUE: Valoración y Provisión Contable */}
+                <Card className="p-4 bg-amber-50 border-amber-200">
+                  <div className="flex items-start gap-3 mb-4">
+                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h3 className="font-bold text-gray-900">Valoración y Provisión Contable</h3>
+                      <p className="text-sm text-gray-600">Registre el nivel de riesgo y la estimación económica</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="nivelRiesgo" className="text-sm font-bold text-gray-700">
+                        Nivel de Riesgo del Proceso
+                      </Label>
+                      <Select
+                        value={formData.nivelRiesgo}
+                        onValueChange={(value) => setFormData({ ...formData, nivelRiesgo: value })}
+                      >
+                        <SelectTrigger id="nivelRiesgo" className="bg-white">
+                          <SelectValue placeholder="Seleccione riesgo..." />
+                        </SelectTrigger>
+                        <SelectContent className="z-[100000]">
+                          <SelectItem value="Bajo">Bajo</SelectItem>
+                          <SelectItem value="Medio">Medio</SelectItem>
+                          <SelectItem value="Alto">Alto</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="provisionContable" className="text-sm font-bold text-gray-700">
+                        Provisión Contable (COP)
+                        <span className="text-xs font-normal text-gray-400 ml-1">(máx. 12 dígitos)</span>
+                      </Label>
+                      <Input
+                        id="provisionContable"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={formData.provisionContable === 0 ? '' : String(formData.provisionContable)}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^0-9]/g, '');
+                          if (!raw || raw.startsWith('0')) {
+                            setFormData({ ...formData, provisionContable: 0 });
+                            return;
+                          }
+                          const limitado = raw.slice(0, 12);
+                          setFormData({ ...formData, provisionContable: parseInt(limitado, 10) });
+                        }}
+                      />
+                      {formData.cuantia > 0 && formData.provisionContable > formData.cuantia && (
+                        <p className="text-xs text-amber-600 flex items-start gap-1 mt-1">
+                          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>
+                            <strong>Regla de negocio:</strong> La provisión supera la cuantía inicial. Al guardar, el sistema asume que la diferencia incluye proyecciones de intereses de mora, multas o costas judiciales acumuladas.
+                          </span>
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="fechaEstimacionProvision" className="text-sm font-bold text-gray-700">
+                        Fecha de Estimación
+                      </Label>
+                      <Input
+                        id="fechaEstimacionProvision"
+                        type="date"
+                        value={formData.fechaEstimacionProvision}
+                        onChange={(e) => setFormData({ ...formData, fechaEstimacionProvision: e.target.value })}
+                        className="bg-white"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2 space-y-2">
+                      <Label htmlFor="observacionesProvision" className="text-sm font-bold text-gray-700">
+                        Justificación y observaciones
+                      </Label>
+                      <Textarea
+                        id="observacionesProvision"
+                        placeholder="Detalle los motivos que sustentan la valoración y el monto..."
+                        value={formData.observacionesProvision}
+                        onChange={(e) => setFormData({ ...formData, observacionesProvision: e.target.value })}
+                        className="bg-white min-h-[80px]"
+                      />
                     </div>
                   </div>
                 </Card>
