@@ -153,7 +153,7 @@ interface KanbanButtonTertiaryProps extends KanbanButtonProps {
 
 export function KanbanButtonTertiary({ icon, onClick, disabled = false, title, compact = false, className = '' }: KanbanButtonTertiaryProps) {
   const height = compact ? ESAP_TOKENS.dimensions.buttonHeight.tertiaryCompact : ESAP_TOKENS.dimensions.buttonHeight.tertiary;
-  
+
   return (
     <button
       onClick={onClick}
@@ -173,7 +173,7 @@ export function KanbanButtonTertiary({ icon, onClick, disabled = false, title, c
 // Destructive — Variante de L3 con hover rojo
 export function KanbanButtonDestructive({ icon, onClick, disabled = false, title, compact = false, className = '' }: KanbanButtonTertiaryProps) {
   const height = compact ? ESAP_TOKENS.dimensions.buttonHeight.tertiaryCompact : ESAP_TOKENS.dimensions.buttonHeight.tertiary;
-  
+
   return (
     <button
       onClick={onClick}
@@ -228,7 +228,7 @@ interface KanbanActionSectionProps {
 
 export function KanbanActionSection({ children }: KanbanActionSectionProps) {
   return (
-    <div className="flex flex-col gap-2 pt-3 mt-1.5 border-t border-gray-100">
+    <div className="flex flex-col gap-2 pt-3 mt-auto border-t border-gray-100">
       {children}
     </div>
   );
@@ -258,17 +258,16 @@ export function KanbanCard({ accentColor = ESAP_TOKENS.colors.primary, isDraggin
       initial={ESAP_TOKENS.motion.cardEntry}
       animate={ESAP_TOKENS.motion.cardAnimate}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
-      className={`bg-white border border-gray-200/80 hover:shadow-lg hover:border-gray-300 transition-all overflow-hidden ${
-        isDragging ? 'opacity-50 scale-95 border-gray-300' : ''
-      } ${onClick ? 'cursor-pointer' : ''} ${className}`}
+      className={`bg-white border border-gray-200/80 hover:shadow-lg hover:border-gray-300 transition-all flex flex-col h-full overflow-hidden ${isDragging ? 'opacity-50 scale-95 border-gray-300' : ''
+        } ${onClick ? 'cursor-pointer' : ''} ${className}`}
       style={{ borderRadius: ESAP_TOKENS.dimensions.cardBorderRadius }}
       onClick={onClick}
     >
       {/* Accent Bar */}
       <KanbanAccentBar color={accentColor} />
-      
+
       {/* Contenido */}
-      <div style={{ padding: ESAP_TOKENS.spacing.cardPadding }}>
+      <div className="flex-1 flex flex-col" style={{ padding: ESAP_TOKENS.spacing.cardPadding }}>
         {children}
       </div>
     </motion.div>
@@ -485,11 +484,10 @@ export function KanbanViewToggle({ current, options, onChange }: KanbanViewToggl
           <button
             key={option.value}
             onClick={() => onChange(option.value)}
-            className={`relative inline-flex items-center justify-center gap-1 px-2 rounded-lg transition-all ${
-              isActive
+            className={`relative inline-flex items-center justify-center gap-1 px-2 rounded-lg transition-all ${isActive
                 ? 'bg-white shadow-sm text-blue-600'
                 : 'text-gray-500 hover:bg-gray-200/60'
-            }`}
+              }`}
             style={{
               width: ESAP_TOKENS.dimensions.toolbar.viewToggle,
               height: ESAP_TOKENS.dimensions.toolbar.viewToggle,
@@ -498,12 +496,11 @@ export function KanbanViewToggle({ current, options, onChange }: KanbanViewToggl
             }}
           >
             <span className="w-4 h-4">{option.icon}</span>
-            
+
             {option.badge !== undefined && option.badge > 0 && (
               <span
-                className={`absolute -top-1 -right-1 flex items-center justify-center rounded-full text-white text-[8px] font-bold px-1 ${
-                  isActive ? 'bg-blue-600' : 'bg-gray-400'
-                }`}
+                className={`absolute -top-1 -right-1 flex items-center justify-center rounded-full text-white text-[8px] font-bold px-1 ${isActive ? 'bg-blue-600' : 'bg-gray-400'
+                  }`}
                 style={{ minWidth: 14, height: 14 }}
               >
                 {option.badge}
