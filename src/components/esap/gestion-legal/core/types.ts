@@ -125,6 +125,8 @@ export interface ExpedienteJudicial {
   // Documentos y actuaciones
   documentos: Documento[];
   actuaciones: Actuacion[];
+  procesosAnexados?: ExpedienteJudicial[];
+  procesoPrincipalId?: string;
 
   // Auditoría
   timeline: EventoTimeline[];

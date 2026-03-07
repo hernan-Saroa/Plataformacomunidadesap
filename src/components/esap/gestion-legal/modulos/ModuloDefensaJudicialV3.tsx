@@ -262,6 +262,8 @@ export function ModuloDefensaJudicialV3() {
           tipoProceso: exp.tipoProceso,
           documentos: new Array(Number(exp.documentosCount || 0) + (exp.documentosInicialesUrls?.length || 0)).fill({}),
           actuaciones: exp.actuaciones || [],
+          procesosAnexados: exp.procesosAnexados || [],
+          procesoPrincipalId: exp.procesoPrincipalId,
           timeline: [],
           fechaCreacion: new Date(exp.createdAt),
           fechaActualizacion: new Date(exp.updatedAt),

@@ -1,5 +1,5 @@
 
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { Actuacion } from './actuacion.entity';
 import { DecisionDisciplinaria } from './decision-disciplinaria.entity';
 import { Evidencia } from './evidencia.entity';
@@ -25,6 +25,17 @@ export class Expediente {
 
     @OneToMany(() => Evidencia, (evidencia) => evidencia.expediente)
     evidencias: Evidencia[];
+
+    // Relación recursiva para procesos anexados
+    @Column({ name: 'proceso_principal_id', nullable: true })
+    procesoPrincipalId: string;
+
+    @ManyToOne(() => Expediente, expediente => expediente.procesosAnexados, { nullable: true })
+    @JoinColumn({ name: 'proceso_principal_id' })
+    procesoPrincipal: Expediente;
+
+    @OneToMany(() => Expediente, expediente => expediente.procesoPrincipal)
+    procesosAnexados: Expediente[];
 
     documentosCount: number = 0;
 

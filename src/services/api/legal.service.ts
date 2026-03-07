@@ -243,6 +243,15 @@ export class LegalService {
         await apiClient.delete(`${SERVICE_PREFIX}/audiencias/${id}`);
     }
 
+    // ==================== PROCESOS ANEXADOS ====================
+    async anexarExpediente(anexadoId: string, principalId: string, usuario?: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${anexadoId}/anexar`, { principalId, usuario });
+    }
+
+    async desanexarExpediente(anexadoId: string, usuario?: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${anexadoId}/desanexar`, { usuario });
+    }
+
     // Alias en español para mantener compatibilidad
     async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
         return this.createExpediente(data);

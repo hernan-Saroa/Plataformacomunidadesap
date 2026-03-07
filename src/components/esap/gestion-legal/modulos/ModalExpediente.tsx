@@ -15,7 +15,7 @@ import {
   Building2, Gavel, MapPin, DollarSign, FileCheck,
   MessageSquare, Send, Edit, Filter, ChevronDown,
   Briefcase, Phone, Mail, Hash, Activity, Bell,
-  Shield, Target, Flag, Bookmark, Archive, Upload, Trash2, Check
+  Shield, Target, Flag, Bookmark, Archive, Upload, Trash2, Check, Link as LinkIcon, Unlink
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -36,6 +36,7 @@ import { ModalAgregarNota } from './ModalAgregarNota';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalGestionDocumentos } from './ModalGestionDocumentos';
 import { ModalNuevaDemandaRESTAURADO } from './ModalNuevaDemandaRESTAURADO';
+import { ModalAnexarProceso } from './ModalAnexarProceso';
 import { copyToClipboard } from '../../../../utils/clipboard';
 import { legalService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
@@ -71,7 +72,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [modalGestionDocumentosAbierto, setModalGestionDocumentosAbierto] = useState(false);
   const [modalRegistrarActuacionAbierto, setModalRegistrarActuacionAbierto] = useState(false);
   const [modalProgramarAudienciaAbierto, setModalProgramarAudienciaAbierto] = useState(false);
+  const [modalAnexarAbierto, setModalAnexarAbierto] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedAnexado, setSelectedAnexado] = useState<any>(null); // Sub-modal para ver anexados
 
   // Estado para modal de reasignar
   const [showReasignarModal, setShowReasignarModal] = useState(false);
@@ -1312,15 +1315,28 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
               </>
             }
             actions={
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsEditModalOpen(true)}
-                className="text-blue-600 border-blue-600 hover:bg-blue-50 bg-white shadow-sm flex-shrink-0"
-              >
-                <Edit className="w-4 h-4 mr-2" />
-                Editar Proceso
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="text-blue-600 border-blue-600 hover:bg-blue-50 bg-white shadow-sm flex-shrink-0"
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Editar Proceso
+                </Button>
+                {!(expediente as any).procesoPrincipalId && (!(expediente as any).procesosAnexados || (expediente as any).procesosAnexados.length === 0) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setModalAnexarAbierto(true)}
+                    className="text-indigo-600 border-indigo-600 hover:bg-indigo-50 bg-white shadow-sm flex-shrink-0"
+                  >
+                    <LinkIcon className="w-4 h-4 mr-2" />
+                    Anexar
+                  </Button>
+                )}
+              </div>
             }
             onClose={onClose}
           />
@@ -1333,7 +1349,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
           {/* ==================== CONTENIDO CON TABS ==================== */}
           <div className="flex-1 overflow-y-auto px-6 py-4">
             <Tabs value={tabActivo} onValueChange={setTabActivo} className="w-full">
-              <TabsList className="grid w-full grid-cols-6 mb-4 bg-gray-100">
+              <TabsList className="flex overflow-x-auto w-full mb-4 bg-gray-100 p-1 rounded-lg no-scrollbar">
                 <TabsTrigger value="general" className="text-xs font-bold">
                   📋 General
                 </TabsTrigger>
@@ -1351,6 +1367,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 </TabsTrigger>
                 <TabsTrigger value="notas" className="text-xs font-bold">
                   📝 Notas
+                </TabsTrigger>
+                <TabsTrigger value="anexos" className="text-xs font-bold">
+                  🔗 Anexos
                 </TabsTrigger>
               </TabsList>
 
@@ -1629,8 +1648,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     });
                   }
 
-                  // 3. Fallback to single fields
-                  if (allPartes.length === 0 && expediente.demandante) {
+                  // 3. Fallback to single fields if arrays are entirely empty
+                  const hasDemandante = allPartes.some(p => p.tipo === 'Demandante');
+                  if (!hasDemandante && expediente.demandante) {
                     allPartes.push({
                       nombre: expediente.demandante,
                       identificacion: expediente.numeroIdDemandante || '',
@@ -1642,7 +1662,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       apoderado: expediente.demandanteApoderado
                     });
                   }
-                  if (allPartes.length === 0 && expediente.demandado) {
+
+                  const hasDemandado = allPartes.some(p => p.tipo === 'Demandado');
+                  if (!hasDemandado && expediente.demandado) {
                     allPartes.push({
                       nombre: expediente.demandado,
                       identificacion: expediente.numeroIdDemandado || '',
@@ -1833,6 +1855,97 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   notas={notas}
                   onAgregarNota={() => setModalAgregarNotaAbierto(true)}
                 />
+              </TabsContent>
+
+              {/* ==================== TAB: ANEXOS ==================== */}
+              <TabsContent value="anexos" className="space-y-3">
+                <Card className="full p-6 bg-white shadow-sm border border-gray-100 rounded-xl">
+                  <div className="flex items-center justify-between border-b pb-4 mb-4">
+                    <h3 className="text-sm font-black text-indigo-900 flex items-center gap-2">
+                      <LinkIcon className="w-5 h-5 text-indigo-600" />
+                      PROCESOS ANEXADOS
+                    </h3>
+                  </div>
+                  {!(expediente as any).procesosAnexados || (expediente as any).procesosAnexados.length === 0 ? (
+                    <div className="text-center py-10 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                      <LinkIcon className="mx-auto h-12 w-12 text-gray-400 mb-3 opacity-50" />
+                      <h3 className="text-sm font-bold text-gray-900">Sin procesos anexados</h3>
+                      <p className="mt-1 text-xs text-gray-500 max-w-sm mx-auto">
+                        Este expediente no tiene otros procesos adjuntos o unificados a él.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {(expediente as any).procesosAnexados.map((anexado: any) => (
+                        <div key={anexado.id} className="bg-white rounded-xl border border-indigo-100 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col group relative">
+                          {/* Franja superior de color */}
+                          <div className="h-1.5 w-full bg-indigo-500"></div>
+                          <div className="p-4 flex-1 flex flex-col">
+                            {/* Cabecera de tarjeta */}
+                            <div className="flex justify-between items-start mb-3">
+                              <Badge className="bg-indigo-100 text-indigo-800 font-bold border-indigo-200 shadow-none hover:bg-indigo-200 text-xs">
+                                {anexado.radicado || anexado.id}
+                              </Badge>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs font-semibold text-indigo-700 border-indigo-200 hover:bg-indigo-50"
+                                  onClick={() => setSelectedAnexado(anexado)}
+                                >
+                                  <Eye className="w-3.5 h-3.5 mr-1" />
+                                  Ver Proceso
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-1.5 h-auto transition-colors focus:ring-0"
+                                  onClick={async () => {
+                                    if (confirm('¿Seguro que desea desanexar este proceso? Volverá a aparecer como un proceso independiente en el Kanban principal.')) {
+                                      try {
+                                        await legalService.desanexarExpediente(anexado.id || anexado.uuid, 'Usuario Actual');
+                                        toast.success('Proceso desanexado con éxito');
+                                        if (onUpdate) onUpdate();
+                                      } catch (e) {
+                                        toast.error('Error al desanexar el proceso');
+                                      }
+                                    }
+                                  }}
+                                  title="Desanexar proceso"
+                                >
+                                  <Unlink className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Info Principal */}
+                            <div className="mb-4">
+                              <h4 className="text-sm font-black text-gray-900 mb-1.5 leading-tight group-hover:text-indigo-700 transition-colors line-clamp-2">
+                                {anexado.medioControl || anexado.tipoProceso || 'Medio de Control No Especificado'}
+                              </h4>
+                              <p className="text-xs text-gray-500 font-medium flex items-center gap-1.5">
+                                <Building2 className="w-3.5 h-3.5 flex-shrink-0 text-indigo-400" />
+                                <span className="truncate">{anexado.juzgadoConocimiento || anexado.juzgado || 'Juzgado no especificado'}</span>
+                              </p>
+                            </div>
+
+                            {/* Partes */}
+                            <div className="mt-auto pt-3 border-t border-gray-100 text-xs space-y-1.5 bg-gray-50/50 -mx-4 -mb-4 px-4 pb-4">
+                              <div className="flex gap-2">
+                                <span className="font-bold text-gray-500 w-8 flex-shrink-0">Dte:</span>
+                                <span className="text-gray-900 font-medium line-clamp-1">{anexado.demandante || anexado.actors?.find((a: any) => a.rol === 'DEMANDANTE')?.nombre || 'No especificado'}</span>
+                              </div>
+                              <div className="flex gap-2">
+                                <span className="font-bold text-gray-500 w-8 flex-shrink-0">Ddo:</span>
+                                <span className="text-gray-900 font-medium line-clamp-1">{anexado.demandado || anexado.actors?.find((a: any) => a.rol === 'DEMANDADO')?.nombre || 'No especificado'}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
               </TabsContent>
             </Tabs>
           </div>
@@ -2229,6 +2342,49 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
           expedienteEdit={expediente}
         />
       )}
+
+      {/* Modal de Anexar Proceso */}
+      {modalAnexarAbierto && (
+        <ModalAnexarProceso
+          isOpen={modalAnexarAbierto}
+          onClose={() => setModalAnexarAbierto(false)}
+          expedienteActual={expediente}
+          onAnexado={() => {
+            if (onUpdate) onUpdate();
+          }}
+        />
+      )}
+
+      {/* Modal Recursivo para ver detalles de Proceso Anexado */}
+      {selectedAnexado && (
+        <ModalExpediente
+          isOpen={!!selectedAnexado}
+          onClose={() => setSelectedAnexado(null)}
+          expediente={{
+            ...selectedAnexado,
+            uuid: selectedAnexado.id, // Parse for internal components
+            id: selectedAnexado.radicado || selectedAnexado.id,
+            diasRestantes: selectedAnexado.diasRestantes !== undefined ? selectedAnexado.diasRestantes : 0,
+            etapa: selectedAnexado.etapaProcesal || 'NOTIFICADA',
+            cuantia: selectedAnexado.cuantia || 0,
+            abogadoAsignado: selectedAnexado.abogadoSustanciador || 'Sin Asignar',
+            documentos: [], // Let standard flow fetch its own documents
+            actuaciones: [],
+            demandante: selectedAnexado.demandante,
+            demandado: selectedAnexado.demandado,
+            demandantes: selectedAnexado.actors?.filter((a: any) => a.rol === 'DEMANDANTE') || [],
+            demandados: selectedAnexado.actors?.filter((a: any) => a.rol === 'DEMANDADO') || [],
+            otrosActores: selectedAnexado.actors?.filter((a: any) => a.rol !== 'DEMANDANTE' && a.rol !== 'DEMANDADO') || [],
+            actors: selectedAnexado.actors || [],
+            timeline: [],
+            fechaCreacion: new Date(selectedAnexado.createdAt || Date.now()),
+            fechaActualizacion: new Date(selectedAnexado.updatedAt || Date.now()),
+            estado: selectedAnexado.estado || 'ACTIVO'
+          } as any}
+          onUpdate={onUpdate}
+        />
+      )}
+
 
     </>
   );
