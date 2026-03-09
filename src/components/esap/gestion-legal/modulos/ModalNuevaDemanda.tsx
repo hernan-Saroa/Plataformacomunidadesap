@@ -43,6 +43,10 @@ export interface NuevaDemandaData {
     apoderado?: string;
   }>;
   cuantia: string;
+  nivelRiesgo?: string;
+  provisionContable?: number;
+  fechaEstimacionProvision?: string;
+  observacionesProvision?: string;
   juzgado: string;
   ciudad: string;
   departamento: string;
@@ -102,6 +106,10 @@ function mapDemandaData(data: NuevaDemandaDataRestaurado): NuevaDemandaData {
     juzgado: data.juzgadoTribunal,
     ciudad: data.ciudad,
     departamento: data.departamento,
+    nivelRiesgo: data.nivelRiesgo,
+    provisionContable: data.provisionContable,
+    fechaEstimacionProvision: data.fechaEstimacionProvision,
+    observacionesProvision: data.observacionesProvision,
     fechaNotificacion: data.fechaNotificacion,
     fechaVencimiento: data.fechaVencimiento,
     abogadoAsignado: data.abogadoResponsable,

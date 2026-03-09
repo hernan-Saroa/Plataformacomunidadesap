@@ -11,6 +11,7 @@ import { TareaExpediente } from '../entities/tarea-expediente.entity';
 import { NotaExpediente } from '../entities/nota-expediente.entity';
 import { Audiencia } from '../entities/audiencia.entity';
 import { Acta } from '../entities/acta.entity';
+import { ConfigurationsService } from './configurations.service';
 
 @Injectable()
 export class ExpedienteService {
@@ -22,7 +23,8 @@ export class ExpedienteService {
         @InjectRepository(DecisionDisciplinaria)
         private decisionRepository: Repository<DecisionDisciplinaria>,
         @InjectRepository(ExcepcionProcesal)
-        private excepcionRepository: Repository<ExcepcionProcesal>
+        private excepcionRepository: Repository<ExcepcionProcesal>,
+        private readonly configService: ConfigurationsService
     ) { }
 
     async findOneByRadicado(radicado: string): Promise<Expediente | null> {
@@ -108,6 +110,20 @@ export class ExpedienteService {
             }
         }
 
+        if (!data.fechaPrescripcion && (data.jurisdiccion === 'DISCIPLINARIO' || data.jurisdiccion === 'Disciplinaria' || data.tipoProceso === 'DISCIPLINARIO')) {
+            try {
+                const config = await this.configService.findByKey('prescripcion_juzgamiento');
+                const years = config?.value?.years ?? 5;
+                const baseDate = data.fechaRadicacion ? new Date(data.fechaRadicacion) : new Date();
+                const fechaPrescripcion = new Date(baseDate);
+                fechaPrescripcion.setFullYear(fechaPrescripcion.getFullYear() + years);
+                data.fechaPrescripcion = fechaPrescripcion;
+                Logger.log(`[ExpedienteService] Asignada fecha_prescripcion automática (${years} años): ${fechaPrescripcion.toISOString()}`);
+            } catch (error) {
+                Logger.warn('[ExpedienteService] No se pudo calcular fecha_prescripcion automáticamente', error);
+            }
+        }
+
         const nuevoExpediente = this.expedienteRepository.create(data);
         return this.expedienteRepository.save(nuevoExpediente);
     }
@@ -130,9 +146,14 @@ export class ExpedienteService {
         // queryBuilder.leftJoinAndSelect('expediente.actuaciones', 'actuaciones'); // Removed due to loose coupling
         queryBuilder.leftJoinAndSelect('expediente.evidencias', 'evidencias');
         queryBuilder.leftJoinAndSelect('expediente.actors', 'actors');
+        queryBuilder.leftJoinAndSelect('expediente.procesosAnexados', 'procesosAnexados', "procesosAnexados.estadoArchivo = 'ACTIVO'");
+        queryBuilder.leftJoinAndSelect('procesosAnexados.actors', 'procesosAnexadosActors');
 
         // Solo mostrar expedientes activos en el Kanban (no archivados ni eliminados)
         queryBuilder.andWhere("expediente.estadoArchivo = 'ACTIVO'");
+
+        // No mostrar expedientes anexados como tarjetas independientes en el Kanban
+        queryBuilder.andWhere("expediente.procesoPrincipalId IS NULL");
 
         queryBuilder.addSelect((subQuery) => {
             return subQuery
@@ -228,7 +249,7 @@ export class ExpedienteService {
 
         const expediente = await this.expedienteRepository.findOne({
             where: { id },
-            relations: ['evidencias', 'actors']
+            relations: ['evidencias', 'actors', 'procesosAnexados', 'procesosAnexados.actors']
             // Note: actuaciones loaded manually due to loose coupling
         });
 
@@ -241,6 +262,11 @@ export class ExpedienteService {
                 ],
                 order: { fechaActuacion: 'DESC' }
             });
+
+            // Filter out archived/deleted procesos anexados
+            if (expediente.procesosAnexados) {
+                expediente.procesosAnexados = expediente.procesosAnexados.filter(p => p.estadoArchivo === 'ACTIVO');
+            }
         }
         return expediente;
     }
@@ -341,47 +367,212 @@ export class ExpedienteService {
 
     /**
      * Archivar un expediente (permanece en BD pero sale del Kanban)
+     * También archiva en cascada todos sus procesos anexados.
      */
     async archivarExpediente(id: string, motivo: string, usuario: string): Promise<Expediente> {
-        const expediente = await this.expedienteRepository.findOne({ where: { id } });
+        const expediente = await this.expedienteRepository.findOne({
+            where: { id },
+            relations: ['procesosAnexados']
+        });
+
         if (!expediente) throw new NotFoundException(`Expediente con ID ${id} no encontrado`);
 
+        const fechaArchivo = new Date();
+
+        // Archivar el expediente principal
         expediente.estadoArchivo = 'ARCHIVADO';
-        expediente.fechaArchivo = new Date();
+        expediente.fechaArchivo = fechaArchivo;
         expediente.usuarioArchivo = usuario;
         expediente.motivoArchivo = motivo;
 
-        return this.expedienteRepository.save(expediente);
+        await this.expedienteRepository.save(expediente);
+
+        // Archivar en cascada los procesos anexados
+        if (expediente.procesosAnexados && expediente.procesosAnexados.length > 0) {
+            for (const anexado of expediente.procesosAnexados) {
+                anexado.estadoArchivo = 'ARCHIVADO';
+                anexado.fechaArchivo = fechaArchivo;
+                anexado.usuarioArchivo = usuario;
+                anexado.motivoArchivo = `Archivado en cascada junto con proceso principal ${expediente.radicado}: ${motivo}`;
+                await this.expedienteRepository.save(anexado);
+
+                await this.agregarActuacion(anexado.id, {
+                    tipoActuacion: 'ARCHIVO_CASCADA',
+                    descripcion: `El expediente fue archivado automáticamente al archivar su proceso principal (${expediente.radicado}).`,
+                    usuarioResponsable: usuario
+                });
+            }
+        }
+
+        return expediente;
     }
 
     /**
      * Eliminar un expediente (soft delete - va a papelera)
+     * También elimina en cascada todos sus procesos anexados.
      */
     async eliminarExpedienteSoft(id: string, motivo: string, usuario: string): Promise<Expediente> {
-        const expediente = await this.expedienteRepository.findOne({ where: { id } });
+        const expediente = await this.expedienteRepository.findOne({
+            where: { id },
+            relations: ['procesosAnexados']
+        });
+
         if (!expediente) throw new NotFoundException(`Expediente con ID ${id} no encontrado`);
 
+        const fechaArchivo = new Date();
+
+        // Eliminar lógicamente el expediente principal
         expediente.estadoArchivo = 'ELIMINADO';
-        expediente.fechaArchivo = new Date();
+        expediente.fechaArchivo = fechaArchivo;
         expediente.usuarioArchivo = usuario;
         expediente.motivoArchivo = motivo;
 
-        return this.expedienteRepository.save(expediente);
+        await this.expedienteRepository.save(expediente);
+
+        // Eliminar lógicamente en cascada los procesos anexados
+        if (expediente.procesosAnexados && expediente.procesosAnexados.length > 0) {
+            for (const anexado of expediente.procesosAnexados) {
+                anexado.estadoArchivo = 'ELIMINADO';
+                anexado.fechaArchivo = fechaArchivo;
+                anexado.usuarioArchivo = usuario;
+                anexado.motivoArchivo = `Eliminado en cascada junto con proceso principal ${expediente.radicado}: ${motivo}`;
+                await this.expedienteRepository.save(anexado);
+
+                await this.agregarActuacion(anexado.id, {
+                    tipoActuacion: 'ELIMINACION_CASCADA',
+                    descripcion: `El expediente fue eliminado lógicamente de forma automática al eliminar su proceso principal (${expediente.radicado}).`,
+                    usuarioResponsable: usuario
+                });
+            }
+        }
+
+        return expediente;
     }
 
     /**
      * Restaurar un expediente archivado o eliminado al Kanban
+     * También restaura en cascada sus procesos anexados directamente vinculados a él en el mismo momento.
      */
     async restaurarExpediente(id: string): Promise<Expediente> {
-        const expediente = await this.expedienteRepository.findOne({ where: { id } });
+        const expediente = await this.expedienteRepository.findOne({
+            where: { id },
+            relations: ['procesosAnexados']
+        });
+
         if (!expediente) throw new NotFoundException(`Expediente con ID ${id} no encontrado`);
 
+        // Restaurar expediente principal
         expediente.estadoArchivo = 'ACTIVO';
-        expediente.fechaArchivo = undefined as any;
-        expediente.usuarioArchivo = undefined as any;
-        expediente.motivoArchivo = undefined as any;
+        expediente.fechaArchivo = null as any;
+        expediente.usuarioArchivo = null as any;
+        expediente.motivoArchivo = null as any;
 
-        return this.expedienteRepository.save(expediente);
+        await this.expedienteRepository.save(expediente);
+
+        // Restaurar en cascada
+        if (expediente.procesosAnexados && expediente.procesosAnexados.length > 0) {
+            for (const anexado of expediente.procesosAnexados) {
+                // Solo restaurar si estaban archivados/eliminados
+                if (anexado.estadoArchivo !== 'ACTIVO') {
+                    anexado.estadoArchivo = 'ACTIVO';
+                    anexado.fechaArchivo = null as any;
+                    anexado.usuarioArchivo = null as any;
+                    anexado.motivoArchivo = null as any;
+                    await this.expedienteRepository.save(anexado);
+
+                    await this.agregarActuacion(anexado.id, {
+                        tipoActuacion: 'RESTAURACION_CASCADA',
+                        descripcion: `El expediente fue restaurado automáticamente al restaurar su proceso principal (${expediente.radicado}).`,
+                        usuarioResponsable: 'Sistema'
+                    });
+                }
+            }
+        }
+
+        return expediente;
+    }
+
+    /**
+     * Anexar un expediente a otro (proceso principal)
+     */
+    async anexarExpediente(anexadoId: string, principalId: string, usuario: string): Promise<Expediente> {
+        const principal = await this.findOne(principalId);
+        if (!principal) throw new NotFoundException(`Expediente principal con ID ${principalId} no encontrado`);
+
+        const anexado = await this.expedienteRepository.findOne({
+            where: { id: anexadoId },
+            relations: ['procesosAnexados']
+        });
+        if (!anexado) throw new NotFoundException(`Expediente a anexar con ID ${anexadoId} no encontrado`);
+
+        if (anexado.procesosAnexados && anexado.procesosAnexados.length > 0) {
+            throw new ConflictException(`El expediente ${anexado.radicado} ya tiene procesos anexados, no puede ser anexado a otro proceso.`);
+        }
+
+        if (anexado.procesoPrincipalId) {
+            throw new ConflictException(`El expediente ${anexado.radicado} ya está anexado a otro proceso`);
+        }
+
+        if (anexadoId === principalId) {
+            throw new ConflictException(`No se puede anexar un expediente a sí mismo`);
+        }
+
+        anexado.procesoPrincipalId = principalId;
+        await this.expedienteRepository.save(anexado);
+
+        // Registrar actuación en ambos
+        await this.agregarActuacion(principalId, {
+            tipoActuacion: 'ANEXO_PROCESO',
+            descripcion: `Se ha anexado el proceso ${anexado.radicado} a este expediente.`,
+            usuarioResponsable: usuario
+        });
+
+        await this.agregarActuacion(anexadoId, {
+            tipoActuacion: 'ANEXO_PROCESO',
+            descripcion: `Este proceso ha sido anexado al expediente ${principal.radicado}.`,
+            usuarioResponsable: usuario
+        });
+
+        const updated = await this.findOne(principalId);
+        if (!updated) throw new Error('Expediente no encontrado post-update');
+        return updated;
+    }
+
+    /**
+     * Desanexar un expediente de su proceso principal
+     */
+    async desanexarExpediente(anexadoId: string, usuario: string): Promise<Expediente> {
+        const anexado = await this.expedienteRepository.findOne({ where: { id: anexadoId } });
+        if (!anexado) throw new NotFoundException(`Expediente con ID ${anexadoId} no encontrado`);
+
+        const principalId = anexado.procesoPrincipalId;
+        if (!principalId) {
+            throw new ConflictException(`El expediente ${anexado.radicado} no está anexado a ningún proceso`);
+        }
+
+        const principal = await this.findOne(principalId);
+
+        anexado.procesoPrincipalId = null as any; // TypeORM trick for nullable with non-optional property
+        await this.expedienteRepository.save(anexado);
+
+        // Registrar actuación en ambos
+        if (principal) {
+            await this.agregarActuacion(principalId, {
+                tipoActuacion: 'DESANEXO_PROCESO',
+                descripcion: `Se ha desanexado el proceso ${anexado.radicado} de este expediente.`,
+                usuarioResponsable: usuario
+            });
+        }
+
+        await this.agregarActuacion(anexadoId, {
+            tipoActuacion: 'DESANEXO_PROCESO',
+            descripcion: `Este proceso ha sido desanexado de su expediente principal.`,
+            usuarioResponsable: usuario
+        });
+
+        // Retornamos el principal para que el frontend recargue la vista del principal sin el anexado
+        const updated = await this.findOne(principalId);
+        return updated as Expediente;
     }
 
     /**

@@ -128,6 +128,29 @@ export class ExpedienteController {
     async eliminarPermanente(@Param('id') id: string): Promise<void> {
         return this.expedienteService.eliminarPermanente(id);
     }
+
+    // ==================== ENDPOINTS DE PROCESOS ANEXADOS ====================
+
+    @Post(':id/anexar')
+    async anexar(
+        @Param('id') anexadoId: string,
+        @Body() body: { principalId: string; usuario?: string }
+    ): Promise<Expediente> {
+        if (!body.principalId) {
+            throw new BadRequestException('El ID del expediente principal es obligatorio');
+        }
+        const usuario = body.usuario || 'Sistema';
+        return this.expedienteService.anexarExpediente(anexadoId, body.principalId, usuario);
+    }
+
+    @Post(':id/desanexar')
+    async desanexar(
+        @Param('id') id: string,
+        @Body() body: { usuario?: string }
+    ): Promise<Expediente> {
+        const usuario = body.usuario || 'Sistema';
+        return this.expedienteService.desanexarExpediente(id, usuario);
+    }
 }
 
 

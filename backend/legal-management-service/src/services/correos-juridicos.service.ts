@@ -121,6 +121,9 @@ export class CorreosJuridicosService {
                         if (classification.category === 'JUDICIAL') tipoDB = 'JUDICIAL';
                         if (classification.category === 'OFICIO') tipoDB = 'OFICIO';
 
+                        // Extract NLP entities
+                        const entities = this.smartService.extractEntities(email.subject || '', email.bodyPreview || '');
+
                         // Create new record
                         const newCorreo = this.correoRepo.create({
                             graphMessageId: email.id,
@@ -135,12 +138,19 @@ export class CorreosJuridicosService {
                             archivado: false,
                             urgente: isUrgente,
                             tipo: tipoDB, // JUDICIAL, OFICIO, CORREO
-                            categoria: classification.category, // Specific category (e.g. CONSULTA)
+                            categoria: classification.category,
                             moduloSugerido: classification.module,
                             confianzaClasificacion: classification.confidence,
                             aiSuggestedCategory: classification.category,
                             isTrained: false,
-                            expedienteId: undefined
+                            expedienteId: undefined,
+                            // Threading fields
+                            internetMessageId: email.internetMessageId || undefined,
+                            threadId: email.conversationId || undefined,
+                            // NLP entity extraction
+                            procesoIdSugerido: entities.procesoId || undefined,
+                            implicadoSugerido: entities.implicado || undefined,
+                            submoduloSugerido: entities.submodulo || undefined,
                         });
 
                         const savedCorreo = await this.correoRepo.save(newCorreo);
@@ -305,7 +315,59 @@ export class CorreosJuridicosService {
      * Send an email via Graph API and save record in DB
      */
     async sendEmail(dto: SendEmailDto): Promise<{ success: boolean; correo?: CorreoJuridico }> {
-        const sent = await this.graphService.sendEmail(dto.to, dto.subject, dto.body, dto.cc, dto.attachments);
+        let finalBody = dto.body;
+        const inlineAttachments: any[] = [];
+        const largeAttachments: any[] = [];
+        const fs = require('fs');
+        const path = require('path');
+
+        // Extract and sort attachments by size
+        if (dto.attachments && dto.attachments.length > 0) {
+            for (const att of dto.attachments) {
+                const buffer = Buffer.from(att.contentBytes, 'base64');
+                // 2.5MB limit for inline Graph API attachments (to avoid 413 Payload Too Large)
+                if (buffer.length > 2.5 * 1024 * 1024) {
+                    largeAttachments.push({ att, buffer });
+                } else {
+                    inlineAttachments.push(att);
+                }
+            }
+        }
+
+        // Handle large attachments by saving locally and appending links
+        if (largeAttachments.length > 0) {
+            finalBody += '<br><br><div style="margin-top:20px; padding:15px; border:1px solid #e2e8f0; border-radius:8px; background-color:#f8fafc;">';
+            finalBody += '<h4 style="margin-top:0; color:#0f172a; font-family:sans-serif;">Archivos Adjuntos Pesados</h4>';
+            finalBody += '<ul style="font-family:sans-serif; color:#334155; margin-bottom:0;">';
+
+            const uploadsDir = path.join(process.cwd(), 'uploads', 'adjuntos');
+            if (!fs.existsSync(uploadsDir)) {
+                fs.mkdirSync(uploadsDir, { recursive: true });
+            }
+
+            for (const { att, buffer } of largeAttachments) {
+                const safeName = att.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                const uniqueFilename = `sent_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${safeName}`;
+                const filepath = path.join(uploadsDir, uniqueFilename);
+                fs.writeFileSync(filepath, buffer);
+
+                // Construct the download link using the API Gateway URL 
+                // Ensure this points to the external reachable API if available, else fallback to localhost
+                const baseUrl = process.env.API_GATEWAY_URL || 'http://localhost:3000';
+                const downloadLink = `${baseUrl}/legal/api/v1/correos/adjuntos/local/${uniqueFilename}/download`;
+
+                finalBody += `<li><a href="${downloadLink}" target="_blank" style="color:#2563eb; text-decoration:none;">Descargar ${att.name}</a> (${(buffer.length / (1024 * 1024)).toFixed(2)} MB)</li>`;
+            }
+            finalBody += '</ul></div>';
+        }
+
+        const sent = await this.graphService.sendEmail(
+            dto.to,
+            dto.subject,
+            finalBody,
+            dto.cc,
+            inlineAttachments
+        );
 
         if (!sent) {
             return { success: false };
@@ -338,6 +400,103 @@ export class CorreosJuridicosService {
             return { success: true, correo: savedCorreo };
         } catch (dbError) {
             this.logger.error('Error saving sent email to DB (email was sent successfully):', dbError);
+            return { success: true };
+        }
+    }
+
+    /**
+     * Reply to an email — maintains thread via Graph API
+     */
+    async replyEmail(correoId: string, body: string, attachments?: { name: string; contentBytes: string; contentType: string }[]): Promise<{ success: boolean; correo?: CorreoJuridico }> {
+        const original = await this.correoRepo.findOne({ where: { id: correoId } });
+        if (!original) throw new NotFoundException('Correo original no encontrado');
+
+        // Send reply via Graph API
+        const sent = await this.graphService.replyToEmail(original.graphMessageId, body, attachments);
+        if (!sent) return { success: false };
+
+        // Save reply record in DB
+        try {
+            const replyCorreo = this.correoRepo.create({
+                graphMessageId: `reply-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                asunto: original.asunto.startsWith('RE:') ? original.asunto : `RE: ${original.asunto}`,
+                remitenteEmail: 'oficina.juridica@esap.edu.co',
+                remitenteNombre: 'Oficina Jurídica ESAP',
+                destinatariosTo: original.remitenteEmail,
+                destinatarios: original.destinatarios,
+                fechaRecepcion: new Date(),
+                cuerpoHtml: body,
+                cuerpoTexto: body?.replace(/<[^>]*>/g, '') || '',
+                tieneAdjuntos: !!(attachments && attachments.length > 0),
+                leido: true,
+                archivado: false,
+                urgente: false,
+                tipo: original.tipo,
+                direccion: 'ENVIADO',
+                categoria: 'RESPUESTA',
+                parentEmailId: original.id,
+                threadId: original.threadId,
+                expedienteId: original.expedienteId,
+            });
+
+            const savedReply = await this.correoRepo.save(replyCorreo);
+
+            // Mark original as replied
+            original.isReplied = true;
+            await this.correoRepo.save(original);
+
+            this.logger.log(`Reply saved: ${savedReply.id} -> parent: ${original.id}`);
+            return { success: true, correo: savedReply };
+        } catch (dbError) {
+            this.logger.error('Error saving reply to DB (reply was sent successfully):', dbError);
+            return { success: true };
+        }
+    }
+
+    /**
+     * Forward an email
+     */
+    async forwardEmail(correoId: string, to: string, comment: string): Promise<{ success: boolean; correo?: CorreoJuridico }> {
+        const original = await this.correoRepo.findOne({ where: { id: correoId } });
+        if (!original) throw new NotFoundException('Correo original no encontrado');
+
+        // Send forward via Graph API
+        const sent = await this.graphService.forwardEmail(original.graphMessageId, to, comment);
+        if (!sent) return { success: false };
+
+        // Save forward record in DB
+        try {
+            const forwardCorreo = this.correoRepo.create({
+                graphMessageId: `fwd-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                asunto: original.asunto.startsWith('RV:') || original.asunto.startsWith('FW:') ? original.asunto : `RV: ${original.asunto}`,
+                remitenteEmail: 'oficina.juridica@esap.edu.co',
+                remitenteNombre: 'Oficina Jurídica ESAP',
+                destinatariosTo: to,
+                fechaRecepcion: new Date(),
+                cuerpoHtml: comment,
+                cuerpoTexto: comment,
+                tieneAdjuntos: original.tieneAdjuntos, // Graph native forward includes original attachments
+                leido: true,
+                archivado: false,
+                urgente: original.urgente,
+                tipo: 'CORREO',
+                direccion: 'ENVIADO',
+                categoria: 'REENVIO',
+                parentEmailId: original.id,
+                threadId: original.threadId,
+                expedienteId: original.expedienteId,
+            });
+
+            const savedForward = await this.correoRepo.save(forwardCorreo);
+
+            // Mark original as forwarded
+            original.isForwarded = true;
+            await this.correoRepo.save(original);
+
+            this.logger.log(`Forward saved: ${savedForward.id} -> parent: ${original.id}`);
+            return { success: true, correo: savedForward };
+        } catch (dbError) {
+            this.logger.error('Error saving forward to DB (forward was sent successfully):', dbError);
             return { success: true };
         }
     }
@@ -642,5 +801,71 @@ export class CorreosJuridicosService {
 
         this.logger.log(`Batch Backfill complete. Updated ${updated}/${processed} emails.`);
         return { processed, updated };
+    }
+
+    /**
+     * Reclassify ALL incoming emails with updated heuristics
+     * Skips manually-trained emails (isTrained = true) and sent emails
+     */
+    async reclassifyAll(): Promise<{ processed: number; updated: number; unchanged: number }> {
+        this.logger.log('Starting FULL reclassification with updated heuristics...');
+
+        const allEmails = await this.correoRepo.find({
+            where: { direccion: 'ENTRANTE' },
+            order: { fechaRecepcion: 'DESC' },
+        });
+
+        this.logger.log(`Found ${allEmails.length} incoming emails to reclassify.`);
+
+        let processed = 0;
+        let updated = 0;
+        let unchanged = 0;
+
+        for (const email of allEmails) {
+            try {
+                // Skip manually corrected emails
+                if (email.isTrained) {
+                    unchanged++;
+                    processed++;
+                    continue;
+                }
+
+                const classification = await this.smartService.classify(email.asunto || '', email.cuerpoTexto || '');
+                const isUrgente = this.smartService.analyzeUrgency(email.asunto || '', email.cuerpoTexto || '');
+                const entities = this.smartService.extractEntities(email.asunto || '', email.cuerpoTexto || '');
+
+                let tipoDB = 'CORREO';
+                if (classification.category === 'JUDICIAL') tipoDB = 'JUDICIAL';
+                if (classification.category === 'OFICIO') tipoDB = 'OFICIO';
+
+                const oldTipo = email.tipo;
+
+                email.tipo = tipoDB;
+                email.categoria = classification.category;
+                email.aiSuggestedCategory = classification.category;
+                email.moduloSugerido = classification.module;
+                email.confianzaClasificacion = classification.confidence;
+                email.urgente = isUrgente;
+                email.procesoIdSugerido = entities.procesoId || email.procesoIdSugerido;
+                email.implicadoSugerido = entities.implicado || email.implicadoSugerido;
+                email.submoduloSugerido = entities.submodulo || email.submoduloSugerido;
+
+                await this.correoRepo.save(email);
+
+                if (oldTipo !== tipoDB) {
+                    updated++;
+                    this.logger.debug(`Reclassified: "${email.asunto?.substring(0, 40)}..." ${oldTipo} → ${tipoDB}`);
+                } else {
+                    unchanged++;
+                }
+                processed++;
+            } catch (error) {
+                this.logger.error(`Error reclassifying email ${email.id}:`, error);
+                processed++;
+            }
+        }
+
+        this.logger.log(`Reclassification complete. Processed: ${processed}, Changed: ${updated}, Unchanged: ${unchanged}`);
+        return { processed, updated, unchanged };
     }
 }

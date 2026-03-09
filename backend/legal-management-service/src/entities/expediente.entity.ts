@@ -1,5 +1,5 @@
 
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { Actuacion } from './actuacion.entity';
 import { DecisionDisciplinaria } from './decision-disciplinaria.entity';
 import { Evidencia } from './evidencia.entity';
@@ -25,6 +25,17 @@ export class Expediente {
 
     @OneToMany(() => Evidencia, (evidencia) => evidencia.expediente)
     evidencias: Evidencia[];
+
+    // Relación recursiva para procesos anexados
+    @Column({ name: 'proceso_principal_id', nullable: true })
+    procesoPrincipalId: string;
+
+    @ManyToOne(() => Expediente, expediente => expediente.procesosAnexados, { nullable: true })
+    @JoinColumn({ name: 'proceso_principal_id' })
+    procesoPrincipal: Expediente;
+
+    @OneToMany(() => Expediente, expediente => expediente.procesoPrincipal)
+    procesosAnexados: Expediente[];
 
     documentosCount: number = 0;
 
@@ -52,7 +63,19 @@ export class Expediente {
     @Column('numeric', { precision: 15, scale: 2, nullable: true })
     cuantia: number;
 
-    // Campos adicionales para Dashboard
+    // Campos para Dashboard y Conciliación
+    @Column({ name: 'nivel_riesgo', nullable: true })
+    nivelRiesgo: string;
+
+    @Column('numeric', { name: 'provision_contable', precision: 15, scale: 2, nullable: true })
+    provisionContable: number;
+
+    @Column({ name: 'fecha_estimacion_provision', type: 'timestamp', nullable: true })
+    fechaEstimacionProvision: Date;
+
+    @Column({ name: 'observacion_provision', type: 'text', nullable: true })
+    observacionProvision: string;
+
     @Column({ name: 'abogado_sustanciador', nullable: true })
     abogadoSustanciador: string;
 

@@ -363,6 +363,7 @@ export class GraduationCertificatesController {
    * Registrar una descarga de certificado
    */
   @Post('descargas')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async registrarDescarga(
     @Body() body: { certificateId: string },
@@ -529,6 +530,7 @@ export class GraduationCertificatesController {
    * Descargar PDF del certificado
    */
   @Get(':id/pdf')
+  @Public()
   async descargarPDF(@Param('id') id: string, @Req() req: Request, @Res() res: Response) {
     const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
     const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;

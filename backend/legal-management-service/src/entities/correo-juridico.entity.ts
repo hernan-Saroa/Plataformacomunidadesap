@@ -67,4 +67,30 @@ export class CorreoJuridico {
 
     @Column({ name: 'destinatarios_to', type: 'text', nullable: true })
     destinatariosTo: string;
+
+    // ── Threading / Reply support ──
+    @Column({ name: 'is_replied', default: false })
+    isReplied: boolean;
+
+    @Column({ name: 'is_forwarded', default: false })
+    isForwarded: boolean;
+
+    @Column({ name: 'parent_email_id', type: 'uuid', nullable: true })
+    parentEmailId: string;
+
+    @Column({ name: 'thread_id', length: 500, nullable: true })
+    threadId: string;
+
+    @Column({ name: 'internet_message_id', length: 500, nullable: true })
+    internetMessageId: string;
+
+    // ── NLP Entity extraction ──
+    @Column({ name: 'proceso_id_sugerido', length: 100, nullable: true })
+    procesoIdSugerido: string;
+
+    @Column({ name: 'implicado_sugerido', length: 255, nullable: true })
+    implicadoSugerido: string;
+
+    @Column({ name: 'submodulo_sugerido', length: 100, nullable: true })
+    submoduloSugerido: string;
 }

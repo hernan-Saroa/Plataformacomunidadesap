@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react';
 import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark } from 'lucide-react';
 import { legalService } from '../../../../services/api/legal.service';
+import disciplinaryService from '../../../../services/api/disciplinary.service';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -2103,6 +2104,11 @@ export function ConfiguracionesSIGL() {
                 </div>
               )}
 
+              {/* Configuración de Prescripción Disciplinaria - SOLO PARA JUZGAMIENTO DISCIPLINARIO */}
+              {moduloActivo === 'juzgamiento' && (
+                <PrescripcionConfig />
+              )}
+
               {/* Info adicional */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                 <div className="p-6 bg-blue-50 border-l-4 border-blue-500">
@@ -3244,6 +3250,153 @@ function EstadoSortable({ estado, index, onUpdate, onDelete }: { estado: EstadoK
             <Trash2 className="w-4 h-4" />
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ============ COMPONENTE DE PRESCRIPCIÓN ============
+function PrescripcionConfig() {
+  const [prescriptionYears, setPrescriptionYears] = useState<number>(5);
+  const [originalYears, setOriginalYears] = useState<number>(5);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const configValue = await legalService.getConfiguration('prescripcion_juzgamiento');
+        const years = configValue?.years ?? 5;
+        setPrescriptionYears(years);
+        setOriginalYears(years);
+      } catch (err) {
+        console.error('Error loading prescription config:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const hasChanges = prescriptionYears !== originalYears;
+
+  const guardar = async () => {
+    if (prescriptionYears < 1 || prescriptionYears > 30) {
+      toast.error('El valor debe estar entre 1 y 30 años');
+      return;
+    }
+    try {
+      setSaving(true);
+      await legalService.updateConfiguration('prescripcion_juzgamiento', {
+        value: { years: prescriptionYears },
+        module: 'juzgamiento',
+        description: 'Configuración de años para prescripción en Juzgamiento Disciplinario'
+      });
+      setOriginalYears(prescriptionYears);
+      toast.success('Prescripción actualizada correctamente');
+    } catch (err) {
+      toast.error('Error al guardar la configuración');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#F57C00]" />
+      </div>
+    );
+  }
+
+  const fechaPreview = new Date();
+  fechaPreview.setFullYear(fechaPreview.getFullYear() + prescriptionYears);
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="p-3 sm:p-4 lg:p-6">
+        <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+          <div>
+            <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#F57C00' }} />
+              Prescripción Disciplinaria
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-600 mt-1">
+              Configura el número de años para el cálculo de prescripción de los procesos disciplinarios
+            </p>
+          </div>
+          {hasChanges && (
+            <div className="flex gap-2 flex-shrink-0">
+              <button
+                onClick={() => setPrescriptionYears(originalYears)}
+                className="px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg transition-colors"
+              >
+                Descartar
+              </button>
+              <button
+                onClick={guardar}
+                disabled={saving}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg disabled:opacity-50"
+                style={{
+                  background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
+                  boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
+                }}
+              >
+                {saving ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Save className="w-3.5 h-3.5" />
+                )}
+                Guardar
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Control de años */}
+        <div className="p-4 bg-gradient-to-br from-orange-50 to-white rounded-lg border border-orange-200">
+          <div className="flex items-center gap-4 mb-3">
+            <label className="text-sm font-semibold text-gray-700">Años de prescripción:</label>
+            <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-orange-500 focus-within:border-orange-500">
+              <button
+                onClick={() => setPrescriptionYears(Math.max(1, prescriptionYears - 1))}
+                className="px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 font-bold text-base transition-colors border-r border-gray-300"
+              >
+                −
+              </button>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={prescriptionYears}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  if (!isNaN(val) && val >= 1 && val <= 30) setPrescriptionYears(val);
+                }}
+                className="w-16 text-center text-xl font-bold py-2 border-0 outline-none text-gray-900"
+              />
+              <button
+                onClick={() => setPrescriptionYears(Math.min(30, prescriptionYears + 1))}
+                className="px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 font-bold text-base transition-colors border-l border-gray-300"
+              >
+                +
+              </button>
+            </div>
+            <span className="text-sm text-gray-500">años</span>
+          </div>
+
+          {/* Preview */}
+          <div className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg border border-blue-100">
+            <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+            <p className="text-xs sm:text-sm text-blue-700">
+              Un proceso cuya noticia se reciba <strong>hoy</strong> prescribirá el{' '}
+              <strong>
+                {fechaPreview.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </strong>.
+              Los procesos existentes conservan su fecha original.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

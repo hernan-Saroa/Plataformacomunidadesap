@@ -16,7 +16,7 @@ import { Button } from '../../../ui/button';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalExpediente } from './ModalExpediente';
 
@@ -25,9 +25,10 @@ interface VistaListaProps {
   isMobile: boolean;
   isTablet: boolean;
   onMoverExpediente?: (id: string, etapa: string) => void;
+  onRefresh?: () => void;
 }
 
-export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet, onMoverExpediente }: VistaListaProps) {
+export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet, onMoverExpediente, onRefresh }: VistaListaProps) {
   const { estadosActivos } = useConfiguracionModulo('defensa-judicial');
   const [ordenarPor, setOrdenarPor] = useState<'fecha' | 'dias' | 'etapa' | 'demandante'>('dias');
   const [direccionOrden, setDireccionOrden] = useState<'asc' | 'desc'>('asc');
@@ -148,6 +149,7 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet, onM
               etapaConfig={etapaConfig}
               estadosActivos={estadosActivos}
               onMoverExpediente={onMoverExpediente}
+              onRefresh={onRefresh}
             />
           );
         })}
@@ -317,6 +319,7 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet, onM
                   index={index}
                   estadosActivos={estadosActivos}
                   onMoverExpediente={onMoverExpediente}
+                  onRefresh={onRefresh}
                 />
               );
             })}
@@ -412,9 +415,10 @@ interface FilaExpedienteTablaProps {
   index: number;
   estadosActivos: { id: string; nombre: string }[];
   onMoverExpediente?: (id: string, etapa: string) => void;
+  onRefresh?: () => void;
 }
 
-function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index, estadosActivos, onMoverExpediente }: FilaExpedienteTablaProps) {
+function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index, estadosActivos, onMoverExpediente, onRefresh }: FilaExpedienteTablaProps) {
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [menuAccionesOpen, setMenuAccionesOpen] = useState(false);
 
@@ -500,7 +504,7 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index, estados
         <td className="px-4 py-3">
           <Select
             value={expediente.etapa}
-            onValueChange={(value) => onMoverExpediente && onMoverExpediente(expediente.id, value)}
+            onValueChange={(value: string) => onMoverExpediente && onMoverExpediente(expediente.id, value)}
           >
             <SelectTrigger
               className="h-auto py-1 px-2.5 border rounded-full font-semibold focus:ring-0 w-fit text-xs"
@@ -562,7 +566,7 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index, estados
         {/* Cuantía */}
         <td className="px-4 py-3">
           <p className="font-bold text-sm text-gray-900">
-            {formatCuantia(expediente.cuantia)}
+            {formatCuantia(Number(expediente.cuantia) || undefined)}
           </p>
         </td>
 
@@ -680,6 +684,7 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index, estados
         isOpen={modalExpedienteOpen}
         onClose={() => setModalExpedienteOpen(false)}
         expediente={expediente}
+        onUpdate={onRefresh}
       />
     </>
   );
@@ -692,9 +697,10 @@ interface FilaExpedienteMobileProps {
   etapaConfig: { bg: string; border: string; text: string; icono: React.ReactNode };
   estadosActivos: { id: string; nombre: string }[];
   onMoverExpediente?: (id: string, etapa: string) => void;
+  onRefresh?: () => void;
 }
 
-function FilaExpedienteMobile({ expediente, semaforo, etapaConfig, estadosActivos, onMoverExpediente }: FilaExpedienteMobileProps) {
+function FilaExpedienteMobile({ expediente, semaforo, etapaConfig, estadosActivos, onMoverExpediente, onRefresh }: FilaExpedienteMobileProps) {
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [expandido, setExpandido] = useState(false);
 
@@ -729,7 +735,7 @@ function FilaExpedienteMobile({ expediente, semaforo, etapaConfig, estadosActivo
             </div>
             <Select
               value={expediente.etapa}
-              onValueChange={(value) => onMoverExpediente && onMoverExpediente(expediente.id, value)}
+              onValueChange={(value: string) => onMoverExpediente && onMoverExpediente(expediente.id, value)}
             >
               <SelectTrigger
                 className="h-auto py-1 px-2.5 border rounded-full font-semibold focus:ring-0 flex-shrink-0 text-xs w-auto min-w-[120px]"
@@ -808,7 +814,7 @@ function FilaExpedienteMobile({ expediente, semaforo, etapaConfig, estadosActivo
             >
               <div className="p-2 rounded-lg bg-gray-50 border border-gray-200">
                 <p className="text-xs text-gray-500 mb-0.5">💰 Cuantía:</p>
-                <p className="font-bold text-sm text-gray-900">{formatCuantia(expediente.cuantia)}</p>
+                <p className="font-bold text-sm text-gray-900">{formatCuantia(Number(expediente.cuantia) || undefined)}</p>
               </div>
               <div className="p-2 rounded-lg bg-gray-50 border border-gray-200">
                 <p className="text-xs text-gray-500 mb-0.5">📅 Última Actualización:</p>

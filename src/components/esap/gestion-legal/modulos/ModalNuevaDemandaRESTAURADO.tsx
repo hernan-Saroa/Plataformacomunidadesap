@@ -25,6 +25,7 @@
  */
 
 import { useState, useEffect } from 'react';
+// @ts-ignore
 import { toast } from 'sonner@2.0.3';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { estructuraService } from '../../../../services/api/estructura.service';
@@ -45,6 +46,7 @@ import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import type { ExpedienteJudicial, ParteProcesal } from '../core/types';
 
 // ==================== INTERFACES ====================
 
@@ -99,6 +101,10 @@ export interface NuevaDemandaData {
   tipoProcesoJudicial: string;
   etapaProcesal: string;
   cuantia: number;
+  nivelRiesgo: string;
+  provisionContable: number;
+  fechaEstimacionProvision: string;
+  observacionesProvision: string;
   demandantes: Demandante[];
   demandados: Demandado[];
   otrosActores: OtroActor[];
@@ -118,7 +124,8 @@ export interface NuevaDemandaData {
 interface ModalNuevaDemandaRESTAURADOProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: NuevaDemandaData) => void;
+  onSave: (data: NuevaDemandaData, isEdit?: boolean, originalId?: string) => void;
+  expedienteEdit?: ExpedienteJudicial;
 }
 
 // ==================== DATOS PARAMETRIZABLES ====================
@@ -241,7 +248,7 @@ function calcularFechaVencimiento(
 
 // ==================== COMPONENTE PRINCIPAL ====================
 
-export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNuevaDemandaRESTAURADOProps) {
+export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedienteEdit }: ModalNuevaDemandaRESTAURADOProps) {
   // Obtener datos dinámicos del submódulo de configuración
   const { mediosControlActivos, tiposProcesosActivos, estadosActivos } = useConfiguracionModulo('defensa-judicial');
 
@@ -254,6 +261,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
     tipoProcesoJudicial: '',
     etapaProcesal: '',
     cuantia: 0,
+    nivelRiesgo: '',
+    provisionContable: 0,
+    fechaEstimacionProvision: '',
+    observacionesProvision: '',
     demandantes: [],
     demandados: [],
     otrosActores: [],
@@ -276,34 +287,112 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
   const [abogadosAPI, setAbogadosAPI] = useState<{ id: string; nombre: string }[]>([]);
   const [enviando, setEnviando] = useState(false);
 
-  // Resetear el formulario completamente al abrir el modal
+  // Resetear o pre-llenar el formulario al abrir el modal
   useEffect(() => {
     if (isOpen) {
-      setPasoActual(1);
-      setFormData({
-        numeroRadicado: '',
-        medioControl: '',
-        tipoProcesoJudicial: '',
-        etapaProcesal: '',
-        cuantia: 0,
-        demandantes: [],
-        demandados: [],
-        otrosActores: [],
-        juzgadoTribunal: '',
-        departamento: '',
-        ciudad: '',
-        tipoPlazo: 'Dias Habiles',
-        termino: 30,
-        fechaNotificacion: '',
-        fechaVencimiento: '',
-        abogadoResponsable: '',
-        pretensiones: '',
-        hechos: '',
-        observaciones: ''
-      });
-      setCiudadesDisponibles([]);
+      if (expedienteEdit) {
+        setPasoActual(1);
+
+        // Mapear Partes Procesales a los tipos del formulario
+        const mapDemandante = (p: ParteProcesal): Demandante => ({
+          id: p.id,
+          tipoPersona: p.tipoPersona === 'juridica' ? 'Juridica' : 'Natural',
+          cedula: p.identificacion,
+          nombreCompleto: p.nombre,
+          telefono: p.telefono || '',
+          correo: p.email || '',
+          direccion: p.direccion || '',
+          tieneApoderado: !!p.apoderado,
+          apoderado: p.apoderado ? { nombreCompleto: p.apoderado, cedula: '', celular: '', correo: '' } : undefined
+        });
+
+        const mapDemandado = (p: ParteProcesal): Demandado => ({
+          id: p.id,
+          tipoPersona: p.tipoPersona === 'juridica' ? 'Juridica' : 'Natural',
+          cedula: p.identificacion,
+          nombreCompleto: p.nombre,
+          cargoFuncion: p.cargo || '',
+          telefono: p.telefono || '',
+          correo: p.email || '',
+          direccion: p.direccion || '',
+          tieneApoderado: !!p.apoderado,
+          apoderado: p.apoderado ? { nombreCompleto: p.apoderado, cedula: '', celular: '', correo: '' } : undefined
+        });
+
+        const mapOtroActor = (p: ParteProcesal): OtroActor => ({
+          id: p.id,
+          tipoPersona: p.tipoPersona === 'juridica' ? 'Juridica' : 'Natural',
+          cedula: p.identificacion,
+          nombreCompleto: p.nombre,
+          rol: p.rol || '',
+          telefono: p.telefono || '',
+          correo: p.email || '',
+          direccion: p.direccion || '',
+          tieneApoderado: !!p.apoderado,
+          apoderado: p.apoderado ? { nombreCompleto: p.apoderado, cedula: '', celular: '', correo: '' } : undefined
+        });
+
+        setFormData({
+          numeroRadicado: expedienteEdit.radicado || expedienteEdit.id,
+          medioControl: expedienteEdit.medioControl as string || '',
+          tipoProcesoJudicial: expedienteEdit.tipoProceso || expedienteEdit.tipo || '',
+          etapaProcesal: expedienteEdit.etapa as string || '',
+          cuantia: typeof expedienteEdit.cuantia === 'string' ? parseFloat(expedienteEdit.cuantia.replace(/[^0-9.-]+/g, "")) : (expedienteEdit.cuantia || 0),
+          nivelRiesgo: (expedienteEdit as any).nivelRiesgo || '',
+          provisionContable: (expedienteEdit as any).provisionContable || 0,
+          fechaEstimacionProvision: (expedienteEdit as any).fechaEstimacionProvision ? new Date((expedienteEdit as any).fechaEstimacionProvision).toISOString().split('T')[0] : '',
+          observacionesProvision: (expedienteEdit as any).observacionProvision || '',
+          demandantes: expedienteEdit.demandantes ? expedienteEdit.demandantes.map(mapDemandante) : [],
+          demandados: expedienteEdit.demandados ? expedienteEdit.demandados.map(mapDemandado) : [],
+          otrosActores: expedienteEdit.otrosActores ? expedienteEdit.otrosActores.map(mapOtroActor) : [],
+          juzgadoTribunal: expedienteEdit.juzgadoConocimiento || expedienteEdit.juzgado || '',
+          departamento: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[1].trim() : '') : '',
+          ciudad: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[0].trim() : expedienteEdit.ubicacionFisica) : '',
+          tipoPlazo: expedienteEdit.tipoConteoTermino === 'CALENDARIO' ? 'Dias Calendario' : 'Dias Habiles',
+          termino: expedienteEdit.diasTotales || 30,
+          fechaNotificacion: expedienteEdit.fechaNotificacion ?
+            (typeof expedienteEdit.fechaNotificacion === 'string' ? new Date(expedienteEdit.fechaNotificacion).toISOString().slice(0, 16) :
+              toLocalISO(expedienteEdit.fechaNotificacion)) : '',
+          fechaVencimiento: expedienteEdit.fechaVencimientoTerminos ?
+            (typeof expedienteEdit.fechaVencimientoTerminos === 'string' ? new Date(expedienteEdit.fechaVencimientoTerminos).toISOString().slice(0, 16) :
+              toLocalISO(expedienteEdit.fechaVencimientoTerminos)) : '',
+          abogadoResponsable: expedienteEdit.abogadoAsignado || '',
+          pretensiones: expedienteEdit.pretensiones || '',
+          hechos: expedienteEdit.hechos || '',
+          observaciones: ''
+        });
+        setCiudadesDisponibles([]);
+      } else {
+        setPasoActual(1);
+        setFormData({
+          numeroRadicado: '',
+          medioControl: '',
+          tipoProcesoJudicial: '',
+          etapaProcesal: '',
+          cuantia: 0,
+          nivelRiesgo: '',
+          provisionContable: 0,
+          fechaEstimacionProvision: '',
+          observacionesProvision: '',
+          demandantes: [],
+          demandados: [],
+          otrosActores: [],
+          juzgadoTribunal: '',
+          departamento: '',
+          ciudad: '',
+          tipoPlazo: 'Dias Habiles',
+          termino: 30,
+          fechaNotificacion: '',
+          fechaVencimiento: '',
+          abogadoResponsable: '',
+          pretensiones: '',
+          hechos: '',
+          observaciones: ''
+        });
+        setCiudadesDisponibles([]);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, expedienteEdit]);
 
   // Calcular fecha de vencimiento automáticamente
   useEffect(() => {
@@ -354,13 +443,18 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
           .then(res => {
             const ciudades = (res.data || []).map((c: any) => c.nomDivGeopolitica as string);
             setCiudadesDisponibles(ciudades);
+            // Solo borrar la ciudad si no está entre las disponibles o no existe
+            const isCityValid = formData.ciudad && ciudades.includes(formData.ciudad);
+            if (!formData.ciudad || !isCityValid) {
+              setFormData(prev => ({ ...prev, ciudad: '' }));
+            }
           })
           .catch(() => setCiudadesDisponibles([]))
           .finally(() => setCargandoCiudades(false));
       } else {
         setCiudadesDisponibles([]);
+        setFormData(prev => ({ ...prev, ciudad: '' }));
       }
-      setFormData(prev => ({ ...prev, ciudad: '' }));
     }
   }, [formData.departamento, departamentosAPI]);
 
@@ -554,6 +648,32 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
         return true;
 
       case 4:
+        for (const actor of formData.otrosActores) {
+          if (!actor.nombreCompleto) {
+            toast.error('⚠️ Información incompleta', {
+              description: 'El nombre completo o razón social es obligatorio para los otros actores'
+            });
+            return false;
+          }
+          if (!actor.rol) {
+            toast.error('⚠️ Información incompleta', {
+              description: `Debe especificar el rol para el actor ${actor.nombreCompleto}`
+            });
+            return false;
+          }
+          if (actor.correo && !EMAIL_REGEX.test(actor.correo)) {
+            toast.error('⚠️ Correo inválido', {
+              description: `El correo "${actor.correo}" de ${actor.nombreCompleto} no es válido`
+            });
+            return false;
+          }
+          if (actor.telefono && actor.telefono.length < 7) {
+            toast.error('⚠️ Teléfono inválido', {
+              description: `El teléfono de ${actor.nombreCompleto} debe tener al menos 7 dígitos`
+            });
+            return false;
+          }
+        }
         return true;
 
       case 5:
@@ -566,12 +686,21 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
         return true;
 
       case 6:
-        if (!formData.fechaNotificacion || !formData.abogadoResponsable) {
-          toast.error('⚠️ Asignación incompleta', {
-            description: 'Complete todos los campos de fechas y asignación'
+        if (!formData.fechaNotificacion) {
+          toast.error('⚠️ Fechas incompletas', {
+            description: 'Verifique los campos obligatorios de fechas'
           });
           return false;
         }
+
+        // NUEVA REGLA DE NEGOCIO: La fecha de estimación contable no puede ser anterior a la notificación
+        if (formData.fechaEstimacionProvision && new Date(formData.fechaEstimacionProvision) < new Date(formData.fechaNotificacion)) {
+          toast.error('⚠️ Inconsistencia de fechas', {
+            description: 'La Fecha de Estimación de la Provisión no puede ser anterior a la Fecha de Notificación de la demanda.'
+          });
+          return false;
+        }
+
         return true;
 
       case 7:
@@ -601,23 +730,69 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
   const handleSubmit = async () => {
     if (!validarPasoActual()) return;
 
+    // Validación transversal: La fecha de estimación contable no puede ser anterior a la notificación
+    if (formData.fechaEstimacionProvision && formData.fechaNotificacion) {
+      if (new Date(formData.fechaEstimacionProvision) < new Date(formData.fechaNotificacion)) {
+        toast.error('⚠️ Inconsistencia de fechas', {
+          description: 'La Fecha de Estimación de la Provisión no puede ser anterior a la Fecha de Notificación de la demanda. Corríjala en el Paso 1 o Paso 6.'
+        });
+        return;
+      }
+    }
+
     setEnviando(true);
 
     try {
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      onSave(formData);
+      const isEdit = !!expedienteEdit;
+      const idStr = expedienteEdit?.uuid || expedienteEdit?.id;
 
-      const consecutivo = `ESAP-DN-OCID-DJ-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}-2026`;
+      let finalPayload: any;
 
-      toast.success('✅ Demanda Registrada', {
-        description: `${consecutivo} - ${formData.numeroRadicado}`,
+      if (isEdit) {
+        // Build payload explicitly with only the scalar columns allowed by the Expediente entity
+        finalPayload = {
+          radicado: formData.numeroRadicado,
+          medioControl: formData.medioControl || undefined,
+          tipoProceso: formData.tipoProcesoJudicial || undefined,
+          etapaProcesal: formData.etapaProcesal || undefined,
+          cuantia: formData.cuantia || undefined,
+          nivelRiesgo: formData.nivelRiesgo || undefined,
+          provisionContable: formData.provisionContable || undefined,
+          fechaEstimacionProvision: formData.fechaEstimacionProvision ? new Date(formData.fechaEstimacionProvision).toISOString() : undefined,
+          observacionProvision: formData.observacionesProvision || undefined,
+          juzgadoConocimiento: formData.juzgadoTribunal || undefined,
+          ubicacionFisica: formData.ciudad && formData.departamento
+            ? `${formData.ciudad} - ${formData.departamento}`
+            : formData.ciudad || formData.departamento || undefined,
+          fechaNotificacion: formData.fechaNotificacion ? new Date(formData.fechaNotificacion).toISOString() : undefined,
+          fechaVencimientoTermino: formData.fechaVencimiento ? new Date(formData.fechaVencimiento).toISOString() : undefined,
+          abogadoSustanciador: formData.abogadoResponsable === 'Sin asignar (Temporal)' ? null : (formData.abogadoResponsable || undefined),
+          pretensionDemandante: formData.pretensiones || undefined,
+          hechos: formData.hechos || undefined,
+          tipoConteoTermino: formData.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
+          terminoProcesalDias: formData.termino || undefined,
+          // Demandantes, Demandados, and Otros Actores arrays are NOT saved sequentially by updateExpediente
+        };
+      } else {
+        // For creations, the parent component strictly expects the full NuevaDemandaData signature
+        // to properly construct the complex CreateExpedienteDto payload.
+        finalPayload = { ...formData };
+      }
+
+      onSave(finalPayload, isEdit, idStr);
+
+      const consecutivo = isEdit ? formData.numeroRadicado : `ESAP-DN-OCID-DJ-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}-2026`;
+
+      toast.success(isEdit ? '✅ Cambios Guardados' : '✅ Demanda Registrada', {
+        description: isEdit ? `Expediente actualizado exitosamente` : `${consecutivo} - ${formData.numeroRadicado}`,
         duration: 4000
       });
 
       onClose();
     } catch (error) {
-      toast.error('❌ Error al registrar demanda', {
+      toast.error(expedienteEdit ? '❌ Error al actualizar demanda' : '❌ Error al registrar demanda', {
         description: 'Por favor intente nuevamente'
       });
     } finally {
@@ -649,15 +824,15 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-5xl h-[90vh] flex flex-col p-0">
-        <DialogTitle className="sr-only">Nuevo Proceso Judicial</DialogTitle>
+        <DialogTitle className="sr-only">{expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}</DialogTitle>
         <DialogDescription className="sr-only">
-          Wizard para registro de nuevo proceso judicial - Paso {pasoActual} de {totalPasos}
+          Wizard para {expedienteEdit ? 'edición' : 'registro'} de proceso judicial - Paso {pasoActual} de {totalPasos}
         </DialogDescription>
 
         {/* HEADER - flex-shrink-0 (siempre visible) */}
         <ModalHeaderClean
           icono={Scale}
-          titulo="Nuevo Proceso Judicial"
+          titulo={expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}
           subtitulo={
             pasoActual === 1 ? 'Datos del Proceso Judicial' :
               pasoActual === 2 ? 'Datos del/los Demandante(s)' :
@@ -843,6 +1018,95 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                           }}
                         />
                       </div>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* NUEVO BLOQUE: Valoración y Provisión Contable */}
+                <Card className="p-4 bg-amber-50 border-amber-200">
+                  <div className="flex items-start gap-3 mb-4">
+                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h3 className="font-bold text-gray-900">Valoración y Provisión Contable</h3>
+                      <p className="text-sm text-gray-600">Registre el nivel de riesgo y la estimación económica</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="nivelRiesgo" className="text-sm font-bold text-gray-700">
+                        Nivel de Riesgo del Proceso
+                      </Label>
+                      <Select
+                        value={formData.nivelRiesgo}
+                        onValueChange={(value) => setFormData({ ...formData, nivelRiesgo: value })}
+                      >
+                        <SelectTrigger id="nivelRiesgo" className="bg-white">
+                          <SelectValue placeholder="Seleccione riesgo..." />
+                        </SelectTrigger>
+                        <SelectContent className="z-[100000]">
+                          <SelectItem value="Bajo">Bajo</SelectItem>
+                          <SelectItem value="Medio">Medio</SelectItem>
+                          <SelectItem value="Alto">Alto</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="provisionContable" className="text-sm font-bold text-gray-700">
+                        Provisión Contable (COP)
+                        <span className="text-xs font-normal text-gray-400 ml-1">(máx. 12 dígitos)</span>
+                      </Label>
+                      <Input
+                        id="provisionContable"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={formData.provisionContable === 0 ? '' : String(formData.provisionContable)}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^0-9]/g, '');
+                          if (!raw || raw.startsWith('0')) {
+                            setFormData({ ...formData, provisionContable: 0 });
+                            return;
+                          }
+                          const limitado = raw.slice(0, 12);
+                          setFormData({ ...formData, provisionContable: parseInt(limitado, 10) });
+                        }}
+                      />
+                      {formData.cuantia > 0 && formData.provisionContable > formData.cuantia && (
+                        <p className="text-xs text-amber-600 flex items-start gap-1 mt-1">
+                          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>
+                            <strong>Regla de negocio:</strong> La provisión supera la cuantía inicial. Al guardar, el sistema asume que la diferencia incluye proyecciones de intereses de mora, multas o costas judiciales acumuladas.
+                          </span>
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="fechaEstimacionProvision" className="text-sm font-bold text-gray-700">
+                        Fecha de Estimación
+                      </Label>
+                      <Input
+                        id="fechaEstimacionProvision"
+                        type="date"
+                        value={formData.fechaEstimacionProvision}
+                        onChange={(e) => setFormData({ ...formData, fechaEstimacionProvision: e.target.value })}
+                        className="bg-white"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2 space-y-2">
+                      <Label htmlFor="observacionesProvision" className="text-sm font-bold text-gray-700">
+                        Justificación y observaciones
+                      </Label>
+                      <Textarea
+                        id="observacionesProvision"
+                        placeholder="Detalle los motivos que sustentan la valoración y el monto..."
+                        value={formData.observacionesProvision}
+                        onChange={(e) => setFormData({ ...formData, observacionesProvision: e.target.value })}
+                        className="bg-white min-h-[80px]"
+                      />
                     </div>
                   </div>
                 </Card>
@@ -1352,7 +1616,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
 
                           <div className="md:col-span-2 space-y-2">
                             <Label className="text-sm font-bold text-gray-700">
-                              {actor.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'}
+                              {actor.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'} <span className="text-red-500">*</span>
                             </Label>
                             <Input
                               placeholder={actor.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
@@ -1367,7 +1631,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                           </div>
 
                           <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Rol</Label>
+                            <Label className="text-sm font-bold text-gray-700">Rol <span className="text-red-500">*</span></Label>
                             <Input
                               placeholder="Ej: Tercero interviniente, Litisconsorte, etc."
                               value={actor.rol}
@@ -1638,7 +1902,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
 
                     <div className="space-y-2">
                       <Label htmlFor="abogadoResponsable" className="text-sm font-bold text-gray-700">
-                        Abogado Responsable <span className="text-red-500">*</span>
+                        Abogado Defensor <span className="text-gray-400 font-normal ml-1">(Opcional)</span>
                       </Label>
                       <Select
                         value={formData.abogadoResponsable}
@@ -1648,6 +1912,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                           <SelectValue placeholder="Seleccione abogado..." />
                         </SelectTrigger>
                         <SelectContent className="z-[100000]">
+                          <SelectItem value="Sin asignar (Temporal)" className="text-gray-500 italic">Sin asignar (Temporal)</SelectItem>
                           {abogadosAPI.map(abog => (
                             <SelectItem key={abog.id} value={abog.nombre}>{abog.nombre}</SelectItem>
                           ))}
@@ -1792,12 +2057,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                 {enviando ? (
                   <>
                     <Clock className="w-4 h-4 mr-2 animate-spin" />
-                    Registrando...
+                    {expedienteEdit ? 'Guardando...' : 'Registrando...'}
                   </>
                 ) : (
                   <>
                     <Save className="w-4 h-4 mr-2" />
-                    Registrar Demanda
+                    {expedienteEdit ? 'Guardar Cambios' : 'Registrar Demanda'}
                   </>
                 )}
               </Button>

@@ -37,6 +37,15 @@ export class CorreosJuridicosController {
     }
 
     /**
+     * Reclassify ALL emails with updated heuristics
+     */
+    @Post('reclassify-all')
+    @HttpCode(HttpStatus.OK)
+    async reclassifyAll(): Promise<{ processed: number; updated: number; unchanged: number }> {
+        return this.correosService.reclassifyAll();
+    }
+
+    /**
      * Test Microsoft Graph connection
      */
     @Get('test-connection')
@@ -141,6 +150,25 @@ export class CorreosJuridicosController {
     }
 
     /**
+     * Download a local sent attachment (for heavy attachments)
+     */
+    @Get('adjuntos/local/:filename/download')
+    async downloadLocalAttachment(
+        @Param('filename') filename: string,
+        @Res() res: any,
+    ) {
+        const fs = require('fs');
+        const path = require('path');
+        const filepath = path.join(process.cwd(), 'uploads', 'adjuntos', filename);
+
+        if (!fs.existsSync(filepath)) {
+            return res.status(HttpStatus.NOT_FOUND).json({ message: 'Attachment not found' });
+        }
+
+        res.download(filepath);
+    }
+
+    /**
      * Export email to ZIP
      */
     @Get(':id/export/zip')
@@ -172,6 +200,32 @@ export class CorreosJuridicosController {
         @Body() body: { expedienteId: string; targetModule?: string }
     ): Promise<CorreoJuridico> {
         return this.correosService.linkToProcess(id, body.expedienteId, body.targetModule);
+    }
+
+    /**
+     * Reply to an email — maintains thread via Graph API
+     */
+    @Post(':id/reply')
+    @HttpCode(HttpStatus.OK)
+    async replyEmail(
+        @Param('id') id: string,
+        @Body() body: { body: string; attachments?: { name: string; contentBytes: string; contentType: string }[] }
+    ): Promise<{ success: boolean }> {
+        const result = await this.correosService.replyEmail(id, body.body, body.attachments);
+        return { success: result.success };
+    }
+
+    /**
+     * Forward an email — maintains thread via Graph API natively
+     */
+    @Post(':id/forward')
+    @HttpCode(HttpStatus.OK)
+    async forwardEmail(
+        @Param('id') id: string,
+        @Body() body: { to: string; comment: string }
+    ): Promise<{ success: boolean; correo?: CorreoJuridico }> {
+        const result = await this.correosService.forwardEmail(id, body.to || '', body.comment || '');
+        return { success: result.success, correo: result.correo };
     }
 
     /**

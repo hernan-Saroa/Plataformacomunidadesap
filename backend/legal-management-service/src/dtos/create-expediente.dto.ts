@@ -45,6 +45,23 @@ export class CreateExpedienteDto {
     @IsOptional()
     cuantia?: number;
 
+    // Provisión y Riesgo
+    @IsOptional()
+    @IsString()
+    nivelRiesgo?: string;
+
+    @IsOptional()
+    @IsNumber()
+    provisionContable?: number;
+
+    @IsOptional()
+    @IsDateString()
+    fechaEstimacionProvision?: string;
+
+    @IsOptional()
+    @IsString()
+    observacionProvision?: string;
+
     // Fechas
     @IsDateString()
     fechaNotificacion: string;

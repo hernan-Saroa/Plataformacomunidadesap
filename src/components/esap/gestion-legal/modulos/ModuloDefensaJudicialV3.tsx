@@ -227,6 +227,10 @@ export function ModuloDefensaJudicialV3() {
           juzgadoConocimiento: exp.juzgadoConocimiento,
           ubicacionFisica: exp.ubicacionFisica,
           cuantia: exp.cuantia || 0,
+          nivelRiesgo: exp.nivelRiesgo,
+          provisionContable: exp.provisionContable,
+          fechaEstimacionProvision: exp.fechaEstimacionProvision,
+          observacionProvision: exp.observacionProvision,
           demandantes: exp.actors ? exp.actors.filter((a: any) => a.rol === 'DEMANDANTE') : [],
           demandados: exp.actors ? exp.actors.filter((a: any) => a.rol === 'DEMANDADO') : [],
           otrosActores: exp.actors ? exp.actors.filter((a: any) => a.rol !== 'DEMANDANTE' && a.rol !== 'DEMANDADO') : [],
@@ -258,6 +262,8 @@ export function ModuloDefensaJudicialV3() {
           tipoProceso: exp.tipoProceso,
           documentos: new Array(Number(exp.documentosCount || 0) + (exp.documentosInicialesUrls?.length || 0)).fill({}),
           actuaciones: exp.actuaciones || [],
+          procesosAnexados: exp.procesosAnexados || [],
+          procesoPrincipalId: exp.procesoPrincipalId,
           timeline: [],
           fechaCreacion: new Date(exp.createdAt),
           fechaActualizacion: new Date(exp.updatedAt),
@@ -348,14 +354,14 @@ export function ModuloDefensaJudicialV3() {
   // Calcular días totales entre dos fechas
   const calcularDiasTotales = (fechaInicio: Date, fechaFin: Date): number => {
     const diff = fechaFin.getTime() - fechaInicio.getTime();
-    return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
   };
 
-  // Calcular días restantes hasta vencimiento
+  // Calcular días restantes hasta vencimiento (retorna negativo si ya pasó)
   const calcularDiasRestantes = (fechaVencimiento: Date): number => {
     const hoy = new Date();
     const diff = fechaVencimiento.getTime() - hoy.getTime();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
   };
 
   useEffect(() => {
@@ -467,7 +473,11 @@ export function ModuloDefensaJudicialV3() {
         demandado: demandaData.demandados[0]?.nombre || 'Sin Demandado',
         estado: 'ACTIVO',
         fechaRadicacion: new Date().toISOString(),
-        cuantia: parseFloat(demandaData.cuantia.replace(/[^0-9]/g, '')) || 0,
+        cuantia: typeof demandaData.cuantia === 'string' ? parseFloat((demandaData.cuantia as string).replace(/[^0-9.-]/g, '')) || 0 : demandaData.cuantia,
+        nivelRiesgo: demandaData.nivelRiesgo,
+        provisionContable: demandaData.provisionContable || 0,
+        fechaEstimacionProvision: demandaData.fechaEstimacionProvision ? new Date(demandaData.fechaEstimacionProvision).toISOString() : undefined,
+        observacionProvision: demandaData.observacionesProvision,
         abogadoSustanciador: demandaData.abogadoAsignado,
         medioControl: demandaData.medioControl,
         juzgadoConocimiento: `${demandaData.juzgado} - ${demandaData.ciudad}, ${demandaData.departamento}`,
@@ -810,7 +820,7 @@ function ColumnaKanban({
       initial={{ width: 320 }}
       animate={{ width: 320 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
-      style={{maxWidth: '320px'}}
+      style={{ maxWidth: '320px' }}
     >
       <Card className="h-full border border-gray-200 bg-white">
         <div className={`${isMobile ? 'p-2.5' : isSmallDesktop ? 'p-2.5' : 'p-3'} border-b bg-gray-50`}>
@@ -938,10 +948,11 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
   const opacity = isDragging ? 0.5 : 1;
 
   return (
-    <div ref={drag} style={{ opacity, cursor: 'move' }}>
+    <div ref={drag} style={{ opacity, cursor: 'move' }} className="h-[380px]">
       <KanbanCard
         accentColor={ESAP_TOKENS.colors.primary}
         isDragging={isDragging}
+        className="h-full flex flex-col"
       >
         <KanbanCardHeader
           icon={<Scale className="w-4 h-4" style={{ color: ESAP_TOKENS.colors.primary }} />}
@@ -960,7 +971,7 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
                   }}
                 />
                 <span className="font-bold" style={{ color: semaforo.color }}>
-                  {expediente.diasRestantes}d
+                  {expediente.diasRestantes < 0 ? `${Math.abs(expediente.diasRestantes)}d` : `${expediente.diasRestantes}d`}
                 </span>
               </div>
               <button
@@ -1015,12 +1026,17 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
             },
             {
               icon: <Clock className="w-3.5 h-3.5" />,
-              label: `${expediente.diasTotales - expediente.diasRestantes}d`,
+              // Si no hay días totales (ej. sin fecha límite clara) o ya se venció, 
+              // mostrar simplemente los días absolutos transcurridos o restantes con sentido lógico.
+              label: expediente.diasRestantes < 0
+                ? `${Math.abs(expediente.diasRestantes)}d`
+                : `${Math.max(0, expediente.diasTotales - expediente.diasRestantes)}d`,
               color: ESAP_TOKENS.colors.text.secondary,
             },
             {
               icon: <AlertCircle className="w-3.5 h-3.5" />,
-              label: `${porcentajeTiempo}%`,
+              // Evitamos porcentajes negativos o mayores a 100% si diasRestantes es negativo
+              label: expediente.diasRestantes < 0 ? '0%' : `${porcentajeTiempo}%`,
               color: procesoVencido ? ESAP_TOKENS.colors.danger : ESAP_TOKENS.colors.text.secondary,
             },
           ]}
