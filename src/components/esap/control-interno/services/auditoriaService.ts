@@ -27,8 +27,10 @@ export interface AuditoriaBackendDTO {
   sede: string;
   responsable: string;
   fechaInicio: string; // ISO 8601: "2026-02-17" - Inicio de Planeación
-  fechaFinPlaneacion?: string; // ISO 8601: "2026-02-20" - Fin de Planeación / Inicio de Ejecución
-  fechaFinEjecucion?: string; // ISO 8601: "2026-02-25" - Fin de Ejecución / Inicio de Comunicación
+  fechaFinPlaneacion?: string; // ISO 8601: "2026-02-20" - Fin de Planeación
+  fechaInicioEjecucion?: string; // ISO 8601: "2026-02-21" - Inicio de Ejecución
+  fechaFinEjecucion?: string; // ISO 8601: "2026-02-25" - Fin de Ejecución
+  fechaInicioComunicacion?: string; // ISO 8601: "2026-02-26" - Inicio de Comunicación
   fechaFin: string;    // ISO 8601: "2026-02-28" - Fin de Comunicación
   
   // Campos opcionales
@@ -81,11 +83,13 @@ export interface AuditoriaFormData {
   supervisorAsignado?: string;
   responsable?: string;
   
-  // Fechas
-  fechaInicio: string;
-  fechaFinPlaneacion?: string; // Fin de Planeación / Inicio de Ejecución
-  fechaFinEjecucion?: string; // Fin de Ejecución / Inicio de Comunicación
-  fechaFin: string;
+  // Fechas - Cronograma de 3 etapas
+  fechaInicio: string; // Inicio de Planeación
+  fechaFinPlaneacion?: string; // Fin de Planeación
+  fechaInicioEjecucion?: string; // Inicio de Ejecución
+  fechaFinEjecucion?: string; // Fin de Ejecución
+  fechaInicioComunicacion?: string; // Inicio de Comunicación
+  fechaFin: string; // Fin de Comunicación
   periodicidad?: string;
   
   // Objetivos y criterios
@@ -151,7 +155,9 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
   const fechaInicio = formatearFechaISO(form.fechaInicio);
   const fechaFin = formatearFechaISO(form.fechaFin);
   const fechaFinPlaneacion = form.fechaFinPlaneacion ? formatearFechaISO(form.fechaFinPlaneacion) : undefined;
+  const fechaInicioEjecucion = form.fechaInicioEjecucion ? formatearFechaISO(form.fechaInicioEjecucion) : undefined;
   const fechaFinEjecucion = form.fechaFinEjecucion ? formatearFechaISO(form.fechaFinEjecucion) : undefined;
+  const fechaInicioComunicacion = form.fechaInicioComunicacion ? formatearFechaISO(form.fechaInicioComunicacion) : undefined;
   
   return {
     // Campos obligatorios
@@ -162,7 +168,9 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     responsable: form.auditorLider || form.responsable || 'Por asignar',
     fechaInicio,
     fechaFinPlaneacion,
+    fechaInicioEjecucion,
     fechaFinEjecucion,
+    fechaInicioComunicacion,
     fechaFin,
     
     // Campos opcionales

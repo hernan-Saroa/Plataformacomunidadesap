@@ -152,7 +152,7 @@ const ROLES_DECRETO_648: Omit<Rol, 'actividades'>[] = [
   },
   {
     numero: 2,
-    nombre: 'Enfoque hacia la prevención',
+    nombre: 'Enfoque a la prevención',
     color: '#00C853',
     icono: '🛡️',
     descripcion: 'Promover actividades preventivas que eviten la materialización de riesgos'
@@ -389,6 +389,36 @@ const ACTIVIDADES_ROL_4: Omit<Actividad, 'id' | 'responsable' | 'porcentajeAvanc
     evaluacion: '60% avance',
     seguimiento: 'Asesorar y suministrar herramientas como el diagrama causa efecto',
     requiereVerificacionDirector: false
+  },
+  {
+    nombre: 'Establecer una estrategia de acompañamiento de la batería de indicadores y diseño de tableros de control',
+    descripcion: 'Fortalecer la medición del desempeño institucional a través del seguimiento de indicadores',
+    fechaInicio: '2026-01-01',
+    fechaFin: '2026-12-31',
+    control: 'Se hace seguimiento semestral.',
+    evaluacion: '60% avance',
+    seguimiento: 'Realizar capacitaciones y acompañamiento en el diseño de tableros de control',
+    requiereVerificacionDirector: false
+  },
+  {
+    nombre: 'Adelantar de una manera armónica procesos de auditoría que lleve a cabo el organismo de control',
+    descripcion: 'Coordinación efectiva con entes de control externo durante sus visitas',
+    fechaInicio: '2026-01-01',
+    fechaFin: '2026-12-31',
+    control: '',
+    evaluacion: '60% avance',
+    seguimiento: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes',
+    requiereVerificacionDirector: false
+  },
+  {
+    nombre: 'Presentar informes y seguimientos de ley',
+    descripcion: 'Cumplimiento de todos los informes obligatorios del cronograma anual',
+    fechaInicio: '2026-01-01',
+    fechaFin: '2026-12-31',
+    control: 'Se hace seguimiento mensual.',
+    evaluacion: '60% avance',
+    seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes',
+    requiereVerificacionDirector: false
   }
 ];
 
@@ -401,26 +431,6 @@ const ACTIVIDADES_ROL_5: Omit<Actividad, 'id' | 'responsable' | 'porcentajeAvanc
     control: 'Se hace seguimiento mensual.',
     evaluacion: '59% avance',
     seguimiento: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del proceso respectivo',
-    requiereVerificacionDirector: false
-  },
-  {
-    nombre: 'Adelantar de una manera armónica procesos de auditoría que lleve a cabo el organismo de control',
-    descripcion: 'Acompañar de manera armónica las auditorías de control externo',
-    fechaInicio: '2026-01-01',
-    fechaFin: '2026-12-31',
-    control: '',
-    evaluacion: '59% avance',
-    seguimiento: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes',
-    requiereVerificacionDirector: false
-  },
-  {
-    nombre: 'Presentar informes y seguimientos de ley',
-    descripcion: 'Elaborar y presentar todos los informes de ley en los plazos establecidos',
-    fechaInicio: '2026-01-01',
-    fechaFin: '2026-12-31',
-    control: 'Se hace seguimiento mensual.',
-    evaluacion: '59% avance',
-    seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes',
     requiereVerificacionDirector: false
   },
   // ═══════════════════ INFORMES DE LEY OBLIGATORIOS (Desglose de la actividad anterior) ═══════════════════

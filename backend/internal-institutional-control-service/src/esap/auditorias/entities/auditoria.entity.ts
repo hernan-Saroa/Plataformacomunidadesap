@@ -116,17 +116,30 @@ export class Auditoria {
   @Column({ type: 'varchar', length: 255, nullable: false })
   responsable: string;
 
+  // ═══════════════════════════════════════════════════════════════════
+  // CRONOGRAMA DE 3 ETAPAS: Planeación → Ejecución → Comunicación
+  // ═══════════════════════════════════════════════════════════════════
+  
+  // ETAPA 1: PLANEACIÓN
   @Column({ type: 'date', name: 'fecha_inicio', nullable: false })
-  fechaInicio: Date; // Inicio de la etapa de Planeación
+  fechaInicio: Date; // Inicio de la etapa de Planeación (fechaInicioPlaneacion)
 
   @Column({ type: 'date', name: 'fecha_fin_planeacion', nullable: true })
-  fechaFinPlaneacion?: Date; // Fin de Planeación / Inicio de Ejecución
+  fechaFinPlaneacion?: Date; // Fin de Planeación
+
+  // ETAPA 2: EJECUCIÓN
+  @Column({ type: 'date', name: 'fecha_inicio_ejecucion', nullable: true })
+  fechaInicioEjecucion?: Date; // Inicio de Ejecución
 
   @Column({ type: 'date', name: 'fecha_fin_ejecucion', nullable: true })
-  fechaFinEjecucion?: Date; // Fin de Ejecución / Inicio de Comunicación
+  fechaFinEjecucion?: Date; // Fin de Ejecución
+
+  // ETAPA 3: COMUNICACIÓN
+  @Column({ type: 'date', name: 'fecha_inicio_comunicacion', nullable: true })
+  fechaInicioComunicacion?: Date; // Inicio de Comunicación
 
   @Column({ type: 'date', name: 'fecha_fin', nullable: false })
-  fechaFin: Date; // Fin de Comunicación (fin de auditoría)
+  fechaFin: Date; // Fin de Comunicación (fin de auditoría) = fechaFinComunicacion
 
   @Column({ type: 'integer', default: 0 })
   progreso: number; // 0-100
