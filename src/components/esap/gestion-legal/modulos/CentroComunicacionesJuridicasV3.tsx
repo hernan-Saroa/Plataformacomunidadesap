@@ -21,7 +21,7 @@ import {
   Eye, Plus, Search, XCircle, Send, FileText, Download,
   Circle, Check, Sparkles, User, Building, Clock, List, Columns3,
   Filter, Star, Gavel, Scale, Briefcase, Paperclip, ChevronLeft, ChevronRight,
-  RefreshCw, Loader2
+  RefreshCw, Loader2, Reply, ArrowRight
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -36,6 +36,7 @@ import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalNuevaComunicacion, NuevaComunicacionData } from './ModalNuevaComunicacion';
 import { ModalExpedienteComunicacion } from './ModalExpedienteComunicacion';
+import { DetalleCorreoModal } from './DetalleCorreoModal';
 import { correosJuridicosService, CorreoJuridico } from '../../../../services/api/legal.service';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
@@ -53,6 +54,7 @@ interface ComunicacionUnificada {
   asunto: string;
   descripcion: string;
   remitente: string;
+  remitenteEmail?: string;
   destinatario?: string; // Para comunicaciones enviadas
   despachoOrigen?: string;
   radicadoExterno?: string;
@@ -66,6 +68,15 @@ interface ComunicacionUnificada {
     moduloSugerido: string;
     confianza: number;
   };
+  // Threading
+  isReplied?: boolean;
+  // NLP entities
+  procesoIdSugerido?: string;
+  implicadoSugerido?: string;
+  submoduloSugerido?: string;
+  moduloSugerido?: string;
+  confianzaClasificacion?: number;
+  cuerpoHtml?: string;
 }
 
 interface ModuloDestinoUI {
@@ -401,7 +412,7 @@ const comunicacionesUnificadas: ComunicacionUnificada[] = [
   // (Mock data for archivados removed — now served from API)
 ];
 
-type TabUnificadaType = 'judiciales' | 'correos' | 'oficios' | 'enviados' | 'urgentes' | 'archivadas';
+type TabUnificadaType = 'judiciales' | 'correos' | 'oficios' | 'enviados' | 'respuestas' | 'urgentes' | 'archivadas';
 type VistaModulo = 'inbox' | 'lista';
 
 export function ModuloCentroComunicacionesJuridicasV3() {
@@ -424,6 +435,13 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   const [modalNuevaComunicacionOpen, setModalNuevaComunicacionOpen] = useState(false);
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [comunicacionParaExpediente, setComunicacionParaExpediente] = useState<ComunicacionUnificada | null>(null);
+
+  // Estado para DetalleCorreoModal
+  const [detalleModalOpen, setDetalleModalOpen] = useState(false);
+  const [correoParaDetalle, setCorreoParaDetalle] = useState<ComunicacionUnificada | null>(null);
+
+  // Estado para reply pre-populate
+  const [replyData, setReplyData] = useState<{ to: string; subject: string; body: string } | null>(null);
 
   // Estados para carga de datos desde API
   const [loading, setLoading] = useState(false);
@@ -449,6 +467,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       asunto: correo.asunto,
       descripcion: correo.cuerpoTexto || '',
       remitente: correo.remitenteNombre || correo.remitenteEmail,
+      remitenteEmail: correo.remitenteEmail,
       destinatario: isSent ? (correo.destinatariosTo || '') : undefined,
       fechaRadicacion: new Date(correo.fechaRecepcion),
       urgente: correo.urgente,
@@ -459,7 +478,16 @@ export function ModuloCentroComunicacionesJuridicasV3() {
         tipoDetectado: correo.categoria || 'Correo',
         moduloSugerido: correo.moduloSugerido,
         confianza: correo.confianzaClasificacion || 70
-      } : undefined
+      } : undefined,
+      // Threading
+      isReplied: correo.isReplied,
+      // NLP entities
+      procesoIdSugerido: correo.procesoIdSugerido || undefined,
+      implicadoSugerido: correo.implicadoSugerido || undefined,
+      submoduloSugerido: correo.submoduloSugerido || undefined,
+      moduloSugerido: correo.moduloSugerido || undefined,
+      confianzaClasificacion: correo.confianzaClasificacion || undefined,
+      cuerpoHtml: correo.cuerpoHtml || undefined,
     };
   };
 
@@ -523,6 +551,17 @@ export function ModuloCentroComunicacionesJuridicasV3() {
         description: totalErrors > 0 ? `${totalErrors} errores` : undefined
       });
 
+      // After sync, reclassify ALL emails with updated heuristics
+      toast.loading('Reclasificando correos con heurísticas actualizadas...', { id: 'reclassify-progress' });
+      try {
+        const reclassResult = await correosJuridicosService.reclassifyAll();
+        toast.dismiss('reclassify-progress');
+        toast.success(`Reclasificación: ${reclassResult.updated} correos actualizados, ${reclassResult.unchanged} sin cambio`);
+      } catch (reclassError) {
+        toast.dismiss('reclassify-progress');
+        console.error('Error reclasificando:', reclassError);
+      }
+
     } catch (error) {
       console.error('Error sincronizando:', error);
       toast.error('Error al sincronizar con Microsoft 365');
@@ -571,6 +610,9 @@ export function ModuloCentroComunicacionesJuridicasV3() {
         break;
       case 'enviados':
         resultado = resultado.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA');
+        break;
+      case 'respuestas':
+        resultado = resultado.filter(c => c.isReplied && c.estado !== 'ARCHIVADA');
         break;
       case 'urgentes':
         resultado = resultado.filter(c => c.urgente && c.estado !== 'ARCHIVADA');
@@ -623,6 +665,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     correos: comunicaciones.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA').length,
     oficios: comunicaciones.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA').length,
     enviados: comunicaciones.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA').length,
+    respuestas: comunicaciones.filter(c => c.isReplied && c.estado !== 'ARCHIVADA').length,
     urgentes: totalUrgentes,
     archivadas: totalArchivadas
   };
@@ -804,6 +847,70 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     }
   };
 
+  const handleDirectReply = (com: ComunicacionUnificada) => {
+    const formattedDate = com.fechaRadicacion.toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const replySubject = com.asunto.startsWith('RE:') ? com.asunto : `RE: ${com.asunto}`;
+    const originalBody = `
+<br/><br/>
+<hr style="border: none; border-top: 1px solid #ccc; margin: 20px 0;"/>
+<p style="color: #666; font-size: 12px;">
+    <strong>De:</strong> ${com.remitente}<br/>
+    <strong>Fecha:</strong> ${formattedDate}<br/>
+    <strong>Asunto:</strong> ${com.asunto}
+</p>
+<blockquote style="border-left: 3px solid #ccc; padding-left: 12px; margin: 12px 0; color: #555;">
+    ${com.descripcion}
+</blockquote>`;
+
+    setReplyData({
+      to: com.remitenteEmail || com.remitente,
+      subject: replySubject,
+      body: originalBody,
+      isReply: true,
+      originalCorreoId: com.id
+    } as any);
+    setModalNuevaComunicacionOpen(true);
+  };
+
+  const handleDirectForward = (com: ComunicacionUnificada) => {
+    const formattedDate = com.fechaRadicacion.toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const forwardSubject = com.asunto.startsWith('RV:') || com.asunto.startsWith('FW:') ? com.asunto : `RV: ${com.asunto}`;
+    const originalBody = `
+<br/><br/>
+<hr style="border: none; border-top: 1px solid #ccc; margin: 20px 0;"/>
+<p style="color: #666; font-size: 12px;">
+    <strong>De:</strong> ${com.remitente}<br/>
+    <strong>Fecha:</strong> ${formattedDate}<br/>
+    <strong>Asunto:</strong> ${com.asunto}
+</p>
+<blockquote style="border-left: 3px solid #ccc; padding-left: 12px; margin: 12px 0; color: #555;">
+    ${com.descripcion}
+</blockquote>`;
+
+    setReplyData({
+      to: '',
+      subject: forwardSubject,
+      body: originalBody,
+      isForward: true,
+      originalCorreoId: com.id
+    } as any);
+    setModalNuevaComunicacionOpen(true);
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -921,6 +1028,14 @@ export function ModuloCentroComunicacionesJuridicasV3() {
             color="#6B7280"
           />
           <TabButton
+            active={tabActiva === 'respuestas'}
+            onClick={() => setTabActiva('respuestas')}
+            icon={<Reply className="w-4 h-4" />}
+            label="Respondidos"
+            count={contadoresTabs.respuestas}
+            color="#059669"
+          />
+          <TabButton
             active={tabActiva === 'urgentes'}
             onClick={() => setTabActiva('urgentes')}
             icon={<AlertTriangle className="w-4 h-4" />}
@@ -996,6 +1111,12 @@ export function ModuloCentroComunicacionesJuridicasV3() {
           onArchivar={handleArchivar}
           onDesarchivar={handleDesarchivar}
           onVerExpediente={handleVerExpediente}
+          onVerDetalle={(com) => {
+            setCorreoParaDetalle(com);
+            setDetalleModalOpen(true);
+          }}
+          onDirectReply={handleDirectReply}
+          onDirectForward={handleDirectForward}
         />
       )}
 
@@ -1006,6 +1127,12 @@ export function ModuloCentroComunicacionesJuridicasV3() {
           onMarcarLeida={handleMarcarLeida}
           onArchivar={handleArchivar}
           onDesarchivar={handleDesarchivar}
+          onVerDetalle={(com) => {
+            setCorreoParaDetalle(com);
+            setDetalleModalOpen(true);
+          }}
+          onDirectReply={handleDirectReply}
+          onDirectForward={handleDirectForward}
         />
       )}
 
@@ -1094,6 +1221,46 @@ export function ModuloCentroComunicacionesJuridicasV3() {
           onLink={linkProcess}
         />
       )}
+
+      {/* Modal Detalle Correo (Reply + IA + Vincular) */}
+      {correoParaDetalle && (
+        <DetalleCorreoModal
+          isOpen={detalleModalOpen}
+          onClose={() => { setDetalleModalOpen(false); setCorreoParaDetalle(null); }}
+          notificacion={correoParaDetalle}
+          onReply={(correoId, destinatario, asunto, cuerpoOriginal) => {
+            // Close detail modal and open compose modal with reply data
+            setDetalleModalOpen(false);
+            setCorreoParaDetalle(null);
+            setReplyData({ to: destinatario, subject: asunto, body: cuerpoOriginal });
+            setModalNuevaComunicacionOpen(true);
+          }}
+          onForward={async (correoId, asunto, cuerpoOriginal) => {
+            // Reutilizamos el modal de nueva comunicación para que el usuario escriba a quién se lo reenvía
+            setDetalleModalOpen(false);
+            setCorreoParaDetalle(null);
+            setReplyData({
+              to: '',
+              subject: asunto,
+              body: cuerpoOriginal,
+              isForward: true, // we might need this param to know if we should call forward or send, or we just let ModalNuevaComunicacion call forward if we pass the original correoId. But wait, ModalNuevaComunicacion only handles 'sendEmail'.
+              originalCorreoId: correoId
+            } as any);
+            setModalNuevaComunicacionOpen(true);
+          }}
+          onVincular={async (correoId, expedienteId, targetModule) => {
+            try {
+              await correosJuridicosService.vincularProceso(correoId, expedienteId, targetModule);
+              toast.success('Oficio vinculado exitosamente');
+              setDetalleModalOpen(false);
+              setCorreoParaDetalle(null);
+              await loadCorreosFromAPI();
+            } catch (err) {
+              toast.error('Error vinculando oficio');
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1140,7 +1307,7 @@ function TabButton({ active, onClick, icon, label, count, color, urgent }: TabBu
 interface VistaInboxProps {
   comunicaciones: ComunicacionUnificada[];
   comunicacionSeleccionada: ComunicacionUnificada | null;
-  onSeleccionar: (com: ComunicacionUnificada) => void;
+  onSeleccionar: (comunicacion: ComunicacionUnificada) => void;
   seleccionadas: Set<string>;
   onToggleSeleccion: (id: string) => void;
   onSeleccionarTodas: () => void;
@@ -1148,6 +1315,9 @@ interface VistaInboxProps {
   onArchivar: (id: string) => void;
   onDesarchivar: (id: string) => void;
   onVerExpediente: (com: ComunicacionUnificada) => void;
+  onVerDetalle: (com: ComunicacionUnificada) => void;
+  onDirectReply: (com: ComunicacionUnificada) => void;
+  onDirectForward: (com: ComunicacionUnificada) => void;
 }
 
 function VistaInbox({
@@ -1160,7 +1330,10 @@ function VistaInbox({
   onMarcarLeida,
   onArchivar,
   onDesarchivar,
-  onVerExpediente
+  onVerExpediente,
+  onVerDetalle,
+  onDirectReply,
+  onDirectForward
 }: VistaInboxProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -1215,6 +1388,9 @@ function VistaInbox({
                 onArchivar={onArchivar}
                 onDesarchivar={onDesarchivar}
                 onVerExpediente={onVerExpediente}
+                onVerDetalle={onVerDetalle}
+                onDirectReply={onDirectReply}
+                onDirectForward={onDirectForward}
               />
             ) : (
               <div className="flex items-center justify-center h-full text-gray-400">
@@ -1286,6 +1462,9 @@ function ItemComunicacion({
                 Urgente
               </Badge>
             )}
+            {comunicacion.isReplied && (
+              <span title="Respondido"><Reply className="w-3 h-3 text-green-600" /></span>
+            )}
             {!comunicacion.leida && <div className="w-2 h-2 rounded-full bg-[#003DA5]" />}
           </div>
           <span className="text-[10px] text-gray-400 flex-shrink-0">
@@ -1316,9 +1495,8 @@ function ItemComunicacion({
             </div>
           )}
           {!!comunicacion.clasificacionIA && (
-            <span className={`text-[10px] font-semibold ${
-              confianzaPct >= 90 ? 'text-green-600' : confianzaPct >= 80 ? 'text-yellow-600' : 'text-gray-400'
-            }`}>
+            <span className={`text-[10px] font-semibold ${confianzaPct >= 90 ? 'text-green-600' : confianzaPct >= 80 ? 'text-yellow-600' : 'text-gray-400'
+              }`}>
               {confianzaPct}% confianza
             </span>
           )}
@@ -1349,6 +1527,9 @@ interface VistaPreviaComunicacionProps {
   onArchivar: (id: string) => void;
   onDesarchivar: (id: string) => void;
   onVerExpediente: (com: ComunicacionUnificada) => void;
+  onVerDetalle: (com: ComunicacionUnificada) => void;
+  onDirectReply: (com: ComunicacionUnificada) => void;
+  onDirectForward: (com: ComunicacionUnificada) => void;
 }
 
 function VistaPreviaComunicacion({
@@ -1356,7 +1537,10 @@ function VistaPreviaComunicacion({
   onMarcarLeida,
   onArchivar,
   onDesarchivar,
-  onVerExpediente
+  onVerExpediente,
+  onVerDetalle,
+  onDirectReply,
+  onDirectForward
 }: VistaPreviaComunicacionProps) {
   const badgeTipo = {
     JUDICIAL: { label: 'Judicial', color: 'bg-blue-100 text-blue-700' },
@@ -1411,17 +1595,35 @@ function VistaPreviaComunicacion({
               <span className="text-sm font-bold text-purple-900">Clasificación IA</span>
               <p className="text-xs text-gray-500">{comunicacion.clasificacionIA.tipoDetectado}</p>
             </div>
-            <Badge className={`text-xs ${
-              confianzaPct >= 90 ? 'bg-green-100 text-green-700' : confianzaPct >= 80 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'
-            }`}>
+            <Badge className={`text-xs ${confianzaPct >= 90 ? 'bg-green-100 text-green-700' : confianzaPct >= 80 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'
+              }`}>
               {confianzaPct}% confianza
             </Badge>
           </div>
-          <div className="p-3 rounded-lg bg-white border border-gray-200 text-xs">
-            <p className="text-gray-500 mb-1">Módulo sugerido</p>
-            <p className="font-semibold" style={{ color: moduloSugerido?.color || '#374151' }}>
-              {moduloSugerido?.nombre || comunicacion.clasificacionIA.moduloSugerido}
-            </p>
+          <div className="p-3 rounded-lg bg-white border border-gray-200 text-xs space-y-2">
+            <div>
+              <p className="text-gray-500 mb-1">Módulo sugerido</p>
+              <p className="font-semibold" style={{ color: moduloSugerido?.color || '#374151' }}>
+                {moduloSugerido?.nombre || comunicacion.clasificacionIA.moduloSugerido}
+              </p>
+            </div>
+
+            {(comunicacion.procesoIdSugerido || comunicacion.implicadoSugerido) && (
+              <div className="pt-2 border-t border-gray-100 grid grid-cols-2 gap-2">
+                {comunicacion.procesoIdSugerido && (
+                  <div>
+                    <p className="text-gray-500 mb-1">Proceso sugerido</p>
+                    <p className="font-mono font-bold text-blue-700">{comunicacion.procesoIdSugerido}</p>
+                  </div>
+                )}
+                {comunicacion.implicadoSugerido && (
+                  <div>
+                    <p className="text-gray-500 mb-1">Implicado detectado</p>
+                    <p className="font-semibold text-gray-800">{comunicacion.implicadoSugerido}</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1477,6 +1679,24 @@ function VistaPreviaComunicacion({
 
       {/* Acciones */}
       <div className="space-y-2 pt-4 border-t">
+        <div className="flex gap-2 w-full">
+          <Button
+            variant="outline"
+            className="flex-1 border-blue-200 text-blue-700 hover:bg-blue-50"
+            onClick={() => onDirectReply(comunicacion)}
+            title="Responder"
+          >
+            <Reply className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+            onClick={() => onDirectForward(comunicacion)}
+            title="Reenviar"
+          >
+            <ArrowRight className="w-4 h-4" />
+          </Button>
+        </div>
         <Button
           className="w-full"
           style={{ background: '#003DA5' }}
@@ -1526,9 +1746,12 @@ interface VistaListaProps {
   onMarcarLeida: (id: string) => void;
   onArchivar: (id: string) => void;
   onDesarchivar: (id: string) => void;
+  onVerDetalle: (com: ComunicacionUnificada) => void;
+  onDirectReply: (com: ComunicacionUnificada) => void;
+  onDirectForward: (com: ComunicacionUnificada) => void;
 }
 
-function VistaLista({ comunicaciones, onMarcarLeida, onArchivar, onDesarchivar }: VistaListaProps) {
+function VistaLista({ comunicaciones, onMarcarLeida, onArchivar, onDesarchivar, onVerDetalle, onDirectReply, onDirectForward }: VistaListaProps) {
   const badgeTipo = {
     JUDICIAL: { label: 'Judicial', color: 'bg-blue-100 text-blue-700' },
     CORREO: { label: 'Correo', color: 'bg-gray-100 text-gray-700' },
@@ -1587,8 +1810,14 @@ function VistaLista({ comunicaciones, onMarcarLeida, onArchivar, onDesarchivar }
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]">
+                    <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]" onClick={() => onVerDetalle(com)} title="Ver Detalle">
                       <Eye className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => onDirectReply(com)} title="Responder">
+                      <Reply className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50" onClick={() => onDirectForward(com)} title="Reenviar">
+                      <ArrowRight className="w-4 h-4" />
                     </Button>
                     {!com.leida && (
                       <Button

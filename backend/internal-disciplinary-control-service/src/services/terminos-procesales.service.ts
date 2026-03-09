@@ -29,7 +29,7 @@ export class TerminosProcesalesService {
     @InjectRepository(DisciplinaryProfessional)
     private professionalRepository: Repository<DisciplinaryProfessional>,
     private terminosCalculator: TerminosCalculatorService,
-  ) {}
+  ) { }
 
   /**
    * Crear nuevo término procesal
@@ -69,12 +69,12 @@ export class TerminosProcesalesService {
     // Obtener información del responsable desde la base de datos
     let responsableNombre = `Responsable ${dto.responsableId.substring(0, 8)}`;
     let emailResponsable = `responsable-${dto.responsableId.substring(0, 8)}@esap.edu.co`;
-    
+
     try {
       const profesional = await this.professionalRepository.findOne({
         where: { id: dto.responsableId }
       });
-      
+
       if (profesional) {
         responsableNombre = profesional.nombreCompleto || responsableNombre;
         emailResponsable = profesional.email || emailResponsable;
@@ -115,9 +115,9 @@ export class TerminosProcesalesService {
       relations: ['news'],
     });
 
-    const nombreDenunciado = procesoConNoticia?.news?.disciplinable?.[0]?.nombre || 
-                             proceso.radicadoProceso || 
-                             'Proceso sin nombre';
+    const nombreDenunciado = procesoConNoticia?.news?.disciplinable?.[0]?.nombre ||
+      proceso.radicadoProceso ||
+      'Proceso sin nombre';
 
     return transformTermino(terminoGuardado, nombreDenunciado);
   }
@@ -197,19 +197,19 @@ export class TerminosProcesalesService {
     // También actualizar datos del responsable si están desactualizados
     const terminosTransformados = await Promise.all(terminos.map(async (termino) => {
       // Obtener nombre del denunciado desde la noticia
-      const nombreDenunciado = termino.proceso?.news?.disciplinable?.[0]?.nombre || 
-                               termino.numeroProceso || 
-                               'Proceso sin nombre';
-      
+      const nombreDenunciado = termino.proceso?.news?.disciplinable?.[0]?.nombre ||
+        termino.numeroProceso ||
+        'Proceso sin nombre';
+
       // Actualizar datos del responsable si están desactualizados (tienen formato placeholder)
-      if (termino.responsableId && 
-          (termino.responsableNombre?.includes('Responsable 00000000') || 
-           termino.emailResponsable?.includes('responsable-00000000'))) {
+      if (termino.responsableId &&
+        (termino.responsableNombre?.includes('Responsable 00000000') ||
+          termino.emailResponsable?.includes('responsable-00000000'))) {
         try {
           const profesional = await this.professionalRepository.findOne({
             where: { id: termino.responsableId }
           });
-          
+
           if (profesional) {
             // Actualizar en la base de datos
             termino.responsableNombre = profesional.nombreCompleto || termino.responsableNombre;
@@ -221,7 +221,7 @@ export class TerminosProcesalesService {
           // Continuar sin actualizar si hay error
         }
       }
-      
+
       return transformTermino(termino, nombreDenunciado);
     }));
 
@@ -269,9 +269,9 @@ export class TerminosProcesalesService {
     }
 
     // Obtener nombre del denunciado desde la noticia
-    const nombreDenunciado = termino.proceso?.news?.disciplinable?.[0]?.nombre || 
-                             termino.numeroProceso || 
-                             'Proceso sin nombre';
+    const nombreDenunciado = termino.proceso?.news?.disciplinable?.[0]?.nombre ||
+      termino.numeroProceso ||
+      'Proceso sin nombre';
 
     return transformTermino(termino, nombreDenunciado);
   }
@@ -332,13 +332,13 @@ export class TerminosProcesalesService {
 
     if (dto.responsableId) {
       termino.responsableId = dto.responsableId;
-      
+
       // Obtener información del responsable desde la base de datos
       try {
         const profesional = await this.professionalRepository.findOne({
           where: { id: dto.responsableId }
         });
-        
+
         if (profesional) {
           termino.responsableNombre = profesional.nombreCompleto || `Responsable ${dto.responsableId.substring(0, 8)}`;
           termino.emailResponsable = profesional.email || `responsable-${dto.responsableId.substring(0, 8)}@esap.edu.co`;
@@ -363,9 +363,9 @@ export class TerminosProcesalesService {
       relations: ['news'],
     });
 
-    const nombreDenunciado = procesoCompleto?.news?.disciplinable?.[0]?.nombre || 
-                             terminoGuardado.numeroProceso || 
-                             'Proceso sin nombre';
+    const nombreDenunciado = procesoCompleto?.news?.disciplinable?.[0]?.nombre ||
+      terminoGuardado.numeroProceso ||
+      'Proceso sin nombre';
 
     return transformTermino(terminoGuardado, nombreDenunciado);
   }
@@ -402,9 +402,9 @@ export class TerminosProcesalesService {
       relations: ['news'],
     });
 
-    const nombreDenunciado = procesoCompleto?.news?.disciplinable?.[0]?.nombre || 
-                             terminoGuardado.numeroProceso || 
-                             'Proceso sin nombre';
+    const nombreDenunciado = procesoCompleto?.news?.disciplinable?.[0]?.nombre ||
+      terminoGuardado.numeroProceso ||
+      'Proceso sin nombre';
 
     return transformTermino(terminoGuardado, nombreDenunciado);
   }
@@ -434,14 +434,14 @@ export class TerminosProcesalesService {
 
     for (const termino of terminosActivos) {
       // Actualizar datos del responsable si están desactualizados
-      if (termino.responsableId && 
-          (termino.responsableNombre?.includes('Responsable 00000000') || 
-           termino.emailResponsable?.includes('responsable-00000000'))) {
+      if (termino.responsableId &&
+        (termino.responsableNombre?.includes('Responsable 00000000') ||
+          termino.emailResponsable?.includes('responsable-00000000'))) {
         try {
           const profesional = await this.professionalRepository.findOne({
             where: { id: termino.responsableId }
           });
-          
+
           if (profesional) {
             termino.responsableNombre = profesional.nombreCompleto || termino.responsableNombre;
             termino.emailResponsable = profesional.email || termino.emailResponsable;

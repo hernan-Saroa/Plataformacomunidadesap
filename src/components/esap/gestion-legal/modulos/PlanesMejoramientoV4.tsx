@@ -698,7 +698,6 @@ export function ModuloPlanesMejoramientoV4() {
                 planes={planesFiltrados}
                 expandedPlans={expandedPlans}
                 onTogglePlan={togglePlan}
-                onTogglePlan={togglePlan}
                 onVerDetalle={handleVerDetalle}
                 onArchivar={handleArchivar}
               />

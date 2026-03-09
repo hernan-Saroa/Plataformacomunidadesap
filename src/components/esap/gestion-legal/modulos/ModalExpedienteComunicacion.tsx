@@ -40,7 +40,7 @@ interface ComunicacionUnificada {
   fechaRadicacion: Date;
   urgente: boolean;
   leida: boolean;
-  estado: 'PENDIENTE' | 'LEIDA' | 'ARCHIVADA';
+  estado: 'PENDIENTE' | 'LEIDA' | 'ARCHIVADA' | 'ENVIADA';
   documentosAdjuntos: string[];
   clasificacionIA?: {
     tipoDetectado: string;

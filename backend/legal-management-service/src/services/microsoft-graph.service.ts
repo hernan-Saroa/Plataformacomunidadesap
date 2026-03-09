@@ -26,6 +26,8 @@ export interface GraphEmail {
     bodyPreview: string;
     hasAttachments: boolean;
     isRead: boolean;
+    internetMessageId?: string;
+    conversationId?: string;
 }
 
 @Injectable()
@@ -82,7 +84,7 @@ export class MicrosoftGraphService {
                     .api(`/users/${this.emailAccount}/messages`)
                     .top(limit)
                     .orderby('receivedDateTime desc')
-                    .select('id,subject,from,toRecipients,receivedDateTime,bodyPreview,hasAttachments,isRead')
+                    .select('id,subject,from,toRecipients,receivedDateTime,bodyPreview,hasAttachments,isRead,internetMessageId,conversationId')
                     .get();
             }
 
@@ -316,6 +318,46 @@ export class MicrosoftGraphService {
     }
 
     /**
+     * Forward an email
+     * Uses Microsoft Graph native forward which automatically includes Original Attachments
+     */
+    async forwardEmail(
+        messageId: string,
+        to: string,
+        comment: string,
+    ): Promise<boolean> {
+        if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
+            this.logger.warn(`[DEV MOCK] Forward simulación de email ${messageId} enviado a: ${to} con comentario: ${comment}`);
+            return true;
+        }
+
+        try {
+            const client = this.getClient();
+
+            const forwardMessage = {
+                toRecipients: [
+                    {
+                        emailAddress: {
+                            address: to.trim()
+                        }
+                    }
+                ],
+                comment: comment || ''
+            };
+
+            await client
+                .api(`/users/${this.emailAccount}/messages/${messageId}/forward`)
+                .post(forwardMessage);
+
+            this.logger.log(`Email ${messageId} forwarded to ${to}`);
+            return true;
+        } catch (error) {
+            this.logger.error(`Error forwarding email ${messageId} to ${to}:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Test connection to Microsoft Graph
      */
     async testConnection(): Promise<{ success: boolean; message: string }> {
@@ -398,6 +440,76 @@ export class MicrosoftGraphService {
             };
         } catch (error) {
             this.logger.error(`Error downloading attachment ${attachmentId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Reply to an email using Graph API
+     * Uses createReply to maintain threading headers (In-Reply-To, References)
+     */
+    async replyToEmail(
+        messageId: string,
+        body: string,
+        attachments?: { name: string; contentBytes: string; contentType: string }[]
+    ): Promise<boolean> {
+        // MOCK FOR DEV
+        if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
+            this.logger.warn(`[DEV MOCK] Reply simulado al mensaje: ${messageId}`);
+            return true;
+        }
+
+        try {
+            const client = this.getClient();
+
+            const htmlBody = `
+                <div style="font-family: Arial, sans-serif; font-size: 14px;">
+                    ${body.replace(/\n/g, '<br/>')}
+                </div>
+            `;
+
+            // Step 1: Create a draft reply (this preserves threading headers)
+            const draftReply = await client
+                .api(`/users/${this.emailAccount}/messages/${messageId}/createReply`)
+                .post({});
+
+            const draftId = draftReply.id;
+
+            // Step 2: Update the draft with our reply body
+            const updatePayload: any = {
+                body: {
+                    contentType: 'HTML',
+                    content: htmlBody,
+                },
+            };
+
+            await client
+                .api(`/users/${this.emailAccount}/messages/${draftId}`)
+                .patch(updatePayload);
+
+            // Step 3: Add attachments to draft if any
+            if (attachments?.length) {
+                for (const att of attachments) {
+                    await client
+                        .api(`/users/${this.emailAccount}/messages/${draftId}/attachments`)
+                        .post({
+                            '@odata.type': '#microsoft.graph.fileAttachment',
+                            name: att.name,
+                            contentBytes: att.contentBytes,
+                            contentType: att.contentType,
+                        });
+                }
+            }
+
+            // Step 4: Send the draft
+            await client
+                .api(`/users/${this.emailAccount}/messages/${draftId}/send`)
+                .post({});
+
+            this.logger.log(`Reply sent for message ${messageId}`);
+            return true;
+        } catch (error) {
+            this.logger.error(`Error replying to message ${messageId}:`, error);
             throw error;
         }
     }

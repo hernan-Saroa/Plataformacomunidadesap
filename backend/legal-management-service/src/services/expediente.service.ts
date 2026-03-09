@@ -11,6 +11,7 @@ import { TareaExpediente } from '../entities/tarea-expediente.entity';
 import { NotaExpediente } from '../entities/nota-expediente.entity';
 import { Audiencia } from '../entities/audiencia.entity';
 import { Acta } from '../entities/acta.entity';
+import { ConfigurationsService } from './configurations.service';
 
 @Injectable()
 export class ExpedienteService {
@@ -22,7 +23,8 @@ export class ExpedienteService {
         @InjectRepository(DecisionDisciplinaria)
         private decisionRepository: Repository<DecisionDisciplinaria>,
         @InjectRepository(ExcepcionProcesal)
-        private excepcionRepository: Repository<ExcepcionProcesal>
+        private excepcionRepository: Repository<ExcepcionProcesal>,
+        private readonly configService: ConfigurationsService
     ) { }
 
     async findOneByRadicado(radicado: string): Promise<Expediente | null> {
@@ -105,6 +107,20 @@ export class ExpedienteService {
                 data.fechaVencimientoTermino = vencimiento;
             } else {
                 data.fechaVencimientoTermino = this.addBusinessDays(fechaNotif, Number(data.terminoProcesalDias));
+            }
+        }
+
+        if (!data.fechaPrescripcion && (data.jurisdiccion === 'DISCIPLINARIO' || data.jurisdiccion === 'Disciplinaria' || data.tipoProceso === 'DISCIPLINARIO')) {
+            try {
+                const config = await this.configService.findByKey('prescripcion_juzgamiento');
+                const years = config?.value?.years ?? 5;
+                const baseDate = data.fechaRadicacion ? new Date(data.fechaRadicacion) : new Date();
+                const fechaPrescripcion = new Date(baseDate);
+                fechaPrescripcion.setFullYear(fechaPrescripcion.getFullYear() + years);
+                data.fechaPrescripcion = fechaPrescripcion;
+                Logger.log(`[ExpedienteService] Asignada fecha_prescripcion automática (${years} años): ${fechaPrescripcion.toISOString()}`);
+            } catch (error) {
+                Logger.warn('[ExpedienteService] No se pudo calcular fecha_prescripcion automáticamente', error);
             }
         }
 

@@ -126,9 +126,10 @@ export class ProcessService {
       const radicadoProceso =
         await this.sequenceService.generateProcessRadicado();
 
-      // Calcular fecha de prescripción (15 años desde los hechos)
-      const fechaPrescripcion =
-        this.terminosService.calculateFechaPrescripcion(noticia.fechaRecepcion);
+      // Calcular fecha de prescripción (15 años desde la comisión del hecho)
+      const fechaPrescripcion = this.terminosService.calculateFechaPrescripcion(
+        noticia.fechaRecepcion
+      );
 
       // Determinar etapa inicial basada en la columna kanban de la noticia
       let etapaInicial = ProcessStage.EVALUACION; // Default
@@ -789,12 +790,12 @@ export class ProcessService {
       // INDAGACION_PREVIA / INVESTIGACION → EVALUACION / JUZGAMIENTO / FALLO
       // También permite cambiar entre INDAGACION_PREVIA e INVESTIGACION (mismo nivel)
       const esCambioMismoNivel = (etapaActual === ProcessStage.INDAGACION_PREVIA && nuevaEtapa === ProcessStage.INVESTIGACION) ||
-                                   (etapaActual === ProcessStage.INVESTIGACION && nuevaEtapa === ProcessStage.INDAGACION_PREVIA);
-      
-      if (!esCambioMismoNivel && 
-          nuevaEtapa !== ProcessStage.EVALUACION && 
-          nuevaEtapa !== ProcessStage.JUZGAMIENTO && 
-          nuevaEtapa !== ProcessStage.FALLO) {
+        (etapaActual === ProcessStage.INVESTIGACION && nuevaEtapa === ProcessStage.INDAGACION_PREVIA);
+
+      if (!esCambioMismoNivel &&
+        nuevaEtapa !== ProcessStage.EVALUACION &&
+        nuevaEtapa !== ProcessStage.JUZGAMIENTO &&
+        nuevaEtapa !== ProcessStage.FALLO) {
         throw new HttpException(
           `Desde INDAGACION_PREVIA o INVESTIGACION solo puede ir a EVALUACION, JUZGAMIENTO, FALLO o cambiar entre INDAGACION_PREVIA/INVESTIGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
           HttpStatus.BAD_REQUEST,
