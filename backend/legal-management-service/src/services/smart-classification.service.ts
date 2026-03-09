@@ -10,6 +10,12 @@ interface ClassificationResult {
     method: 'HEURISTIC' | 'BAYESIAN' | 'DEFAULT';
 }
 
+interface EntityExtractionResult {
+    procesoId?: string;
+    implicado?: string;
+    submodulo?: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO_DISCIPLINARIO';
+}
+
 @Injectable()
 export class SmartClassificationService implements OnModuleInit {
     private readonly logger = new Logger(SmartClassificationService.name);
@@ -42,51 +48,78 @@ export class SmartClassificationService implements OnModuleInit {
     }
 
     /**
-     * Layer 1: Heuristic Rules ("Reglas de Oro")
+     * Layer 1: Heuristic Rules ("Reglas de Oro") — RECALIBRADAS
+     * 
+     * ORDEN DE EVALUACIÓN:
+     * 1. DISCARD (negative lookahead) — fuerza CORREO si hay palabras blandas
+     * 2. JUDICIAL — términos de juzgados/tribunales/sentencias
+     * 3. OFICIO ESTRICTO — requiere keyword fuerte + remitente institucional
+     * 4. null → pasa al Bayesiano
      */
     private applyHeuristics(subject: string, body: string): Omit<ClassificationResult, 'method'> | null {
         const content = `${subject} ${body}`.toUpperCase();
 
-        // 1. JUDICIAL
+        // ═══ PASO 1: DISCARD — Palabras blandas fuerzan categoría CORREO ═══
+        const discardKeywords = [
+            'INVITACION', 'INVITACIÓN', 'WEBINAR', 'CAPACITACION', 'CAPACITACIÓN',
+            'BOLETIN', 'BOLETÍN', 'CIRCULAR INFORMATIVA', 'RECORDATORIO',
+            'CUMPLEAÑOS', 'SOCIALIZACION', 'SOCIALIZACIÓN', 'NEWSLETTER',
+            'SEMINARIO', 'TALLER', 'CONFERENCIA', 'AGENDA', 'FELIZ',
+            'SALUDO', 'FELICITACIONES', 'BIENVENIDO', 'SUSCRIPCION',
+            'SUSCRIPCIÓN', 'EVENTO', 'INSCRIPCION', 'INSCRIPCIÓN',
+            'FORO', 'DIPLOMADO', 'CURSO', 'CONVOCATORIA ABIERTA'
+        ];
+        if (discardKeywords.some(kw => content.includes(kw))) {
+            return { category: 'CORREO', confidence: 0.95, module: 'Buzón General' };
+        }
+
+        // ═══ PASO 2: JUDICIAL — Términos de juzgados ═══
         const judicialKeywords = [
-            'FALLO', 'SENTENCIA', 'AUTO ADMISORIO', 'JUZGADO', 'TRIBUNAL', 'DEMANDA', 'TUTELA',
-            'NOTIFICACION JUDICIAL', 'AUTO', 'DESPACHO JUDICIAL', 'PROCESO JUDICIAL',
-            'ACCION POPULAR', 'ACCION DE GRUPO', 'NULIDAD', 'RESTABLECIMIENTO'
+            'FALLO', 'SENTENCIA', 'AUTO ADMISORIO', 'JUZGADO', 'TRIBUNAL',
+            'DEMANDA', 'TUTELA', 'NOTIFICACION JUDICIAL', 'NOTIFICACIÓN JUDICIAL',
+            'DESPACHO JUDICIAL', 'PROCESO JUDICIAL', 'ACCION POPULAR', 'ACCIÓN POPULAR',
+            'ACCION DE GRUPO', 'ACCIÓN DE GRUPO', 'NULIDAD', 'RESTABLECIMIENTO'
         ];
         if (judicialKeywords.some(kw => content.includes(kw))) {
             return { category: 'JUDICIAL', confidence: 1.0, module: 'MOD-01: Defensa Judicial' };
         }
 
-        // 2. DISCARD (Lookahead negativo)
-        // Palabras "blandas" que fuerzan categoría CORREO
-        const discardKeywords = ['INVITACION', 'WEBINAR', 'CAPACITACION', 'BOLETIN', 'CIRCULAR INFORMATIVA', 'RECORDATORIO', 'CUMPLEAÑOS', 'SOCIALIZACION'];
-        if (discardKeywords.some(kw => content.includes(kw))) {
-            return { category: 'CORREO', confidence: 0.9, module: 'Buzón General' };
-        }
-
-        // 3. OFICIO (Entes de Control) - REGLAS ESTRICTAS
-        const oficioKeywords = [
-            'TRASLADO', 'REQUERIMIENTO', 'SOLICITUD DE INFORMACION', 'PETICION', 'DERECHO DE PETICION', 'AUTO', 'FALLO'
+        // ═══ PASO 3: OFICIO — REGLAS ESTRICTAS (debe cumplir keyword + remitente) ═══
+        // Keywords fuertes que POR SÍ SOLOS marcan OFICIO
+        const strongOficioKeywords = [
+            'AUTO INTERLOCUTORIO', 'PLIEGO DE CARGOS', 'FALLO DISCIPLINARIO',
+            'ACCION DE REPETICION', 'ACCIÓN DE REPETICIÓN',
         ];
+
+        // Keywords débiles que solo cuentan si ADEMÁS hay remitente institucional
+        const weakOficioKeywords = [
+            'SOLICITUD DE INFORMACION', 'SOLICITUD DE INFORMACIÓN',
+            'PETICION', 'PETICIÓN', 'DERECHO DE PETICION', 'DERECHO DE PETICIÓN',
+            'TRASLADO', 'AUTO', 'REQUERIMIENTO', 'TRASLADO PROCESAL',
+            'INDAGACION PRELIMINAR', 'INDAGACIÓN PRELIMINAR',
+            'INVESTIGACION DISCIPLINARIA', 'INVESTIGACIÓN DISCIPLINARIA', 'OFICIO'
+        ];
+
         // Instituciones clave
-        const institutionalSenders = ['CONTRALORIA', 'PROCURADURIA', 'FISCALIA', 'JUZGADO', 'SUPERINTENDENCIA', 'COMISION NACIONAL', 'AUDITORIA', 'PERSONERIA', 'DEFENSORIA'];
+        const institutionalSenders = [
+            'CONTRALORIA', 'CONTRALORÍA', 'PROCURADURIA', 'PROCURADURÍA',
+            'FISCALIA', 'FISCALÍA', 'JUZGADO', 'SUPERINTENDENCIA',
+            'COMISION NACIONAL', 'COMISIÓN NACIONAL', 'AUDITORIA', 'AUDITORÍA',
+            'PERSONERIA', 'PERSONERÍA', 'DEFENSORIA', 'DEFENSORÍA',
+            'MINISTERIO PUBLICO', 'MINISTERIO PÚBLICO',
+        ];
 
-        // Debe contener una palabra clave O provenir de una institución
-        const matchesKeyword = oficioKeywords.some(kw => content.includes(kw));
-        const matchesSender = institutionalSenders.some(sender =>
-            subject.toUpperCase().includes(sender) ||
-            (body && body.toUpperCase().includes(sender)) // Remitente usually checked in Subject/From, checking Body as proxy if signature included
-        );
+        const matchesStrongKeyword = strongOficioKeywords.some(kw => content.includes(kw));
+        const matchesWeakKeyword = weakOficioKeywords.some(kw => content.includes(kw));
+        const matchesSender = institutionalSenders.some(sender => content.includes(sender));
 
-        if (matchesKeyword || matchesSender) {
+        // OFICIO = keyword fuerte, OR (keyword débil + remitente institucional)
+        if (matchesStrongKeyword || (matchesWeakKeyword && matchesSender)) {
             return { category: 'OFICIO', confidence: 1.0, module: 'MOD-06: Órganos de Control' };
         }
 
-        // 3. URGENTE (Flag handled separately usually, but category can be URGENTE implies priority)
-        // Note: Urgency is usually a flag, not a category, but if requested as category:
-        // "Urgentes" is a tab, but usually type is Judicial/Oficio. 
-        // The requirement says "Urgentes" is a sub-category.
-        // We will return the primary type, urgency will be handled in a separate 'analyzeUrgency' method.
+        // Remitente institucional solo, sin keywords → no es suficiente para OFICIO
+        // Cae al Bayesiano
 
         return null;
     }
@@ -101,10 +134,8 @@ export class SmartClassificationService implements OnModuleInit {
         }
 
         const classification = this.classifier.classify(text);
-        // natural's getClassifications gives probabilities, but strictly classify returns string.
-        // Let's get confidence.
         const classifications = this.classifier.getClassifications(text);
-        const best = classifications[0]; // Sorted by value usually
+        const best = classifications[0];
 
         // Map categories to Modules
         const moduleMap: Record<string, string> = {
@@ -114,9 +145,16 @@ export class SmartClassificationService implements OnModuleInit {
             'CONSULTA': 'MOD-03: Asesoría Jurídica'
         };
 
+        // Safety net: Si Bayesiano clasifica como OFICIO pero con baja confianza, forzar CORREO
+        const confidence = best ? best.value : 0.5;
+        if (classification === 'OFICIO' && confidence < 0.7) {
+            this.logger.warn(`Bayesian classified as OFICIO but confidence (${confidence}) too low — forcing CORREO`);
+            return { category: 'CORREO', confidence, module: 'Buzón General', method: 'BAYESIAN' };
+        }
+
         return {
             category: classification,
-            confidence: best ? best.value : 0.5, // Note: Natural returns rough scores, not always 0-1 normalized well without tweaking
+            confidence,
             module: moduleMap[classification] || 'Buzón General',
             method: 'BAYESIAN'
         };
@@ -126,9 +164,98 @@ export class SmartClassificationService implements OnModuleInit {
      * Analyze urgency based on keywords
      */
     public analyzeUrgency(subject: string, body: string): boolean {
-        const urgentKeywords = ['URGENTE', 'INMEDIATO', 'TERMINO PERENTORIO', 'HORAS', 'DIAS HABILES', 'DESACATO'];
+        const urgentKeywords = ['URGENTE', 'INMEDIATO', 'TERMINO PERENTORIO', 'TÉRMINO PERENTORIO', 'HORAS', 'DIAS HABILES', 'DÍAS HÁBILES', 'DESACATO'];
         const content = `${subject} ${body}`.toUpperCase();
         return urgentKeywords.some(kw => content.includes(kw));
+    }
+
+    /**
+     * NLP Entity Extraction — Regex heurístico
+     * Intenta extraer: ID de proceso, nombre del implicado, submódulo destino
+     */
+    public extractEntities(subject: string, body: string): EntityExtractionResult {
+        const content = `${subject} ${body}`;
+        const contentUpper = content.toUpperCase();
+        const result: EntityExtractionResult = {};
+
+        // ─── Extraer ID de Proceso ───
+        // Patrones como PD-2026-00001, DJ-2026-00015, RAD. 12345, Exp. 12345
+        const procesoPatterns = [
+            /\b(PD-\d{4}-\d{3,6})\b/i,                    // Juzgamiento: PD-YYYY-NNNNN
+            /\b(DJ-\d{4}-\d{3,6})\b/i,                    // Defensa Judicial: DJ-YYYY-NNNNN
+            /(?:RAD(?:ICADO)?\.?\s*(?:No\.?\s*)?)([\d-]{5,})/i,  // RAD. 12345 or Radicado No. 12345
+            /(?:EXP(?:EDIENTE)?\.?\s*(?:No\.?\s*)?)([\d-]{5,})/i, // EXP. 12345
+            /\b(\d{5}-\d{2}-\d{2}-\d{3}-\d{4}-\d{5}-\d{2})\b/,  // Radicado judicial 25000-33-10-001-2025-00123-00
+        ];
+
+        for (const pattern of procesoPatterns) {
+            const match = content.match(pattern);
+            if (match) {
+                result.procesoId = match[1] || match[0];
+                break;
+            }
+        }
+
+        // ─── Detectar Submódulo ───
+        const defensaJudicialIndicators = [
+            'DEFENSA JUDICIAL', 'DEMANDA', 'TUTELA', 'ACCION POPULAR',
+            'ACCIÓN POPULAR', 'SENTENCIA', 'FALLO', 'JUZGADO', 'TRIBUNAL',
+            'PROCESO JUDICIAL', 'NULIDAD', 'RESTABLECIMIENTO',
+        ];
+        const juzgamientoIndicators = [
+            'JUZGAMIENTO DISCIPLINARIO', 'DISCIPLINARIO', 'INVESTIGACION DISCIPLINARIA',
+            'INVESTIGACIÓN DISCIPLINARIA', 'INDAGACION PRELIMINAR', 'INDAGACIÓN PRELIMINAR',
+            'PLIEGO DE CARGOS', 'FALLO DISCIPLINARIO', 'SANCION DISCIPLINARIA',
+            'SANCIÓN DISCIPLINARIA', 'INVESTIGADO', 'QUEJOSO',
+        ];
+
+        // Detect by ID prefix first (most reliable)
+        if (result.procesoId) {
+            if (/^PD-/i.test(result.procesoId)) {
+                result.submodulo = 'JUZGAMIENTO_DISCIPLINARIO';
+            } else if (/^DJ-/i.test(result.procesoId)) {
+                result.submodulo = 'DEFENSA_JUDICIAL';
+            }
+        }
+
+        // If not detected by ID, use keyword matching
+        if (!result.submodulo) {
+            const defJudScore = defensaJudicialIndicators.filter(kw => contentUpper.includes(kw)).length;
+            const juzgScore = juzgamientoIndicators.filter(kw => contentUpper.includes(kw)).length;
+
+            if (defJudScore > juzgScore && defJudScore > 0) {
+                result.submodulo = 'DEFENSA_JUDICIAL';
+            } else if (juzgScore > defJudScore && juzgScore > 0) {
+                result.submodulo = 'JUZGAMIENTO_DISCIPLINARIO';
+            }
+        }
+
+        // ─── Extraer Nombre del Implicado ───
+        // Buscar después de "contra", "investigado:", "demandado:", "procesado:"
+        const implicadoPatterns = [
+            /(?:contra|investigado|demandado|procesado|implicado|quejoso)\s*:?\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,4})/,
+            /(?:CONTRA|INVESTIGADO|DEMANDADO|PROCESADO|IMPLICADO|QUEJOSO)\s*:?\s+([\wÁÉÍÓÚÑáéíóúñ]+(?:\s+[\wÁÉÍÓÚÑáéíóúñ]+){1,4})/,
+        ];
+
+        for (const pattern of implicadoPatterns) {
+            const match = content.match(pattern);
+            if (match && match[1]) {
+                // Filter out common words that are not names
+                const candidate = match[1].trim();
+                const stopwords = ['de', 'la', 'el', 'los', 'las', 'del', 'en', 'por', 'para', 'con', 'sin'];
+                const words = candidate.split(/\s+/);
+                if (words.length >= 2 && !stopwords.includes(words[0].toLowerCase())) {
+                    result.implicado = candidate;
+                    break;
+                }
+            }
+        }
+
+        if (result.procesoId || result.submodulo || result.implicado) {
+            this.logger.log(`Entities extracted: ${JSON.stringify(result)}`);
+        }
+
+        return result;
     }
 
     /**

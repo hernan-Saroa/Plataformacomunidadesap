@@ -4,8 +4,8 @@
  * ✅ Estilo Gmail/Outlook - Redactar correo
  */
 
-import { useState } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import {
   Mail, FileText, User, Calendar, AlertTriangle,
   Upload, X, Send, Paperclip, Loader2
@@ -24,6 +24,7 @@ interface ModalNuevaComunicacionProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit?: (data: NuevaComunicacionData) => void;
+  initialData?: Partial<NuevaComunicacionData>;
 }
 
 export interface NuevaComunicacionData {
@@ -32,12 +33,23 @@ export interface NuevaComunicacionData {
   asunto: string;
   cuerpo: string;
   archivos?: File[];
+  isForward?: boolean;
+  isReply?: boolean;
+  originalCorreoId?: string;
 }
 
-export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNuevaComunicacionProps) {
-  const [formData, setFormData] = useState<Partial<NuevaComunicacionData>>({});
+export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData }: ModalNuevaComunicacionProps) {
+  const [formData, setFormData] = useState<Partial<NuevaComunicacionData>>(initialData || {});
   const [enviando, setEnviando] = useState(false);
   const [archivos, setArchivos] = useState<File[]>([]);
+
+  // Update form data when initialData or isOpen changes
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(initialData || {});
+      setArchivos([]);
+    }
+  }, [isOpen, initialData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +65,8 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
       toast.error('⚠️ Error de validación', { description: 'El destinatario debe ser un email válido' });
       return;
     }
-    if (!formData.asunto?.trim()) {
+    // Asunto validation is skipped for reply/forward if the system provides it, but here it's enforced
+    if (!formData.asunto?.trim() && !formData.isForward) {
       toast.error('⚠️ Error de validación', { description: 'Debe ingresar el asunto' });
       return;
     }
@@ -91,20 +104,31 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
         })
       );
 
-      // Llamar API real
-      const result = await correosJuridicosService.sendEmail({
-        to: formData.para.trim(),
-        subject: formData.asunto.trim(),
-        body: formData.cuerpo.trim(),
-        cc: ccArray,
-        attachments: attachmentsBase64.length > 0 ? attachmentsBase64 : undefined
-      });
+      let isSuccess = false;
 
-      // El API puede devolver { success: true } o simplemente no lanzar error
-      const isSuccess = result?.success !== false;
+      // Llamar API real según si es Forward o Send
+      if (formData.isForward && formData.originalCorreoId) {
+        // Para Reenviar
+        const result = await correosJuridicosService.forwardEmail(
+          formData.originalCorreoId,
+          formData.para.trim(),
+          formData.cuerpo.trim()
+        );
+        isSuccess = result?.success !== false;
+      } else {
+        // Para Nuevo o Responder (Responder actualmente manda un Send normal pero debería usar reply, por simplicidad usamos send si no se especifica)
+        const result = await correosJuridicosService.sendEmail({
+          to: formData.para.trim(),
+          subject: formData.asunto?.trim() || 'Sin Asunto',
+          body: formData.cuerpo.trim(),
+          cc: ccArray,
+          attachments: attachmentsBase64.length > 0 ? attachmentsBase64 : undefined
+        });
+        isSuccess = result?.success !== false;
+      }
 
       if (isSuccess) {
-        toast.success('✅ Correo enviado exitosamente', {
+        toast.success(formData.isForward ? '✅ Correo reenviado exitosamente' : '✅ Correo enviado exitosamente', {
           description: `Para: ${formData.para}${archivos.length > 0 ? ` (${archivos.length} adjuntos)` : ''}`,
           duration: 4000
         });
@@ -114,9 +138,12 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
           onSubmit({
             para: formData.para,
             cc: formData.cc,
-            asunto: formData.asunto,
+            asunto: formData.asunto || '',
             cuerpo: formData.cuerpo,
-            archivos
+            archivos,
+            isForward: formData.isForward,
+            isReply: formData.isReply,
+            originalCorreoId: formData.originalCorreoId
           });
         }
 
@@ -125,12 +152,12 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
         setArchivos([]);
         onClose();
       } else {
-        throw new Error('El servidor indicó que no pudo enviar el correo');
+        throw new Error('El servidor indicó que no pudo procesar la solicitud');
       }
     } catch (error) {
-      console.error('Error enviando correo:', error);
-      toast.error('❌ Error al enviar el correo', {
-        description: 'Por favor intente nuevamente. Verifique que tiene permisos Mail.Send en Azure.'
+      console.error('Error enviando/reenviando correo:', error);
+      toast.error('❌ Error al procesar el correo', {
+        description: 'Por favor intente nuevamente. Verifique que tiene conexión.'
       });
     } finally {
       setEnviando(false);
@@ -204,6 +231,8 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
                     value={formData.para || ''}
                     onChange={(e) => setFormData({ ...formData, para: e.target.value })}
                     required
+                    readOnly={formData.isReply}
+                    className={formData.isReply ? "bg-gray-100 cursor-not-allowed text-gray-600" : ""}
                   />
                 </div>
 

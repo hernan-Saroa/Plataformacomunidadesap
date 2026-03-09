@@ -278,12 +278,6 @@ export class LegalService {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}`, data);
     }
 
-    async getAbogados(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/abogados`);
-    }
-
-
-
     // ==================== PROCESOS COACTIVOS ====================
     async getProcesosCoactivos(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/procesos-coactivos`);
@@ -483,27 +477,6 @@ export class LegalService {
 
     async deleteComentarioExpediente(comentarioId: string): Promise<void> {
         return apiClient.delete(`${SERVICE_PREFIX}/expedientes/comentarios/${comentarioId}`);
-    }
-
-    // ==================== EXCEPCIONES PROCESALES ====================
-    async getJuzgamientoExcepciones(radicado: string): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`);
-    }
-
-    async createJuzgamientoExcepcion(radicado: string, data: {
-        tipo: string;
-        descripcion: string;
-        fundamento: string;
-        presentadoPor?: string;
-    }): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`, data);
-    }
-
-    async resolverExcepcion(excepcionId: string, data: {
-        estado: 'RESUELTA' | 'RECHAZADA';
-        resolucion: string;
-    }): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/excepciones/${excepcionId}/resolver`, data);
     }
 
     // ==================== OFICIOS JUDICIALES ====================
@@ -914,7 +887,7 @@ class OCService {
     }
 
     async eliminarRequerimientoPermanente(id: string, usuario: string, motivo: string): Promise<void> {
-        return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/${id}/permanente`, { params: { usuario, motivo } });
+        return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/${id}/permanente?usuario=${encodeURIComponent(usuario)}&motivo=${encodeURIComponent(motivo)}`);
     }
 
     // Solicitudes de Insumos (Delegación)
@@ -1166,6 +1139,15 @@ export interface CorreoJuridico {
     expedienteId?: string;
     direccion?: string; // ENTRANTE, ENVIADO
     destinatariosTo?: string;
+    // Threading
+    isReplied?: boolean;
+    parentEmailId?: string;
+    threadId?: string;
+    internetMessageId?: string;
+    // NLP entities
+    procesoIdSugerido?: string;
+    implicadoSugerido?: string;
+    submoduloSugerido?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -1265,6 +1247,13 @@ export class CorreosJuridicosService {
     }
 
     /**
+     * Forward an email
+     */
+    async forwardEmail(correoId: string, to: string, comment: string): Promise<{ success: boolean; correo?: CorreoJuridico }> {
+        return apiClient.post(`${SERVICE_PREFIX}/correos/${correoId}/forward`, { to, comment });
+    }
+
+    /**
      * Get attachments for an email
      */
     async getAdjuntos(correoId: string): Promise<AdjuntoCorreo[]> {
@@ -1318,6 +1307,33 @@ export class CorreosJuridicosService {
         return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/link-process`, { expedienteId, targetModule });
     }
 
+    /**
+     * Reply to an email (maintains thread)
+     */
+    async replyEmail(id: string, body: string, attachments?: { name: string; contentBytes: string; contentType: string }[]): Promise<{ success: boolean }> {
+        return apiClient.post(`${SERVICE_PREFIX}/correos/${id}/reply`, { body, attachments });
+    }
+
+    /**
+     * Search Defensa Judicial expedientes for linking
+     */
+    async searchProcesosDefensa(search?: string): Promise<any[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/expedientes`, { params: { search } });
+    }
+
+    /**
+     * Search Juzgamiento Disciplinario processes for linking
+     */
+    async searchProcesosJuzgamiento(search?: string): Promise<any[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/juzgamiento`, { params: { search } });
+    }
+
+    /**
+     * Reclassify ALL emails with updated heuristics
+     */
+    async reclassifyAll(): Promise<{ processed: number; updated: number; unchanged: number }> {
+        return apiClient.post(`${SERVICE_PREFIX}/correos/reclassify-all`, {});
+    }
 
 }
 
@@ -1506,6 +1522,39 @@ export class ProcesosCoactivosService {
 
     async eliminarPermanente(id: string, usuario: string, motivo: string): Promise<void> {
         return apiClient.post(`${SERVICE_PREFIX}/procesos-coactivos/${id}/eliminar`, { usuario, motivo });
+    }
+
+    // ============================================================================
+    // CONFIGURACIONES (Key-Value)
+    // ============================================================================
+
+    /**
+     * Obtiene una configuración por su clave (key)
+     */
+    async getConfiguration(key: string): Promise<any> {
+        try {
+            const response = await apiClient.get(`${SERVICE_PREFIX}/configurations/${key}`);
+            return response.data?.value || null;
+        } catch (error: any) {
+            if (error?.response?.status === 404) {
+                return null; // Si no existe, retorna null
+            }
+            console.error(`Error getConfiguration(${key}):`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Actualiza o crea una configuración por su clave
+     */
+    async updateConfiguration(key: string, data: { value: any, module?: string, description?: string }): Promise<any> {
+        try {
+            const response = await apiClient.put(`${SERVICE_PREFIX}/configurations/${key}`, data);
+            return response.data;
+        } catch (error) {
+            console.error(`Error updateConfiguration(${key}):`, error);
+            throw error;
+        }
     }
 }
 
