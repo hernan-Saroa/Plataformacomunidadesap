@@ -214,6 +214,11 @@ export interface DescargaCertificado {
   userAgent?: string;
 }
 
+type ApiRequestOptions = {
+  skipAuth?: boolean;
+  skipErrorToast?: boolean;
+};
+
 export interface GraduadoArchivo {
   id: string;
   graduateId: string;
@@ -405,10 +410,14 @@ const graduadosService = {
       );
       return response;
     },
-    registrar: async (certificateId: string): Promise<{ mensaje: string }> => {
+    registrar: async (
+      certificateId: string,
+      options?: ApiRequestOptions
+    ): Promise<{ mensaje: string }> => {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/certificates/descargas`,
-        { certificateId }
+        { certificateId },
+        options
       );
       return response;
     },
@@ -544,8 +553,15 @@ const graduadosService = {
     /**
      * Obtener PDF de certificado
      */
-    descargarPDF: async (id: string): Promise<Blob> => {
-      return apiClient.getBlob(`${SERVICE_PREFIX}/certificates/${id}/pdf`);
+    descargarPDF: async (
+      id: string,
+      options?: ApiRequestOptions
+    ): Promise<Blob> => {
+      return apiClient.getBlob(
+        `${SERVICE_PREFIX}/certificates/${id}/pdf`,
+        undefined,
+        options
+      );
     },
 
     /**

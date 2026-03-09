@@ -28,6 +28,7 @@ import { Card } from '../ui/card';
 import graduadosService from '../../services/api/graduados.service';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { buildServiceAssetUrl } from '../../config/environment';
 import headerImg from '../../assets/graduation-certificates/img_primera.png';
 import footerImg from '../../assets/graduation-certificates/img_segunda.png';
 import { QRCodeSVG } from 'qrcode.react';
@@ -194,32 +195,91 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     return { pdf, fileName };
   };
 
+  const downloadBlobAsFile = (pdfBlob: Blob) => {
+    const fileName = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
+    const url = window.URL.createObjectURL(pdfBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const getPublicPdfUrl = () => {
+    const pdfUrl = certificate.certificatePdfUrl?.trim();
+    if (pdfUrl) {
+      return buildServiceAssetUrl('registro-academico', pdfUrl);
+    }
+
+    const certificateNumber = certificate.certificateNumber?.trim();
+    if (!certificateNumber) {
+      return null;
+    }
+
+    return buildServiceAssetUrl(
+      'registro-academico',
+      `/uploads/graduation-certificates/${encodeURIComponent(certificateNumber)}.pdf`
+    );
+  };
+
+  const descargarPdfPorRutaPublica = async (): Promise<Blob> => {
+    const publicPdfUrl = getPublicPdfUrl();
+    if (!publicPdfUrl) {
+      throw new Error('No se encontrÛ una ruta p˙blica para descargar el certificado.');
+    }
+
+    const response = await fetch(publicPdfUrl, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/pdf',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`No se pudo descargar el certificado (${response.status}).`);
+    }
+
+    return response.blob();
+  };
+
   const handleDownload = async () => {
     setIsDownloading(true);
     toast.loading('Descargando certificado PDF...', { id: 'pdf-generation' });
 
     try {
-      // Registrar la descarga
+      // Registrar la descarga (no bloquea la descarga si falla)
       if (certificate?.id) {
         try {
-          await graduadosService.descargas.registrar(certificate.id);
+          await graduadosService.descargas.registrar(certificate.id, {
+            skipErrorToast: true,
+          });
         } catch (error) {
           console.warn('No se pudo registrar la descarga:', error);
         }
       }
 
-      // Descargar el PDF desde el backend (el mismo que se env√≠a por correo)
-      const pdfBlob = await graduadosService.certificados.descargarPDF(certificate.id);
+      let pdfBlob: Blob;
 
-      // Crear URL temporal para descargar
-      const url = window.URL.createObjectURL(pdfBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      try {
+        // Intento principal por endpoint de descarga
+        pdfBlob = await graduadosService.certificados.descargarPDF(certificate.id, {
+          skipErrorToast: true,
+        });
+      } catch (downloadError: any) {
+        const status = Number(downloadError?.status);
+
+        // Fallback robusto para autoservicio publico sin JWT
+        if (status === 401 || status === 403 || status === 404) {
+          pdfBlob = await descargarPdfPorRutaPublica();
+        } else {
+          throw downloadError;
+        }
+      }
+
+      downloadBlobAsFile(pdfBlob);
 
       toast.success('Certificado descargado exitosamente!', {
         id: 'pdf-generation',
@@ -943,3 +1003,4 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     </div>
   );
 }
+
