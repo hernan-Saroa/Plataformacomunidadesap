@@ -7,10 +7,11 @@ import { useState } from 'react';
 import {
   X, FileText, User, Calendar, DollarSign, Clock, Building2, AlertTriangle,
   CheckCircle, TrendingUp, History, Paperclip, Edit, Archive, RefreshCw,
-  CreditCard, FileCheck, Scale, AlertCircle
+  CreditCard, FileCheck, Scale, AlertCircle, Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { procesosCoactivosService } from '../../../../services/api/legal.service';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import { ModalHeaderClean } from '../modulos/ModalHeaderClean';
 
@@ -25,11 +26,13 @@ interface ProcesoCoactivo {
     direccion: string;
   };
   responsable: string;
-  etapa: 'IDENTIFICADO' | 'PERSUASIVO' | 'PREJUDICIAL' | 'MANDAMIENTO';
+  etapa: 'PERSUASIVA' | 'COACTIVA' | 'MEDIDAS_CAUTELARES' | 'EXCEPCIONES' | 'LIQUIDACION';
   fechaInicio: Date;
   fechaLimite: Date;
   diasRestantes: number;
-  valorDeuda: number;
+  capital: number;
+  intereses: number;
+  costas: number;
   valorTotal: number;
   valorPagado: number;
   ultimaActuacion: string;
@@ -77,13 +80,46 @@ export function ModalVerExpedienteCoactivo({
   onGenerarActo
 }: ModalVerExpedienteCoactivoProps) {
   const [tabActiva, setTabActiva] = useState('general');
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadData, setUploadData] = useState({
+    file: null as File | null,
+    esTituloEjecutivo: false,
+    fechaEjecutoria: ''
+  });
+
+  const handleUpload = async () => {
+    if (!uploadData.file) {
+      toast.error('Debe seleccionar un archivo');
+      return;
+    }
+    if (uploadData.esTituloEjecutivo && !uploadData.fechaEjecutoria) {
+      toast.error('Debe ingresar la fecha de ejecutoria del título');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      await procesosCoactivosService.uploadAdjunto(proceso.id, uploadData.file, {
+        esTituloEjecutivo: uploadData.esTituloEjecutivo,
+        fechaEjecutoria: uploadData.fechaEjecutoria
+      });
+      toast.success('Documento adjuntado exitosamente');
+      setUploadData({ file: null, esTituloEjecutivo: false, fechaEjecutoria: '' });
+      // Idealmente aquí se llamaría a un onRecargar() para actualizar la lista de documentos
+    } catch (error) {
+      toast.error('Error al subir el documento');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const getEtapaColor = (etapa: string) => {
     switch (etapa) {
-      case 'IDENTIFICADO': return { bg: 'bg-gray-100', text: 'text-gray-800', icon: '📋' };
-      case 'PERSUASIVO': return { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: '⚠️' };
-      case 'PREJUDICIAL': return { bg: 'bg-orange-100', text: 'text-orange-800', icon: '📢' };
-      case 'MANDAMIENTO': return { bg: 'bg-red-100', text: 'text-red-800', icon: '⚖️' };
+      case 'PERSUASIVA': return { bg: 'bg-amber-100', text: 'text-amber-800', icon: '⚠️' };
+      case 'COACTIVA': return { bg: 'bg-indigo-100', text: 'text-indigo-800', icon: '⚖️' };
+      case 'MEDIDAS_CAUTELARES': return { bg: 'bg-purple-100', text: 'text-purple-800', icon: '🔒' };
+      case 'EXCEPCIONES': return { bg: 'bg-red-100', text: 'text-red-800', icon: '🛡️' };
+      case 'LIQUIDACION': return { bg: 'bg-green-100', text: 'text-green-800', icon: '💰' };
       default: return { bg: 'bg-gray-100', text: 'text-gray-800', icon: '📋' };
     }
   };
@@ -170,13 +206,13 @@ export function ModalVerExpedienteCoactivo({
 
                   {/* Días Restantes */}
                   <div className={`bg-white rounded-lg p-4 border-2 ${proceso.diasRestantes < 0 ? 'border-red-300' :
-                      proceso.diasRestantes <= 10 ? 'border-yellow-300' :
-                        'border-green-300'
+                    proceso.diasRestantes <= 10 ? 'border-yellow-300' :
+                      'border-green-300'
                     }`}>
                     <p className="text-xs text-gray-600 font-bold mb-2">Plazo</p>
                     <p className={`text-xl font-bold ${proceso.diasRestantes < 0 ? 'text-red-600' :
-                        proceso.diasRestantes <= 10 ? 'text-yellow-600' :
-                          'text-green-600'
+                      proceso.diasRestantes <= 10 ? 'text-yellow-600' :
+                        'text-green-600'
                       }`}>
                       {Math.abs(proceso.diasRestantes)} días
                     </p>
@@ -330,11 +366,23 @@ export function ModalVerExpedienteCoactivo({
                       </div>
                     ))}
 
-                    <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-bold text-blue-900">Total Obligaciones</p>
-                        <p className="text-xl font-bold text-blue-600">
-                          {formatCurrency(proceso.valorDeuda)}
+                    <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 space-y-3">
+                      <div className="flex items-center justify-between border-b border-blue-100 pb-2">
+                        <p className="text-sm font-semibold text-blue-800">Capital Inicial</p>
+                        <p className="text-base font-bold text-blue-900">{formatCurrency(proceso.capital)}</p>
+                      </div>
+                      <div className="flex items-center justify-between border-b border-blue-100 pb-2">
+                        <p className="text-sm font-semibold text-blue-800">Intereses Moratorios</p>
+                        <p className="text-base font-bold text-blue-900">{formatCurrency(proceso.intereses)}</p>
+                      </div>
+                      <div className="flex items-center justify-between border-b border-blue-100 pb-2">
+                        <p className="text-sm font-semibold text-blue-800">Costas Procesales</p>
+                        <p className="text-base font-bold text-blue-900">{formatCurrency(proceso.costas)}</p>
+                      </div>
+                      <div className="flex items-center justify-between pt-1">
+                        <p className="text-base font-bold text-red-700">Total Adeudado</p>
+                        <p className="text-2xl font-black text-red-600">
+                          {formatCurrency(proceso.valorTotal)}
                         </p>
                       </div>
                     </div>
@@ -391,7 +439,67 @@ export function ModalVerExpedienteCoactivo({
                   </TabsContent>
 
                   {/* TAB: Documentos */}
-                  <TabsContent value="documentos" className="space-y-3">
+                  <TabsContent value="documentos" className="space-y-4">
+                    {/* Sección de Subida de Documentos */}
+                    <div className="bg-white border-2 border-dashed border-gray-300 rounded-lg p-5">
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center flex-shrink-0">
+                          <Upload className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <div className="flex-1 space-y-4">
+                          <div>
+                            <h4 className="text-sm font-bold text-gray-900">Adjuntar Nuevo Documento</h4>
+                            <p className="text-xs text-gray-500 mt-1">Sube PDFs, Imágenes o documentos relacionados al proceso.</p>
+                          </div>
+
+                          <input
+                            type="file"
+                            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                            onChange={(e) => setUploadData({ ...uploadData, file: e.target.files?.[0] || null })}
+                          />
+
+                          <div className="flex items-center gap-2 mt-2">
+                            <input
+                              type="checkbox"
+                              id="esTituloEjecutivo"
+                              checked={uploadData.esTituloEjecutivo}
+                              onChange={(e) => setUploadData({ ...uploadData, esTituloEjecutivo: e.target.checked })}
+                              className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            />
+                            <label htmlFor="esTituloEjecutivo" className="text-sm font-semibold text-gray-700">
+                              Es Título Ejecutivo
+                            </label>
+                          </div>
+
+                          {uploadData.esTituloEjecutivo && (
+                            <div className="bg-amber-50 p-3 rounded-lg border border-amber-200">
+                              <label className="block text-xs font-bold text-amber-900 mb-1">
+                                Fecha de Ejecutoria *
+                              </label>
+                              <input
+                                type="date"
+                                value={uploadData.fechaEjecutoria}
+                                onChange={(e) => setUploadData({ ...uploadData, fechaEjecutoria: e.target.value })}
+                                className="w-full px-3 py-2 border border-amber-300 rounded-md text-sm outline-none focus:border-amber-500"
+                              />
+                              <p className="text-xs text-amber-700 mt-1">
+                                Esta fecha se utilizará para calcular la prescripción y los intereses moratorios.
+                              </p>
+                            </div>
+                          )}
+
+                          <button
+                            onClick={handleUpload}
+                            disabled={!uploadData.file || isUploading}
+                            className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isUploading ? 'Subiendo...' : 'Subir Documento'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Lista de Documentos */}
                     {proceso.documentos.map((doc, index) => (
                       <div key={index} className="bg-gray-50 rounded-lg p-4 border hover:border-blue-300 transition-all">
                         <div className="flex items-center justify-between">

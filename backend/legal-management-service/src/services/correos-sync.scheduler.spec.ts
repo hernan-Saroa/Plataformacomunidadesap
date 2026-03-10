@@ -78,7 +78,7 @@ describe('CorreosSyncScheduler', () => {
 
     it('should prevent overlapping runs', async () => {
       // Mock syncInbox to take some time
-      correosService.syncInbox.mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)));
+      (correosService.syncInbox as jest.Mock).mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)));
 
       // Start first run
       const firstRun = scheduler.handleCron();
@@ -94,7 +94,7 @@ describe('CorreosSyncScheduler', () => {
 
     it('should handle successful sync', async () => {
       const mockResult = { synced: 5, errors: 0 };
-      correosService.syncInbox.mockResolvedValue(mockResult);
+      (correosService.syncInbox as jest.Mock).mockResolvedValue(mockResult);
 
       await scheduler.handleCron();
 
@@ -105,7 +105,7 @@ describe('CorreosSyncScheduler', () => {
 
     it('should handle sync errors', async () => {
       const error = new Error('Sync failed');
-      correosService.syncInbox.mockRejectedValue(error);
+      (correosService.syncInbox as jest.Mock).mockRejectedValue(error);
 
       await scheduler.handleCron();
 
@@ -115,7 +115,7 @@ describe('CorreosSyncScheduler', () => {
     });
 
     it('should reset isRunning flag after completion', async () => {
-      correosService.syncInbox.mockResolvedValue({ synced: 0, errors: 0 });
+      (correosService.syncInbox as jest.Mock).mockResolvedValue({ synced: 0, errors: 0 });
 
       await scheduler.handleCron();
 
@@ -124,7 +124,7 @@ describe('CorreosSyncScheduler', () => {
     });
 
     it('should reset isRunning flag after error', async () => {
-      correosService.syncInbox.mockRejectedValue(new Error('Test error'));
+      (correosService.syncInbox as jest.Mock).mockRejectedValue(new Error('Test error'));
 
       await scheduler.handleCron();
 

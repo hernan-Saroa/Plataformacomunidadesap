@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { X, FileCheck, Calendar, User, AlertCircle, CheckCircle, Download, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalHeaderClean } from '../modulos/ModalHeaderClean';
 
 interface ModalGenerarActoAdministrativoProps {
@@ -15,6 +15,9 @@ interface ModalGenerarActoAdministrativoProps {
   proceso: {
     id: string;
     deudor: string;
+    capital?: number;
+    intereses?: number;
+    costas?: number;
     valorTotal: number;
     etapa: string;
   };
@@ -38,11 +41,19 @@ export function ModalGenerarActoAdministrativo({
 
   const actosDisponibles = [
     {
+      value: 'AUTO_APERTURA',
+      label: 'Auto de Apertura Persuasiva',
+      descripcion: 'Termina el proceso por pago total',
+      icon: '📝',
+      etapaRequerida: ['PERSUASIVA'],
+      articulos: ['Art. 823 del Estatuto Tributario']
+    },
+    {
       value: 'MANDAMIENTO_PAGO',
       label: 'Mandamiento de Pago',
       descripcion: 'Acto que ordena el pago de la obligación',
       icon: '⚖️',
-      etapaRequerida: ['PREJUDICIAL', 'MANDAMIENTO'],
+      etapaRequerida: ['PERSUASIVA', 'COACTIVA'],
       articulos: ['Art. 826-828 del Estatuto Tributario']
     },
     {
@@ -50,7 +61,7 @@ export function ModalGenerarActoAdministrativo({
       label: 'Resolución de Embargo',
       descripcion: 'Ordena embargo de bienes del deudor',
       icon: '🔒',
-      etapaRequerida: ['MANDAMIENTO'],
+      etapaRequerida: ['COACTIVA', 'MEDIDAS_CAUTELARES'],
       articulos: ['Art. 836-837 del Estatuto Tributario']
     },
     {
@@ -58,7 +69,7 @@ export function ModalGenerarActoAdministrativo({
       label: 'Resolución de Remate',
       descripcion: 'Autoriza el remate de bienes embargados',
       icon: '🔨',
-      etapaRequerida: ['MANDAMIENTO'],
+      etapaRequerida: ['MEDIDAS_CAUTELARES'],
       articulos: ['Art. 842-843 del Estatuto Tributario']
     },
     {
@@ -66,7 +77,7 @@ export function ModalGenerarActoAdministrativo({
       label: 'Auto de Archivo',
       descripcion: 'Archiva el proceso coactivo',
       icon: '📦',
-      etapaRequerida: ['IDENTIFICADO', 'PERSUASIVO', 'PREJUDICIAL', 'MANDAMIENTO'],
+      etapaRequerida: ['PERSUASIVA', 'COACTIVA', 'EXCEPCIONES'],
       articulos: ['Art. 825 del Estatuto Tributario']
     },
     {
@@ -74,7 +85,7 @@ export function ModalGenerarActoAdministrativo({
       label: 'Resolución de Terminación',
       descripcion: 'Termina el proceso por pago total',
       icon: '✅',
-      etapaRequerida: ['MANDAMIENTO'],
+      etapaRequerida: ['LIQUIDACION'],
       articulos: ['Art. 825 del Estatuto Tributario']
     },
     {
@@ -82,7 +93,7 @@ export function ModalGenerarActoAdministrativo({
       label: 'Auto de Suspensión',
       descripcion: 'Suspende temporalmente el proceso',
       icon: '⏸️',
-      etapaRequerida: ['PERSUASIVO', 'PREJUDICIAL', 'MANDAMIENTO'],
+      etapaRequerida: ['PERSUASIVA', 'COACTIVA', 'EXCEPCIONES'],
       articulos: ['Art. 825-3 del Estatuto Tributario']
     }
   ];
@@ -92,6 +103,34 @@ export function ModalGenerarActoAdministrativo({
   );
 
   const actoSeleccionado = actosDisponibles.find(a => a.value === tipoActo);
+
+  const generarPlantilla = (tipo: string) => {
+    const formatMoney = (val: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(val);
+    const deudor = proceso.deudor;
+    const capital = proceso.capital ? formatMoney(proceso.capital) : '$0';
+    const intereses = proceso.intereses ? formatMoney(proceso.intereses) : '$0';
+    const costas = proceso.costas ? formatMoney(proceso.costas) : '$0';
+    const total = proceso.valorTotal ? formatMoney(proceso.valorTotal) : '$0';
+
+    switch (tipo) {
+      case 'AUTO_APERTURA':
+        return `RESUELVE:\n\nPRIMERO: Abrir formalmente la etapa persuasiva dentro del proceso de cobro a favor de la entidad, y en contra del deudor ${deudor}.\n\nSEGUNDO: Invitar al deudor a cancelar sus obligaciones pendientes por valor de ${total} antes del inicio de la etapa coactiva administrativa.\n\nTERCERO: Comuníquese y Notifíquese conforme a la ley.`;
+      case 'MANDAMIENTO_PAGO':
+        return `RESUELVE:\n\nPRIMERO: Librar mandamiento de pago por la vía administrativa coactiva a favor de la entidad, y en contra de ${deudor}.\n\nSEGUNDO: El deudor deberá cancelar las siguientes obligaciones:\n- Capital: ${capital}\n- Intereses Moratorios: ${intereses}\n- Costas Procesales: ${costas}\nTOTAL A PAGAR: ${total}\n\nTERCERO: Notifíquese conforme a la ley.`;
+      case 'RESOLUCION_EMBARGO':
+        return `RESUELVE:\n\nPRIMERO: Decretar el embargo de las sumas de dinero, títulos depósitos, cuentas bancarias y bienes de propiedad de ${deudor}, hasta por la suma de ${formatMoney(proceso.valorTotal * 1.5)} para asegurar el pago del crédito adeudado.`;
+      case 'RESOLUCION_REMATE':
+        return `RESUELVE:\n\nPRIMERO: Ordenar el remate de los bienes embargados y secuestrados de propiedad de ${deudor}, para que con su producto se pague la obligación adeudada por valor de ${total}.`;
+      case 'AUTO_ARCHIVO':
+        return `RESUELVE:\n\nPRIMERO: Declarar terminado y ordenar el archivo del proceso de cobro coactivo No. ${proceso.id} seguido en contra de ${deudor}.`;
+      case 'RESOLUCION_TERMINACION':
+        return `RESUELVE:\n\nPRIMERO: Dar por terminado el proceso administrativo de cobro coactivo seguido en contra de ${deudor}, por pago total de la obligación al haber cancelado ${total}.\n\nSEGUNDO: Ordenar el levantamiento de las medidas cautelares decretadas.`;
+      case 'AUTO_SUSPENSION':
+        return `RESUELVE:\n\nPRIMERO: Suspender temporalmente el proceso administrativo de cobro coactivo No. ${proceso.id} seguido en contra de ${deudor}.`;
+      default:
+        return '';
+    }
+  };
 
   const handleGenerarVistaPrevia = () => {
     if (!tipoActo || !numeroActo.trim()) {
@@ -191,7 +230,7 @@ export function ModalGenerarActoAdministrativo({
 
             {/* Contenido */}
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              
+
               {/* Información del Proceso */}
               <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-4">
                 <div className="grid grid-cols-3 gap-4 text-sm">
@@ -215,7 +254,7 @@ export function ModalGenerarActoAdministrativo({
                 <label className="block text-sm font-bold text-gray-900 mb-3">
                   Tipo de Acto Administrativo *
                 </label>
-                
+
                 {actosPermitidos.length === 0 ? (
                   <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4 flex gap-3">
                     <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
@@ -239,12 +278,12 @@ export function ModalGenerarActoAdministrativo({
                           // Auto-generar número
                           const prefix = acto.value.split('_')[0];
                           setNumeroActo(`${prefix}-${new Date().getFullYear()}-`);
+                          setFundamentacion(generarPlantilla(acto.value));
                         }}
-                        className={`p-4 rounded-lg border-2 transition-all text-left ${
-                          tipoActo === acto.value
-                            ? 'border-indigo-600 bg-indigo-50'
-                            : 'border-gray-300 bg-white hover:border-gray-400'
-                        }`}
+                        className={`p-4 rounded-lg border-2 transition-all text-left ${tipoActo === acto.value
+                          ? 'border-indigo-600 bg-indigo-50'
+                          : 'border-gray-300 bg-white hover:border-gray-400'
+                          }`}
                       >
                         <div className="flex items-start gap-3">
                           <div className="text-2xl">{acto.icon}</div>
@@ -322,7 +361,7 @@ export function ModalGenerarActoAdministrativo({
                     <h3 className="text-sm font-bold text-gray-900 mb-3">
                       Opciones del Documento
                     </h3>
-                    
+
                     <label className="flex items-start gap-3 cursor-pointer">
                       <input
                         type="checkbox"
@@ -364,7 +403,7 @@ export function ModalGenerarActoAdministrativo({
                     <div>
                       <p className="text-sm font-bold text-blue-900">Importante</p>
                       <p className="text-xs text-blue-700 mt-1">
-                        El acto administrativo se generará con el membrete oficial de la ESAP y quedará registrado 
+                        El acto administrativo se generará con el membrete oficial de la ESAP y quedará registrado
                         en el expediente del proceso coactivo. Se recomienda revisar la vista previa antes de generar.
                       </p>
                     </div>

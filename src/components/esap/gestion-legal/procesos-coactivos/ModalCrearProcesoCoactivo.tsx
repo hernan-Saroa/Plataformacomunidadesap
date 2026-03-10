@@ -40,6 +40,8 @@ export function ModalCrearProcesoCoactivo({
   // Paso 3: Información del proceso
   const [responsable, setResponsable] = useState('');
   const [fechaLimite, setFechaLimite] = useState('');
+  const [fechaEjecutoria, setFechaEjecutoria] = useState('');
+  const [tipoInteresAplicable, setTipoInteresAplicable] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -129,6 +131,16 @@ export function ModalCrearProcesoCoactivo({
       return;
     }
 
+    if (!fechaEjecutoria) {
+      toast.error('Ingrese la fecha de ejecutoria del título');
+      return;
+    }
+
+    if (!tipoInteresAplicable) {
+      toast.error('Seleccione el tipo de interés aplicable');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -150,8 +162,10 @@ export function ModalCrearProcesoCoactivo({
         valorTotal: calcularValorTotal(),
         responsable,
         fechaLimite: new Date(fechaLimite),
+        fechaEjecutoria: new Date(fechaEjecutoria),
+        tipoInteresAplicable,
         observaciones,
-        etapa: 'IDENTIFICADO',
+        etapa: 'PERSUASIVA',
         fechaCreacion: new Date()
       };
 
@@ -533,6 +547,33 @@ export function ModalCrearProcesoCoactivo({
                         className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 outline-none"
                         required
                       />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-900 mb-2">
+                        Fecha de Ejecutoria (Título) *
+                      </label>
+                      <input
+                        type="date"
+                        value={fechaEjecutoria}
+                        onChange={(e) => setFechaEjecutoria(e.target.value)}
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-900 mb-2">
+                        Tipo de Interés Aplicable *
+                      </label>
+                      <select
+                        value={tipoInteresAplicable}
+                        onChange={(e) => setTipoInteresAplicable(e.target.value)}
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 outline-none"
+                        required
+                      >
+                        <option value="">Seleccione un tipo de interés</option>
+                        <option value="USURA">Tasa de Usura Vigente</option>
+                        <option value="DIAN">Interés DIAN</option>
+                      </select>
                     </div>
                   </div>
 

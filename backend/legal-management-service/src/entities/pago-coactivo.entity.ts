@@ -21,6 +21,30 @@ export class PagoCoactivo {
     })
     valor: number;
 
+    @Column({
+        name: 'abono_capital', type: 'numeric', precision: 15, scale: 2, default: 0, transformer: {
+            to: (value: number) => value,
+            from: (value: string) => parseFloat(value)
+        }
+    })
+    abonoCapital: number;
+
+    @Column({
+        name: 'abono_intereses', type: 'numeric', precision: 15, scale: 2, default: 0, transformer: {
+            to: (value: number) => value,
+            from: (value: string) => parseFloat(value)
+        }
+    })
+    abonoIntereses: number;
+
+    @Column({
+        name: 'abono_costas', type: 'numeric', precision: 15, scale: 2, default: 0, transformer: {
+            to: (value: number) => value,
+            from: (value: string) => parseFloat(value)
+        }
+    })
+    abonoCostas: number;
+
     @Column({ name: 'fecha_pago', type: 'timestamp' })
     fechaPago: Date;
 

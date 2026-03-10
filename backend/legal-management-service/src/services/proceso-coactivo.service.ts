@@ -5,6 +5,7 @@ import { ProcesoCoactivo, DeudorInfo, ObligacionInfo, EstadoProcesoCoactivo } fr
 import { ProcesoCoactivoAdjunto } from '../entities/proceso-coactivo-adjunto.entity';
 import { PagoCoactivo } from '../entities/pago-coactivo.entity';
 import { CoactivoHistorial } from '../entities/coactivo-historial.entity';
+import { TasaReferencia } from '../entities/tasa-referencia.entity';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -54,6 +55,8 @@ export class ProcesoCoactivoService {
         private readonly pagoRepository: Repository<PagoCoactivo>,
         @InjectRepository(CoactivoHistorial)
         private readonly historialRepository: Repository<CoactivoHistorial>,
+        @InjectRepository(TasaReferencia)
+        private readonly tasaRepository: Repository<TasaReferencia>,
     ) { }
 
     async findAll(): Promise<ProcesoCoactivo[]> {
@@ -103,7 +106,7 @@ export class ProcesoCoactivoService {
             radicado,
             deudor: dto.deudor,
             obligacion: dto.obligacion,
-            estado: 'IDENTIFICADO',
+            estado: 'PERSUASIVA',
             responsable: dto.responsable || 'Sin asignar',
             observaciones: dto.observaciones,
             ultimaActuacion: new Date(),
@@ -236,19 +239,31 @@ export class ProcesoCoactivoService {
             totalMonto += proceso.saldoPendiente ?? proceso.obligacion?.valor ?? 0;
 
             // Contar activos (no finalizados)
-            if (proceso.estado !== 'FINALIZADO') {
+            if (proceso.estado !== 'LIQUIDACION') {
                 activos++;
             }
 
-            // Calcular días para vencimiento (crítico si vence pronto o ya venció)
-            const fechaVencimiento = proceso.obligacion?.fechaVencimiento
-                ? new Date(proceso.obligacion.fechaVencimiento)
-                : null;
-            if (fechaVencimiento && proceso.estado !== 'FINALIZADO') {
-                const diasParaVencer = Math.floor((fechaVencimiento.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
-                // Es crítico si vence en 7 días o menos (incluye ya vencidos)
-                if (diasParaVencer <= 7) {
+            // Calcular prescripción legal (5 años desde fechaEjecutoria)
+            if (proceso.fechaEjecutoria && proceso.estado !== 'LIQUIDACION') {
+                const fechaPrescripcion = new Date(proceso.fechaEjecutoria);
+                fechaPrescripcion.setFullYear(fechaPrescripcion.getFullYear() + 5);
+
+                const diasParaPrescribir = Math.floor((fechaPrescripcion.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+
+                // Riesgo Crítico si faltan 6 meses (180 días) o menos para prescribir
+                if (diasParaPrescribir <= 180) {
                     criticos++;
+                }
+            } else {
+                // Fallback a fecha de vencimiento obligación si no hay ejecutoria
+                const fechaVencimiento = proceso.obligacion?.fechaVencimiento
+                    ? new Date(proceso.obligacion.fechaVencimiento)
+                    : null;
+                if (fechaVencimiento && proceso.estado !== 'LIQUIDACION') {
+                    const diasParaVencer = Math.floor((fechaVencimiento.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+                    if (diasParaVencer <= 30) {
+                        criticos++;
+                    }
                 }
             }
 
@@ -265,25 +280,138 @@ export class ProcesoCoactivoService {
         };
     }
 
+    // ============ LÓGICA DE INTERESES Y LIQUIDACIÓN ============
+
+    async calcularLiquidacionCredito(procesoId: string): Promise<any> {
+        const proceso = await this.findOne(procesoId);
+        const capitalInicial = Number(proceso.obligacion.valor);
+        const costas = Number(proceso.valorCostas || 0);
+
+        let totalInteresMoratorio = 0;
+        let detallesMensuales: any[] = [];
+
+        // Solo calcular intereses si hay fecha de ejecutoria
+        if (proceso.fechaEjecutoria) {
+            const fechaInicio = new Date(proceso.fechaEjecutoria);
+            const hoy = new Date();
+            const tipoInteres = proceso.tipoInteresAplicable || 'DIAN';
+
+            // Buscar todas las tasas de referencia que apliquen (desde el año de ejecutoria hasta hoy)
+            const tasas = await this.tasaRepository.find({
+                where: { tipoTasa: tipoInteres as any },
+                order: { anio: 'ASC', mes: 'ASC' }
+            });
+
+            // Iterar mes a mes desde fechaInicio hasta hoy
+            let fechaActual = new Date(fechaInicio.getFullYear(), fechaInicio.getMonth(), 1);
+
+            while (fechaActual <= hoy) {
+                const mesActual = fechaActual.getMonth() + 1;
+                const anioActual = fechaActual.getFullYear();
+
+                // Encontrar la tasa para este mes/año específico
+                const tasaMes = tasas.find(t => t.anio === anioActual && t.mes === mesActual);
+
+                if (tasaMes) {
+                    // Cálculo simple: (Capital * (Tasa Anual / 12) / 100)
+                    const interesMensual = capitalInicial * ((tasaMes.valorTasa / 12) / 100);
+                    totalInteresMoratorio += interesMensual;
+
+                    detallesMensuales.push({
+                        anio: anioActual,
+                        mes: mesActual,
+                        tasaAplicada: tasaMes.valorTasa,
+                        interesGenerado: interesMensual
+                    });
+                }
+
+                // Avanzar al siguiente mes
+                fechaActual.setMonth(fechaActual.getMonth() + 1);
+            }
+        }
+
+        // Determinar cuánto se ha abonado a cada rubro analizando los pagos históricos
+        const pagos = await this.pagoRepository.find({ where: { proceso: { id: procesoId } } });
+        let totalAbonoCapital = 0;
+        let totalAbonoIntereses = 0;
+        let totalAbonoCostas = 0;
+
+        pagos.forEach(pago => {
+            totalAbonoCapital += Number(pago.abonoCapital || 0);
+            totalAbonoIntereses += Number(pago.abonoIntereses || 0);
+            totalAbonoCostas += Number(pago.abonoCostas || 0);
+        });
+
+        const saldoCapital = capitalInicial - totalAbonoCapital;
+        const saldoIntereses = totalInteresMoratorio - totalAbonoIntereses;
+        const saldoCostas = costas - totalAbonoCostas;
+
+        return {
+            capitalOriginal: capitalInicial,
+            totalInteresMoratorio: Number(totalInteresMoratorio.toFixed(2)),
+            costasOriginales: costas,
+            pagosAcumulados: {
+                capital: totalAbonoCapital,
+                intereses: totalAbonoIntereses,
+                costas: totalAbonoCostas,
+                total: totalAbonoCapital + totalAbonoIntereses + totalAbonoCostas
+            },
+            saldosPendientes: {
+                capital: Number(Math.max(0, saldoCapital).toFixed(2)),
+                intereses: Number(Math.max(0, saldoIntereses).toFixed(2)),
+                costas: Number(Math.max(0, saldoCostas).toFixed(2)),
+                total: Number((Math.max(0, saldoCapital) + Math.max(0, saldoIntereses) + Math.max(0, saldoCostas)).toFixed(2))
+            },
+            detallesMensuales
+        };
+    }
+
     // ============ GESTIÓN DE PAGOS Y AUDITORÍA ============
 
     async registrarPago(procesoId: string, dto: CreatePagoCoactivoDto): Promise<PagoCoactivo> {
+        const liquidacion = await this.calcularLiquidacionCredito(procesoId);
         const proceso = await this.findOne(procesoId);
 
-        // Crear registro de pago
+        let saldoDisponible = Number(dto.valor);
+        let abonoCostas = 0;
+        let abonoIntereses = 0;
+        let abonoCapital = 0;
+
+        // 1. Abonar a Costas Procesales primero
+        if (liquidacion.saldosPendientes.costas > 0) {
+            abonoCostas = Math.min(saldoDisponible, liquidacion.saldosPendientes.costas);
+            saldoDisponible -= abonoCostas;
+        }
+
+        // 2. Abonar a Intereses Moratorios segundo
+        if (saldoDisponible > 0 && liquidacion.saldosPendientes.intereses > 0) {
+            abonoIntereses = Math.min(saldoDisponible, liquidacion.saldosPendientes.intereses);
+            saldoDisponible -= abonoIntereses;
+        }
+
+        // 3. Abonar a Capital al final
+        if (saldoDisponible > 0) {
+            abonoCapital = Math.min(saldoDisponible, liquidacion.saldosPendientes.capital);
+            // Si por alguna razón paga de más, el excedente queda en saldoDisponible, se podría manejar como saldo a favor
+        }
+
+        // Crear registro de pago discriminado
         const pago = this.pagoRepository.create({
             proceso,
             valor: dto.valor,
             fechaPago: dto.fechaPago,
             origen: dto.origen,
             observaciones: dto.observaciones,
-            soporteUrl: dto.soporteUrl
+            soporteUrl: dto.soporteUrl,
+            abonoCostas,
+            abonoIntereses,
+            abonoCapital
         });
         const savedPago = await this.pagoRepository.save(pago);
 
-        // Actualizar acumulados en proceso
+        // Actualizar acumulados en proceso globalmente para retrocompatibilidad
         const totalPagado = Number(proceso.valorPagado || 0) + Number(dto.valor);
-        const nuevoSaldo = Number(proceso.obligacion.valor) - totalPagado;
+        const nuevoSaldo = liquidacion.saldosPendientes.total - Number(dto.valor);
 
         proceso.valorPagado = totalPagado;
         proceso.saldoPendiente = nuevoSaldo;

@@ -444,10 +444,12 @@ interface ConfiguracionesSIGLContextType {
   getEjesEstrategicosActivos: () => EjeEstrategico[];
   getTiposIndicadoresActivos: () => TipoIndicador[];
   getTiposRequerimientosActivos: () => TipoRequerimiento[];
+  getOrganismosControlActivos: () => OrganismoControl[];
   actualizarConfiguraciones: (nuevasConfigs: ConfiguracionModulo[]) => void;
   actualizarEjesEstrategicos: (nuevosEjes: EjeEstrategico[]) => void;
   actualizarTiposIndicadores: (nuevosTipos: TipoIndicador[]) => void;
   actualizarTiposRequerimientos: (nuevosTipos: TipoRequerimiento[]) => void;
+  actualizarOrganismosControl: (nuevosOrganismos: OrganismoControl[]) => void;
   guardarConfiguraciones: () => void;
   restablecerDefecto: () => void;
   setCambiosPendientes: (value: boolean) => void;
