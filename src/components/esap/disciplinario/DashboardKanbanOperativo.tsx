@@ -52,9 +52,10 @@ import { useResponsive } from './hooks/useResponsive'; // ✅ Hook responsive si
 import { ModalDetallesProceso } from './ModalDetallesProceso'; // ✅ Modal World Class con pestañas
 import { WizardConvertirProcesoWorldClass } from './WizardConvertirProcesoWorldClass'; // ✅ Wizard conversión con disponibilidad de profesionales
 import { ModalDetallesNoticia } from './ModalDetallesNoticia'; // ✅ Modal World Class detalles de noticia
-import { noticiasService, procesosService, ensureDataSeeded } from '../../../services/api/esapDataService'; // ✅ Datos desde Supabase (servidor v7 in-memory)
 import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProcess as ApiProceso } from '../../../services/api/disciplinary.service';
 import { entidadesRemisionService, EntidadRemision } from '../../../services/api/entidadesRemisionService';
+// ✅ IMPORTAR SERVICIOS DE SUPABASE PARA PERSISTENCIA LOCAL (solo uso interno, datos principales vienen del backend)
+import { noticiasService, procesosService } from '../../../services/api/esapDataService';
 import {
   KanbanButtonPrimary,
   KanbanButtonSecondary,
@@ -755,6 +756,7 @@ interface VistaListaProps {
   onVerNoticiaAsociada?: (noticia: Noticia) => void; // ✅ AGREGADO: Coherencia con Kanban
   onEditarNoticia?: (noticia: Noticia) => void; // ✅ AGREGADO: Coherencia con Kanban
   onEditarProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
+  onCambiarEtapa?: (proceso: Proceso, nuevaEtapa: string) => void; // ✅ NUEVO: Handler para cambiar etapa
   isMobile?: boolean;
 }
 
@@ -780,6 +782,7 @@ function VistaLista({
   onVerNoticiaAsociada,
   onEditarNoticia,
   onEditarProceso, // ✅ NUEVO: Editar proceso
+  onCambiarEtapa, // ✅ NUEVO: Handler para cambiar etapa
   isMobile
 }: VistaListaProps) {
   const [filtroEtapa, setFiltroEtapa] = useState<string>('todos');
@@ -1137,7 +1140,7 @@ function VistaLista({
                         ) : (
                           <EtapaSelector
                             etapaActual={proceso!.etapaActual}
-                            onCambiarEtapa={(nuevaEtapa) => handleDropItem(proceso! as Item, nuevaEtapa)}
+                            onCambiarEtapa={(nuevaEtapa) => onCambiarEtapa?.(proceso!, nuevaEtapa)}
                           />
                         )}
                         {proceso && (
@@ -2114,73 +2117,15 @@ export function DashboardKanbanOperativo({
     return () => observer.disconnect();
   }, []);
 
-  // ✅ DATOS REALES: Se cargan desde Supabase al montar
+  // ✅ DATOS DESDE BACKEND (API REST) - Carga lazy desde disciplinaryService
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingData, setLoadingData] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
-
-  // ✅ Cargar noticias y procesos desde Supabase (servidor v7 in-memory — datos siempre disponibles)
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoadingData(true);
-        setDataError(null);
-        await ensureDataSeeded();
-        const [noticiasRaw, procesosRaw] = await Promise.all([
-          noticiasService.getAll(),
-          procesosService.getAll(),
-        ]);
-        
-        console.log(`[DashboardKanban] Datos cargados: Noticias=${noticiasRaw.length}, Procesos=${procesosRaw.length}`);
-        
-        if (cancelled) return;
-        // Asegurar campos de tipo
-        const noticias: Noticia[] = noticiasRaw.map((n: any) => ({ ...n, tipo: 'noticia' as const }));
-        const procesos: Proceso[] = procesosRaw.map((p: any) => {
-          const diasRestantes = p.termino?.diasRestantes || 0;
-          const diasTotal = p.termino?.dias || 30;
-          let semaforo: 'verde' | 'amarillo' | 'rojo' = 'verde';
-          if (diasRestantes <= 0) semaforo = 'rojo';
-          else {
-            const pct = (diasRestantes / diasTotal) * 100;
-            if (pct > 40) semaforo = 'verde';
-            else if (pct > 20) semaforo = 'amarillo';
-            else semaforo = 'rojo';
-          }
-          return {
-            ...p,
-            tipo: 'proceso' as const,
-            semaforo,
-            noticiaOrigen: p.noticiaOrigen || 'NOT-2026-0001',
-            diasRestantes,
-            porcentajeTiempo: diasTotal > 0 ? Math.round(((diasTotal - diasRestantes) / diasTotal) * 100) : 100,
-            estadoActual: p.estadoActual || p.estadoKanban || 'En Desarrollo',
-            borradores: p.borradores || [],
-            documentos: p.documentos || [],
-            pendienteAprobacion: p.pendienteAprobacion || false,
-            ultimaActuacion: p.ultimaActuacion || p.fechaInicio,
-            fechaCreacion: p.fechaCreacion || p.fechaInicio,
-            historialAuditoria: p.historialAuditoria || [],
-            cedula: typeof p.denunciado === 'object' ? p.denunciado?.numeroIdentificacion || '' : '',
-            profesionalAsignado: p.profesionalAsignado || 'Sin asignar',
-          };
-        });
-        setItems([...noticias, ...procesos]);
-        console.log(`[DashboardKanban] Cargados ${noticias.length} noticias y ${procesos.length} procesos desde Supabase`);
-      } catch (err: any) {
-        console.error('[DashboardKanban] Error cargando datos:', err);
-        if (!cancelled) setDataError(err.message || 'Error al cargar datos');
-      } finally {
-        if (!cancelled) setLoadingData(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-  const [modalActivo, setModalActivo] = useState<ModalType>(null);
   const [itemSeleccionado, setItemSeleccionado] = useState<any>(null);
   const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
+  
+  // ✅ ESTADO PARA MODALES
+  const [modalActivo, setModalActivo] = useState<ModalType>(null);
 
   // ✅ BÚSQUEDA GLOBAL COLAPSABLE — ícono → campo expandido
   const [busquedaGlobal, setBusquedaGlobal] = useState('');
@@ -2271,11 +2216,15 @@ export function DashboardKanbanOperativo({
     setProfesionalesLoading(true);
     try {
       const profesionales = await disciplinaryService.getProfesionales();
+      console.log('[DashboardKanban] Profesionales recibidos del backend:', profesionales);
+      
       // Mapear al formato esperado: { id, nombre }
       const profesionalesFormateados = profesionales.map((p: any) => ({
         id: p.id,
-        nombre: p.nombreCompleto || p.nombre || p.email
+        nombre: p.nombreCompleto || p.nombre || p.email || `Profesional ${p.id}`
       }));
+      
+      console.log('[DashboardKanban] Profesionales formateados:', profesionalesFormateados);
       setProfesionalesList(profesionalesFormateados);
     } catch (error: any) {
       console.error('Error al cargar profesionales:', error);
@@ -2295,67 +2244,292 @@ export function DashboardKanbanOperativo({
     cargarProfesionales();
   }, []);
 
+  // ✅ NUEVO: Cargar configuración de etapas desde el backend
+  const [etapasConfig, setEtapasConfig] = useState<any[]>([]);
+  const [etapasLoading, setEtapasLoading] = useState(true);
+  const [datosCargados, setDatosCargados] = useState(false);
+
+  // ✅ NUEVO: Función helper para obtener datos de arrays seguros (evita errores cuando backend retorna objeto en vez de array)
+  const getDataArray = <T,>(data: any): T[] => {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    if (data.data && Array.isArray(data.data)) return data.data;
+    return [];
+  };
+
+  const cargarEtapas = async () => {
+    setEtapasLoading(true);
+    try {
+      const etapas = await disciplinaryService.getStageConfiguration();
+      console.log('[DashboardKanban] Etapas cargadas desde backend:', etapas);
+      // Si no tienen orden, asignar orden por defecto basado en índice
+      const etapasOrdenadas = (getDataArray<any>(etapas) || []).map((etapa, idx) => ({
+        ...etapa,
+        orden: etapa.orden ?? (idx + 1)
+      }));
+      setEtapasConfig(etapasOrdenadas);
+    } catch (error: any) {
+      console.error('Error al cargar etapas:', error);
+      // Usar etapas por defecto si falla
+      setEtapasConfig([]);
+    } finally {
+      setEtapasLoading(false);
+    }
+  };
+
+  // ✅ NUEVO: Cargar noticias y procesos desde el backend
+  const cargarDatos = async () => {
+    setLoading(true);
+    setDataError(null);
+    try {
+      console.log('[DashboardKanban] Cargando datos desde backend...');
+      
+      // Cargar noticias y procesos en paralelo
+      const [noticiasRaw, procesosRaw] = await Promise.all([
+        disciplinaryService.getAllNoticias(),
+        disciplinaryService.getAllProcesos()
+      ]);
+      
+      const noticiasData = getDataArray<ApiNoticia>(noticiasRaw);
+      const procesosData = getDataArray<ApiProceso>(procesosRaw);
+      
+      console.log('[DashboardKanban] Noticias recibidas:', noticiasData.length);
+      console.log('[DashboardKanban] Procesos recibidos:', procesosData.length);
+      
+      // Transformar noticias al formato interno
+      const noticiasTransformadas = noticiasData.map(n => toNoticiaFromApi(n, etapasConfig));
+      
+      // Transformar procesos al formato interno
+      const procesosTransformados = procesosData.map(p => toProcesoFromApi(p, etapasConfig));
+      
+      // Combinar noticias y procesos
+      const todosLosItems: Item[] = [
+        ...noticiasTransformadas,
+        ...procesosTransformados
+      ];
+      
+      console.log('[DashboardKanban] Total items para Kanban:', todosLosItems.length);
+      
+      setItems(todosLosItems);
+      setDatosCargados(true);
+    } catch (error: any) {
+      console.error('Error al cargar datos:', error);
+      setDataError(error?.message || 'Error al cargar datos del servidor');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Cargar etapas primero, luego cargar datos cuando estén listas
   useEffect(() => {
-    let cancelled = false;
-
-    const cargarProcesosYNoticias = async () => {
-      try {
-        setLoading(true); // ✅ NUEVO: Iniciar estado de carga
-        
-        const [noticiasApi, procesosApi] = await Promise.all([
-          disciplinaryService.getAllNoticias(),
-          disciplinaryService.getAllProcesos()
-        ]);
-
-        if (cancelled) return;
-
-        // Verificar si hay datos reales del backend o si está vacío
-        const noticiasReales = (noticiasApi || []).length > 0;
-        const procesosReales = (procesosApi || []).length > 0;
-
-        if (!noticiasReales && !procesosReales) {
-          // No hay datos del backend, no mostrar mock
-          console.log('⚠️ No hay noticias ni procesos desde el backend');
-          setItems([]);
-          setLoading(false); // ✅ NUEVO: Finalizar carga
-          return;
-        }
-
-        // 🔍 DEBUG: Verificar datos de asociación desde API
-        console.log('📋 [DEBUG] Noticias raw desde API:', (noticiasApi || []).map((n: any) => ({
-          id: n.id,
-          radicado: n.radicado,
-          procesoAsociadoId: n.procesoAsociadoId,
-          procesoAsociadoNumero: n.procesoAsociadoNumero,
-          procesoAsociadoFecha: n.procesoAsociadoFecha,
-          procesoAsociadoJustificacion: n.procesoAsociadoJustificacion,
-        })));
-
-        const noticias = (noticiasApi || []).map(toNoticiaFromApi);
-        const procesos = (procesosApi || []).map(toProcesoFromApi);
-
-        // 🔍 DEBUG: Verificar datos después del mapeo
-        console.log('📋 [DEBUG] Noticias mapeadas (procesoAsociado):', noticias.map(n => ({
-          id: n.id,
-          numero: n.numero,
-          procesoAsociado: n.procesoAsociado,
-        })));
-
-        setItems([...noticias, ...procesos]);
-        setLoading(false); // ✅ NUEVO: Finalizar carga exitosa
-      } catch (error) {
-        console.error('Error cargando submódulo de procesos desde API:', error);
-        // NO usar mock como fallback - dejar vacío para indicar problema de conexión
-        setItems([]);
-        setLoading(false); // ✅ NUEVO: Finalizar carga con error
-      }
-    };
-
-    cargarProcesosYNoticias();
-    return () => {
-      cancelled = true;
-    };
+    cargarEtapas();
   }, []);
+
+  // ✅ NUEVO: Cargar noticias y procesos cuando las etapas estén listas
+  useEffect(() => {
+    if (!etapasLoading && etapasConfig !== undefined) {
+      cargarDatos();
+    }
+  }, [etapasLoading, etapasConfig]);
+
+  // ==================== TRANSFORMADORES DE DATOS DESDE API ====================
+const stageLabelMap: Record<string, string> = {
+  EVALUACION: 'Valoración',
+  INDAGACION_PREVIA: 'Indagación',
+  INVESTIGACION: 'Investigación',
+  JUZGAMIENTO: 'Juzgamiento'
+};
+
+// Normalizar estado de noticia
+const mapEstadoNoticia = (estado?: string) => {
+  switch (estado) {
+    case 'ASIGNADA':
+      return 'asignada';
+    case 'EN_VALORACION':
+      return 'en-valoracion';
+    case 'DEVUELTA':
+      return 'archivada';
+    default:
+      return 'pendiente';
+  }
+};
+
+// Transformar noticia desde API al formato interno
+const toNoticiaFromApi = (noticia: ApiNoticia, currentStages: any[] = []): Noticia => {
+  const fechaRecepcion = (noticia as any)?.fechaRecepcion;
+  const fecha = fechaRecepcion ? new Date(fechaRecepcion) : new Date();
+  const hoy = new Date();
+  const dias = Math.max(1, Math.ceil((hoy.getTime() - fecha.getTime()) / (1000 * 60 * 60 * 24)));
+  
+  const denuncianteFuente: any = (noticia as any).denunciante;
+  const disciplinableFuente: any = (noticia as any).disciplinable || (noticia as any).denunciado;
+  const denuncianteList = Array.isArray(denuncianteFuente) ? denuncianteFuente : (denuncianteFuente ? [denuncianteFuente] : []);
+  const disciplinableList = Array.isArray(disciplinableFuente) ? disciplinableFuente : (disciplinableFuente ? [disciplinableFuente] : []);
+  const denuncianteRaw: any = denuncianteList[0] || {};
+  const denunciadoRaw: any = disciplinableList[0] || {};
+  const fechaQuejaRaw = (noticia as any).fechaQueja;
+  const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
+
+  // Normalizar etapa usando las etapas del backend
+  let etapaRaw = (noticia as any).kanbanStage || (noticia as any).etapaActual;
+  let etapaNormalizada = etapaRaw;
+  
+  if (etapaRaw) {
+    // Buscar coincidencia en etapas del backend
+    const match = currentStages.find(s => s.etapa === etapaRaw || s.etapa.toUpperCase() === etapaRaw.toUpperCase());
+    if (match) {
+      etapaNormalizada = match.etapa;
+    } else {
+      // Fallback a mapeo legacy
+      etapaNormalizada = stageLabelMap[etapaRaw] || etapaRaw;
+      // Fallback final: Title Case
+      if (etapaNormalizada === etapaNormalizada.toUpperCase() && etapaNormalizada.length > 3) {
+        etapaNormalizada = etapaNormalizada.charAt(0).toUpperCase() + etapaNormalizada.slice(1).toLowerCase();
+      }
+    }
+  } else {
+    etapaNormalizada = 'Recepción';
+  }
+
+  return {
+    id: (noticia as any).id || `n${Date.now()}`,
+    numero: (noticia as any).radicado || (noticia as any).numero || `ND-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
+    fechaRecepcion: fecha.toISOString().split('T')[0],
+    fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
+    origen: (noticia as any).origen || 'Noticia',
+    territorial: (noticia as any).territorial,
+    dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
+    denunciante: {
+      nombre: denuncianteRaw.nombre || 'Sin denunciante',
+      tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
+      numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || denuncianteRaw.identificacion || 'N/A'
+    },
+    denunciado: {
+      nombre: denunciadoRaw.nombre || 'Sin disciplinable',
+      tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
+      numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || 'N/A'
+    },
+    hechos: (noticia as any).hechos || '',
+    estado: mapEstadoNoticia((noticia as any).estado) as any,
+    prioridad: (noticia as any).prioridad || 'media',
+    diasPendientes: (noticia as any).diasPendientes ?? dias,
+    tipo: 'noticia' as const,
+    etapaActual: etapaNormalizada
+  };
+};
+
+// Normalizar noticia desde cualquier fuente
+const normalizeNoticia = (raw: any): Noticia => {
+  const denuncianteFuente = raw.denunciantes || raw.denunciante;
+  const disciplinableFuente = raw.disciplinables || raw.disciplinable || raw.denunciado;
+  const denuncianteList = Array.isArray(denuncianteFuente) ? denuncianteFuente : (denuncianteFuente ? [denuncianteFuente] : []);
+  const disciplinableList = Array.isArray(disciplinableFuente) ? disciplinableFuente : (disciplinableFuente ? [disciplinableFuente] : []);
+  const denuncianteRaw = denuncianteList[0] || {};
+  const denunciadoRaw = disciplinableList[0] || {};
+
+  return {
+    ...raw,
+    tipo: raw.tipo || 'noticia',
+    fechaQueja: raw.fechaQueja || raw.fechaRecepcion,
+    territorial: raw.territorial,
+    dependenciaDenunciado: raw.dependenciaDenunciado,
+    denunciante: {
+      nombre: denuncianteRaw.nombre || 'Sin nombre',
+      tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
+      numeroIdentificacion: denuncianteRaw.numeroIdentificacion || denuncianteRaw.cedula || 'Sin identificacion'
+    },
+    denunciado: {
+      nombre: denunciadoRaw.nombre || 'Sin nombre',
+      tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
+      numeroIdentificacion: denunciadoRaw.numeroIdentificacion || denunciadoRaw.cedula || 'Sin identificacion',
+      cargo: denunciadoRaw.cargo || 'Sin cargo'
+    },
+    hechos: raw.hechos || raw.descripcionHechos || '',
+    conductas: raw.conductas || raw.conductasSeleccionadas || [],
+    prioridad: raw.prioridad || 'media',
+    diasPendientes: raw.diasPendientes || 0,
+    etapaActual: raw.kanbanStage || raw.etapaActual || 'Recepción',
+    estado: raw.estado || 'pendiente'
+  };
+};
+
+// Transformar proceso desde API al formato interno
+const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
+  let etapa = proceso.kanbanStage || proceso.etapaActual;
+
+  // Si no hay etapa definida, usar 'Recepción' por defecto
+  if (!etapa) {
+    etapa = 'Recepción';
+  } else {
+    // Normalizar etapa: buscar coincidencia exacta o insensible en las etapas del backend
+    const match = currentStages.find(s => s.etapa === etapa || s.etapa.toUpperCase() === etapa.toUpperCase());
+    if (match) {
+      etapa = match.etapa;
+    } else {
+      // Fallback a mapeo legacy
+      etapa = stageLabelMap[etapa] || etapa;
+      // Fallback final: Title Case (solo si es uppercase)
+      if (etapa === etapa.toUpperCase() && etapa.length > 3) {
+        etapa = etapa.charAt(0).toUpperCase() + etapa.slice(1).toLowerCase();
+      }
+    }
+  }
+
+  const fechaVenc = proceso.fechaVencimientoEtapa ? new Date(proceso.fechaVencimientoEtapa) : null;
+  const fechaCreacion = proceso.createdAt ? new Date(proceso.createdAt) : new Date();
+  const hoy = new Date();
+  const diasRestantes = fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+
+  const porcentajeTiempo = proceso.timePercentage !== undefined
+    ? Math.round(proceso.timePercentage)
+    : (() => {
+        const totalDias = fechaVenc ? Math.max(1, Math.round((fechaVenc.getTime() - fechaCreacion.getTime()) / (1000 * 60 * 60 * 24))) : 1;
+        const transcurridos = totalDias - diasRestantes;
+        return Math.min(100, Math.max(0, Math.round((transcurridos / totalDias) * 100)));
+      })();
+
+  const semaforo: 'verde' | 'amarillo' | 'rojo' = diasRestantes <= 0
+    ? 'rojo'
+    : (diasRestantes <= 7 || porcentajeTiempo >= 80 ? 'amarillo' : 'verde');
+  
+  const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
+
+  return {
+    id: proceso.id,
+    numeroProceso: proceso.radicadoProceso,
+    noticiaOrigen: proceso.news?.radicado || 'N/A',
+    denunciante: {
+      nombre: (proceso.news?.denunciante as any)?.nombre || 'Sin denunciante',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: (proceso.news?.denunciante as any)?.cedula || 'N/A'
+    },
+    denunciado: {
+      nombre: (proceso.news?.disciplinable as any)?.nombre || 'Sin disciplinable',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: (proceso.news?.disciplinable as any)?.cedula || 'N/A'
+    },
+    cedula: (proceso.news?.disciplinable as any)?.cedula || 'N/A',
+    etapaActual: etapa as any,
+    estadoActual: proceso.estado || 'ACTIVO',
+    profesionalAsignado: {
+      nombre: abogado,
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: (proceso as any).abogadoAsignado?.id || '',
+    },
+    semaforo,
+    diasRestantes,
+    porcentajeTiempo,
+    borradores: proceso.draftsCount !== undefined ? Array(proceso.draftsCount).fill({}) : [],
+    documentos: proceso.documentsCount !== undefined ? Array(proceso.documentsCount).fill({}) : [],
+    pendienteAprobacion: false,
+    ultimaActuacion: 'Actualizado desde backend',
+    fechaCreacion: fechaCreacion.toISOString().split('T')[0],
+    tipo: 'proceso' as const,
+    hechos: proceso.news?.hechos
+  };
+};
+
+
 
   // ✅ Auto-activar vista compacta en mobile y tablet
   useEffect(() => {
@@ -2371,15 +2545,39 @@ export function DashboardKanbanOperativo({
     return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   };
 
-  const etapas = [
-    { nombre: 'Recepción', color: '#6B7280', icono: <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 3 },
-    { nombre: 'Valoración', color: '#6B7280', icono: <Eye className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 },
-    { nombre: 'Indagación', color: '#6B7280', icono: <Search className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 40 },
-    { nombre: 'Investigación', color: '#003DA5', icono: <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />, diasEstimados: 60 },
-    { nombre: 'Juzgamiento', color: '#6B7280', icono: <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 50 },
-    { nombre: 'Fallo', color: '#6B7280', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 },
-    { nombre: 'Archivo', color: '#059669', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-green-600`} />, diasEstimados: 0 }
-  ];
+  // ✅ ETAPAS: Si hay etapas configuradas en backend, usarlas ordenadas por 'orden'.
+  // Si no hay config, usar valores por defecto
+  const etapas = etapasConfig.length > 0
+    ? etapasConfig
+        .sort((a, b) => (a.orden || 0) - (b.orden || 0))
+        .map((etapa) => ({
+          nombre: etapa.etapa,
+          color: etapa.color || '#6B7280',
+          icono: getIconoPorEtapa(etapa.etapa),
+          diasEstimados: etapa.diasHabiles || 0
+        }))
+    : [
+        { nombre: 'Recepción', color: '#6B7280', icono: <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 3 },
+        { nombre: 'Valoración', color: '#6B7280', icono: <Eye className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 },
+        { nombre: 'Indagación', color: '#6B7280', icono: <Search className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 40 },
+        { nombre: 'Investigación', color: '#003DA5', icono: <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />, diasEstimados: 60 },
+        { nombre: 'Juzgamiento', color: '#6B7280', icono: <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 50 },
+        { nombre: 'Fallo', color: '#6B7280', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 },
+        { nombre: 'Archivo', color: '#059669', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-green-600`} />, diasEstimados: 0 }
+      ];
+
+  // ✅ Función helper para obtener icono según nombre de etapa
+  function getIconoPorEtapa(nombreEtapa: string) {
+    const nombre = nombreEtapa?.toLowerCase() || '';
+    if (nombre.includes('recep')) return <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
+    if (nombre.includes('valora')) return <Eye className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
+    if (nombre.includes('indag')) return <Search className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
+    if (nombre.includes('investig')) return <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />;
+    if (nombre.includes('juzg')) return <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
+    if (nombre.includes('fallo')) return <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
+    if (nombre.includes('archiv')) return <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-green-600`} />;
+    return <FolderOpen className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
+  }
 
   // ==================== HANDLERS ====================
   const handleDropItem = (item: Item, nuevaEtapa: string) => {
@@ -2604,6 +2802,14 @@ export function DashboardKanbanOperativo({
     }
 
     const noticiaLeg = itemSeleccionado as Noticia;
+    
+    // ✅ Obtener la siguiente etapa después de Recepción (basado en configuración dinámica)
+    const siguienteEtapa = etapasConfig.length > 0
+      ? etapasConfig
+          .sort((a, b) => (a.orden || 0) - (b.orden || 0))
+          .find(e => (e.orden || 0) > 1)?.etapa || 'Valoración'
+      : 'Valoración';
+    
     const nuevoProceso: Proceso = {
       id: `p${Date.now()}`,
       numeroProceso: `PD-2025-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
@@ -2611,7 +2817,7 @@ export function DashboardKanbanOperativo({
       denunciante: noticiaLeg.denunciante,
       denunciado: noticiaLeg.denunciado,
       cedula: '00000000',
-      etapaActual: 'Recepción',
+      etapaActual: siguienteEtapa as any, // ✅ Cambiar a siguiente etapa (Valoración)
       estadoActual: 'En Gestión',
       profesionalAsignado: profesionalSeleccionado,
       semaforo: 'verde',
@@ -2696,6 +2902,13 @@ export function DashboardKanbanOperativo({
 
     // ✅ Fallback local: crear proceso sin llamar al backend
     if (!procesoCreado) {
+      // ✅ Obtener la siguiente etapa después de Recepción
+      const siguienteEtapa = etapasConfig.length > 0
+        ? etapasConfig
+            .sort((a, b) => (a.orden || 0) - (b.orden || 0))
+            .find(e => (e.orden || 0) > 1)?.etapa || 'Valoración'
+        : 'Valoración';
+
       const nuevoProceso: Proceso = {
         id: `p${Date.now()}`,
         numeroProceso: `P-2025-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
@@ -2703,7 +2916,7 @@ export function DashboardKanbanOperativo({
         denunciante: itemSeleccionado.denunciante,
         denunciado: itemSeleccionado.denunciado,
         cedula: typeof itemSeleccionado.denunciado === 'object' ? itemSeleccionado.denunciado.numeroIdentificacion : '00000000',
-        etapaActual: 'Recepción',
+        etapaActual: siguienteEtapa as any, // ✅ Cambiar a siguiente etapa (Valoración)
         estadoActual: 'En Gestión',
         profesionalAsignado: {
           nombre: nombreProfesional,
@@ -2751,6 +2964,14 @@ export function DashboardKanbanOperativo({
 
     // ✅ Copiar TODOS los datos de la noticia al proceso
     const noticia = itemSeleccionado as Noticia;
+    
+    // ✅ Obtener la siguiente etapa después de Recepción (basado en configuración dinámica)
+    const siguienteEtapa = etapasConfig.length > 0
+      ? etapasConfig
+          .sort((a, b) => (a.orden || 0) - (b.orden || 0))
+          .find(e => (e.orden || 0) > 1)?.etapa || 'Valoración'
+      : 'Valoración';
+    
     const nuevoProceso: Proceso = {
       id: `p${Date.now()}`,
       numeroProceso,
@@ -2758,7 +2979,7 @@ export function DashboardKanbanOperativo({
       denunciante: noticia.denunciante,
       denunciado: noticia.denunciado,
       cedula: (typeof noticia.denunciado !== 'string' ? noticia.denunciado?.numeroIdentificacion : '') ?? '00000000',
-      etapaActual: datos.etapaInicial as any,
+      etapaActual: siguienteEtapa as any, // ✅ Usar la siguiente etapa (Valoración por defecto)
       estadoActual: 'En Gestión',
       profesionalAsignado: datos.profesionalNombre,
       profesionalAsignadoId: datos.profesionalId,
@@ -3601,22 +3822,14 @@ export function DashboardKanbanOperativo({
   );
 
   // Obtener nombre del profesional filtrado
-  const profesionalFiltrado = filtroProfesionalId ? (() => {
-    const profesionales = [
-      { id: 'prof-001', nombre: 'Juan Carlos Pérez Rodríguez' },
-      { id: 'prof-002', nombre: 'Ana María Torres Gómez' },
-      { id: 'prof-003', nombre: 'Carlos Eduardo Martínez Silva' },
-      { id: 'prof-004', nombre: 'Laura Patricia González Ruiz' },
-      { id: 'prof-005', nombre: 'Diego Alejandro López Ramírez' },
-      { id: 'prof-006', nombre: 'Sandra Milena Ramírez Castro' },
-    ];
-    return profesionales.find(p => p.id === filtroProfesionalId);
-  })() : null;
+  const profesionalFiltrado = filtroProfesionalId 
+    ? profesionalesList.find(p => p.id === filtroProfesionalId)
+    : null;
 
   // ==================== RENDER ====================
 
   // ✅ Estado de carga desde Supabase
-  if (loadingData) {
+  if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-5">
         <div className="w-12 h-12 border-[3px] rounded-full animate-spin" style={{ borderColor: '#E2E8F0', borderTopColor: '#003DA5' }} />
@@ -3784,9 +3997,9 @@ export function DashboardKanbanOperativo({
             <div className="flex items-center gap-3 flex-shrink-0">
               <KanbanViewToggle
                 options={[
-                  { id: 'kanban', icon: <Columns3 style={{ width: 16, height: 16 }} />, label: 'Kanban' },
-                  { id: 'lista', icon: <List style={{ width: 16, height: 16 }} />, label: 'Lista' },
-                  { id: 'archivados', icon: <Archive style={{ width: 16, height: 16 }} />, label: 'Archivados', badge: itemsArchivados.length > 0 ? itemsArchivados.length : undefined },
+                  { value: 'kanban', icon: <Columns3 style={{ width: 16, height: 16 }} />, label: 'Kanban' },
+                  { value: 'lista', icon: <List style={{ width: 16, height: 16 }} />, label: 'Lista' },
+                  { value: 'archivados', icon: <Archive style={{ width: 16, height: 16 }} />, label: 'Archivados', badge: itemsArchivados.length > 0 ? itemsArchivados.length : undefined },
                 ]}
                 active={tipoVista}
                 onChange={(id) => setTipoVista(id as any)}
@@ -3806,23 +4019,32 @@ export function DashboardKanbanOperativo({
         
 
         {/* Vista Kanban, Lista o Archivados según selección */}
-        {loading ? (
-          /* ✅ NUEVO: Loader mientras cargan noticias y procesos */
-          <div className="flex items-center justify-center py-20">
-            <div className="text-center">
-              <Loader2 
-                className="w-12 h-12 mx-auto mb-4 animate-spin" 
-                style={{ color: '#003DA5' }} 
-              />
-              <p className="text-lg font-semibold text-gray-700">
-                Cargando noticias y procesos...
+        {tipoVista === 'kanban' && itemsFiltrados.length === 0 && (
+          /* ✅ NUEVO: Mensaje central cuando no hay ningún proceso registrado */
+          <div className="flex flex-col items-center justify-center py-24 px-4">
+            <div className="text-center max-w-md">
+              <div className="w-20 h-20 mx-auto mb-6 rounded-full flex items-center justify-center" style={{ background: '#F3F4F6' }}>
+                <FolderOpen className="w-10 h-10" style={{ color: '#9CA3AF' }} />
+              </div>
+              <h3 className="text-xl font-bold mb-2" style={{ color: '#374151' }}>
+                No hay procesos registrados
+              </h3>
+              <p className="text-sm mb-6" style={{ color: '#6B7280' }}>
+                Actualmente no existen noticias ni procesos disciplinarios en el sistema. Puede crear una nueva noticia haciendo clic en el botón "Nueva".
               </p>
-              <p className="text-sm text-gray-500 mt-1">
-                Obteniendo datos del servidor
-              </p>
+              <Button
+                onClick={() => setModalActivo('crear-noticia')}
+                className="px-6 py-2.5 text-white font-semibold rounded-xl shadow-md"
+                style={{ background: '#003DA5' }}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Crear Nueva Noticia
+              </Button>
             </div>
           </div>
-        ) : tipoVista === 'kanban' && (
+        )}
+
+        {tipoVista === 'kanban' && itemsFiltrados.length > 0 && (
           <div className="flex-1 overflow-hidden">
             {/* ═══ Contenedor Kanban estilo Trello: scroll horizontal + columnas fijas ═══ */}
             <div 
@@ -3924,6 +4146,7 @@ export function DashboardKanbanOperativo({
             onVerNoticiaAsociada={handleVerNoticiaAsociada}
             onEditarNoticia={handleEditarNoticia}
             onEditarProceso={handleEditarProceso} // ✅ NUEVO: Editar proceso
+            onCambiarEtapa={(proceso, nuevaEtapa) => handleDropItem(proceso, nuevaEtapa)}
             isMobile={isMobile}
           />
         )}
