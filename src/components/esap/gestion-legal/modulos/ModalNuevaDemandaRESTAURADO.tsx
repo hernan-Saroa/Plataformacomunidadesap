@@ -226,10 +226,6 @@ function calcularFechaVencimiento(
 
   if (tipoPlazo === 'Dias Calendario') {
     fecha.setDate(fecha.getDate() + termino);
-    // Si cae en fin de semana, avanzar al lunes
-    while (!esDiaHabil(fecha)) {
-      fecha.setDate(fecha.getDate() + 1);
-    }
   } else {
     // Días Hábiles: contar solo lun-vie (el día de notificación cuenta como día 1)
     let diasAgregados = 1;
@@ -239,10 +235,10 @@ function calcularFechaVencimiento(
         diasAgregados++;
       }
     }
+    // Siempre vence a las 5:00 PM para días hábiles
+    fecha.setHours(17, 0, 0, 0);
   }
 
-  // Siempre vence a las 5:00 PM
-  fecha.setHours(17, 0, 0, 0);
   return toLocalISO(fecha);
 }
 
@@ -1896,7 +1892,11 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           disabled
                           className="bg-gray-100"
                         />
-                        <p className="text-xs text-gray-500 mt-1">Se calcula automáticamente (8:00 AM a 5:00 PM)</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {formData.tipoPlazo === 'Dias Habiles'
+                            ? 'Se calcula automáticamente (8:00 AM a 5:00 PM)'
+                            : 'Se calcula exactamente desde la hora de notificación'}
+                        </p>
                       </div>
                     </div>
 

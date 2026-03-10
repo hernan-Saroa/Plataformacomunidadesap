@@ -235,11 +235,63 @@ export function ModuloDefensaJudicialV3() {
           demandados: exp.actors ? exp.actors.filter((a: any) => a.rol === 'DEMANDADO') : [],
           otrosActores: exp.actors ? exp.actors.filter((a: any) => a.rol !== 'DEMANDANTE' && a.rol !== 'DEMANDADO') : [],
           medioControl: exp.medioControl || 'Nulidad y Restablecimiento del Derecho',
-          diasTotales: calcularDiasTotales(
-            new Date(exp.fechaNotificacion || Date.now()),
-            new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000))
-          ),
-          diasRestantes: calcularDiasRestantes(new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000))),
+          diasTotales: (() => {
+            const inicio = new Date(exp.fechaNotificacion || Date.now());
+            const fin = new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
+            if (exp.tipoConteoTermino === 'Dias Calendario' || exp.tipoConteoTermino === 'CALENDARIO') {
+              return calcularDiasTotales(inicio, fin);
+            }
+            // Dias hábiles
+            let dias = 0;
+            const temp = new Date(inicio);
+            temp.setHours(0, 0, 0, 0);
+            const finStr = new Date(fin);
+            finStr.setHours(0, 0, 0, 0);
+            while (temp <= finStr) {
+              const dia = temp.getDay();
+              if (dia !== 0 && dia !== 6) dias++;
+              temp.setDate(temp.getDate() + 1);
+            }
+            return dias;
+          })(),
+          diasRestantes: (() => {
+            const hoy = new Date();
+            const venc = new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
+            if (exp.tipoConteoTermino === 'Dias Calendario' || exp.tipoConteoTermino === 'CALENDARIO') {
+              return calcularDiasRestantes(venc);
+            }
+            // Dias hábiles
+            if (venc >= hoy) {
+              let dias = 0;
+              const temp = new Date(hoy);
+              temp.setHours(0, 0, 0, 0);
+              const vencStr = new Date(venc);
+              vencStr.setHours(0, 0, 0, 0);
+              while (temp <= vencStr) {
+                const dia = temp.getDay();
+                if (dia !== 0 && dia !== 6) dias++;
+                temp.setDate(temp.getDate() + 1);
+              }
+              return Math.max(0, dias - 1); // Restamos hoy si es que falta mucho, pero asumiendo la logica es contar hacia adelante. Realmente la diferencia. Mejor dejamos dias o dias - 1 si el inicio coincide
+            } else {
+              let dias = 0;
+              const temp = new Date(venc);
+              temp.setHours(0, 0, 0, 0);
+              const hoyStr = new Date(hoy);
+              hoyStr.setHours(0, 0, 0, 0);
+              while (temp <= hoyStr) {
+                const dia = temp.getDay();
+                if (dia !== 0 && dia !== 6) dias++;
+                temp.setDate(temp.getDate() + 1);
+              }
+              return -dias;
+            }
+          })(),
+          tiempoRestante: (() => {
+            // Optional property just in case it's used
+            const venc = new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
+            return calcularDiasRestantes(venc) < 0 ? `Vencido` : `${calcularDiasRestantes(venc)} días`;
+          })(),
           // Para abogado, buscar el nombre en el mapa o usar valor directo si no es UUID
           abogadoAsignado: (() => {
             // 1. Intentar buscar en el mapa por ID (prioridad)

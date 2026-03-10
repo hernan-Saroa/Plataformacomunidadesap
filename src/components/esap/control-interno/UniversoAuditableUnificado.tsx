@@ -68,10 +68,12 @@ type AuditoriaProgramada = AuditoriaProgramadaUI;
 interface UniversoAuditableUnificadoProps {
   vigencia?: number;
   onVolver?: () => void;
+  /** Modo solo seguimiento: arranca en pestaña Programa y oculta botones de creación */
+  modoSeguimiento?: boolean;
 }
 
-export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: UniversoAuditableUnificadoProps) {
-  const [tabActiva, setTabActiva] = useState<TabActiva>('universo');
+export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSeguimiento = false }: UniversoAuditableUnificadoProps) {
+  const [tabActiva, setTabActiva] = useState<TabActiva>(modoSeguimiento ? 'programa' : 'universo');
   const [mostrarMenuExportar, setMostrarMenuExportar] = useState(false);
   const [filtroNivelRiesgo, setFiltroNivelRiesgo] = useState<NivelRiesgo | 'TODOS'>('TODOS');
   const [filtroTipoProceso, setFiltroTipoProceso] = useState<TipoProceso | 'TODOS'>('TODOS');
@@ -175,10 +177,12 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-black mb-2" style={{ color: '#003DA5' }}>
-                Programa de Auditoría {vigencia}
+                {modoSeguimiento ? `Seguimiento y Evaluación — Auditorías ${vigencia}` : `Programa de Auditoría ${vigencia}`}
               </h1>
               <p className="text-gray-600 text-lg">
-                Gestión integral del universo auditable y programa anual de auditorías
+                {modoSeguimiento
+                  ? 'Visualización y seguimiento de auditorías del Universo — Rol 4: Evaluación y Seguimiento'
+                  : 'Gestión integral del universo auditable y programa anual de auditorías'}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -362,9 +366,9 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
                 }}
                 onEliminarProceso={handleEliminarProceso}
                 onGuardarEvaluacion={editarProceso}
-                puedeCrear={puedeCrearProceso}
-                puedeEditar={puedeEditarProceso}
-                puedeEliminar={puedeEliminarProceso}
+                puedeCrear={!modoSeguimiento && puedeCrearProceso}
+                puedeEditar={!modoSeguimiento && puedeEditarProceso}
+                puedeEliminar={!modoSeguimiento && puedeEliminarProceso}
               />
             )}
             {tabActiva === 'programa' && (
@@ -374,6 +378,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
                 estadisticas={estadisticas}
                 mostrarFormulario={mostrarFormulario}
                 setMostrarFormulario={setMostrarFormulario}
+                puedeCrear={!modoSeguimiento}
               />
             )}
             {tabActiva === 'profesionales' && (
@@ -535,9 +540,11 @@ interface TabProgramaAnualProps {
   estadisticas: Estadisticas;
   mostrarFormulario: boolean;
   setMostrarFormulario: (mostrar: boolean) => void;
+  /** Cuando false oculta el botón de crear nueva auditoría */
+  puedeCrear?: boolean;
 }
 
-function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMostrarFormulario }: TabProgramaAnualProps) {
+function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMostrarFormulario, puedeCrear = true }: TabProgramaAnualProps) {
   const [vistaProgramaAnual, setVistaProgramaAnual] = useState<'lista' | 'cronograma'>('cronograma'); // 🆕 Estado para alternar vista
   
   const getColorEstado = (estado: EstadoAuditoria) => {
@@ -644,13 +651,15 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
                 </button>
               </div>
               
-              <button
-                onClick={() => setMostrarFormulario(true)}
-                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold flex items-center gap-2 hover:shadow-lg transition-all"
-              >
-                <Plus className="w-4 h-4" />
-                Programar Auditoría
-              </button>
+              {puedeCrear && (
+                <button
+                  onClick={() => setMostrarFormulario(true)}
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold flex items-center gap-2 hover:shadow-lg transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  Programar Auditoría
+                </button>
+              )}
             </div>
           </div>
         </div>

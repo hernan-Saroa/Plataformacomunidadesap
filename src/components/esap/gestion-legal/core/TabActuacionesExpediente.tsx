@@ -6,7 +6,7 @@
  * ✅ Header con botones parametrizables
  */
 
-import { Calendar, User, Activity, Plus, Clock, MapPin, Trash2, Download, Paperclip, ExternalLink } from 'lucide-react';
+import { Calendar, User, Activity, Plus, Clock, MapPin, Trash2, Download, Paperclip, ExternalLink, Video } from 'lucide-react';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
 import { Card } from '../../../ui/card';
@@ -28,6 +28,7 @@ interface AudienciaProgramada {
   hora: string;
   lugar?: string;
   modalidad?: string;
+  linkReunion?: string;
   abogadoResponsable?: string;
   estado: string;
 }
@@ -104,67 +105,88 @@ export function TabActuacionesExpediente({
             </Badge>
           </h4>
           <div className="space-y-2">
-            {audienciasProgramadas.map((audiencia) => (
-              <Card key={audiencia.id} className="p-3 bg-white border-purple-200">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge className="text-xs font-bold bg-purple-100 text-purple-700">
-                        {audiencia.tipo}
-                      </Badge>
-                      <Badge className="text-xs font-bold bg-green-100 text-green-700">
-                        {audiencia.estado}
-                      </Badge>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <p className="flex items-center gap-1.5 text-gray-700">
-                        <Calendar className="w-3 h-3" />
-                        <strong>{audiencia.fecha}</strong> a las {audiencia.hora}
-                      </p>
-                      <p className="flex items-center gap-1.5 text-gray-700">
-                        {audiencia.modalidad === 'Presencial' ? (
-                          <>
-                            <MapPin className="w-3 h-3" />
-                            {audiencia.lugar}
-                          </>
-                        ) : (
-                          <>💻 Audiencia Virtual</>
-                        )}
-                      </p>
-                      {audiencia.abogadoResponsable && (
-                        <p className="flex items-center gap-1.5 text-gray-700 col-span-2">
-                          <User className="w-3 h-3" />
-                          {audiencia.abogadoResponsable}
+            {audienciasProgramadas.map((audiencia) => {
+              const isPresencial = audiencia.modalidad?.toUpperCase() === 'PRESENCIAL';
+              const theme = isPresencial
+                ? {
+                  border: 'border-orange-200',
+                  bg: 'bg-orange-50/50',
+                  badgeBg: 'bg-orange-100',
+                  badgeText: 'text-orange-700',
+                  icon: <MapPin className="w-3 h-3 text-orange-600" />
+                }
+                : {
+                  border: 'border-purple-200',
+                  bg: 'bg-purple-50/50',
+                  badgeBg: 'bg-purple-100',
+                  badgeText: 'text-purple-700',
+                  icon: <Video className="w-3 h-3 text-purple-600" />
+                };
+
+              return (
+                <Card key={audiencia.id} className={`p-3 border ${theme.border} ${theme.bg} transition-colors`}>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge className={`text-xs font-bold ${theme.badgeBg} ${theme.badgeText}`}>
+                          {audiencia.tipo}
+                        </Badge>
+                        <Badge className="text-xs font-bold bg-green-100 text-green-700">
+                          {audiencia.estado}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <p className="flex items-center gap-1.5 text-gray-700">
+                          <Calendar className="w-3 h-3" />
+                          <strong>{audiencia.fecha}</strong> a las {audiencia.hora}
                         </p>
-                      )}
+                        <p className="flex items-center gap-1.5 text-gray-700">
+                          {theme.icon}
+                          {isPresencial ? (
+                            audiencia.lugar
+                          ) : audiencia.linkReunion ? (
+                            <a href={audiencia.linkReunion} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline break-all" title={audiencia.linkReunion}>
+                              {audiencia.linkReunion.length > 30 ? `${audiencia.linkReunion.substring(0, 30)}...` : audiencia.linkReunion}
+                            </a>
+                          ) : (
+                            'Audiencia Virtual (Sin enlace)'
+                          )}
+                        </p>
+                        {audiencia.abogadoResponsable && (
+                          <p className="flex items-center gap-1.5 text-gray-700 col-span-2">
+                            <User className="w-3 h-3" />
+                            {audiencia.abogadoResponsable}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  {onReasignarAudiencia && (
-                    <div className="flex flex-col gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onReasignarAudiencia(audiencia)}
-                        className="text-orange-600 border-orange-300 hover:bg-orange-50 font-bold text-xs"
-                      >
-                        🔄 Reasignar
-                      </Button>
-                      {onEliminarAudiencia && (
+                    {onReasignarAudiencia && (
+                      <div className="flex flex-col gap-1.5">
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => onEliminarAudiencia(audiencia.id)}
-                          className="text-red-600 border-red-300 hover:bg-red-50 font-bold text-xs"
+                          onClick={() => onReasignarAudiencia(audiencia)}
+                          className="text-orange-600 border-orange-300 hover:bg-orange-50 font-bold text-xs"
                         >
-                          <Trash2 className="w-3 h-3 mr-1" />
-                          Eliminar
+                          🔄 Reasignar
                         </Button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </Card>
-            ))}
+                        {onEliminarAudiencia && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onEliminarAudiencia(audiencia.id)}
+                            className="text-red-600 border-red-300 hover:bg-red-50 font-bold text-xs"
+                          >
+                            <Trash2 className="w-3 h-3 mr-1" />
+                            Eliminar
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         </Card>
       )}

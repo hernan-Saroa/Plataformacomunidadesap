@@ -83,7 +83,7 @@ export interface Audiencia {
 
 export class LegalService {
     async getExpedientes(filtros?: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {
-        return apiClient.get<Expediente[]>(`${SERVICE_PREFIX}/expedientes`, { params: filtros });
+        return apiClient.get<Expediente[]>(`${SERVICE_PREFIX}/expedientes`, filtros);
     }
 
 
@@ -342,7 +342,7 @@ export class LegalService {
 
     // ==================== AUDIENCIAS ====================
     async getAudiencias(filtros?: { start?: string; end?: string; expedienteId?: string }): Promise<Audiencia[]> {
-        return apiClient.get<Audiencia[]>(`${SERVICE_PREFIX}/audiencias`, { params: filtros });
+        return apiClient.get<Audiencia[]>(`${SERVICE_PREFIX}/audiencias`, filtros);
     }
 
     async getAudienciasDashboard(): Promise<any> {

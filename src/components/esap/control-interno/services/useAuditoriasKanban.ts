@@ -55,10 +55,16 @@ export interface AuditoriaKanban {
   territorial: string;
   auditorLider: Persona;
   auditorAsignado: Persona;
-  fechaInicio: string;
-  fechaFinPlaneacion?: string; // Fin de Planeación / Inicio de Ejecución
-  fechaFinEjecucion?: string; // Fin de Ejecución / Inicio de Comunicación
-  fechaFin: string;
+  // ✅ CRONOGRAMA DE 3 ETAPAS
+  // Etapa 1: Planeación
+  fechaInicio: string;           // = fechaInicioPlaneacion
+  fechaFinPlaneacion?: string;   // Fin de Planeación
+  // Etapa 2: Ejecución
+  fechaInicioEjecucion?: string; // Inicio de Ejecución
+  fechaFinEjecucion?: string;    // Fin de Ejecución
+  // Etapa 3: Comunicación
+  fechaInicioComunicacion?: string; // Inicio de Comunicación
+  fechaFin: string;              // = fechaFinComunicacion (fin de auditoría)
   progreso: number;
   hallazgos: number;
   diasRestantes: number;
@@ -352,8 +358,14 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     auditorLider,
     auditorAsignado,
     fechaInicio: formatearFecha(auditoriaBackend.fechaInicio),
+    // ✅ CRONOGRAMA 3 ETAPAS COMPLETO
+    // Etapa 1: Planeación
     fechaFinPlaneacion: auditoriaBackend.fechaFinPlaneacion ? formatearFecha(auditoriaBackend.fechaFinPlaneacion) : undefined,
+    // Etapa 2: Ejecución
+    fechaInicioEjecucion: auditoriaBackend.fechaInicioEjecucion ? formatearFecha(auditoriaBackend.fechaInicioEjecucion) : undefined,
     fechaFinEjecucion: auditoriaBackend.fechaFinEjecucion ? formatearFecha(auditoriaBackend.fechaFinEjecucion) : undefined,
+    // Etapa 3: Comunicación
+    fechaInicioComunicacion: auditoriaBackend.fechaInicioComunicacion ? formatearFecha(auditoriaBackend.fechaInicioComunicacion) : undefined,
     fechaFin: formatearFecha(auditoriaBackend.fechaFin),
     progreso,
     // Asegurar que hallazgos sea un número
