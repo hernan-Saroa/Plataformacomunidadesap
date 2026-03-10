@@ -16,7 +16,9 @@ export class GraduateFile {
   @Column({ name: 'graduate_id', type: 'uuid' })
   graduateId: string;
 
-  @ManyToOne(() => Graduate, (graduate) => graduate.files, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Graduate, (graduate) => graduate.files, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'graduate_id' })
   graduate: Graduate;
 

@@ -1,10 +1,23 @@
-import { Body, Controller, Get, Param, Put, Post, Delete, UseInterceptors, UploadedFiles, BadRequestException } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Put,
+  Post,
+  Delete,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
+  Res,
+} from '@nestjs/common';
 import { GraduationCertificatesService } from './graduation-certificates.service';
 import type { UpdateGraduateDto } from './dto/update-graduate.dto';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import * as fs from 'fs';
+import type { Response } from 'express';
 
 @Controller(['graduates', 'academic-registration/api/v1/graduates'])
 export class GraduatesController {
@@ -38,6 +51,26 @@ export class GraduatesController {
     return await this.service.listarArchivosGraduado(id);
   }
 
+  @Get(':id/files/:fileId/download')
+  async descargarArchivo(
+    @Param('id') id: string,
+    @Param('fileId') fileId: string,
+    @Res() res: Response,
+  ) {
+    const { file, filePath } =
+      await this.service.obtenerArchivoGraduadoParaDescarga(id, fileId);
+    const safeName = (file.originalName || 'archivo').replace(/"/g, '');
+    const encodedName = encodeURIComponent(safeName);
+
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`,
+    );
+
+    return res.sendFile(filePath);
+  }
+
   @Post(':id/upload-file')
   @UseInterceptors(
     FilesInterceptor('files', 5, {
@@ -50,7 +83,8 @@ export class GraduatesController {
           cb(null, uploadDir);
         },
         filename: (_req, file, cb) => {
-          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
           const ext = extname(file.originalname);
           cb(null, `graduate-${uniqueSuffix}${ext}`);
         },
@@ -78,7 +112,8 @@ export class GraduatesController {
           'image/webp',
         ]);
         const ext = extname(file.originalname || '').toLowerCase();
-        const isAllowed = allowedExtensions.has(ext) || allowedMimeTypes.has(file.mimetype);
+        const isAllowed =
+          allowedExtensions.has(ext) || allowedMimeTypes.has(file.mimetype);
         if (!isAllowed) {
           return cb(new Error('Tipo de archivo no permitido'), false);
         }

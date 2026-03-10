@@ -13,8 +13,20 @@ export class PdfGeneratorService {
     const filename = 'certificado-graduado.html';
     const candidates = [
       path.join(__dirname, 'templates', filename),
-      path.join(process.cwd(), 'src', 'graduation-certificates', 'templates', filename),
-      path.join(process.cwd(), 'dist', 'graduation-certificates', 'templates', filename),
+      path.join(
+        process.cwd(),
+        'src',
+        'graduation-certificates',
+        'templates',
+        filename,
+      ),
+      path.join(
+        process.cwd(),
+        'dist',
+        'graduation-certificates',
+        'templates',
+        filename,
+      ),
     ];
 
     for (const candidate of candidates) {
@@ -41,14 +53,19 @@ export class PdfGeneratorService {
     const footerImg = this.loadImageDataUrl('img_segunda.png');
 
     // URL de validación pública
-    const baseUrl = frontendBaseUrl || process.env.FRONTEND_URL || 'https://certificados.esap.edu.co';
+    const baseUrl =
+      frontendBaseUrl ||
+      process.env.FRONTEND_URL ||
+      'https://certificados.esap.edu.co';
     const validationUrl = `${baseUrl}/verificar-certificado/${certificate.verificationCode}`;
 
     // Generar código QR con la URL completa
     const qrCodeDataUrl = await this.generateQRCode(validationUrl);
 
     // Formatear fecha de expedición
-    const fechaExpedicion = this.formatDate(certificate.issueDate || new Date());
+    const fechaExpedicion = this.formatDate(
+      certificate.issueDate || new Date(),
+    );
 
     // Formatear lugar y fecha de expedición del título
     const lugarFechaExpedicion = `${certificate.campus || 'Bogotá'} (${certificate.campus?.toUpperCase() || 'BOYACÁ'}) ${this.formatDateLong(certificate.graduationDate)}`;
@@ -173,7 +190,9 @@ export class PdfGeneratorService {
       month: 'long',
       year: 'numeric',
       timeZone: 'America/Bogota',
-    }).format(d).toUpperCase();
+    })
+      .format(d)
+      .toUpperCase();
   }
 
   private toSafeDate(value: Date | string): Date {

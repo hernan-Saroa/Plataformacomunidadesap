@@ -101,7 +101,9 @@ const getClientIp = (req: Request): string | undefined => {
     ...parseIpHeader(req.headers['cf-connecting-ip']),
     ...parseIpHeader(req.headers['x-real-ip']),
     ...parseIpHeader(req.headers['x-client-ip']),
-    ...(Array.isArray(req.ips) ? req.ips.map((item) => String(item || '').trim()) : []),
+    ...(Array.isArray(req.ips)
+      ? req.ips.map((item) => String(item || '').trim())
+      : []),
     typeof req.ip === 'string' ? req.ip.trim() : '',
     req.socket?.remoteAddress || '',
   ]
@@ -116,7 +118,10 @@ const getClientIp = (req: Request): string | undefined => {
   return publicIp || candidates[0];
 };
 
-const pickHeader = (req: Request, ...headerNames: string[]): string | undefined => {
+const pickHeader = (
+  req: Request,
+  ...headerNames: string[]
+): string | undefined => {
   for (const headerName of headerNames) {
     const value = req.headers[headerName];
     const parsed = Array.isArray(value)
@@ -206,8 +211,10 @@ export class GraduationCertificatesController {
     @Body() body: LandingCertificateRequestDto,
     @Req() req: Request,
   ) {
-    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    const origin =
+      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer =
+      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
     let frontendBaseUrl = origin;
     if (!frontendBaseUrl && referer) {
       try {
@@ -217,7 +224,10 @@ export class GraduationCertificatesController {
       }
     }
 
-    return await this.service.solicitarCertificadoLanding(body, frontendBaseUrl);
+    return await this.service.solicitarCertificadoLanding(
+      body,
+      frontendBaseUrl,
+    );
   }
 
   /**
@@ -423,8 +433,10 @@ export class GraduationCertificatesController {
     @Body() body: { reviewerName?: string; reviewerId?: string },
     @Req() req: Request,
   ) {
-    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    const origin =
+      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer =
+      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
     let frontendBaseUrl = origin;
     if (!frontendBaseUrl && referer) {
       try {
@@ -453,8 +465,10 @@ export class GraduationCertificatesController {
     @Body() body: ApproveRequestDto,
     @Req() req: Request,
   ) {
-    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    const origin =
+      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer =
+      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
     let frontendBaseUrl = origin;
     if (!frontendBaseUrl && referer) {
       try {
@@ -475,11 +489,14 @@ export class GraduationCertificatesController {
   @HttpCode(HttpStatus.OK)
   async rechazarSolicitud(
     @Param('id') id: string,
-    @Body() body: { reason: string; reviewerName?: string; reviewerId?: string },
+    @Body()
+    body: { reason: string; reviewerName?: string; reviewerId?: string },
     @Req() req: Request,
   ) {
-    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    const origin =
+      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer =
+      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
     let frontendBaseUrl = origin;
     if (!frontendBaseUrl && referer) {
       try {
@@ -544,9 +561,15 @@ export class GraduationCertificatesController {
    */
   @Get(':id/pdf')
   @Public()
-  async descargarPDF(@Param('id') id: string, @Req() req: Request, @Res() res: Response) {
-    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+  async descargarPDF(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const origin =
+      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer =
+      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
     let frontendBaseUrl = origin;
     if (!frontendBaseUrl && referer) {
       try {
@@ -585,12 +608,11 @@ export class GraduationCertificatesController {
    */
   @Post(':id/reenviar')
   @HttpCode(HttpStatus.OK)
-  async reenviarCertificado(
-    @Param('id') id: string,
-    @Req() req: Request,
-  ) {
-    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+  async reenviarCertificado(@Param('id') id: string, @Req() req: Request) {
+    const origin =
+      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer =
+      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
     let frontendBaseUrl = origin;
     if (!frontendBaseUrl && referer) {
       try {
@@ -602,5 +624,4 @@ export class GraduationCertificatesController {
 
     return await this.service.reenviarCertificado(id, frontendBaseUrl);
   }
-
 }

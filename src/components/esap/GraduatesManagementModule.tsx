@@ -96,6 +96,8 @@ type GraduateRow = {
   numRegistro?: string;
   numFolio?: string;
   numLibro?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 // ✅ DÍA 4: Container4K para padding adaptativo
@@ -591,21 +593,49 @@ export function GraduatesManagementModule() {
     setFileToDelete(null);
   };
 
+  const saveBlobAsFile = (blob: Blob, fileName: string) => {
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = downloadUrl;
+    anchor.download = fileName || 'archivo';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+  };
+
   const handleDownloadFile = async (file: GraduadoArchivo) => {
+    const graduateId = file.graduateId || filesModalUser?.id;
+
+    if (graduateId) {
+      try {
+        const blob = await graduadosService.graduados.descargarArchivo(graduateId, file.id, {
+          skipErrorToast: true,
+        });
+        saveBlobAsFile(blob, file.originalName || 'archivo');
+        return;
+      } catch (error) {
+        console.warn('Fallo la descarga por endpoint dedicado, se intentara ruta publica', error);
+      }
+    }
+
     const fileUrl = buildServiceAssetUrl(
       'registro-academico',
       file.url || `/uploads/graduate-files/${file.storedName}`,
     );
-    const token =
-      localStorage.getItem('esap_auth_token') ||
-      localStorage.getItem('esap_access_token') ||
-      '';
+
     try {
       const response = await fetch(fileUrl, {
         method: 'GET',
-        headers: token
+        headers: (
+          localStorage.getItem('esap_auth_token') ||
+          localStorage.getItem('esap_access_token')
+        )
           ? {
-              Authorization: `Bearer ${token}`,
+              Authorization: `Bearer ${
+                localStorage.getItem('esap_auth_token') ||
+                localStorage.getItem('esap_access_token')
+              }`,
             }
           : undefined,
       });
@@ -613,14 +643,7 @@ export function GraduatesManagementModule() {
         throw new Error('No se pudo descargar el archivo');
       }
       const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = downloadUrl;
-      anchor.download = file.originalName || 'archivo';
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.URL.revokeObjectURL(downloadUrl);
+      saveBlobAsFile(blob, file.originalName || 'archivo');
     } catch (error) {
       console.error('Error descargando archivo:', error);
       toast.error('No se pudo descargar el archivo');
@@ -702,11 +725,33 @@ export function GraduatesManagementModule() {
             numRegistro: graduate.numRegistro,
             numFolio: graduate.numFolio,
             numLibro: graduate.numLibro,
+            createdAt: graduate.createdAt,
+            updatedAt: graduate.updatedAt,
           } as GraduateRow;
         });
 
+        const getGraduateSortTime = (value?: string) => {
+          if (!value) return 0;
+          const timestamp = new Date(value).getTime();
+          return Number.isNaN(timestamp) ? 0 : timestamp;
+        };
+
+        const sortedGraduates = [...mappedGraduates].sort((a, b) => {
+          const aTime =
+            getGraduateSortTime(a.createdAt) ||
+            getGraduateSortTime(a.updatedAt) ||
+            getGraduateSortTime(a.enrollmentDate) ||
+            getGraduateSortTime(a.graduationDate);
+          const bTime =
+            getGraduateSortTime(b.createdAt) ||
+            getGraduateSortTime(b.updatedAt) ||
+            getGraduateSortTime(b.enrollmentDate) ||
+            getGraduateSortTime(b.graduationDate);
+          return bTime - aTime;
+        });
+
         if (isMounted) {
-          setGraduates(mappedGraduates);
+          setGraduates(sortedGraduates);
         }
 
         // Cargar conteos de certificados en segundo plano para no bloquear la primera renderización.
@@ -1995,10 +2040,12 @@ export function GraduatesManagementModule() {
         }}
       >
         <DialogContent
-          className="graduate-files-dialog max-h-[88vh] overflow-y-auto"
+          className="graduate-files-dialog flex flex-col overflow-hidden"
           style={{
             width: 'min(72rem, calc(100vw - 2rem))',
             maxWidth: '72rem',
+            height: 'min(76vh, 52rem)',
+            maxHeight: 'calc(100vh - 7rem)',
           }}
           onEscapeKeyDown={(event) => {
             if (isUploadingFiles) {
@@ -2011,6 +2058,7 @@ export function GraduatesManagementModule() {
             }
           }}
         >
+          <div className="flex h-full min-h-0 w-full flex-col gap-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5" style={{ color: '#003DA5' }} />
@@ -2023,7 +2071,7 @@ export function GraduatesManagementModule() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="graduate-files-body py-4 space-y-4">
+          <div className="graduate-files-body min-h-0 flex-1 overflow-y-auto py-4 pr-1 space-y-4">
             <div className="grid gap-3 md:grid-cols-[1fr]">
               <div className="flex items-center justify-between rounded-xl border px-4 py-3 shadow-sm" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
                 <div>
@@ -2240,12 +2288,20 @@ export function GraduatesManagementModule() {
               Cerrar
             </button>
           </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* Modal: Confirmar eliminación de archivo */}
       <Dialog open={isDeleteFileModalOpen} onOpenChange={setIsDeleteFileModalOpen}>
-        <DialogContent className="graduate-files-confirm-dialog">
+        <DialogContent
+          className="graduate-files-confirm-dialog w-[92vw] max-w-md"
+          style={{
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+          }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-amber-600" />

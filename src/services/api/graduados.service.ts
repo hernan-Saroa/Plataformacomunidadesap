@@ -40,6 +40,8 @@ export interface GraduadoData {
   numLibro?: string;
   numActa?: string;
   filesCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 /**
@@ -682,6 +684,21 @@ const graduadosService = {
         `${SERVICE_PREFIX}/graduates/${graduateId}/files/${fileId}`
       );
       return response;
+    },
+
+    /**
+     * Descargar archivo del graduado
+     */
+    descargarArchivo: async (
+      graduateId: string,
+      fileId: string,
+      options?: ApiRequestOptions,
+    ): Promise<Blob> => {
+      return apiClient.getBlob(
+        `${SERVICE_PREFIX}/graduates/${graduateId}/files/${fileId}/download`,
+        undefined,
+        options,
+      );
     },
   },
 };

@@ -744,20 +744,39 @@ export function ReviewRequestsModule() {
     });
   }, [approvalForm.campus, approvalForm.seccionalName, seccionalBySede]);
 
+  const getRequestSortTime = (request: ReviewRequest) => {
+    const createdAt = parseDateSafe(request.createdAt)?.getTime() ?? 0;
+    const reviewedAt = parseDateSafe(request.reviewedAt)?.getTime() ?? 0;
+    return createdAt || reviewedAt;
+  };
+
+  const orderedRequests = useMemo(
+    () =>
+      [...requests].sort(
+        (a, b) => getRequestSortTime(b) - getRequestSortTime(a),
+      ),
+    [requests],
+  );
+
   // Filtros
-  const filteredRequests = requests.filter(request => {
-    const matchesSearch = 
-      request.requestNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      request.graduateDocumentNumber.includes(searchQuery) ||
-      request.requester.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (request.requester.companyName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (request.requester.contactPerson || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      request.requester.email.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredRequests = useMemo(
+    () =>
+      orderedRequests.filter((request) => {
+        const matchesSearch =
+          request.requestNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          request.graduateDocumentNumber.includes(searchQuery) ||
+          request.requester.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (request.requester.companyName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (request.requester.contactPerson || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          request.requester.email.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesStatus = statusFilter === 'all' || request.status === statusFilter;
+        const matchesStatus =
+          statusFilter === 'all' || request.status === statusFilter;
 
-    return matchesSearch && matchesStatus;
-  });
+        return matchesSearch && matchesStatus;
+      }),
+    [orderedRequests, searchQuery, statusFilter],
+  );
 
   useEffect(() => {
     setCurrentPage(1);
