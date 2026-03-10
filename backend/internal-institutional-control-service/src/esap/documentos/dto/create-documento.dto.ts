@@ -30,6 +30,10 @@ export class CreateDocumentoDto {
   @IsUUID()
   planMejoramientoId?: string;
 
+  @IsOptional()
+  @IsUUID()
+  documentoBibliotecaId?: string;
+
   @IsString()
   @IsNotEmpty()
   nombreArchivo: string;

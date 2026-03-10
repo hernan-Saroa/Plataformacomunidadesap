@@ -52,7 +52,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Layers, Plus, Filter, Search, Grid, List, Edit2, Save, X,
   TrendingUp, AlertTriangle, CheckCircle, Clock, Building2,
-  MapPin, Target, BarChart3, Eye, Settings, Link2
+  MapPin, Target, BarChart3, Eye, Settings, Link2, Info
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Button } from '../../ui/button';
@@ -289,6 +289,22 @@ export function UniversoAuditorias() {
 
       {/* CONTENIDO */}
       <div className="flex-1 overflow-auto p-6">
+        {/* INFO CÁLCULO DEL SCORE */}
+        <div className="mb-4 bg-blue-50 border-2 border-blue-200 rounded-xl p-4 flex items-start gap-3">
+          <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-bold text-gray-900 mb-1">¿Cómo se calcula el Score?</p>
+            <p className="text-gray-800 mb-2">
+              Puntaje de prioridad (0-100) que ordena los procesos de mayor a menor urgencia.
+              <strong> Fórmula:</strong> riesgoResidual = (Probabilidad × Impacto) ÷ Nivel de Control → score = (riesgoResidual ÷ 9) × 100
+            </p>
+            <p className="text-xs text-gray-700">
+              <span className="inline-block mr-4">🔴 90-100: Prioridad alta (auditoría urgente)</span>
+              <span className="inline-block mr-4">🟡 50-89: Prioridad media</span>
+              <span className="inline-block">🟢 0-49: Prioridad baja (postergable)</span>
+            </p>
+          </div>
+        </div>
 
         <AnimatePresence mode="wait">
           {vistaActiva === 'dashboard' && (
