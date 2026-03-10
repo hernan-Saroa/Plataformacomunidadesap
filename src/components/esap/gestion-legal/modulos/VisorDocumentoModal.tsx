@@ -40,11 +40,14 @@ export function VisorDocumentoModal({
   useEffect(() => {
     if (archivo) {
       const isMock = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:');
-      // Si es un archivo mock, no necesitamos esperar 'load' event del iframe/img
-      setIsLoading(!isMock);
+
+      const nombreParaExtension = (numero || archivo || '').toLowerCase();
+      const isViewable = nombreParaExtension.match(/\.(pdf|jpg|jpeg|png|gif|webp)/i) || archivo.match(/\.(pdf|jpg|jpeg|png|gif|webp)/i);
+
+      setIsLoading(!isMock && isViewable !== null);
       setHasError(false);
     }
-  }, [archivo]);
+  }, [archivo, numero]);
 
   if (!archivo || !numero) {
     return null;
@@ -171,9 +174,10 @@ export function VisorDocumentoModal({
           {/* PDF/Image viewer */}
           {archivo && (
             (() => {
-              const extension = archivo.split('.').pop()?.toLowerCase();
-              const isPdf = extension === 'pdf' || archivo.includes('pdf') || archivo.includes('.pdf');
-              const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '') || archivo.match(/\.(jpg|jpeg|png|gif|webp)/i);
+              const nombreParaExtension = (numero || archivo || '').toLowerCase();
+              const extension = nombreParaExtension.split('.').pop()?.toLowerCase();
+              const isPdf = extension === 'pdf' || archivo.includes('pdf') || archivo.includes('.pdf') || nombreParaExtension.includes('.pdf');
+              const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '') || archivo.match(/\.(jpg|jpeg|png|gif|webp)/i) || nombreParaExtension.match(/\.(jpg|jpeg|png|gif|webp)/i);
 
               // MODO SIMULADO: Si es un PDF mock (sin URL real), mostramos un documento HTML simulado
               // Esto evita que se cargue la app recursivamente en el iframe (error "mini ventana web")

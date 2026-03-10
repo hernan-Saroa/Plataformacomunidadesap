@@ -6,12 +6,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
-import {
-  X, Check, PlusCircle, FileText, Search,
-  AlertTriangle, CheckCircle, AlertCircle,
-  Briefcase, MapPin, Users
-} from 'lucide-react';
-import { profesionalesService, ensureDataSeeded } from '../../../services/api/esapDataService';
+import { X, Check, PlusCircle, FileText, Search, AlertTriangle, CheckCircle, AlertCircle, Briefcase, MapPin, Users } from 'lucide-react';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -60,46 +56,59 @@ interface Props {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getSemaforo(p: any) {
-  if (p.estado !== 'activo') return 'gris';
-  const pct = (p.procesosAsignados / p.capacidadMaxima) * 100;
+  if (p.estado !== 'activo' && p.estado !== 'ACTIVO') return 'gris';
+  const pct = (p.procesosAsignados / (p.capacidadMaxima || 10)) * 100;
   if (pct >= 100) return 'rojo';
-  if (pct >= 80)  return 'amarillo';
+  if (pct >= 80) return 'amarillo';
   return 'verde';
 }
 
 const SEM_CONFIG = {
-  verde:    { label: 'Disponible',   color: '#059669', bg: '#ECFDF5', border: '#A7F3D0', dot: '#059669' },
-  amarillo: { label: 'Carga media',  color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', dot: '#D97706' },
-  rojo:     { label: 'Sin cupo',     color: '#DC2626', bg: '#FEF2F2', border: '#FECACA', dot: '#DC2626' },
-  gris:     { label: 'No disponible',color: '#9CA3AF', bg: '#F9FAFB', border: '#E5E7EB', dot: '#9CA3AF' },
+  verde: { label: 'Disponible', color: '#059669', bg: '#ECFDF5', border: '#A7F3D0', dot: '#059669' },
+  amarillo: { label: 'Carga media', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', dot: '#D97706' },
+  rojo: { label: 'Sin cupo', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA', dot: '#DC2626' },
+  gris: { label: 'No disponible', color: '#9CA3AF', bg: '#F9FAFB', border: '#E5E7EB', dot: '#9CA3AF' },
 };
 
 const ESTADO_LABEL: Record<string, string> = {
-  activo: 'Activo', inactivo: 'Inactivo', vacaciones: 'Vacaciones', comision: 'Comisión'
+  activo: 'Activo', ACTIVO: 'Activo', inactivo: 'Inactivo', vacaciones: 'Vacaciones', comision: 'Comisión'
 };
 
 const CONTRATO_COLOR: Record<string, { bg: string; text: string }> = {
-  Planta:      { bg: '#EFF6FF', text: '#1E40AF' },
+  Planta: { bg: '#EFF6FF', text: '#1E40AF' },
   Contratista: { bg: '#F5F3FF', text: '#5B21B6' },
-  OPS:         { bg: '#FFF7ED', text: '#C2410C' },
+  OPS: { bg: '#FFF7ED', text: '#C2410C' },
 };
 
 function iniciales(nombre: string) {
-  return nombre.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
+  return nombre.split(' ').slice(0, 2).map(n => n[0] || '').join('').toUpperCase();
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export function WizardConvertirProcesoWorldClass({ noticia, onConfirmar, onCerrar }: Props) {
   const [profesionalId, setProfesionalId] = useState('');
-  const [busqueda, setBusqueda]           = useState('');
-  const [enviando, setEnviando]           = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const [enviando, setEnviando] = useState(false);
   const [profesionales, setProfesionales] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchProfesionales = async () => {
-      const data = await profesionalesService.getAll();
-      setProfesionales(data);
+      try {
+        const data = await disciplinaryService.getProfesionales();
+        setProfesionales(data.map(p => ({
+          ...p,
+          nombre: p.nombreCompleto || p.nombre || p.email,
+          especialidad: p.especialidad || 'Derecho Disciplinario',
+          territorial: p.territorial || 'Sede Central',
+          procesosAsignados: p.procesosAsignados || 0,
+          capacidadMaxima: p.capacidadMaxima || 10,
+          tipoContrato: p.tipoContrato || 'Planta',
+          estado: p.estado || 'ACTIVO'
+        })));
+      } catch (err) {
+        console.error('Error al cargar profesionales:', err);
+      }
     };
     fetchProfesionales();
   }, []);
@@ -232,10 +241,10 @@ export function WizardConvertirProcesoWorldClass({ noticia, onConfirmar, onCerra
                 </div>
               ) : (
                 lista.map(prof => {
-                  const sem  = SEM_CONFIG[getSemaforo(prof)];
-                  const sel  = profesionalId === prof.id;
+                  const sem = SEM_CONFIG[getSemaforo(prof)];
+                  const sel = profesionalId === prof.id;
                   const noDisp = getSemaforo(prof) === 'gris' || getSemaforo(prof) === 'rojo';
-                  const pct  = Math.round((prof.procesosAsignados / prof.capacidadMaxima) * 100);
+                  const pct = Math.round((prof.procesosAsignados / prof.capacidadMaxima) * 100);
                   const cupos = Math.max(0, prof.capacidadMaxima - prof.procesosAsignados);
                   const cont = CONTRATO_COLOR[prof.tipoContrato];
 

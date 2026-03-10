@@ -1329,10 +1329,24 @@ export class CorreosJuridicosService {
     }
 
     /**
+     * Get emails linked to a specific process (Oficios)
+     */
+    async getCorreosByExpediente(expedienteId: string, tipo?: string): Promise<CorreoJuridico[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/correos`, { params: { expedienteId, tipo } });
+    }
+
+    /**
      * Reclassify ALL emails with updated heuristics
      */
     async reclassifyAll(): Promise<{ processed: number; updated: number; unchanged: number }> {
         return apiClient.post(`${SERVICE_PREFIX}/correos/reclassify-all`, {});
+    }
+
+    /**
+     * Get email history / traceability
+     */
+    async getHistorial(id: string): Promise<any[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/correos/${id}/historial`);
     }
 
 }

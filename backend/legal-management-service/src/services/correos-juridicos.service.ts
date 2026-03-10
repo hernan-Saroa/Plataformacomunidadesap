@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, FindOptionsWhere } from 'typeorm';
 import { CorreoJuridico } from '../entities/correo-juridico.entity';
 import { AdjuntoCorreo } from '../entities/adjunto-correo.entity';
+import { CorreoJuridicoHistorial } from '../entities/correo-juridico-historial.entity';
 import { MicrosoftGraphService, GraphEmail } from './microsoft-graph.service';
 import { SmartClassificationService } from './smart-classification.service';
 
@@ -13,6 +14,7 @@ export interface EmailFilters {
     archivado?: boolean;
     direccion?: string;
     search?: string;
+    expedienteId?: string;
 }
 
 export interface EmailClassification {
@@ -42,12 +44,41 @@ export class CorreosJuridicosService {
         private readonly correoRepo: Repository<CorreoJuridico>,
         @InjectRepository(AdjuntoCorreo)
         private readonly adjuntoRepo: Repository<AdjuntoCorreo>,
+        @InjectRepository(CorreoJuridicoHistorial)
+        private readonly historialRepo: Repository<CorreoJuridicoHistorial>,
         private readonly graphService: MicrosoftGraphService,
         private readonly smartService: SmartClassificationService,
         private readonly actuacionService: ActuacionService,
     ) { }
 
+    /**
+     * Registra una acción en el historial del correo
+     */
+    async registrarAccion(correoId: string, tipoEvento: string, descripcion: string, usuario: string = 'Sistema', detalleJson: any = null): Promise<void> {
+        try {
+            const registro = this.historialRepo.create({
+                correoJuridicoId: correoId,
+                tipoEvento,
+                descripcion,
+                usuario,
+                detalleJson
+            });
+            await this.historialRepo.save(registro);
+            this.logger.log(`📱 Historial guardado [${tipoEvento}] para correo ${correoId}`);
+        } catch (error) {
+            this.logger.error(`Error guardando historial para correo ${correoId}:`, error);
+        }
+    }
 
+    /**
+     * Obtiene el historial de acciones de un correo jurídico
+     */
+    async getHistorial(correoJuridicoId: string): Promise<CorreoJuridicoHistorial[]> {
+        return this.historialRepo.find({
+            where: { correoJuridicoId },
+            order: { fechaCreacion: 'DESC' }
+        });
+    }
 
     /**
      * Sync one page of emails from Microsoft Graph
@@ -112,14 +143,48 @@ export class CorreosJuridicosService {
                             }
                         }
                     } else {
-                        // Classify the email (AI)
-                        const classification = await this.smartService.classify(email.subject || '', email.bodyPreview || '');
-                        const isUrgente = this.smartService.analyzeUrgency(email.subject || '', email.bodyPreview || '');
-
-                        // Map AI specific category to DB generic Type
+                        // Inherit thread context if available
+                        let inheritsThread = false;
+                        let inheritedExpedienteId: string | undefined = undefined;
                         let tipoDB = 'CORREO';
-                        if (classification.category === 'JUDICIAL') tipoDB = 'JUDICIAL';
-                        if (classification.category === 'OFICIO') tipoDB = 'OFICIO';
+                        let categoriaStr = 'General';
+                        let moduleStr = 'CENTRO_COMUNICACIONES';
+                        let confidenceNum = 1.0;
+
+                        if (email.conversationId) {
+                            const parentEmail = await this.correoRepo.findOne({
+                                where: { threadId: email.conversationId },
+                                order: { fechaRecepcion: 'DESC' }
+                            });
+
+                            if (parentEmail && (parentEmail.expedienteId || parentEmail.tipo === 'OFICIO' || parentEmail.tipo === 'JUDICIAL')) {
+                                inheritsThread = true;
+                                inheritedExpedienteId = parentEmail.expedienteId || undefined;
+                                tipoDB = parentEmail.tipo;
+                                categoriaStr = parentEmail.categoria || 'Historial';
+                                moduleStr = parentEmail.moduloSugerido || 'DEFENSA_JUDICIAL';
+                                this.logger.log(`Inheriting context from thread ${email.conversationId}: Tipo=${tipoDB}, Expediente=${inheritedExpedienteId}`);
+                            }
+                        }
+
+                        let isUrgente = false;
+
+                        if (!inheritsThread) {
+                            // Classify the email (AI)
+                            const classification = await this.smartService.classify(email.subject || '', email.bodyPreview || '', email.hasAttachments || false);
+                            isUrgente = this.smartService.analyzeUrgency(email.subject || '', email.bodyPreview || '');
+
+                            // Map AI specific category to DB generic Type
+                            if (classification.category === 'JUDICIAL') tipoDB = 'JUDICIAL';
+                            if (classification.category === 'OFICIO') tipoDB = 'OFICIO';
+
+                            categoriaStr = classification.category;
+                            moduleStr = classification.module;
+                            confidenceNum = classification.confidence;
+                        } else {
+                            // Even if inheriting, we can check urgency
+                            isUrgente = this.smartService.analyzeUrgency(email.subject || '', email.bodyPreview || '');
+                        }
 
                         // Extract NLP entities
                         const entities = this.smartService.extractEntities(email.subject || '', email.bodyPreview || '');
@@ -138,12 +203,12 @@ export class CorreosJuridicosService {
                             archivado: false,
                             urgente: isUrgente,
                             tipo: tipoDB, // JUDICIAL, OFICIO, CORREO
-                            categoria: classification.category,
-                            moduloSugerido: classification.module,
-                            confianzaClasificacion: classification.confidence,
-                            aiSuggestedCategory: classification.category,
+                            categoria: categoriaStr,
+                            moduloSugerido: moduleStr,
+                            confianzaClasificacion: confidenceNum,
+                            aiSuggestedCategory: categoriaStr,
                             isTrained: false,
-                            expedienteId: undefined,
+                            expedienteId: inheritedExpedienteId,
                             // Threading fields
                             internetMessageId: email.internetMessageId || undefined,
                             threadId: email.conversationId || undefined,
@@ -154,6 +219,7 @@ export class CorreosJuridicosService {
                         });
 
                         const savedCorreo = await this.correoRepo.save(newCorreo);
+                        this.registrarAccion(savedCorreo.id, 'RECIBIDO', 'Correo sincronizado desde Microsoft Graph');
                         synced++;
                         this.logger.log(`Synced: ${email.subject?.substring(0, 50)}...`);
 
@@ -215,6 +281,10 @@ export class CorreosJuridicosService {
             where.archivado = filters.archivado;
         }
 
+        if (filters?.expedienteId) {
+            where.expedienteId = filters.expedienteId;
+        }
+
         if (filters?.direccion) {
             where.direccion = filters.direccion;
         }
@@ -222,6 +292,7 @@ export class CorreosJuridicosService {
         const correos = await this.correoRepo.find({
             where,
             order: { fechaRecepcion: 'DESC' },
+            relations: ['adjuntos']
         });
 
         // Apply search filter if present
@@ -280,7 +351,9 @@ export class CorreosJuridicosService {
 
         // Update in DB
         correo.leido = true;
-        return this.correoRepo.save(correo);
+        const saved = await this.correoRepo.save(correo);
+        await this.registrarAccion(correo.id, 'LEIDO', 'Correo marcado como leído');
+        return saved;
     }
 
     /**
@@ -294,7 +367,9 @@ export class CorreosJuridicosService {
         }
 
         correo.archivado = true;
-        return this.correoRepo.save(correo);
+        const saved = await this.correoRepo.save(correo);
+        await this.registrarAccion(correo.id, 'ARCHIVADO', 'Correo archivado en el sistema');
+        return saved;
     }
 
     /**
@@ -308,7 +383,9 @@ export class CorreosJuridicosService {
         }
 
         correo.archivado = false;
-        return this.correoRepo.save(correo);
+        const saved = await this.correoRepo.save(correo);
+        await this.registrarAccion(correo.id, 'DESARCHIVADO', 'Correo restaurado de archivo');
+        return saved;
     }
 
     /**
@@ -444,6 +521,7 @@ export class CorreosJuridicosService {
             // Mark original as replied
             original.isReplied = true;
             await this.correoRepo.save(original);
+            await this.registrarAccion(original.id, 'RESPONDIDO', `Respuesta enviada (${savedReply.id})`);
 
             this.logger.log(`Reply saved: ${savedReply.id} -> parent: ${original.id}`);
             return { success: true, correo: savedReply };
@@ -492,6 +570,7 @@ export class CorreosJuridicosService {
             // Mark original as forwarded
             original.isForwarded = true;
             await this.correoRepo.save(original);
+            await this.registrarAccion(original.id, 'REENVIADO', `Correo reenviado a ${to}`);
 
             this.logger.log(`Forward saved: ${savedForward.id} -> parent: ${original.id}`);
             return { success: true, correo: savedForward };
@@ -684,6 +763,7 @@ export class CorreosJuridicosService {
         // else keep existing tipo or map to CORREO? Better trust the user correction on category.
 
         const updated = await this.correoRepo.save(correo);
+        await this.registrarAccion(correo.id, 'CLASIFICADO_MANUAL', `Clasificación manual: ${newCategory}`);
 
         // Retrain AI
         const text = `${correo.asunto} ${correo.cuerpoTexto || ''}`;
@@ -704,6 +784,7 @@ export class CorreosJuridicosService {
         correo.expedienteId = expedienteId;
         // Optional: Save targetModule in email if column exists? Not for now.
         const savedCorreo = await this.correoRepo.save(correo);
+        await this.registrarAccion(correo.id, 'ASOCIADO_PROCESO', `Asociado al proceso: ${expedienteId}`);
 
         // 2. Create Actuacion
         try {
@@ -770,7 +851,7 @@ export class CorreosJuridicosService {
         for (const email of unclassified) {
             try {
                 // 2. Classify
-                const classification = await this.smartService.classify(email.asunto || '', email.cuerpoTexto || '');
+                const classification = await this.smartService.classify(email.asunto || '', email.cuerpoTexto || '', email.tieneAdjuntos || false);
                 const isUrgente = this.smartService.analyzeUrgency(email.asunto || '', email.cuerpoTexto || '');
 
                 // 3. Map to DB fields
@@ -830,7 +911,7 @@ export class CorreosJuridicosService {
                     continue;
                 }
 
-                const classification = await this.smartService.classify(email.asunto || '', email.cuerpoTexto || '');
+                const classification = await this.smartService.classify(email.asunto || '', email.cuerpoTexto || '', email.tieneAdjuntos || false);
                 const isUrgente = this.smartService.analyzeUrgency(email.asunto || '', email.cuerpoTexto || '');
                 const entities = this.smartService.extractEntities(email.asunto || '', email.cuerpoTexto || '');
 

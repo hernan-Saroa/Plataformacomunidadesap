@@ -33,18 +33,18 @@ export class SmartClassificationService implements OnModuleInit {
     /**
      * Main entry point for classification
      */
-    public async classify(subject: string, body: string): Promise<ClassificationResult> {
+    public async classify(subject: string, body: string, hasAttachments: boolean = false): Promise<ClassificationResult> {
         const text = `${subject} ${body}`;
 
         // LAYER 1: Heuristic (Determinista)
-        const heuristic = this.applyHeuristics(subject, body);
+        const heuristic = this.applyHeuristics(subject, body, hasAttachments);
         if (heuristic) {
             this.logger.log(`Heuristic match: ${heuristic.category} for "${subject}"`);
             return { ...heuristic, method: 'HEURISTIC' };
         }
 
         // LAYER 2: Probabilistic (Bayesian)
-        return this.applyBayesian(text);
+        return this.applyBayesian(text, subject, body, hasAttachments);
     }
 
     /**
@@ -56,7 +56,7 @@ export class SmartClassificationService implements OnModuleInit {
      * 3. OFICIO ESTRICTO — requiere keyword fuerte + remitente institucional
      * 4. null → pasa al Bayesiano
      */
-    private applyHeuristics(subject: string, body: string): Omit<ClassificationResult, 'method'> | null {
+    private applyHeuristics(subject: string, body: string, hasAttachments: boolean): Omit<ClassificationResult, 'method'> | null {
         const content = `${subject} ${body}`.toUpperCase();
 
         // ═══ PASO 1: DISCARD — Palabras blandas fuerzan categoría CORREO ═══
@@ -114,8 +114,14 @@ export class SmartClassificationService implements OnModuleInit {
         const matchesSender = institutionalSenders.some(sender => content.includes(sender));
 
         // OFICIO = keyword fuerte, OR (keyword débil + remitente institucional)
-        if (matchesStrongKeyword || (matchesWeakKeyword && matchesSender)) {
-            return { category: 'OFICIO', confidence: 1.0, module: 'MOD-06: Órganos de Control' };
+        // AND MUST HAVE ATTACHMENTS
+        if (hasAttachments && (matchesStrongKeyword || (matchesWeakKeyword && matchesSender))) {
+            const entities = this.extractEntities(subject, body);
+            const suggestedModule = entities.submodulo === 'JUZGAMIENTO_DISCIPLINARIO'
+                ? 'MOD-02: Juzgamiento Disciplinario'
+                : 'MOD-01: Defensa Judicial';
+
+            return { category: 'OFICIO', confidence: 1.0, module: suggestedModule };
         }
 
         // Remitente institucional solo, sin keywords → no es suficiente para OFICIO
@@ -127,35 +133,45 @@ export class SmartClassificationService implements OnModuleInit {
     /**
      * Layer 2: Bayesian Classification
      */
-    private applyBayesian(text: string): ClassificationResult {
+    private applyBayesian(text: string, subject: string, body: string, hasAttachments: boolean): ClassificationResult {
         // If model is empty (cold start & no training), fallback
         if (this.classifier.docs.length === 0) {
             return { category: 'CORREO', confidence: 0.0, module: 'Buzón General', method: 'DEFAULT' };
         }
 
-        const classification = this.classifier.classify(text);
+        let classification = this.classifier.classify(text);
         const classifications = this.classifier.getClassifications(text);
         const best = classifications[0];
+        const confidence = best ? best.value : 0.5;
+
+        // Safety net: Si Bayesiano clasifica como OFICIO pero con baja confianza o sin adjuntos, forzar CORREO
+        if (classification === 'OFICIO') {
+            if (!hasAttachments || confidence < 0.7) {
+                this.logger.warn(`Bayesian classified as OFICIO but missing attachments or confidence (${confidence}) too low — forcing CORREO`);
+                classification = 'CORREO';
+            }
+        }
 
         // Map categories to Modules
         const moduleMap: Record<string, string> = {
             'JUDICIAL': 'MOD-01: Defensa Judicial',
-            'OFICIO': 'MOD-06: Órganos de Control',
             'CORREO': 'Buzón General',
             'CONSULTA': 'MOD-03: Asesoría Jurídica'
         };
 
-        // Safety net: Si Bayesiano clasifica como OFICIO pero con baja confianza, forzar CORREO
-        const confidence = best ? best.value : 0.5;
-        if (classification === 'OFICIO' && confidence < 0.7) {
-            this.logger.warn(`Bayesian classified as OFICIO but confidence (${confidence}) too low — forcing CORREO`);
-            return { category: 'CORREO', confidence, module: 'Buzón General', method: 'BAYESIAN' };
+        let moduleAssigned = moduleMap[classification] || 'Buzón General';
+
+        if (classification === 'OFICIO') {
+            const entities = this.extractEntities(subject, body);
+            moduleAssigned = entities.submodulo === 'JUZGAMIENTO_DISCIPLINARIO'
+                ? 'MOD-02: Juzgamiento Disciplinario'
+                : 'MOD-01: Defensa Judicial';
         }
 
         return {
             category: classification,
             confidence,
-            module: moduleMap[classification] || 'Buzón General',
+            module: moduleAssigned,
             method: 'BAYESIAN'
         };
     }

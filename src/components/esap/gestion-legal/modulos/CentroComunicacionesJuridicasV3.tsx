@@ -21,7 +21,7 @@ import {
   Eye, Plus, Search, XCircle, Send, FileText, Download,
   Circle, Check, Sparkles, User, Building, Clock, List, Columns3,
   Filter, Star, Gavel, Scale, Briefcase, Paperclip, ChevronLeft, ChevronRight,
-  RefreshCw, Loader2, Reply, ArrowRight
+  RefreshCw, Loader2, Reply, ArrowRight, Link2
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -77,6 +77,7 @@ interface ComunicacionUnificada {
   moduloSugerido?: string;
   confianzaClasificacion?: number;
   cuerpoHtml?: string;
+  expedienteId?: string;
 }
 
 interface ModuloDestinoUI {
@@ -473,7 +474,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       urgente: correo.urgente,
       leida: correo.leido,
       estado: correo.archivado ? 'ARCHIVADA' : (isSent ? 'ENVIADA' : (correo.leido ? 'LEIDA' : 'PENDIENTE')),
-      documentosAdjuntos: correo.tieneAdjuntos ? ['adjunto'] : [],
+      documentosAdjuntos: (correo.adjuntos && correo.adjuntos.length > 0) ? correo.adjuntos.map(a => a.nombre) : (correo.tieneAdjuntos ? ['adjunto'] : []),
       clasificacionIA: correo.moduloSugerido ? {
         tipoDetectado: correo.categoria || 'Correo',
         moduloSugerido: correo.moduloSugerido,
@@ -488,6 +489,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       moduloSugerido: correo.moduloSugerido || undefined,
       confianzaClasificacion: correo.confianzaClasificacion || undefined,
       cuerpoHtml: correo.cuerpoHtml || undefined,
+      expedienteId: correo.expedienteId || undefined,
     };
   };
 
@@ -832,9 +834,14 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     try {
       const updated = await correosJuridicosService.vincularProceso(id, expedienteId, targetModule);
 
-      // Update local state
-      setComunicaciones(prev => prev.map(c => c.id === id ? { ...c, estado: 'ARCHIVADA' } : c));
-      if (comunicacionSeleccionada?.id === id) setComunicacionSeleccionada(null);
+      // Update local state without archiving so it remains visible as "Asociado"
+      setComunicaciones(prev => prev.map(c => c.id === id ? { ...c, expedienteId } : c));
+
+      // Actualizar también la comunicación seleccionada si es la misma
+      if (comunicacionSeleccionada?.id === id) {
+        setComunicacionSeleccionada(prev => prev ? { ...prev, expedienteId } : prev);
+      }
+
       if (comunicacionParaExpediente?.id === id) setComunicacionParaExpediente(null); // Close if open
 
       toast.success('Correo vinculado al proceso correctamente');
@@ -1485,7 +1492,15 @@ function ItemComunicacion({
         </div>
 
         <div className="flex items-center gap-1.5 mt-1">
-          {moduloSugerido && (
+          {comunicacion.expedienteId ? (
+            <div
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200"
+              title={`Asociado al proceso: ${comunicacion.expedienteId}`}
+            >
+              <Link2 className="w-3 h-3" />
+              Asociado ({comunicacion.expedienteId})
+            </div>
+          ) : moduloSugerido ? (
             <div
               className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold"
               style={{ backgroundColor: `${moduloSugerido.color}15`, color: moduloSugerido.color }}
@@ -1493,8 +1508,8 @@ function ItemComunicacion({
               <Sparkles className="w-3 h-3" />
               {moduloSugerido.nombreCorto}
             </div>
-          )}
-          {!!comunicacion.clasificacionIA && (
+          ) : null}
+          {!comunicacion.expedienteId && !!comunicacion.clasificacionIA && (
             <span className={`text-[10px] font-semibold ${confianzaPct >= 90 ? 'text-green-600' : confianzaPct >= 80 ? 'text-yellow-600' : 'text-gray-400'
               }`}>
               {confianzaPct}% confianza
@@ -1582,7 +1597,39 @@ function VistaPreviaComunicacion({
         </div>
       </div>
 
-      {comunicacion.clasificacionIA && (
+      {comunicacion.expedienteId ? (
+        <div className="mb-4 p-4 rounded-xl border-2 border-indigo-200 bg-indigo-50/50">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="p-1.5 rounded-lg bg-indigo-100">
+              <Link2 className="w-4 h-4 text-indigo-700" />
+            </div>
+            <div className="flex-1">
+              <span className="text-sm font-black text-indigo-900">Comunicación Asociada</span>
+              <p className="text-xs text-indigo-700 font-medium">Vinculada exitosamente a un proceso</p>
+            </div>
+            <Badge className="bg-indigo-100 text-indigo-800 border border-indigo-200">
+              Proceso Activo
+            </Badge>
+          </div>
+          <div className="p-3 rounded-lg bg-white border border-indigo-100 text-xs flex justify-between items-center">
+            <div>
+              <p className="text-gray-500 mb-1">ID del Expediente / Proceso</p>
+              <p className="font-bold text-indigo-700 text-sm">
+                {comunicacion.expedienteId}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-indigo-700 border-indigo-200 hover:bg-indigo-50"
+              onClick={() => onVerExpediente(comunicacion)}
+            >
+              <Eye className="w-4 h-4 mr-2" />
+              Ver Expediente
+            </Button>
+          </div>
+        </div>
+      ) : comunicacion.clasificacionIA && (
         <div className="mb-4 p-4 rounded-xl border-2" style={{
           borderColor: `${(moduloSugerido?.color || '#7C3AED')}30`,
           backgroundColor: `${(moduloSugerido?.color || '#7C3AED')}08`

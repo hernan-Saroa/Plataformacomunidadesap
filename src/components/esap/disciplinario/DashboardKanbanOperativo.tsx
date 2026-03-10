@@ -19,7 +19,7 @@ import {
   MapPin, Info, ExternalLink, RefreshCw, Paperclip, UserCheck,
   List, Columns3, Menu, Edit2, FileSignature, History,
   ChevronsDown, ChevronsUp, ChevronUp, Zap, Link2, UserCog, MessageCircle,
-  ClipboardList, FileEdit,Loader2
+  ClipboardList, FileEdit, Loader2
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -235,7 +235,7 @@ interface Proceso {
 }
 
 type Item = Noticia | Proceso;
-type ModalType = 
+type ModalType =
   | 'crear-noticia'
   | 'convertir-proceso'
   | 'devolver-noticia'
@@ -302,10 +302,10 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
       >
-      <KanbanCard
-        accentColor={noticia.procesoAsociado ? '#9333EA' : '#F59E0B'}
-        className={noticia.procesoAsociado ? 'border-purple-300 hover:shadow-purple-100' : ''}
-      >
+        <KanbanCard
+          accentColor={noticia.procesoAsociado ? '#9333EA' : '#F59E0B'}
+          className={noticia.procesoAsociado ? 'border-purple-300 hover:shadow-purple-100' : ''}
+        >
           {/* Header — KanbanCardHeader */}
           <KanbanCardHeader
             icon={<FileText className="w-4 h-4 text-orange-600" />}
@@ -441,7 +441,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
               />
             </KanbanActionRowTertiary>
           </KanbanActionSection>
-      </KanbanCard>
+        </KanbanCard>
       </motion.div>
     </div>
   );
@@ -469,11 +469,11 @@ interface TarjetaProcesoProps {
   onEditarProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
 }
 
-function TarjetaProceso({ 
-  proceso, 
-  onVerDetalles, 
-  onAprobarBorrador, 
-  onVerExpediente, 
+function TarjetaProceso({
+  proceso,
+  onVerDetalles,
+  onAprobarBorrador,
+  onVerExpediente,
   onGestionAutos,
   onGestionEvidencias,
   onGestionOficios,
@@ -483,7 +483,7 @@ function TarjetaProceso({
   onComentarios,
   noticiasAsociadas = [], // ✅ NUEVO
   onVerNoticiaAsociada, // ✅ NUEVO
-  vistaCompacta, 
+  vistaCompacta,
   isMobile,
   colapsada,
   onToggleColapso,
@@ -529,7 +529,7 @@ function TarjetaProceso({
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
       >
-      <KanbanCard accentColor="#003DA5">
+        <KanbanCard accentColor="#003DA5">
           {/* Header — KanbanCardHeader */}
           <KanbanCardHeader
             icon={<Scale className="w-4 h-4" style={{ color: '#003DA5' }} />}
@@ -596,7 +596,7 @@ function TarjetaProceso({
               {proceso.diasRestantes}d
             </span>
             {noticiasSeguras.length > 0 && (
-              <button 
+              <button
                 className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-300 flex items-center gap-0.5 hover:bg-purple-200 transition-colors"
                 onClick={(e) => { e.stopPropagation(); setNoticiasExpanded(!noticiasExpanded); }}
                 title={`${noticiasSeguras.length} noticias asociadas`}
@@ -726,7 +726,7 @@ function TarjetaProceso({
               </KanbanButtonSemantic>
             )}
           </KanbanActionSection>
-      </KanbanCard>
+        </KanbanCard>
       </motion.div>
     </div>
   );
@@ -786,25 +786,25 @@ function VistaLista({
   const [searchTerm, setSearchTerm] = useState('');
 
   const itemsFiltrados = items.filter(item => {
-    const matchSearch = item.tipo === 'noticia' 
+    const matchSearch = item.tipo === 'noticia'
       ? (item as Noticia).numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        ((item as Noticia).denunciado && (typeof (item as Noticia).denunciado === 'string' 
-          ? (item as Noticia).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
-          : (item as Noticia).denunciado.nombre?.toLowerCase().includes(searchTerm.toLowerCase())))
+      ((item as Noticia).denunciado && (typeof (item as Noticia).denunciado === 'string'
+        ? (item as Noticia).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
+        : (item as Noticia).denunciado.nombre?.toLowerCase().includes(searchTerm.toLowerCase())))
       : (item as Proceso).numeroProceso.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        ((item as Proceso).denunciado && (typeof (item as Proceso).denunciado === 'string'
-          ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
-          : (item as Proceso).denunciado.nombre?.toLowerCase().includes(searchTerm.toLowerCase())));
-    
-    const matchEtapa = filtroEtapa === 'todos' || 
+      ((item as Proceso).denunciado && (typeof (item as Proceso).denunciado === 'string'
+        ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
+        : (item as Proceso).denunciado.nombre?.toLowerCase().includes(searchTerm.toLowerCase())));
+
+    const matchEtapa = filtroEtapa === 'todos' ||
       (item.tipo === 'noticia' && filtroEtapa === 'Recepción') ||
       (item.tipo === 'proceso' && (item as Proceso).etapaActual === filtroEtapa);
-    
+
     return matchSearch && matchEtapa;
   });
 
   const getSemaforoColor = (semaforo?: string) => {
-    switch(semaforo) {
+    switch (semaforo) {
       case 'verde': return { bg: '#D1FAE5', color: '#059669', text: 'En término' };
       case 'amarillo': return { bg: '#FEF3C7', color: '#D97706', text: 'Próximo a vencer' };
       case 'rojo': return { bg: '#FEE2E2', color: '#DC2626', text: 'Vencido' };
@@ -859,11 +859,11 @@ function VistaLista({
             return (
               <Card key={item.id} className="overflow-hidden border-2" style={{ borderColor: '#E5E7EB' }}>
                 {/* Barra superior con color de tipo */}
-                <div 
-                  className="h-1" 
+                <div
+                  className="h-1"
                   style={{ background: isNoticia ? '#F59E0B' : '#003DA5' }}
                 />
-                
+
                 <div className="p-3 space-y-3">
                   {/* Header */}
                   <div className="flex items-start justify-between">
@@ -892,12 +892,12 @@ function VistaLista({
                   <div className="pb-2 border-b border-gray-200">
                     <p className="text-xs text-gray-500 mb-1">Denunciado:</p>
                     <p className="font-bold text-sm text-gray-900">
-                      {isNoticia 
+                      {isNoticia
                         ? (typeof noticia!.denunciado === 'string' ? noticia!.denunciado : noticia!.denunciado.nombre)
                         : (typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre)}
                     </p>
                     <p className="text-xs text-gray-600 mt-0.5">
-                      {isNoticia 
+                      {isNoticia
                         ? (typeof noticia!.denunciado !== 'string' && `${noticia!.denunciado.tipoIdentificacion} ${noticia!.denunciado.numeroIdentificacion}`)
                         : (typeof proceso!.denunciado !== 'string' ? `${proceso!.denunciado.tipoIdentificacion} ${proceso!.denunciado.numeroIdentificacion}` : proceso!.cedula ? `CC: ${proceso!.cedula}` : '')}
                     </p>
@@ -914,7 +914,7 @@ function VistaLista({
                     >
                       {isNoticia ? 'Recepción' : proceso!.etapaActual}
                     </Badge>
-                    
+
                     {proceso && semaforo && (
                       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg" style={{ background: semaforo.bg }}>
                         <div className="w-1.5 h-1.5 rounded-full" style={{ background: semaforo.color }} />
@@ -923,7 +923,7 @@ function VistaLista({
                         </span>
                       </div>
                     )}
-                    
+
                     {isNoticia && (
                       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-orange-50">
                         <Clock className="w-3 h-3 text-orange-600" />
@@ -1041,251 +1041,251 @@ function VistaLista({
         /* Vista de Tabla para Desktop/Tablet */
         <Card className="border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
           <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="sticky top-0" style={{ background: '#F9FAFB' }}>
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Número / Tipo
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Denunciado
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Etapa / Estado
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Responsable
-                </th>
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Semáforo
-                </th>
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Tiempo
-                </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Acciones
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {itemsFiltrados.map((item, index) => {
-                const isNoticia = item.tipo === 'noticia';
-                const noticia = isNoticia ? (item as Noticia) : null;
-                const proceso = !isNoticia ? (item as Proceso) : null;
-                const semaforo = proceso ? getSemaforoColor(proceso.semaforo) : null;
+            <table className="w-full">
+              <thead className="sticky top-0" style={{ background: '#F9FAFB' }}>
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Número / Tipo
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Denunciado
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Etapa / Estado
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Responsable
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Semáforo
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Tiempo
+                  </th>
+                  <th className="px-4 py-3 text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {itemsFiltrados.map((item, index) => {
+                  const isNoticia = item.tipo === 'noticia';
+                  const noticia = isNoticia ? (item as Noticia) : null;
+                  const proceso = !isNoticia ? (item as Proceso) : null;
+                  const semaforo = proceso ? getSemaforoColor(proceso.semaforo) : null;
 
-                return (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-gray-50 transition-colors"
-                    style={{ borderTop: index > 0 ? '1px solid #E5E7EB' : 'none' }}
-                  >
-                    {/* Número / Tipo */}
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        {isNoticia ? (
-                          <div className="p-1.5 rounded-lg bg-orange-100">
-                            <FileText className="w-4 h-4 text-orange-600" />
-                          </div>
-                        ) : (
-                          <div className="p-1.5 rounded-lg" style={{ background: '#E0EDFF' }}>
-                            <FolderOpen className="w-4 h-4" style={{ color: '#003DA5' }} />
-                          </div>
-                        )}
-                        <div>
-                          <p className="font-bold text-sm" style={{ color: '#1F2937' }}>
-                            {isNoticia ? noticia!.numero : proceso!.numeroProceso}
-                          </p>
-                          <p className="text-xs" style={{ color: '#9CA3AF' }}>
-                            {isNoticia ? 'Noticia' : 'Proceso'}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Denunciado */}
-                    <td className="px-4 py-4">
-                      <div>
-                        <p className="font-semibold text-sm" style={{ color: '#1F2937' }}>
-                          {isNoticia 
-                            ? (noticia!.denunciado ? (typeof noticia!.denunciado === 'string' ? noticia!.denunciado : noticia!.denunciado.nombre) : 'Sin información')
-                            : (proceso!.denunciado ? (typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre) : 'Sin información')}
-                        </p>
-                        {proceso && proceso.cedula && (
-                          <p className="text-xs" style={{ color: '#6B7280' }}>
-                            CC: {proceso.cedula}
-                          </p>
-                        )}
-                        {proceso && proceso.cargo && (
-                          <p className="text-xs" style={{ color: '#9CA3AF' }}>
-                            {proceso.cargo}
-                          </p>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Etapa / Estado */}
-                    <td className="px-4 py-4">
-                      <div>
-                        {isNoticia ? (
-                          <Badge
-                            className="mb-1"
-                            style={{ background: '#FEF3C7', color: '#D97706' }}
-                          >
-                            Recepción
-                          </Badge>
-                        ) : (
-                          <EtapaSelector
-                            etapaActual={proceso!.etapaActual}
-                            onCambiarEtapa={(nuevaEtapa) => handleDropItem(proceso! as Item, nuevaEtapa)}
-                          />
-                        )}
-                        {proceso && (
-                          <p className="text-xs" style={{ color: '#6B7280' }}>
-                            {proceso.estadoActual}
-                          </p>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Responsable */}
-                    <td className="px-4 py-4">
-                      {proceso && proceso.profesionalAsignado ? (
+                  return (
+                    <tr
+                      key={item.id}
+                      className="hover:bg-gray-50 transition-colors"
+                      style={{ borderTop: index > 0 ? '1px solid #E5E7EB' : 'none' }}
+                    >
+                      {/* Número / Tipo */}
+                      <td className="px-4 py-4">
                         <div className="flex items-center gap-2">
-                          <Avatar className="w-7 h-7">
-                            <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5', fontSize: '10px' }}>
-                              {(typeof proceso.profesionalAsignado === 'string' ? proceso.profesionalAsignado : proceso.profesionalAsignado.nombre)?.split(' ').map(n => n[0]).join('').slice(0, 2) || 'SA'}
-                            </AvatarFallback>
-                          </Avatar>
-                          <p className="text-xs font-medium" style={{ color: '#4B5563' }}>
-                            {typeof proceso.profesionalAsignado === 'string' ? proceso.profesionalAsignado : proceso.profesionalAsignado.nombre}
-                          </p>
-                        </div>
-                      ) : (
-                        <p className="text-xs" style={{ color: '#9CA3AF' }}>Sin asignar</p>
-                      )}
-                    </td>
-
-                    {/* Semáforo */}
-                    <td className="px-4 py-4 text-center">
-                      {proceso && semaforo ? (
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: semaforo.bg }}>
-                          <div className="w-2 h-2 rounded-full" style={{ background: semaforo.color }} />
-                          <span className="text-xs font-semibold" style={{ color: semaforo.color }}>
-                            {semaforo.text}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs" style={{ color: '#9CA3AF' }}>N/A</span>
-                      )}
-                    </td>
-
-                    {/* Tiempo */}
-                    <td className="px-4 py-4 text-center">
-                      {isNoticia ? (
-                        <div>
-                          <p className="text-sm font-bold" style={{ color: '#F59E0B' }}>
-                            {noticia!.diasPendientes} días
-                          </p>
-                          <p className="text-xs" style={{ color: '#9CA3AF' }}>pendientes</p>
-                        </div>
-                      ) : (
-                        <div>
-                          <p className="text-sm font-bold" style={{ 
-                            color: proceso!.diasRestantes < 5 ? '#DC2626' : proceso!.diasRestantes < 10 ? '#F59E0B' : '#10B981'
-                          }}>
-                            {proceso!.diasRestantes} días
-                          </p>
-                          <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                            <div
-                              className="h-full rounded-full transition-all"
-                              style={{
-                                width: `${proceso!.porcentajeTiempo}%`,
-                                background: proceso!.porcentajeTiempo >= 80 ? '#DC2626' : proceso!.porcentajeTiempo >= 60 ? '#F59E0B' : '#10B981'
-                              }}
-                            />
+                          {isNoticia ? (
+                            <div className="p-1.5 rounded-lg bg-orange-100">
+                              <FileText className="w-4 h-4 text-orange-600" />
+                            </div>
+                          ) : (
+                            <div className="p-1.5 rounded-lg" style={{ background: '#E0EDFF' }}>
+                              <FolderOpen className="w-4 h-4" style={{ color: '#003DA5' }} />
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-bold text-sm" style={{ color: '#1F2937' }}>
+                              {isNoticia ? noticia!.numero : proceso!.numeroProceso}
+                            </p>
+                            <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                              {isNoticia ? 'Noticia' : 'Proceso'}
+                            </p>
                           </div>
                         </div>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* Acciones — Design Standard (tabla) */}
-                    <td className="px-3 py-3">
-                      <div className="flex flex-col gap-1.5 min-w-[180px]">
+                      {/* Denunciado */}
+                      <td className="px-4 py-4">
+                        <div>
+                          <p className="font-semibold text-sm" style={{ color: '#1F2937' }}>
+                            {isNoticia
+                              ? (noticia!.denunciado ? (typeof noticia!.denunciado === 'string' ? noticia!.denunciado : noticia!.denunciado.nombre) : 'Sin información')
+                              : (proceso!.denunciado ? (typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre) : 'Sin información')}
+                          </p>
+                          {proceso && proceso.cedula && (
+                            <p className="text-xs" style={{ color: '#6B7280' }}>
+                              CC: {proceso.cedula}
+                            </p>
+                          )}
+                          {proceso && proceso.cargo && (
+                            <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                              {proceso.cargo}
+                            </p>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Etapa / Estado */}
+                      <td className="px-4 py-4">
+                        <div>
+                          {isNoticia ? (
+                            <Badge
+                              className="mb-1"
+                              style={{ background: '#FEF3C7', color: '#D97706' }}
+                            >
+                              Recepción
+                            </Badge>
+                          ) : (
+                            <EtapaSelector
+                              etapaActual={proceso!.etapaActual}
+                              onCambiarEtapa={(nuevaEtapa) => handleDropItem(proceso! as Item, nuevaEtapa)}
+                            />
+                          )}
+                          {proceso && (
+                            <p className="text-xs" style={{ color: '#6B7280' }}>
+                              {proceso.estadoActual}
+                            </p>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Responsable */}
+                      <td className="px-4 py-4">
+                        {proceso && proceso.profesionalAsignado ? (
+                          <div className="flex items-center gap-2">
+                            <Avatar className="w-7 h-7">
+                              <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5', fontSize: '10px' }}>
+                                {(typeof proceso.profesionalAsignado === 'string' ? proceso.profesionalAsignado : proceso.profesionalAsignado.nombre)?.split(' ').map(n => n[0]).join('').slice(0, 2) || 'SA'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <p className="text-xs font-medium" style={{ color: '#4B5563' }}>
+                              {typeof proceso.profesionalAsignado === 'string' ? proceso.profesionalAsignado : proceso.profesionalAsignado.nombre}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-xs" style={{ color: '#9CA3AF' }}>Sin asignar</p>
+                        )}
+                      </td>
+
+                      {/* Semáforo */}
+                      <td className="px-4 py-4 text-center">
+                        {proceso && semaforo ? (
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: semaforo.bg }}>
+                            <div className="w-2 h-2 rounded-full" style={{ background: semaforo.color }} />
+                            <span className="text-xs font-semibold" style={{ color: semaforo.color }}>
+                              {semaforo.text}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs" style={{ color: '#9CA3AF' }}>N/A</span>
+                        )}
+                      </td>
+
+                      {/* Tiempo */}
+                      <td className="px-4 py-4 text-center">
                         {isNoticia ? (
-                          <>
-                            <KanbanActionRowPrimary>
-                              {onVerDetallesNoticia && (
-                                <KanbanButtonSecondary onClick={() => onVerDetallesNoticia(noticia!)} icon={<Eye className="w-3 h-3" />} title="Ver detalles">
+                          <div>
+                            <p className="text-sm font-bold" style={{ color: '#F59E0B' }}>
+                              {noticia!.diasPendientes} días
+                            </p>
+                            <p className="text-xs" style={{ color: '#9CA3AF' }}>pendientes</p>
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="text-sm font-bold" style={{
+                              color: proceso!.diasRestantes < 5 ? '#DC2626' : proceso!.diasRestantes < 10 ? '#F59E0B' : '#10B981'
+                            }}>
+                              {proceso!.diasRestantes} días
+                            </p>
+                            <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                              <div
+                                className="h-full rounded-full transition-all"
+                                style={{
+                                  width: `${proceso!.porcentajeTiempo}%`,
+                                  background: proceso!.porcentajeTiempo >= 80 ? '#DC2626' : proceso!.porcentajeTiempo >= 60 ? '#F59E0B' : '#10B981'
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Acciones — Design Standard (tabla) */}
+                      <td className="px-3 py-3">
+                        <div className="flex flex-col gap-1.5 min-w-[180px]">
+                          {isNoticia ? (
+                            <>
+                              <KanbanActionRowPrimary>
+                                {onVerDetallesNoticia && (
+                                  <KanbanButtonSecondary onClick={() => onVerDetallesNoticia(noticia!)} icon={<Eye className="w-3 h-3" />} title="Ver detalles">
+                                    Detalles
+                                  </KanbanButtonSecondary>
+                                )}
+                                <KanbanButtonPrimary onClick={() => onConvertirNoticia(noticia!)} icon={<PlusCircle className="w-3 h-3" />} title="Convertir a proceso">
+                                  Convertir
+                                </KanbanButtonPrimary>
+                              </KanbanActionRowPrimary>
+                              <KanbanActionRowTertiary>
+                                {onEditarNoticia && (
+                                  <KanbanButtonTertiary compact onClick={() => onEditarNoticia(noticia!)} icon={<Edit className="w-3.5 h-3.5" />} title="Editar noticia" />
+                                )}
+                                {onDevolverNoticia && (
+                                  <KanbanButtonTertiary compact onClick={() => onDevolverNoticia(noticia!)} icon={<ArrowLeft className="w-3.5 h-3.5" />} title="Devolver" />
+                                )}
+                                {onDevolverCompetencia && (
+                                  <KanbanButtonTertiary compact onClick={() => onDevolverCompetencia(noticia!)} icon={<Send className="w-3.5 h-3.5" />} title="Remitir por competencia" />
+                                )}
+                                <KanbanButtonDestructive compact onClick={() => onArchivarNoticia(noticia!)} icon={<Archive className="w-3.5 h-3.5" />} title="Archivar" />
+                              </KanbanActionRowTertiary>
+                            </>
+                          ) : (
+                            <>
+                              <KanbanActionRowPrimary>
+                                <KanbanButtonSecondary onClick={() => onVerDetalles(proceso!)} icon={<FileText className="w-3 h-3" />} title="Ver detalles">
                                   Detalles
                                 </KanbanButtonSecondary>
+                                <KanbanButtonPrimary onClick={() => onVerExpediente(proceso!)} icon={<FolderOpen className="w-3 h-3" />} title="Expediente">
+                                  Exp.
+                                </KanbanButtonPrimary>
+                              </KanbanActionRowPrimary>
+                              <KanbanActionRowTertiary>
+                                {onEditarProceso && (
+                                  <KanbanButtonTertiary compact onClick={() => onEditarProceso(proceso!)} icon={<Edit className="w-3.5 h-3.5" />} title="Editar proceso" />
+                                )}
+                                {onSolicitarReasignacion && (
+                                  <KanbanButtonTertiary compact onClick={() => onSolicitarReasignacion(proceso!)} icon={<UserCheck className="w-3.5 h-3.5" />} title="Reasignar" />
+                                )}
+                                {onAsociarProcesoProceso && (
+                                  <KanbanButtonTertiary compact onClick={() => onAsociarProcesoProceso(proceso!)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a otro proceso" />
+                                )}
+                              </KanbanActionRowTertiary>
+                              {proceso!.pendienteAprobacion && (
+                                <KanbanButtonSemantic variant="success" onClick={() => onAprobarBorrador(proceso!)} icon={<CheckCircle className="w-3 h-3" />} title="Aprobar documento pendiente">
+                                  Aprobar Documento
+                                </KanbanButtonSemantic>
                               )}
-                              <KanbanButtonPrimary onClick={() => onConvertirNoticia(noticia!)} icon={<PlusCircle className="w-3 h-3" />} title="Convertir a proceso">
-                                Convertir
-                              </KanbanButtonPrimary>
-                            </KanbanActionRowPrimary>
-                            <KanbanActionRowTertiary>
-                              {onEditarNoticia && (
-                                <KanbanButtonTertiary compact onClick={() => onEditarNoticia(noticia!)} icon={<Edit className="w-3.5 h-3.5" />} title="Editar noticia" />
-                              )}
-                              {onDevolverNoticia && (
-                                <KanbanButtonTertiary compact onClick={() => onDevolverNoticia(noticia!)} icon={<ArrowLeft className="w-3.5 h-3.5" />} title="Devolver" />
-                              )}
-                              {onDevolverCompetencia && (
-                                <KanbanButtonTertiary compact onClick={() => onDevolverCompetencia(noticia!)} icon={<Send className="w-3.5 h-3.5" />} title="Remitir por competencia" />
-                              )}
-                              <KanbanButtonDestructive compact onClick={() => onArchivarNoticia(noticia!)} icon={<Archive className="w-3.5 h-3.5" />} title="Archivar" />
-                            </KanbanActionRowTertiary>
-                          </>
-                        ) : (
-                          <>
-                            <KanbanActionRowPrimary>
-                              <KanbanButtonSecondary onClick={() => onVerDetalles(proceso!)} icon={<FileText className="w-3 h-3" />} title="Ver detalles">
-                                Detalles
-                              </KanbanButtonSecondary>
-                              <KanbanButtonPrimary onClick={() => onVerExpediente(proceso!)} icon={<FolderOpen className="w-3 h-3" />} title="Expediente">
-                                Exp.
-                              </KanbanButtonPrimary>
-                            </KanbanActionRowPrimary>
-                            <KanbanActionRowTertiary>
-                              {onEditarProceso && (
-                                <KanbanButtonTertiary compact onClick={() => onEditarProceso(proceso!)} icon={<Edit className="w-3.5 h-3.5" />} title="Editar proceso" />
-                              )}
-                              {onSolicitarReasignacion && (
-                                <KanbanButtonTertiary compact onClick={() => onSolicitarReasignacion(proceso!)} icon={<UserCheck className="w-3.5 h-3.5" />} title="Reasignar" />
-                              )}
-                              {onAsociarProcesoProceso && (
-                                <KanbanButtonTertiary compact onClick={() => onAsociarProcesoProceso(proceso!)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a otro proceso" />
-                              )}
-                            </KanbanActionRowTertiary>
-                            {proceso!.pendienteAprobacion && (
-                              <KanbanButtonSemantic variant="success" onClick={() => onAprobarBorrador(proceso!)} icon={<CheckCircle className="w-3 h-3" />} title="Aprobar documento pendiente">
-                                Aprobar Documento
-                              </KanbanButtonSemantic>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
 
-          {itemsFiltrados.length === 0 && (
-            <div className="p-12 text-center">
-              <FileText className="w-12 h-12 mx-auto mb-3" style={{ color: '#D1D5DB' }} />
-              <p className="text-sm font-bold" style={{ color: '#6B7280' }}>
-                No se encontraron resultados
-              </p>
-              <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
-                Intenta ajustar los filtros de búsqueda
-              </p>
-            </div>
-          )}
-        </div>
-      </Card>
+            {itemsFiltrados.length === 0 && (
+              <div className="p-12 text-center">
+                <FileText className="w-12 h-12 mx-auto mb-3" style={{ color: '#D1D5DB' }} />
+                <p className="text-sm font-bold" style={{ color: '#6B7280' }}>
+                  No se encontraron resultados
+                </p>
+                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
+                  Intenta ajustar los filtros de búsqueda
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
       )}
     </div>
   );
@@ -1327,13 +1327,13 @@ interface ColumnaKanbanProps {
   onToggleColapsoTarjeta?: (id: string) => void; // NUEVO: Toggle para tarjetas individuales
 }
 
-function ColumnaKanban({ 
-  etapa, 
-  items, 
-  color, 
+function ColumnaKanban({
+  etapa,
+  items,
+  color,
   icono,
   diasEstimados,
-  onDrop, 
+  onDrop,
   onConvertirNoticia,
   onDevolverNoticia,
   onDevolverCompetencia,
@@ -1343,8 +1343,8 @@ function ColumnaKanban({
   onVerProcesoAsociado, // ✅ NUEVO
   onVerNoticiaAsociada, // ✅ NUEVO
   onEditarNoticia, // ✅ NUEVO: Editar noticia
-  onVerDetalles, 
-  onAprobarBorrador, 
+  onVerDetalles,
+  onAprobarBorrador,
   onVerExpediente,
   onGestionAutos,
   onGestionEvidencias,
@@ -1436,100 +1436,99 @@ function ColumnaKanban({
 
     return (
       <div ref={dropRef} className="flex-shrink-0 h-full">
-      <motion.div 
-        className={`flex-shrink-0 h-full`}
-        initial={{ width: 64 }}
-        animate={{ width: 64 }}
-        transition={{ duration: 0.3, ease: 'easeInOut' }}
-      >
-        <Card 
-          className={`h-full border transition-all cursor-pointer group ${
-            isOver && canDrop ? 'shadow-lg border-blue-500 bg-blue-50' : 'hover:shadow-md hover:border-blue-300'
-          }`}
-          style={{ 
-            borderColor: isOver && canDrop ? '#3B82F6' : '#E5E7EB', 
-            background: isOver && canDrop ? '#EFF6FF' : '#FFFFFF' 
-          }}
-          onClick={onToggleColapso}
+        <motion.div
+          className={`flex-shrink-0 h-full`}
+          initial={{ width: 64 }}
+          animate={{ width: 64 }}
+          transition={{ duration: 0.3, ease: 'easeInOut' }}
         >
-          <div className="flex flex-col items-center py-4 px-2 gap-3">
-            {/* Indicador de drag over */}
-            {isOver && canDrop && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="absolute inset-0 border-2 border-blue-500 border-dashed rounded-lg pointer-events-none"
-              />
-            )}
-            {/* Botón expandir */}
-            <button
-              className="p-2 rounded-lg bg-gray-50 group-hover:bg-blue-50 transition-colors"
-              title={`Expandir ${etapa}`}
-            >
-              <Maximize2 className="w-4 h-4 text-gray-600 group-hover:text-blue-600" />
-            </button>
-
-            {/* Icono de etapa */}
-            <div className="p-2 rounded-lg bg-gray-50 border border-gray-200 group-hover:border-blue-200">
-              {icono}
-            </div>
-
-            {/* Indicadores de semáforo - Solo si hay procesos */}
-            {procesos.length > 0 && (
-              <div className="flex flex-col gap-1 py-2">
-                {procesosRojos > 0 && (
-                  <div className="flex items-center gap-1" title={`${procesosRojos} vencidos`}>
-                    <div className="w-2 h-2 rounded-full bg-red-500" />
-                    <span className="text-xs font-bold text-red-600">{procesosRojos}</span>
-                  </div>
-                )}
-                {procesosAmarillos > 0 && (
-                  <div className="flex items-center gap-1" title={`${procesosAmarillos} próximos a vencer`}>
-                    <div className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span className="text-xs font-bold text-amber-600">{procesosAmarillos}</span>
-                  </div>
-                )}
-                {procesosVerdes > 0 && (
-                  <div className="flex items-center gap-1" title={`${procesosVerdes} en término`}>
-                    <div className="w-2 h-2 rounded-full bg-green-500" />
-                    <span className="text-xs font-bold text-green-600">{procesosVerdes}</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Indicador de noticias - Solo en Recepción */}
-            {etapa === 'Recepción' && noticias.length > 0 && (
-              <div className="py-2">
-                <div className="flex items-center gap-1" title={`${noticias.length} noticias`}>
-                  <FileText className="w-3 h-3 text-orange-600" />
-                  <span className="text-xs font-bold text-orange-600">{noticias.length}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Nombre vertical */}
-            <div className="flex-1 flex items-center justify-center py-4">
-              <h3 
-                className="font-black text-xs text-gray-800 whitespace-nowrap"
-                style={{ 
-                  writingMode: 'vertical-rl',
-                  textOrientation: 'mixed'
-                }}
+          <Card
+            className={`h-full border transition-all cursor-pointer group ${isOver && canDrop ? 'shadow-lg border-blue-500 bg-blue-50' : 'hover:shadow-md hover:border-blue-300'
+              }`}
+            style={{
+              borderColor: isOver && canDrop ? '#3B82F6' : '#E5E7EB',
+              background: isOver && canDrop ? '#EFF6FF' : '#FFFFFF'
+            }}
+            onClick={onToggleColapso}
+          >
+            <div className="flex flex-col items-center py-4 px-2 gap-3">
+              {/* Indicador de drag over */}
+              {isOver && canDrop && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="absolute inset-0 border-2 border-blue-500 border-dashed rounded-lg pointer-events-none"
+                />
+              )}
+              {/* Botón expandir */}
+              <button
+                className="p-2 rounded-lg bg-gray-50 group-hover:bg-blue-50 transition-colors"
+                title={`Expandir ${etapa}`}
               >
-                {etapa}
-              </h3>
-            </div>
+                <Maximize2 className="w-4 h-4 text-gray-600 group-hover:text-blue-600" />
+              </button>
 
-            {/* Badge contador total */}
-            <Badge
-              className="font-semibold text-xs px-1.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-700 group-hover:bg-blue-100"
-            >
-              {itemsFiltrados.length}
-            </Badge>
-          </div>
-        </Card>
-      </motion.div>
+              {/* Icono de etapa */}
+              <div className="p-2 rounded-lg bg-gray-50 border border-gray-200 group-hover:border-blue-200">
+                {icono}
+              </div>
+
+              {/* Indicadores de semáforo - Solo si hay procesos */}
+              {procesos.length > 0 && (
+                <div className="flex flex-col gap-1 py-2">
+                  {procesosRojos > 0 && (
+                    <div className="flex items-center gap-1" title={`${procesosRojos} vencidos`}>
+                      <div className="w-2 h-2 rounded-full bg-red-500" />
+                      <span className="text-xs font-bold text-red-600">{procesosRojos}</span>
+                    </div>
+                  )}
+                  {procesosAmarillos > 0 && (
+                    <div className="flex items-center gap-1" title={`${procesosAmarillos} próximos a vencer`}>
+                      <div className="w-2 h-2 rounded-full bg-amber-500" />
+                      <span className="text-xs font-bold text-amber-600">{procesosAmarillos}</span>
+                    </div>
+                  )}
+                  {procesosVerdes > 0 && (
+                    <div className="flex items-center gap-1" title={`${procesosVerdes} en término`}>
+                      <div className="w-2 h-2 rounded-full bg-green-500" />
+                      <span className="text-xs font-bold text-green-600">{procesosVerdes}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Indicador de noticias - Solo en Recepción */}
+              {etapa === 'Recepción' && noticias.length > 0 && (
+                <div className="py-2">
+                  <div className="flex items-center gap-1" title={`${noticias.length} noticias`}>
+                    <FileText className="w-3 h-3 text-orange-600" />
+                    <span className="text-xs font-bold text-orange-600">{noticias.length}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Nombre vertical */}
+              <div className="flex-1 flex items-center justify-center py-4">
+                <h3
+                  className="font-black text-xs text-gray-800 whitespace-nowrap"
+                  style={{
+                    writingMode: 'vertical-rl',
+                    textOrientation: 'mixed'
+                  }}
+                >
+                  {etapa}
+                </h3>
+              </div>
+
+              {/* Badge contador total */}
+              <Badge
+                className="font-semibold text-xs px-1.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-700 group-hover:bg-blue-100"
+              >
+                {itemsFiltrados.length}
+              </Badge>
+            </div>
+          </Card>
+        </motion.div>
       </div>
     );
   }
@@ -1537,7 +1536,7 @@ function ColumnaKanban({
   // Versión expandida normal
   return (
     <div ref={dropRef} className="h-full">
-      <Card 
+      <Card
         className="h-full border transition-all flex flex-col overflow-hidden"
         style={{
           borderColor: isOver && canDrop ? color : '#E2E8F0',
@@ -1548,57 +1547,57 @@ function ColumnaKanban({
       >
         {/* Color accent bar — Design Standard */}
         <KanbanAccentBar color={color} />
-        
+
         {/* Header de Columna */}
-        <div 
+        <div
           className={`${isMobile ? 'px-3 py-3' : 'px-4 py-3.5'} border-b sticky top-0 z-10 bg-white flex-shrink-0`}
           style={{ borderColor: '#E2E8F0' }}
         >
           <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5 flex-1">
-                <div 
-                  className={`${isMobile ? 'w-7 h-7' : 'w-8 h-8'} rounded-lg flex items-center justify-center flex-shrink-0`}
-                  style={{ background: `${color}14` }}
-                >
-                  {icono}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className={`font-bold ${isMobile ? 'text-xs' : 'text-[13px]'} text-gray-800 tracking-tight`}>
-                    {etapa}
-                  </h3>
-                  {diasEstimados && (
-                    <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5">
-                      <Clock className="w-3 h-3" />
-                      {diasEstimados} días
-                    </p>
-                  )}
-                </div>
+            <div className="flex items-center gap-2.5 flex-1">
+              <div
+                className={`${isMobile ? 'w-7 h-7' : 'w-8 h-8'} rounded-lg flex items-center justify-center flex-shrink-0`}
+                style={{ background: `${color}14` }}
+              >
+                {icono}
               </div>
-              <div className="flex items-center gap-2">
-                <Badge
-                  className={`font-bold ${isMobile ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2.5 py-1'} rounded-full`}
-                  style={{ background: `${color}18`, color: color, border: `1px solid ${color}30` }}
-                >
-                  {itemsFiltrados.length}
-                </Badge>
-                {/* Botón colapsar — cuadrado */}
-                {onToggleColapso && (
-                  <button
-                    onClick={onToggleColapso}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
-                    title={`Colapsar ${etapa}`}
-                  >
-                    <Minimize2 className="w-3.5 h-3.5 text-gray-400" />
-                  </button>
+              <div className="flex-1 min-w-0">
+                <h3 className={`font-bold ${isMobile ? 'text-xs' : 'text-[13px]'} text-gray-800 tracking-tight`}>
+                  {etapa}
+                </h3>
+                {diasEstimados && (
+                  <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5">
+                    <Clock className="w-3 h-3" />
+                    {diasEstimados} días
+                  </p>
                 )}
               </div>
             </div>
+            <div className="flex items-center gap-2">
+              <Badge
+                className={`font-bold ${isMobile ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2.5 py-1'} rounded-full`}
+                style={{ background: `${color}18`, color: color, border: `1px solid ${color}30` }}
+              >
+                {itemsFiltrados.length}
+              </Badge>
+              {/* Botón colapsar — cuadrado */}
+              {onToggleColapso && (
+                <button
+                  onClick={onToggleColapso}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
+                  title={`Colapsar ${etapa}`}
+                >
+                  <Minimize2 className="w-3.5 h-3.5 text-gray-400" />
+                </button>
+              )}
+            </div>
+          </div>
 
-            {/* Indicador de Noticias en Recepción */}
-            {etapa === 'Recepción' && noticias.length > 0 && (
-              <div className="flex items-center gap-1.5 mt-2.5 px-2 py-1.5 bg-orange-50 rounded-lg">
-                <FileText className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-orange-600`} />
-                <span className="text-[11px] font-bold text-orange-600">
+          {/* Indicador de Noticias en Recepción */}
+          {etapa === 'Recepción' && noticias.length > 0 && (
+            <div className="flex items-center gap-1.5 mt-2.5 px-2 py-1.5 bg-orange-50 rounded-lg">
+              <FileText className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-orange-600`} />
+              <span className="text-[11px] font-bold text-orange-600">
                 {noticias.length} {noticias.length === 1 ? 'noticia' : 'noticias'}
               </span>
             </div>
@@ -1606,9 +1605,9 @@ function ColumnaKanban({
         </div>
 
         {/* Lista de Items — scroll vertical independiente (patrón Trello) */}
-        <div 
-          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto flex-1`} 
-          style={{ 
+        <div
+          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto flex-1`}
+          style={{
             scrollbarWidth: 'thin',
             scrollbarColor: '#CBD5E0 transparent',
           }}
@@ -1703,8 +1702,8 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
       if (searchArchivo) {
         const term = searchArchivo.toLowerCase();
         const numero = (item.numero || item.numeroProceso || '').toLowerCase();
-        const denunciado = typeof item.denunciado === 'string' 
-          ? item.denunciado.toLowerCase() 
+        const denunciado = typeof item.denunciado === 'string'
+          ? item.denunciado.toLowerCase()
           : (item.denunciado?.nombre || '').toLowerCase();
         const hechos = (item.hechos || '').toLowerCase();
         return numero.includes(term) || denunciado.includes(term) || hechos.includes(term);
@@ -1726,7 +1725,7 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <div 
+            <div
               className="w-10 h-10 rounded-lg flex items-center justify-center"
               style={{ backgroundColor: '#003DA5' }}
             >
@@ -1735,7 +1734,7 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
             <div>
               <h3 className="text-sm font-bold text-gray-900">Registro de Archivados</h3>
               <p className="text-xs text-gray-500">
-                {items.length} elemento{items.length !== 1 ? 's' : ''} archivado{items.length !== 1 ? 's' : ''} — 
+                {items.length} elemento{items.length !== 1 ? 's' : ''} archivado{items.length !== 1 ? 's' : ''} —
                 {totalNoticias} noticia{totalNoticias !== 1 ? 's' : ''}, {totalProcesos} proceso{totalProcesos !== 1 ? 's' : ''}
               </p>
             </div>
@@ -1765,11 +1764,10 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
                 <button
                   key={opt.value}
                   onClick={() => setFiltroTipo(opt.value)}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${
-                    filtroTipo === opt.value
-                      ? 'bg-white shadow-sm text-gray-900'
-                      : 'text-gray-500 hover:bg-gray-200'
-                  }`}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${filtroTipo === opt.value
+                    ? 'bg-white shadow-sm text-gray-900'
+                    : 'text-gray-500 hover:bg-gray-200'
+                    }`}
                 >
                   {opt.label}
                 </button>
@@ -1800,7 +1798,7 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
               {items.length === 0 ? 'Sin elementos archivados' : 'Sin resultados'}
             </p>
             <p className="text-xs text-gray-400 text-center max-w-xs">
-              {items.length === 0 
+              {items.length === 0
                 ? 'Las noticias y procesos que archives aparecerán aquí para consulta y trazabilidad.'
                 : 'Intenta con otros términos de búsqueda o cambia los filtros.'
               }
@@ -1824,19 +1822,19 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
             {itemsFiltrados.map((item, index) => {
               const isNoticia = item.tipo === 'noticia';
               const numero = isNoticia ? item.numero : item.numeroProceso;
-              const denunciado = typeof item.denunciado === 'string' 
-                ? item.denunciado 
+              const denunciado = typeof item.denunciado === 'string'
+                ? item.denunciado
                 : item.denunciado?.nombre || '—';
-              const profesional = isNoticia 
-                ? '—' 
-                : (typeof item.profesionalAsignado === 'string' 
-                    ? item.profesionalAsignado 
-                    : item.profesionalAsignado?.nombre || '—');
-              const fechaArchivo = item.fechaArchivo 
+              const profesional = isNoticia
+                ? '—'
+                : (typeof item.profesionalAsignado === 'string'
+                  ? item.profesionalAsignado
+                  : item.profesionalAsignado?.nombre || '—');
+              const fechaArchivo = item.fechaArchivo
                 ? new Date(item.fechaArchivo).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
                 : '—';
               const fechaInicio = isNoticia ? item.fechaRecepcion : (item.fechaCreacion || item.fechaInicio);
-              const diasEnFlujo = fechaInicio 
+              const diasEnFlujo = fechaInicio
                 ? Math.floor((new Date(item.fechaArchivo).getTime() - new Date(fechaInicio).getTime()) / (1000 * 60 * 60 * 24))
                 : 0;
               const hechos = item.hechos || '—';
@@ -1845,23 +1843,23 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
                 return (
                   <div key={item.id} className="p-3 hover:bg-gray-50 transition-colors">
                     <div className="flex items-start gap-3">
-                      <div 
+                      <div
                         className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
-                        style={{ 
+                        style={{
                           backgroundColor: isNoticia ? '#FEF3C7' : '#DBEAFE',
                         }}
                       >
-                        {isNoticia 
-                          ? <FileText className="w-4 h-4" style={{ color: '#D97706' }} /> 
+                        {isNoticia
+                          ? <FileText className="w-4 h-4" style={{ color: '#D97706' }} />
                           : <Scale className="w-4 h-4" style={{ color: '#003DA5' }} />
                         }
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs font-bold text-gray-900 truncate">{numero}</span>
-                          <span 
+                          <span
                             className="px-1.5 py-0.5 rounded text-[9px] font-bold"
-                            style={{ 
+                            style={{
                               backgroundColor: isNoticia ? '#FEF3C7' : '#DBEAFE',
                               color: isNoticia ? '#92400E' : '#1E40AF'
                             }}
@@ -1885,20 +1883,20 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
               }
 
               return (
-                <div 
+                <div
                   key={item.id}
                   className="grid grid-cols-[auto_1fr_140px_140px_120px_120px_100px] gap-3 px-4 py-3 items-center hover:bg-gray-50/80 transition-colors group"
                 >
                   {/* Tipo */}
                   <div className="w-8">
-                    <div 
+                    <div
                       className="w-7 h-7 rounded-lg flex items-center justify-center"
-                      style={{ 
+                      style={{
                         backgroundColor: isNoticia ? '#FEF3C7' : '#DBEAFE',
                       }}
                     >
-                      {isNoticia 
-                        ? <FileText className="w-3.5 h-3.5" style={{ color: '#D97706' }} /> 
+                      {isNoticia
+                        ? <FileText className="w-3.5 h-3.5" style={{ color: '#D97706' }} />
                         : <Scale className="w-3.5 h-3.5" style={{ color: '#003DA5' }} />
                       }
                     </div>
@@ -1908,9 +1906,9 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="text-xs font-bold text-gray-900 truncate">{numero}</span>
-                      <span 
+                      <span
                         className="px-1.5 py-0.5 rounded text-[9px] font-bold flex-shrink-0"
-                        style={{ 
+                        style={{
                           backgroundColor: isNoticia ? '#FEF3C7' : '#DBEAFE',
                           color: isNoticia ? '#92400E' : '#1E40AF'
                         }}
@@ -1970,12 +1968,12 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
 
 // ==================== SELECTOR DE ETAPA (Vista Lista) ====================
 const ETAPAS_LISTA: { nombre: string; color: string; bg: string }[] = [
-  { nombre: 'Recepción',     color: '#6B7280', bg: '#F3F4F6' },
-  { nombre: 'Valoración',    color: '#D97706', bg: '#FEF3C7' },
-  { nombre: 'Indagación',    color: '#2563EB', bg: '#DBEAFE' },
+  { nombre: 'Recepción', color: '#6B7280', bg: '#F3F4F6' },
+  { nombre: 'Valoración', color: '#D97706', bg: '#FEF3C7' },
+  { nombre: 'Indagación', color: '#2563EB', bg: '#DBEAFE' },
   { nombre: 'Investigación', color: '#003DA5', bg: '#E0EDFF' },
-  { nombre: 'Juzgamiento',   color: '#7C3AED', bg: '#EDE9FE' },
-  { nombre: 'Fallo',         color: '#059669', bg: '#D1FAE5' },
+  { nombre: 'Juzgamiento', color: '#7C3AED', bg: '#EDE9FE' },
+  { nombre: 'Fallo', color: '#059669', bg: '#D1FAE5' },
 ];
 
 function EtapaSelector({ etapaActual, onCambiarEtapa }: {
@@ -2037,11 +2035,10 @@ function EtapaSelector({ etapaActual, onCambiarEtapa }: {
                     }
                     setAbierto(false);
                   }}
-                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-left transition-all ${
-                    isActive
-                      ? 'font-black bg-blue-50'
-                      : 'font-medium hover:bg-gray-50'
-                  }`}
+                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-left transition-all ${isActive
+                    ? 'font-black bg-blue-50'
+                    : 'font-medium hover:bg-gray-50'
+                    }`}
                   style={{ color: isActive ? current.color : '#374151' }}
                 >
                   <div
@@ -2083,13 +2080,196 @@ function EtapaSelector({ etapaActual, onCambiarEtapa }: {
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
-export function DashboardKanbanOperativo({ 
+// --- FUNCIONES UTILITARIAS DE MAPEOPROCESO_MIGRADO ---
+export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
+  const fechaRecepcion = (noticia as any)?.fechaRecepcion;
+  const fecha = fechaRecepcion ? new Date(fechaRecepcion) : new Date();
+  const hoy = new Date();
+  const dias = Math.max(1, Math.ceil((hoy.getTime() - fecha.getTime()) / (1000 * 60 * 60 * 24)));
+  const denuncianteFuente: any = (noticia as any).denunciante;
+  const disciplinableFuente: any = (noticia as any).disciplinable || (noticia as any).denunciado;
+  const denuncianteList = Array.isArray(denuncianteFuente) ? denuncianteFuente : (denuncianteFuente ? [denuncianteFuente] : []);
+  const disciplinableList = Array.isArray(disciplinableFuente) ? disciplinableFuente : (disciplinableFuente ? [disciplinableFuente] : []);
+  const denuncianteRaw: any = denuncianteList[0] || {};
+  const denunciadoRaw: any = disciplinableList[0] || {};
+  const fechaQuejaRaw = (noticia as any).fechaQueja;
+  const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
+
+  const mapDetalle = (rawItem: any): NoticiaPersonaDetalle => ({
+    nombre: rawItem.nombre || 'Sin nombre',
+    cedula: rawItem.cedula || rawItem.numeroIdentificacion || rawItem.identificacion,
+    cargo: rawItem.cargo,
+    dependencia: rawItem.dependencia,
+    email: rawItem.email,
+    telefono: rawItem.telefono,
+    direccion: rawItem.direccion,
+    entidad: rawItem.entidad
+  });
+
+  const mapEstadoNoticia = (estado?: ApiNoticia['estado']) => {
+    switch (estado) {
+      case 'ASIGNADA': return 'asignada';
+      case 'EN_VALORACION': return 'en-valoracion';
+      case 'DEVUELTA': return 'archivada';
+      default: return 'pendiente';
+    }
+  };
+
+  return {
+    id: (noticia as any).id || `n${Date.now()}`,
+    numero: (noticia as any).radicado || (noticia as any).numero || `ND-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
+    fechaRecepcion: fecha.toISOString().split('T')[0],
+    fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
+    origen: (noticia as any).origen || 'Noticia',
+    territorial: (noticia as any).territorial,
+    dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
+    denunciante: {
+      nombre: denuncianteRaw.nombre || 'Sin denunciante',
+      tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
+      numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || denuncianteRaw.identificacion || denuncianteRaw.telefono || 'N/A'
+    },
+    denunciado: {
+      nombre: denunciadoRaw.nombre || 'Sin disciplinable',
+      tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
+      numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || denunciadoRaw.identificacion || 'N/A'
+    },
+    denunciantes: denuncianteList.map(mapDetalle),
+    disciplinables: disciplinableList.map(mapDetalle),
+    hechos: (noticia as any).hechos || '',
+    conductas: (noticia as any).conductas || [],
+    adjuntos: (noticia as any).adjuntos || [],
+    estado: mapEstadoNoticia((noticia as any).estado) as any,
+    prioridad: (noticia as any).prioridad || 'media',
+    diasPendientes: (noticia as any).diasPendientes ?? dias,
+    tipo: 'noticia',
+    etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion'
+  };
+};
+
+export const normalizeNoticia = (raw: any): Noticia => {
+  const denuncianteFuente = raw.denunciantes || raw.denunciante;
+  const disciplinableFuente = raw.disciplinables || raw.disciplinable || raw.denunciado;
+  const denuncianteList = Array.isArray(denuncianteFuente) ? denuncianteFuente : (denuncianteFuente ? [denuncianteFuente] : []);
+  const disciplinableList = Array.isArray(disciplinableFuente) ? disciplinableFuente : (disciplinableFuente ? [disciplinableFuente] : []);
+  const denuncianteRaw = denuncianteList[0] || {};
+  const denunciadoRaw = disciplinableList[0] || {};
+
+  const mapDetalle = (item: any): NoticiaPersonaDetalle => ({
+    nombre: item.nombre || 'Sin nombre',
+    cedula: item.cedula || item.numeroIdentificacion || item.identificacion,
+    cargo: item.cargo,
+    dependencia: item.dependencia,
+    email: item.email,
+    telefono: item.telefono,
+    direccion: item.direccion,
+    entidad: item.entidad
+  });
+
+  return {
+    ...raw,
+    tipo: raw.tipo || 'noticia',
+    fechaQueja: raw.fechaQueja || raw.fechaRecepcion,
+    territorial: raw.territorial,
+    dependenciaDenunciado: raw.dependenciaDenunciado,
+    denunciantes: denuncianteList.map(mapDetalle),
+    disciplinables: disciplinableList.map(mapDetalle),
+    denunciante: {
+      nombre: denuncianteRaw.nombre || 'Sin nombre',
+      tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
+      numeroIdentificacion: denuncianteRaw.numeroIdentificacion || denuncianteRaw.cedula || denuncianteRaw.identificacion || 'Sin identificacion'
+    },
+    denunciado: {
+      nombre: denunciadoRaw.nombre || raw.disciplinable?.nombre || 'Sin nombre',
+      tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
+      numeroIdentificacion: denunciadoRaw.numeroIdentificacion || denunciadoRaw.cedula || denunciadoRaw.identificacion || raw.disciplinable?.cedula || 'Sin identificacion',
+      cargo: denunciadoRaw.cargo || raw.disciplinable?.cargo || 'Sin cargo'
+    },
+    hechos: raw.hechos || raw.descripcionHechos || '',
+    conductas: raw.conductas || raw.conductasSeleccionadas || [],
+    prioridad: raw.prioridad || 'media',
+    diasPendientes: raw.diasPendientes || 0,
+    etapaActual: raw.kanbanStage || raw.etapaActual || 'Recepcion',
+    estado: raw.estado || 'pendiente',
+    adjuntos: raw.adjuntos || []
+  };
+};
+
+export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
+  const stageLabelMap: Record<string, string> = { EVALUACION: 'Valoración', INDAGACION_PREVIA: 'Indagación', INVESTIGACION: 'Investigación', JUZGAMIENTO: 'Juzgamiento' };
+  let etapa = proceso.kanbanStage || proceso.etapaActual;
+
+  const match = currentStages.find(s => s.etapa === etapa || s.etapa.toUpperCase() === etapa.toUpperCase());
+  if (match) {
+    etapa = match.etapa;
+  } else {
+    etapa = stageLabelMap[etapa] || etapa;
+    if (etapa === etapa.toUpperCase() && etapa.length > 3) {
+      etapa = etapa.charAt(0).toUpperCase() + etapa.slice(1).toLowerCase();
+    }
+  }
+
+  const fechaVenc = proceso.fechaVencimientoEtapa ? new Date(proceso.fechaVencimientoEtapa) : null;
+  const fechaCreacion = proceso.createdAt ? new Date(proceso.createdAt) : new Date();
+  const hoy = new Date();
+  const diasRestantes = fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+
+  const porcentajeTiempo = proceso.timePercentage !== undefined
+    ? Math.round(proceso.timePercentage)
+    : (() => {
+      const totalDias = fechaVenc ? Math.max(1, Math.round((fechaVenc.getTime() - fechaCreacion.getTime()) / (1000 * 60 * 60 * 24))) : 1;
+      const transcurridos = totalDias - diasRestantes;
+      return Math.min(100, Math.max(0, Math.round((transcurridos / totalDias) * 100)));
+    })();
+
+  const semaforo: 'verde' | 'amarillo' | 'rojo' = diasRestantes <= 0 ? 'rojo' : (diasRestantes <= 7 || porcentajeTiempo >= 80 ? 'amarillo' : 'verde');
+  const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
+  const denuncianteData = Array.isArray(proceso.news?.denunciante) ? proceso.news?.denunciante?.[0] : proceso.news?.denunciante;
+  const disciplinableData = Array.isArray(proceso.news?.disciplinable) ? proceso.news?.disciplinable?.[0] : proceso.news?.disciplinable;
+
+  return {
+    id: proceso.id,
+    numeroProceso: proceso.radicadoProceso,
+    noticiaOrigen: proceso.news?.radicado || 'N/A',
+    denunciante: {
+      nombre: (denuncianteData as any)?.nombre || 'Sin denunciante',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: (denuncianteData as any)?.cedula || 'N/A'
+    },
+    denunciado: {
+      nombre: (disciplinableData as any)?.nombre || 'Sin disciplinable',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: (disciplinableData as any)?.cedula || 'N/A'
+    },
+    cedula: (disciplinableData as any)?.cedula || 'N/A',
+    etapaActual: etapa as any,
+    estadoActual: proceso.estado || 'ACTIVO',
+    profesionalAsignado: {
+      nombre: abogado,
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: (proceso as any).abogadoAsignado?.id || '',
+    },
+    semaforo,
+    diasRestantes,
+    porcentajeTiempo,
+    borradores: proceso.draftsCount !== undefined ? Array(proceso.draftsCount).fill({}) : [],
+    documentos: proceso.documentsCount !== undefined ? Array(proceso.documentsCount).fill({}) : [],
+    pendienteAprobacion: false,
+    ultimaActuacion: 'Actualizado desde backend',
+    fechaCreacion: fechaCreacion.toISOString().split('T')[0],
+    tipo: 'proceso',
+    hechos: proceso.news?.hechos,
+    kanbanNotice: proceso.kanbanNotice || null,
+  };
+};
+
+// ==================== COMPONENTE PRINCIPAL ====================
+export function DashboardKanbanOperativo({
   onNavigateToExpediente,
   filtroProfesionalId,
   onEnviarARevision,
   onNavigateToRevision,
   revisionLog,
-}: { 
+}: {
   onNavigateToExpediente?: () => void;
   filtroProfesionalId?: string | null;
   onEnviarARevision?: (borrador: BorradorPendiente) => void;
@@ -2098,11 +2278,11 @@ export function DashboardKanbanOperativo({
 }) {
   // ✅ NUEVO: Hook responsive centralizado
   const { isMobile, isTablet, isDesktop, width } = useResponsive();
-  
+
   // ✅ Medir ancho REAL del contenedor (no del viewport)
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(width);
-  
+
   useEffect(() => {
     if (!containerRef.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -2132,9 +2312,9 @@ export function DashboardKanbanOperativo({
           noticiasService.getAll(),
           procesosService.getAll(),
         ]);
-        
+
         console.log(`[DashboardKanban] Datos cargados: Noticias=${noticiasRaw.length}, Procesos=${procesosRaw.length}`);
-        
+
         if (cancelled) return;
         // Asegurar campos de tipo
         const noticias: Noticia[] = noticiasRaw.map((n: any) => ({ ...n, tipo: 'noticia' as const }));
@@ -2191,7 +2371,7 @@ export function DashboardKanbanOperativo({
   const [vistaCompacta, setVistaCompacta] = useState(false);
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
   const [tarjetasColapsadas, setTarjetasColapsadas] = useState<Set<string>>(new Set()); // NUEVO: Estado para tarjetas colapsadas
-  
+
   // ✅ NUEVO: Estado para editar noticias y procesos (usa el mismo modal)
   const [noticiaAEditar, setNoticiaAEditar] = useState<Noticia | null>(null);
   const [mostrarModalEditar, setMostrarModalEditar] = useState(false);
@@ -2222,7 +2402,7 @@ export function DashboardKanbanOperativo({
   // ✅ NUEVO: Estado para solicitudes de reasignación pendientes
   const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([]);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<any>(null);
-  
+
   // ✅ NUEVO: Cargar entidades de remisión desde localStorage
   useEffect(() => {
     try {
@@ -2301,7 +2481,7 @@ export function DashboardKanbanOperativo({
     const cargarProcesosYNoticias = async () => {
       try {
         setLoading(true); // ✅ NUEVO: Iniciar estado de carga
-        
+
         const [noticiasApi, procesosApi] = await Promise.all([
           disciplinaryService.getAllNoticias(),
           disciplinaryService.getAllProcesos()
@@ -2397,26 +2577,26 @@ export function DashboardKanbanOperativo({
     } else if (item.tipo === 'proceso') {
       if (item.etapaActual !== nuevaEtapa) {
         const etapaAnterior = item.etapaActual;
-        
+
         // ✅ NUEVO: Interceptar transición Recepción → Valoración para asignar profesional
         if (etapaAnterior === 'Recepción' && nuevaEtapa === 'Valoración') {
           setItemSeleccionado(item);
           setModalActivo('asignar-profesional');
           return; // No continuar con el movimiento hasta que se asigne el profesional
         }
-        
+
         const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
-        
-        setItems(prev => prev.map(i => 
+
+        setItems(prev => prev.map(i =>
           i.id === item.id && i.tipo === 'proceso'
-            ? { 
-                ...i, 
-                etapaActual: nuevaEtapa as any,
-                ultimaModificacion: new Date()
-              }
+            ? {
+              ...i,
+              etapaActual: nuevaEtapa as any,
+              ultimaModificacion: new Date()
+            }
             : i
         ));
-        
+
         // Registrar en trazabilidad/historial
         const eventoTrazabilidad = {
           id: `evt-${Date.now()}`,
@@ -2429,10 +2609,10 @@ export function DashboardKanbanOperativo({
           etapaAnterior: etapaAnterior,
           etapaNueva: nuevaEtapa
         };
-        
+
         // En producción, esto se guardaría en el backend
         console.log('📋 Trazabilidad - Movimiento de proceso:', eventoTrazabilidad);
-        
+
         toast.success('Proceso Movido', {
           description: `${item.numeroProceso} → ${nuevaEtapa} (registrado en trazabilidad)`
         });
@@ -2529,7 +2709,7 @@ export function DashboardKanbanOperativo({
             tipoIdentificacion: 'CC' as const,
             numeroIdentificacion: data.denunciado.identificacion || 'Sin identificación'
           } : 'Sin información',
-          hechos: data.hechosSeparados?.map((h: any, idx: number) => 
+          hechos: data.hechosSeparados?.map((h: any, idx: number) =>
             `Hecho ${idx + 1}: ${h.descripcion}`
           ).join('\\n\\n') || data.descripcionHechos,
           hechosSeparados: data.hechosSeparados,
@@ -2551,7 +2731,7 @@ export function DashboardKanbanOperativo({
             tipoIdentificacion: 'CC' as const,
             numeroIdentificacion: data.denunciado.identificacion || 'Sin identificación'
           } : 'Sin información',
-          hechos: data.hechosSeparados?.map((h: any, idx: number) => 
+          hechos: data.hechosSeparados?.map((h: any, idx: number) =>
             `Hecho ${idx + 1}: ${h.descripcion}`
           ).join('\n\n') || data.descripcionHechos,
           hechosSeparados: data.hechosSeparados,
@@ -2565,7 +2745,7 @@ export function DashboardKanbanOperativo({
 
     setMostrarModalEditar(false);
     setNoticiaAEditar(null);
-    
+
     toast.success(esProceso ? 'Proceso actualizado' : 'Noticia actualizada', {
       description: 'La información ha sido actualizada exitosamente'
     });
@@ -2592,7 +2772,7 @@ export function DashboardKanbanOperativo({
       hechosSeparados: proceso.hechosSeparados,
       conductasSeleccionadas: proceso.conductasSeleccionadas
     };
-    
+
     setNoticiaAEditar(noticiaDesdeProceso);
     setMostrarModalEditar(true);
   };
@@ -2643,7 +2823,7 @@ export function DashboardKanbanOperativo({
       ...prev.filter(i => i.id !== itemSeleccionado.id),
       nuevoProceso
     ]);
-    
+
     toast.success('Proceso Creado', {
       description: `${nuevoProceso.numeroProceso} → ${profesionalSeleccionado}`
     });
@@ -2735,8 +2915,8 @@ export function DashboardKanbanOperativo({
     }
   };
 
-  // ✅ NUEVO: Handler del wizard de conversión con datos enriquecidos
-  const handleConversionDesdeWizard = (datos: {
+  // ✅ NUEVO: Handler del wizard de conversión con datos enriquecidos integrando API real
+  const handleConversionDesdeWizard = async (datos: {
     tipoProceso: string;
     faltaPresunta: string;
     etapaInicial: string;
@@ -2747,66 +2927,40 @@ export function DashboardKanbanOperativo({
   }) => {
     if (!itemSeleccionado) return;
 
-    const numeroProceso = `PROC-${new Date().getFullYear()}-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`;
+    // Indicador visual de persistencia
+    const toastId = toast.loading('Asignando profesional y creando proceso...');
 
-    // ✅ Copiar TODOS los datos de la noticia al proceso
-    const noticia = itemSeleccionado as Noticia;
-    const nuevoProceso: Proceso = {
-      id: `p${Date.now()}`,
-      numeroProceso,
-      noticiaOrigen: noticia.numero,
-      denunciante: noticia.denunciante,
-      denunciado: noticia.denunciado,
-      cedula: (typeof noticia.denunciado !== 'string' ? noticia.denunciado?.numeroIdentificacion : '') ?? '00000000',
-      etapaActual: datos.etapaInicial as any,
-      estadoActual: 'En Gestión',
-      profesionalAsignado: datos.profesionalNombre,
-      profesionalAsignadoId: datos.profesionalId,
-      semaforo: 'verde',
-      diasRestantes: 90,
-      porcentajeTiempo: 0,
-      borradores: [],
-      documentos: [],
-      pendienteAprobacion: false,
-      ultimaActuacion: `Convertido desde ${noticia.numero}. Tipo: ${datos.tipoProceso}. Falta: ${datos.faltaPresunta}.`,
-      fechaCreacion: new Date().toISOString().split('T')[0],
-      tipo: 'proceso',
-      // ═══ Datos heredados de la Noticia ═══
-      hechos: noticia.hechos,
-      cargo: noticia.cargo,
-      dependencia: noticia.dependencia,
-      territorial: noticia.territorial,
-      fechaHechos: noticia.fechaHechos,
-      conductaSeleccionada: noticia.conductaSeleccionada,
-      conductaPersonalizada: noticia.conductaPersonalizada,
-      denunciados: noticia.denunciados,
-      denunciantes: noticia.denunciantes,
-      hechosSeparados: noticia.hechosSeparados,
-      archivosAdjuntos: noticia.archivosAdjuntos,
-      origenNoticia: noticia.origen,
-      fechaRecepcionNoticia: noticia.fechaRecepcion,
-      prioridadNoticia: noticia.prioridad,
-    };
+    try {
+      // ✅ Persistir en el backend usando API real
+      const procesoApi = await disciplinaryService.asignarProceso({
+        newsId: itemSeleccionado.id,
+        abogadoId: datos.profesionalId,
+        abogadoNombre: datos.profesionalNombre
+      });
 
-    setItems(prev => [
-      ...prev.filter(i => i.id !== itemSeleccionado.id),
-      nuevoProceso,
-    ]);
+      // ✅ Mapear la respuesta de la API al formato que usa la UI
+      const nuevoProceso = toProcesoFromApi(procesoApi);
 
-    // ✅ Persistir en Supabase: crear proceso y eliminar noticia
-    procesosService.create(nuevoProceso).catch(err =>
-      console.error('[DashboardKanban] Error al guardar proceso en Supabase:', err)
-    );
-    noticiasService.remove(itemSeleccionado.id).catch(err =>
-      console.error('[DashboardKanban] Error al eliminar noticia convertida en Supabase:', err)
-    );
+      // ✅ Actualizar el tablón sin necesidad de recargar la página completa
+      setItems(prev => [
+        ...prev.filter(i => i.id !== itemSeleccionado.id), // Eliminar la noticia original
+        nuevoProceso, // Agregar el nuevo proceso
+      ]);
 
-    toast.success('Proceso Disciplinario Creado', {
-      description: `${numeroProceso} asignado a ${datos.profesionalNombre} · Etapa: ${datos.etapaInicial}`
-    });
+      toast.success('Proceso Disciplinario Creado', {
+        id: toastId,
+        description: `${nuevoProceso.numeroProceso} asignado a ${datos.profesionalNombre} · Etapa: Valoración`
+      });
 
-    setModalActivo(null);
-    setItemSeleccionado(null);
+      setModalActivo(null);
+      setItemSeleccionado(null);
+    } catch (err: any) {
+      console.error('[DashboardKanban] Error al crear proceso en la API:', err);
+      toast.error('Error al crear el proceso disciplinario', {
+        id: toastId,
+        description: err.message || 'Error de conexión con el servidor',
+      });
+    }
   };
 
   const handleDevolverNoticia = (noticia: Noticia) => {
@@ -2956,25 +3110,25 @@ export function DashboardKanbanOperativo({
     if (!itemSeleccionado) return;
 
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
-    
+
     // Actualizar el proceso con el profesional asignado y moverlo a Valoración
-    setItems(prev => prev.map(i => 
+    setItems(prev => prev.map(i =>
       i.id === itemSeleccionado.id && i.tipo === 'proceso'
-        ? { 
-            ...i, 
-            etapaActual: 'Valoración' as any,
-            profesionalAsignado: {
-              nombre: profesionalNombre,
-              tipoIdentificacion: 'CC' as const,
-              numeroIdentificacion: profesionalId
-            },
-            profesionalAsignadoId: profesionalId,
-            ultimaActuacion: `Asignado a ${profesionalNombre}`,
-            ultimaModificacion: new Date()
-          }
+        ? {
+          ...i,
+          etapaActual: 'Valoración' as any,
+          profesionalAsignado: {
+            nombre: profesionalNombre,
+            tipoIdentificacion: 'CC' as const,
+            numeroIdentificacion: profesionalId
+          },
+          profesionalAsignadoId: profesionalId,
+          ultimaActuacion: `Asignado a ${profesionalNombre}`,
+          ultimaModificacion: new Date()
+        }
         : i
     ));
-    
+
     // Registrar en trazabilidad
     const eventoTrazabilidad = {
       id: `evt-${Date.now()}`,
@@ -2987,13 +3141,13 @@ export function DashboardKanbanOperativo({
       profesionalAsignado: profesionalNombre,
       observaciones: observaciones
     };
-    
+
     console.log('📋 Trazabilidad - Asignación de profesional:', eventoTrazabilidad);
-    
+
     toast.success('Profesional Asignado', {
       description: `${itemSeleccionado.numeroProceso} → ${profesionalNombre} (Valoración)`
     });
-    
+
     setModalActivo(null);
     setItemSeleccionado(null);
   };
@@ -3007,7 +3161,7 @@ export function DashboardKanbanOperativo({
       });
       return;
     }
-    
+
     setItemSeleccionado(proceso);
     setModalActivo('solicitar-reasignacion');
   };
@@ -3016,7 +3170,7 @@ export function DashboardKanbanOperativo({
     if (!itemSeleccionado) return;
 
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
-    
+
     // Crear solicitud de reasignación
     const nuevaSolicitud = {
       id: `sol-${Date.now()}`,
@@ -3074,25 +3228,25 @@ export function DashboardKanbanOperativo({
     const usuario = 'Jefe OCID'; // En producción vendría del contexto de autenticación
 
     // Actualizar el proceso con el nuevo profesional asignado
-    setItems(prev => prev.map(i => 
+    setItems(prev => prev.map(i =>
       i.id === solicitud.procesoId && i.tipo === 'proceso'
-        ? { 
-            ...i, 
-            profesionalAsignado: {
-              nombre: solicitud.profesionalNuevo.nombre,
-              tipoIdentificacion: 'CC' as const,
-              numeroIdentificacion: solicitud.profesionalNuevo.id
-            },
-            profesionalAsignadoId: solicitud.profesionalNuevo.id,
-            ultimaActuacion: `Reasignado a ${solicitud.profesionalNuevo.nombre}`,
-            ultimaModificacion: new Date()
-          }
+        ? {
+          ...i,
+          profesionalAsignado: {
+            nombre: solicitud.profesionalNuevo.nombre,
+            tipoIdentificacion: 'CC' as const,
+            numeroIdentificacion: solicitud.profesionalNuevo.id
+          },
+          profesionalAsignadoId: solicitud.profesionalNuevo.id,
+          ultimaActuacion: `Reasignado a ${solicitud.profesionalNuevo.nombre}`,
+          ultimaModificacion: new Date()
+        }
         : i
     ));
 
     // Marcar solicitud como aprobada
-    setSolicitudesReasignacion(prev => prev.map(s => 
-      s.id === solicitudId 
+    setSolicitudesReasignacion(prev => prev.map(s =>
+      s.id === solicitudId
         ? { ...s, estado: 'aprobada' as const, fechaResolucion: new Date().toISOString(), observacionesJefe: observaciones }
         : s
     ));
@@ -3126,8 +3280,8 @@ export function DashboardKanbanOperativo({
     const usuario = 'Jefe OCID'; // En producción vendría del contexto de autenticación
 
     // Marcar solicitud como rechazada
-    setSolicitudesReasignacion(prev => prev.map(s => 
-      s.id === solicitudId 
+    setSolicitudesReasignacion(prev => prev.map(s =>
+      s.id === solicitudId
         ? { ...s, estado: 'rechazada' as const, fechaResolucion: new Date().toISOString(), motivoRechazo: motivoRechazo }
         : s
     ));
@@ -3209,7 +3363,7 @@ export function DashboardKanbanOperativo({
   // ✅ NUEVO: Handler para ver proceso asociado
   const handleVerProcesoAsociado = (procesoId: string) => {
     const proceso = items.find(i => i.id === procesoId && i.tipo === 'proceso') as Proceso;
-    
+
     if (proceso) {
       // Scroll hasta el proceso en el tablero (si está visible)
       const procesoElement = document.getElementById(`proceso-${procesoId}`);
@@ -3221,11 +3375,11 @@ export function DashboardKanbanOperativo({
           procesoElement.classList.remove('ring-4', 'ring-purple-500', 'ring-opacity-50');
         }, 2000);
       }
-      
+
       // Abrir modal de detalles del proceso
       setItemSeleccionado(proceso);
       setModalActivo('ver-detalles');
-      
+
       toast.info('Navegando al proceso asociado', {
         description: proceso.numeroProceso
       });
@@ -3245,18 +3399,18 @@ export function DashboardKanbanOperativo({
     const noticiaElement = document.getElementById(`noticia-${noticia.id}`);
     if (noticiaElement) {
       noticiaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      
+
       // Highlight temporal (2 segundos)
       noticiaElement.classList.add('ring-4', 'ring-purple-500', 'ring-opacity-50');
       setTimeout(() => {
         noticiaElement.classList.remove('ring-4', 'ring-purple-500', 'ring-opacity-50');
       }, 2000);
     }
-    
+
     // Abrir modal de detalles de la noticia
     setItemSeleccionado(noticia);
     setModalActivo('ver-detalles');
-    
+
     toast.info('Navegando a noticia asociada', {
       description: noticia.numero
     });
@@ -3276,7 +3430,7 @@ export function DashboardKanbanOperativo({
       });
       return;
     }
-    
+
     setItemSeleccionado(proceso);
     setModalActivo('asociar-proceso-proceso');
   };
@@ -3323,7 +3477,7 @@ export function DashboardKanbanOperativo({
     // En producción, esto vendría del proceso.borradores
     // Por ahora, generamos mock basado en la etapa
     const documentosMock = [];
-    
+
     if (proceso.etapaActual === 'Valoración' || proceso.etapaActual === 'Indagación') {
       documentosMock.push({
         id: 'doc-1',
@@ -3438,27 +3592,27 @@ export function DashboardKanbanOperativo({
   // ✅ REFACTORIZADO: Handler de aprobación con comentarios (nuevo modal)
   const handleConfirmarAprobacion = (comentarios: string) => {
     if (!itemSeleccionado || itemSeleccionado.tipo !== 'proceso') return;
-    
+
     setItems(prev => prev.map(i =>
       i.id === itemSeleccionado.id && i.tipo === 'proceso'
-        ? { 
-            ...i, 
-            pendienteAprobacion: false,
-            documentosAprobados: [...(i.documentosAprobados || []), {
-              id: `doc-${Date.now()}`,
-              titulo: `Auto de ${i.etapaActual}`,
-              fecha: new Date().toISOString(),
-              comentariosJefe: comentarios,
-              estado: 'aprobado'
-            }]
-          }
+        ? {
+          ...i,
+          pendienteAprobacion: false,
+          documentosAprobados: [...(i.documentosAprobados || []), {
+            id: `doc-${Date.now()}`,
+            titulo: `Auto de ${i.etapaActual}`,
+            fecha: new Date().toISOString(),
+            comentariosJefe: comentarios,
+            estado: 'aprobado'
+          }]
+        }
         : i
     ));
-    
+
     toast.success('Documento Aprobado', {
       description: `${itemSeleccionado.numeroProceso} - Documento aprobado exitosamente`
     });
-    
+
     setModalActivo(null);
     setItemSeleccionado(null);
   };
@@ -3466,11 +3620,11 @@ export function DashboardKanbanOperativo({
   // ✅ NUEVO: Handler de devolución de documentos
   const handleDevolverDocumento = (motivo: string, comentarios: string, archivos: File[]) => {
     if (!itemSeleccionado || itemSeleccionado.tipo !== 'proceso') return;
-    
+
     toast.warning('Documento Devuelto', {
       description: `El documento ha sido devuelto al profesional para correcciones`
     });
-    
+
     setModalActivo(null);
     setItemSeleccionado(null);
   };
@@ -3545,7 +3699,7 @@ export function DashboardKanbanOperativo({
   };
 
   // ==================== FUNCIONES PARA COLAPSAR/EXPANDIR TARJETAS ====================
-  
+
   // Toggle colapso de tarjeta individual
   const toggleTarjetaColapsada = (id: string) => {
     setTarjetasColapsadas(prev => {
@@ -3585,13 +3739,13 @@ export function DashboardKanbanOperativo({
   // Filtrar por profesional si está activo el filtro
   const normalizedGlobalQuery = normalizeText(busquedaGlobal.trim());
 
-  const itemsFiltrados = (filtroProfesionalId 
+  const itemsFiltrados = (filtroProfesionalId
     ? items.filter(item => {
-        if (item.tipo === 'proceso') {
-          return (item as Proceso).profesionalAsignadoId === filtroProfesionalId;
-        }
-        return false; // No mostrar noticias cuando hay filtro de profesional
-      })
+      if (item.tipo === 'proceso') {
+        return (item as Proceso).profesionalAsignadoId === filtroProfesionalId;
+      }
+      return false; // No mostrar noticias cuando hay filtro de profesional
+    })
     : items
   ).filter(item => itemMatchesSearch(item, normalizedGlobalQuery));
 
@@ -3691,9 +3845,9 @@ export function DashboardKanbanOperativo({
                 <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#003DA510' }}>
                   <Columns3 className="w-5 h-5" style={{ color: '#003DA5' }} />
                 </div>
-                <h2 
+                <h2
                   className="font-bold leading-tight truncate tracking-tight"
-                  style={{ 
+                  style={{
                     color: '#003DA5',
                     fontSize: containerWidth < 500 ? '1rem' : containerWidth < 700 ? '1.1rem' : '1.25rem'
                   }}
@@ -3803,16 +3957,16 @@ export function DashboardKanbanOperativo({
         </div>
 
         {/* Estadísticas - Responsive: 2 cols en estrecho, 4 cols en ancho */}
-        
+
 
         {/* Vista Kanban, Lista o Archivados según selección */}
         {loading ? (
           /* ✅ NUEVO: Loader mientras cargan noticias y procesos */
           <div className="flex items-center justify-center py-20">
             <div className="text-center">
-              <Loader2 
-                className="w-12 h-12 mx-auto mb-4 animate-spin" 
-                style={{ color: '#003DA5' }} 
+              <Loader2
+                className="w-12 h-12 mx-auto mb-4 animate-spin"
+                style={{ color: '#003DA5' }}
               />
               <p className="text-lg font-semibold text-gray-700">
                 Cargando noticias y procesos...
@@ -3825,7 +3979,7 @@ export function DashboardKanbanOperativo({
         ) : tipoVista === 'kanban' && (
           <div className="flex-1 overflow-hidden">
             {/* ═══ Contenedor Kanban estilo Trello: scroll horizontal + columnas fijas ═══ */}
-            <div 
+            <div
               className="h-full pb-2"
               style={{
                 overflowX: 'auto',
@@ -3836,9 +3990,9 @@ export function DashboardKanbanOperativo({
               }}
             >
               {/* Flex container — columnas de ancho FIJO, nunca se comprimen (patrón Trello) */}
-              <div 
-                className="flex gap-4 h-full items-stretch" 
-                style={{ 
+              <div
+                className="flex gap-4 h-full items-stretch"
+                style={{
                   width: 'max-content',
                   paddingLeft: '1rem',
                   paddingRight: '1rem',
@@ -3848,49 +4002,49 @@ export function DashboardKanbanOperativo({
                 {etapas.map((etapa) => {
                   const isColapsada = columnasColapsadas.has(etapa.nombre);
                   return (
-                  <div
-                    key={etapa.nombre}
-                    className="flex-shrink-0 h-full"
-                    style={{
-                      width: isColapsada && !isMobile ? '64px' : isMobile ? 'calc(100vw - 32px)' : isTablet ? '280px' : '320px',
-                      transition: 'width 0.3s ease-in-out',
-                    }}
-                  >
-                    <ColumnaKanban
-                      etapa={etapa.nombre}
-                      items={itemsFiltrados}
-                      color={etapa.color}
-                      icono={etapa.icono}
-                      diasEstimados={etapa.diasEstimados}
-                      onDrop={handleDropItem}
-                      onConvertirNoticia={handleConvertirNoticia}
-                      onDevolverNoticia={handleDevolverNoticia}
-                      onDevolverCompetencia={handleDevolverCompetencia}
-                      onArchivarNoticia={handleArchivarNoticia}
-                      onVerDetallesNoticia={handleVerDetallesNoticia}
-                      onAsociarNoticiaProceso={handleAsociarNoticiaProceso}
-                      onVerProcesoAsociado={handleVerProcesoAsociado}
-                      onVerNoticiaAsociada={handleVerNoticiaAsociada}
-                      onEditarNoticia={handleEditarNoticia}
-                      onVerDetalles={handleVerDetalles}
-                      onAprobarBorrador={handleAprobarBorrador}
-                      onVerExpediente={handleVerExpediente}
-                      onGestionAutos={handleGestionAutos}
-                      onGestionEvidencias={handleGestionEvidencias}
-                      onGestionOficios={handleGestionOficios}
-                      onGestionActas={handleGestionActas}
-                      onComentarios={handleComentarios}
-                      onSolicitarReasignacion={handleSolicitarReasignacion}
-                      onAsociarProcesoProceso={handleAsociarProcesoProceso} // ✅ NUEVO: Asociar proceso a proceso
-                      onEditarProceso={handleEditarProceso} // ✅ NUEVO: Editar proceso
-                      vistaCompacta={vistaCompacta}
-                      isMobile={isMobile}
-                      colapsada={columnasColapsadas.has(etapa.nombre)}
-                      onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
-                      tarjetasColapsadas={tarjetasColapsadas}
-                      onToggleColapsoTarjeta={toggleTarjetaColapsada}
-                    />
-                  </div>
+                    <div
+                      key={etapa.nombre}
+                      className="flex-shrink-0 h-full"
+                      style={{
+                        width: isColapsada && !isMobile ? '64px' : isMobile ? 'calc(100vw - 32px)' : isTablet ? '280px' : '320px',
+                        transition: 'width 0.3s ease-in-out',
+                      }}
+                    >
+                      <ColumnaKanban
+                        etapa={etapa.nombre}
+                        items={itemsFiltrados}
+                        color={etapa.color}
+                        icono={etapa.icono}
+                        diasEstimados={etapa.diasEstimados}
+                        onDrop={handleDropItem}
+                        onConvertirNoticia={handleConvertirNoticia}
+                        onDevolverNoticia={handleDevolverNoticia}
+                        onDevolverCompetencia={handleDevolverCompetencia}
+                        onArchivarNoticia={handleArchivarNoticia}
+                        onVerDetallesNoticia={handleVerDetallesNoticia}
+                        onAsociarNoticiaProceso={handleAsociarNoticiaProceso}
+                        onVerProcesoAsociado={handleVerProcesoAsociado}
+                        onVerNoticiaAsociada={handleVerNoticiaAsociada}
+                        onEditarNoticia={handleEditarNoticia}
+                        onVerDetalles={handleVerDetalles}
+                        onAprobarBorrador={handleAprobarBorrador}
+                        onVerExpediente={handleVerExpediente}
+                        onGestionAutos={handleGestionAutos}
+                        onGestionEvidencias={handleGestionEvidencias}
+                        onGestionOficios={handleGestionOficios}
+                        onGestionActas={handleGestionActas}
+                        onComentarios={handleComentarios}
+                        onSolicitarReasignacion={handleSolicitarReasignacion}
+                        onAsociarProcesoProceso={handleAsociarProcesoProceso} // ✅ NUEVO: Asociar proceso a proceso
+                        onEditarProceso={handleEditarProceso} // ✅ NUEVO: Editar proceso
+                        vistaCompacta={vistaCompacta}
+                        isMobile={isMobile}
+                        colapsada={columnasColapsadas.has(etapa.nombre)}
+                        onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
+                        tarjetasColapsadas={tarjetasColapsadas}
+                        onToggleColapsoTarjeta={toggleTarjetaColapsada}
+                      />
+                    </div>
                   );
                 })}
               </div>
@@ -4172,10 +4326,9 @@ export function DashboardKanbanOperativo({
                               </div>
                               <div>
                                 <p className="text-gray-600">Prioridad:</p>
-                                <p className={`font-bold ${
-                                  (itemSeleccionado as Noticia).prioridad === 'alta' ? 'text-red-600' :
+                                <p className={`font-bold ${(itemSeleccionado as Noticia).prioridad === 'alta' ? 'text-red-600' :
                                   (itemSeleccionado as Noticia).prioridad === 'media' ? 'text-orange-600' : 'text-gray-600'
-                                } capitalize`}>{(itemSeleccionado as Noticia).prioridad}</p>
+                                  } capitalize`}>{(itemSeleccionado as Noticia).prioridad}</p>
                               </div>
                               <div>
                                 <p className="text-gray-600">Días Pendientes:</p>
@@ -4275,10 +4428,10 @@ export function DashboardKanbanOperativo({
                             </h5>
                             <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 space-y-1">
                               <p className="font-bold text-gray-900">
-                                {(itemSeleccionado as Proceso).profesionalAsignado 
-                                  ? (typeof (itemSeleccionado as Proceso).profesionalAsignado === 'string' 
-                                      ? (itemSeleccionado as Proceso).profesionalAsignado 
-                                      : (itemSeleccionado as Proceso).profesionalAsignado.nombre)
+                                {(itemSeleccionado as Proceso).profesionalAsignado
+                                  ? (typeof (itemSeleccionado as Proceso).profesionalAsignado === 'string'
+                                    ? (itemSeleccionado as Proceso).profesionalAsignado
+                                    : (itemSeleccionado as Proceso).profesionalAsignado.nombre)
                                   : 'Sin asignar'}
                               </p>
                               {typeof (itemSeleccionado as Proceso).profesionalAsignado !== 'string' && (itemSeleccionado as Proceso).profesionalAsignado && (
@@ -4374,35 +4527,35 @@ export function DashboardKanbanOperativo({
                             </div>
                           </div>
 
-                      {/* Acciones Rápidas */}
-                      <div>
-                        <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                          <Settings className="w-4 h-4" style={{ color: '#003DA5' }} />
-                          ACCIONES RÁPIDAS
-                        </h5>
-                        <div className="grid grid-cols-2 gap-2">
-                        <Button
-                          onClick={() => {
-                            setModalActivo('editor-documentos');
-                          }}
-                          size="sm"
-                          className="w-full bg-purple-600 hover:bg-purple-700 text-white"
-                        >
-                          <Edit2 className="w-3.5 h-3.5 mr-2" />
-                          Editor
-                        </Button>
-                        <Button
-                          onClick={() => {
-                            setModalActivo('subir-documentos');
-                          }}
-                          size="sm"
-                          className="w-full" style={{ background: '#003DA5', color: '#FFFFFF' }}
-                        >
-                          <Upload className="w-3.5 h-3.5 mr-2" />
-                          Subir Docs
-                        </Button>
-                      </div>
-                      </div>
+                          {/* Acciones Rápidas */}
+                          <div>
+                            <h5 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                              <Settings className="w-4 h-4" style={{ color: '#003DA5' }} />
+                              ACCIONES RÁPIDAS
+                            </h5>
+                            <div className="grid grid-cols-2 gap-2">
+                              <Button
+                                onClick={() => {
+                                  setModalActivo('editor-documentos');
+                                }}
+                                size="sm"
+                                className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                              >
+                                <Edit2 className="w-3.5 h-3.5 mr-2" />
+                                Editor
+                              </Button>
+                              <Button
+                                onClick={() => {
+                                  setModalActivo('subir-documentos');
+                                }}
+                                size="sm"
+                                className="w-full" style={{ background: '#003DA5', color: '#FFFFFF' }}
+                              >
+                                <Upload className="w-3.5 h-3.5 mr-2" />
+                                Subir Docs
+                              </Button>
+                            </div>
+                          </div>
 
                           {/* Métricas - SOLO PROCESOS */}
                           <div>
@@ -4441,8 +4594,8 @@ export function DashboardKanbanOperativo({
                         Cerrar
                       </Button>
                       {itemSeleccionado.tipo === 'proceso' && (
-                        <Button 
-                          onClick={() => handleVerExpediente(itemSeleccionado as Proceso)} 
+                        <Button
+                          onClick={() => handleVerExpediente(itemSeleccionado as Proceso)}
                           className="flex-1"
                           style={{ background: '#8B5CF6', color: '#FFFFFF' }}
                         >
@@ -4451,11 +4604,11 @@ export function DashboardKanbanOperativo({
                         </Button>
                       )}
                       {itemSeleccionado.tipo === 'noticia' && (
-                        <Button 
+                        <Button
                           onClick={() => {
                             setModalActivo(null);
                             handleConvertirNoticia(itemSeleccionado as Noticia);
-                          }} 
+                          }}
                           className="flex-1 bg-green-600 hover:bg-green-700 text-white"
                         >
                           <PlusCircle className="w-4 h-4 mr-2" />
@@ -4565,8 +4718,8 @@ export function DashboardKanbanOperativo({
               });
               setModalActivo(null);
               setItemSeleccionado(null);
-              }}
-            />
+            }}
+          />
 
           {/* Modal Archivar Noticia - Completo con validaciones */}
           {modalActivo === 'archivar-noticia' && itemSeleccionado && (
@@ -4793,26 +4946,26 @@ export function DashboardKanbanOperativo({
                 : { nombre: noticia.denunciante.nombre, tipoIdentificacion: noticia.denunciante.tipoIdentificacion, numeroIdentificacion: noticia.denunciante.numeroIdentificacion }
               : undefined;
             return (
-            <WizardConvertirProcesoWorldClass
-              noticia={{
-                id: noticia.id,
-                numero: noticia.numero,
-                hechos: noticia.hechos ?? '',
-                fechaRecepcion: noticia.fechaRecepcion,
-                origen: noticia.origen,
-                prioridad: noticia.prioridad,
-                denunciado: {
-                  nombre: denunciado.nombre,
-                  tipoIdentificacion: denunciado.tipoIdentificacion,
-                  numeroIdentificacion: denunciado.numeroIdentificacion,
-                  cargo: noticia.cargo,
-                  dependencia: noticia.dependencia,
-                },
-                denunciante,
-              }}
-              onConfirmar={handleConversionDesdeWizard}
-              onCerrar={() => setModalActivo(null)}
-            />
+              <WizardConvertirProcesoWorldClass
+                noticia={{
+                  id: noticia.id,
+                  numero: noticia.numero,
+                  hechos: noticia.hechos ?? '',
+                  fechaRecepcion: noticia.fechaRecepcion,
+                  origen: noticia.origen,
+                  prioridad: noticia.prioridad,
+                  denunciado: {
+                    nombre: denunciado.nombre,
+                    tipoIdentificacion: denunciado.tipoIdentificacion,
+                    numeroIdentificacion: denunciado.numeroIdentificacion,
+                    cargo: noticia.cargo,
+                    dependencia: noticia.dependencia,
+                  },
+                  denunciante,
+                }}
+                onConfirmar={handleConversionDesdeWizard}
+                onCerrar={() => setModalActivo(null)}
+              />
             );
           })()}
         </AnimatePresence>
