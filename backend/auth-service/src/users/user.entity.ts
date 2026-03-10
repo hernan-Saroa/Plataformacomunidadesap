@@ -23,7 +23,7 @@ export class User {
   updated_at: Date;
 
   @OneToOne(() => Person, { cascade: true })
-  @JoinColumn({ name: 'id_tercero' })
+  @JoinColumn({ name: 'id_person' })
   person: Person;
 
   @ManyToMany(() => Role)

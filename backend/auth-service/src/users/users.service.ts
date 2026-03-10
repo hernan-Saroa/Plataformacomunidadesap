@@ -157,18 +157,9 @@ export class UsersService {
   }
 
   async createPerson(dto: CreatePersonDto): Promise<User> {
-    // Obtener el próximo id_tercero manualmente (la tabla no usa serial/uuid)
-    const maxIdResult = await this.personRepo
-      .createQueryBuilder('person')
-      .select('MAX(person.id)', 'maxId')
-      .getRawOne();
-    const nextId = parseInt((maxIdResult?.maxId || 0)) + 1;
-
-
-    // Crear y guardar persona primero
+    // Crear y guardar persona primero (id_person se genera en DB)
     const savedPerson = await this.personRepo.save(
       this.personRepo.create({
-        id: nextId,
         first_name: dto.first_name,
         last_name: dto.last_name,
         full_name: `${dto.first_name} ${dto.last_name}`,
@@ -279,7 +270,7 @@ export class UsersService {
     // Ejecutar la actualización si hay campos para actualizar
     if (setClauses.length > 0) {
       values.push(user.person.id); // Para el WHERE
-      const sql = `UPDATE auth.personas SET ${setClauses.join(', ')} WHERE id_tercero = $${paramIndex}`;
+      const sql = `UPDATE auth.personas SET ${setClauses.join(', ')} WHERE id_person = $${paramIndex}`;
       console.log('📝 Executing SQL:', sql);
       console.log('📝 With values:', values);
 
