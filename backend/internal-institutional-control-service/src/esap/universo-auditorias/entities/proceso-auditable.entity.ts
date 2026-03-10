@@ -67,7 +67,7 @@ export class ProcesoAuditable {
     impacto: number; // 1-3
     nivelControl: number; // 1-3
     riesgoInherente: number; // probabilidad * impacto
-    riesgoResidual: number; // riesgoInherente * nivelControl
+    riesgoResidual: number; // riesgoInherente ÷ nivelControl (prioridad 0-100)
     nivelRiesgo: NivelRiesgo; // bajo, medio, alto
     madurezControl?: string;
     controles?: {

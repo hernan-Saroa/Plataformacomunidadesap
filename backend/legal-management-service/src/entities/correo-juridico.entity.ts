@@ -1,4 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { AdjuntoCorreo } from './adjunto-correo.entity';
 
 @Entity('correos_juridicos', { schema: 'legal_management' })
 export class CorreoJuridico {
@@ -93,4 +94,7 @@ export class CorreoJuridico {
 
     @Column({ name: 'submodulo_sugerido', length: 100, nullable: true })
     submoduloSugerido: string;
+
+    @OneToMany(() => AdjuntoCorreo, adjunto => adjunto.correo)
+    adjuntos: AdjuntoCorreo[];
 }

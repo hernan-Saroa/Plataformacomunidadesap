@@ -31,7 +31,7 @@ import html2canvas from 'html2canvas';
 import { buildServiceAssetUrl } from '../../config/environment';
 import headerImg from '../../assets/graduation-certificates/img_primera.png';
 import footerImg from '../../assets/graduation-certificates/img_segunda.png';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface VerificationCertificateDisplayProps {
@@ -630,11 +630,11 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
 
                       <div className="bg-white rounded-xl border border-gray-200 p-5">
                         <div className="flex items-center gap-3 mb-2">
-                          <Hash className="w-5 h-5 text-[#1e5da8]" />
-                          <p className="text-xs text-gray-600 uppercase tracking-wider">Número de Diploma</p>
+                          <FileText className="w-5 h-5 text-[#1e5da8]" />
+                          <p className="text-xs text-gray-600 uppercase tracking-wider">Tipo de Solicitante</p>
                         </div>
-                        <p className="text-lg font-mono font-bold text-gray-900">
-                          {certificate.graduate.diplomaNumber}
+                        <p className="text-lg font-bold text-gray-900 capitalize">
+                          {certificate.requester.type === 'graduado' ? 'Graduado' : 'Empresa'}
                         </p>
                       </div>
 
@@ -649,16 +649,6 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                           </p>
                         </div>
                       )}
-
-                      <div className="bg-white rounded-xl border border-gray-200 p-5">
-                        <div className="flex items-center gap-3 mb-2">
-                          <FileText className="w-5 h-5 text-[#1e5da8]" />
-                          <p className="text-xs text-gray-600 uppercase tracking-wider">Tipo de Solicitante</p>
-                        </div>
-                        <p className="text-lg font-bold text-gray-900 capitalize">
-                          {certificate.requester.type === 'graduado' ? 'Graduado' : 'Empresa'}
-                        </p>
-                      </div>
                     </div>
 
                     {/* Official Statement */}
@@ -692,13 +682,17 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                         <h4 className="font-bold text-gray-900 text-sm uppercase tracking-wide">Código QR</h4>
                       </div>
                       <div className="flex-1 flex items-center justify-center">
-                        <div className="inline-block p-4 bg-white rounded-xl border-2 border-[#1e5da8]/30 shadow-sm">
-                          <QRCodeSVG
+                        <div
+                          className="w-full max-w-full rounded-xl border-2 border-[#1e5da8]/30 bg-white p-3 shadow-sm sm:p-4"
+                          style={{ width: 'min(100%, 260px)' }}
+                        >
+                          <QRCodeCanvas
                             value={verificationUrl}
-                            size={160}
+                            size={512}
                             level="H"
                             includeMargin={true}
                             fgColor="#1e5da8"
+                            style={{ width: '100%', height: 'auto', display: 'block' }}
                           />
                         </div>
                       </div>

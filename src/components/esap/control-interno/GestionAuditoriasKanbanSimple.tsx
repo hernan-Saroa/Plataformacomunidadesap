@@ -2423,6 +2423,29 @@ export function GestionAuditoriasKanbanSimple() {
     }
 
     const estadoAnterior = item.estado;
+
+    // ============ VALIDACIÓN DOCUMENTOS PLANEACIÓN (BLOQUEA AL ARRASTRAR) ============
+    if (estadoAnterior === 'Planeación' && nuevoEstado === 'Ejecución') {
+      try {
+        const [todos, docs] = await Promise.all([
+          controlInternoService.getDocumentos({ etapa: 'planeacion' }),
+          controlInternoService.getDocumentosByEtapa(item.id, 'planeacion'),
+        ]);
+        const plantillas = (todos || []).filter((d: any) => !d.auditoriaId);
+        const requeridos = Math.max(plantillas.length, 1);
+        const total = (docs || []).filter((d: any) => d.auditoriaId === item.id).length;
+        if (total < requeridos) {
+          toast.error('Documentos incompletos', {
+            description: `Debe subir ${requeridos} documento(s) en Planeación antes de avanzar a Ejecución. Tiene ${total}.`,
+            duration: 5000,
+          });
+          return;
+        }
+      } catch {
+        toast.error('No se pudo validar los documentos');
+        return;
+      }
+    }
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
     
     // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============
@@ -2523,6 +2546,30 @@ export function GestionAuditoriasKanbanSimple() {
     }
 
     const estadoAnterior = auditoriaActual.estado;
+
+    // ============ VALIDACIÓN DOCUMENTOS PLANEACIÓN (BLOQUEA) ============
+    // Requeridos = cantidad de plantillas en biblioteca (una subida por plantilla)
+    if (estadoAnterior === 'Planeación' && nuevoEstado === 'Ejecución') {
+      try {
+        const [todos, docs] = await Promise.all([
+          controlInternoService.getDocumentos({ etapa: 'planeacion' }),
+          controlInternoService.getDocumentosByEtapa(auditoriaId, 'planeacion'),
+        ]);
+        const plantillas = (todos || []).filter((d: any) => !d.auditoriaId);
+        const requeridos = Math.max(plantillas.length, 1);
+        const total = (docs || []).filter((d: any) => d.auditoriaId === auditoriaId).length;
+        if (total < requeridos) {
+          toast.error('Documentos incompletos', {
+            description: `Debe subir ${requeridos} documento(s) en Planeación (uno por cada plantilla) para avanzar a Ejecución. Tiene ${total}.`,
+            duration: 5000,
+          });
+          return;
+        }
+      } catch {
+        toast.error('No se pudo validar los documentos');
+        return;
+      }
+    }
 
     // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============
     const estadoAFase: Record<EstadoAuditoria, 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | null> = {
@@ -4033,6 +4080,15 @@ export function GestionAuditoriasKanbanSimple() {
             auditoriaId={auditoriaSeleccionada?.id}
             auditoriaDataInicial={auditoriaSeleccionada}
             isOpen={modalExpedienteOpen}
+            tabInicial={(() => {
+              const e = (auditoriaSeleccionada?.estado || '').toLowerCase();
+              if (e.includes('planeacion') || e.includes('planeación')) return 'planeacion';
+              if (e.includes('ejecucion') || e.includes('ejecución')) return 'ejecucion';
+              if (e.includes('comunicacion') || e.includes('comunicación')) return 'comunicacion';
+              if (e.includes('seguimiento')) return 'documentacion';
+              if (e.includes('finalizada')) return 'historial';
+              return 'general';
+            })()}
             onClose={() => {
               setModalExpedienteOpen(false);
               setAuditoriaSeleccionada(null);

@@ -64,6 +64,7 @@ export class CorreosJuridicosController {
         @Query('archivado') archivado?: string,
         @Query('direccion') direccion?: string,
         @Query('search') search?: string,
+        @Query('expedienteId') expedienteId?: string,
     ): Promise<CorreoJuridico[]> {
         const filters: EmailFilters = {};
 
@@ -73,6 +74,7 @@ export class CorreosJuridicosController {
         if (archivado !== undefined) filters.archivado = archivado === 'true';
         if (direccion) filters.direccion = direccion;
         if (search) filters.search = search;
+        if (expedienteId) filters.expedienteId = expedienteId;
 
         return this.correosService.getAll(filters);
     }
@@ -83,6 +85,14 @@ export class CorreosJuridicosController {
     @Get(':id')
     async getById(@Param('id') id: string): Promise<CorreoJuridico> {
         return this.correosService.getById(id);
+    }
+
+    /**
+     * Get email history / traceability
+     */
+    @Get(':id/historial')
+    async getHistorial(@Param('id') id: string) {
+        return this.correosService.getHistorial(id);
     }
 
     /**

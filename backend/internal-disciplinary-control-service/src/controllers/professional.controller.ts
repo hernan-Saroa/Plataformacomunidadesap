@@ -59,29 +59,75 @@ export class ProfessionalController {
     @Get()
     @ApiOperation({ summary: 'Listar todos los profesionales con conteo de carga' })
     async findAll(): Promise<any[]> {
-        const professionals = await this.professionalRepository.find({
+        // 1. Intentar obtener usuarios desde el Auth Service
+        let usersFromAuth: any[] = [];
+        try {
+            const authServiceUrl = process.env.AUTH_SERVICE_URL || process.env.API_AUTH_SERVICE_URL || 'http://auth-service:3001';
+            const base = authServiceUrl.replace(/\/+$/, '');
+            const response = await firstValueFrom(
+                this.httpService.get(`${base}/users?limit=1000`, { timeout: 3000 })
+            );
+
+            if (response.data && response.data.data && Array.isArray(response.data.data.data)) {
+                usersFromAuth = response.data.data.data;
+            }
+        } catch (error) {
+            console.error('[ProfessionalController] No se pudo obtener usuarios de Auth Service. Usando locales.');
+        }
+
+        // 2. Filtrar solo usuarios que tengan los roles permitidos (Dinámico - Opción A)
+        // Definir los roles válidos para disciplinario
+        const validRoles = ['auditor', 'jefe_control_interno', 'profesional especializado', 'profesional universitario', 'operador disciplinario', 'sustanciador', 'admin', 'super_admin'];
+        const assignableUsers = usersFromAuth.filter(u => {
+            if (!u.user || !u.user.is_active) return false;
+            const userRoles = u.user.roles || [];
+            return userRoles.some(r => validRoles.some(vr => (r.name || '').toLowerCase().includes(vr)));
+        });
+
+        const professionalsDB = await this.professionalRepository.find({
             order: { nombreCompleto: 'ASC' }
         });
 
-        // Enriquecer con conteo de procesos
-        const result = await Promise.all(
-            professionals.map(async (prof) => {
-                const processCount = await this.processRepository
+        // 3. Cruzar los usuarios permitidos con la base local para mantener el conteo y capacidad (o agregar si no existen en BD local)
+        const enrichedProfessionals = await Promise.all(
+            assignableUsers.map(async (authU) => {
+                const dbProf = professionalsDB.find(p => p.email.toLowerCase() === authU.email?.toLowerCase());
+
+                const processCount = dbProf ? await this.processRepository
                     .createQueryBuilder('process')
                     .leftJoin('process.news', 'news')
-                    .where('process.abogadoAsignadoId = :profId', { profId: prof.id })
-                    .andWhere('news.estado != :newsEstado', { newsEstado: 'DEVUELTA' })
+                    .where('process.abogadoAsignadoId = :profId', { profId: dbProf.id })
                     .andWhere('process.estado != :processStatus', { processStatus: 'ARCHIVADO' })
-                    .getCount();
+                    .getCount() : 0;
 
                 return {
-                    ...prof,
+                    id: dbProf ? dbProf.id : authU.user?.id_user || `auto-${authU.email}`,
+                    nombreCompleto: authU.full_name || `${authU.first_name || ''} ${authU.last_name || ''}`.trim(),
+                    email: authU.email,
+                    cargo: dbProf?.cargo || (authU.user?.roles?.[0]?.name || 'Profesional'),
+                    estado: dbProf?.estado || 'ACTIVO',
+                    capacidadMaxima: dbProf?.capacidadMaxima || 10,
+                    firmaUrl: dbProf?.firmaUrl || null,
+                    tipoContrato: dbProf?.tipoContrato || 'Planta',
+                    territorial: dbProf?.territorial || 'Sede Central',
                     procesosAsignados: processCount
                 };
             })
         );
 
-        return result;
+        // Si auth falló y no devolvió usuarios, devolvemos lo que hay en BD (fallback)
+        if (enrichedProfessionals.length === 0 && professionalsDB.length > 0) {
+            return Promise.all(professionalsDB.map(async prof => {
+                const processCount = await this.processRepository
+                    .createQueryBuilder('process')
+                    .where('process.abogadoAsignadoId = :profId', { profId: prof.id })
+                    .andWhere('process.estado != :processStatus', { processStatus: 'ARCHIVADO' })
+                    .getCount();
+                return { ...prof, procesosAsignados: processCount };
+            }));
+        }
+
+        return enrichedProfessionals;
     }
 
     @Post()

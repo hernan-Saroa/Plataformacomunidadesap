@@ -130,6 +130,7 @@ export class DocumentosController {
       auditoriaId: body.auditoriaId || undefined,
       hallazgoId: body.hallazgoId || undefined,
       planMejoramientoId: body.planMejoramientoId || undefined,
+      documentoBibliotecaId: body.documentoBibliotecaId || undefined,
       nombreArchivo: file.originalname,
       tipoMime: file.mimetype,
       tamanioBytes: file.size,

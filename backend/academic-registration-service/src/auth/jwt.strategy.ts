@@ -4,7 +4,8 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import type { Request } from 'express';
 
 const fromProxyTokenHeader = (req: Request): string | null => {
-  const header = req?.headers?.['x-access-token'] || req?.headers?.['x-auth-token'];
+  const header =
+    req?.headers?.['x-access-token'] || req?.headers?.['x-auth-token'];
   const token = Array.isArray(header) ? header[0] : header;
 
   if (!token || typeof token !== 'string') {

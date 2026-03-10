@@ -34,6 +34,7 @@ import { DocumentoConsulta } from './entities/documento-consulta.entity';
 import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity';
 import { CorreoJuridico } from './entities/correo-juridico.entity';
 import { AdjuntoCorreo } from './entities/adjunto-correo.entity';
+import { CorreoJuridicoHistorial } from './entities/correo-juridico-historial.entity';
 import { ExcepcionProcesal } from './entities/excepcion-procesal.entity';
 import { ProcesoCoactivo } from './entities/proceso-coactivo.entity';
 import { ProcesoCoactivoAdjunto } from './entities/proceso-coactivo-adjunto.entity';
@@ -152,6 +153,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // Correos Jurídicos (Microsoft Graph)
       CorreoJuridico,
       AdjuntoCorreo,
+      CorreoJuridicoHistorial,
       // Excepciones Procesales
       ExcepcionProcesal,
       // Procesos Coactivos

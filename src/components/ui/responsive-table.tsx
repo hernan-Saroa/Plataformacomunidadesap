@@ -28,6 +28,8 @@ import { useResponsive } from '@/hooks/useResponsive';
 export interface Column<T> {
   key: keyof T | string;
   label: string;
+  /** Contenido custom para el header (ej: icono + tooltip). Si existe, reemplaza label. */
+  headerContent?: ReactNode;
   width?: string;
   align?: 'left' | 'center' | 'right';
   sortable?: boolean;
@@ -154,7 +156,7 @@ export function ResponsiveTable<T extends Record<string, any>>({
                   `}
                   style={{ width: column.width }}
                 >
-                  {column.label}
+                  {column.headerContent ?? column.label}
                 </th>
               ))}
             </tr>
