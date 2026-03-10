@@ -978,15 +978,22 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     if (resendingCertificateId === cert.id) {
       return;
     }
+    const resendToastId = `resend-certificate-${cert.id}`;
     setResendingCertificateId(cert.id);
+    toast.loading('Reenviando certificado...', {
+      id: resendToastId,
+      description: 'Estamos enviando el certificado al correo del solicitante.',
+    });
     try {
       const response = await graduadosService.certificados.reenviar(cert.id);
       toast.success('Certificado reenviado', {
+        id: resendToastId,
         description: response?.mensaje || `Se reenvio el certificado a ${cert.requester.email}`,
       });
     } catch (error: any) {
       console.error('Error reenviando certificado:', error);
       toast.error('No se pudo reenviar el certificado', {
+        id: resendToastId,
         description: error?.response?.data?.message || error?.message,
       });
     } finally {

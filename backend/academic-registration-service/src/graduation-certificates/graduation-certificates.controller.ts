@@ -421,11 +421,24 @@ export class GraduationCertificatesController {
   async marcarEnRevision(
     @Param('id') id: string,
     @Body() body: { reviewerName?: string; reviewerId?: string },
+    @Req() req: Request,
   ) {
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    let frontendBaseUrl = origin;
+    if (!frontendBaseUrl && referer) {
+      try {
+        frontendBaseUrl = new URL(referer).origin;
+      } catch (_) {
+        frontendBaseUrl = undefined;
+      }
+    }
+
     return await this.service.marcarEnRevision(
       id,
       body.reviewerName,
       body.reviewerId,
+      frontendBaseUrl,
     );
   }
 

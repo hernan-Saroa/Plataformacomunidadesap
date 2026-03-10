@@ -975,7 +975,10 @@ export function ReviewRequestsModule() {
           reviewerName,
           reviewerId,
         );
-        toast.success('Solicitud marcada como en revisión');
+        toast.success('Solicitud marcada como en revision', {
+          description:
+            'Se envio un correo de actualizacion sobre el proceso al solicitante.',
+        });
       } else if (confirmAction.type === 'approve') {
         const approvalPayload = {
           reviewNotes: confirmAction.notes || 'Aprobado por revision manual',

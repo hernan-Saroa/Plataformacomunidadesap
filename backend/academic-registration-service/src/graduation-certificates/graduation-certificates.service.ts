@@ -1881,6 +1881,7 @@ export class GraduationCertificatesService {
     id: string,
     reviewerName?: string,
     reviewerId?: string,
+    frontendBaseUrl?: string,
   ) {
     const request = await this.requestRepository.findOne({
       where: { id },
@@ -1894,8 +1895,18 @@ export class GraduationCertificatesService {
     request.status = 'PROCESSING';
     request.reviewerName = reviewerName || request.reviewerName;
     request.reviewedBy = reviewerId || request.reviewedBy;
+    const updatedRequest = await this.requestRepository.save(request);
 
-    return await this.requestRepository.save(request);
+    try {
+      await this.sendUnderReviewEmail(updatedRequest, frontendBaseUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Solicitud ${updatedRequest.requestNumber}: no se pudo enviar aviso de revision a ${updatedRequest.requesterEmail || 'sin email'} (${message})`,
+      );
+    }
+
+    return updatedRequest;
   }
 
   /**
@@ -2139,6 +2150,148 @@ export class GraduationCertificatesService {
     await this.sendRejectionEmail(request, frontendBaseUrl);
 
     return request;
+  }
+
+  private async sendUnderReviewEmail(
+    request: GraduationCertificateRequest,
+    frontendBaseUrl?: string,
+  ): Promise<void> {
+    const email = (request.requesterEmail || '').trim();
+    if (!email) {
+      this.logger.warn(
+        `No se pudo notificar inicio de revision para solicitud ${request.requestNumber}: email vacio`,
+      );
+      return;
+    }
+
+    const baseUrl = this.resolveNotificationsBaseUrl();
+    const url = `${baseUrl}/api/v1/emails/send`;
+    const safe = (value: string) =>
+      value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const requesterName = (
+      request.requesterName ||
+      request.fullName ||
+      'Solicitante'
+    ).trim();
+    const requestNumber = (request.requestNumber || 'N/A').trim();
+    const idNumber = (request.idNumber || '').trim();
+    const updateDate = new Date();
+
+    let formattedUpdateDate = updateDate.toISOString();
+    try {
+      const datePart = updateDate.toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+      const timePart = updateDate.toLocaleTimeString('es-CO', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      formattedUpdateDate = `${datePart} ${timePart}`;
+    } catch (_) {
+      formattedUpdateDate = updateDate.toISOString();
+    }
+
+    const subject = `Actualizacion de solicitud en revision - ${requestNumber}`;
+    const text =
+      `Hola ${requesterName},\n` +
+      `Tu solicitud ${requestNumber} avanzo al estado En revision.\n` +
+      `Documento consultado: ${idNumber || 'No informado'}.\n` +
+      `Fecha de actualizacion: ${formattedUpdateDate}.\n\n` +
+      `Nuestro equipo se encuentra validando la informacion. Te notificaremos el siguiente avance al mismo correo.`;
+
+    const safeRequesterName = safe(requesterName);
+    const safeRequestNumber = safe(requestNumber);
+    const safeIdNumber = safe(idNumber || 'No informado');
+    const safeFormattedUpdateDate = safe(formattedUpdateDate);
+
+    const html = `
+      <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
+        <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
+              Certificados ESAP
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              Actualizacion de solicitud de revision
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              Hola <strong>${safeRequesterName}</strong>, tu solicitud avanzo en el proceso.
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
+              <strong>Solicitud:</strong> ${safeRequestNumber}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
+              <strong>Estado actual:</strong> En revision
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
+              <strong>Documento consultado:</strong> ${safeIdNumber}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
+              <strong>Fecha de actualizacion:</strong> ${safeFormattedUpdateDate}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 18px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              Nuestro equipo se encuentra validando la informacion. Te notificaremos el siguiente avance al mismo correo.
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
+              ESAP - Escuela Superior de Administracion Publica
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: email,
+        subject,
+        text,
+        html,
+      }),
+    });
+
+    if (!response.ok) {
+      let errorBody = '';
+      try {
+        errorBody = await response.text();
+      } catch (_) {
+        errorBody = '';
+      }
+      throw new Error(
+        `Notifications service error (${response.status}): ${errorBody || 'sin detalle'}`,
+      );
+    }
+
+    this.logger.log(
+      `Notificacion de inicio de revision enviada a ${email} para solicitud ${requestNumber}`,
+    );
   }
 
   private async sendRejectionEmail(
