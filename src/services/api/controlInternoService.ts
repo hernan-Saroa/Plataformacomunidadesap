@@ -1386,6 +1386,7 @@ class ControlInternoService {
       auditoriaId?: string;
       hallazgoId?: string;
       planMejoramientoId?: string;
+      documentoBibliotecaId?: string;
       subidoPor?: string;
     },
     onProgress?: (progress: number) => void
@@ -1399,6 +1400,7 @@ class ControlInternoService {
     if (metadata.auditoriaId) formData.append('auditoriaId', metadata.auditoriaId);
     if (metadata.hallazgoId) formData.append('hallazgoId', metadata.hallazgoId);
     if (metadata.planMejoramientoId) formData.append('planMejoramientoId', metadata.planMejoramientoId);
+    if (metadata.documentoBibliotecaId) formData.append('documentoBibliotecaId', metadata.documentoBibliotecaId);
     if (metadata.subidoPor) formData.append('subidoPor', metadata.subidoPor);
 
     return client.upload<any>('/documentos', formData, onProgress);

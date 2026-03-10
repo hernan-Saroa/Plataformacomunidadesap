@@ -100,12 +100,21 @@ function mapNivelRiesgo(evaluacionRiesgo: BackendProcesoAuditable['evaluacionRie
   return map[nivelRiesgo?.toLowerCase()] || 'Medio';
 }
 
-/** Calcula puntaje de riesgo (0-100) desde la evaluación del backend */
+/**
+ * Calcula el score de prioridad (0-100) desde la evaluación del backend.
+ * Fórmula: riesgoResidual = (Probabilidad × Impacto) ÷ Nivel de Control
+ *          score = (riesgoResidual / 9) × 100
+ * - Rojo (90-100): prioridad alta, auditoría urgente
+ * - Amarillo (50-89): prioridad media
+ * - Verde (0-49): prioridad baja, puede postergarse
+ */
 function calcularPuntajeRiesgo(evaluacionRiesgo: BackendProcesoAuditable['evaluacionRiesgo']): number {
   if (!evaluacionRiesgo) return 50;
-  // riesgoInherente = probabilidad * impacto (max 9 si escala 1-3)
-  const maxRiesgo = 9;
-  return Math.round((evaluacionRiesgo.riesgoInherente / maxRiesgo) * 100);
+  const riesgoInherente = evaluacionRiesgo.riesgoInherente ?? (evaluacionRiesgo as any).probabilidad * (evaluacionRiesgo as any).impacto;
+  const nivelControl = evaluacionRiesgo.nivelControl || 1;
+  const riesgoResidual = (riesgoInherente ?? 4.5) / (nivelControl > 0 ? nivelControl : 1);
+  const maxRiesgoResidual = 9; // P=3, I=3, NC=1
+  return Math.round((riesgoResidual / maxRiesgoResidual) * 100);
 }
 
 /** Calcula calificación DAFP (1-5) en base al nivel de control */
@@ -199,14 +208,19 @@ export function mapUIToBackend(proceso: ProcesoAuditableUI): Partial<BackendProc
     responsable: proceso.responsable,
     dependencia: proceso._dependencia || 'Sin asignar',
     territorial: proceso._territorial,
-    evaluacionRiesgo: proceso._evaluacionRiesgo || {
-      probabilidad,
-      impacto,
-      nivelControl: Math.round(proceso.calificacionDafp / 5 * 3) || 2,
-      riesgoInherente: probabilidad * impacto,
-      riesgoResidual: probabilidad * impacto * (Math.round(proceso.calificacionDafp / 5 * 3) || 2),
-      nivelRiesgo: nivelRiesgoMap[proceso.nivelRiesgo] || 'medio',
-    },
+    evaluacionRiesgo: proceso._evaluacionRiesgo || (() => {
+      const riesgoInherente = probabilidad * impacto;
+      const nc = Math.round(proceso.calificacionDafp / 5 * 3) || 2;
+      const riesgoResidual = nc > 0 ? riesgoInherente / nc : riesgoInherente;
+      return {
+        probabilidad,
+        impacto,
+        nivelControl: nc,
+        riesgoInherente,
+        riesgoResidual,
+        nivelRiesgo: nivelRiesgoMap[proceso.nivelRiesgo] || 'medio',
+      };
+    })(),
     frecuenciaAuditoria: proceso.frecuenciaAuditoria,
     ultimaAuditoria: proceso.ultimaAuditoria,
   };
@@ -255,7 +269,7 @@ export function mapFormularioDafpToBackend(formData: any): Partial<BackendProces
                        nivelRiesgoCalculado === 'MODERADO' ? 2 : 3;
   
   const riesgoInherente = probabilidad * impacto;
-  const riesgoResidual = riesgoInherente * nivelControl;
+  const riesgoResidual = nivelControl > 0 ? riesgoInherente / nivelControl : riesgoInherente;
   
   // Mapear a nivel de riesgo del backend
   const nivelRiesgo: 'bajo' | 'medio' | 'alto' = 

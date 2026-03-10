@@ -4131,7 +4131,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
             className={templateType === 'administrador' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
             onClick={() => setTemplateType('administrador')}
           >
-            Administrador
+            Administrativo
           </Button>
         </div>
       </div>

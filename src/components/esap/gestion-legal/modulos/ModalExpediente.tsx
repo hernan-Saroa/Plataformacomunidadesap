@@ -1362,7 +1362,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   }}
                 >
                   <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: semaforo.color }} />
-                  {semaforo.label} - {expediente.tiempoRestante || `${expediente.diasRestantes} días`}
+                  {semaforo.label} - {expediente.diasRestantes < 0 ? `Vencido hace ${Math.abs(expediente.diasRestantes)}d` : `${expediente.diasRestantes} días restantes`}
                 </Badge>
                 <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
                   <FileText className="w-3 h-3 mr-1" />

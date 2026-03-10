@@ -30,6 +30,6 @@ interface PlanAnualRol4IntegradoProps {
 }
 
 export function PlanAnualRol4Integrado({ vigencia, onVolver }: PlanAnualRol4IntegradoProps) {
-  // Redirigir al módulo unificado
-  return <UniversoAuditableUnificado vigencia={vigencia} onVolver={onVolver} />;
+  // Modo seguimiento: solo muestra auditorías existentes del universo, sin opciones de creación
+  return <UniversoAuditableUnificado vigencia={vigencia} onVolver={onVolver} modoSeguimiento={true} />;
 }

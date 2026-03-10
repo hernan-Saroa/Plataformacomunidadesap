@@ -100,6 +100,14 @@ export class Documento {
   @JoinColumn({ name: 'plan_mejoramiento_id' })
   planMejoramiento?: PlanMejoramiento | null;
 
+  /** Documento plantilla de biblioteca que cumple este subido (auditoria + documento_biblioteca_id) */
+  @Column({ name: 'documento_biblioteca_id', type: 'uuid', nullable: true })
+  documentoBibliotecaId?: string | null;
+
+  @ManyToOne(() => Documento, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'documento_biblioteca_id' })
+  documentoBiblioteca?: Documento | null;
+
   @Column({ name: 'ruta_archivo', type: 'varchar', length: 500, nullable: false })
   rutaArchivo: string;
 

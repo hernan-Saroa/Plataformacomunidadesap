@@ -255,8 +255,10 @@ export interface AuditoriaCreateData {
   equipoAuditores?: string[];
   supervisorAsignado?: string;
   fechaInicio: string;
-  fechaFinPlaneacion?: string; // Fin de Planeación / Inicio de Ejecución
-  fechaFinEjecucion?: string; // Fin de Ejecución / Inicio de Comunicación
+  fechaFinPlaneacion?: string; // Fin de Planeación
+  fechaInicioEjecucion?: string; // Inicio de Ejecución
+  fechaFinEjecucion?: string; // Fin de Ejecución
+  fechaInicioComunicacion?: string; // Inicio de Comunicación
   fechaFin: string;
   periodicidad?: string;
   objetivos?: string[];
@@ -452,7 +454,9 @@ export function useProgramaAnualData(
         responsable: data.auditorLider || 'Por asignar',
         fechaInicio: data.fechaInicio,
         fechaFinPlaneacion: data.fechaFinPlaneacion,
+        fechaInicioEjecucion: data.fechaInicioEjecucion,
         fechaFinEjecucion: data.fechaFinEjecucion,
+        fechaInicioComunicacion: data.fechaInicioComunicacion,
         fechaFin: data.fechaFin,
         periodicidad: data.periodicidad,
         objetivos: data.objetivos,

@@ -53,10 +53,10 @@ import { PlaneacionAuditoriaModule } from './PlaneacionAuditoriaModule';
 import { ModalCargarDocumento } from './ModalCargarDocumento';
 import {
   ActividadesIntegradas,
-  ACTIVIDADES_PLANEACION,
   ACTIVIDADES_EJECUCION,
   ACTIVIDADES_COMUNICACION,
 } from './ActividadesAuditoriaIntegradas';
+import { SeccionDocumentosPlaneacion } from './SeccionDocumentosPlaneacion';
 import { SeccionHallazgosExpediente } from './SeccionHallazgosExpediente';
 import { SeccionTareasExpediente } from './SeccionTareasExpediente';
 import { SeccionListasChequeoExpediente } from './SeccionListasChequeoExpediente';
@@ -726,6 +726,13 @@ export function ExpedienteAuditoriaCompleto({
   
   const [activeTab, setActiveTab] = useState<TabActiva>(getTabAutomatico());
   const [filtroDocumentos, setFiltroDocumentos] = useState<string>('todos');
+
+  useEffect(() => {
+    if (isOpen) {
+      const tab = tabInicial && tabInicial !== 'general' ? (tabInicial as TabActiva) : getTabAutomatico();
+      setActiveTab(tab);
+    }
+  }, [isOpen, tabInicial, auditoria?.estado]);
 
   const diasRestantes = useMemo(() => {
     if (!auditoria?.cronograma?.fechaFin) return 0;
@@ -1516,7 +1523,7 @@ interface TabFaseProps {
   onToggleChecklist?: (id: string, completado: boolean) => void;
 }
 
-function TabPlaneacion({ auditoria, checklistCompletados, onToggleChecklist }: TabFaseProps) {
+function TabPlaneacion({ auditoria }: TabFaseProps) {
   return (
     <div className="space-y-4">
       <Card className="p-3 border-l-4 border-l-purple-600 bg-purple-50">
@@ -1524,22 +1531,14 @@ function TabPlaneacion({ auditoria, checklistCompletados, onToggleChecklist }: T
           <Info className="w-5 h-5 text-purple-600" />
           <div>
             <p className="text-sm font-bold text-purple-900">Fase de Planeación</p>
-            <p className="text-xs text-purple-700">Listas de chequeo y actividades para iniciar la auditoría</p>
+            <p className="text-xs text-purple-700">Lista de chequeo y documentos de planeación</p>
           </div>
         </div>
       </Card>
       <div className="bg-white border-2 border-purple-200 rounded-lg p-4">
         <SeccionListasChequeoExpediente auditoriaId={auditoria.id} etapaActual="Planeación" />
       </div>
-      <ActividadesIntegradas
-        actividades={ACTIVIDADES_PLANEACION}
-        faseTitulo="Planeación"
-        faseColor="#9333ea"
-        estadoRequerido="Planeación"
-        estadoActual={auditoria.estado}
-        checklistCompletados={checklistCompletados}
-        onToggleChecklist={onToggleChecklist}
-      />
+      <SeccionDocumentosPlaneacion auditoriaId={auditoria.id} />
     </div>
   );
 }

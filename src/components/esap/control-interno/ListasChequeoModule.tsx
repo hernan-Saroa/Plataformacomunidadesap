@@ -415,6 +415,7 @@ export function ListasChequeoModule() {
             <BibliotecaDocumentos 
               documentos={documentosBiblioteca}
               setDocumentos={setDocumentosBiblioteca}
+              auditorias={auditorias}
               isLoading={isLoading}
               loadError={loadError}
             />
@@ -441,16 +442,18 @@ export function ListasChequeoModule() {
 interface BibliotecaDocumentosProps {
   documentos: DocumentoBiblioteca[];
   setDocumentos: React.Dispatch<React.SetStateAction<DocumentoBiblioteca[]>>;
+  auditorias?: any[];
   isLoading: boolean;
   loadError: string | null;
 }
 
-function BibliotecaDocumentos({ documentos, setDocumentos, isLoading, loadError }: BibliotecaDocumentosProps) {
+function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLoading, loadError }: BibliotecaDocumentosProps) {
   const [busqueda, setBusqueda] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState<string>('TODOS');
   const [mostrarModalSubir, setMostrarModalSubir] = useState(false);
   const [documentoVistaPrevia, setDocumentoVistaPrevia] = useState<DocumentoBiblioteca | null>(null);
   const [documentoEliminar, setDocumentoEliminar] = useState<DocumentoBiblioteca | null>(null);
+  const [documentoAEditar, setDocumentoAEditar] = useState<DocumentoBiblioteca | null>(null);
   const sinDatosBackend = documentos.length === 0 && busqueda.trim() === '' && filtroCategoria === 'TODOS';
 
   const documentosFiltrados = documentos.filter(doc => {
@@ -509,67 +512,60 @@ function BibliotecaDocumentos({ documentos, setDocumentos, isLoading, loadError 
     setDocumentoVistaPrevia(documento);
   };
 
-  // ═══════════════════════════════════════════════════════════════════
-  // FUNCIÓN REAL: ELIMINAR CON CONFIRMACIÓN
-  // ═══════════════════════════════════════════════════════════════════
   const handleEliminar = (documento: DocumentoBiblioteca) => {
     setDocumentoEliminar(documento);
   };
 
   const confirmarEliminacion = async () => {
     if (!documentoEliminar) return;
-
     try {
       await controlInternoService.deleteDocumento(documentoEliminar.id);
       setDocumentos(prev => prev.filter(d => d.id !== documentoEliminar.id));
-      toast.success('🗑️ Documento eliminado', {
-        description: `Se eliminó "${documentoEliminar.nombre}" de la biblioteca`,
-        duration: 4000
-      });
+      toast.success('🗑️ Documento eliminado', { description: `Se eliminó "${documentoEliminar.nombre}" de la biblioteca`, duration: 4000 });
       setDocumentoEliminar(null);
     } catch (error) {
-      console.error('Error eliminando documento en backend:', error);
+      console.error('Error eliminando documento:', error);
       toast.error('❌ No se pudo eliminar el documento');
     }
   };
 
-  // ═══════════════════════════════════════════════════════════════════
-  // FUNCIÓN REAL: SUBIR DOCUMENTO
-  // ═══════════════════════════════════════════════════════════════════
-  const handleSubirDocumento = async (nuevoDocumento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File }) => {
+  const handleEditar = (documento: DocumentoBiblioteca) => {
+    setDocumentoAEditar(documento);
+  };
+
+  const confirmarEdicion = async (nombre: string, descripcion: string) => {
+    if (!documentoAEditar) return;
     try {
-      // Mapear etapaKanban del frontend a etapa del backend
+      await controlInternoService.updateDocumento(documentoAEditar.id, { nombre, descripcion });
+      setDocumentos(prev => prev.map(d => d.id === documentoAEditar.id ? { ...d, nombre, descripcion } : d));
+      toast.success('✅ Documento actualizado', { description: `"${nombre}" actualizado correctamente`, duration: 4000 });
+      setDocumentoAEditar(null);
+    } catch (error) {
+      console.error('Error actualizando documento:', error);
+      toast.error('❌ No se pudo actualizar el documento');
+    }
+  };
+
+  const handleSubirDocumento = async (nuevoDocumento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File; auditoriaId?: string }) => {
+    try {
       const etapaKanbanToBackend: Record<string, string> = {
-        'PLANEACION': 'planeacion',
-        'EJECUCION': 'ejecucion',
-        'COMUNICACION': 'comunicacion',
-        'SEGUIMIENTO': 'seguimiento',
-        'CIERRE': 'cierre',
+        'PLANEACION': 'planeacion', 'EJECUCION': 'ejecucion', 'COMUNICACION': 'comunicacion', 'SEGUIMIENTO': 'seguimiento', 'CIERRE': 'cierre',
       };
       const etapaBackend = nuevoDocumento.etapaKanban ? etapaKanbanToBackend[nuevoDocumento.etapaKanban] : undefined;
-
-      const creado = await controlInternoService.createDocumento(
-        nuevoDocumento.file,
-        {
-          nombre: nuevoDocumento.nombre,
-          descripcion: nuevoDocumento.descripcion,
-          tipoDocumento: mapCategoriaToApiTipo(nuevoDocumento.categoria),
-          etapa: etapaBackend,
-          subidoPor: nuevoDocumento.subidoPor
-        }
-      );
-
+      const creado = await controlInternoService.createDocumento(nuevoDocumento.file, {
+        nombre: nuevoDocumento.nombre,
+        descripcion: nuevoDocumento.descripcion,
+        tipoDocumento: mapCategoriaToApiTipo(nuevoDocumento.categoria),
+        etapa: etapaBackend,
+        subidoPor: nuevoDocumento.subidoPor,
+        ...(nuevoDocumento.auditoriaId && { auditoriaId: nuevoDocumento.auditoriaId }),
+      });
       const documentoCompleto: DocumentoBiblioteca = mapApiDocumentoToBiblioteca(creado);
       setDocumentos(prev => [documentoCompleto, ...prev]);
       setMostrarModalSubir(false);
-
-      toast.success('✅ Documento subido exitosamente', {
-        description: `"${documentoCompleto.nombre}" se agregó a la biblioteca`,
-        duration: 4000
-      });
-      return;
+      toast.success('✅ Documento subido exitosamente', { description: `"${documentoCompleto.nombre}" se agregó a la biblioteca`, duration: 4000 });
     } catch (error) {
-      console.error('Error subiendo documento al backend:', error);
+      console.error('Error subiendo documento:', error);
       toast.error('❌ No se pudo subir el documento al backend');
     }
   };
@@ -701,9 +697,10 @@ function BibliotecaDocumentos({ documentos, setDocumentos, isLoading, loadError 
                 <TarjetaDocumento
                   key={doc.id}
                   documento={doc}
-                  onEliminar={() => handleEliminar(doc)}
-                  onDescargar={(doc) => handleDescargar(doc)}
-                  onVistaPrevia={(doc) => handleVistaPrevia(doc)}
+                  onEliminar={handleEliminar}
+                  onDescargar={handleDescargar}
+                  onVistaPrevia={handleVistaPrevia}
+                  onEditar={handleEditar}
                 />
               ))}
             </div>
@@ -737,11 +734,21 @@ function BibliotecaDocumentos({ documentos, setDocumentos, isLoading, loadError 
         />
       )}
 
+      {/* Modal Editar Documento */}
+      {documentoAEditar && (
+        <ModalEditarDocumento
+          documento={documentoAEditar}
+          onClose={() => setDocumentoAEditar(null)}
+          onGuardar={confirmarEdicion}
+        />
+      )}
+
       {/* Modal Subir Documento */}
       {mostrarModalSubir && (
         <ModalSubirDocumento
           onClose={() => setMostrarModalSubir(false)}
           onSubir={handleSubirDocumento}
+          auditorias={auditorias}
         />
       )}
     </div>
@@ -749,7 +756,77 @@ function BibliotecaDocumentos({ documentos, setDocumentos, isLoading, loadError 
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// COMPONENTE: TARJETA DE DOCUMENTO
+// TARJETA BIBLIOTECA: solo descargar y vista previa (no subir/editar/eliminar)
+// ════════════════════════════════════════════════════════════════════════════
+
+function TarjetaDocumentoBiblioteca({
+  documento,
+  onDescargar,
+  onVistaPrevia,
+}: {
+  documento: DocumentoBiblioteca;
+  onDescargar: (documento: DocumentoBiblioteca) => void;
+  onVistaPrevia: (documento: DocumentoBiblioteca) => void;
+}) {
+  const colorCategoria = {
+    'PLANTILLA': { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
+    'OFICIO': { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300' },
+    'ACTA': { bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-300' },
+    'LISTA_CHEQUEO': { bg: 'bg-cyan-100', text: 'text-cyan-700', border: 'border-cyan-300' },
+    'INFORME': { bg: 'bg-pink-100', text: 'text-pink-700', border: 'border-pink-300' },
+    'EVIDENCIA': { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-300' },
+    'FORMATO': { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300' },
+    'GUIA': { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-300' },
+    'OTRO': { bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-300' }
+  }[documento.categoria];
+
+  return (
+    <div className="p-6 hover:bg-gray-50 transition-colors">
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <div className="flex items-center gap-3 mb-2">
+            <div className={`p-2 rounded-lg ${colorCategoria.bg}`}>
+              <File className={`w-5 h-5 ${colorCategoria.text}`} />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-black text-gray-900">{documento.nombre}</h3>
+              <p className="text-sm text-gray-600">{documento.descripcion}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 mt-4 text-sm flex-wrap">
+            <span className={`px-3 py-1 rounded-lg font-bold ${colorCategoria.bg} ${colorCategoria.text}`}>
+              {documento.categoria}
+            </span>
+            {documento.etapaKanban && (
+              <span className={`px-3 py-1 rounded-lg font-bold ${
+                documento.etapaKanban === 'PLANEACION' ? 'bg-indigo-100 text-indigo-700' :
+                documento.etapaKanban === 'EJECUCION' ? 'bg-amber-100 text-amber-700' :
+                'bg-emerald-100 text-emerald-700'
+              }`}>
+                {documento.etapaKanban === 'PLANEACION' ? '📋 Planeación' :
+                 documento.etapaKanban === 'EJECUCION' ? '⚙️ Ejecución' :
+                 '📢 Comunicación'}
+              </span>
+            )}
+            <span className="text-gray-600"><strong>Tamaño:</strong> {documento.tamano}</span>
+            <span className="text-gray-600"><strong>Tipo:</strong> {documento.extension}</span>
+          </div>
+        </div>
+        <div className="flex gap-2 ml-6">
+          <button onClick={() => onDescargar(documento)} className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg" title="Descargar">
+            <Download className="w-5 h-5" />
+          </button>
+          <button onClick={() => onVistaPrevia(documento)} className="p-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg" title="Vista previa">
+            <Eye className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TARJETA DOCUMENTO (para otros contextos con editar/eliminar)
 // ════════════════════════════════════════════════════════════════════════════
 
 interface TarjetaDocumentoProps {
@@ -757,9 +834,10 @@ interface TarjetaDocumentoProps {
   onEliminar: (documento: DocumentoBiblioteca) => void;
   onDescargar: (documento: DocumentoBiblioteca) => void;
   onVistaPrevia: (documento: DocumentoBiblioteca) => void;
+  onEditar?: (documento: DocumentoBiblioteca) => void;
 }
 
-function TarjetaDocumento({ documento, onEliminar, onDescargar, onVistaPrevia }: TarjetaDocumentoProps) {
+function TarjetaDocumento({ documento, onEliminar, onDescargar, onVistaPrevia, onEditar }: TarjetaDocumentoProps) {
   const colorCategoria = {
     'PLANTILLA': { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
     'OFICIO': { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300' },
@@ -821,10 +899,19 @@ function TarjetaDocumento({ documento, onEliminar, onDescargar, onVistaPrevia }:
         </div>
 
         <div className="flex gap-2 ml-6">
+          {onEditar && (
+            <button
+              onClick={() => onEditar(documento)}
+              className="p-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors"
+              title="Editar"
+            >
+              <Edit2 className="w-5 h-5" />
+            </button>
+          )}
           <button
             onClick={() => onDescargar(documento)}
             className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors"
-            title="Descargar documento"
+            title="Descargar"
           >
             <Download className="w-5 h-5" />
           </button>
@@ -838,7 +925,7 @@ function TarjetaDocumento({ documento, onEliminar, onDescargar, onVistaPrevia }:
           <button
             onClick={() => onEliminar(documento)}
             className="p-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors"
-            title="Eliminar documento"
+            title="Eliminar"
           >
             <Trash2 className="w-5 h-5" />
           </button>
@@ -2360,20 +2447,102 @@ function ModalEliminar({ documento, onClose, onConfirmar }: ModalEliminarProps) 
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// MODAL: EDITAR DOCUMENTO
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalEditarDocumentoProps {
+  documento: DocumentoBiblioteca;
+  onClose: () => void;
+  onGuardar: (nombre: string, descripcion: string) => void;
+}
+
+function ModalEditarDocumento({ documento, onClose, onGuardar }: ModalEditarDocumentoProps) {
+  const [nombre, setNombre] = useState(documento.nombre);
+  const [descripcion, setDescripcion] = useState(documento.descripcion || '');
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        className="bg-white rounded-xl shadow-2xl w-full max-w-lg flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 bg-gradient-to-r from-purple-600 to-purple-700 text-white p-6 rounded-t-xl flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <Edit2 className="w-6 h-6" />
+            <h2 className="text-xl font-black">Editar Documento</h2>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-bold text-gray-900 mb-1">Nombre</label>
+            <input
+              type="text"
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-900 mb-1">Descripción (incluye versión y normativa)</label>
+            <textarea
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              rows={3}
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none resize-none"
+              placeholder="Versión: v1.0 | Normativa: Guía DAFP v6 §4.1"
+            />
+          </div>
+        </div>
+        <div className="flex-shrink-0 p-6 border-t flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg font-bold text-gray-700 hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => onGuardar(nombre, descripcion)}
+            className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold flex items-center justify-center gap-2"
+          >
+            <Save className="w-5 h-5" />
+            Guardar
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MODAL: SUBIR DOCUMENTO
 // ════════════════════════════════════════════════════════════════════════════
 
 interface ModalSubirDocumentoProps {
   onClose: () => void;
-  onSubir: (documento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File }) => void;
+  onSubir: (documento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File; auditoriaId?: string }) => void;
+  auditorias?: any[];
 }
 
-function ModalSubirDocumento({ onClose, onSubir }: ModalSubirDocumentoProps) {
+function ModalSubirDocumento({ onClose, onSubir, auditorias = [] }: ModalSubirDocumentoProps) {
   const [descripcion, setDescripcion] = useState('');
   const [categoria, setCategoria] = useState<CategoriaDocumento>('PLANTILLA');
   const [etapaKanban, setEtapaKanban] = useState<EtapaKanban>('PLANEACION');
   const [archivo, setArchivo] = useState<File | null>(null);
   const [arrastrando, setArrastrando] = useState(false);
+  // Campos adicionales para plantillas (Planeación)
+  const [version, setVersion] = useState('v1.0');
+  const [normativa, setNormativa] = useState('');
+  const [auditoriaAsociada, setAuditoriaAsociada] = useState<string>('');
 
   // Manejar selección de archivo
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2433,21 +2602,31 @@ function ModalSubirDocumento({ onClose, onSubir }: ModalSubirDocumentoProps) {
     // El tipoMime se obtiene del archivo
     const tipoMime = archivo.type || 'application/octet-stream';
     
-    const nuevoDocumento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File } = {
+    // Construir descripción con versión y normativa (solo en Planeación)
+    let descFinal = descripcion;
+    if (etapaKanban === 'PLANEACION' && (version || normativa)) {
+      const partes = [];
+      if (version) partes.push(`Versión: ${version}`);
+      if (normativa) partes.push(`Normativa: ${normativa}`);
+      if (partes.length) descFinal = (descFinal ? descFinal + '\n\n' : '') + partes.join(' | ');
+    }
+
+    const nuevoDocumento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File; auditoriaId?: string } = {
       nombre: nombreDocumento,
-      descripcion,
+      descripcion: descFinal,
       categoria,
       etapaKanban: etapaKanban,
       archivoUrl,
-      urlPreview: archivoUrl, // Temporalmente usa el blob URL, se actualizará después del upload
+      urlPreview: archivoUrl,
       urlDownload: archivoUrl,
       fechaSubida: new Date().toISOString(),
-      subidoPor: 'Usuario Actual', // En producción vendría del contexto de auth
+      subidoPor: 'Usuario Actual',
       tamano: formatFileSize(archivo.size),
       extension: getMimeTypeLabel(tipoMime),
       tipoMime,
       nombreArchivo: archivo.name,
-      file: archivo
+      file: archivo,
+      ...(auditoriaAsociada && { auditoriaId: auditoriaAsociada })
     };
 
     onSubir(nuevoDocumento);
@@ -2588,21 +2767,67 @@ function ModalSubirDocumento({ onClose, onSubir }: ModalSubirDocumentoProps) {
           {/* Etapa del Kanban */}
           <div>
             <label className="block text-sm font-bold text-gray-900 mb-2">
-              Etapa del Kanban
+              Etapa P-E-C <span className="text-red-600">*</span>
             </label>
-            <select
-              value={etapaKanban}
-              onChange={(e) => setEtapaKanban(e.target.value as EtapaKanban)}
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-semibold"
-            >
-              <option value="PLANEACION">📋 Planeación</option>
-              <option value="EJECUCION">⚙️ Ejecución</option>
-              <option value="COMUNICACION">📢 Comunicación</option>
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Asocia el documento a una etapa específica del proceso de auditoría
-            </p>
+            <div className="flex gap-3">
+              <select
+                value={etapaKanban}
+                onChange={(e) => setEtapaKanban(e.target.value as EtapaKanban)}
+                className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-semibold"
+              >
+                <option value="PLANEACION">📋 Planeación</option>
+                <option value="EJECUCION">⚙️ Ejecución</option>
+                <option value="COMUNICACION">📢 Comunicación</option>
+              </select>
+              <div className="px-4 py-3 border-2 border-gray-200 rounded-lg bg-gray-50 font-semibold text-gray-600 min-w-[100px] flex items-center justify-center" title="Formato (del archivo)">
+                {archivo ? getFileExtension(archivo.name) : '—'}
+              </div>
+            </div>
           </div>
+
+          {/* Campos adicionales para Planeación */}
+          {etapaKanban === 'PLANEACION' && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-900 mb-2">Versión</label>
+                  <input
+                    type="text"
+                    value={version}
+                    onChange={(e) => setVersion(e.target.value)}
+                    placeholder="Ej: v1.0"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-900 mb-2">Normativa</label>
+                  <input
+                    type="text"
+                    value={normativa}
+                    onChange={(e) => setNormativa(e.target.value)}
+                    placeholder="Ej: Guía DAFP v6 §4.1"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-900 mb-2">Auditoría asociada (opcional)</label>
+                <select
+                  value={auditoriaAsociada}
+                  onChange={(e) => setAuditoriaAsociada(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-semibold"
+                >
+                  <option value="">General (disponible para todas las auditorías)</option>
+                  {auditorias?.map((a: any) => (
+                    <option key={a.id} value={a.id}>
+                      {a.codigo || a.nombre} {a.nombre ? `- ${a.nombre}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Si seleccionas una auditoría específica, la plantilla solo aparecerá asociada a ella.</p>
+              </div>
+            </>
+          )}
 
           {/* Nombre del Documento (Auto desde archivo) */}
           {archivo && (

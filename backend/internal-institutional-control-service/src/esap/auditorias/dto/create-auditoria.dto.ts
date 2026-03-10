@@ -43,21 +43,36 @@ export class CreateAuditoriaDto {
   @IsNotEmpty()
   responsable: string;
 
+  // ═══════════════════════════════════════════════════════════════════
+  // CRONOGRAMA DE 3 ETAPAS: Planeación → Ejecución → Comunicación
+  // ═══════════════════════════════════════════════════════════════════
+  
+  // ETAPA 1: PLANEACIÓN
   @IsDateString()
   @IsNotEmpty()
-  fechaInicio: string; // Inicio de Planeación
+  fechaInicio: string; // Inicio de Planeación (= fechaInicioPlaneacion)
 
   @IsDateString()
   @IsOptional()
-  fechaFinPlaneacion?: string; // Fin de Planeación / Inicio de Ejecución
+  fechaFinPlaneacion?: string; // Fin de Planeación
+
+  // ETAPA 2: EJECUCIÓN
+  @IsDateString()
+  @IsOptional()
+  fechaInicioEjecucion?: string; // Inicio de Ejecución
 
   @IsDateString()
   @IsOptional()
-  fechaFinEjecucion?: string; // Fin de Ejecución / Inicio de Comunicación
+  fechaFinEjecucion?: string; // Fin de Ejecución
+
+  // ETAPA 3: COMUNICACIÓN
+  @IsDateString()
+  @IsOptional()
+  fechaInicioComunicacion?: string; // Inicio de Comunicación
 
   @IsDateString()
   @IsNotEmpty()
-  fechaFin: string; // Fin de Comunicación (fin de auditoría)
+  fechaFin: string; // Fin de Comunicación (fin de auditoría) = fechaFinComunicacion
 
   @IsInt()
   @Min(0)

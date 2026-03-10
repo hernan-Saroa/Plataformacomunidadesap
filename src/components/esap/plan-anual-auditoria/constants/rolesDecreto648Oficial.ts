@@ -163,7 +163,7 @@ export const ROL_1_LIDERAZGO_ESTRATEGICO: RolOficial = {
  */
 export const ROL_2_ENFOQUE_PREVENCION: RolOficial = {
   numero: 2,
-  nombre: 'Enfoque Prevención',
+  nombre: 'Enfoque a la prevención',
   icono: '🛡️',
   color: '#2962FF',
   responsable: 'Mario Oswaldo Bernal',
@@ -421,6 +421,38 @@ export const ROL_4_EVALUACION_SEGUIMIENTO: RolOficial = {
           fechas: '10/07/2025, 31/12/2025'
         }
       ]
+    },
+    {
+      id: 21,
+      nombre: 'Adelantar de una manera armónica procesos de auditoría que lleve a cabo el organismo de control',
+      descripcion: 'Coordinación efectiva con entes de control externo durante sus visitas',
+      fechaInicio: 'N/A',
+      fechaFin: 'N/A',
+      responsable: 'N/A',
+      control: 'N/A',
+      evaluacion: '60% de avance',
+      seguimiento: [
+        {
+          descripcion: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes',
+          fechas: 'Según visita de entes de control'
+        }
+      ]
+    },
+    {
+      id: 22,
+      nombre: 'Presentar informes y seguimientos de ley',
+      descripcion: 'Cumplimiento de todos los informes obligatorios establecidos en el cronograma anual',
+      fechaInicio: '2026-01-01',
+      fechaFin: '2026-12-31',
+      responsable: 'Mario Oswaldo Bernal',
+      control: 'Se hace seguimiento mensual',
+      evaluacion: '60% de avance',
+      seguimiento: [
+        {
+          descripcion: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes',
+          fechas: 'Mensual'
+        }
+      ]
     }
   ]
 };
@@ -438,7 +470,7 @@ export const ROL_5_RELACION_ENTES_CONTROL: RolOficial = {
   responsable: 'Mario Oswaldo Bernal',
   actividades: [
     {
-      id: 21,
+      id: 23,
       nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos o responsables del suministro de información, para evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control',
       descripcion: 'Alertar sobre información requerida por organismos de control',
       fechaInicio: '2026-01-01',
@@ -454,7 +486,7 @@ export const ROL_5_RELACION_ENTES_CONTROL: RolOficial = {
       ]
     },
     {
-      id: 22,
+      id: 24,
       nombre: 'Alertar a la primera línea de defensa, y en general, a los responsables del aporte de información requerida por órganos de control sobre estos efectos (Conductas generadoras de sanciones)',
       descripcion: 'Alertar sobre conductas generadoras de sanciones ante órganos de control',
       fechaInicio: '2026-01-01',
@@ -465,38 +497,6 @@ export const ROL_5_RELACION_ENTES_CONTROL: RolOficial = {
       seguimiento: [
         {
           descripcion: 'Comunicar oportunamente a los líderes de procesos sobre posibles sanciones',
-          fechas: 'Mensual'
-        }
-      ]
-    },
-    {
-      id: 23,
-      nombre: 'Adelantar de una manera armónica procesos de auditoría que lleve a cabo el organismo de control',
-      descripcion: 'Coordinación efectiva con entes de control externo',
-      fechaInicio: 'N/A',
-      fechaFin: 'N/A',
-      responsable: 'N/A',
-      control: 'N/A',
-      evaluacion: '59% de avance',
-      seguimiento: [
-        {
-          descripcion: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes',
-          fechas: 'Según visita de entes de control'
-        }
-      ]
-    },
-    {
-      id: 24,
-      nombre: 'Presentar informes y seguimientos de ley',
-      descripcion: 'Cumplimiento de todos los informes obligatorios establecidos en el cronograma anual',
-      fechaInicio: '2026-01-01',
-      fechaFin: '2026-12-31',
-      responsable: 'Mario Oswaldo Bernal',
-      control: 'Se hace seguimiento mensual',
-      evaluacion: '59% de avance',
-      seguimiento: [
-        {
-          descripcion: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes',
           fechas: 'Mensual'
         }
       ]
