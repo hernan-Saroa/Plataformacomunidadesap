@@ -147,9 +147,14 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const loadDocumentos = async (id: string) => {
     try {
       setLoadingDocumentos(true);
-      const data = await legalService.getDocumentos(id);
-      // Mapeo seguro
-      const mapped = data.map((d: any) => ({
+      // Fetch both documents and linked emails concurrently
+      const [docsData, oficiosData] = await Promise.all([
+        legalService.getDocumentos(id),
+        legalService.getCorreosByExpediente(id)
+      ]);
+
+      // Map native documents
+      const mappedDocs = docsData.map((d: any) => ({
         id: d.id,
         nombre: d.nombre,
         fecha: d.fechaDocumento ? new Date(d.fechaDocumento).toLocaleDateString('es-CO') : new Date(d.createdAt).toLocaleDateString('es-CO'),
@@ -161,7 +166,47 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         categoria: d.categoria || inferirCategoria(d.tipo),
         etapa: d.etapa || null
       }));
-      setDocumentos(mapped);
+
+      // Map linked emails and their attachments -> Oficios
+      const mappedOficios = Array.isArray(oficiosData) ? oficiosData.flatMap((correo: any) => {
+        const rows = [];
+
+        // Base email row
+        rows.push({
+          id: correo.id,
+          nombre: correo.asunto || 'Oficio sin asunto',
+          fecha: new Date(correo.fechaRecepcion).toLocaleDateString('es-CO'),
+          tipo: 'Correo Jurídico',
+          tamaño: correo.tieneAdjuntos ? 'Con adjuntos' : 'N/A',
+          firmante: correo.remitenteNombre || correo.remitenteEmail || 'Sistema',
+          url: null, // URLs for emails might be handled via a custom view rather than a direct download link
+          descripcion: `De: ${correo.remitenteNombre || correo.remitenteEmail} - ${correo.cuerpoTexto ? (correo.cuerpoTexto.length > 50 ? correo.cuerpoTexto.substring(0, 50) + '...' : correo.cuerpoTexto) : 'Sin cuerpo'}`,
+          categoria: 'oficios',
+          etapa: null
+        });
+
+        // Attachment rows
+        if (correo.adjuntos && Array.isArray(correo.adjuntos)) {
+          correo.adjuntos.forEach((adj: any) => {
+            rows.push({
+              id: adj.id,
+              nombre: `📎 ${adj.nombre}`,
+              fecha: new Date(adj.createdAt || correo.fechaRecepcion).toLocaleDateString('es-CO'),
+              tipo: 'Anexo de Oficio',
+              tamaño: formatBytes(adj.tamanio || 0),
+              firmante: correo.remitenteNombre || correo.remitenteEmail || 'Sistema',
+              url: `/legal/api/v1/correos/adjuntos/${adj.id}/download`,
+              descripcion: `Archivo adjunto al oficio: ${correo.asunto}`,
+              categoria: 'oficios',
+              etapa: null
+            });
+          });
+        }
+
+        return rows;
+      }) : [];
+
+      setDocumentos([...mappedDocs, ...mappedOficios]);
     } catch (error) {
       console.error('Error cargando documentos', error);
       setDocumentos([]);
@@ -324,6 +369,27 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     if (url.startsWith('http')) return url;
 
     const baseUrl = getServiceUrl('legal');
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
+
+    // ✨ FIXED: Rutas de adjuntos de correos/oficios
+    if (url.includes('/correos/adjuntos/')) {
+      const regex = /\/adjuntos\/([^/]+)\//;
+      const match = url.match(regex);
+      if (match) {
+        const adjuntoId = match[1];
+        return `${baseUrl}${prefix}/correos/adjuntos/${adjuntoId}/download`;
+      }
+    }
+
+    // Manejar otras rutas directas de API evitando /files/
+    if (url.includes('/api/') || url.includes('/download')) {
+      let cleanUrl = url.startsWith('/legal') ? url.replace('/legal', '') : url;
+      if (API_MODE === 'direct') {
+        cleanUrl = cleanUrl.replace('/api/v1', ''); // remove /api/v1 since port 3008 doesn't use it
+      }
+      return `${baseUrl}${prefix}${cleanUrl}`;
+    }
+
     // Si viene solo el filename
     let filename = url;
     // Normalizar slashes
@@ -338,8 +404,6 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       filename = filename.split('/files/').pop() || filename;
     }
 
-    // Ajuste segun modo
-    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -1298,7 +1362,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   }}
                 >
                   <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: semaforo.color }} />
-                  {semaforo.label} - {expediente.tiempoRestante || `${expediente.diasRestantes} días`}
+                  {semaforo.label} - {expediente.diasRestantes < 0 ? `Vencido hace ${Math.abs(expediente.diasRestantes)}d` : `${expediente.diasRestantes} días restantes`}
                 </Badge>
                 <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
                   <FileText className="w-3 h-3 mr-1" />

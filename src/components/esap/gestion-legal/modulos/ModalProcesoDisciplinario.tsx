@@ -235,13 +235,33 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     if (archivoUrl.startsWith('http')) return archivoUrl;
 
     const baseUrl = getServiceUrl('legal');
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
+
+    // ✨ FIXED: Rutas de adjuntos de correos/oficios
+    if (archivoUrl.includes('/correos/adjuntos/')) {
+      const regex = /\/adjuntos\/([^/]+)\//;
+      const match = archivoUrl.match(regex);
+      if (match) {
+        const adjuntoId = match[1];
+        return `${baseUrl}${prefix}/correos/adjuntos/${adjuntoId}/download`;
+      }
+    }
+
+    // Manejar otras rutas directas de API evitando /files/ 
+    if (archivoUrl.includes('/api/') || archivoUrl.includes('/download')) {
+      let cleanUrl = archivoUrl.startsWith('/legal') ? archivoUrl.replace('/legal', '') : archivoUrl;
+      if (API_MODE === 'direct') {
+        cleanUrl = cleanUrl.replace('/api/v1', ''); // remove /api/v1 since port 3008 doesn't use it
+      }
+      return `${baseUrl}${prefix}${cleanUrl}`;
+    }
+
     let filename = archivoUrl;
     if (archivoUrl.includes('/files/')) {
       filename = archivoUrl.split('/files/').pop() || archivoUrl;
     } else if (archivoUrl.includes('/')) {
       filename = archivoUrl.split('/').pop() || archivoUrl;
     }
-    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -938,7 +958,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     const url = doc.documentoUrl || doc.url || doc.archivoUrl;
     if (url) {
       setDocumentoSeleccionado({
-        documentoUrl: url,
+        documentoUrl: getFileUrl(url), // Aseguramos usar la URL final formateada
         documentoNombre: doc.nombre || doc.documentoNombre || 'Documento',
         descripcion: doc.tipo || doc.tipoDocumento || 'Documento del proceso'
       });

@@ -20,19 +20,23 @@ export class UniversoAuditoriasService {
   }
 
   /**
-   * Calcula el riesgo residual (riesgo inherente * nivel de control)
+   * Calcula el riesgo residual = Probabilidad × Impacto ÷ Nivel de Control
+   * (riesgo inherente ÷ nivel de control)
+   * - Nivel control 1 (bajo): riesgo alto → auditoría prioritaria
+   * - Nivel control 3 (alto): riesgo bajo → puede postergarse
    */
   private calcularRiesgoResidual(riesgoInherente: number, nivelControl: number): number {
-    return riesgoInherente * nivelControl;
+    return nivelControl > 0 ? riesgoInherente / nivelControl : riesgoInherente;
   }
 
   /**
-   * Determina el nivel de riesgo según el riesgo residual
+   * Determina el nivel de riesgo según el riesgo residual (rango 0.33-9 con división)
+   * Umbrales alineados con score 0-100: Rojo 90+, Amarillo 50-89, Verde 0-49
    */
   private determinarNivelRiesgo(riesgoResidual: number): NivelRiesgo {
-    if (riesgoResidual >= 19) return NivelRiesgo.ALTO;
-    if (riesgoResidual >= 10) return NivelRiesgo.MEDIO;
-    return NivelRiesgo.BAJO;
+    if (riesgoResidual >= 8) return NivelRiesgo.ALTO;   // score ~89-100
+    if (riesgoResidual >= 4.5) return NivelRiesgo.MEDIO; // score ~50-89
+    return NivelRiesgo.BAJO;                             // score 0-49
   }
 
   /**

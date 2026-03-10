@@ -88,6 +88,14 @@ const COLORES_ESTADO = {
   'CANCELADA': { bg: '#FEE2E2', border: '#EF4444', text: '#991B1B' }
 };
 
+// Etiquetas de etapas (alineadas con workflow de auditoría: Planeación, Ejecución, Comunicación)
+const LABELS_ESTADO: Record<keyof typeof COLORES_ESTADO, string> = {
+  'PROGRAMADA': 'Planeación',
+  'EN_EJECUCION': 'Ejecución',
+  'COMPLETADA': 'Comunicación',
+  'CANCELADA': 'Cancelada'
+};
+
 const COLORES_TIPO: Record<string, string> = {
   // Tipos legacy
   'regular': '#3B82F6',
@@ -277,10 +285,9 @@ export function CronogramaAuditoriasPremium({
               className="px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-xs font-bold focus:border-[#2962FF] outline-none"
             >
               <option value="TODOS">Todos los estados</option>
-              <option value="PROGRAMADA">Programada</option>
-              <option value="EN_EJECUCION">En Ejecución</option>
-              <option value="COMPLETADA">Completada</option>
-              <option value="CANCELADA">Cancelada</option>
+              <option value="PROGRAMADA">Planeación</option>
+              <option value="EN_EJECUCION">Ejecución</option>
+              <option value="COMPLETADA">Comunicación</option>
             </select>
 
             {/* Filtro Tipo */}
@@ -380,14 +387,16 @@ export function CronogramaAuditoriasPremium({
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
             <span className="text-xs font-bold text-gray-600">Estados:</span>
-            {Object.entries(COLORES_ESTADO).map(([estado, colores]) => (
+            {Object.entries(COLORES_ESTADO)
+              .filter(([estado]) => estado !== 'CANCELADA')
+              .map(([estado, colores]) => (
               <div key={estado} className="flex items-center gap-2">
                 <div
                   className="w-4 h-4 rounded border-2"
                   style={{ backgroundColor: colores.bg, borderColor: colores.border }}
                 />
                 <span className="text-xs font-semibold text-gray-700">
-                  {estado.replace('_', ' ')}
+                  {LABELS_ESTADO[estado as keyof typeof LABELS_ESTADO] || estado.replace('_', ' ')}
                 </span>
               </div>
             ))}
@@ -762,7 +771,7 @@ function VistaAño({ fecha, auditorias, onSeleccionar }: VistaAñoProps) {
                           className="px-2 py-0.5 rounded text-[10px] font-bold"
                           style={{ backgroundColor: colores.bg, color: colores.text }}
                         >
-                          {auditoria.estado.replace('_', ' ')}
+                          {LABELS_ESTADO[auditoria.estado] || auditoria.estado.replace('_', ' ')}
                         </span>
                         <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px] font-bold">
                           Q{auditoria.trimestre}
@@ -907,7 +916,7 @@ function VistaAño({ fecha, auditorias, onSeleccionar }: VistaAñoProps) {
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1">
                       <div className="w-2 h-2 rounded-full bg-green-500" />
-                      <span className="text-gray-600">Completadas</span>
+                      <span className="text-gray-600">Comunicación</span>
                     </div>
                     <span className="font-bold text-green-700">{completadas}</span>
                   </div>
@@ -916,7 +925,7 @@ function VistaAño({ fecha, auditorias, onSeleccionar }: VistaAñoProps) {
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1">
                       <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                      <span className="text-gray-600">En Ejecución</span>
+                      <span className="text-gray-600">Ejecución</span>
                     </div>
                     <span className="font-bold text-yellow-700">{enEjecucion}</span>
                   </div>
@@ -925,7 +934,7 @@ function VistaAño({ fecha, auditorias, onSeleccionar }: VistaAñoProps) {
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1">
                       <div className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span className="text-gray-600">Programadas</span>
+                      <span className="text-gray-600">Planeación</span>
                     </div>
                     <span className="font-bold text-blue-700">{programadas}</span>
                   </div>
@@ -995,7 +1004,7 @@ function CardAuditoria({ auditoria, onClick, compact = false }: CardAuditoriaPro
             }`}
             style={{ backgroundColor: colores.bg, color: colores.text }}
           >
-            {auditoria.estado.replace('_', ' ')}
+            {LABELS_ESTADO[auditoria.estado] || auditoria.estado.replace('_', ' ')}
           </span>
           <span className="text-lg font-black text-[#003DA5]">
             {auditoria.avance}%
@@ -1058,7 +1067,7 @@ function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaPro
                 className="text-sm font-black"
                 style={{ color: colores.text }}
               >
-                {auditoria.estado.replace('_', ' ')}
+                {LABELS_ESTADO[auditoria.estado] || auditoria.estado.replace('_', ' ')}
               </div>
             </div>
             <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">

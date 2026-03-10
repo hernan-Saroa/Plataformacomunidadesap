@@ -83,7 +83,7 @@ export interface Audiencia {
 
 export class LegalService {
     async getExpedientes(filtros?: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {
-        return apiClient.get<Expediente[]>(`${SERVICE_PREFIX}/expedientes`, { params: filtros });
+        return apiClient.get<Expediente[]>(`${SERVICE_PREFIX}/expedientes`, filtros);
     }
 
 
@@ -342,7 +342,7 @@ export class LegalService {
 
     // ==================== AUDIENCIAS ====================
     async getAudiencias(filtros?: { start?: string; end?: string; expedienteId?: string }): Promise<Audiencia[]> {
-        return apiClient.get<Audiencia[]>(`${SERVICE_PREFIX}/audiencias`, { params: filtros });
+        return apiClient.get<Audiencia[]>(`${SERVICE_PREFIX}/audiencias`, filtros);
     }
 
     async getAudienciasDashboard(): Promise<any> {
@@ -1329,10 +1329,24 @@ export class CorreosJuridicosService {
     }
 
     /**
+     * Get emails linked to a specific process (Oficios)
+     */
+    async getCorreosByExpediente(expedienteId: string, tipo?: string): Promise<CorreoJuridico[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/correos`, { params: { expedienteId, tipo } });
+    }
+
+    /**
      * Reclassify ALL emails with updated heuristics
      */
     async reclassifyAll(): Promise<{ processed: number; updated: number; unchanged: number }> {
         return apiClient.post(`${SERVICE_PREFIX}/correos/reclassify-all`, {});
+    }
+
+    /**
+     * Get email history / traceability
+     */
+    async getHistorial(id: string): Promise<any[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/correos/${id}/historial`);
     }
 
 }

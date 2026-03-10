@@ -502,6 +502,26 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     if (url.startsWith('http')) return url;
 
     const baseUrl = getServiceUrl('legal');
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
+
+    // ✨ FIXED: Rutas de adjuntos de correos/oficios
+    if (url.includes('/correos/adjuntos/')) {
+      const regex = /\/adjuntos\/([^/]+)\//;
+      const match = url.match(regex);
+      if (match) {
+        const adjuntoId = match[1];
+        return `${baseUrl}${prefix}/correos/adjuntos/${adjuntoId}/download`;
+      }
+    }
+
+    // Manejar otras rutas directas de API evitando /files/
+    if (url.includes('/api/') || url.includes('/download')) {
+      let cleanUrl = url.startsWith('/legal') ? url.replace('/legal', '') : url;
+      if (API_MODE === 'direct') {
+        cleanUrl = cleanUrl.replace('/api/v1', ''); // remove /api/v1 since port 3008 doesn't use it
+      }
+      return `${baseUrl}${prefix}${cleanUrl}`;
+    }
 
     // Extraer nombre del archivo
     let filename = url;
@@ -512,7 +532,6 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
 
     // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
-    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 

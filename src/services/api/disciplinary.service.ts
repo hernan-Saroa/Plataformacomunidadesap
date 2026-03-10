@@ -694,6 +694,14 @@ class DisciplinaryService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/configuration/stages`);
     }
 
+    async createStage(config: any) {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/configuration/stages`, config);
+    }
+
+    async deleteStage(id: string) {
+        return apiClient.delete<any>(`${SERVICE_PREFIX}/configuration/stages/${id}`);
+    }
+
     async updateStageConfiguration(configs: any[]) {
         return apiClient.put<any[]>(`${SERVICE_PREFIX}/configuration/stages`, configs);
     }

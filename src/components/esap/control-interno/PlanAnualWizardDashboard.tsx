@@ -392,6 +392,24 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
         control: 'Se hace seguimiento semestral.', 
         evaluacion: '60% avance', 
         seguimiento: 'Realizar capacitaciones y acompañamiento en el diseño de tableros de control' 
+      },
+      { 
+        nombre: 'Adelantar de una manera armónica procesos de auditoría que lleve a cabo el organismo de control', 
+        descripcion: 'Coordinación efectiva con entes de control externo durante sus visitas', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: '', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes' 
+      },
+      { 
+        nombre: 'Presentar informes y seguimientos de ley', 
+        descripcion: 'Cumplimiento de todos los informes obligatorios establecidos en el cronograma anual', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento mensual.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes' 
       }
     ],
     // ═══════════════════ ROL 5: RELACIÓN CON ENTES EXTERNOS DE CONTROL ═══════════════════
@@ -414,24 +432,6 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
         evaluacion: '59% avance', 
         seguimiento: 'Comunicar oportunamente a los líderes de procesos sobre posibles sanciones' 
       },
-      { 
-        nombre: 'Adelantar de una manera armónica procesos de auditoría que lleve a cabo el organismo de control', 
-        descripcion: 'Acompañar de manera armónica las auditorías de control externo', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: '', 
-        evaluacion: '59% avance', 
-        seguimiento: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes' 
-      },
-      { 
-        nombre: 'Presentar informes y seguimientos de ley', 
-        descripcion: 'Elaborar y presentar todos los informes de ley en los plazos establecidos', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento mensual.', 
-        evaluacion: '59% avance', 
-        seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes' 
-      }
     ]
   };
   

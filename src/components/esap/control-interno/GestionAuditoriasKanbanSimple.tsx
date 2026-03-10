@@ -107,10 +107,16 @@ interface Auditoria {
   territorial: string;
   auditorLider: Persona;
   auditorAsignado: Persona;
-  fechaInicio: string;
-  fechaFinPlaneacion?: string; // Fin de Planeación / Inicio de Ejecución
-  fechaFinEjecucion?: string; // Fin de Ejecución / Inicio de Comunicación
-  fechaFin: string;
+  // ✅ CRONOGRAMA DE 3 ETAPAS
+  // Etapa 1: Planeación
+  fechaInicio: string;           // = fechaInicioPlaneacion
+  fechaFinPlaneacion?: string;   // Fin de Planeación
+  // Etapa 2: Ejecución
+  fechaInicioEjecucion?: string; // Inicio de Ejecución
+  fechaFinEjecucion?: string;    // Fin de Ejecución
+  // Etapa 3: Comunicación
+  fechaInicioComunicacion?: string; // Inicio de Comunicación
+  fechaFin: string;              // = fechaFinComunicacion (fin de auditoría)
   progreso: number;
   hallazgos: number;
   diasRestantes: number;
@@ -2247,6 +2253,28 @@ export function GestionAuditoriasKanbanSimple() {
 
   const handleCrearAuditoria = async (data: AuditoriaUnificadaFormData) => {
     try {
+      // 🔍 DEBUG: Log de fechas recibidas
+      console.log('═══════════════════════════════════════════════════════════════');
+      console.log('📥 handleCrearAuditoria - DATOS RECIBIDOS:');
+      console.log('   fechaInicioPlaneacion:', data.fechaInicioPlaneacion);
+      console.log('   fechaFinPlaneacion:', data.fechaFinPlaneacion);
+      console.log('   fechaInicioEjecucion:', data.fechaInicioEjecucion);
+      console.log('   fechaFinEjecucion:', data.fechaFinEjecucion);
+      console.log('   fechaInicioComunicacion:', data.fechaInicioComunicacion);
+      console.log('   fechaFinComunicacion:', data.fechaFinComunicacion);
+      console.log('═══════════════════════════════════════════════════════════════');
+      
+      // Auto-calcular fechas de inicio de etapas si no están definidas
+      // Etapa 2: fechaInicioEjecucion = día siguiente a fechaFinPlaneacion
+      // Etapa 3: fechaInicioComunicacion = día siguiente a fechaFinEjecucion
+      const fechaInicioEjecucionCalculada = data.fechaInicioEjecucion || data.fechaFinPlaneacion;
+      const fechaInicioComunicacionCalculada = data.fechaInicioComunicacion || data.fechaFinEjecucion;
+      
+      // 🔍 DEBUG: Log de valores calculados
+      console.log('📊 VALORES CALCULADOS:');
+      console.log('   fechaInicioEjecucionCalculada:', fechaInicioEjecucionCalculada);
+      console.log('   fechaInicioComunicacionCalculada:', fechaInicioComunicacionCalculada);
+      
       // Preparar datos para el backend
       const datosBackend = {
         nombre: data.titulo,
@@ -2255,8 +2283,8 @@ export function GestionAuditoriasKanbanSimple() {
         territorial: data.territorial || 'Nacional',
         sede: data.territorial || 'Nacional',
         responsable: 'aud-001', // TODO: Obtener del usuario logueado
-        fechaInicio: data.fechaInicio,
-        fechaFin: data.fechaFin,
+        fechaInicio: data.fechaInicio || data.fechaInicioPlaneacion,
+        fechaFin: data.fechaFin || data.fechaFinComunicacion,
         areaObjetivo: data.areaObjetivo || 'Control Interno',
         procesoAuditado: data.procesoAuditado || 'General',
         calificacionRiesgo: data.nivelRiesgo || 'Medio',
@@ -2264,10 +2292,15 @@ export function GestionAuditoriasKanbanSimple() {
         objetivos: data.objetivos || [],
         criteriosAuditoria: data.criteriosAuditoria || [], // El backend usa criteriosAuditoria
         equipoAuditores: data.equipoAuditores || [],
-        // ✅ Incluir fechas de cronograma de 3 etapas si están presentes
+        // ✅ Incluir TODAS las fechas del cronograma de 3 etapas
+        // Etapa 1: Planeación
         ...(data.fechaFinPlaneacion && { fechaFinPlaneacion: data.fechaFinPlaneacion }),
+        // Etapa 2: Ejecución
+        ...(fechaInicioEjecucionCalculada && { fechaInicioEjecucion: fechaInicioEjecucionCalculada }),
         ...(data.fechaFinEjecucion && { fechaFinEjecucion: data.fechaFinEjecucion }),
-        // ✅ NUEVO: Estado inicial del Kanban - todas las auditorías nuevas inician en "Plan Anual"
+        // Etapa 3: Comunicación
+        ...(fechaInicioComunicacionCalculada && { fechaInicioComunicacion: fechaInicioComunicacionCalculada }),
+        // ✅ Estado inicial del Kanban - todas las auditorías nuevas inician en "Plan Anual"
         estadoKanban: 'Plan Anual',
       };
       
@@ -2305,16 +2338,27 @@ export function GestionAuditoriasKanbanSimple() {
     
     console.log('Actualizar auditoría:', auditoriaParaEditar.id, data);
     
-    // ✅ Enviar actualización al backend
+    // Auto-calcular fechas de inicio de etapas si no están definidas
+    const fechaFinPlaneacion = (data as any).fechaFinPlaneacion;
+    const fechaFinEjecucion = (data as any).fechaFinEjecucion;
+    const fechaInicioEjecucionCalculada = (data as any).fechaInicioEjecucion || fechaFinPlaneacion;
+    const fechaInicioComunicacionCalculada = (data as any).fechaInicioComunicacion || fechaFinEjecucion;
+    
+    // ✅ Enviar actualización al backend con TODAS las fechas del cronograma
     const datosBackend = {
       nombre: data.titulo,
       descripcion: data.descripcion,
       territorial: data.territorial,
       sede: data.territorial, // Sincronizar sede con territorial
       calificacionRiesgo: data.riesgo,
+      // Etapa 1: Planeación
       fechaInicio: data.fechaInicio,
-      fechaFinPlaneacion: (data as any).fechaFinPlaneacion || undefined,
-      fechaFinEjecucion: (data as any).fechaFinEjecucion || undefined,
+      fechaFinPlaneacion: fechaFinPlaneacion || undefined,
+      // Etapa 2: Ejecución
+      fechaInicioEjecucion: fechaInicioEjecucionCalculada || undefined,
+      fechaFinEjecucion: fechaFinEjecucion || undefined,
+      // Etapa 3: Comunicación
+      fechaInicioComunicacion: fechaInicioComunicacionCalculada || undefined,
       fechaFin: data.fechaFin,
       alcance: data.descripcion, // Usar descripción como alcance si no hay campo separado
       // Incluir objetivos y criterios como arrays de strings
@@ -2339,9 +2383,14 @@ export function GestionAuditoriasKanbanSimple() {
                 descripcion: data.descripcion,
                 territorial: data.territorial,
                 riesgo: data.riesgo as RiesgoAuditoria,
+                // Etapa 1: Planeación
                 fechaInicio: data.fechaInicio,
                 fechaFinPlaneacion: (data as any).fechaFinPlaneacion,
+                // Etapa 2: Ejecución
+                fechaInicioEjecucion: (data as any).fechaInicioEjecucion,
                 fechaFinEjecucion: (data as any).fechaFinEjecucion,
+                // Etapa 3: Comunicación
+                fechaInicioComunicacion: (data as any).fechaInicioComunicacion,
                 fechaFin: data.fechaFin,
                 objetivos: (data.objetivos || []).map((obj: any, i: number) => ({
                   id: obj.id || `obj-${i}`,
@@ -2374,6 +2423,29 @@ export function GestionAuditoriasKanbanSimple() {
     }
 
     const estadoAnterior = item.estado;
+
+    // ============ VALIDACIÓN DOCUMENTOS PLANEACIÓN (BLOQUEA AL ARRASTRAR) ============
+    if (estadoAnterior === 'Planeación' && nuevoEstado === 'Ejecución') {
+      try {
+        const [todos, docs] = await Promise.all([
+          controlInternoService.getDocumentos({ etapa: 'planeacion' }),
+          controlInternoService.getDocumentosByEtapa(item.id, 'planeacion'),
+        ]);
+        const plantillas = (todos || []).filter((d: any) => !d.auditoriaId);
+        const requeridos = Math.max(plantillas.length, 1);
+        const total = (docs || []).filter((d: any) => d.auditoriaId === item.id).length;
+        if (total < requeridos) {
+          toast.error('Documentos incompletos', {
+            description: `Debe subir ${requeridos} documento(s) en Planeación antes de avanzar a Ejecución. Tiene ${total}.`,
+            duration: 5000,
+          });
+          return;
+        }
+      } catch {
+        toast.error('No se pudo validar los documentos');
+        return;
+      }
+    }
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
     
     // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============
@@ -2474,6 +2546,30 @@ export function GestionAuditoriasKanbanSimple() {
     }
 
     const estadoAnterior = auditoriaActual.estado;
+
+    // ============ VALIDACIÓN DOCUMENTOS PLANEACIÓN (BLOQUEA) ============
+    // Requeridos = cantidad de plantillas en biblioteca (una subida por plantilla)
+    if (estadoAnterior === 'Planeación' && nuevoEstado === 'Ejecución') {
+      try {
+        const [todos, docs] = await Promise.all([
+          controlInternoService.getDocumentos({ etapa: 'planeacion' }),
+          controlInternoService.getDocumentosByEtapa(auditoriaId, 'planeacion'),
+        ]);
+        const plantillas = (todos || []).filter((d: any) => !d.auditoriaId);
+        const requeridos = Math.max(plantillas.length, 1);
+        const total = (docs || []).filter((d: any) => d.auditoriaId === auditoriaId).length;
+        if (total < requeridos) {
+          toast.error('Documentos incompletos', {
+            description: `Debe subir ${requeridos} documento(s) en Planeación (uno por cada plantilla) para avanzar a Ejecución. Tiene ${total}.`,
+            duration: 5000,
+          });
+          return;
+        }
+      } catch {
+        toast.error('No se pudo validar los documentos');
+        return;
+      }
+    }
 
     // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============
     const estadoAFase: Record<EstadoAuditoria, 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | null> = {
@@ -3984,6 +4080,15 @@ export function GestionAuditoriasKanbanSimple() {
             auditoriaId={auditoriaSeleccionada?.id}
             auditoriaDataInicial={auditoriaSeleccionada}
             isOpen={modalExpedienteOpen}
+            tabInicial={(() => {
+              const e = (auditoriaSeleccionada?.estado || '').toLowerCase();
+              if (e.includes('planeacion') || e.includes('planeación')) return 'planeacion';
+              if (e.includes('ejecucion') || e.includes('ejecución')) return 'ejecucion';
+              if (e.includes('comunicacion') || e.includes('comunicación')) return 'comunicacion';
+              if (e.includes('seguimiento')) return 'documentacion';
+              if (e.includes('finalizada')) return 'historial';
+              return 'general';
+            })()}
             onClose={() => {
               setModalExpedienteOpen(false);
               setAuditoriaSeleccionada(null);
@@ -4078,10 +4183,18 @@ export function GestionAuditoriasKanbanSimple() {
                 tipo: auditoriaParaEditar.territorial || 'SEDE',
                 proceso: auditoriaParaEditar.descripcion,
                 responsable: auditoriaParaEditar.auditorLider?.nombre || 'Sin asignar',
+                // ✅ CRONOGRAMA 3 ETAPAS COMPLETO
+                // Etapa 1: Planeación
                 fechaInicio: auditoriaParaEditar.fechaInicio,
+                fechaInicioPlaneacion: auditoriaParaEditar.fechaInicio, // alias
                 fechaFinPlaneacion: auditoriaParaEditar.fechaFinPlaneacion,
+                // Etapa 2: Ejecución
+                fechaInicioEjecucion: auditoriaParaEditar.fechaInicioEjecucion,
                 fechaFinEjecucion: auditoriaParaEditar.fechaFinEjecucion,
+                // Etapa 3: Comunicación
+                fechaInicioComunicacion: auditoriaParaEditar.fechaInicioComunicacion,
                 fechaFin: auditoriaParaEditar.fechaFin,
+                fechaFinComunicacion: auditoriaParaEditar.fechaFin, // alias
                 estado: auditoriaParaEditar.estado,
                 progreso: auditoriaParaEditar.progreso || 0,
                 objetivo: auditoriaParaEditar.objetivos?.[0]?.descripcion || '',
@@ -4098,10 +4211,16 @@ export function GestionAuditoriasKanbanSimple() {
                 descripcion: data.proceso || data.alcance || '',
                 territorial: data.tipo,
                 riesgo: auditoriaParaEditar.riesgo || 'Medio',
-                fechaInicio: data.fechaInicio,
+                // ✅ CRONOGRAMA 3 ETAPAS COMPLETO
+                // Etapa 1: Planeación - usar fechaInicioPlaneacion o fechaInicio
+                fechaInicio: (data as any).fechaInicioPlaneacion || data.fechaInicio,
                 fechaFinPlaneacion: data.fechaFinPlaneacion,
+                // Etapa 2: Ejecución
+                fechaInicioEjecucion: data.fechaInicioEjecucion,
                 fechaFinEjecucion: data.fechaFinEjecucion,
-                fechaFin: data.fechaFin,
+                // Etapa 3: Comunicación
+                fechaInicioComunicacion: data.fechaInicioComunicacion,
+                fechaFin: (data as any).fechaFinComunicacion || data.fechaFin,
                 // Pasar arrays completos de objetivos y criterios
                 objetivos: (data as any).objetivos || [],
                 criterios: (data as any).criterios || []

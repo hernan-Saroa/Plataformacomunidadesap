@@ -21,7 +21,7 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import {
   Layers, Search, AlertTriangle, CheckCircle2, AlertCircle,
-  Plus, Edit2, Trash2, X, ChevronDown, ChevronUp, FileText, Eye, Target
+  Plus, Edit2, Trash2, X, ChevronDown, ChevronUp, FileText, Eye, Target, Info
 } from 'lucide-react';
 import { ResponsiveTable, MobileCard, MobileCardRow, type Column } from '../../ui/responsive-table';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -337,9 +337,15 @@ export function TabUniversoAuditableResponsive({
       key: 'scoreRiesgo',
       label: 'Score',
       align: 'center',
-      width: '100px',
+      width: '120px',
+      headerContent: (
+        <div className="flex items-center gap-1.5">
+          <span>Score</span>
+          <Info className="w-4 h-4 text-blue-500 flex-shrink-0" />
+        </div>
+      ),
       render: (value) => (
-        <div>
+        <div className="inline-flex items-center gap-1">
           <span className="font-bold text-gray-900">{value}</span>
           <span className="text-xs text-gray-500">/100</span>
         </div>
@@ -617,6 +623,23 @@ export function TabUniversoAuditableResponsive({
             {estadisticas.procesosMedios + estadisticas.procesosBajos}
           </p>
           <p className="text-xs text-green-600 mt-1">Auditoría bienal o trienal</p>
+        </div>
+      </div>
+
+      {/* ═══════════════ INFO CÁLCULO DEL SCORE ═══════════════ */}
+      <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4 flex items-start gap-3 shadow-sm">
+        <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+        <div className="text-sm">
+          <p className="font-bold text-gray-900 mb-1">¿Cómo se calcula el Score?</p>
+          <p className="text-gray-800 mb-2">
+            Puntaje de prioridad (0-100) que ordena los procesos de mayor a menor urgencia.
+            <strong> Fórmula:</strong> riesgoResidual = (Probabilidad × Impacto) ÷ Nivel de Control → score = (riesgoResidual ÷ 9) × 100
+          </p>
+          <p className="text-xs text-gray-700">
+            <span className="inline-block mr-4">🔴 90-100: Prioridad alta (auditoría urgente)</span>
+            <span className="inline-block mr-4">🟡 50-89: Prioridad media</span>
+            <span className="inline-block">🟢 0-49: Prioridad baja (postergable)</span>
+          </p>
         </div>
       </div>
 

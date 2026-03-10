@@ -126,6 +126,10 @@ export function ModalExpedienteComunicacion({
   const [loadingAdjuntos, setLoadingAdjuntos] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
+  // Historial (Timeline)
+  const [historial, setHistorial] = useState<any[]>([]);
+  const [loadingHistorial, setLoadingHistorial] = useState(false);
+
   // Cargar adjuntos reales desde la API
   useEffect(() => {
     const loadAdjuntos = async () => {
@@ -146,34 +150,49 @@ export function ModalExpedienteComunicacion({
     loadAdjuntos();
   }, [isOpen, comunicacion?.id]);
 
+  // Cargar el historial del correo
+  useEffect(() => {
+    const loadHistorial = async () => {
+      if (!isOpen || !comunicacion?.id || tabActivo !== 'timeline') return;
+
+      setLoadingHistorial(true);
+      try {
+        const data = await correosJuridicosService.getHistorial(comunicacion.id);
+        setHistorial(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Error loading historial:', error);
+        setHistorial([]);
+      } finally {
+        setLoadingHistorial(false);
+      }
+    };
+
+    loadHistorial();
+  }, [isOpen, comunicacion?.id, tabActivo]);
+
   // ==================== DATOS MOCK ====================
 
-  const timeline = [
-    {
-      id: 'TL-001',
-      tipo: 'RECEPCIÓN',
-      descripcion: 'Comunicación recibida y radicada',
-      fecha: comunicacion.fechaRadicacion,
-      usuario: 'Sistema SIGL',
-      color: '#2962FF'
-    },
-    {
-      id: 'TL-002',
-      tipo: 'CLASIFICACIÓN',
-      descripcion: `IA clasificó como: ${comunicacion.clasificacionIA?.tipoDetectado || 'N/A'}`,
-      fecha: new Date(comunicacion.fechaRadicacion.getTime() + 60000),
-      usuario: 'Sistema IA',
-      color: '#8B5CF6'
-    },
-    {
-      id: 'TL-003',
-      tipo: 'ASIGNACIÓN',
-      descripcion: `Sugerencia: Derivar a ${comunicacion.clasificacionIA?.moduloSugerido || 'N/A'}`,
-      fecha: new Date(comunicacion.fechaRadicacion.getTime() + 120000),
-      usuario: 'Sistema SIGL',
-      color: '#10B981'
-    }
-  ];
+  // Dynamic Timeline mapped from fetched data instead of mock
+  const mappedTimeline = historial.length > 0 ? historial.map((h, i) => {
+    // Determine color and icon by event type
+    let color = '#71717A'; // default gray
+    if (h.tipoEvento === 'RECIBIDO') color = '#2563EB'; // blue
+    if (h.tipoEvento === 'LEIDO') color = '#10B981'; // green
+    if (h.tipoEvento === 'ARCHIVADO') color = '#8B5CF6'; // purple
+    if (h.tipoEvento === 'DESARCHIVADO') color = '#F59E0B'; // yellow
+    if (h.tipoEvento === 'ASOCIADO_PROCESO') color = '#E11D48'; // rose
+    if (h.tipoEvento === 'RESPONDIDO') color = '#0284C7'; // sky
+    if (h.tipoEvento === 'REENVIADO') color = '#F97316'; // orange
+
+    return {
+      id: h.id || `historial-${i}`,
+      tipo: h.tipoEvento,
+      descripcion: h.descripcion,
+      fecha: h.fechaCreacion,
+      usuario: h.usuario || 'Sistema',
+      color
+    };
+  }) : [];
 
   const comentarios = [
     {
@@ -674,38 +693,53 @@ export function ModalExpedienteComunicacion({
 
                 {/* TAB: TIMELINE */}
                 <TabsContent value="timeline" className="space-y-4 mt-0">
-                  <div className="space-y-3">
-                    {timeline.map((evento) => (
-                      <Card key={evento.id} className="p-4">
-                        <div className="flex items-start gap-4">
-                          <div
-                            className="p-2 rounded-lg flex-shrink-0"
-                            style={{ background: `${evento.color}20` }}
-                          >
-                            <Activity className="w-5 h-5" style={{ color: evento.color }} />
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-start justify-between mb-1">
-                              <h4 className="font-bold text-gray-900">{evento.descripcion}</h4>
-                              <Badge variant="outline" className="text-xs">
-                                {evento.tipo}
-                              </Badge>
+                  {loadingHistorial ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                      <span className="ml-3 text-gray-600">Cargando trazabilidad...</span>
+                    </div>
+                  ) : mappedTimeline.length === 0 ? (
+                    <Card className="p-8 bg-gray-50 border-gray-200 text-center">
+                      <History className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                      <p className="text-gray-500 font-medium">No hay historial disponible</p>
+                      <p className="text-sm text-gray-400 mt-1">
+                        Aún no se ha registrado ninguna acción sobre este correo.
+                      </p>
+                    </Card>
+                  ) : (
+                    <div className="space-y-3">
+                      {mappedTimeline.map((evento) => (
+                        <Card key={evento.id} className="p-4">
+                          <div className="flex items-start gap-4">
+                            <div
+                              className="p-2 rounded-lg flex-shrink-0"
+                              style={{ background: `${evento.color}20` }}
+                            >
+                              <Activity className="w-5 h-5" style={{ color: evento.color }} />
                             </div>
-                            <div className="flex items-center gap-4 text-xs text-gray-600">
-                              <span className="flex items-center gap-1">
-                                <User className="w-3 h-3" />
-                                {evento.usuario}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {new Date(evento.fecha).toLocaleString('es-CO')}
-                              </span>
+                            <div className="flex-1">
+                              <div className="flex items-start justify-between mb-1">
+                                <h4 className="font-bold text-gray-900">{evento.descripcion}</h4>
+                                <Badge variant="outline" className="text-xs">
+                                  {evento.tipo}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-4 text-xs text-gray-600">
+                                <span className="flex items-center gap-1">
+                                  <User className="w-3 h-3" />
+                                  {evento.usuario}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {new Date(evento.fecha).toLocaleString('es-CO')}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
                 </TabsContent>
 
                 {/* TAB: COMENTARIOS */}
