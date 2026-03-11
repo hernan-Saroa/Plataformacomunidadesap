@@ -1301,6 +1301,7 @@ interface ColumnaKanbanProps {
   color: string;
   icono: ReactNode;
   diasEstimados?: number;
+  etapasConfig?: any[]; // ✅ NUEVO: Configuración de etapas con orden
   onDrop: (item: Item, nuevaEtapa: string) => void;
   onConvertirNoticia: (noticia: Noticia) => void;
   onDevolverNoticia: (noticia: Noticia) => void;
@@ -1336,6 +1337,7 @@ function ColumnaKanban({
   color,
   icono,
   diasEstimados,
+  etapasConfig = [], // ✅ NUEVO
   onDrop,
   onConvertirNoticia,
   onDevolverNoticia,
@@ -1372,6 +1374,40 @@ function ColumnaKanban({
       onDrop(item, etapa);
     },
     canDrop: (item: any) => {
+      // ✅ NUEVO: Validar orden de etapas desde backend config
+      if (etapasConfig.length > 0) {
+        // Obtener el orden de la etapa actual (donde está el item)
+        let itemOrden: number = 0;
+        
+        if (item.tipo === 'noticia') {
+          // Las noticias siempre están en Recepción (orden 1 o 0)
+          // Solo pueden pasar a la siguiente etapa (orden + 1)
+          const etapaRecepcion = etapasConfig.find(e => 
+            e.etapa?.toLowerCase().includes('recep') || 
+            e.etapa?.toLowerCase().includes('recib')
+          );
+          itemOrden = etapaRecepcion?.orden ?? 0;
+        } else {
+          // Para procesos, buscar la etapa actual del proceso
+          const etapaActualProceso = etapasConfig.find(e => 
+            e.etapa === item.etapaActual || 
+            e.etapa.toLowerCase() === item.etapaActual?.toLowerCase()
+          );
+          itemOrden = etapaActualProceso?.orden ?? 0;
+        }
+        
+        // Obtener el orden de la etapa de destino
+        const etapaDestino = etapasConfig.find(e => 
+          e.etapa === etapa || 
+          e.etapa.toLowerCase() === etapa.toLowerCase()
+        );
+        const etapaDestinoOrden = etapaDestino?.orden ?? itemOrden + 1;
+        
+        // Solo permitir drop si es la siguiente etapa en el orden
+        return etapaDestinoOrden === itemOrden + 1;
+      }
+      
+      // Fallback: lógica original si no hay configuración
       if (item.tipo === 'noticia') {
         return etapa === 'Recepción' || etapa === 'Valoración';
       }
@@ -2761,7 +2797,47 @@ export function DashboardKanbanOperativo({
   }
 
   // ==================== HANDLERS ====================
-  const handleDropItem = (item: Item, nuevaEtapa: string) => {
+  const handleDropItem = async (item: Item, nuevaEtapa: string) => {
+    // ✅ NUEVO: Validar orden de etapas desde backend config
+    if (etapasConfig.length > 0) {
+      // Obtener el orden de la etapa actual del item
+      let itemOrden: number = 0;
+      let etapaActualItem: string = 'Recepción';
+      
+      if (item.tipo === 'noticia') {
+        // Las noticias siempre están en Recepción
+        const etapaRecepcion = etapasConfig.find(e => 
+          e.etapa?.toLowerCase().includes('recep') || 
+          e.etapa?.toLowerCase().includes('recib')
+        );
+        itemOrden = etapaRecepcion?.orden ?? 0;
+        etapaActualItem = etapaRecepcion?.etapa || 'Recepción';
+      } else {
+        // Para procesos, buscar la etapa actual
+        const etapaActualProceso = etapasConfig.find(e => 
+          e.etapa === item.etapaActual || 
+          e.etapa.toLowerCase() === item.etapaActual?.toLowerCase()
+        );
+        itemOrden = etapaActualProceso?.orden ?? 0;
+        etapaActualItem = etapaActualProceso?.etapa || item.etapaActual;
+      }
+      
+      // Obtener el orden de la etapa de destino
+      const etapaDestino = etapasConfig.find(e => 
+        e.etapa === nuevaEtapa || 
+        e.etapa.toLowerCase() === nuevaEtapa.toLowerCase()
+      );
+      const etapaDestinoOrden = etapaDestino?.orden ?? itemOrden + 1;
+      
+      // Validar que solo permita mover a la siguiente etapa en el orden
+      if (etapaDestinoOrden !== itemOrden + 1) {
+        toast.error('No puede saltar etapas', {
+          description: `Debe avanzar secuencialmente. La etapa actual es "${etapaActualItem}" (orden ${itemOrden}).`
+        });
+        return;
+      }
+    }
+    
     if (item.tipo === 'noticia') {
       if (nuevaEtapa === 'Valoración') {
         // ✅ Arrastrar noticia de Recepción a Valoración → activa wizard de conversión a proceso
@@ -2786,6 +2862,38 @@ export function DashboardKanbanOperativo({
 
         const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
 
+        // ✅ NUEVO: Persistir cambio de etapa en la base de datos
+        const toastId = toast.loading('Cambiando etapa del proceso...');
+        try {
+          // Mapear el nombre de la etapa al formato del backend
+          const stageMap: Record<string, string> = {
+            'Recepción': 'RECEPCION',
+            'Valoración': 'EVALUACION',
+            'Indagación': 'INDAGACION',
+            'Investigación': 'INVESTIGACION',
+            'Juzgamiento': 'JUZGAMIENTO',
+            'Fallo': 'FALLO',
+            'Archivo': 'ARCHIVO'
+          };
+          const backendStage = stageMap[nuevaEtapa] || nuevaEtapa.toUpperCase();
+          
+          // Llamar al backend para cambiar la etapa
+          await disciplinaryService.cambiarEtapa(item.id, backendStage, nuevaEtapa);
+          
+          toast.success('Etapa actualizada', {
+            id: toastId,
+            description: `${item.numeroProceso} → ${nuevaEtapa}`
+          });
+        } catch (error: any) {
+          console.error('Error al cambiar etapa en BD:', error);
+          toast.error('Error al guardar cambio', {
+            id: toastId,
+            description: error?.message || 'No se pudo persistir el cambio en la base de datos'
+          });
+          // Continuamos con la actualización local aunque haya error en el backend
+        }
+
+        // Actualizar estado local
         setItems(prev => prev.map(i =>
           i.id === item.id && i.tipo === 'proceso'
             ? {
@@ -2809,12 +2917,7 @@ export function DashboardKanbanOperativo({
           etapaNueva: nuevaEtapa
         };
 
-        // En producción, esto se guardaría en el backend
         console.log('📋 Trazabilidad - Movimiento de proceso:', eventoTrazabilidad);
-
-        toast.success('Proceso Movido', {
-          description: `${item.numeroProceso} → ${nuevaEtapa} (registrado en trazabilidad)`
-        });
       }
     }
   };
@@ -3320,17 +3423,74 @@ export function DashboardKanbanOperativo({
   };
 
   // ✅ NUEVO: Handler para asignar profesional en transición Recepción → Valoración
-  const handleAsignarProfesional = (profesionalId: string, profesionalNombre: string, observaciones: string) => {
+  // ✅ MODIFICADO: Ahora sigue el orden de etapas desde la configuración del backend Y persiste en BD
+  const handleAsignarProfesional = async (profesionalId: string, profesionalNombre: string, observaciones: string) => {
     if (!itemSeleccionado) return;
 
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
 
-    // Actualizar el proceso con el profesional asignado y moverlo a Valoración
+    // ✅ NUEVO: Determinar la siguiente etapa basándose en el orden de etapasConfig
+    let siguienteEtapa = 'Valoración'; // Valor por defecto
+    
+    if (etapasConfig.length > 0) {
+      // Obtener la etapa actual del proceso
+      const etapaActual = etapasConfig.find(e => 
+        e.etapa === itemSeleccionado.etapaActual || 
+        e.etapa.toLowerCase() === itemSeleccionado.etapaActual?.toLowerCase()
+      );
+      const ordenActual = etapaActual?.orden ?? 0;
+      
+      // Buscar la siguiente etapa (orden + 1)
+      const siguiente = etapasConfig.find(e => e.orden === ordenActual + 1);
+      if (siguiente) {
+        siguienteEtapa = siguiente.etapa;
+      }
+    }
+
+    // Mapear el nombre de la etapa al formato del backend
+    const stageMap: Record<string, string> = {
+      'Recepción': 'RECEPCION',
+      'Valoración': 'EVALUACION',
+      'Indagación': 'INDAGACION',
+      'Investigación': 'INVESTIGACION',
+      'Juzgamiento': 'JUZGAMIENTO',
+      'Fallo': 'FALLO',
+      'Archivo': 'ARCHIVO'
+    };
+    const backendStage = stageMap[siguienteEtapa] || siguienteEtapa.toUpperCase();
+
+    // ✅ NUEVO: Persistir cambio de etapa y asignación de profesional en la base de datos
+    const toastId = toast.loading('Asignando profesional y cambiando etapa...');
+    try {
+      // Llamar al backend para cambiar la etapa y asignar el profesional
+      await disciplinaryService.cambiarEtapa(itemSeleccionado.id, backendStage, siguienteEtapa);
+      
+      // También actualizar el proceso con el profesional asignado usando updateProcess
+      await disciplinaryService.updateProcess(itemSeleccionado.id, {
+        etapaActual: backendStage,
+        kanbanStage: siguienteEtapa,
+        abogadoId: profesionalId
+      });
+      
+      toast.success('Profesional Asignado y Etapa Actualizada', {
+        id: toastId,
+        description: `${itemSeleccionado.numeroProceso} → ${profesionalNombre} (${siguienteEtapa})`
+      });
+    } catch (error: any) {
+      console.error('Error al guardar asignación en BD:', error);
+      toast.error('Error al guardar', {
+        id: toastId,
+        description: error?.message || 'No se pudo persistir la asignación en la base de datos'
+      });
+      // Continuamos con la actualización local aunque haya error en el backend
+    }
+
+    // Actualizar el proceso con el profesional asignado y moverlo a la siguiente etapa
     setItems(prev => prev.map(i =>
       i.id === itemSeleccionado.id && i.tipo === 'proceso'
         ? {
           ...i,
-          etapaActual: 'Valoración' as any,
+          etapaActual: siguienteEtapa as any,
           profesionalAsignado: {
             nombre: profesionalNombre,
             tipoIdentificacion: 'CC' as const,
@@ -3348,7 +3508,7 @@ export function DashboardKanbanOperativo({
       id: `evt-${Date.now()}`,
       tipo: 'asignacion-profesional' as const,
       titulo: `Proceso asignado a ${profesionalNombre}`,
-      descripcion: `El proceso fue movido de "Recepción" a "Valoración" y asignado al profesional ${profesionalNombre}. ${observaciones ? `Observaciones: ${observaciones}` : ''}`,
+      descripcion: `El proceso fue movido de "Recepción" a "${siguienteEtapa}" y asignado al profesional ${profesionalNombre}. ${observaciones ? `Observaciones: ${observaciones}` : ''}`,
       usuario: usuario,
       fecha: new Date(),
       procesoId: itemSeleccionado.id,
@@ -3359,7 +3519,7 @@ export function DashboardKanbanOperativo({
     console.log('📋 Trazabilidad - Asignación de profesional:', eventoTrazabilidad);
 
     toast.success('Profesional Asignado', {
-      description: `${itemSeleccionado.numeroProceso} → ${profesionalNombre} (Valoración)`
+      description: `${itemSeleccionado.numeroProceso} → ${profesionalNombre} (${siguienteEtapa})`
     });
 
     setModalActivo(null);
@@ -4272,6 +4432,7 @@ export function DashboardKanbanOperativo({
                         isMobile={isMobile}
                         colapsada={columnasColapsadas.has(etapa.nombre)}
                         onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
+                        etapasConfig={etapasConfig}
                         tarjetasColapsadas={tarjetasColapsadas}
                         onToggleColapsoTarjeta={toggleTarjetaColapsada}
                       />
