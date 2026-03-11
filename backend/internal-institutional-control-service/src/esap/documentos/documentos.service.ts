@@ -233,6 +233,7 @@ export class DocumentosService {
     if (updateDto.auditoriaId !== undefined) documento.auditoriaId = updateDto.auditoriaId;
     if (updateDto.hallazgoId !== undefined) documento.hallazgoId = updateDto.hallazgoId;
     if (updateDto.planMejoramientoId !== undefined) documento.planMejoramientoId = updateDto.planMejoramientoId;
+    if (updateDto.visibleAuditoriaId !== undefined) documento.visibleAuditoriaId = updateDto.visibleAuditoriaId;
 
     const documentoActualizado = await this.documentoRepository.save(documento);
 

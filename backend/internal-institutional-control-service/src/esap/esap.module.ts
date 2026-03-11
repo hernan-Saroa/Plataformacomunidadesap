@@ -16,6 +16,7 @@ import { ListasChequeoModule } from './listas-chequeo/listas-chequeo.module';
 import { TablerosKanbanModule } from './tableros-kanban/tableros-kanban.module';
 import { TareasAuditoriaModule } from './tareas-auditoria/tareas-auditoria.module';
 import { ConfiguracionesModule } from './configuraciones/configuraciones.module';
+import { EtapasAuditoriaModule } from './etapas-auditoria/etapas-auditoria.module';
 
 /**
  * Módulo principal ESAP - Control Interno
@@ -42,6 +43,7 @@ import { ConfiguracionesModule } from './configuraciones/configuraciones.module'
     TablerosKanbanModule,
     TareasAuditoriaModule,
     ConfiguracionesModule,
+    EtapasAuditoriaModule,
   ],
   exports: [
     PlanAnual5RolesModule,
@@ -61,6 +63,7 @@ import { ConfiguracionesModule } from './configuraciones/configuraciones.module'
     TablerosKanbanModule,
     TareasAuditoriaModule,
     ConfiguracionesModule,
+    EtapasAuditoriaModule,
   ],
 })
 export class EsapModule {}

@@ -53,17 +53,17 @@ import { PlaneacionAuditoriaModule } from './PlaneacionAuditoriaModule';
 import { ModalCargarDocumento } from './ModalCargarDocumento';
 import {
   ActividadesIntegradas,
-  ACTIVIDADES_EJECUCION,
   ACTIVIDADES_COMUNICACION,
 } from './ActividadesAuditoriaIntegradas';
 import { SeccionDocumentosPlaneacion } from './SeccionDocumentosPlaneacion';
 import { SeccionHallazgosExpediente } from './SeccionHallazgosExpediente';
+import { ModalReunionApertura, ModalReunionCierre } from './ModalReunionAperturaCierre';
 import { SeccionTareasExpediente } from './SeccionTareasExpediente';
 import { SeccionListasChequeoExpediente } from './SeccionListasChequeoExpediente';
 
 // Servicio API
 import { controlInternoService } from '../../../services/api/controlInternoService';
-import { getServiceUrl, API_MODE } from '../../../config/environment';
+import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 
 // ============ TIPOS ============
 
@@ -1545,6 +1545,36 @@ function TabPlaneacion({ auditoria }: TabFaseProps) {
 
 // TAB 3: EJECUCIÓN
 function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist }: TabFaseProps) {
+  const [modalAperturaOpen, setModalAperturaOpen] = useState(false);
+  const [modalCierreOpen, setModalCierreOpen] = useState(false);
+  const [reunionApertura, setReunionApertura] = useState<any | null>(null);
+  const [reunionCierre, setReunionCierre] = useState<any | null>(null);
+
+  const cargarReuniones = async () => {
+    if (!auditoria.id) return;
+    try {
+      const [apertura, cierre] = await Promise.all([
+        controlInternoService.getReunionApertura(auditoria.id).catch(() => null),
+        controlInternoService.getReunionCierre(auditoria.id).catch(() => null),
+      ]);
+      setReunionApertura(apertura && typeof apertura === 'object' && apertura.id ? apertura : null);
+      setReunionCierre(cierre && typeof cierre === 'object' && cierre.id ? cierre : null);
+    } catch {
+      setReunionApertura(null);
+      setReunionCierre(null);
+    }
+  };
+
+  useEffect(() => {
+    cargarReuniones();
+  }, [auditoria.id]);
+
+  const fechaReunion = (r: any) => {
+    if (!r?.fecha) return null;
+    const d = typeof r.fecha === 'string' ? new Date(r.fecha) : r.fecha;
+    return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
   return (
     <div className="space-y-4">
       <Card className="p-3 border-l-4 border-l-amber-600 bg-amber-50">
@@ -1552,29 +1582,102 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist }: Ta
           <Info className="w-5 h-5 text-amber-600" />
           <div>
             <p className="text-sm font-bold text-amber-900">Fase de Ejecución</p>
-            <p className="text-xs text-amber-700">Listas de chequeo, hallazgos y tareas de la auditoría</p>
+            <p className="text-xs text-amber-700">Reunión apertura, lista de chequeo, reunión cierre, hallazgos</p>
           </div>
         </div>
       </Card>
+
+      {/* 1. REUNIÓN DE APERTURA */}
+      <div className="bg-white border-2 border-green-200 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-gray-900">Reunión de Apertura</h3>
+              {reunionApertura && (
+                <Badge variant="default" className="bg-green-600 text-xs">
+                  <CheckCircle className="w-3 h-3 mr-1" />
+                  Registrado
+                </Badge>
+              )}
+            </div>
+            <p className="text-xs text-gray-600 mt-0.5">
+              {reunionApertura ? `Fecha: ${fechaReunion(reunionApertura)} - ${reunionApertura.modalidad || ''}` : 'Kick-off oficial con el área auditada'}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setModalAperturaOpen(true)}
+            className="font-medium"
+          >
+            <Users className="w-4 h-4 mr-2" />
+            {reunionApertura ? 'Editar Reunión' : 'Registrar Reunión'}
+          </Button>
+        </div>
+      </div>
+
+      {/* 2. LISTA DE CHEQUEO */}
       <div className="bg-white border-2 border-amber-200 rounded-lg p-4">
         <SeccionListasChequeoExpediente auditoriaId={auditoria.id} etapaActual="Ejecución" />
       </div>
 
-      {/* SECCIÓN: HALLAZGOS */}
-      <div className="bg-white border-2 border-red-200 rounded-lg p-5">
-        <SeccionHallazgosExpediente auditoriaId={auditoria.id} auditoriaNombre={auditoria.nombre || auditoria.codigo} />
+      {/* 3. REUNIÓN DE CIERRE */}
+      <div className="bg-white border-2 border-emerald-200 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-gray-900">Reunión de Cierre</h3>
+              {reunionCierre && (
+                <Badge variant="default" className="bg-green-600 text-xs">
+                  <CheckCircle className="w-3 h-3 mr-1" />
+                  Registrado
+                </Badge>
+              )}
+            </div>
+            <p className="text-xs text-gray-600 mt-0.5">
+              {reunionCierre ? `Fecha: ${fechaReunion(reunionCierre)} - ${reunionCierre.modalidad || ''}` : 'Cierre con el área auditada y firma de acta'}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setModalCierreOpen(true)}
+            className="font-medium"
+          >
+            <Users className="w-4 h-4 mr-2" />
+            {reunionCierre ? 'Editar Reunión' : 'Registrar Reunión'}
+          </Button>
+        </div>
       </div>
+
+      {/* 4. HALLAZGOS (Preliminar e Identificados) */}
+      <div className="bg-white border-2 border-red-200 rounded-lg p-5">
+        <SeccionHallazgosExpediente
+          auditoriaId={auditoria.id}
+          auditoriaNombre={auditoria.nombre || auditoria.codigo}
+          permitirTipoPreliminar
+        />
+      </div>
+
       <div className="bg-white border-2 border-blue-200 rounded-lg p-4">
         <SeccionTareasExpediente auditoriaId={auditoria.id} />
       </div>
-      <ActividadesIntegradas
-        actividades={ACTIVIDADES_EJECUCION}
-        faseTitulo="Ejecución"
-        faseColor="#f59e0b"
-        estadoRequerido="Ejecución"
-        estadoActual={auditoria.estado}
-        checklistCompletados={checklistCompletados}
-        onToggleChecklist={onToggleChecklist}
+
+      <ModalReunionApertura
+        isOpen={modalAperturaOpen}
+        onClose={() => setModalAperturaOpen(false)}
+        auditoriaId={auditoria.id}
+        auditoriaNombre={auditoria.nombre || auditoria.codigo}
+        reunionExistente={reunionApertura}
+        onSuccess={cargarReuniones}
+      />
+      <ModalReunionCierre
+        isOpen={modalCierreOpen}
+        onClose={() => setModalCierreOpen(false)}
+        auditoriaId={auditoria.id}
+        auditoriaNombre={auditoria.nombre || auditoria.codigo}
+        reunionExistente={reunionCierre}
+        onSuccess={cargarReuniones}
       />
     </div>
   );
@@ -1628,6 +1731,43 @@ function TabDocumentacion({
 }) {
   const [modalCargar, setModalCargar] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
+
+  const handleDescargarDoc = async (doc: DocumentoExpediente) => {
+    if (!doc.urlDownload) return;
+    try {
+      const url = doc.urlDownload.startsWith('http') ? doc.urlDownload : `${window.location.origin}${doc.urlDownload}`;
+      const res = await fetch(url, { headers: getDefaultHeaders() });
+      if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = doc.nombre || 'documento';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      toast.success('Descarga iniciada');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al descargar');
+    }
+  };
+
+  const handleVerDoc = async (doc: DocumentoExpediente) => {
+    if (!doc.urlPreview) return;
+    try {
+      const url = doc.urlPreview.startsWith('http') ? doc.urlPreview : `${window.location.origin}${doc.urlPreview}`;
+      const res = await fetch(url, { headers: getDefaultHeaders() });
+      if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+      toast.success('Documento abierto');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al abrir documento');
+    }
+  };
 
   // ✅ Manejar subida de documento conectada al backend
   const handleSubirDocumento = async (docData: any) => {
@@ -1751,7 +1891,7 @@ function TabDocumentacion({
                         size="sm" 
                         variant="ghost" 
                         className="h-7 w-7 p-0"
-                        onClick={() => window.open(doc.urlPreview, '_blank')}
+                        onClick={() => handleVerDoc(doc)}
                         title="Ver documento"
                       >
                         <Eye className="w-3 h-3" />
@@ -1762,7 +1902,7 @@ function TabDocumentacion({
                       size="sm" 
                       variant="ghost" 
                       className="h-7 w-7 p-0"
-                      onClick={() => window.open(doc.urlDownload, '_blank')}
+                      onClick={() => handleDescargarDoc(doc)}
                       title="Descargar"
                     >
                       <Download className="w-3 h-3" />

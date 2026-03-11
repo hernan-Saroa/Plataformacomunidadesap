@@ -104,6 +104,10 @@ export class Documento {
   @Column({ name: 'documento_biblioteca_id', type: 'uuid', nullable: true })
   documentoBibliotecaId?: string | null;
 
+  /** Plantilla: visible solo para esta auditoría. NULL = visible para todas */
+  @Column({ name: 'visible_auditoria_id', type: 'uuid', nullable: true })
+  visibleAuditoriaId?: string | null;
+
   @ManyToOne(() => Documento, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'documento_biblioteca_id' })
   documentoBiblioteca?: Documento | null;

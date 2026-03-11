@@ -53,6 +53,8 @@ const AREAS_ESAP = [
 interface Props {
   auditoriaId: string;
   auditoriaNombre: string;
+  /** Si true, muestra selector Tipo (Preliminar/Identificado). Preliminar oculta el bloque de evidencia */
+  permitirTipoPreliminar?: boolean;
 }
 
 // Tipo para personas disponibles
@@ -62,7 +64,7 @@ interface PersonaDisponible {
   cargo?: string;
 }
 
-export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Props) {
+export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permitirTipoPreliminar }: Props) {
   // Estados para datos
   const [hallazgos, setHallazgos] = useState<Hallazgo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,6 +91,8 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
   
   // Estado para edición (null = creando nuevo, string = editando ese ID)
   const [hallazgoEditandoId, setHallazgoEditandoId] = useState<string | null>(null);
+
+  const [tipoHallazgo, setTipoHallazgo] = useState<'preliminar' | 'identificado'>('identificado');
 
   // Estado para nuevo hallazgo
   const [nuevoHallazgo, setNuevoHallazgo] = useState({
@@ -256,8 +260,8 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
         toast.success('Hallazgo creado exitosamente');
       }
       
-      // Subir archivos de evidencia usando el endpoint de upload (NO base64)
-      if (archivosEvidencia.length > 0 && hallazgoId) {
+      // Subir archivos de evidencia (solo si no es preliminar)
+      if (archivosEvidencia.length > 0 && hallazgoId && tipoHallazgo === 'identificado') {
         toast.info(`Subiendo ${archivosEvidencia.length} archivo(s)...`);
         
         for (const archivo of archivosEvidencia) {
@@ -292,6 +296,7 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
         responsable: ''
       });
       setArchivosEvidencia([]);
+      setTipoHallazgo('identificado');
       cargarHallazgos();
     } catch (err: any) {
       console.error('Error creando hallazgo:', err);
@@ -320,6 +325,7 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
   const handleCancelarFormulario = () => {
     setMostrarFormulario(false);
     setHallazgoEditandoId(null);
+    setTipoHallazgo('identificado');
     setNuevoHallazgo({
       titulo: '',
       categoria: 'borrador',
@@ -508,6 +514,20 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
                 </button>
               </div>
 
+              {permitirTipoPreliminar && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Tipo de hallazgo</label>
+                  <select
+                    value={tipoHallazgo}
+                    onChange={(e) => setTipoHallazgo(e.target.value as 'preliminar' | 'identificado')}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="preliminar">Preliminar (sin evidencia)</option>
+                    <option value="identificado">Identificado (con evidencia)</option>
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
@@ -602,7 +622,8 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
                 </div>
               </div>
 
-              {/* Subir Evidencia */}
+              {/* Subir Evidencia - oculto cuando es preliminar */}
+              {(!permitirTipoPreliminar || tipoHallazgo === 'identificado') && (
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
                   <Paperclip className="w-3 h-3 inline mr-1" />
@@ -650,6 +671,7 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
                   </div>
                 )}
               </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-2">
                 <ButtonSIGL
