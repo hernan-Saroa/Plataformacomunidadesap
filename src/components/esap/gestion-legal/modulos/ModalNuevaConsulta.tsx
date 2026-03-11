@@ -52,7 +52,6 @@ export interface NuevaConsultaData {
   antecedentes?: string;
   prioridad: PrioridadConsulta;
   abogadoAsignadoId: string;
-  abogadoAsignadoId: string;
   documentoAdjunto?: File;
 }
 
@@ -125,6 +124,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
   const [abogados, setAbogados] = useState<Abogado[]>([]);
   const [loadingAbogados, setLoadingAbogados] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // ========== HOOK DE VALIDACIÓN ==========
   const {
@@ -258,8 +258,9 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
 
       // Append all fields from payload to FormData
       Object.keys(payload).forEach(key => {
-        if (key !== 'documentoAdjunto' && payload[key] !== undefined && payload[key] !== null) {
-          formDataToSend.append(key, payload[key].toString());
+        const value = (payload as any)[key];
+        if (key !== 'documentoAdjunto' && value !== undefined && value !== null) {
+          formDataToSend.append(key, value.toString());
         }
       });
 
@@ -294,13 +295,16 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
 
   const handleCancel = () => {
     if (completedFields > 0) {
-      if (confirm('¿Desea cancelar? Se perderán los datos ingresados.')) {
-        resetForm();
-        onClose();
-      }
+      setShowCancelConfirm(true);
     } else {
       onClose();
     }
+  };
+
+  const handleConfirmCancel = () => {
+    setShowCancelConfirm(false);
+    resetForm();
+    onClose();
   };
 
   // ✅ Hooks responsive
@@ -308,6 +312,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
   const keyboardVisible = useKeyboardVisible();
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && handleCancel()}>
       <DialogContent
         hideCloseButton
@@ -610,10 +615,16 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
                 </Label>
                 <Input
                   type="file"
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  accept=".pdf"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
+                      // Validar tipo PDF
+                      if (file.type !== 'application/pdf') {
+                        toast.error('Solo se permiten archivos en formato PDF');
+                        e.target.value = '';
+                        return;
+                      }
                       // Validar tamaño (ej. 10MB)
                       if (file.size > 10 * 1024 * 1024) {
                         toast.error('El archivo excede el tamaño máximo permitido (10MB)');
@@ -628,7 +639,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
                   className="cursor-pointer"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Formatos permitidos: PDF, Word, Imágenes. Máximo 10MB.
+                  Formatos permitidos: PDF únicamente. Máximo 10MB.
                 </p>
               </div>
             </FormSection>
@@ -729,5 +740,50 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
         </div>
       </DialogContent>
     </Dialog>
+
+      {/* ==================== DIALOG DE CONFIRMACIÓN DE CANCELACIÓN ==================== */}
+      <Dialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+        <DialogContent 
+          hideCloseButton 
+          className="p-0 overflow-hidden border-none shadow-2xl z-[10002] rounded-2xl mx-auto"
+          style={{ width: '380px', maxWidth: '380px' }}
+        >
+          <div className="bg-white overflow-hidden w-full">
+            <div className="h-2 w-full bg-gradient-to-r from-orange-500 to-red-600"></div>
+            
+            <div className="p-10 flex flex-col items-center text-center">
+              <div className="w-20 h-20 rounded-3xl bg-red-50 flex items-center justify-center mb-8 shadow-sm border border-red-100">
+                <AlertCircle className="w-10 h-10 text-red-600" />
+              </div>
+              
+              <h3 className="text-2xl font-black text-gray-900 mb-4 tracking-tight leading-tight">
+                ¿Cancelar registro?
+              </h3>
+              
+              <p className="text-base text-gray-500 leading-relaxed mb-10 px-4">
+                Se perderán todos los datos ingresados en la consulta.
+              </p>
+
+              <div className="flex flex-col w-full gap-4">
+                <Button
+                  onClick={handleConfirmCancel}
+                  className="w-full py-8 !bg-red-600 hover:!bg-red-700 !text-white font-black rounded-2xl shadow-xl shadow-red-100 transition-all active:scale-[0.98] text-lg border-none"
+                >
+                  Sí, cancelar y salir
+                </Button>
+                
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowCancelConfirm(false)}
+                  className="w-full py-6 rounded-xl font-bold text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors text-sm"
+                >
+                  No, continuar editando
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
