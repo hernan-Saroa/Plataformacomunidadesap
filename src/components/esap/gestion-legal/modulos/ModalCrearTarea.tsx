@@ -385,31 +385,33 @@ export function ModalCrearTarea({
             </div>
           )}
 
-          {/* Estado */}
-          <div>
-            <Label className="text-sm font-bold text-gray-700 mb-2 block">
-              ⚡ Estado inicial
-            </Label>
-            <div className="flex gap-2">
-              {(['Pendiente', 'En proceso'] as const).map((estadoOpt) => (
-                <Button
-                  key={estadoOpt}
-                  type="button"
-                  variant={estado === estadoOpt ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setEstado(estadoOpt)}
-                  className="flex-1 font-bold text-xs"
-                  style={
-                    estado === estadoOpt
-                      ? { background: '#2962FF', color: '#FFFFFF' }
-                      : { borderColor: '#2962FF', color: '#2962FF' }
-                  }
-                >
-                  {estadoOpt}
-                </Button>
-              ))}
+          {/* Estado (solo en creación) */}
+          {!modoEdicion && (
+            <div>
+              <Label className="text-sm font-bold text-gray-700 mb-2 block">
+                ⚡ Estado inicial
+              </Label>
+              <div className="flex gap-2">
+                {(['Pendiente', 'En proceso'] as const).map((estadoOpt) => (
+                  <Button
+                    key={estadoOpt}
+                    type="button"
+                    variant={estado === estadoOpt ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setEstado(estadoOpt)}
+                    className="flex-1 font-bold text-xs"
+                    style={
+                      estado === estadoOpt
+                        ? { background: '#2962FF', color: '#FFFFFF' }
+                        : { borderColor: '#2962FF', color: '#2962FF' }
+                    }
+                  >
+                    {estadoOpt}
+                  </Button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Asignar responsable */}
           <div>

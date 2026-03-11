@@ -672,6 +672,12 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     const file = event.target.files?.[0];
     if (!file || !consulta?.uuid) return;
 
+    if (file.type !== 'application/pdf') {
+      toast.error('Solo se permiten archivos PDF en este módulo');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     setUploadingDoc(true);
     const formData = new FormData();
     formData.append('archivo', file);
@@ -701,6 +707,12 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   const handleReemplazarConFirmado = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !replacingDocId) return;
+
+    if (file.type !== 'application/pdf') {
+      toast.error('Solo se permiten archivos PDF');
+      if (replaceFileInputRef.current) replaceFileInputRef.current.value = '';
+      return;
+    }
 
     setUploadingDoc(true);
     const formData = new FormData();
@@ -1051,7 +1063,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                     ref={fileInputRef}
                     onChange={handleSubirDocumento}
                     className="hidden"
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                    accept=".pdf"
                   />
 
                   <div className="flex items-center justify-between gap-4 mb-4">
@@ -1088,7 +1100,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                     type="file"
                     className="hidden"
                     onChange={handleReemplazarConFirmado}
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                    accept=".pdf"
                   />
 
                   {/* Modal de selección firmado/sin firmar */}
