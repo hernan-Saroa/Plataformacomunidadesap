@@ -50,6 +50,8 @@ import { TableroKanban } from './esap/tableros-kanban/entities/tablero-kanban.en
 import { EtapaKanban } from './esap/tableros-kanban/entities/etapa-kanban.entity';
 import { TareaAuditoria } from './esap/tareas-auditoria/entities/tarea-auditoria.entity';
 import { ConfiguracionProfesionalOCIG } from './esap/configuraciones/entities/configuracion-profesional-ocig.entity';
+import { ReunionApertura } from './esap/auditorias/entities/reunion-apertura.entity';
+import { ReunionCierre } from './esap/auditorias/entities/reunion-cierre.entity';
 
 @Module({
   imports: [
@@ -129,6 +131,8 @@ import { ConfiguracionProfesionalOCIG } from './esap/configuraciones/entities/co
             EtapaKanban,
             TareaAuditoria,
             ConfiguracionProfesionalOCIG,
+            ReunionApertura,
+            ReunionCierre,
           ],
           synchronize: false, // Deshabilitado - usar migraciones manuales
           // synchronize: process.env.NODE_ENV !== 'production', // Solo en desarrollo

@@ -507,7 +507,7 @@ export class TerminosService {
                 ? new Date(proc.obligacion.fechaVencimiento)
                 : null;
 
-            const estadoActivo = proc.estado !== 'FINALIZADO';
+            const estadoActivo = proc.estado !== 'LIQUIDACION';
 
             if (fechaVencimiento && estadoActivo) {
                 this.logger.debug(`[PROCESOS_COACTIVOS] Sincronizando ${proc.radicado}...`);

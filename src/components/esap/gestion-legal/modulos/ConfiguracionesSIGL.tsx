@@ -8,7 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark } from 'lucide-react';
-import { legalService } from '../../../../services/api/legal.service';
+import { legalService, procesosCoactivosService } from '../../../../services/api/legal.service';
 import disciplinaryService from '../../../../services/api/disciplinary.service';
 import { toast } from 'sonner';
 import {
@@ -52,6 +52,7 @@ import {
 
 // ✅ Importar componente de configuración de plantillas
 import { ConfiguracionPlantillasOficios } from '../configuracion/ConfiguracionPlantillasOficios';
+import { ConfiguracionTasasReferencia } from '../configuracion/ConfiguracionTasasReferencia';
 
 // ============ COMPONENTE PRINCIPAL ============
 
@@ -514,7 +515,7 @@ export function ConfiguracionesSIGL() {
       orden: maxOrden + 1,
     };
 
-    setConfiguraciones(prev => prev.map(m =>
+    actualizarConfiguraciones(configuraciones.map(m =>
       m.id === moduloActivo
         ? { ...m, tiposActuaciones: [...(m.tiposActuaciones || []), nuevoTipo] }
         : m
@@ -539,7 +540,7 @@ export function ConfiguracionesSIGL() {
   const confirmarEliminarTipoActuacion = () => {
     if (!actuacionAEliminar) return;
 
-    setConfiguraciones(prev => prev.map(m =>
+    actualizarConfiguraciones(configuraciones.map(m =>
       m.id === moduloActivo
         ? { ...m, tiposActuaciones: (m.tiposActuaciones || []).filter(t => t.id !== actuacionAEliminar.id) }
         : m
@@ -547,16 +548,11 @@ export function ConfiguracionesSIGL() {
     setCambiosPendientes(true);
     setShowModalEliminarActuacion(false);
 
-    toast.success('Tipo de actuación eliminado correctamente', {
-      description: `"${actuacionAEliminar.nombre}" ha sido eliminado de los tipos de actuaciones`,
-      duration: 3000
-    });
-
     setActuacionAEliminar(null);
   };
 
   const actualizarTipoActuacion = (tipoId: string, cambios: Partial<TipoActuacion>) => {
-    setConfiguraciones(prev => prev.map(m =>
+    actualizarConfiguraciones(configuraciones.map(m =>
       m.id === moduloActivo
         ? {
           ...m,
@@ -896,12 +892,35 @@ export function ConfiguracionesSIGL() {
                   </span>
                 </div>
               </button>
+
+              <button
+                onClick={() => setModuloActivo('tasas-referencia')}
+                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${moduloActivo === 'tasas-referencia'
+                  ? 'bg-blue-50 text-blue-900 font-semibold'
+                  : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Landmark className="w-4 h-4" />
+                  <span className="text-xs sm:text-sm">Tasas de Referencia</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1 ml-6">
+                  <span className="text-xs text-gray-500">
+                    Cálculo de intereses coactivos
+                  </span>
+                </div>
+              </button>
             </div>
           </div>
         </div>
 
         {/* Panel Principal */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
+
+          {/* 🆕 Panel de Tasas de Referencia */}
+          {moduloActivo === 'tasas-referencia' && (
+            <ConfiguracionTasasReferencia />
+          )}
 
           {/* 🆕 Panel de Plan de Acción - Ejes Estratégicos */}
           {moduloActivo === 'plan-accion' && (
@@ -3265,7 +3284,7 @@ function PrescripcionConfig() {
   useEffect(() => {
     const load = async () => {
       try {
-        const configValue = await legalService.getConfiguration('prescripcion_juzgamiento');
+        const configValue = await procesosCoactivosService.getConfiguration('prescripcion_juzgamiento');
         const years = configValue?.years ?? 5;
         setPrescriptionYears(years);
         setOriginalYears(years);
@@ -3287,7 +3306,7 @@ function PrescripcionConfig() {
     }
     try {
       setSaving(true);
-      await legalService.updateConfiguration('prescripcion_juzgamiento', {
+      await procesosCoactivosService.updateConfiguration('prescripcion_juzgamiento', {
         value: { years: prescriptionYears },
         module: 'juzgamiento',
         description: 'Configuración de años para prescripción en Juzgamiento Disciplinario'

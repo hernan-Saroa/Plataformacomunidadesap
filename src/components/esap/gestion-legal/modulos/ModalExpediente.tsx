@@ -38,7 +38,7 @@ import { ModalGestionDocumentos } from './ModalGestionDocumentos';
 import { ModalNuevaDemandaRESTAURADO } from './ModalNuevaDemandaRESTAURADO';
 import { ModalAnexarProceso } from './ModalAnexarProceso';
 import { copyToClipboard } from '../../../../utils/clipboard';
-import { legalService } from '../../../../services/api/legal.service';
+import { legalService, correosJuridicosService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { authService } from '../../../../services/api/authService';
@@ -102,6 +102,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [audienciaAReasignar, setAudienciaAReasignar] = useState<any>(null);
   const [tareaParaEditar, setTareaParaEditar] = useState<any>(null);
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [showDesanexarConfirm, setShowDesanexarConfirm] = useState(false);
+  const [anexadoADesanexar, setAnexadoADesanexar] = useState<any>(null);
 
   // Ref para input file
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -147,11 +149,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const loadDocumentos = async (id: string) => {
     try {
       setLoadingDocumentos(true);
-      // Fetch both documents and linked emails concurrently
-      const [docsData, oficiosData] = await Promise.all([
-        legalService.getDocumentos(id),
-        legalService.getCorreosByExpediente(id)
-      ]);
+      // Fetch documents (emails omitted per user request)
+      const docsData = await legalService.getDocumentos(id);
 
       // Map native documents
       const mappedDocs = docsData.map((d: any) => ({
@@ -167,46 +166,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         etapa: d.etapa || null
       }));
 
-      // Map linked emails and their attachments -> Oficios
-      const mappedOficios = Array.isArray(oficiosData) ? oficiosData.flatMap((correo: any) => {
-        const rows = [];
-
-        // Base email row
-        rows.push({
-          id: correo.id,
-          nombre: correo.asunto || 'Oficio sin asunto',
-          fecha: new Date(correo.fechaRecepcion).toLocaleDateString('es-CO'),
-          tipo: 'Correo Jurídico',
-          tamaño: correo.tieneAdjuntos ? 'Con adjuntos' : 'N/A',
-          firmante: correo.remitenteNombre || correo.remitenteEmail || 'Sistema',
-          url: null, // URLs for emails might be handled via a custom view rather than a direct download link
-          descripcion: `De: ${correo.remitenteNombre || correo.remitenteEmail} - ${correo.cuerpoTexto ? (correo.cuerpoTexto.length > 50 ? correo.cuerpoTexto.substring(0, 50) + '...' : correo.cuerpoTexto) : 'Sin cuerpo'}`,
-          categoria: 'oficios',
-          etapa: null
-        });
-
-        // Attachment rows
-        if (correo.adjuntos && Array.isArray(correo.adjuntos)) {
-          correo.adjuntos.forEach((adj: any) => {
-            rows.push({
-              id: adj.id,
-              nombre: `📎 ${adj.nombre}`,
-              fecha: new Date(adj.createdAt || correo.fechaRecepcion).toLocaleDateString('es-CO'),
-              tipo: 'Anexo de Oficio',
-              tamaño: formatBytes(adj.tamanio || 0),
-              firmante: correo.remitenteNombre || correo.remitenteEmail || 'Sistema',
-              url: `/legal/api/v1/correos/adjuntos/${adj.id}/download`,
-              descripcion: `Archivo adjunto al oficio: ${correo.asunto}`,
-              categoria: 'oficios',
-              etapa: null
-            });
-          });
-        }
-
-        return rows;
-      }) : [];
-
-      setDocumentos([...mappedDocs, ...mappedOficios]);
+      setDocumentos(mappedDocs);
     } catch (error) {
       console.error('Error cargando documentos', error);
       setDocumentos([]);
@@ -1964,16 +1924,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                                   variant="ghost"
                                   size="sm"
                                   className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-1.5 h-auto transition-colors focus:ring-0"
-                                  onClick={async () => {
-                                    if (confirm('¿Seguro que desea desanexar este proceso? Volverá a aparecer como un proceso independiente en el Kanban principal.')) {
-                                      try {
-                                        await legalService.desanexarExpediente(anexado.id || anexado.uuid, 'Usuario Actual');
-                                        toast.success('Proceso desanexado con éxito');
-                                        if (onUpdate) onUpdate();
-                                      } catch (e) {
-                                        toast.error('Error al desanexar el proceso');
-                                      }
-                                    }
+                                  onClick={() => {
+                                    setAnexadoADesanexar(anexado);
+                                    setShowDesanexarConfirm(true);
                                   }}
                                   title="Desanexar proceso"
                                 >
@@ -2450,6 +2403,68 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       )}
 
 
+      {/* ==================== DIALOG DE CONFIRMACIÓN DE DESANEXAR ==================== */}
+      <Dialog open={showDesanexarConfirm} onOpenChange={setShowDesanexarConfirm}>
+        <DialogContent 
+          hideCloseButton 
+          className="p-0 overflow-hidden border-none shadow-2xl z-[10001] rounded-2xl mx-auto"
+          style={{ width: '380px', maxWidth: '380px' }}
+        >
+          <DialogTitle className="sr-only">Confirmar desanexar proceso</DialogTitle>
+          <DialogDescription className="sr-only">
+            Confirmación para volver a independizar un proceso del expediente actual.
+          </DialogDescription>
+          
+          <div className="bg-white overflow-hidden w-full">
+            <div className="h-2 w-full bg-[#004884]"></div>
+            
+            <div className="p-10 flex flex-col items-center text-center">
+              <div className="w-20 h-20 rounded-3xl bg-blue-50 flex items-center justify-center mb-8 rotate-3 hover:rotate-0 transition-all duration-300 shadow-sm border border-blue-100">
+                <Unlink className="w-10 h-10 text-[#004884]" />
+              </div>
+              
+              <h3 className="text-2xl font-black text-gray-900 mb-4 tracking-tight leading-tight">
+                ¿Desanexar este proceso?
+              </h3>
+              
+              <p className="text-base text-gray-500 leading-relaxed mb-10 px-4">
+                El proceso <span className="font-bold text-gray-900">{anexadoADesanexar?.radicado || anexadoADesanexar?.id}</span> volverá a ser independiente.
+              </p>
+
+              <div className="flex flex-col w-full gap-4">
+                <Button
+                  onClick={async () => {
+                    if (!anexadoADesanexar) return;
+                    try {
+                      await legalService.desanexarExpediente(anexadoADesanexar.id || anexadoADesanexar.uuid, 'Usuario Actual');
+                      toast.success('Proceso desanexado con éxito');
+                      setShowDesanexarConfirm(false);
+                      setAnexadoADesanexar(null);
+                      if (onUpdate) onUpdate();
+                    } catch (e) {
+                      toast.error('Error al desanexar el proceso');
+                    }
+                  }}
+                  className="w-full py-8 !bg-[#004884] hover:!bg-[#003663] !text-white font-black rounded-2xl shadow-xl shadow-blue-100 transition-all active:scale-[0.98] text-lg border-none"
+                >
+                  Sí, desanexar ahora
+                </Button>
+                
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setShowDesanexarConfirm(false);
+                    setAnexadoADesanexar(null);
+                  }}
+                  className="w-full py-6 rounded-xl font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-50 transition-colors text-sm"
+                >
+                  No, mantener anexado
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

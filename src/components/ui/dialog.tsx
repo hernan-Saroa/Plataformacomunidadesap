@@ -52,18 +52,23 @@ function DialogContent({
   className,
   children,
   hideCloseButton,
+  size,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content> & { hideCloseButton?: boolean }) {
-  // Generar un ID único para la descripción si no se proporciona aria-describedby
+}: React.ComponentProps<typeof DialogPrimitive.Content> & { hideCloseButton?: boolean; size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'full' }) {
   const descriptionId = React.useId();
-  
+  const hasSize = !!size && size !== 'full';
+  const baseClasses = hasSize
+    ? "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[3rem] left-[50%] z-[9999] grid translate-x-[-50%] gap-4 rounded-lg border p-4 sm:p-6 shadow-lg duration-200 overflow-y-auto"
+    : "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[3rem] left-[50%] z-[9999] grid w-full max-w-[calc(100vw-1rem)] sm:max-w-[calc(100vw-2rem)] translate-x-[-50%] gap-4 rounded-lg border p-4 sm:p-6 shadow-lg duration-200 max-h-[calc(100vh-6rem)] overflow-y-auto";
+  const sizeClasses = size === 'xs' ? 'w-[420px] max-w-[420px] min-h-[85vh] max-h-[92vh]' : size === 'sm' ? 'w-[380px] max-w-[380px] min-h-[80vh] max-h-[92vh]' : size === 'md' ? 'w-[520px] max-w-[520px] min-h-[75vh] max-h-[92vh]' : size === 'lg' ? 'max-w-2xl' : size === 'xl' ? 'max-w-4xl' : '';
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[3rem] left-[50%] z-[9999] grid w-full max-w-[calc(100vw-1rem)] sm:max-w-[calc(100vw-2rem)] translate-x-[-50%] gap-4 rounded-lg border p-4 sm:p-6 shadow-lg duration-200 max-h-[calc(100vh-6rem)] overflow-y-auto",
+          baseClasses,
+          sizeClasses,
           className,
         )}
         aria-describedby={props['aria-describedby'] || descriptionId}

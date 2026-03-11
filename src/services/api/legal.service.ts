@@ -1371,7 +1371,10 @@ export interface ProcesoCoactivo {
     radicado: string;
     deudor: ProcesoCoactivoDeudor;
     obligacion: ProcesoCoactivoObligacion;
-    estado: 'IDENTIFICADO' | 'PERSUASIVO' | 'PREJURIDICO' | 'MANDAMIENTO' | 'EMBARGO' | 'FINALIZADO';
+    estado: 'PERSUASIVA' | 'COACTIVA' | 'MEDIDAS_CAUTELARES' | 'EXCEPCIONES' | 'LIQUIDACION';
+    fechaEjecutoria?: string;
+    tipoInteresAplicable?: string;
+    valorCostas?: number;
     responsable?: string;
     documentosAdjuntos: number;
     notificacionesEnviadas: number;
@@ -1422,6 +1425,8 @@ export interface CreateProcesoCoactivoDto {
     obligacion: ProcesoCoactivoObligacion;
     responsable?: string;
     observaciones?: string;
+    fechaEjecutoria?: string;
+    tipoInteresAplicable?: string;
 }
 
 export interface ProcesoCoactivoAdjunto {
@@ -1460,9 +1465,19 @@ export class ProcesosCoactivosService {
     }
 
     // Archivos
-    async uploadAdjunto(procesoId: string, file: File): Promise<ProcesoCoactivoAdjunto> {
+    async uploadAdjunto(
+        procesoId: string,
+        file: File,
+        metadata?: { esTituloEjecutivo?: boolean; fechaEjecutoria?: string }
+    ): Promise<ProcesoCoactivoAdjunto> {
         const formData = new FormData();
         formData.append('file', file);
+        if (metadata?.esTituloEjecutivo) {
+            formData.append('esTituloEjecutivo', 'true');
+        }
+        if (metadata?.fechaEjecutoria) {
+            formData.append('fechaEjecutoria', metadata.fechaEjecutoria);
+        }
         return apiClient.upload<ProcesoCoactivoAdjunto>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/adjuntos`, formData);
     }
 

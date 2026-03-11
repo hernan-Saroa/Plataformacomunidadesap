@@ -1343,11 +1343,12 @@ class ControlInternoService {
   /**
    * Obtiene todos los documentos
    */
-  async getDocumentos(params?: { auditoriaId?: string; etapa?: string; tipo?: string }): Promise<any[]> {
+  async getDocumentos(params?: { auditoriaId?: string; etapa?: string; tipo?: string; tipoDocumento?: string }): Promise<any[]> {
     const queryParams = new URLSearchParams();
     if (params?.auditoriaId) queryParams.append('auditoriaId', params.auditoriaId);
     if (params?.etapa) queryParams.append('etapa', params.etapa);
-    if (params?.tipo) queryParams.append('tipo', params.tipo);
+    const tipo = params?.tipoDocumento || params?.tipo;
+    if (tipo) queryParams.append('tipoDocumento', tipo);
     const query = queryParams.toString();
     return client.get<any[]>(`/documentos${query ? `?${query}` : ''}`);
   }
@@ -1387,6 +1388,7 @@ class ControlInternoService {
       hallazgoId?: string;
       planMejoramientoId?: string;
       documentoBibliotecaId?: string;
+      visibleAuditoriaId?: string;
       subidoPor?: string;
     },
     onProgress?: (progress: number) => void
@@ -1401,6 +1403,7 @@ class ControlInternoService {
     if (metadata.hallazgoId) formData.append('hallazgoId', metadata.hallazgoId);
     if (metadata.planMejoramientoId) formData.append('planMejoramientoId', metadata.planMejoramientoId);
     if (metadata.documentoBibliotecaId) formData.append('documentoBibliotecaId', metadata.documentoBibliotecaId);
+    if (metadata.visibleAuditoriaId) formData.append('visibleAuditoriaId', metadata.visibleAuditoriaId);
     if (metadata.subidoPor) formData.append('subidoPor', metadata.subidoPor);
 
     return client.upload<any>('/documentos', formData, onProgress);
@@ -1587,6 +1590,14 @@ class ControlInternoService {
   // Ejecución
   async iniciarEjecucion(auditoriaId: string, data: any): Promise<any> {
     return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/ejecucion/iniciar`, data);
+  }
+
+  async getReunionApertura(auditoriaId: string): Promise<any> {
+    return client.get<any>(`/etapas-auditoria/auditoria/${auditoriaId}/ejecucion/reunion-apertura`);
+  }
+
+  async getReunionCierre(auditoriaId: string): Promise<any> {
+    return client.get<any>(`/etapas-auditoria/auditoria/${auditoriaId}/ejecucion/reunion-cierre`);
   }
 
   async registrarReunionApertura(auditoriaId: string, data: any): Promise<any> {
