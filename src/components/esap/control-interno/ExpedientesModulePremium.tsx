@@ -1309,9 +1309,8 @@ function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps)
               <h4 className="text-lg text-gray-900 font-medium mb-2">
                 Documento de {getMimeTypeLabel(tipoMime)}
               </h4>
-              <p className="text-sm text-gray-600 mb-6 text-center max-w-md">
-                Los documentos de Office no se pueden mostrar directamente en el navegador.
-                Puedes descargarlo o abrirlo en Office Online.
+              <p className="text-sm text-amber-700 font-medium mb-6 text-center max-w-md">
+                Este tipo no se puede visualizar. Descargue el archivo o ábralo en Office Online.
               </p>
               <div className="flex gap-3">
                 <button
@@ -1339,8 +1338,8 @@ function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps)
               <h4 className="text-lg text-gray-900 font-medium mb-2">
                 {getMimeTypeLabel(tipoMime)}
               </h4>
-              <p className="text-sm text-gray-600 mb-6 text-center max-w-md">
-                Este tipo de archivo no se puede previsualizar en el navegador.
+              <p className="text-sm text-amber-700 font-medium mb-6 text-center max-w-md">
+                Este tipo no se puede visualizar. Descargue el archivo para verlo.
               </p>
               <button
                 onClick={handleDownload}
