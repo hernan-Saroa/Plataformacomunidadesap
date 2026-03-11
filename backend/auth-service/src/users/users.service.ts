@@ -36,17 +36,21 @@ export class UsersService {
   async createPersonAndUser(dto: NewPersonDto): Promise<User> {
     const password_hash = await bcrypt.hash(dto.password, 10);
 
-    const person = this.personRepo.create({
+    const personId = randomUUID();
+
+    const person = await this.personRepo.save(this.personRepo.create({
+      id: personId,
       first_name: dto.firstName,
       last_name: dto.lastName,
       email: dto.email,
       phone: dto.phone,
-    });
+    }));
 
     const user = this.userRepo.create({
       id_user: randomUUID(),
       username: dto.username,
       password_hash,
+      id_person: person.id,
       person,
     });
 
@@ -157,9 +161,12 @@ export class UsersService {
   }
 
   async createPerson(dto: CreatePersonDto): Promise<User> {
+    const personId = randomUUID();
+
     // Crear y guardar persona primero (id_person se genera en DB)
     const savedPerson = await this.personRepo.save(
       this.personRepo.create({
+        id: personId,
         first_name: dto.first_name,
         last_name: dto.last_name,
         full_name: `${dto.first_name} ${dto.last_name}`,
@@ -181,6 +188,7 @@ export class UsersService {
       username: dto.email,
       password_hash: passwordHash,
       is_active: false,
+      id_person: savedPerson.id,
       person: savedPerson,
     });
 

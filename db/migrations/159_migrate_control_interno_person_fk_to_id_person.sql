@@ -147,6 +147,7 @@ DECLARE
     current_pk_cols TEXT[];
     current_pk_conkey SMALLINT[];
     pk_dep_count INTEGER := 0;
+    id_person_key_dep_count INTEGER := 0;
 BEGIN
     SELECT c.conname,
            ARRAY_AGG(a.attname::text ORDER BY u.ord),
@@ -182,7 +183,31 @@ BEGIN
         END IF;
     END IF;
 
-    ALTER TABLE auth.personas DROP CONSTRAINT IF EXISTS personas_id_person_key;
+    -- Do not drop personas_id_person_key while FKs are still bound to that index.
+    IF EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = personas_tbl
+          AND conname = 'personas_id_person_key'
+          AND contype = 'u'
+    ) THEN
+        SELECT COUNT(*)
+        INTO id_person_key_dep_count
+        FROM pg_constraint con
+        JOIN pg_constraint u
+          ON u.conrelid = personas_tbl
+         AND u.conname = 'personas_id_person_key'
+         AND u.contype = 'u'
+        WHERE con.contype = 'f'
+          AND con.confrelid = personas_tbl
+          AND con.confkey = u.conkey;
+
+        IF id_person_key_dep_count = 0 THEN
+            ALTER TABLE auth.personas DROP CONSTRAINT IF EXISTS personas_id_person_key;
+        ELSE
+            RAISE NOTICE 'Se conserva personas_id_person_key: existen % FK(s) dependientes.', id_person_key_dep_count;
+        END IF;
+    END IF;
 END
 $$;
 

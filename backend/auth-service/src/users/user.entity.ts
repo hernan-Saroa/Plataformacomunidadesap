@@ -13,6 +13,9 @@ export class User {
   @Column()
   password_hash: string;
 
+  @Column({ name: 'id_person', type: 'uuid', nullable: true })
+  id_person: string | null;
+
   @Column({ default: true })
   is_active: boolean;
 
