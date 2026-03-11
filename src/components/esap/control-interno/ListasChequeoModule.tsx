@@ -2397,7 +2397,8 @@ function ModalVistaPrevia({ documento, onClose }: ModalVistaPreviaProps) {
               ) : documento.tipoMime?.includes('word') || documento.tipoMime?.includes('excel') || documento.tipoMime?.includes('powerpoint') || documento.tipoMime?.includes('sheet') || documento.tipoMime?.includes('presentation') ? (
                 <div className="text-center py-8">
                   <FileText className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-4">Vista previa no disponible para archivos Office</p>
+                  <p className="text-amber-700 font-medium mb-4">Este tipo no se puede visualizar.</p>
+                  <p className="text-sm text-gray-600 mb-4">Descargue el archivo para verlo.</p>
                   <button
                     onClick={handleDescargarDesdeModal}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -2409,8 +2410,8 @@ function ModalVistaPrevia({ documento, onClose }: ModalVistaPreviaProps) {
               ) : (
                 <div className="text-center py-8">
                   <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-4">Vista previa no disponible para este tipo de archivo</p>
-                  <p className="text-sm text-gray-500 mb-4">Tipo: {documento.tipoMime || 'Desconocido'}</p>
+                  <p className="text-amber-700 font-medium mb-4">Este tipo no se puede visualizar.</p>
+                  <p className="text-sm text-gray-600 mb-4">Descargue el archivo para verlo. Tipo: {documento.tipoMime || 'Desconocido'}</p>
                   <button
                     onClick={handleDescargarDesdeModal}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"

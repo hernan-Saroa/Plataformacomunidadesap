@@ -110,24 +110,6 @@ export function SeccionDocumentosPlaneacion({ auditoriaId }: SeccionDocumentosPl
     }
   };
 
-  const handleVerDocumento = async (doc: DocPlaneacion) => {
-    try {
-      const url = doc.urlPreview.startsWith('http') ? doc.urlPreview : `${window.location.origin}${doc.urlPreview}`;
-      const res = await fetch(url, { headers: getDefaultHeaders() });
-      if (!res.ok) {
-        throw new Error(res.status === 401 ? 'No autorizado. Inicia sesión nuevamente.' : `Error ${res.status}`);
-      }
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      window.open(blobUrl, '_blank');
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-      toast.success('Documento abierto');
-    } catch (e) {
-      console.error('Error al ver documento:', e);
-      toast.error(e instanceof Error ? e.message : 'Error al abrir documento');
-    }
-  };
-
   const handleEliminar = async () => {
     if (!docAEliminar) return;
     try {
@@ -185,18 +167,12 @@ export function SeccionDocumentosPlaneacion({ auditoriaId }: SeccionDocumentosPl
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <button
-                          onClick={() => handleVerDocumento(d)}
-                          className="p-2 bg-green-100 hover:bg-green-200 text-green-700 rounded"
-                          title="Ver documento"
-                        >
-                          <FileText className="w-4 h-4" />
-                        </button>
-                        <button
                           onClick={() => handleDescargar(d)}
-                          className="p-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded"
-                          title="Descargar"
+                          className="px-2 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded text-xs font-bold flex items-center gap-1"
+                          title="Descargar documento"
                         >
-                          <Download className="w-4 h-4" />
+                          <Download className="w-3.5 h-3.5" />
+                          Descargar
                         </button>
                         <button
                           onClick={() => setDocAEliminar(d)}
@@ -245,11 +221,12 @@ export function SeccionDocumentosPlaneacion({ auditoriaId }: SeccionDocumentosPl
                       {subido && docSubido ? (
                         <>
                           <button
-                            onClick={() => handleVerDocumento(docSubido)}
-                            className="p-2 bg-green-100 hover:bg-green-200 text-green-700 rounded"
-                            title="Ver documento"
+                            onClick={() => handleDescargar(docSubido)}
+                            className="px-2 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded text-xs font-bold flex items-center gap-1"
+                            title="Descargar documento subido"
                           >
-                            <FileText className="w-4 h-4" />
+                            <Download className="w-3.5 h-3.5" />
+                            Descargar
                           </button>
                           <button
                             onClick={() => setDocAEliminar(docSubido)}
