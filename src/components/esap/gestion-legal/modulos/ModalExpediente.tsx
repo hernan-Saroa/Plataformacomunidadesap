@@ -38,7 +38,7 @@ import { ModalGestionDocumentos } from './ModalGestionDocumentos';
 import { ModalNuevaDemandaRESTAURADO } from './ModalNuevaDemandaRESTAURADO';
 import { ModalAnexarProceso } from './ModalAnexarProceso';
 import { copyToClipboard } from '../../../../utils/clipboard';
-import { legalService } from '../../../../services/api/legal.service';
+import { legalService, correosJuridicosService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { authService } from '../../../../services/api/authService';
@@ -150,7 +150,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       // Fetch both documents and linked emails concurrently
       const [docsData, oficiosData] = await Promise.all([
         legalService.getDocumentos(id),
-        legalService.getCorreosByExpediente(id)
+        correosJuridicosService.getCorreosByExpediente(id)
       ]);
 
       // Map native documents
