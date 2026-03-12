@@ -611,6 +611,13 @@ function TarjetaProceso({
                 {noticiasExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
               </button>
             )}
+            {/* ✅ NUEVO: Badge de proceso asociado */}
+            {proceso.procesoAsociadoId && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-300 flex items-center gap-0.5" title={`Asociado a: ${proceso.procesoAsociadoNumero}`}>
+                <Link2 className="w-2.5 h-2.5" />
+                {proceso.procesoAsociadoTipo === 'conexo' ? 'Conexo' : proceso.procesoAsociadoTipo === 'similar' ? 'Similar' : proceso.procesoAsociadoTipo === 'consolidado' ? 'Consolidado' : 'Asociado'}
+              </span>
+            )}
           </div>
 
           {/* Noticias Asociadas Expandible */}
@@ -641,6 +648,19 @@ function TarjetaProceso({
           )}
 
           {/* Métricas — fila compacta inline */}
+          {proceso.procesoAsociadoId && (
+            <div className="mt-2 pt-2 border-t border-blue-200 bg-blue-50 p-2 rounded-md">
+              <div className="flex items-center gap-1.5">
+                <Link2 className="w-3 h-3 text-blue-600" />
+                <span className="text-[10px] font-bold text-blue-800">Proceso Asociado:</span>
+              </div>
+              <p className="text-[11px] text-blue-900 font-semibold mt-1">{proceso.procesoAsociadoNumero}</p>
+              <p className="text-[9px] text-blue-700">Tipo: {proceso.procesoAsociadoTipo === 'conexo' ? 'Conexo' : proceso.procesoAsociadoTipo === 'similar' ? 'Similar' : proceso.procesoAsociadoTipo === 'consolidado' ? 'Consolidado' : 'Asociado'}</p>
+              {proceso.procesoAsociadoFecha && (
+                <p className="text-[9px] text-blue-600">Asociado el: {new Date(proceso.procesoAsociadoFecha).toLocaleDateString('es-CO')}</p>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-3 text-xs py-1">
             <div className="flex items-center gap-1.5 text-gray-600">
               <FileEdit className="w-3.5 h-3.5 text-gray-400" />
@@ -2738,6 +2758,12 @@ export function DashboardKanbanOperativo({
 
     const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
 
+    // ✅ NUEVO: Mapear campos de asociación a proceso desde el backend
+    const procesoAsociadoId = (proceso as any).procesoAsociadoId || undefined;
+    const procesoAsociadoNumero = (proceso as any).procesoAsociadoNumero || undefined;
+    const procesoAsociadoTipo = (proceso as any).procesoAsociadoTipo || undefined;
+    const procesoAsociadoFecha = (proceso as any).procesoAsociadoFecha || undefined;
+
     return {
       id: proceso.id,
       numeroProceso: proceso.radicadoProceso,
@@ -2747,7 +2773,7 @@ export function DashboardKanbanOperativo({
         tipoIdentificacion: 'CC',
         numeroIdentificacion: (proceso.news?.denunciante as any)?.cedula || 'N/A'
       },
-      denunciado: {
+      denunciante: {
         nombre: (proceso.news?.disciplinable as any)?.nombre || 'Sin disciplinable',
         tipoIdentificacion: 'CC',
         numeroIdentificacion: (proceso.news?.disciplinable as any)?.cedula || 'N/A'
@@ -2769,7 +2795,12 @@ export function DashboardKanbanOperativo({
       ultimaActuacion: 'Actualizado desde backend',
       fechaCreacion: fechaCreacion.toISOString().split('T')[0],
       tipo: 'proceso' as const,
-      hechos: proceso.news?.hechos
+      hechos: proceso.news?.hechos,
+      // ✅ NUEVO: Incluir campos de asociación
+      procesoAsociadoId,
+      procesoAsociadoNumero,
+      procesoAsociadoTipo,
+      procesoAsociadoFecha,
     };
   };
 
