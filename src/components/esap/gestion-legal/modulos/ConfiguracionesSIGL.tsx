@@ -47,7 +47,8 @@ import {
   TipoRequerimiento,
   OrganismoControl,
   TipoExcepcionProcesal,
-  CausalEspecifica
+  CausalEspecifica,
+  EnteControlPM
 } from '../config/ConfiguracionesSIGLContext';
 
 // ✅ Importar componente de configuración de plantillas
@@ -71,6 +72,8 @@ export function ConfiguracionesSIGL() {
     actualizarTiposIndicadores,
     actualizarTiposRequerimientos,
     actualizarOrganismosControl,
+    actualizarEntesControlPM,
+    entesControlPM,
     guardarConfiguraciones,
     restablecerDefecto
   } = useConfiguracionesSIGL();
@@ -876,6 +879,24 @@ export function ConfiguracionesSIGL() {
               </button>
 
               <button
+                onClick={() => setModuloActivo('planes-mejoramiento-config')}
+                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${moduloActivo === 'planes-mejoramiento-config'
+                  ? 'bg-blue-50 text-blue-900 font-semibold'
+                  : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Target className="w-4 h-4" />
+                  <span className="text-xs sm:text-sm">Planes de Mejoramiento</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1 ml-6">
+                  <span className="text-xs text-gray-500">
+                    {entesControlPM.filter(e => e.activo).length} entes de control
+                  </span>
+                </div>
+              </button>
+
+              <button
                 onClick={() => setModuloActivo('plantillas-oficios')}
                 className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${moduloActivo === 'plantillas-oficios'
                   ? 'bg-blue-50 text-blue-900 font-semibold'
@@ -1467,6 +1488,179 @@ export function ConfiguracionesSIGL() {
           )}
 
           {/* 🆕 Panel de Plantillas de Oficios */}
+          {moduloActivo === 'planes-mejoramiento-config' && (
+            <div className="max-w-6xl mx-auto space-y-8">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3 sm:p-4 lg:p-6">
+                  <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                    <div>
+                      <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <div className="p-1.5 bg-emerald-100 rounded-md">
+                          <Target className="w-5 h-5 text-emerald-700" />
+                        </div>
+                        Entes de Control — Planes de Mejoramiento
+                      </h2>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                        Gestiona los entes de control disponibles para la creación de planes de mejoramiento (ej. Contraloría, OCI, Procuraduría)
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const nuevo: EnteControlPM = {
+                          id: `ente-${Date.now()}`,
+                          nombre: 'Nuevo Ente',
+                          descripcion: 'Descripción del ente de control',
+                          icono: '🏛️',
+                          color: '#6B7280',
+                          activo: true
+                        };
+                        actualizarEntesControlPM([...entesControlPM, nuevo]);
+                        toast.success('Ente de control agregado');
+                      }}
+                      className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                      style={{
+                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                        boxShadow: '0 2px 4px rgba(5, 150, 105, 0.2)'
+                      }}
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Agregar Ente</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {entesControlPM.map((ente, index) => (
+                      <div
+                        key={ente.id}
+                        className="p-3 sm:p-4 bg-gradient-to-br from-gray-50 to-white rounded-lg border border-gray-200 hover:border-emerald-300 transition-colors"
+                      >
+                        {/* Header: Color preview + Nombre + Icono + Activo + Eliminar */}
+                        <div className="flex items-center gap-3 mb-3">
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm flex-shrink-0"
+                            style={{ backgroundColor: ente.color }}
+                          >
+                            {ente.icono}
+                          </div>
+
+                          <input
+                            type="text"
+                            value={ente.nombre}
+                            onChange={(e) => {
+                              const nuevos = entesControlPM.map(item =>
+                                item.id === ente.id ? { ...item, nombre: e.target.value } : item
+                              );
+                              actualizarEntesControlPM(nuevos);
+                            }}
+                            className="flex-1 px-3 py-2 text-sm font-bold text-gray-800 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                            placeholder="Nombre del ente..."
+                          />
+
+                          <div className="flex items-center gap-2 ml-2">
+                            <label className="flex items-center gap-2 cursor-pointer bg-white px-2 py-1 rounded-md border border-gray-200 shadow-sm hover:bg-gray-50">
+                              <input
+                                type="checkbox"
+                                checked={ente.activo}
+                                onChange={(e) => {
+                                  const nuevos = entesControlPM.map(item =>
+                                    item.id === ente.id ? { ...item, activo: e.target.checked } : item
+                                  );
+                                  actualizarEntesControlPM(nuevos);
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                              />
+                              <span className="text-xs font-medium text-gray-600 select-none">Activo</span>
+                            </label>
+
+                            <button
+                              onClick={() => {
+                                const nuevos = entesControlPM.filter(o => o.id !== ente.id);
+                                actualizarEntesControlPM(nuevos);
+                                toast.success('Ente de control eliminado');
+                              }}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Eliminar ente"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Icono + Color row */}
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                          <div>
+                            <label className="text-xs font-medium text-gray-500 mb-1 block">Icono (emoji)</label>
+                            <input
+                              type="text"
+                              value={ente.icono}
+                              onChange={(e) => {
+                                const nuevos = entesControlPM.map(item =>
+                                  item.id === ente.id ? { ...item, icono: e.target.value } : item
+                                );
+                                actualizarEntesControlPM(nuevos);
+                              }}
+                              className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                              placeholder="🏛️"
+                              maxLength={4}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-gray-500 mb-1 block">Color</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="color"
+                                value={ente.color}
+                                onChange={(e) => {
+                                  const nuevos = entesControlPM.map(item =>
+                                    item.id === ente.id ? { ...item, color: e.target.value } : item
+                                  );
+                                  actualizarEntesControlPM(nuevos);
+                                }}
+                                className="w-8 h-8 rounded border border-gray-300 cursor-pointer"
+                              />
+                              <input
+                                type="text"
+                                value={ente.color}
+                                onChange={(e) => {
+                                  const nuevos = entesControlPM.map(item =>
+                                    item.id === ente.id ? { ...item, color: e.target.value } : item
+                                  );
+                                  actualizarEntesControlPM(nuevos);
+                                }}
+                                className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-mono"
+                                placeholder="#003DA5"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Descripción */}
+                        <textarea
+                          value={ente.descripcion}
+                          onChange={(e) => {
+                            const nuevos = entesControlPM.map(item =>
+                              item.id === ente.id ? { ...item, descripcion: e.target.value } : item
+                            );
+                            actualizarEntesControlPM(nuevos);
+                          }}
+                          className="w-full px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none bg-white"
+                          placeholder="Descripción del ente de control..."
+                          rows={2}
+                        />
+                      </div>
+                    ))}
+
+                    {entesControlPM.length === 0 && (
+                      <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+                        <p>No hay entes de control registrados.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {moduloActivo === 'plantillas-oficios' && (
             <ConfiguracionPlantillasOficios />
           )}

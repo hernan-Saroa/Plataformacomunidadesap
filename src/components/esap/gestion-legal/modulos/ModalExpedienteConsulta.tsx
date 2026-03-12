@@ -504,13 +504,14 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     const baseUrl = getServiceUrl('legal');
     const prefix = API_MODE === 'direct' ? '' : '/legal';
 
-    // ✨ FIXED: Rutas de adjuntos de correos/oficios
+    // ✨ FIXED: Rutas de adjuntos de correos/oficios (usar /api/v1 para que gateway rutee correctamente)
     if (url.includes('/correos/adjuntos/')) {
       const regex = /\/adjuntos\/([^/]+)\//;
       const match = url.match(regex);
       if (match) {
         const adjuntoId = match[1];
-        return `${baseUrl}${prefix}/correos/adjuntos/${adjuntoId}/download`;
+        const adjuntoPrefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        return `${baseUrl}${adjuntoPrefix}/correos/adjuntos/${adjuntoId}/download`;
       }
     }
 
