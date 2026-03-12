@@ -116,6 +116,9 @@ export class ProcesoAuditable {
   @Column({ name: 'priorizacion_anos', type: 'integer', nullable: false })
   priorizacionAnos: number; // 1-4 años según nivel de riesgo
 
+  @Column({ type: 'boolean', default: true })
+  activo: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

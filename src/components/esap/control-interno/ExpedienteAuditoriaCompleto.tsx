@@ -51,10 +51,8 @@ import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 // Sub-módulos
 import { PlaneacionAuditoriaModule } from './PlaneacionAuditoriaModule';
 import { ModalCargarDocumento } from './ModalCargarDocumento';
-import {
-  ActividadesIntegradas,
-  ACTIVIDADES_COMUNICACION,
-} from './ActividadesAuditoriaIntegradas';
+import { ActividadesIntegradas } from './ActividadesAuditoriaIntegradas';
+import { ComunicacionAuditoriaModule } from './ComunicacionAuditoriaModule';
 import { SeccionDocumentosPlaneacion } from './SeccionDocumentosPlaneacion';
 import { SeccionHallazgosExpediente } from './SeccionHallazgosExpediente';
 import { ModalReunionApertura, ModalReunionCierre } from './ModalReunionAperturaCierre';
@@ -286,6 +284,8 @@ interface ExpedienteAuditoriaCompletoProps {
   isOpen: boolean;
   onClose: () => void;
   tabInicial?: string;
+  /** Se llama cuando se finaliza Comunicación (pasa a Seguimiento). Permite al padre recargar el Kanban. */
+  onComunicacionCompletada?: () => void;
 }
 
 export function ExpedienteAuditoriaCompleto({
@@ -294,6 +294,7 @@ export function ExpedienteAuditoriaCompleto({
   isOpen,
   onClose,
   tabInicial = 'general',
+  onComunicacionCompletada: onComunicacionCompletadaProp,
 }: ExpedienteAuditoriaCompletoProps) {
   // ✅ CORREGIDO: Inicializar como null para evitar renderizar con datos MOCK
   const [auditoria, setAuditoria] = useState<Auditoria | null>(null);
@@ -306,6 +307,7 @@ export function ExpedienteAuditoriaCompleto({
   // ✅ Iniciar en loading=true si hay auditoriaId
   const [loading, setLoading] = useState(!!auditoriaId);
   const [error, setError] = useState<string | null>(null);
+  const [recargarTrigger, setRecargarTrigger] = useState(0);
   
   // ✅ Cargar datos del backend cuando se abre el modal
   useEffect(() => {
@@ -325,7 +327,8 @@ export function ExpedienteAuditoriaCompleto({
           nombre: data.nombre,
           tipo: (data.tipo === 'Regular' || data.tipo === 'Sede') ? 'Sede' : 
                 data.tipo === 'Territorial' ? 'Territorial' : 'Especial' as TipoAuditoria,
-          estado: mapearEstado(data.fase || data.estadoKanban),
+          // Priorizar estadoKanban (Seguimiento vs Finalizada) sobre fase (ambos son COMPLETADA)
+          estado: mapearEstado(data.estadoKanban || data.fase),
           areaAuditable: data.areaObjetivo || data.territorial || 'Sin área definida',
           procesoNombre: data.procesoAuditado || data.nombre,
           nivelRiesgo: (data.riesgoKanban || 'Medio') as NivelRiesgo,
@@ -473,7 +476,7 @@ export function ExpedienteAuditoriaCompleto({
     };
     
     cargarAuditoria();
-  }, [isOpen, auditoriaId]);
+  }, [isOpen, auditoriaId, recargarTrigger]);
   
   // ✅ Función para mapear historial del backend al formato del frontend
   function mapearHistorialBackend(data: any[]): EventoHistorial[] {
@@ -695,6 +698,7 @@ export function ExpedienteAuditoriaCompleto({
       'Comunicación': 'comunicacion',
       'completada': 'finalizada',
       'Seguimiento': 'seguimiento',
+      'seguimiento': 'seguimiento',
       'Finalizada': 'finalizada',
     };
     return mapeo[fase] || 'planeacion';
@@ -721,6 +725,8 @@ export function ExpedienteAuditoriaCompleto({
     if (estadoLower === 'planeación' || estadoLower === 'planeacion') return 'planeacion';
     if (estadoLower === 'ejecución' || estadoLower === 'ejecucion') return 'ejecucion';
     if (estadoLower === 'comunicación' || estadoLower === 'comunicacion') return 'comunicacion';
+    if (estadoLower === 'seguimiento') return 'documentacion';
+    if (estadoLower === 'finalizada') return 'historial';
     return 'general';
   };
   
@@ -1213,6 +1219,10 @@ export function ExpedienteAuditoriaCompleto({
                   auditoria={auditoria}
                   checklistCompletados={auditoria.checklistCompletados}
                   onToggleChecklist={handleToggleChecklist}
+                  onComunicacionCompletada={() => {
+                setRecargarTrigger(t => t + 1);
+                onComunicacionCompletadaProp?.();
+              }}
                 />
               )}
               {activeTab === 'documentacion' && (
@@ -1521,6 +1531,7 @@ interface TabFaseProps {
   auditoria: Auditoria;
   checklistCompletados?: Record<string, boolean>;
   onToggleChecklist?: (id: string, completado: boolean) => void;
+  onComunicacionCompletada?: () => void;
 }
 
 function TabPlaneacion({ auditoria }: TabFaseProps) {
@@ -1683,8 +1694,8 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist }: Ta
   );
 }
 
-// TAB 4: COMUNICACIÓN
-function TabComunicacion({ auditoria, checklistCompletados, onToggleChecklist }: TabFaseProps) {
+// TAB 4: COMUNICACIÓN — Mismo patrón que Planeación/Ejecución: Card + contenido. Flujo: Informe Preliminar, Gestión Hallazgos, Decisión, Plan Mejoramiento
+function TabComunicacion({ auditoria, onComunicacionCompletada }: TabFaseProps) {
   return (
     <div className="space-y-4">
       <Card className="p-3 border-l-4 border-l-green-600 bg-green-50">
@@ -1699,15 +1710,14 @@ function TabComunicacion({ auditoria, checklistCompletados, onToggleChecklist }:
       <div className="bg-white border-2 border-green-200 rounded-lg p-4">
         <SeccionListasChequeoExpediente auditoriaId={auditoria.id} etapaActual="Comunicación" />
       </div>
-      <ActividadesIntegradas
-        actividades={ACTIVIDADES_COMUNICACION}
-        faseTitulo="Comunicación"
-        faseColor="#10b981"
-        estadoRequerido="Comunicación"
-        estadoActual={auditoria.estado}
-        checklistCompletados={checklistCompletados}
-        onToggleChecklist={onToggleChecklist}
-      />
+      <div className="bg-white border-2 border-green-200 rounded-lg p-4">
+        <ComunicacionAuditoriaModule
+          auditoriaId={auditoria.id}
+          auditoriaInfo={{ codigo: auditoria.codigo, nombre: auditoria.nombre }}
+          embedded
+          onComunicacionCompletada={onComunicacionCompletada}
+        />
+      </div>
     </div>
   );
 }

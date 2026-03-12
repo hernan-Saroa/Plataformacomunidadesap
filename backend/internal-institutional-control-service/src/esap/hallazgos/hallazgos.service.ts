@@ -117,6 +117,9 @@ export class HallazgosService {
       fechaDeteccion: this.serializeDate(hallazgo.fechaDeteccion),
       fechaNotificacion: this.serializeDate(hallazgo.fechaNotificacion),
       fechaLimiteCorreccion: this.serializeDate(hallazgo.fechaLimiteCorreccion),
+      fechaDecision: (hallazgo as any).fechaDecision
+        ? new Date((hallazgo as any).fechaDecision).toISOString()
+        : undefined,
     };
   }
 
@@ -383,6 +386,149 @@ export class HallazgosService {
     });
     // Serializar fechas para evitar problemas de zona horaria
     return hallazgos.map(h => this.serializeHallazgo(h));
+  }
+
+  /**
+   * Área auditada acepta el hallazgo (estado → ACEPTADO)
+   */
+  async aceptar(id: string): Promise<Hallazgo> {
+    const hallazgo = await this.findOne(id);
+    if (hallazgo.estado !== HallazgoEstado.NOTIFICADO) {
+      throw new BadRequestException(
+        `Solo se puede aceptar un hallazgo en estado "notificado". Estado actual: ${hallazgo.estado}`,
+      );
+    }
+
+    hallazgo.estado = HallazgoEstado.ACEPTADO;
+    const actualizado = await this.hallazgoRepository.save(hallazgo);
+
+    await this.registrarHistorial(
+      hallazgo.auditoriaId,
+      TipoEvento.HALLAZGO,
+      'Hallazgo aceptado',
+      `El área auditada aceptó el hallazgo ${hallazgo.codigo}`,
+    );
+
+    return this.findOne(actualizado.id);
+  }
+
+  /**
+   * Área auditada presenta controversia (argumentos + documento adjunto)
+   */
+  async presentarControversia(
+    id: string,
+    argumentos: string,
+    documentoId: string,
+    documentoNombre: string,
+  ): Promise<Hallazgo> {
+    const hallazgo = await this.findOne(id);
+    if (hallazgo.estado !== HallazgoEstado.NOTIFICADO) {
+      throw new BadRequestException(
+        `Solo se puede presentar controversia sobre un hallazgo en estado "notificado". Estado actual: ${hallazgo.estado}`,
+      );
+    }
+
+    if (!argumentos || !argumentos.trim()) {
+      throw new BadRequestException('Los argumentos técnicos son obligatorios');
+    }
+
+    (hallazgo as any).argumentosControversia = argumentos.trim();
+    (hallazgo as any).observacionesControversia = argumentos.trim(); // Compatibilidad
+    (hallazgo as any).documentoControversiaUrl = documentoId; // ID para URL de descarga
+    (hallazgo as any).documentoControversiaNombre = documentoNombre;
+    hallazgo.estado = HallazgoEstado.EN_CONTROVERSIA;
+
+    const actualizado = await this.hallazgoRepository.save(hallazgo);
+
+    await this.registrarHistorial(
+      hallazgo.auditoriaId,
+      TipoEvento.HALLAZGO,
+      'Controversia presentada',
+      `El área auditada presentó controversia sobre el hallazgo ${hallazgo.codigo}`,
+    );
+
+    return this.findOne(actualizado.id);
+  }
+
+  /**
+   * Auditor toma decisión sobre controversia: ratificado | modificado | retirado
+   */
+  async decisionAuditor(
+    id: string,
+    tipoDecision: 'ratificado' | 'modificado' | 'retirado',
+    fundamentacionTecnica: string,
+    auditorId?: number,
+  ): Promise<Hallazgo> {
+    const hallazgo = await this.findOne(id);
+    if (hallazgo.estado !== HallazgoEstado.EN_CONTROVERSIA) {
+      throw new BadRequestException(
+        `Solo se puede tomar decisión sobre un hallazgo en estado "en-controversia". Estado actual: ${hallazgo.estado}`,
+      );
+    }
+
+    if (!fundamentacionTecnica || !fundamentacionTecnica.trim()) {
+      throw new BadRequestException('La fundamentación técnica es obligatoria');
+    }
+
+    const estadoMap = {
+      ratificado: HallazgoEstado.RATIFICADO,
+      modificado: HallazgoEstado.MODIFICADO,
+      retirado: HallazgoEstado.RETIRADO,
+    };
+
+    (hallazgo as any).decisionAuditor = tipoDecision;
+    (hallazgo as any).fundamentacionTecnica = fundamentacionTecnica.trim();
+    (hallazgo as any).fechaDecision = new Date();
+    (hallazgo as any).auditorDecisionId = auditorId ?? 1;
+    hallazgo.estado = estadoMap[tipoDecision];
+
+    const actualizado = await this.hallazgoRepository.save(hallazgo);
+
+    await this.registrarHistorial(
+      hallazgo.auditoriaId,
+      TipoEvento.HALLAZGO,
+      `Decisión del auditor: ${tipoDecision}`,
+      `El auditor ${tipoDecision} el hallazgo ${hallazgo.codigo}. Fundamentación: ${fundamentacionTecnica.substring(0, 100)}...`,
+    );
+
+    return this.findOne(actualizado.id);
+  }
+
+  /**
+   * Verifica si hay controversias pendientes de decisión en una auditoría
+   */
+  async hayControversiasPendientes(auditoriaId: string): Promise<boolean> {
+    const count = await this.hallazgoRepository.count({
+      where: {
+        auditoriaId,
+        estado: HallazgoEstado.EN_CONTROVERSIA,
+      },
+    });
+    return count > 0;
+  }
+
+  /**
+   * Notifica hallazgos (actualiza BORRADOR → NOTIFICADO) al generar informe preliminar.
+   * Solo los que están en BORRADOR pasan a NOTIFICADO. Los ya en aceptado/ratificado/modificado/retirado no se tocan.
+   */
+  async notificarHallazgosAuditoria(auditoriaId: string): Promise<{ count: number; total: number }> {
+    const [pendientes, todos] = await Promise.all([
+      this.hallazgoRepository.find({ where: { auditoriaId, estado: HallazgoEstado.BORRADOR } }),
+      this.hallazgoRepository.count({ where: { auditoriaId } }),
+    ]);
+    const hoy = new Date();
+    for (const h of pendientes) {
+      h.estado = HallazgoEstado.NOTIFICADO;
+      h.fechaNotificacion = hoy;
+      await this.hallazgoRepository.save(h);
+    }
+    await this.registrarHistorial(
+      auditoriaId,
+      TipoEvento.HALLAZGO,
+      'Informe preliminar generado',
+      `${pendientes.length} hallazgos notificados al área auditada`,
+    );
+    return { count: pendientes.length, total: todos };
   }
 }
 
