@@ -73,7 +73,6 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           (import.meta.env.VITE_MICROSOFT_REDIRECT_URI as string | undefined) ||
           window.location.origin + window.location.pathname;
         const codeVerifier = sessionStorage.getItem('ms_pkce_verifier');
-        console.log('redirectUri: 1', redirectUri);
 
         if (!clientId || !codeVerifier) {
           throw new Error('No hay contexto PKCE para completar el login.');
@@ -300,8 +299,6 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     const redirectUri =
       (import.meta.env.VITE_MICROSOFT_REDIRECT_URI as string | undefined) ||
       window.location.origin + window.location.pathname;
-      console.log('redirectUri 2:', redirectUri);
-      debugger;
 
     if (!clientId) {
       toast.error('Falta configurar Microsoft OAuth', {
