@@ -69,9 +69,31 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroGravedad, setFiltroGravedad] = useState<string>('TODAS');
   const [modalNuevoProcesoOpen, setModalNuevoProcesoOpen] = useState(false);
+  const [procesoAbiertoExternamente, setProcesoAbiertoExternamente] = useState<ProcesoDisciplinario | null>(null);
 
   // Estado local para manejar drag and drop
   const [procesos, setProcesos] = useState<ProcesoDisciplinario[]>([]);
+
+  const handleVerExpedienteAnexado = async (procesoId: string) => {
+    let proc = procesos.find(p => p.id === procesoId || (p as any).radicado === procesoId);
+    if (!proc) {
+      try {
+        toast.loading(`Cargando información del expediente ${procesoId}...`, { id: 'cargando-anexo' });
+        // The endpoint will be /juzgamiento/procesos in this logic, wait for details or mock it based on API behavior. If not found locally, fetch it.
+        proc = await legalService.getJuzgamientoProceso(procesoId);
+        toast.dismiss('cargando-anexo');
+      } catch(e) {
+         toast.dismiss('cargando-anexo');
+         proc = undefined;
+      }
+    }
+    
+    if (proc) {
+      setProcesoAbiertoExternamente(proc);
+    } else {
+      toast.error(`El proceso ${procesoId} no se encuentra en la base de datos o no tiene acceso.`);
+    }
+  };
 
   // ✅ Estado para modal de confirmación de cambio de etapa
   const [modalCambioEtapaOpen, setModalCambioEtapaOpen] = useState(false);
@@ -563,13 +585,15 @@ export function ModuloJuzgamientoDisciplinarioV3() {
                 WebkitOverflowScrolling: 'touch'
               }}
             >
-              {etapas.map((etapa) => (
+              {etapas.map((etapa: any) => (
                 <ColumnaKanban
                   key={etapa.nombre}
                   etapa={etapa}
                   isMobile={isMobile}
                   isTablet={isTablet}
                   handleMoverProceso={handleMoverProceso}
+                  onRefresh={fetchProcesos}
+                  onVerExpedienteAnexado={handleVerExpedienteAnexado}
                 />
               ))}
             </div>
@@ -719,6 +743,14 @@ export function ModuloJuzgamientoDisciplinarioV3() {
           fetchProcesos(); // Re-fetch from backend
         }}
       />
+
+      {/* Modal para Procesos Anexados visualizados externamente */}
+      <ModalProcesoDisciplinario
+        isOpen={procesoAbiertoExternamente !== null}
+        onClose={() => setProcesoAbiertoExternamente(null)}
+        proceso={procesoAbiertoExternamente as any}
+        onRefresh={fetchProcesos}
+      />
     </div>
   );
 }
@@ -737,9 +769,11 @@ interface ColumnaKanbanProps {
   isMobile: boolean;
   isTablet: boolean;
   handleMoverProceso: (procesoId: string, nuevaEtapa: string) => void;
+  onRefresh: () => void;
+  onVerExpedienteAnexado: (id: string) => void;
 }
 
-function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso }: ColumnaKanbanProps) {
+function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso, onRefresh, onVerExpedienteAnexado }: ColumnaKanbanProps) {
   const [{ isOver }, drop] = useDrop({
     accept: ItemTypes.PROCESO,
     drop: (item: { id: string }) => handleMoverProceso(item.id, etapa.valor),
@@ -802,6 +836,8 @@ function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso }: Column
               isMobile={isMobile}
               handleMoverProceso={handleMoverProceso}
               nuevaEtapa={etapa.valor}
+              onRefresh={onRefresh}
+              onVerExpedienteAnexado={onVerExpedienteAnexado}
             />
           ))}
 
@@ -825,9 +861,11 @@ interface TarjetaProcesoProps {
   isMobile: boolean;
   handleMoverProceso: (procesoId: string, nuevaEtapa: string) => void;
   nuevaEtapa: string;
+  onRefresh: () => void;
+  onVerExpedienteAnexado?: (id: string) => void;
 }
 
-function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: TarjetaProcesoProps) {
+function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa, onRefresh, onVerExpedienteAnexado }: TarjetaProcesoProps) {
   // Estados para modales
   const [modalProcesoOpen, setModalProcesoOpen] = useState(false);
   const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
@@ -852,8 +890,8 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
   const semaforo = getSemaforo(proceso.diasRestantes);
 
   // const semaforo = getSemaforoColor(proceso.diasRestantes);
-  const porcentajeTiempo = Math.round(((proceso.diasTotales - proceso.diasRestantes) / proceso.diasTotales) * 100);
-  const ultimaActuacion = proceso.ultimaActuacion?.descripcion || proceso.hechos || `Proceso en etapa de ${proceso.etapa}`;
+  const porcentajeTiempo = Math.round((((proceso.diasTotales || 0) - proceso.diasRestantes) / (proceso.diasTotales || 1)) * 100);
+  const ultimaActuacion = typeof proceso.ultimaActuacion === 'string' ? proceso.ultimaActuacion : (proceso.ultimaActuacion?.descripcion || proceso.hechos || `Proceso en etapa de ${proceso.etapa}`);
 
 
   // Adaptador para modales de gestión legal que esperan "ExpedienteJudicial"
@@ -937,7 +975,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
               <p className="text-xs text-gray-500">Docs</p>
             </div>
             <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-              <p className="text-xs font-bold text-gray-700">{proceso.diasTotales - proceso.diasRestantes}</p>
+              <p className="text-xs font-bold text-gray-700">{(proceso.diasTotales || 0) - proceso.diasRestantes}</p>
               <p className="text-xs text-gray-500">Días</p>
             </div>
             <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
@@ -984,7 +1022,12 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
         <ModalProcesoDisciplinario
           isOpen={modalProcesoOpen}
           onClose={() => setModalProcesoOpen(false)}
-          proceso={proceso}
+          proceso={proceso as any}
+          onRefresh={onRefresh}
+          onVerExpedienteAnexado={(id) => {
+            setModalProcesoOpen(false); // Close current nested
+            if (onVerExpedienteAnexado) onVerExpedienteAnexado(id);
+          }}
         />
         <ModalComunicaciones
           isOpen={modalComunicacionesOpen}

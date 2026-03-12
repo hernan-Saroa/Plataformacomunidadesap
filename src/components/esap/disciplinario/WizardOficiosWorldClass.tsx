@@ -513,7 +513,7 @@ export function WizardOficiosWorldClass({
                     </p>
                     <div className="w-1 h-1 rounded-full bg-emerald-300" />
                     <p className="text-sm text-emerald-100 font-medium hidden sm:block">
-                      {proceso.denunciado.nombre}
+                      {proceso.denunciado?.nombre || 'Cargando...'}
                     </p>
                   </div>
                 </div>
@@ -708,7 +708,7 @@ export function WizardOficiosWorldClass({
                             </div>
                             <div className="bg-white/60 rounded-lg px-3 py-2 backdrop-blur-sm sm:col-span-1 col-span-1">
                               <span className="text-emerald-700 font-semibold">Investigado:</span>
-                              <span className="ml-1.5 text-emerald-900 font-bold">{proceso.denunciado.nombre}</span>
+                              <span className="ml-1.5 text-emerald-900 font-bold">{proceso.denunciado?.nombre || 'Cargando...'}</span>
                             </div>
                           </div>
                         </div>

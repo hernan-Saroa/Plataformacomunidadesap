@@ -10,10 +10,11 @@ import {
   Gavel, FileText, Users, Clock, AlertTriangle, CheckCircle, X,
   Calendar, User, Building, Phone, Mail, MapPin, Briefcase,
   Eye, Download, Upload, Plus, Edit, Trash2, Send,
-  FileDown, Scale
+  FileDown, Scale, Link as LinkIcon, Unlink
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import type { ProcesoDisciplinario, DecisionDisciplinaria } from '../core/types';
+import { ModalAnexarProcesoDisciplinario } from './ModalAnexarProcesoDisciplinario';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { legalService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
@@ -72,11 +73,15 @@ interface ModalProcesoDisciplinarioProps {
   isOpen: boolean;
   onClose: () => void;
   proceso: ProcesoDisciplinario;
+  onRefresh?: () => void;
+  onVerExpedienteAnexado?: (procesoId: string) => void;
 }
 
-export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalProcesoDisciplinarioProps) {
+export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh, onVerExpedienteAnexado }: ModalProcesoDisciplinarioProps) {
   // ✅ Obtener configuraciones desde Context API
   const { tiposExcepcionesActivos, causalesEspecificasActivas } = useConfiguracionModulo('juzgamiento');
+
+  if (!proceso) return null;
 
   const [tabActivo, setTabActivo] = useState('general');
   const [hasChanges, setHasChanges] = useState(false);
@@ -146,6 +151,21 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   const [visorAbierto, setVisorAbierto] = useState(false);
   const [pruebaSeleccionada, setPruebaSeleccionada] = useState<any>(null);
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState<any>(null);
+
+  // ✅ Estado para modo edición del proceso
+  const [modoEdicion, setModoEdicion] = useState(false);
+  const [editData, setEditData] = useState({
+    tipoFalta: proceso.tipoFalta || '',
+    etapa: proceso.etapa || '',
+    abogadoAsignado: proceso.abogadoAsignado || '',
+    disciplinado: (proceso as any).investigado || proceso.disciplinado || '',
+    cargo: proceso.cargo || '',
+    dependencia: proceso.dependencia || '',
+    descripcionHechos: proceso.descripcionHechos || (proceso as any).hechos || ''
+  });
+
+  // ✅ Estado para modal de Anexar Proceso
+  const [modalAnexarAbierto, setModalAnexarAbierto] = useState(false);
 
   // Derived states for tabs options
   const pruebas = actuaciones.filter(a => a.tipoActuacion === 'EVIDENCIA');
@@ -237,22 +257,31 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     const baseUrl = getServiceUrl('legal');
     const prefix = API_MODE === 'direct' ? '' : '/legal';
 
-    // ✨ FIXED: Rutas de adjuntos de correos/oficios
+    // ✨ FIXED: Rutas de adjuntos de correos/oficios (usar /api/v1 para que gateway rutee correctamente)
     if (archivoUrl.includes('/correos/adjuntos/')) {
-      const regex = /\/adjuntos\/([^/]+)\//;
+      const regex = /\/adjuntos\/([^/]+)/;
       const match = archivoUrl.match(regex);
       if (match) {
         const adjuntoId = match[1];
-        return `${baseUrl}${prefix}/correos/adjuntos/${adjuntoId}/download`;
+        // En gateway port 3000 NO lleva /legal sino /api/v1 directo
+        const adjuntoPrefix = API_MODE === 'direct' ? '' : '/api/v1'; 
+        return `${baseUrl}${adjuntoPrefix}/correos/adjuntos/${adjuntoId}/download`;
       }
     }
 
     // Manejar otras rutas directas de API evitando /files/ 
-    if (archivoUrl.includes('/api/') || archivoUrl.includes('/download')) {
+    if (archivoUrl.includes('/api/') || archivoUrl.includes('/download') || archivoUrl.includes('/export')) {
       let cleanUrl = archivoUrl.startsWith('/legal') ? archivoUrl.replace('/legal', '') : archivoUrl;
-      if (API_MODE === 'direct') {
+      
+      // Ensure it has /api/v1 prefix if not direct mode and it doesn't already have it
+      if (API_MODE !== 'direct' && !cleanUrl.includes('/api/v1') && !cleanUrl.includes('/files/')) {
+        cleanUrl = `/api/v1${cleanUrl.startsWith('/') ? '' : '/'}${cleanUrl}`;
+      } else if (API_MODE === 'direct') {
         cleanUrl = cleanUrl.replace('/api/v1', ''); // remove /api/v1 since port 3008 doesn't use it
       }
+      // Ensure leading slash for cleanUrl to prevent duplicate slashes
+      if (!cleanUrl.startsWith('/')) cleanUrl = '/' + cleanUrl;
+      
       return `${baseUrl}${prefix}${cleanUrl}`;
     }
 
@@ -300,14 +329,18 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
   // Handler para ver actuación con documento
   const handleVerActuacion = (act: any) => {
-    const url = act.documentoUrl || act.url;
+    const url = act.documentoUrl || act.url || act.archivoUrl;
     if (!url) {
       toast.error('No hay documento disponible');
       return;
     }
-    const fileUrl = getFileUrl(url);
-    window.open(fileUrl, '_blank');
-    toast.success('Documento abierto en nueva pestaña');
+    
+    // Usar la función existente handleVerDocumento que abre el VisorDocumentoModal en la misma pestaña
+    handleVerDocumento({
+      documentoUrl: url,
+      nombre: act.documentoNombre || act.nombre || act.descripcion || 'Documento',
+      tipo: act.tipoActuacion || act.tipo || 'Documento'
+    });
   };
 
 
@@ -439,7 +472,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       doc.setFontSize(11);
       doc.setFont('times', 'normal');
       let y = 90;
-      doc.text(`Investigado: ${proceso.investigado || proceso.disciplinado || 'N/A'}`, 20, y); y += 8;
+      doc.text(`Investigado: ${(proceso as any).investigado || proceso.disciplinado || 'N/A'}`, 20, y); y += 8;
       doc.text(`Cargo: ${proceso.cargo || 'No registrado'}`, 20, y); y += 8;
       doc.text(`Dependencia: ${proceso.dependencia || 'No registrado'}`, 20, y); y += 8;
       doc.text(`Tipo de Falta: ${proceso.tipoFalta}`, 20, y); y += 8;
@@ -1083,6 +1116,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleCerrar}>
       <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl h-[90vh] flex flex-col p-0">
         <DialogTitle className="sr-only">
@@ -1155,11 +1189,67 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 <Edit className="w-4 h-4 mr-2" />
                 Notas
               </TabsTrigger>
+              <TabsTrigger
+                value="anexos"
+                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+              >
+                <LinkIcon className="w-4 h-4 mr-2" />
+                Anexos
+              </TabsTrigger>
             </TabsList>
           </div>
 
           {/* ==================== TAB: GENERAL ==================== */}
           <TabsContent value="general" className="flex-1 overflow-y-auto p-6 space-y-4">
+            {/* Botones Editar / Anexar */}
+            <div className="flex items-center justify-end gap-2 -mt-2 mb-2">
+              <button
+                onClick={async () => {
+                  if (modoEdicion) {
+                    // Guardar cambios en backend
+                    try {
+                      toast.loading('Guardando cambios...', { id: 'saving-proceso' });
+                      await legalService.updateJuzgamientoProceso(proceso.id, {
+                        tipoFalta: editData.tipoFalta,
+                        etapa: editData.etapa,
+                        abogadoSustanciador: editData.abogadoAsignado,
+                        cargoInvestigado: editData.cargo,
+                        dependenciaInvestigado: editData.dependencia,
+                        hechos: editData.descripcionHechos,
+                        demandado: editData.disciplinado
+                      });
+                      toast.success('Cambios guardados exitosamente', {
+                        id: 'saving-proceso',
+                        description: 'Los datos del proceso han sido actualizados en el sistema'
+                      });
+                      setHasChanges(true);
+                      onRefresh?.();
+                    } catch (error) {
+                      console.error('Error updating proceso:', error);
+                      toast.error('Error al guardar los cambios', { id: 'saving-proceso' });
+                    }
+                  }
+                  setModoEdicion(!modoEdicion);
+                }}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                  modoEdicion
+                    ? 'bg-green-600 text-white hover:bg-green-700'
+                    : 'bg-white text-blue-700 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50'
+                }`}
+              >
+                <Edit className="w-4 h-4" />
+                {modoEdicion ? 'Guardar Cambios' : 'Editar Proceso'}
+              </button>
+              <button
+                onClick={() => setModalAnexarAbierto(true)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white transition-all hover:shadow-lg"
+                style={{ background: '#003DA5' }}
+              >
+                <LinkIcon className="w-4 h-4" />
+                Anexar Proceso
+              </button>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Información del Proceso */}
               <Card className="p-4 border-2 border-blue-100">
@@ -1173,20 +1263,47 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Tipo de Falta</p>
-                    <Badge className="bg-orange-100 text-orange-700 font-semibold">{proceso.tipoFalta}</Badge>
+                    {modoEdicion ? (
+                      <input
+                        type="text"
+                        value={editData.tipoFalta}
+                        onChange={(e) => setEditData({ ...editData, tipoFalta: e.target.value })}
+                        className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    ) : (
+                      <Badge className="bg-orange-100 text-orange-700 font-semibold">{proceso.tipoFalta}</Badge>
+                    )}
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Etapa Actual</p>
-                    <p className="font-bold">{proceso.etapa}</p>
+                    {modoEdicion ? (
+                      <input
+                        type="text"
+                        value={editData.etapa}
+                        onChange={(e) => setEditData({ ...editData, etapa: e.target.value })}
+                        className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    ) : (
+                      <p className="font-bold">{proceso.etapa}</p>
+                    )}
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Investigador Asignado</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Avatar className="w-8 h-8">
-                        <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>{(proceso.abogadoAsignado || 'User').substring(0, 2)}</AvatarFallback>
-                      </Avatar>
-                      <p className="font-bold">{proceso.abogadoAsignado || 'Sin Asignar'}</p>
-                    </div>
+                    {modoEdicion ? (
+                      <input
+                        type="text"
+                        value={editData.abogadoAsignado}
+                        onChange={(e) => setEditData({ ...editData, abogadoAsignado: e.target.value })}
+                        className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2 mt-1">
+                        <Avatar className="w-8 h-8">
+                          <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>{(proceso.abogadoAsignado || 'User').substring(0, 2)}</AvatarFallback>
+                        </Avatar>
+                        <p className="font-bold">{proceso.abogadoAsignado || 'Sin Asignar'}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -1199,15 +1316,42 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 <div className="space-y-3">
                   <div>
                     <p className="text-sm text-gray-600">Nombre Completo</p>
-                    <p className="font-bold text-lg">{proceso.investigado}</p>
+                    {modoEdicion ? (
+                      <input
+                        type="text"
+                        value={editData.disciplinado}
+                        onChange={(e) => setEditData({ ...editData, disciplinado: e.target.value })}
+                        className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    ) : (
+                      <p className="font-bold text-lg">{(proceso as any).investigado}</p>
+                    )}
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Cargo</p>
-                    <p className="font-semibold">{proceso.cargo || 'No registrado'}</p>
+                    {modoEdicion ? (
+                      <input
+                        type="text"
+                        value={editData.cargo}
+                        onChange={(e) => setEditData({ ...editData, cargo: e.target.value })}
+                        className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    ) : (
+                      <p className="font-semibold">{proceso.cargo || 'No registrado'}</p>
+                    )}
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Dependencia</p>
-                    <p className="font-semibold">{proceso.dependencia || 'No registrado'}</p>
+                    {modoEdicion ? (
+                      <input
+                        type="text"
+                        value={editData.dependencia}
+                        onChange={(e) => setEditData({ ...editData, dependencia: e.target.value })}
+                        className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    ) : (
+                      <p className="font-semibold">{proceso.dependencia || 'No registrado'}</p>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -1248,8 +1392,8 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                   {proceso.ultimaActuacion?.descripcion || 'Solicitud de informes a RRHH'}
                 </p>
                 <div className="flex items-center gap-4 mt-3 text-xs font-semibold text-gray-500">
-                  <span>📅 {proceso.fechaActualizacion.toLocaleDateString('es-CO')}</span>
-                  <span>⏰ {proceso.fechaActualizacion.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
+                  <span>📅 {proceso.fechaActualizacion ? new Date(proceso.fechaActualizacion).toLocaleDateString('es-CO') : 'N/A'}</span>
+                  <span>⏰ {proceso.fechaActualizacion ? new Date(proceso.fechaActualizacion).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : 'N/A'}</span>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1272,7 +1416,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
               <h3 className="font-black text-xl mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
                 <AlertTriangle className="w-6 h-6" /> Descripción de los Hechos
               </h3>
-              <p className="text-gray-700 leading-relaxed mb-4">{proceso.hechos || 'No se han registrado hechos.'}</p>
+              <p className="text-gray-700 leading-relaxed mb-4">{(proceso as any).descripcionHechos || (proceso as any).hechos || 'No se han registrado hechos.'}</p>
             </Card>
           </TabsContent>
 
@@ -1286,7 +1430,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
               tituloSeccion="Documentos del Proceso Disciplinario"
               moduloContexto="juzgamiento"
               onUploadDocument={handleUploadDocumentoDesdeTab}
-              onViewDocument={(doc) => handleVerDocumento(doc)}
+              onViewDocument={(doc) => handleVerDocumento({
+                documentoUrl: doc.url,
+                nombre: doc.nombre,
+                tipo: doc.tipo
+              })}
               onDownloadDocument={(doc) => handleDescargarDocumento(doc)}
               onDownloadAll={handleDescargarTodosDocumentos}
               onHasChanges={() => setHasChanges(true)}
@@ -1348,6 +1496,84 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 setModalAgregarNotaAbierto(true);
               }}
             />
+          </TabsContent>
+
+          {/* ==================== TAB: ANEXOS ==================== */}
+          <TabsContent value="anexos" className="flex-1 overflow-y-auto p-6 space-y-4">
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-black text-xl flex items-center gap-2" style={{ color: '#003DA5' }}>
+                  <LinkIcon className="w-6 h-6" /> Procesos Anexados
+                </h3>
+                <Button 
+                  onClick={() => setModalAnexarAbierto(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Anexar Proceso
+                </Button>
+              </div>
+              
+              <div className="space-y-4">
+                {(proceso as any).procesosAnexados && (proceso as any).procesosAnexados.length > 0 ? (
+                  (proceso as any).procesosAnexados.map((anexo: any) => (
+                    <div key={anexo.id} className="flex flex-col md:flex-row gap-4 p-4 border rounded-lg bg-gray-50 items-start md:items-center justify-between">
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-blue-100 text-blue-800">{anexo.radicado}</Badge>
+                          <Badge variant="outline">{anexo.estado}</Badge>
+                        </div>
+                        <p className="text-sm"><strong>Investigado:</strong> {anexo.investigado || 'No registrado'}</p>
+                        <p className="text-sm"><strong>Tipo Falta:</strong> {anexo.tipoFalta || 'No especificada'}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                         <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                          onClick={() => {
+                            if (onVerExpedienteAnexado) {
+                              onVerExpedienteAnexado(anexo.radicado || anexo.id);
+                            } else {
+                              toast.info('La visualización de expedientes anexados no está configurada');
+                            }
+                          }}
+                        >
+                          <Eye className="w-4 h-4 mr-2" />
+                          Ver Expediente
+                        </Button>
+                         <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                          onClick={async () => {
+                            if (window.confirm('¿Está seguro de desanexar este proceso?')) {
+                                try {
+                                    await legalService.desanexarJuzgamientoProceso(anexo.radicado || anexo.id, 'Usuario Actual');
+                                    toast.success('Proceso desanexado exitosamente');
+                                    setHasChanges(true);
+                                    onRefresh?.();
+                                } catch(e: any) {
+                                    toast.error('Error al desanexar proceso');
+                                }
+                            }
+                          }}
+                        >
+                          <Unlink className="w-4 h-4 mr-2" />
+                          Desanexar
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center p-8 border-2 border-dashed rounded-lg bg-gray-50 text-gray-500">
+                    <LinkIcon className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="font-semibold mb-1">No hay procesos anexados</p>
+                    <p className="text-sm">Haga clic en "Anexar Proceso" para vincular otro expediente a este proceso.</p>
+                  </div>
+                )}
+              </div>
+            </Card>
           </TabsContent>
         </Tabs>
 
@@ -1903,5 +2129,27 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         </Dialog>
       )}
     </Dialog>
+
+      {/* Modal Anexar Proceso Disciplinario */}
+      {modalAnexarAbierto && (
+        <ModalAnexarProcesoDisciplinario
+          isOpen={modalAnexarAbierto}
+          onClose={() => setModalAnexarAbierto(false)}
+          procesoActual={{
+            id: proceso.id,
+            uuid: (proceso as any).uuid,
+            disciplinado: proceso.disciplinado,
+            investigado: (proceso as any).investigado,
+            tipoFalta: proceso.tipoFalta,
+            etapa: proceso.etapa
+          }}
+          onAnexado={() => {
+            setHasChanges(true);
+            setModalAnexarAbierto(false);
+            onRefresh?.();
+          }}
+        />
+      )}
+    </>
   );
 }

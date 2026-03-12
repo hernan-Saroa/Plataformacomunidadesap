@@ -40,7 +40,6 @@ interface Props {
     entidadCorreo: string;
     tipoRemision: string;
     justificacion: string;
-    fundamentoLegal: string;
     numeroRC: string;
   }) => void;
 }
@@ -74,7 +73,6 @@ const FUNDAMENTOS_LEGALES = [
 export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClose, onConfirm }: Props) {
   const [entidadId, setEntidadId] = useState('');
   const [tipoRemision, setTipoRemision] = useState('');
-  const [fundamentoLegal, setFundamentoLegal] = useState('');
   const [justificacion, setJustificacion] = useState('');
   const [enviando, setEnviando] = useState(false);
 
@@ -87,13 +85,11 @@ export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClos
 
   const esValido = entidadId
     && tipoRemision
-    && fundamentoLegal
     && justificacion.trim().length >= 20;
 
   const handleRemitir = () => {
     if (!entidadId) { toast.error('Validacion', { description: 'Selecciona la entidad de destino' }); return; }
     if (!tipoRemision) { toast.error('Validacion', { description: 'Selecciona el tipo de remision' }); return; }
-    if (!fundamentoLegal) { toast.error('Validacion', { description: 'Selecciona el fundamento legal' }); return; }
     if (justificacion.trim().length < 20) { toast.error('Validacion', { description: 'La justificacion debe tener al menos 20 caracteres' }); return; }
 
     setEnviando(true);
@@ -110,7 +106,6 @@ export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClos
         entidadCorreo: entidadSeleccionada?.correo || '',
         tipoRemision,
         justificacion: justificacion.trim(),
-        fundamentoLegal,
         numeroRC,
       });
       setEnviando(false);
@@ -193,17 +188,6 @@ export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClos
           <option value="">Selecciona el tipo...</option>
           {TIPOS_REMISION.map(t => (
             <option key={t.value} value={t.value}>{t.label}</option>
-          ))}
-        </WCSelect>
-      </div>
-
-      {/* Fundamento legal */}
-      <div>
-        <WCLabel required>Fundamento legal</WCLabel>
-        <WCSelect value={fundamentoLegal} onChange={e => setFundamentoLegal(e.target.value)}>
-          <option value="">Selecciona el fundamento...</option>
-          {FUNDAMENTOS_LEGALES.map(f => (
-            <option key={f.value} value={f.value}>{f.label}</option>
           ))}
         </WCSelect>
       </div>
