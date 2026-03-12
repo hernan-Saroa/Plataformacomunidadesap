@@ -6,14 +6,15 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Settings, Bell, Sliders, Columns, Users } from 'lucide-react';
+import { Settings, Bell, Sliders, Columns, Users, Layers } from 'lucide-react';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
 import { NotificacionesModule } from './NotificacionesModule';
 import { ConfiguracionAuditoriasModule } from './ConfiguracionAuditoriasModule';
 import { ConfiguracionKanbanModule } from './ConfiguracionKanbanModule';
 import { ConfiguracionProfesionalesModule } from './ConfiguracionProfesionalesModule';
+import { ConfiguracionProcesosModule } from './ConfiguracionProcesosModule';
 
-type TabActiva = 'NOTIFICACIONES' | 'CONFIG_AUDITORIAS' | 'CONFIG_KANBAN' | 'PROFESIONALES_OCIG';
+type TabActiva = 'NOTIFICACIONES' | 'CONFIG_AUDITORIAS' | 'CONFIG_KANBAN' | 'PROFESIONALES_OCIG' | 'PROCESOS';
 
 export function ConfiguracionesModulePremium() {
   const [tabActiva, setTabActiva] = useState<TabActiva>('NOTIFICACIONES');
@@ -29,6 +30,7 @@ export function ConfiguracionesModulePremium() {
             <TabButton active={tabActiva === 'CONFIG_AUDITORIAS'} onClick={() => setTabActiva('CONFIG_AUDITORIAS')} icon={<Sliders className="w-4 h-4" />} label="Config. Auditorías" />
             <TabButton active={tabActiva === 'CONFIG_KANBAN'} onClick={() => setTabActiva('CONFIG_KANBAN')} icon={<Columns className="w-4 h-4" />} label="Config. Kanban" />
             <TabButton active={tabActiva === 'PROFESIONALES_OCIG'} onClick={() => setTabActiva('PROFESIONALES_OCIG')} icon={<Users className="w-4 h-4" />} label="Profesionales OCIG" />
+            <TabButton active={tabActiva === 'PROCESOS'} onClick={() => setTabActiva('PROCESOS')} icon={<Layers className="w-4 h-4" />} label="Procesos" />
           </div>
         </div>
       </div>
@@ -39,6 +41,7 @@ export function ConfiguracionesModulePremium() {
           {tabActiva === 'CONFIG_AUDITORIAS' && <ConfiguracionAuditoriasModule />}
           {tabActiva === 'CONFIG_KANBAN' && <ConfiguracionKanbanModule />}
           {tabActiva === 'PROFESIONALES_OCIG' && <ConfiguracionProfesionalesModule />}
+          {tabActiva === 'PROCESOS' && <ConfiguracionProcesosModule />}
         </motion.div>
       </AnimatePresence>
     </div>

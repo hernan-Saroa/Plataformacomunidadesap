@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsOptional, IsObject, IsInt, Min, Max } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsObject, IsInt, Min, Max, IsBoolean } from 'class-validator';
 import { TipoProceso } from '../entities/proceso-auditable.entity';
 
 export class UpdateProcesoAuditableDto {
@@ -79,5 +79,9 @@ export class UpdateProcesoAuditableDto {
 
   @IsOptional()
   proximaAuditoria?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
 }
 

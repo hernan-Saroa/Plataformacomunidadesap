@@ -928,7 +928,7 @@ export class ProcessController {
       console.log('📧 [RemitirCompetencia] HTML del correo construido');
 
       // 3. Enviar el correo usando el servicio de notificaciones
-      const notificationsServiceUrl = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3003';
+      const notificationsServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
       console.log('📧 [RemitirCompetencia] URL del servicio de notificaciones:', notificationsServiceUrl);
 
       const emailPayload = {
@@ -941,7 +941,7 @@ export class ProcessController {
       console.log('📧 [RemitirCompetencia] Enviando correo a:', dto.emailDestinatario);
 
       const response = await firstValueFrom(
-        this.httpService.post(`${notificationsServiceUrl}/emails/send`, emailPayload),
+        this.httpService.post(`${notificationsServiceUrl}/api/v1/emails/send`, emailPayload),
       );
 
       console.log('📧 [RemitirCompetencia] Respuesta del servicio de notificaciones:', response.data);

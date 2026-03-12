@@ -90,12 +90,20 @@ export interface FormularioDafpData {
   auditable?: boolean;
 }
 
+export interface ProcesoParaSelect {
+  id: string;
+  nombre: string;
+  codigo: string;
+}
+
 interface FormularioProcesoDafpProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (proceso: FormularioDafpData) => void;
+  onSubmit: (proceso: FormularioDafpData, procesoId?: string) => void;
   procesoInicial?: FormularioDafpData | null;
   mode: 'create' | 'edit';
+  /** Procesos activos del catálogo (para dropdown obligatorio) */
+  procesosCatalog?: ProcesoParaSelect[];
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -107,9 +115,11 @@ export function FormularioProcesoDafpVisual({
   onClose,
   onSubmit,
   procesoInicial,
-  mode
+  mode,
+  procesosCatalog = [],
 }: FormularioProcesoDafpProps) {
   
+  const [procesoIdSeleccionado, setProcesoIdSeleccionado] = useState<string>(procesoInicial?.id || '');
   const [formData, setFormData] = useState<FormularioDafpData>({
     nombre: procesoInicial?.nombre || '',
     vigencia: procesoInicial?.vigencia || new Date().getFullYear(),
@@ -189,9 +199,18 @@ export function FormularioProcesoDafpVisual({
     formData.fechaCorte
   ]);
 
+  useEffect(() => {
+    if (procesoInicial?.id) setProcesoIdSeleccionado(procesoInicial.id);
+  }, [procesoInicial?.id]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    const usarCatalogo = procesosCatalog.length > 0;
+    if (usarCatalogo && !procesoIdSeleccionado) {
+      toast.error('Debe seleccionar un proceso del catálogo');
+      return;
+    }
     if (!formData.nombre) {
       toast.error('El nombre del proceso es obligatorio');
       return;
@@ -217,7 +236,7 @@ export function FormularioProcesoDafpVisual({
       });
     }
 
-    onSubmit(formData);
+    onSubmit(formData, procesoIdSeleccionado || undefined);
   };
 
   const handleChange = (field: keyof FormularioDafpData, value: any) => {
@@ -301,41 +320,38 @@ export function FormularioProcesoDafpVisual({
                     <label className="block text-xs font-bold text-gray-700 mb-1.5">
                       Proceso/Proyecto/Procedimiento <span className="text-red-500">*</span>
                     </label>
-                    <select
-                      value={formData.nombre}
-                      onChange={(e) => handleChange('nombre', e.target.value)}
-                      className="w-full px-3 py-2.5 text-sm border-2 border-gray-300 rounded-lg focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/20 outline-none transition-all bg-white"
-                      required
-                    >
-                      <option value="">-- Seleccione un proceso --</option>
-                      <optgroup label="🎯 Procesos Misionales">
-                        <option value="Diseño y desarrollo de políticas para la gobernabilidad y gobernanza de las administraciones públicas">Diseño y desarrollo de políticas para la gobernabilidad y gobernanza</option>
-                        <option value="Fortalecimiento y desarrollo de la gestión y desempeño en las administraciones públicas">Fortalecimiento y desarrollo de la gestión y desempeño</option>
-                        <option value="Fortalecimiento de los grupos de valor para la gobernabilidad y gobernanza pública">Fortalecimiento de los grupos de valor</option>
-                      </optgroup>
-                      <optgroup label="🏎️ Procesos Estratégicos">
-                        <option value="Planeación y presupuesto">Planeación y presupuesto</option>
-                        <option value="Mejoramiento institucional">Mejoramiento institucional</option>
-                        <option value="Gestión de las tecnologías de la información">Gestión de las tecnologías de la información</option>
-                        <option value="Dirección Estratégica">Dirección Estratégica</option>
-                        <option value="Información Estratégica y Estadística">Información Estratégica y Estadística</option>
-                        <option value="Comunicación Estratégica">Comunicación Estratégica</option>
-                        <option value="Fortalecimiento Estado-Ciudadanías">Fortalecimiento Estado-Ciudadanías</option>
-                      </optgroup>
-                      <optgroup label="🛠️ Procesos de Apoyo">
-                        <option value="Gestión Financiera">Gestión Financiera</option>
-                        <option value="Gestión Documental">Gestión Documental</option>
-                        <option value="Defensa Jurídica">Defensa Jurídica</option>
-                        <option value="Gestión Contractual">Gestión Contractual</option>
-                        <option value="Gestión Administrativa">Gestión Administrativa</option>
-                        <option value="Gestión del Talento Humano">Gestión del Talento Humano</option>
-                      </optgroup>
-                      <optgroup label="✅ Procesos de Evaluación">
-                        <option value="Seguimiento y Evaluación">Seguimiento y Evaluación</option>
-                        <option value="Control Disciplinario Interno">Control Disciplinario Interno</option>
-                        <option value="Evaluación Independiente">Evaluación Independiente</option>
-                      </optgroup>
-                    </select>
+                    {procesosCatalog.length > 0 ? (
+                      <select
+                        value={procesoIdSeleccionado}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          setProcesoIdSeleccionado(id);
+                          const proc = procesosCatalog.find(p => p.id === id);
+                          if (proc) {
+                            setFormData(prev => ({ ...prev, nombre: proc.nombre, codigo: proc.codigo }));
+                          }
+                        }}
+                        className="w-full px-3 py-2.5 text-sm border-2 border-gray-300 rounded-lg focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/20 outline-none transition-all bg-white"
+                        required
+                      >
+                        <option value="">-- Seleccione un proceso --</option>
+                        {procesosCatalog.map((p) => (
+                          <option key={p.id} value={p.id}>{p.nombre}</option>
+                        ))}
+                      </select>
+                    ) : procesoInicial ? (
+                      <input
+                        type="text"
+                        value={formData.nombre}
+                        readOnly
+                        className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg bg-gray-50"
+                      />
+                    ) : (
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                        <AlertTriangle className="w-4 h-4 inline mr-2" />
+                        Cree procesos en Configuración → Procesos primero.
+                      </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>

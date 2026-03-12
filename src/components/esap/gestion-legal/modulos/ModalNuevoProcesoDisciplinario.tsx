@@ -14,7 +14,7 @@ import { Badge } from '../../../ui/badge';
 import { Card } from '../../../ui/card';
 import { toast } from 'sonner';
 
-import { legalService } from '../../../../services/api/legal.service';
+import { disciplinaryService } from '../../../../services/api/disciplinary.service';
 import {
   Gavel, User, FileText, AlertTriangle, Calendar,
   Save, X, Building, Info, CheckCircle
@@ -104,17 +104,26 @@ export function ModalNuevoProcesoDisciplinario({
 
   const [guardando, setGuardando] = useState(false);
 
-  // ========== ABOGADOS DESDE BACKEND (legal-management-service) ==========
+  // ========== PROFESIONALES DESDE BACKEND (control-disciplinario-service) ==========
+  // ✅ Usa el mismo endpoint que el módulo disciplinario (funciona en QA sin cambios de docker)
   const [profesionales, setProfesionales] = useState<{ id: string; nombreCompleto: string; especialidad: string }[]>([]);
 
   useEffect(() => {
     if (isOpen) {
-      legalService.getAbogados()
+      disciplinaryService.getProfesionales()
         .then((data: any[]) => {
-          setProfesionales(data.filter((p: any) => p.estado === 'ACTIVO'));
+          setProfesionales(
+            data
+              .filter((p: any) => (p.estado || 'ACTIVO').toUpperCase() === 'ACTIVO')
+              .map((p: any) => ({
+                id: p.id,
+                nombreCompleto: p.nombreCompleto || p.nombre || p.email || 'Sin nombre',
+                especialidad: p.especialidad || p.cargo || 'General'
+              }))
+          );
         })
         .catch((err: any) => {
-          console.error('Error cargando abogados:', err);
+          console.error('Error cargando profesionales:', err);
           setProfesionales([]);
         });
     }
@@ -216,15 +225,21 @@ export function ModalNuevoProcesoDisciplinario({
     }
   };
 
+  // ✅ Estado para confirmar cancelación sin diálogo nativo (evita mostrar IP del servidor)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
   const handleCancel = () => {
     if (completedFields > 0) {
-      if (confirm('¿Desea cancelar? Se perderán los datos ingresados.')) {
-        resetForm();
-        onClose();
-      }
+      setShowCancelConfirm(true);
     } else {
       onClose();
     }
+  };
+
+  const confirmarCancelacion = () => {
+    setShowCancelConfirm(false);
+    resetForm();
+    onClose();
   };
 
   // ✅ Hooks responsive
@@ -267,6 +282,36 @@ export function ModalNuevoProcesoDisciplinario({
         {/* ==================== CONTENIDO CON SCROLL ==================== */}
         <div className="flex-1 overflow-y-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4 bg-gray-50">
           <div className="space-y-4 sm:space-y-6">
+
+            {/* ✅ CONFIRMACIÓN DE CANCELACIÓN (reemplaza confirm() nativo que mostraba IP) */}
+            {showCancelConfirm && (
+              <Card className="p-4 bg-red-50 border-2 border-red-300 animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-bold text-sm text-red-900">¿Desea cancelar?</p>
+                    <p className="text-xs text-red-700 mt-1">Se perderán los datos ingresados en el formulario.</p>
+                    <div className="flex gap-2 mt-3">
+                      <Button
+                        size="sm"
+                        onClick={confirmarCancelacion}
+                        className="bg-red-600 hover:bg-red-700 text-white text-xs"
+                      >
+                        Sí, cancelar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowCancelConfirm(false)}
+                        className="text-xs"
+                      >
+                        Continuar editando
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            )}
 
             {/* ✅ PROGRESO DEL FORMULARIO */}
             <FormProgress completed={completedFields} total={totalFields} />
