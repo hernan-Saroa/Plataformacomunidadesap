@@ -154,10 +154,17 @@ export class UniversoAuditoriasService {
     nivelRiesgo?: string;
     territorial?: string;
     search?: string;
+    soloActivos?: boolean;
   }): Promise<ProcesoAuditable[]> {
     const query = this.procesoRepository.createQueryBuilder('proceso')
       .orderBy('proceso.prioridad', 'DESC')
       .addOrderBy('proceso.createdAt', 'DESC');
+
+    // Por defecto solo procesos activos (catálogo parametrizado)
+    const soloActivos = filters?.soloActivos !== false;
+    if (soloActivos) {
+      query.andWhere('(proceso.activo IS NULL OR proceso.activo = :activo)', { activo: true });
+    }
 
     if (filters?.tipo) {
       query.andWhere('proceso.tipo = :tipo', { tipo: filters.tipo });
@@ -248,6 +255,7 @@ export class UniversoAuditoriasService {
       proximaAuditoria,
       prioridad,
       priorizacionAnos,
+      activo: true,
     });
 
     return this.procesoRepository.save(proceso);
@@ -322,9 +330,11 @@ export class UniversoAuditoriasService {
     // Si se actualiza la prioridad directamente (sin cambiar evaluación de riesgo)
     if (updateDto.prioridad !== undefined) {
       proceso.prioridad = updateDto.prioridad;
-      // Recalcular priorizacionAnos basado en la prioridad
-      // prioridad 1 = 4 años, 2 = 3 años, 3 = 2 años, 4 = 1 año
       proceso.priorizacionAnos = 5 - updateDto.prioridad;
+    }
+
+    if (updateDto.activo !== undefined) {
+      proceso.activo = updateDto.activo;
     }
 
     return this.procesoRepository.save(proceso);
@@ -336,6 +346,20 @@ export class UniversoAuditoriasService {
   async delete(id: string): Promise<void> {
     const proceso = await this.findOne(id);
     await this.procesoRepository.remove(proceso);
+  }
+
+  /**
+   * Inactiva un proceso (sin eliminar - mantiene historial)
+   */
+  async inactivar(id: string): Promise<ProcesoAuditable> {
+    return this.update(id, { activo: false });
+  }
+
+  /**
+   * Reactiva un proceso
+   */
+  async activar(id: string): Promise<ProcesoAuditable> {
+    return this.update(id, { activo: true });
   }
 
   /**

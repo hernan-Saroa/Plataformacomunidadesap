@@ -408,10 +408,11 @@ class ControlInternoService {
   // ==========================================================================
   
   /**
-   * Obtiene todos los procesos auditables
+   * Obtiene procesos auditables. Por defecto solo activos (para catálogo parametrizado).
    */
-  async getProcesosAuditables(): Promise<ProcesoAuditable[]> {
-    return client.get<ProcesoAuditable[]>('/universo-auditorias/procesos');
+  async getProcesosAuditables(soloActivos = true): Promise<ProcesoAuditable[]> {
+    const q = soloActivos ? '' : '?soloActivos=false';
+    return client.get<ProcesoAuditable[]>(`/universo-auditorias/procesos${q}`);
   }
   
   /**
@@ -440,6 +441,20 @@ class ControlInternoService {
    */
   async deleteProceso(id: string): Promise<void> {
     return client.delete(`/universo-auditorias/procesos/${id}`);
+  }
+
+  /**
+   * Inactiva un proceso (sin eliminar historial)
+   */
+  async inactivarProceso(id: string): Promise<ProcesoAuditable> {
+    return client.patch<ProcesoAuditable>(`/universo-auditorias/procesos/${id}/inactivar`, {});
+  }
+
+  /**
+   * Reactiva un proceso
+   */
+  async activarProceso(id: string): Promise<ProcesoAuditable> {
+    return client.patch<ProcesoAuditable>(`/universo-auditorias/procesos/${id}/activar`, {});
   }
 
   /**
