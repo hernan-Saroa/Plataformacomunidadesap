@@ -323,7 +323,7 @@ export class AuditoriasController {
   }
 
   /**
-   * GET /esap/auditorias/:id/notas
+   * GET /auditorias/:id/notas
    * Obtiene todas las notas de una auditoría
    */
   @Get(':id/notas')
@@ -334,7 +334,43 @@ export class AuditoriasController {
   }
 
   /**
-   * GET /esap/auditorias/:id
+   * GET /auditorias/:id/comunicacion/estado
+   * Estado del flujo de comunicación para la UI
+   */
+  @Get(':id/comunicacion/estado')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  async getEstadoComunicacion(@Param('id') id: string) {
+    const [hallazgos, auditoria] = await Promise.all([
+      this.hallazgosService.findByAuditoria(id),
+      this.auditoriasService.findOne(id),
+    ]);
+    // Informe preliminar generado = ningún hallazgo en borrador (incluye 0 hallazgos)
+    const hayEnBorrador = hallazgos.some((h: any) => (h.estado || '').toLowerCase() === 'borrador');
+    const informePreliminarGenerado = !hayEnBorrador;
+    const hayControversiasPendientes = await this.hallazgosService.hayControversiasPendientes(id);
+    const todosCerrados = hallazgos.length === 0 || hallazgos.every((h: any) =>
+      ['aceptado', 'ratificado', 'modificado', 'retirado', 'cerrado'].includes(h.estado),
+    );
+    const checklist = (auditoria as any).checklistCompletados || {};
+    const informeFinalGenerado = !!checklist.informeFinalGenerado;
+    const informeEjecutivoGenerado = !!checklist.informeEjecutivoGenerado;
+    return {
+      informePreliminarGenerado,
+      informeFinalGenerado,
+      informeEjecutivoGenerado,
+      hayControversiasPendientes,
+      puedeGenerarInformeFinal: !hayControversiasPendientes && todosCerrados,
+      conteo: {
+        pendiente: hallazgos.filter((h: any) => h.estado === 'notificado').length,
+        aceptado: hallazgos.filter((h: any) => h.estado === 'aceptado').length,
+        enControversia: hallazgos.filter((h: any) => h.estado === 'en-controversia').length,
+      },
+    };
+  }
+
+  /**
+   * GET /auditorias/:id
    * Obtiene una auditoría por ID
    */
   @Get(':id')
@@ -481,6 +517,58 @@ export class AuditoriasController {
       body.finalizadaPor || 'Sistema',
       body.finalizadaPorId ? parseInt(body.finalizadaPorId, 10) : null,
     );
+  }
+
+  /**
+   * POST /auditorias/:id/informe-final/generar
+   * Marca informe final como generado (persiste en checklist)
+   */
+  @Post(':id/informe-final/generar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
+  async generarInformeFinal(@Param('id') id: string) {
+    await this.auditoriasService.update(id, {
+      checklistCompletados: { informeFinalGenerado: true },
+    });
+    return { generado: true, mensaje: 'Informe Final generado' };
+  }
+
+  /**
+   * POST /auditorias/:id/informe-ejecutivo/generar
+   * Marca informe ejecutivo como generado (persiste en checklist)
+   */
+  @Post(':id/informe-ejecutivo/generar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
+  async generarInformeEjecutivo(@Param('id') id: string) {
+    await this.auditoriasService.update(id, {
+      checklistCompletados: { informeEjecutivoGenerado: true },
+    });
+    return { generado: true, mensaje: 'Informe Ejecutivo generado' };
+  }
+
+  /**
+   * POST /auditorias/:id/informe-preliminar/generar
+   * Genera informe preliminar y notifica al área (actualiza hallazgos a NOTIFICADO)
+   */
+  @Post(':id/informe-preliminar/generar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
+  async generarInformePreliminar(@Param('id') id: string) {
+    const { count, total } = await this.hallazgosService.notificarHallazgosAuditoria(id);
+    let mensaje: string;
+    if (count > 0) {
+      mensaje = `Informe preliminar generado. ${count} hallazgo(s) notificado(s) al área auditada. Período de 10 días hábiles iniciado.`;
+    } else if (total > 0) {
+      mensaje = `Informe preliminar generado. Los ${total} hallazgo(s) ya estaban notificados o procesados (aceptados/ratificados).`;
+    } else {
+      mensaje = 'Informe preliminar generado. No hay hallazgos registrados en esta auditoría.';
+    }
+    return {
+      generado: true,
+      hallazgosNotificados: count,
+      mensaje,
+    };
   }
 
   /**

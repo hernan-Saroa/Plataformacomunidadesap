@@ -408,10 +408,11 @@ class ControlInternoService {
   // ==========================================================================
   
   /**
-   * Obtiene todos los procesos auditables
+   * Obtiene procesos auditables. Por defecto solo activos (para catálogo parametrizado).
    */
-  async getProcesosAuditables(): Promise<ProcesoAuditable[]> {
-    return client.get<ProcesoAuditable[]>('/universo-auditorias/procesos');
+  async getProcesosAuditables(soloActivos = true): Promise<ProcesoAuditable[]> {
+    const q = soloActivos ? '' : '?soloActivos=false';
+    return client.get<ProcesoAuditable[]>(`/universo-auditorias/procesos${q}`);
   }
   
   /**
@@ -440,6 +441,20 @@ class ControlInternoService {
    */
   async deleteProceso(id: string): Promise<void> {
     return client.delete(`/universo-auditorias/procesos/${id}`);
+  }
+
+  /**
+   * Inactiva un proceso (sin eliminar historial)
+   */
+  async inactivarProceso(id: string): Promise<ProcesoAuditable> {
+    return client.patch<ProcesoAuditable>(`/universo-auditorias/procesos/${id}/inactivar`, {});
+  }
+
+  /**
+   * Reactiva un proceso
+   */
+  async activarProceso(id: string): Promise<ProcesoAuditable> {
+    return client.patch<ProcesoAuditable>(`/universo-auditorias/procesos/${id}/activar`, {});
   }
 
   /**
@@ -621,6 +636,62 @@ class ControlInternoService {
    */
   async getHallazgosByAuditoria(auditoriaId: string): Promise<Hallazgo[]> {
     return client.get<Hallazgo[]>(`/auditorias/${auditoriaId}/hallazgos`);
+  }
+
+  /**
+   * Área auditada acepta el hallazgo
+   */
+  async aceptarHallazgo(hallazgoId: string): Promise<Hallazgo> {
+    return client.post<Hallazgo>(`/hallazgos/${hallazgoId}/aceptar`, {});
+  }
+
+  /**
+   * Área auditada presenta controversia (documento debe subirse antes vía POST /documentos)
+   */
+  async presentarControversia(
+    hallazgoId: string,
+    data: { argumentos: string; documentoId: string; documentoNombre: string },
+  ): Promise<Hallazgo> {
+    return client.post<Hallazgo>(`/hallazgos/${hallazgoId}/controversia`, data);
+  }
+
+  /**
+   * Auditor toma decisión sobre controversia
+   */
+  async decisionAuditor(
+    hallazgoId: string,
+    data: { tipoDecision: 'ratificado' | 'modificado' | 'retirado'; fundamentacionTecnica: string; auditorId?: number },
+  ): Promise<Hallazgo> {
+    return client.post<Hallazgo>(`/hallazgos/${hallazgoId}/decision-auditor`, data);
+  }
+
+  /**
+   * Genera informe preliminar y notifica al área (actualiza hallazgos a NOTIFICADO)
+   */
+  async generarInformePreliminar(auditoriaId: string): Promise<{ generado: boolean; hallazgosNotificados: number; mensaje: string }> {
+    return client.post<any>(`/auditorias/${auditoriaId}/informe-preliminar/generar`, {});
+  }
+
+  /**
+   * Estado del flujo de comunicación para la UI
+   */
+  async getEstadoComunicacion(auditoriaId: string): Promise<{
+    informePreliminarGenerado: boolean;
+    informeFinalGenerado?: boolean;
+    informeEjecutivoGenerado?: boolean;
+    hayControversiasPendientes: boolean;
+    puedeGenerarInformeFinal: boolean;
+    conteo: { pendiente: number; aceptado: number; enControversia: number };
+  }> {
+    return client.get<any>(`/auditorias/${auditoriaId}/comunicacion/estado`);
+  }
+
+  async generarInformeFinal(auditoriaId: string) {
+    return client.post<any>(`/auditorias/${auditoriaId}/informe-final/generar`, {});
+  }
+
+  async generarInformeEjecutivo(auditoriaId: string) {
+    return client.post<any>(`/auditorias/${auditoriaId}/informe-ejecutivo/generar`, {});
   }
   
   // ==========================================================================
@@ -1616,21 +1687,9 @@ class ControlInternoService {
     return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/ejecucion/completar`);
   }
 
-  // Comunicación
+  // Comunicación - generarInformeFinal y generarInformeEjecutivo usan /auditorias/ (ver métodos arriba)
   async iniciarComunicacion(auditoriaId: string, data: any): Promise<any> {
     return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/comunicacion/iniciar`, data);
-  }
-
-  async generarInformePreliminar(auditoriaId: string): Promise<any> {
-    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/comunicacion/generar-informe-preliminar`);
-  }
-
-  async generarInformeFinal(auditoriaId: string): Promise<any> {
-    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/comunicacion/generar-informe-final`);
-  }
-
-  async generarInformeEjecutivo(auditoriaId: string): Promise<any> {
-    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/comunicacion/generar-informe-ejecutivo`);
   }
 
   async completarComunicacion(auditoriaId: string): Promise<any> {

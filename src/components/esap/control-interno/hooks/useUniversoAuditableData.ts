@@ -156,7 +156,7 @@ export function mapBackendToUI(proceso: BackendProcesoAuditable): ProcesoAuditab
     ultimaAuditoria: proceso.ultimaAuditoria || undefined,
     resultadoUltimaAuditoria: (proceso as any).resultadoUltimaAuditoria || undefined,
     frecuenciaAuditoria: frecuencia,
-    activo: true,
+    activo: (proceso as any).activo !== false,
     // Campos que espera la tabla (nombres legacy)
     codigo: proceso.codigo,
     macroproceso: proceso.macroproceso || 'General',
@@ -336,6 +336,8 @@ export function mapFormularioDafpToBackend(formData: any): Partial<BackendProces
 interface UseUniversoAuditableDataOptions {
   autoFetch?: boolean;
   showToasts?: boolean;
+  /** Si true, incluye procesos inactivos (para Config → Procesos) */
+  incluirInactivos?: boolean;
 }
 
 interface UseUniversoAuditableDataReturn {
@@ -360,7 +362,7 @@ interface UseUniversoAuditableDataReturn {
 export function useUniversoAuditableData(
   options: UseUniversoAuditableDataOptions = {}
 ): UseUniversoAuditableDataReturn {
-  const { autoFetch = true, showToasts = true } = options;
+  const { autoFetch = true, showToasts = true, incluirInactivos = false } = options;
   
   const [procesos, setProcesos] = useState<ProcesoAuditableUI[]>([]);
   const [loading, setLoading] = useState(true);
@@ -374,7 +376,7 @@ export function useUniversoAuditableData(
     setError(null);
     
     try {
-      const backendProcesos = await controlInternoService.getProcesosAuditables();
+      const backendProcesos = await controlInternoService.getProcesosAuditables(!incluirInactivos);
       
       if (Array.isArray(backendProcesos) && backendProcesos.length > 0) {
         const mapped = backendProcesos.map(mapBackendToUI);

@@ -451,9 +451,9 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
             setMostrarFormularioProceso(false);
             setProcesoSeleccionado(null);
           }}
-          onSubmit={(proceso) => {
-            if (procesoSeleccionado) {
-              handleEditarProceso(proceso, procesoSeleccionado.id);
+          onSubmit={(proceso, procesoId) => {
+            if (procesoId || procesoSeleccionado) {
+              handleEditarProceso(proceso, procesoId || procesoSeleccionado!.id);
             } else {
               handleAgregarProceso(proceso);
             }
@@ -462,6 +462,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
           }}
           procesoInicial={convertirProcesoAFormulario(procesoSeleccionado)}
           mode={procesoSeleccionado ? 'edit' : 'create'}
+          procesosCatalog={procesos.map(p => ({ id: p.id, nombre: p.nombre, codigo: p.codigo }))}
         />
       )}
     </div>
