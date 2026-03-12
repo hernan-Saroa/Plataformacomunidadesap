@@ -4093,6 +4093,7 @@ export function GestionAuditoriasKanbanSimple() {
               setModalExpedienteOpen(false);
               setAuditoriaSeleccionada(null);
             }}
+            onComunicacionCompletada={recargarAuditorias}
           />
         )}
 

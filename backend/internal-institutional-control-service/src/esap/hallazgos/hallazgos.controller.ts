@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -18,6 +19,7 @@ import { ControlInternoPermissions as CIP } from '../../common/permissions.const
 import { HallazgosService } from './hallazgos.service';
 import { CreateHallazgoDto } from './dto/create-hallazgo.dto';
 import { UpdateHallazgoDto } from './dto/update-hallazgo.dto';
+import { DecisionAuditorDto } from './dto/decision-auditor.dto';
 import { HallazgoCategoria } from './entities/hallazgo.entity';
 
 @Controller('hallazgos')
@@ -87,6 +89,53 @@ export class HallazgosController {
   @Permissions(CIP.HALLAZGO_CREATE)
   create(@Body() createDto: CreateHallazgoDto) {
     return this.hallazgosService.create(createDto);
+  }
+
+  /**
+   * POST /hallazgos/:id/aceptar
+   * Área auditada acepta el hallazgo
+   */
+  @Post(':id/aceptar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.HALLAZGO_EDIT)
+  aceptar(@Param('id') id: string) {
+    return this.hallazgosService.aceptar(id);
+  }
+
+  /**
+   * POST /hallazgos/:id/controversia
+   * Área auditada presenta controversia (requiere subir documento antes vía POST /documentos)
+   */
+  @Post(':id/controversia')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.HALLAZGO_EDIT)
+  presentarControversia(
+    @Param('id') id: string,
+    @Body() body: { argumentos: string; documentoId: string; documentoNombre: string },
+  ) {
+    const { argumentos, documentoId, documentoNombre } = body;
+    if (!documentoId || !documentoNombre) {
+      throw new BadRequestException(
+        'documentoId y documentoNombre son obligatorios (subir archivo vía POST /documentos primero)',
+      );
+    }
+    return this.hallazgosService.presentarControversia(id, argumentos, documentoId, documentoNombre);
+  }
+
+  /**
+   * POST /hallazgos/:id/decision-auditor
+   * Auditor toma decisión sobre controversia
+   */
+  @Post(':id/decision-auditor')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.HALLAZGO_EDIT)
+  decisionAuditor(@Param('id') id: string, @Body() dto: DecisionAuditorDto) {
+    return this.hallazgosService.decisionAuditor(
+      id,
+      dto.tipoDecision,
+      dto.fundamentacionTecnica,
+      dto.auditorId,
+    );
   }
 
   /**
