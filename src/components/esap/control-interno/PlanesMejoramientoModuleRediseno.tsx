@@ -44,6 +44,9 @@ import { useIntegracionAuditoriaPlanes } from './IntegracionAuditoriasPlanesCont
 // ✅ Hook de backend para planes de mejoramiento
 import { usePlanesMejoramiento, PlanMejoramientoKanban } from './services/usePlanesMejoramiento';
 
+// Validaciones
+import { validarPlanParaAuditoriaCompleta, mostrarErroresValidacion } from './utils/validaciones';
+
 // ✅ FASE 1 DÍA 2: Componentes responsive
 import { useResponsive } from '@/hooks/useResponsive';
 
@@ -426,17 +429,28 @@ export function PlanesMejoramientoModuleRediseno() {
     auditoriasConHallazgos,
     navegarAFormulacion,
     setNavegarAFormulacion,
+    auditoriaIdParaVerPlan,
+    limpiarVerPlan,
     crearPlan: crearPlanContext,
-    generarExpediente // ✅ NUEVO: Para generar expedientes
+    generarExpediente
   } = useIntegracionAuditoriaPlanes();
 
-  // Auto-abrir modal si viene desde auditorías
+  // Plan a abrir cuando viene de "Ir a ver plan" (plan ya existe)
+  const planIdParaAbrir = useMemo(() => {
+    if (!auditoriaIdParaVerPlan || planesBackend.length === 0) return null;
+    const plan = planesBackend.find(
+      (p: any) => (p.auditoriaId || p.auditoria_id || p.auditoria?.id) === auditoriaIdParaVerPlan
+    );
+    return plan?.id ?? null;
+  }, [auditoriaIdParaVerPlan, planesBackend]);
+
+  // Auto-abrir modal CREAR solo si viene desde auditorías para crear (no para ver)
   useEffect(() => {
-    if (auditoriaSeleccionada && navegarAFormulacion) {
+    if (auditoriaSeleccionada && navegarAFormulacion && !auditoriaIdParaVerPlan) {
       setModalCrearPlanOpen(true);
       setNavegarAFormulacion(false);
     }
-  }, [auditoriaSeleccionada, navegarAFormulacion, setNavegarAFormulacion]);
+  }, [auditoriaSeleccionada, navegarAFormulacion, setNavegarAFormulacion, auditoriaIdParaVerPlan]);
 
   const handleCrearPlanDesdeAuditoria = async (auditoria: any) => {
     if (!auditoria) return;
@@ -526,6 +540,15 @@ export function PlanesMejoramientoModuleRediseno() {
 
   // ✅ NUEVO: Handler para completar plan y generar expediente automáticamente
   const handleCompletarPlan = async (plan: PlanMejoramiento) => {
+    // 0. Validar requisitos mínimos: al menos 1 acción y 1 completada (para auditoría al 100%)
+    const validacionMinima = validarPlanParaAuditoriaCompleta(
+      plan.totalAcciones || 0,
+      plan.accionesCompletadas || 0
+    );
+    if (!validacionMinima.valido) {
+      mostrarErroresValidacion(validacionMinima);
+      return;
+    }
     // 1. Validar que esté 100% completo
     if (plan.porcentajeAvance < 100) {
       toast.error('El plan debe estar completado al 100%', {
@@ -649,6 +672,8 @@ export function PlanesMejoramientoModuleRediseno() {
           onAbrirCrearPlan={() => setModalCrearPlanOpen(true)}
           auditoriasDisponibles={auditoriasConHallazgos}
           onCompletarPlan={handleCompletarPlan}
+          planIdParaAbrir={planIdParaAbrir}
+          onPlanAbiertoParaVer={limpiarVerPlan}
         />
 
         {/* Modal Crear Plan desde Auditoría */}
@@ -684,15 +709,28 @@ interface SeguimientoViewProps {
   setPlanes: React.Dispatch<React.SetStateAction<PlanMejoramiento[]>>;
   onAbrirCrearPlan: () => void;
   auditoriasDisponibles: any[];
-  onCompletarPlan?: (plan: PlanMejoramiento) => void; // ✅ NUEVO
+  onCompletarPlan?: (plan: PlanMejoramiento) => void;
+  planIdParaAbrir?: string | null;
+  onPlanAbiertoParaVer?: () => void;
 }
 
-function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDisponibles, onCompletarPlan }: SeguimientoViewProps) {
-  const [vistaTablero, setVistaTablero] = useState<'kanban' | 'lista'>('lista'); // ✅ Vista por defecto: Lista
+function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDisponibles, onCompletarPlan, planIdParaAbrir, onPlanAbiertoParaVer }: SeguimientoViewProps) {
+  const [vistaTablero, setVistaTablero] = useState<'kanban' | 'lista'>('lista');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoPlan | 'TODOS'>('TODOS');
   const [planSeleccionado, setPlanSeleccionado] = useState<PlanMejoramiento | null>(null);
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
+
+  // Abrir detalle cuando viene de "Ir a ver plan"
+  useEffect(() => {
+    if (planIdParaAbrir && planes.length > 0) {
+      const plan = planes.find(p => p.id === planIdParaAbrir);
+      if (plan) {
+        setPlanSeleccionado(plan);
+        onPlanAbiertoParaVer?.();
+      }
+    }
+  }, [planIdParaAbrir, planes, onPlanAbiertoParaVer]);
 
   const planesFiltrados = useMemo(() => {
     let resultado = planes;
@@ -893,6 +931,7 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
           planes={planesFiltrados}
           onMoverPlan={handleMoverPlan}
           onAbrirPlan={setPlanSeleccionado}
+          onCompletarPlan={onCompletarPlan}
           columnasColapsadas={columnasColapsadas}
           onToggleColapso={toggleColapsoColumna}
         />
@@ -900,6 +939,7 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
         <VistaLista 
           planes={planesFiltrados}
           onAbrirPlan={setPlanSeleccionado}
+          onCompletarPlan={onCompletarPlan}
         />
       )}
 
@@ -922,11 +962,12 @@ interface VistaKanbanProps {
   planes: PlanMejoramiento[];
   onMoverPlan: (planId: string, nuevoEstado: EstadoPlan) => void;
   onAbrirPlan: (plan: PlanMejoramiento) => void;
+  onCompletarPlan?: (plan: PlanMejoramiento) => void;
   columnasColapsadas: Set<string>;
   onToggleColapso: (columnaId: string) => void;
 }
 
-function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onToggleColapso }: VistaKanbanProps) {
+function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, columnasColapsadas, onToggleColapso }: VistaKanbanProps) {
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
   const scrollLeft = () => {
@@ -1058,6 +1099,7 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onT
             planes={planesColumna}
             onMoverPlan={onMoverPlan}
             onAbrirPlan={onAbrirPlan}
+            onCompletarPlan={onCompletarPlan}
             colapsada={colapsada}
             onToggleColapso={() => onToggleColapso(columna.id)}
           />
@@ -1077,15 +1119,20 @@ interface ColumnaKanbanProps {
   planes: PlanMejoramiento[];
   onMoverPlan: (planId: string, nuevoEstado: EstadoPlan) => void;
   onAbrirPlan: (plan: PlanMejoramiento) => void;
+  onCompletarPlan?: (plan: PlanMejoramiento) => void;
   colapsada: boolean;
   onToggleColapso: () => void;
 }
 
-function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, colapsada, onToggleColapso }: ColumnaKanbanProps) {
+function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarPlan, colapsada, onToggleColapso }: ColumnaKanbanProps) {
   const [{ isOver }, drop] = useDrop(() => ({
     accept: 'PLAN',
-    drop: (item: { planId: string }) => {
-      onMoverPlan(item.planId, columna.id as EstadoPlan);
+    drop: (item: { planId: string; plan?: PlanMejoramiento }) => {
+      if (columna.id === 'COMPLETADO' && onCompletarPlan && item.plan) {
+        onCompletarPlan(item.plan);
+      } else {
+        onMoverPlan(item.planId, columna.id as EstadoPlan);
+      }
     },
     collect: (monitor) => ({
       isOver: monitor.isOver()
@@ -1304,7 +1351,7 @@ interface TarjetaKanbanProps {
 function TarjetaKanban({ plan, onAbrirPlan }: TarjetaKanbanProps) {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'PLAN',
-    item: { planId: plan.id },
+    item: { planId: plan.id, plan },
     collect: (monitor) => ({
       isDragging: monitor.isDragging()
     })
@@ -1437,9 +1484,10 @@ function TarjetaKanban({ plan, onAbrirPlan }: TarjetaKanbanProps) {
 interface VistaListaProps {
   planes: PlanMejoramiento[];
   onAbrirPlan: (plan: PlanMejoramiento) => void;
+  onCompletarPlan?: (plan: PlanMejoramiento) => void;
 }
 
-function VistaLista({ planes, onAbrirPlan }: VistaListaProps) {
+function VistaLista({ planes, onAbrirPlan, onCompletarPlan }: VistaListaProps) {
   if (planes.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
@@ -1611,13 +1659,32 @@ function VistaLista({ planes, onAbrirPlan }: VistaListaProps) {
                     <Clock className="w-3.5 h-3.5" />
                     Actualizado: {plan.ultimaActualizacion}
                   </div>
-                  <button
-                    onClick={() => onAbrirPlan(plan)}
-                    className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
-                  >
-                    <Eye className="w-4 h-4" />
-                    {plan.estado === 'FORMULACION' ? 'Formular Acciones' : 'Ver Detalle'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {onCompletarPlan && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onCompletarPlan(plan);
+                        }}
+                        disabled={
+                          plan.estado === 'COMPLETADO' ||
+                          (plan.totalAcciones || 0) < 1 ||
+                          (plan.accionesCompletadas || 0) < (plan.totalAcciones || 1)
+                        }
+                        className="px-4 py-2 rounded-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed enabled:bg-emerald-600 enabled:hover:bg-emerald-700 enabled:text-white"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        Completar plan
+                      </button>
+                    )}
+                    <button
+                      onClick={() => onAbrirPlan(plan)}
+                      className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+                    >
+                      <Eye className="w-4 h-4" />
+                      {plan.estado === 'FORMULACION' ? 'Formular Acciones' : 'Ver Detalle'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
