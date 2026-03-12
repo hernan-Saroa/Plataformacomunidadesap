@@ -54,8 +54,11 @@ export class CompartirExpedienteController {
     const usuarioId = req.user?.id;
     const compartido = await this.compartirService.crearCompartido(procesoId, dto, usuarioId);
 
-    // Determinar la URL base del frontend desde los headers
-    const frontendBaseUrl = this.getFrontendBaseUrl(expressReq);
+    // Determinar la URL base del frontend:
+    // 1. Primero: usar la URL proporcionada directamente por el cliente (prioridad más alta)
+    // 2. Segundo: intentar obtener desde los headers (origin/referer)
+    // 3. Tercero: usar variables de entorno del backend
+    const frontendBaseUrl = dto.frontendBaseUrl || this.getFrontendBaseUrl(expressReq);
 
     return {
       id: compartido.id,

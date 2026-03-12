@@ -30,6 +30,12 @@ export class CrearCompartidoDto {
   @IsBoolean()
   @IsOptional()
   esPublico?: boolean;
+
+  // URL base del frontend proporcionada directamente desde el cliente
+  // Esto asegura que la URL generada sea correcta en todos los ambientes
+  @IsString()
+  @IsOptional()
+  frontendBaseUrl?: string;
 }
 
 export class AccederCompartidoDto {
