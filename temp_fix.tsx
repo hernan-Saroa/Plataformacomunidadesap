@@ -203,6 +203,11 @@ interface Proceso {
   cargo?: string;
   dependencia?: string;
   historialAuditoria?: any[];
+  // ✅ Campos para asociar proceso a otro proceso
+  procesoAsociadoId?: string;
+  procesoAsociadoNumero?: string;
+  procesoAsociadoTipo?: 'conexo' | 'similar' | 'consolidado';
+  procesoAsociadoFecha?: string;
   // ═══ Campos heredados de la Noticia disciplinaria ═══
   territorial?: string;
   fechaHechos?: string;
@@ -233,10 +238,6 @@ interface Proceso {
   origenNoticia?: string;
   fechaRecepcionNoticia?: string;
   prioridadNoticia?: 'alta' | 'media' | 'baja';
-  procesoAsociadoId?: string;
-  procesoAsociadoNumero?: string;
-  procesoAsociadoTipo?: 'conexo' | 'similar' | 'consolidado';
-  procesoAsociadoFecha?: string;
 }
 
 type Item = Noticia | Proceso;
@@ -2201,7 +2202,14 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     prioridad: (noticia as any).prioridad || 'media',
     diasPendientes: (noticia as any).diasPendientes ?? dias,
     tipo: 'noticia',
-    etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion'
+    etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion',
+    // ✅ Incluir proceso asociado desde el backend
+    procesoAsociado: (noticia as any).procesoAsociadoId ? {
+      id: (noticia as any).procesoAsociadoId,
+      numeroProceso: (noticia as any).procesoAsociadoNumero || '',
+      fechaAsociacion: (noticia as any).procesoAsociadoFecha || '',
+      justificacion: (noticia as any).procesoAsociadoJustificacion || ''
+    } : undefined
   };
 };
 
@@ -2257,13 +2265,24 @@ export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = [])
   const stageLabelMap: Record<string, string> = { EVALUACION: 'Valoración', INDAGACION_PREVIA: 'Indagación', INVESTIGACION: 'Investigación', JUZGAMIENTO: 'Juzgamiento' };
   let etapa = proceso.kanbanStage || proceso.etapaActual;
 
-  const match = currentStages.find(s => s.etapa === etapa || s.etapa.toUpperCase() === etapa.toUpperCase());
-  if (match) {
-    etapa = match.etapa;
+  // ✅ Si no hay etapa definida, usar la etapa con orden 1 de la configuración
+  if (!etapa && currentStages.length > 0) {
+    // Obtener la etapa con orden 1
+    const etapaOrden1 = currentStages
+      .sort((a, b) => (a.orden || 0) - (b.orden || 0))[0];
+    etapa = etapaOrden1?.etapa || 'RECEPCION';
+  } else if (!etapa) {
+    // Fallback legacy si no hay configuración
+    etapa = 'Recepción';
   } else {
-    etapa = stageLabelMap[etapa] || etapa;
-    if (etapa === etapa.toUpperCase() && etapa.length > 3) {
-      etapa = etapa.charAt(0).toUpperCase() + etapa.slice(1).toLowerCase();
+    const match = currentStages.find(s => s.etapa === etapa || s.etapa.toUpperCase() === etapa.toUpperCase());
+    if (match) {
+      etapa = match.etapa;
+    } else {
+      etapa = stageLabelMap[etapa] || etapa;
+      if (etapa === etapa.toUpperCase() && etapa.length > 3) {
+        etapa = etapa.charAt(0).toUpperCase() + etapa.slice(1).toLowerCase();
+      }
     }
   }
 
@@ -2658,7 +2677,14 @@ export function DashboardKanbanOperativo({
       prioridad: (noticia as any).prioridad || 'media',
       diasPendientes: (noticia as any).diasPendientes ?? dias,
       tipo: 'noticia' as const,
-      etapaActual: etapaNormalizada
+      etapaActual: etapaNormalizada,
+      // ✅ Incluir proceso asociado desde el backend
+      procesoAsociado: (noticia as any).procesoAsociadoId ? {
+        id: (noticia as any).procesoAsociadoId,
+        numeroProceso: (noticia as any).procesoAsociadoNumero || '',
+        fechaAsociacion: (noticia as any).procesoAsociadoFecha || '',
+        justificacion: (noticia as any).procesoAsociadoJustificacion || ''
+      } : undefined
     };
   };
 
@@ -2701,8 +2727,14 @@ export function DashboardKanbanOperativo({
   const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
     let etapa = proceso.kanbanStage || proceso.etapaActual;
 
-    // Si no hay etapa definida, usar 'Recepción' por defecto
-    if (!etapa) {
+    // ✅ Si no hay etapa definida, usar la etapa con orden 1 de la configuración
+    if (!etapa && currentStages.length > 0) {
+      // Obtener la etapa con orden 1
+      const etapaOrden1 = currentStages
+        .sort((a, b) => (a.orden || 0) - (b.orden || 0))[0];
+      etapa = etapaOrden1?.etapa || 'RECEPCION';
+    } else if (!etapa) {
+      // Fallback legacy si no hay configuración
       etapa = 'Recepción';
     } else {
       // Normalizar etapa: buscar coincidencia exacta o insensible en las etapas del backend
@@ -3282,7 +3314,7 @@ export function DashboardKanbanOperativo({
         abogadoNombre: nombreProfesional
       });
 
-      const nuevoProceso = toProcesoFromApi(procesoApi);
+      const nuevoProceso = toProcesoFromApi(procesoApi, etapasConfig);
 
       setItems(prev => [
         ...prev.filter(i => i.id !== itemSeleccionado.id),
@@ -3376,7 +3408,7 @@ export function DashboardKanbanOperativo({
       });
 
       // ✅ Mapear la respuesta de la API al formato que usa la UI
-      const nuevoProceso = toProcesoFromApi(procesoApi);
+      const nuevoProceso = toProcesoFromApi(procesoApi, etapasConfig);
 
       // ✅ Actualizar el tablón sin necesidad de recargar la página completa
       setItems(prev => [
@@ -3451,40 +3483,62 @@ export function DashboardKanbanOperativo({
     setModalActivo('devolver-competencia');
   };
 
-  const handleConfirmarDevolucionCompetencia = (datos: {
+  const handleConfirmarDevolucionCompetencia = async (datos: {
     entidadId: string; entidadNombre: string; entidadCorreo: string;
-    tipoRemision: string; justificacion: string; fundamentoLegal: string; numeroRC: string;
+    tipoRemision: string; justificacion: string; numeroRC: string;
   }) => {
-    // Actualizar estado de la noticia a 'remitida' antes de eliminar
-    setItems(prev => prev.map(item => {
-      if (item.id === itemSeleccionado.id && item.tipo === 'noticia') {
-        return {
-          ...item,
-          estado: 'remitida' as any,
-          bitacora: [
-            ...(item as any).bitacora || [],
-            {
-              fecha: new Date().toISOString(),
-              accion: 'Remision por Competencia',
-              detalle: `${datos.numeroRC} — Remitida a: ${datos.entidadNombre}. Tipo: ${datos.tipoRemision}. Fundamento: ${datos.fundamentoLegal}. ${datos.justificacion}`,
-              usuario: 'Usuario Actual',
-            }
-          ],
-        };
-      }
-      return item;
-    }));
-    // Remover del Kanban (la noticia remitida sale del flujo activo)
-    setTimeout(() => {
-      setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
-    }, 100);
-    toast.success('Remitida por Competencia', {
-      description: datos.entidadCorreo
-        ? `${itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}\nCorreo: ${datos.entidadCorreo}`
-        : `${itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}`,
-    });
-    setModalActivo(null);
-    setItemSeleccionado(null);
+    // ✅ NUEVO: Activar estado de loading
+    setIsRemitiendo(true);
+
+    // ✅ NUEVO: Llamar al backend para remitir por competencia y enviar correo
+    try {
+      await disciplinaryService.remitirPorCompetencia({
+        newsId: itemSeleccionado.id,
+        emailDestinatario: datos.entidadCorreo,
+        entidadDestino: datos.entidadNombre,
+        justificacion: datos.justificacion,
+        usuarioRemision: 'Usuario Actual'
+      });
+
+      // Actualizar estado de la noticia a 'remitida' antes de eliminar
+      setItems(prev => prev.map(item => {
+        if (item.id === itemSeleccionado.id && item.tipo === 'noticia') {
+          return {
+            ...item,
+            estado: 'remitida' as any,
+            bitacora: [
+              ...(item as any).bitacora || [],
+              {
+                fecha: new Date().toISOString(),
+                accion: 'Remision por Competencia',
+                detalle: `${datos.numeroRC} — Remitida a: ${datos.entidadNombre}. Tipo: ${datos.tipoRemision}. ${datos.justificacion}`,
+                usuario: 'Usuario Actual',
+              }
+            ],
+          };
+        }
+        return item;
+      }));
+      // Remover del Kanban (la noticia remitida sale del flujo activo)
+      setTimeout(() => {
+        setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
+      }, 100);
+
+      toast.success('Remitida por Competencia', {
+        description: datos.entidadCorreo
+          ? `${itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}\nCorreo: ${datos.entidadCorreo}`
+          : `${itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}`,
+      });
+    } catch (error: any) {
+      console.error('[DashboardKanban] Error al remitir por competencia:', error);
+      toast.error('Error al remitir por competencia', {
+        description: error?.message || 'No se pudo completar la remisión. Intente nuevamente.'
+      });
+    } finally {
+      setIsRemitiendo(false);
+      setModalActivo(null);
+      setItemSeleccionado(null);
+    }
   };
 
   const handleArchivarNoticia = (noticia: Noticia) => {
@@ -3808,7 +3862,7 @@ export function DashboardKanbanOperativo({
     setModalActivo('asociar-noticia-proceso');
   };
 
-  const handleConfirmarAsociacion = (noticiaId: string, procesoId: string, justificacion: string) => {
+  const handleConfirmarAsociacion = async (noticiaId: string, procesoId: string, justificacion: string) => {
     // Encontrar proceso y noticia
     const proceso = items.find(i => i.id === procesoId && i.tipo === 'proceso') as Proceso;
     const noticia = items.find(i => i.id === noticiaId && i.tipo === 'noticia') as Noticia;
@@ -3818,22 +3872,17 @@ export function DashboardKanbanOperativo({
       return;
     }
 
-    // En una implementación real, aquí se haría:
-    // 1. POST a /api/noticias/:noticiaId/asociar-proceso
-    // 2. Body: { procesoId, justificacion }
-    // 3. Se registra en historial del proceso
-    // 4. Se marca la noticia como asociada
+    try {
+      // ✅ Llamar al backend para persistir la asociación
+      await disciplinaryService.asociarNoticiaAProceso(noticiaId, procesoId, justificacion);
+      toast.success('Noticia asociada correctamente al proceso');
+    } catch (error) {
+      console.error('Error al asociar noticia a proceso:', error);
+      toast.error('Error al asociar noticia. Intente nuevamente.');
+      return;
+    }
 
-    console.log('Asociación registrada:', {
-      noticiaId,
-      noticiaNumero: noticia.numero,
-      procesoId,
-      procesoNumero: proceso.numeroProceso,
-      justificacion,
-      timestamp: new Date().toISOString()
-    });
-
-    // ✅ Actualizar la noticia con información del proceso asociado
+    // Actualizar la noticia con información del proceso asociado en el estado local
     setItems(prev => prev.map(item => {
       if (item.id === noticiaId && item.tipo === 'noticia') {
         return {
@@ -3932,7 +3981,6 @@ export function DashboardKanbanOperativo({
   const handleConfirmarAsociacionProcesoProceso = async (procesoOrigenId: string, procesoDestinoId: string, justificacion: string, tipoAsociacion: 'conexo' | 'similar' | 'consolidado') => {
     if (!itemSeleccionado) return;
 
-    const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
     const procesoOrigen = items.find(i => i.id === procesoOrigenId && i.tipo === 'proceso') as Proceso;
     const procesoDestino = items.find(i => i.id === procesoDestinoId && i.tipo === 'proceso') as Proceso;
 
@@ -3941,11 +3989,11 @@ export function DashboardKanbanOperativo({
       return;
     }
 
-    // Llamar al backend para persistir la asociacion
+    // Llamar al backend para persistir la asociación
     try {
       await disciplinaryService.asociarProcesoAProceso(procesoOrigenId, procesoDestinoId, tipoAsociacion, justificacion);
 
-      // Actualizar el estado local con la informacion de la asociacion
+      // Actualizar el estado local con la información de la asociación
       setItems(prevItems => prevItems.map(item => {
         if (item.id === procesoOrigenId && item.tipo === 'proceso') {
           return { ...item, procesoAsociadoId: procesoDestinoId, procesoAsociadoNumero: procesoDestino.numeroProceso, procesoAsociadoTipo: tipoAsociacion, procesoAsociadoFecha: new Date().toISOString() } as Proceso;
@@ -3960,6 +4008,32 @@ export function DashboardKanbanOperativo({
       return;
     }
 
+    setModalActivo(null);
+    setItemSeleccionado(null);
+  };
+    }
+
+    // Registrar en trazabilidad
+    const eventoTrazabilidad = {
+      id: `evt-${Date.now()}`,
+      tipo: 'asociacion-proceso-proceso' as const,
+      titulo: `Proceso asociado a otro proceso (${tipoAsociacion})`,
+      descripcion: `El proceso ${procesoOrigen.numeroProceso} fue asociado al proceso ${procesoDestino.numeroProceso}. Tipo: ${tipoAsociacion}. Justificación: ${justificacion}`,
+      usuario: usuario,
+      fecha: new Date(),
+      procesoOrigenId: procesoOrigenId,
+      procesoDestinoId: procesoDestinoId,
+      tipoAsociacion: tipoAsociacion,
+      justificacion: justificacion
+    };
+
+    console.log('📋 Trazabilidad - Asociación proceso-proceso:', eventoTrazabilidad);
+
+    toast.success('Procesos Asociados Exitosamente', {
+      description: `${procesoOrigen.numeroProceso} ↔ ${procesoDestino.numeroProceso} (${tipoAsociacion})`
+    });
+
+    // Cerrar modal
     setModalActivo(null);
     setItemSeleccionado(null);
   };
