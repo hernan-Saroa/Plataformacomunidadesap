@@ -2644,7 +2644,7 @@ function ModalSubirDocumento({ onClose, onSubir, onEditar, documentoEditar, audi
   const handleSubmit = () => {
     if (esEdicion) {
       let descFinal = descripcion;
-      if (etapaKanban === 'PLANEACION' && (version || normativa)) {
+      if (version || normativa) {
         const partes = [];
         if (version) partes.push(`Versión: ${version}`);
         if (normativa) partes.push(`Normativa: ${normativa}`);
@@ -2670,7 +2670,7 @@ function ModalSubirDocumento({ onClose, onSubir, onEditar, documentoEditar, audi
     const nombreDocumento = nombre.trim() || archivo.name.replace(/\.[^/.]+$/, '');
     const tipoMime = archivo.type || 'application/octet-stream';
     let descFinal = descripcion;
-    if (etapaKanban === 'PLANEACION' && (version || normativa)) {
+    if (version || normativa) {
       const partes = [];
       if (version) partes.push(`Versión: ${version}`);
       if (normativa) partes.push(`Normativa: ${normativa}`);
@@ -2876,9 +2876,8 @@ function ModalSubirDocumento({ onClose, onSubir, onEditar, documentoEditar, audi
             </div>
           </div>
 
-          {/* Campos adicionales para Planeación */}
-          {etapaKanban === 'PLANEACION' && (
-            <>
+          {/* Campos adicionales (Versión, Normativa, Auditoría) - disponibles para todas las etapas P-E-C */}
+          <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-gray-900 mb-2">Versión</label>
@@ -2917,8 +2916,7 @@ function ModalSubirDocumento({ onClose, onSubir, onEditar, documentoEditar, audi
                 </select>
                 <p className="text-xs text-gray-500 mt-1">Si seleccionas una auditoría específica, la plantilla solo aparecerá asociada a ella.</p>
               </div>
-            </>
-          )}
+          </>
 
           {/* Descripción */}
           <div>

@@ -411,7 +411,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             </KanbanActionRowPrimary>
 
             <KanbanActionRowTertiary>
-              {onEditarNoticia && (etapa === 'Recepción' || etapa === 'Valoración') && (
+              {onEditarNoticia && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
                 <KanbanButtonTertiary
                   onClick={() => onEditarNoticia(noticia)}
                   icon={<Edit className="w-3.5 h-3.5" />}
@@ -1408,8 +1408,12 @@ function ColumnaKanban({
       }
       
       // Fallback: lógica original si no hay configuración
+      // ✅ Usar comparación normalizada para soportar etapas con/sin tildes
+      const etapaNormalizadaDrop = normalizeText(etapa);
+      const etapaInicialNormalizadaDrop = normalizeText(etapaInicial);
+      
       if (item.tipo === 'noticia') {
-        return etapa === 'Recepción' || etapa === 'Valoración';
+        return etapaNormalizadaDrop === etapaInicialNormalizadaDrop || etapa === 'Valoración' || normalizeText(etapa) === normalizeText('Valoración');
       }
       return true;
     },
@@ -1441,9 +1445,21 @@ function ColumnaKanban({
     };
   }, [isOver, canDrop, colapsada]);
 
+  // ✅ NUEVO: Obtener la etapa inicial (orden 1) desde la configuración
+  const etapaInicial = etapasConfig.length > 0
+    ? etapasConfig
+        .sort((a, b) => (a.orden || 0) - (b.orden || 0))[0]?.etapa || 'RECEPCION'
+    : 'RECEPCION';
+
+  // Normalizar para comparación (sin tilde, minúsculas)
+  const normalizeEtapa = (e: string) => e?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') || '';
+  const etapaNormalizada = normalizeEtapa(etapa);
+  const etapaInicialNormalizada = normalizeEtapa(etapaInicial);
+
   const itemsFiltrados = items.filter(item => {
     if (item.tipo === 'noticia') {
-      return etapa === 'Recepción';
+      // Las noticias se muestran en la etapa inicial (orden 1) - comparar de forma normalizada
+      return etapaNormalizada === etapaInicialNormalizada;
     }
     return item.tipo === 'proceso' && item.etapaActual === etapa;
   });
@@ -1536,8 +1552,8 @@ function ColumnaKanban({
                 </div>
               )}
 
-              {/* Indicador de noticias - Solo en Recepción */}
-              {etapa === 'Recepción' && noticias.length > 0 && (
+              {/* Indicador de noticias - Solo en etapa inicial (orden 1) */}
+              {etapaNormalizada === etapaInicialNormalizada && noticias.length > 0 && (
                 <div className="py-2">
                   <div className="flex items-center gap-1" title={`${noticias.length} noticias`}>
                     <FileText className="w-3 h-3 text-orange-600" />
@@ -1632,8 +1648,8 @@ function ColumnaKanban({
             </div>
           </div>
 
-          {/* Indicador de Noticias en Recepción */}
-          {etapa === 'Recepción' && noticias.length > 0 && (
+          {/* Indicador de Noticias en etapa inicial (orden 1) */}
+          {etapaNormalizada === etapaInicialNormalizada && noticias.length > 0 && (
             <div className="flex items-center gap-1.5 mt-2.5 px-2 py-1.5 bg-orange-50 rounded-lg">
               <FileText className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-orange-600`} />
               <span className="text-[11px] font-bold text-orange-600">
@@ -1711,7 +1727,7 @@ function ColumnaKanban({
             <div className="text-center py-16 text-gray-300">
               <FolderOpen className={`${isMobile ? 'w-10 h-10' : 'w-12 h-12'} mx-auto mb-3 opacity-40`} />
               <p className="text-xs font-medium text-gray-400">
-                {etapa === 'Recepción' ? 'Sin items' : 'Sin procesos'}
+                {etapaNormalizada === etapaInicialNormalizada ? 'Sin items' : 'Sin procesos'}
               </p>
               <p className="text-[11px] text-gray-300 mt-1">en esta etapa</p>
             </div>
@@ -2572,6 +2588,7 @@ export function DashboardKanbanOperativo({
   };
 
   // Transformar noticia desde API al formato interno
+  // ✅ MEJORADA: Usa la primera etapa de etapasConfig cuando no viene del backend
   const toNoticiaFromApi = (noticia: ApiNoticia, currentStages: any[] = []): Noticia => {
     const fechaRecepcion = (noticia as any)?.fechaRecepcion;
     const fecha = fechaRecepcion ? new Date(fechaRecepcion) : new Date();
@@ -2587,9 +2604,9 @@ export function DashboardKanbanOperativo({
     const fechaQuejaRaw = (noticia as any).fechaQueja;
     const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
 
-    // Normalizar etapa usando las etapas del backend
+    // ✅ OBTENER ETAPA: usar kanbanStage del backend, o buscar en stages, o usar primera etapa config
     let etapaRaw = (noticia as any).kanbanStage || (noticia as any).etapaActual;
-    let etapaNormalizada = etapaRaw;
+    let etapaNormalizada: string;
 
     if (etapaRaw) {
       // Buscar coincidencia en etapas del backend
@@ -2605,7 +2622,13 @@ export function DashboardKanbanOperativo({
         }
       }
     } else {
-      etapaNormalizada = 'Recepción';
+      // ✅ NUEVO: Si no hay etapa, usar la primera etapa de la configuración (menor orden)
+      if (currentStages.length > 0) {
+        const etapasOrdenadas = [...currentStages].sort((a, b) => (a.orden || 0) - (b.orden || 0));
+        etapaNormalizada = etapasOrdenadas[0]?.etapa || 'Recepcion';
+      } else {
+        etapaNormalizada = 'Recepcion';
+      }
     }
 
     return {
@@ -2922,7 +2945,17 @@ export function DashboardKanbanOperativo({
     }
   };
 
-  const handleCrearNoticia = (data: any) => {
+  // ✅ NUEVO: Handler para crear noticia - guarda en backend y usa primera etapa de configuración
+  const handleCrearNoticia = async (data: any) => {
+    // Determinar la primera etapa desde la configuración del backend (menor orden)
+    let etapaInicial = 'Recepcion'; // Valor por defecto (sin tilde para el backend)
+    if (etapasConfig.length > 0) {
+      const etapasOrdenadas = [...etapasConfig].sort((a, b) => (a.orden || 0) - (b.orden || 0));
+      if (etapasOrdenadas.length > 0) {
+        etapaInicial = etapasOrdenadas[0].etapa;
+      }
+    }
+    
     // Extraer primer denunciado y denunciante para campos principales
     const primerDenunciado = data.denunciados?.[0] || data.denunciado;
     const primerDenunciante = data.denunciantes?.[0];
@@ -2941,42 +2974,125 @@ export function DashboardKanbanOperativo({
       fechaSubida: new Date().toISOString().split('T')[0]
     }));
 
-    const nuevaNoticia: Noticia = {
-      id: `n${Date.now()}`,
-      numero: `NOT-2026-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
-      fechaRecepcion: data.fechaQueja || new Date().toISOString().split('T')[0],
-      fechaRegistro: new Date().toISOString(),
-      radicador: data.radicador || 'Usuario Actual',
-      origen: data.origen || 'Denuncia Ciudadana',
-      territorial: data.territorial || undefined,
-      fechaHechos: data.fechaHechos || undefined,
-      cargo: primerDenunciado?.cargo || data.denunciado?.cargo || undefined,
-      dependencia: primerDenunciado?.lugarHechos || data.denunciado?.dependencia || undefined,
-      conductaSeleccionada: data.conductaSeleccionada || undefined,
-      conductaPersonalizada: data.conductaPersonalizada || undefined,
-      denunciante: denunciantePersona,
-      denunciado: denunciadoPersona,
-      denunciados: data.denunciados || [],
-      denunciantes: data.denunciantes || [],
-      hechos: data.descripcionHechos || '',
-      hechosSeparados: data.hechosSeparados || [],
-      archivosAdjuntos: archivosMetadata,
-      estado: 'pendiente',
-      prioridad: 'media',
-      diasPendientes: 0,
-      tipo: 'noticia'
+    // ✅ MAPEO DE VALORES AL FORMATO DEL BACKEND
+    // origen: debe ser uno de ANONIMO, QUEJOSO, OFICIO, REMISION, POR_DETERMINAR
+    const origenMap: Record<string, string> = {
+      'Anónimo': 'ANONIMO',
+      'Anonimo': 'ANONIMO',
+      'Denuncia Ciudadana': 'QUEJOSO',
+      'Quejoso': 'QUEJOSO',
+      'Oficio': 'OFICIO',
+      'Remisión': 'REMISION',
+      'Remision': 'REMISION',
+      'Por Determinar': 'POR_DETERMINAR',
+      'Por determinar': 'POR_DETERMINAR'
     };
+    
+    const origenNormalizado = origenMap[data.origen] || 'POR_DETERMINAR';
 
-    setItems(prev => [...prev, nuevaNoticia]);
-    // ✅ Persistir en Supabase
-    noticiasService.create(nuevaNoticia).catch(err => {
-      console.error('[DashboardKanban] Error al guardar noticia en Supabase:', err);
-      toast.error('Advertencia', { description: 'Noticia creada localmente pero no pudo guardarse en Supabase.' });
-    });
-    toast.success('Noticia Creada', {
-      description: `${nuevaNoticia.numero} en Recepción`
-    });
-    setModalActivo(null);
+    // ✅ NUEVO: Intentar guardar en el backend
+    const toastId = toast.loading('Creando noticia en el sistema...');
+    
+    try {
+      // Preparar datos para el backend
+      const newsData = {
+        origen: origenNormalizado,
+        radicador: data.radicador || 'Usuario Actual',
+        territorial: data.territorial || undefined,
+        dependenciaDenunciado: primerDenunciado?.dependencia || primerDenunciado?.lugarHechos || data.denunciado?.dependencia || '',
+        fechaQueja: data.fechaQueja || new Date().toISOString().split('T')[0],
+        fechaHechos: data.fechaHechos || undefined,
+        hechos: data.descripcionHechos || '',
+        conductas: data.conductaSeleccionada ? [data.conductaSeleccionada] : [],
+        prioridad: (data.prioridad || 'media').toUpperCase(),
+        // Denunciante
+        denunciante: primerDenunciante ? {
+          nombre: primerDenunciante.nombre,
+          tipoIdentificacion: 'CC',
+          numeroIdentificacion: primerDenunciante.identificacion || '',
+          telefono: primerDenunciante.telefono || '',
+          correo: primerDenunciante.correo || '',
+          direccion: primerDenunciante.direccion || '',
+          entidad: primerDenunciante.entidad || '',
+          cargo: primerDenunciante.cargo || ''
+        } : undefined,
+        // Denunciado/Disciplinable
+        disciplinable: primerDenunciado ? {
+          nombre: primerDenunciado.nombre,
+          tipoIdentificacion: primerDenunciado.tipoIdentificacion || 'CC',
+          numeroIdentificacion: primerDenunciado.identificacion || '',
+          cargo: primerDenunciado.cargo || '',
+          dependencia: primerDenunciado.dependencia || primerDenunciado.lugarHechos || ''
+        } : undefined
+      };
+
+      console.log('[DashboardKanban] Enviando datos al backend:', JSON.stringify(newsData, null, 2));
+
+      // Llamar al backend para crear la noticia
+      const noticiaCreada = await disciplinaryService.radicarNoticia(newsData);
+      
+      console.log('[DashboardKanban] Noticia creada en backend:', noticiaCreada);
+
+      // Transformar la respuesta del backend al formato interno
+      const nuevaNoticia = toNoticiaFromApi(noticiaCreada);
+      
+      // Asegurar que use la etapa inicial correcta
+      nuevaNoticia.etapaActual = etapaInicial;
+
+      // Agregar al estado
+      setItems(prev => [...prev, nuevaNoticia]);
+      
+      toast.success('Noticia Creada', {
+        id: toastId,
+        description: `${nuevaNoticia.numero} en ${etapaInicial}`
+      });
+      setModalActivo(null);
+    } catch (error: any) {
+      console.error('[DashboardKanban] Error al crear noticia en backend:', error);
+      
+      // ✅ Fallback: crear localmente si el backend falla
+      console.log('[DashboardKanban] Creando noticia localmente como fallback...');
+      
+      const nuevaNoticiaLocal: Noticia = {
+        id: `n${Date.now()}`,
+        numero: `NOT-2026-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
+        fechaRecepcion: data.fechaQueja || new Date().toISOString().split('T')[0],
+        fechaRegistro: new Date().toISOString(),
+        radicador: data.radicador || 'Usuario Actual',
+        origen: data.origen || 'Denuncia Ciudadana',
+        territorial: data.territorial || undefined,
+        fechaHechos: data.fechaHechos || undefined,
+        cargo: primerDenunciado?.cargo || data.denunciado?.cargo || undefined,
+        dependencia: primerDenunciado?.lugarHechos || data.denunciado?.dependencia || undefined,
+        conductaSeleccionada: data.conductaSeleccionada || undefined,
+        conductaPersonalizada: data.conductaPersonalizada || undefined,
+        denunciante: denunciantePersona,
+        denunciado: denunciadoPersona,
+        denunciados: data.denunciados || [],
+        denunciantes: data.denunciantes || [],
+        hechos: data.descripcionHechos || '',
+        hechosSeparados: data.hechosSeparados || [],
+        archivosAdjuntos: archivosMetadata,
+        estado: 'pendiente',
+        prioridad: 'media',
+        diasPendientes: 0,
+        tipo: 'noticia',
+        etapaActual: etapaInicial // ✅ Usar etapa desde configuración
+      };
+
+      setItems(prev => [...prev, nuevaNoticiaLocal]);
+      
+      // Persistir en Supabase como fallback secundario
+      noticiasService.create(nuevaNoticiaLocal).catch(err => {
+        console.error('[DashboardKanban] Error al guardar noticia en Supabase:', err);
+      });
+      
+      toast.warning('Noticia creada localmente', {
+        id: toastId,
+        description: 'No se pudo guardar en el servidor. La noticia se guardó localmente.'
+      });
+      setModalActivo(null);
+    }
   };
 
   const handleConvertirNoticia = (noticia: Noticia) => {
