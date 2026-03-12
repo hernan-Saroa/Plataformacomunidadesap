@@ -23,6 +23,7 @@ import type { Response } from 'express';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { Permissions } from '../../auth/decorators/permissions.decorator';
+import { Public } from '../../auth/decorators/public.decorator';
 import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 
 // Tipo para el archivo subido
@@ -69,6 +70,32 @@ export class DocumentosController {
       etapa,
       search,
     });
+  }
+
+  /**
+   * GET /documentos/auditoria/:auditoriaId
+   * Obtiene todos los documentos de una auditoría
+   * (Debe ir ANTES de :id para que no capture "auditoria" como id)
+   */
+  @Get('auditoria/:auditoriaId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_VIEW)
+  getDocumentosPorAuditoria(@Param('auditoriaId') auditoriaId: string) {
+    return this.documentosService.findAll({ auditoriaId });
+  }
+
+  /**
+   * GET /documentos/auditoria/:auditoriaId/etapa/:etapa
+   * Obtiene documentos por auditoría y etapa
+   */
+  @Get('auditoria/:auditoriaId/etapa/:etapa')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_VIEW)
+  getDocumentosPorEtapa(
+    @Param('auditoriaId') auditoriaId: string,
+    @Param('etapa') etapa: EtapaDocumento,
+  ) {
+    return this.documentosService.getDocumentosPorEtapa(auditoriaId, etapa);
   }
 
   /**
@@ -131,6 +158,7 @@ export class DocumentosController {
       hallazgoId: body.hallazgoId || undefined,
       planMejoramientoId: body.planMejoramientoId || undefined,
       documentoBibliotecaId: body.documentoBibliotecaId || undefined,
+      visibleAuditoriaId: body.visibleAuditoriaId || undefined,
       nombreArchivo: file.originalname,
       tipoMime: file.mimetype,
       tamanioBytes: file.size,
@@ -181,9 +209,10 @@ export class DocumentosController {
 
   /**
    * GET /documentos/:id/download
-   * Descarga un documento
+   * Descarga un documento (público para iframes/descargas directas)
    */
   @Get(':id/download')
+  @Public()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.DOCUMENTO_VIEW)
   async download(@Param('id') id: string, @Res() res: Response) {
@@ -207,9 +236,10 @@ export class DocumentosController {
 
   /**
    * GET /documentos/:id/preview
-   * Previsualiza un documento (si es imagen o PDF)
+   * Previsualiza un documento (si es imagen o PDF). Público para iframes.
    */
   @Get(':id/preview')
+  @Public()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.DOCUMENTO_VIEW)
   async preview(@Param('id') id: string, @Res() res: Response) {
@@ -245,31 +275,6 @@ export class DocumentosController {
   @Permissions(CIP.DOCUMENTO_VIEW)
   getHistorialVersiones(@Param('id') id: string) {
     return this.documentosService.getHistorialVersiones(id);
-  }
-
-  /**
-   * GET /documentos/auditoria/:auditoriaId
-   * Obtiene todos los documentos de una auditoría
-   */
-  @Get('auditoria/:auditoriaId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions(CIP.DOCUMENTO_VIEW)
-  getDocumentosPorAuditoria(@Param('auditoriaId') auditoriaId: string) {
-    return this.documentosService.findAll({ auditoriaId });
-  }
-
-  /**
-   * GET /documentos/auditoria/:auditoriaId/etapa/:etapa
-   * Obtiene documentos por auditoría y etapa
-   */
-  @Get('auditoria/:auditoriaId/etapa/:etapa')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions(CIP.DOCUMENTO_VIEW)
-  getDocumentosPorEtapa(
-    @Param('auditoriaId') auditoriaId: string,
-    @Param('etapa') etapa: EtapaDocumento,
-  ) {
-    return this.documentosService.getDocumentosPorEtapa(auditoriaId, etapa);
   }
 
   /**

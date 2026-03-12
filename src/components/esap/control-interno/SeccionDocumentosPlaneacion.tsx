@@ -9,7 +9,7 @@ import { FileText, Upload, Download, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
 import { controlInternoService } from '../../../services/api/controlInternoService';
-import { getServiceUrl, API_MODE } from '../../../config/environment';
+import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 
 const getDocumentosBaseUrl = () => {
   if (API_MODE === 'gateway') return '/services/control-institucional/api/v1/documentos';
@@ -69,7 +69,8 @@ export function SeccionDocumentosPlaneacion({ auditoriaId }: SeccionDocumentosPl
         controlInternoService.getDocumentos({ etapa: 'planeacion' }),
         controlInternoService.getDocumentosByEtapa(auditoriaId, 'planeacion'),
       ]);
-      const plantillasData = (todos || []).filter((d: any) => !d.auditoriaId);
+      const visible = (d: any) => !d.visibleAuditoriaId && !d.visible_auditoria_id || (d.visibleAuditoriaId || d.visible_auditoria_id) === auditoriaId;
+      const plantillasData = (todos || []).filter((d: any) => !d.auditoriaId && visible(d));
       const subidosData = (subidos || []).filter((d: any) => d.auditoriaId === auditoriaId);
       setPlantillas(plantillasData.map(mapDoc));
       setDocumentosSubidos(subidosData.map(mapDoc));
@@ -86,15 +87,27 @@ export function SeccionDocumentosPlaneacion({ auditoriaId }: SeccionDocumentosPl
     cargarDocumentos();
   }, [auditoriaId]);
 
-  const handleDescargar = (doc: DocPlaneacion) => {
-    const link = document.createElement('a');
-    link.href = doc.urlDownload;
-    link.download = doc.nombre;
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Descarga iniciada');
+  const handleDescargar = async (doc: DocPlaneacion) => {
+    try {
+      const url = doc.urlDownload.startsWith('http') ? doc.urlDownload : `${window.location.origin}${doc.urlDownload}`;
+      const res = await fetch(url, { headers: getDefaultHeaders() });
+      if (!res.ok) {
+        throw new Error(res.status === 401 ? 'No autorizado. Inicia sesión nuevamente.' : `Error ${res.status}`);
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = doc.nombre || 'documento';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      toast.success('Descarga iniciada');
+    } catch (e) {
+      console.error('Error al descargar:', e);
+      toast.error(e instanceof Error ? e.message : 'Error al descargar');
+    }
   };
 
   const handleEliminar = async () => {
@@ -112,20 +125,23 @@ export function SeccionDocumentosPlaneacion({ auditoriaId }: SeccionDocumentosPl
   const requeridos = Math.max(plantillas.length, MIN_DOCUMENTOS_REQUERIDOS);
   const totalAsociados = documentosSubidos.length;
   const cumpleRequisitos = totalAsociados >= requeridos;
+  const hayDocumentos = plantillas.length > 0 || documentosSubidos.length > 0;
 
   return (
     <div className="bg-white border-2 border-purple-200 rounded-lg p-4 space-y-4">
-      {/* Indicador de completitud - solo verde cuando cumple */}
-      <div className={`rounded-lg p-3 flex items-center gap-2 ${cumpleRequisitos ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
-        {cumpleRequisitos ? (
-          <p className="text-sm font-semibold text-green-800 flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center text-white text-xs">✓</span>
-            Documentos completos
-          </p>
-        ) : (
-          <p className="text-sm font-semibold text-amber-800">Faltan documentos por subir</p>
-        )}
-      </div>
+      {/* Indicador de completitud - solo mostrar cuando hay plantillas o documentos */}
+      {hayDocumentos && (
+        <div className={`rounded-lg p-3 flex items-center gap-2 ${cumpleRequisitos ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+          {cumpleRequisitos ? (
+            <p className="text-sm font-semibold text-green-800 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center text-white text-xs">✓</span>
+              Documentos completos
+            </p>
+          ) : (
+            <p className="text-sm font-semibold text-amber-800">Faltan documentos por subir</p>
+          )}
+        </div>
+      )}
 
       {/* Plantillas de biblioteca: cada una con Descargar + Subir (documento que cumple) */}
       <div>
@@ -136,7 +152,43 @@ export function SeccionDocumentosPlaneacion({ auditoriaId }: SeccionDocumentosPl
         {loading ? (
           <p className="text-sm text-gray-500">Cargando...</p>
         ) : plantillas.length === 0 ? (
-          <p className="text-sm text-gray-500">No hay plantillas en la biblioteca. Contacte al administrador.</p>
+          <>
+            <p className="text-sm text-gray-500 mb-3">No hay plantillas en la biblioteca. Contacte al administrador.</p>
+            {/* Mostrar documentos subidos cuando no hay plantillas (ej. subidos desde Documentación) */}
+            {documentosSubidos.length > 0 && (
+              <div className="mt-4">
+                <h5 className="text-xs font-semibold text-gray-600 mb-2">Documentos subidos en planeación</h5>
+                <ul className="space-y-2">
+                  {documentosSubidos.map((d) => (
+                    <li key={d.id} className="p-3 rounded-lg border bg-green-50 border-green-200 flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 truncate">{d.nombre}</p>
+                        <p className="text-xs text-gray-500">{d.extension} · {d.tamano}</p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => handleDescargar(d)}
+                          className="px-2 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded text-xs font-bold flex items-center gap-1"
+                          title="Descargar documento"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Descargar
+                        </button>
+                        <button
+                          onClick={() => setDocAEliminar(d)}
+                          className="px-2 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded text-xs font-bold flex items-center gap-1"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Eliminar
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
         ) : (
           <ul className="space-y-2">
             {plantillas.map((p) => {
@@ -170,10 +222,11 @@ export function SeccionDocumentosPlaneacion({ auditoriaId }: SeccionDocumentosPl
                         <>
                           <button
                             onClick={() => handleDescargar(docSubido)}
-                            className="p-2 bg-green-100 hover:bg-green-200 text-green-700 rounded"
-                            title="Ver/Descargar documento"
+                            className="px-2 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded text-xs font-bold flex items-center gap-1"
+                            title="Descargar documento subido"
                           >
-                            <FileText className="w-4 h-4" />
+                            <Download className="w-3.5 h-3.5" />
+                            Descargar
                           </button>
                           <button
                             onClick={() => setDocAEliminar(docSubido)}

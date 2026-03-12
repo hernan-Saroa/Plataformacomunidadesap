@@ -34,6 +34,10 @@ export class CreateDocumentoDto {
   @IsUUID()
   documentoBibliotecaId?: string;
 
+  @IsOptional()
+  @IsUUID()
+  visibleAuditoriaId?: string;
+
   @IsString()
   @IsNotEmpty()
   nombreArchivo: string;

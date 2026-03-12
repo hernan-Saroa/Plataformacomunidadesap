@@ -21,6 +21,7 @@ import type { Response } from 'express';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { Permissions } from '../../auth/decorators/permissions.decorator';
+import { Public } from '../../auth/decorators/public.decorator';
 import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import { EvidenciasService } from './evidencias.service';
 import { CreateEvidenciaDto } from './dto/create-evidencia.dto';
@@ -154,9 +155,10 @@ export class EvidenciasController {
 
   /**
    * GET /evidencias/:id/download
-   * Descarga un archivo de evidencia
+   * Descarga un archivo de evidencia (público para iframes/descargas directas)
    */
   @Get(':id/download')
+  @Public()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.EVIDENCIA_VIEW)
   async download(@Param('id') id: string, @Res() res: Response) {
@@ -183,9 +185,10 @@ export class EvidenciasController {
 
   /**
    * GET /evidencias/:id/preview
-   * Previsualiza un documento (si es imagen o PDF)
+   * Previsualiza un documento (si es imagen o PDF). Público para iframes.
    */
   @Get(':id/preview')
+  @Public()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.EVIDENCIA_VIEW)
   async preview(@Param('id') id: string, @Res() res: Response) {
