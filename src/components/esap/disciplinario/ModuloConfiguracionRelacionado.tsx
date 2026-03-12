@@ -27,7 +27,8 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import disciplinaryService from '../../../services/api/disciplinary.service';
 import { SeccionPlantillasAutos, ETAPAS_PROCESO, type EtapaProcesoId } from './SeccionPlantillasAutos';
 import { ModalEdicionPlantillaAuto } from './ModalEdicionPlantillaAuto';
 import { useOficiosConfiguration } from '../../../hooks/useOficiosConfiguration';
@@ -799,6 +800,31 @@ function ConfiguracionDashboard(props: any) {
       opacity: isDragging ? 0.5 : 1,
     };
 
+    // Función para eliminar un estado
+    const eliminarEstado = async (id: string) => {
+      if (confirm('¿Estás seguro de eliminar este estado? Esta acción puede afectar procesos existentes.')) {
+        try {
+          // Intentar eliminar en el backend si es un UUID válido
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (uuidRegex.test(id)) {
+            await disciplinaryService.deleteStage(id);
+          }
+          // Eliminar localmente
+          const nuevosEstados = estadosKanban.filter((e: EstadoKanban) => e.id !== id);
+          setEstadosKanban(nuevosEstados.map((e: EstadoKanban, index: number) => ({ ...e, orden: index + 1 })));
+          setCambiosPendientes(true);
+          toast.success('Estado eliminado correctamente');
+        } catch (error) {
+          console.error('Error al eliminar estado:', error);
+          // Eliminar localmente aunque falle el backend
+          const nuevosEstados = estadosKanban.filter((e: EstadoKanban) => e.id !== id);
+          setEstadosKanban(nuevosEstados.map((e: EstadoKanban, index: number) => ({ ...e, orden: index + 1 })));
+          setCambiosPendientes(true);
+          toast.success('Estado eliminado correctamente');
+        }
+      }
+    };
+
     return (
       <div
         ref={setNodeRef}
@@ -838,8 +864,16 @@ function ConfiguracionDashboard(props: any) {
                 setCambiosPendientes(true);
               }}
               className="min-h-[44px] min-w-[44px] p-2 hover:bg-gray-100 rounded-lg transition-colors flex items-center justify-center"
+              title={estado.activo ? 'Desactivar' : 'Activar'}
             >
               <Edit3 className="w-4 h-4 text-gray-600" />
+            </button>
+            <button
+              onClick={() => eliminarEstado(estado.id)}
+              className="min-h-[44px] min-w-[44px] p-2 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center"
+              title="Eliminar"
+            >
+              <Trash2 className="w-4 h-4 text-red-600" />
             </button>
           </div>
         </div>
