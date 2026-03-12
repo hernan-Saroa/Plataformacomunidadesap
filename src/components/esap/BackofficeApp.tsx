@@ -115,20 +115,19 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     email: usuario?.email || 'admin@esap.edu.co',
     personId: usuario?.id || 'admin-001'
   };
-
-  const initialModule = userData?.module === 'control-interno'
-    ? 'control-interno'
-    : userData?.module === 'control-disciplinario'
-      ? 'control-disciplinario'
-      : userData?.module === 'registro-academico'
-        ? 'graduates'
-        : userData?.module === 'certificados-laborales'
-          ? 'certificados-laborales'
-          : userData?.module === 'gestion-legal'
-            ? 'gestion-legal'
-            : userData?.module === 'procesos'
-              ? 'control-interno'
-              : 'users-persons';
+  console.log('📋 Usuario actual:', userData?.module);
+  const initialModule = userData?.module === 'control-interno' ? 'control-interno'
+    : userData?.module === 'control-disciplinario' ? 'control-disciplinario'
+      : userData?.module === 'registro-academico' ? 'graduates'
+        : userData?.module === 'certificados-laborales' ? 'certificados-laborales'
+          : userData?.module === 'gestion-legal' ? 'gestion-legal'
+            : userData?.module === 'procesos' ? 'control-interno'
+              : userData?.module === 'graduates' ? 'graduates'
+                : userData?.module === 'carpeta-digital' ? 'carpeta-digital'
+                  : userData?.module === 'estructura-organizacional' ? 'estructura-organizacional'
+                    : userData?.module === 'firma-electronica' ? 'firma-electronica'
+                      : 'users-persons';
+  console.log('📋 Inicial module:', initialModule);
 
   const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule);
   const [currentSidebarModule, setCurrentSidebarModule] = useState<string>('');
