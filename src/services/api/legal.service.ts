@@ -92,6 +92,10 @@ export class LegalService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento`);
     }
 
+    async getJuzgamientoProceso(radicado: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}`);
+    }
+
     async uploadJuzgamientoDocumento(radicado: string, file: File, tipo: string = 'DOCUMENTO', descripcion?: string): Promise<any> {
         const formData = new FormData();
         formData.append('file', file);
@@ -771,6 +775,14 @@ export class LegalService {
     // ==================== JUZGAMIENTO DISCIPLINARIO ====================
     async createJuzgamientoProceso(data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento`, data);
+    }
+
+    async anexarJuzgamientoProceso(radicadoAnexado: string, radicadoPrincipal: string, usuario?: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/juzgamiento/${radicadoAnexado}/anexar`, { principalRadicado: radicadoPrincipal, usuario });
+    }
+
+    async desanexarJuzgamientoProceso(radicado: string, usuario?: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/juzgamiento/${radicado}/desanexar`, { usuario });
     }
 }
 

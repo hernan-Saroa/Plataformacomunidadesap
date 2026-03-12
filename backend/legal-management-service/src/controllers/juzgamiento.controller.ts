@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, Patch, Delete, Query, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Patch, Delete, Query, UseInterceptors, UploadedFile, BadRequestException, NotFoundException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -43,9 +43,56 @@ export class JuzgamientoController {
                 actuaciones: exp.actuaciones || [],
                 evidencias: exp.evidencias || [],
                 hechos: exp.hechos || '',
+                procesosAnexados: (exp.procesosAnexados || []).map(a => ({
+                    id: a.radicado,
+                    uuid: a.id,
+                    radicado: a.radicado,
+                    investigado: a.demandado,
+                    tipoFalta: a.tipoFalta,
+                    etapa: a.etapa || 'E1_AVOCAMIENTO',
+                    estado: a.estado
+                })),
+                procesoPrincipalId: exp.procesoPrincipalId || null,
                 // Semáforo logic is usually frontend, but we pass necessary data
             };
         });
+    }
+
+    @Get(':radicado')
+    async findOne(@Param('radicado') radicado: string) {
+        const exp = await this.expedienteService.findOneByRadicado(radicado);
+        if (!exp) throw new NotFoundException('Expediente disciplinario no encontrado');
+
+        const diasRestantes = this.calculateDiasRestantes(exp.fechaLimiteEtapa);
+
+        return {
+            id: exp.radicado, // Frontend expects "PD-2025-001" as ID
+            uuid: exp.id,
+            radicado: exp.radicado,
+            etapa: exp.etapa || 'E1_AVOCAMIENTO',
+            leyAplicable: exp.leyAplicable || 'Ley 1952/2019',
+            investigado: exp.demandado,
+            cargo: exp.cargoInvestigado,
+            dependencia: exp.dependenciaInvestigado,
+            tipoFalta: exp.tipoFalta,
+            abogadoAsignado: exp.abogadoSustanciador,
+            diasRestantes: diasRestantes,
+            diasDescargos: 15,
+            documentos: [...(exp.actuaciones || []), ...(exp.evidencias || [])],
+            actuaciones: exp.actuaciones || [],
+            evidencias: exp.evidencias || [],
+            hechos: exp.hechos || '',
+            procesosAnexados: (exp.procesosAnexados || []).map((a: any) => ({
+                id: a.radicado,
+                uuid: a.id,
+                radicado: a.radicado,
+                investigado: a.demandado,
+                tipoFalta: a.tipoFalta,
+                etapa: a.etapa || 'E1_AVOCAMIENTO',
+                estado: a.estado
+            })),
+            procesoPrincipalId: exp.procesoPrincipalId || null,
+        };
     }
 
     @Post()
@@ -280,5 +327,31 @@ export class JuzgamientoController {
             autorNombre: body.autorNombre
         });
     }
-}
 
+    // ==================== ANEXAR / DESANEXAR PROCESOS DISCIPLINARIOS ====================
+
+    @Post(':radicado/anexar')
+    async anexar(
+        @Param('radicado') radicado: string,
+        @Body() body: { principalRadicado: string; usuario?: string }
+    ) {
+        const anexado = await this.expedienteService.findOneByRadicado(radicado);
+        if (!anexado) throw new BadRequestException('Expediente a anexar no encontrado');
+
+        const principal = await this.expedienteService.findOneByRadicado(body.principalRadicado);
+        if (!principal) throw new BadRequestException('Expediente principal no encontrado');
+
+        return this.expedienteService.anexarExpediente(anexado.id, principal.id, body.usuario || 'Sistema');
+    }
+
+    @Post(':radicado/desanexar')
+    async desanexar(
+        @Param('radicado') radicado: string,
+        @Body() body: { usuario?: string }
+    ) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+
+        return this.expedienteService.desanexarExpediente(expediente.id, body.usuario || 'Sistema');
+    }
+}

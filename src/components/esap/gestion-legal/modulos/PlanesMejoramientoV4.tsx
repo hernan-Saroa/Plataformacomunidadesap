@@ -223,7 +223,7 @@ const formatearFecha = (fecha: Date | string): string => {
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ModuloPlanesMejoramientoV4() {
-  // const { entesControl } = useConfiguracionesSIGL();
+  const { entesControlPM } = useConfiguracionesSIGL();
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
 
@@ -657,10 +657,10 @@ export function ModuloPlanesMejoramientoV4() {
             onChange: setFiltroEnte,
             options: [
               { label: 'Todos', value: 'TODOS' },
-              { label: '🏛️ Contraloría', value: 'CONTRALORIA' },
-              { label: '⚖️ Procuraduría', value: 'PROCURADURIA' },
-              { label: '🔍 OCI', value: 'OCI' },
-              { label: '📊 Auditoría Externa', value: 'AUDITORIA_EXTERNA' }
+              ...entesControlPM.filter(o => o.activo).map(o => ({
+                label: o.nombre,
+                value: o.id
+              }))
             ]
           },
           {
@@ -768,10 +768,9 @@ export function ModuloPlanesMejoramientoV4() {
                         <SelectValue placeholder="Seleccionar ente" />
                       </SelectTrigger>
                       <SelectContent className="z-[9999]">
-                        <SelectItem value="CONTRALORIA">🏛️ Contraloría General</SelectItem>
-                        <SelectItem value="PROCURADURIA">⚖️ Procuraduría General</SelectItem>
-                        <SelectItem value="OCI">🔍 Oficina Control Interno</SelectItem>
-                        <SelectItem value="AUDITORIA_EXTERNA">📊 Auditoría Externa</SelectItem>
+                        {entesControlPM.filter(o => o.activo).map(o => (
+                          <SelectItem key={o.id} value={o.id}>{o.nombre}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
