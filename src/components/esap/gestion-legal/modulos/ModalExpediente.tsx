@@ -49,6 +49,7 @@ import { TabActuacionesExpediente } from '../core/TabActuacionesExpediente';
 import { TabTareasExpediente } from '../core/TabTareasExpediente';
 import { TabNotasExpediente } from '../core/TabNotasExpediente';
 import { TabDocumentosExpediente } from '../core/TabDocumentosExpediente';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 interface ModalExpedienteProps {
   isOpen: boolean;
@@ -74,6 +75,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [modalProgramarAudienciaAbierto, setModalProgramarAudienciaAbierto] = useState(false);
   const [modalAnexarAbierto, setModalAnexarAbierto] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // Estado para visor de documentos inline
+  const [visorAbierto, setVisorAbierto] = useState(false);
+  const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string } | null>(null);
   const [selectedAnexado, setSelectedAnexado] = useState<any>(null); // Sub-modal para ver anexados
 
   // Estado para modal de reasignar
@@ -333,10 +338,13 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
     // ✨ FIXED: Rutas de adjuntos de correos/oficios (usar /api/v1 para que gateway rutee correctamente)
     if (url.includes('/correos/adjuntos/')) {
-      const regex = /\/adjuntos\/([^/]+)\//;
+      const regex = /\/adjuntos\/([^/]+)/;
       const match = url.match(regex);
       if (match) {
-        const adjuntoId = match[1];
+        let adjuntoId = match[1];
+        // Quitar /download del final si por error lo agarró
+        if (adjuntoId.endsWith('/download')) adjuntoId = adjuntoId.replace('/download', '');
+        
         const adjuntoPrefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
         return `${baseUrl}${adjuntoPrefix}/correos/adjuntos/${adjuntoId}/download`;
       }
@@ -493,18 +501,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       return;
     }
     const fullUrl = getFullUrl(doc.url);
-    // ModalGestionDocumentos is used for preview? Or just open in new tab?
-    // User requested "boton de ver sirve para todo menos word y excel"
-    // Since we don't have an embedded viewer yet in this file specific for preview (unless using ModalGestionDocumentos),
-    // let's try to open in new tab for now, or use ModalGestionDocumentos if it supports it.
-    // Looking at imports, ModalGestionDocumentos is imported. PROBABLY use that or a light box.
-    // For now, simple approach:
-
-    window.open(fullUrl, '_blank');
-
-    toast.info('👁️ Abriendo documento', {
-      description: doc.nombre
-    });
+    // Abrir el documento en el visor inline
+    setDocParaVisor({ url: fullUrl, nombre: doc.nombre || 'Documento', asunto: doc.tipo || '' });
+    setVisorAbierto(true);
   };
 
   const handleDescargarTodos = async () => {
@@ -2466,6 +2465,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
           </div>
         </DialogContent>
       </Dialog>
+      {/* VISOR INLINE DE DOCUMENTOS */}
+      {docParaVisor && (
+        <VisorDocumentoModal
+          isOpen={visorAbierto}
+          onClose={() => { setVisorAbierto(false); setDocParaVisor(null); }}
+          archivo={docParaVisor.url}
+          numero={docParaVisor.nombre}
+          asunto={docParaVisor.asunto}
+        />
+      )}
     </>
   );
 }

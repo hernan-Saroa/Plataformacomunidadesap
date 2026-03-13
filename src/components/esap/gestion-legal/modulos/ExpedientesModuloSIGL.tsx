@@ -1351,6 +1351,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onVie
             </div>
 
             <div className="flex gap-2 w-full sm:w-auto">
+              {/* Ocultar botón por solicitud del usuario
               {authService.hasPermission(Permissions.GESTION_LEGAL_EXPEDIENTES_ELECTRONICOS_UPLOAD) && (
                 <button
                   onClick={onUpload}
@@ -1360,6 +1361,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onVie
                   Cargar
                 </button>
               )}
+              */}
               <button
                 onClick={onToggleExpand}
                 className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center justify-center gap-2"
