@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { DialogoConfirmacion } from './DialogoConfirmacion';
 
 interface ModalRegistrarActuacionProps {
   isOpen: boolean;
@@ -68,6 +69,7 @@ export function ModalRegistrarActuacion({
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState(false);
   const [archivo, setArchivo] = useState<File | null>(null);
+  const [mostrarConfirmCancelar, setMostrarConfirmCancelar] = useState(false);
 
   /**
    * Validar formulario
@@ -149,17 +151,21 @@ export function ModalRegistrarActuacion({
    */
   const handleCancelar = () => {
     if (tipo || descripcion || responsable || observaciones) {
-      if (confirm('¿Estás seguro de cancelar? Se perderán los datos ingresados.')) {
-        limpiarFormulario();
-        onClose();
-      }
+      setMostrarConfirmCancelar(true);
     } else {
       onClose();
     }
   };
 
+  const confirmarCancelacion = () => {
+    limpiarFormulario();
+    setMostrarConfirmCancelar(false);
+    onClose();
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <>
+    <Dialog open={isOpen} onOpenChange={handleCancelar}>
       <DialogContent hideCloseButton className="!max-w-[600px] !max-h-[72vh] overflow-y-auto flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">Registrar Actuación Procesal</DialogTitle>
         <DialogDescription className="sr-only">
@@ -355,12 +361,18 @@ export function ModalRegistrarActuacion({
                 <input
                   type="file"
                   id="archivo-actuacion"
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  accept=".pdf"
                   onChange={(e) => {
                     if (e.target.files && e.target.files[0]) {
                       const file = e.target.files[0];
+                      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                        toast.error('Solo se permiten archivos PDF');
+                        e.target.value = '';
+                        return;
+                      }
                       if (file.size > 10 * 1024 * 1024) {
                         toast.error('El archivo no puede superar los 10MB');
+                        e.target.value = '';
                         return;
                       }
                       setArchivo(file);
@@ -394,7 +406,7 @@ export function ModalRegistrarActuacion({
                         Haz clic para seleccionar un archivo
                       </span>
                       <span className="text-xs text-gray-400 mt-1">
-                        PDF, DOC, DOCX, JPG, PNG (máx. 10MB)
+                        Solo archivos PDF (máx. 10MB)
                       </span>
                     </>
                   )}
@@ -436,5 +448,17 @@ export function ModalRegistrarActuacion({
         </div>
       </DialogContent>
     </Dialog>
+
+      <DialogoConfirmacion
+        isOpen={mostrarConfirmCancelar}
+        onClose={() => setMostrarConfirmCancelar(false)}
+        onConfirm={confirmarCancelacion}
+        titulo="Cancelar Registro"
+        mensaje="¿Estás seguro de cancelar? Se perderán los datos ingresados en el formulario de actuación."
+        tipo="advertencia"
+        textoConfirmar="Sí, cancelar"
+        textoCancelar="Seguir editando"
+      />
+    </>
   );
 }

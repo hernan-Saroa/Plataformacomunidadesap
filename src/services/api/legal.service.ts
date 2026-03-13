@@ -316,6 +316,9 @@ export class LegalService {
         tipoActuacion: string;
         descripcion: string;
         fechaActuacion: string;
+        responsable?: string;
+        estado?: string;
+        observaciones?: string;
         file?: File;
     }): Promise<Actuacion> {
         if (data.file) {
@@ -324,6 +327,9 @@ export class LegalService {
             formData.append('tipoActuacion', data.tipoActuacion);
             formData.append('descripcion', data.descripcion);
             formData.append('fechaActuacion', data.fechaActuacion); // Backend espera string ISO o similar
+            if (data.responsable) formData.append('responsable', data.responsable);
+            if (data.estado) formData.append('estado', data.estado);
+            if (data.observaciones) formData.append('observaciones', data.observaciones);
             return apiClient.upload<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, formData);
         }
         return apiClient.post<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, data);
@@ -1512,6 +1518,12 @@ export class ProcesosCoactivosService {
         const baseUrl = getServiceUrl('legal');
         const prefix = API_MODE === 'direct' ? '' : '/legal';
         return `${baseUrl}${prefix}/procesos-coactivos/${procesoId}/download-zip`;
+    }
+
+    getExportPdfUrl(procesoId: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        return `${baseUrl}${prefix}/procesos-coactivos/${procesoId}/export-pdf`;
     }
 
     async registrarPago(procesoId: string, data: any): Promise<PagoCoactivo> {

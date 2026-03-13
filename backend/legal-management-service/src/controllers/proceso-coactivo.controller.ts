@@ -221,6 +221,28 @@ export class ProcesoCoactivoController {
         }
     }
 
+    @Get(':id/export-pdf')
+    async exportPdf(@Param('id') id: string, @Res() res: any) {
+        try {
+            const proceso = await this.procesoCoactivoService.findOne(id);
+            const pdfBuffer = await this.procesoCoactivoService.generatePdf(id);
+            const filename = `Proceso_Coactivo_${proceso.radicado}.pdf`;
+
+            res.set({
+                'Content-Type': 'application/pdf',
+                'Content-Disposition': `attachment; filename="${filename}"`,
+                'Content-Length': pdfBuffer.length,
+            });
+
+            res.end(pdfBuffer);
+        } catch (error) {
+            console.error('Error generando PDF:', error);
+            if (!res.headersSent) {
+                res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: 'Error al generar el PDF' });
+            }
+        }
+    }
+
     @Get(':id/download-zip')
     async downloadZip(@Param('id') id: string, @Res() res: any) {
         try {

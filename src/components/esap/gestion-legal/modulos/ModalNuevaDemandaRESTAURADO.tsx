@@ -336,7 +336,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           etapaProcesal: expedienteEdit.etapa as string || '',
           cuantia: typeof expedienteEdit.cuantia === 'string' ? parseFloat(expedienteEdit.cuantia.replace(/[^0-9.-]+/g, "")) : (expedienteEdit.cuantia || 0),
           nivelRiesgo: (expedienteEdit as any).nivelRiesgo || '',
-          provisionContable: (expedienteEdit as any).provisionContable || 0,
+          provisionContable: typeof (expedienteEdit as any).provisionContable === 'string' ? parseInt(String((expedienteEdit as any).provisionContable).replace(/[^0-9]/g, ''), 10) || 0 : Math.floor(Number((expedienteEdit as any).provisionContable) || 0),
           fechaEstimacionProvision: (expedienteEdit as any).fechaEstimacionProvision ? new Date((expedienteEdit as any).fechaEstimacionProvision).toISOString().split('T')[0] : '',
           observacionesProvision: (expedienteEdit as any).observacionProvision || '',
           demandantes: expedienteEdit.demandantes ? expedienteEdit.demandantes.map(mapDemandante) : [],
@@ -1064,7 +1064,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         type="text"
                         inputMode="numeric"
                         placeholder="0"
-                        value={formData.provisionContable === 0 ? '' : String(formData.provisionContable)}
+                        value={formData.provisionContable === 0 ? '' : String(Math.floor(Number(formData.provisionContable) || 0))}
                         onChange={(e) => {
                           const raw = e.target.value.replace(/[^0-9]/g, '');
                           if (!raw || raw.startsWith('0')) {

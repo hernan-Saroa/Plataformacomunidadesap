@@ -7,7 +7,7 @@ import { useState } from 'react';
 import {
   X, FileText, User, Calendar, DollarSign, Clock, Building2, AlertTriangle,
   CheckCircle, TrendingUp, History, Paperclip, Edit, Archive, RefreshCw,
-  CreditCard, FileCheck, Scale, AlertCircle, Upload
+  CreditCard, FileCheck, Scale, AlertCircle, Upload, Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -81,6 +81,7 @@ export function ModalVerExpedienteCoactivo({
 }: ModalVerExpedienteCoactivoProps) {
   const [tabActiva, setTabActiva] = useState('general');
   const [isUploading, setIsUploading] = useState(false);
+  const [exportandoPdf, setExportandoPdf] = useState(false);
   const [uploadData, setUploadData] = useState({
     file: null as File | null,
     esTituloEjecutivo: false,
@@ -110,6 +111,38 @@ export function ModalVerExpedienteCoactivo({
       toast.error('Error al subir el documento');
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleExportarPdf = async () => {
+    setExportandoPdf(true);
+    try {
+      const token = localStorage.getItem('esap_auth_token');
+      const url = procesosCoactivosService.getExportPdfUrl(proceso.id);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (!response.ok) throw new Error('Error al generar el PDF');
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `Proceso_Coactivo_${proceso.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      toast.success('PDF generado exitosamente');
+    } catch (error) {
+      console.error('Error exportando PDF:', error);
+      toast.error('Error al generar el PDF');
+    } finally {
+      setExportandoPdf(false);
     }
   };
 
@@ -532,7 +565,14 @@ export function ModalVerExpedienteCoactivo({
                 Cerrar
               </button>
               <div className="flex items-center gap-2">
-
+                <button
+                  onClick={handleExportarPdf}
+                  disabled={exportandoPdf}
+                  className="px-4 py-2 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-800 transition-all flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <Download className="w-4 h-4" />
+                  {exportandoPdf ? 'Generando...' : 'Exportar PDF'}
+                </button>
                 <button
                   onClick={() => {
                     toast.info('Abriendo generador de actos administrativos...');

@@ -144,13 +144,16 @@ export function ModuloAsesoriaJuridicaV3() {
         solicitante: c.dependenciaSolicitante || 'Sin dependencia',
         funcionarioSolicitante: c.nombreSolicitante || 'Sin asignar',
         emailSolicitante: c.emailSolicitante || '',
+        cargoSolicitante: c.cargoSolicitante || '',
+        telefonoSolicitante: c.telefonoSolicitante || '',
+        antecedentes: c.antecedentes || '',
         consulta: c.descripcion || '',
         fechaRadicacion: new Date(c.fechaRecepcion),
         diasTotales: c.terminoLegalDias || 30,
         diasRestantes: c.diasRestantes || 30,
         abogadoAsignado: c.abogadoAsignado?.nombreCompleto || 'Sin asignar',
         abogadoAsignadoId: c.abogadoAsignadoId || c.abogadoAsignado?.id || '', // ID needed for Select
-        prioridad: c.prioridad || 'media',
+        prioridad: (c.prioridad || 'media').toUpperCase(),
         normativaAplicable: [],
         documentosAdjuntos: [],
         respuesta: c.respuesta || '', // Preservar respuesta/borrador guardado

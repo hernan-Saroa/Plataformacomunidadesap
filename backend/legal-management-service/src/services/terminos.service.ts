@@ -156,12 +156,12 @@ export class TerminosService {
 
     async getSemaforoList(responsableId?: string): Promise<any[]> {
         // Auto-sincronizar al consultar el listado para tener datos actualizados
-        try {
-            await this.sincronizar();
-        } catch (err) {
-            this.logger.warn('Error en sincronización automática:', err);
-            // Continuar aunque falle la sincronización
-        }
+        // try {
+        //     await this.sincronizar();
+        // } catch (err) {
+        //     this.logger.warn('Error en sincronización automática:', err);
+        //     // Continuar aunque falle la sincronización
+        // }
 
         const terminos = await this.findAll({ responsableId, estado: 'PENDIENTE' });
 

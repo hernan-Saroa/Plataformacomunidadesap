@@ -11,6 +11,7 @@ import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
 import { Card } from '../../../ui/card';
 import type { ActuacionExpediente } from './expedienteShared';
+import { buildServiceAssetUrl } from '../../../../config/environment';
 
 // ==================== TIPOS ====================
 
@@ -31,6 +32,7 @@ interface AudienciaProgramada {
   linkReunion?: string;
   abogadoResponsable?: string;
   estado: string;
+  descripcion?: string;
 }
 
 interface DecisionRegistrada {
@@ -159,6 +161,11 @@ export function TabActuacionesExpediente({
                           </p>
                         )}
                       </div>
+                      {audiencia.descripcion && (
+                        <p className="mt-2 text-xs text-gray-600 bg-gray-50 rounded px-2 py-1.5 border border-gray-100 italic">
+                          📝 {audiencia.descripcion}
+                        </p>
+                      )}
                     </div>
                     {onReasignarAudiencia && (
                       <div className="flex flex-col gap-1.5">
@@ -230,18 +237,9 @@ export function TabActuacionesExpediente({
           <h4 className="font-bold text-lg text-gray-600 mb-2">
             Sin actuaciones registradas
           </h4>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="text-sm text-gray-500">
             Aún no se han registrado actuaciones procesales en este expediente
           </p>
-          {onRegistrarPrimera && (
-            <Button
-              onClick={onRegistrarPrimera}
-              style={{ background: '#003DA5', color: '#FFFFFF' }}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              {labelRegistrar}
-            </Button>
-          )}
         </Card>
       ) : (
         <div className="relative">
@@ -284,6 +282,9 @@ export function TabActuacionesExpediente({
                         {actuacion.origen}
                       </Badge>
                     )}
+                    <Badge className={`text-xs font-bold ${actuacion.estado === 'Completado' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                      {actuacion.estado || 'Registrado'}
+                    </Badge>
                   </div>
                   {idx === 0 && (
                     <Badge className="text-xs bg-green-100 text-green-700 font-bold animate-pulse">
@@ -291,9 +292,20 @@ export function TabActuacionesExpediente({
                     </Badge>
                   )}
                 </div>
-                <p className="text-sm font-bold text-gray-900 mb-2">
+                <p className="text-sm font-bold text-gray-900 mb-1">
                   {actuacion.descripcion}
                 </p>
+                <div className="flex flex-col gap-1 mb-3 mt-2">
+                  <p className="text-xs text-gray-600 flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5" />
+                    <span className="font-semibold">Responsable:</span> {actuacion.responsable || 'Sistema'}
+                  </p>
+                  {actuacion.metadata?.observaciones && (
+                    <p className="text-xs text-gray-600 bg-gray-50 p-2 rounded border border-gray-100 italic mt-1">
+                      <span className="font-semibold not-italic">Observaciones:</span> {actuacion.metadata.observaciones}
+                    </p>
+                  )}
+                </div>
 
                 {/* Documento adjunto */}
                 {actuacion.documentoUrl && (
@@ -304,16 +316,36 @@ export function TabActuacionesExpediente({
                         {actuacion.documentoNombre || 'Documento adjunto'}
                       </span>
                     </div>
-                    <a
-                      href={actuacion.documentoUrl.startsWith('http') ? actuacion.documentoUrl : `${window.location.origin}${actuacion.documentoUrl}`}
-                      download={actuacion.documentoNombre || 'documento'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline"
+                    <button
+                      onClick={async () => {
+                        try {
+                          // Extract the stored filename from the documentoUrl (e.g. "/uploads/abc123.pdf" → "abc123.pdf")
+                          const storedFilename = actuacion.documentoUrl!.split('/').pop() || 'documento';
+                          const downloadName = actuacion.documentoNombre || storedFilename;
+                          const downloadUrl = buildServiceAssetUrl('legal', `/files/download/${encodeURIComponent(storedFilename)}?name=${encodeURIComponent(downloadName)}`);
+                          
+                          const response = await fetch(downloadUrl);
+                          if (!response.ok) throw new Error('Error al descargar');
+                          
+                          const blob = await response.blob();
+                          const blobUrl = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = blobUrl;
+                          a.download = downloadName;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(blobUrl);
+                        } catch (err) {
+                          console.error('Error descargando archivo de actuación:', err);
+                          alert('No se pudo descargar el archivo. Verifique que el archivo exista en el servidor.');
+                        }
+                      }}
+                      className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer bg-transparent border-none"
                     >
                       <Download className="w-3 h-3" />
                       Descargar
-                    </a>
+                    </button>
                   </div>
                 )}
 
