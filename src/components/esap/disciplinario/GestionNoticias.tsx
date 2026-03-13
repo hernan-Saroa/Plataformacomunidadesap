@@ -1853,12 +1853,19 @@ export function GestionNoticias() {
           <ModalRemitirCompetencia
             noticia={{
               id: noticiaSeleccionada.id,
-              numeroRadicado: noticiaSeleccionada.numeroRadicado || noticiaSeleccionada.radicado || '',
-              disciplinable: Array.isArray(noticiaSeleccionada.disciplinable) 
-                ? noticiaSeleccionada.disciplinable 
-                : noticiaSeleccionada.disciplinable 
-                  ? [noticiaSeleccionada.disciplinable] 
-                  : []
+              numero: noticiaSeleccionada.numeroRadicado || noticiaSeleccionada.radicado || '',
+              origen: noticiaSeleccionada.origen || 'De oficio',
+              fechaRecepcion: noticiaSeleccionada.fechaRecepcion || '',
+              denunciante: Array.isArray(noticiaSeleccionada.denunciante) && noticiaSeleccionada.denunciante.length > 0 
+                ? { nombre: noticiaSeleccionada.denunciante[0].nombre || '', identificacion: noticiaSeleccionada.denunciante[0].cedula || '' }
+                : { nombre: '', identificacion: '' },
+              denunciado: Array.isArray(noticiaSeleccionada.disciplinable) && noticiaSeleccionada.disciplinable.length > 0 
+                ? { 
+                    nombre: noticiaSeleccionada.disciplinable[0].nombre || '', 
+                    identificacion: noticiaSeleccionada.disciplinable[0].cedula || '', 
+                    cargo: noticiaSeleccionada.disciplinable[0].cargo || '' 
+                  }
+                : { nombre: '', identificacion: '', cargo: '' }
             }}
             onClose={() => {
               setShowRemitirCompetenciaModal(false);
@@ -1871,8 +1878,8 @@ export function GestionNoticias() {
                 // Llamar al backend para remitir por competencia
                 await disciplinaryService.remitirPorCompetencia({
                   newsId: noticiaSeleccionada.id,
-                  emailDestinatario: data.emailDestinatario,
-                  entidadDestino: data.areaDestino,
+                  emailDestinatario: data.entidadCorreo,
+                  entidadDestino: data.entidadNombre,
                   justificacion: data.justificacion,
                   usuarioRemision: 'Sistema'
                 });
@@ -1881,7 +1888,7 @@ export function GestionNoticias() {
                 await loadNoticias();
 
                 toast.success('Remitido por Competencia', {
-                  description: `La noticia ha sido remitida a ${data.areaDestino} y se ha enviado un correo a ${data.emailDestinatario}.`
+                  description: `La noticia ha sido remitida a ${data.entidadNombre} y se ha enviado un correo a ${data.entidadCorreo}.`
                 });
                 setShowRemitirCompetenciaModal(false);
                 setNoticiaSeleccionada(null);

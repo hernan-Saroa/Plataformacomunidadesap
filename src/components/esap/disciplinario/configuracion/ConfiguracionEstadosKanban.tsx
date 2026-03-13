@@ -125,11 +125,44 @@ export function ConfiguracionEstadosKanban() {
     toast.success('Estado agregado correctamente');
   };
 
-  const eliminarEstado = (estadoId: string) => {
-    if (window.confirm('¿Está seguro de eliminar este estado?')) {
-      setEstadosKanban(estadosKanban.filter(e => e.id !== estadoId));
-      setCambiosPendientes(true);
-      toast.success('Estado eliminado correctamente');
+  const eliminarEstado = async (estadoId: string) => {
+    const estadoAEliminar = estadosKanban.find(e => e.id === estadoId);
+    
+    if (!window.confirm(`¿Está seguro de eliminar el estado "${estadoAEliminar?.nombre}"? Esta acción puede afectar procesos existentes.`)) {
+      return;
+    }
+
+    // Eliminar localmente
+    const estadosActualizados = estadosKanban.filter(e => e.id !== estadoId);
+    setEstadosKanban(estadosActualizados);
+    
+    try {
+      // Guardar inmediatamente en el backend
+      const stagesPayload = estadosActualizados.map(e => ({
+        id: e.id,
+        etapa: e.nombre,
+        diasHabiles: e.dias,
+        alertaDias: e.alertaDias,
+        color: e.color,
+        orden: e.orden,
+        activo: e.activo,
+        descripcion: `Etapa de ${e.nombre}`
+      }));
+      
+      console.log('🗑️ Eliminando estado:', { idEliminado: estadoId, nombre: estadoAEliminar?.nombre, payload: stagesPayload });
+      
+      await disciplinaryService.updateStageConfiguration(stagesPayload);
+      
+      toast.success('Estado eliminado', {
+        description: `El estado "${estadoAEliminar?.nombre}" ha sido eliminado`
+      });
+    } catch (error) {
+      console.error('❌ Error al eliminar estado:', error);
+      toast.error('Error al eliminar estado', {
+        description: 'No se pudo eliminar el estado en el servidor'
+      });
+      // Revertir el cambio local si hay error
+      setEstadosKanban(estadosKanban);
     }
   };
 

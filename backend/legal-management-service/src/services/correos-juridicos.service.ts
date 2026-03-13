@@ -331,7 +331,43 @@ export class CorreosJuridicosService {
             }
         }
 
+        // Resolve inline images (cid: references) to base64 data URLs
+        if (correo.cuerpoHtml && correo.graphMessageId && /src="cid:/i.test(correo.cuerpoHtml)) {
+            try {
+                correo.cuerpoHtml = await this.resolveInlineImages(correo.graphMessageId, correo.cuerpoHtml);
+            } catch (error) {
+                this.logger.warn(`Could not resolve inline images for email ${id}:`, error);
+            }
+        }
+
         return correo;
+    }
+
+    /**
+     * Replace cid: references in HTML with base64 data URLs from Graph attachments
+     */
+    private async resolveInlineImages(graphMessageId: string, html: string): Promise<string> {
+        const attachments = await this.graphService.getAttachments(graphMessageId);
+        if (!attachments || attachments.length === 0) return html;
+
+        let processedHtml = html;
+        for (const att of attachments) {
+            // Graph inline attachments have contentId (sometimes without angle brackets)
+            const contentId = (att as any).contentId;
+            if (!contentId || !att.contentBytes) continue;
+
+            // Clean contentId (remove angle brackets if present)
+            const cleanCid = contentId.replace(/^<|>$/g, '');
+            const contentType = att.contentType || 'image/png';
+            const dataUrl = `data:${contentType};base64,${att.contentBytes}`;
+
+            // Replace all variations: cid:xxx, cid:<xxx>
+            processedHtml = processedHtml
+                .replace(new RegExp(`src="cid:${cleanCid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'gi'), `src="${dataUrl}"`)
+                .replace(new RegExp(`src='cid:${cleanCid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`, 'gi'), `src='${dataUrl}'`);
+        }
+
+        return processedHtml;
     }
 
     /**
@@ -344,12 +380,16 @@ export class CorreosJuridicosService {
             throw new NotFoundException(`Correo ${id} not found`);
         }
 
-        // Update in Graph
+        // Update in Graph (best-effort, may fail if Mail.ReadWrite permission is missing)
         if (correo.graphMessageId) {
-            await this.graphService.markAsRead(correo.graphMessageId);
+            try {
+                await this.graphService.markAsRead(correo.graphMessageId);
+            } catch (error) {
+                this.logger.warn(`Graph markAsRead failed for ${id} (permission issue?), DB update continues`);
+            }
         }
 
-        // Update in DB
+        // Update in DB (always succeeds regardless of Graph)
         correo.leido = true;
         const saved = await this.correoRepo.save(correo);
         await this.registrarAccion(correo.id, 'LEIDO', 'Correo marcado como leído');

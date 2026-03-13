@@ -352,34 +352,16 @@ export function TabDocumentosExpediente({
                 ? `No se encontraron resultados para "${busquedaDocs}"`
                 : 'Sube el primer documento a esta categoría'}
             </p>
-            <div className="flex items-center justify-center gap-2 flex-wrap">
+            {(busquedaDocs || filtroDocTipo !== 'todos') && (
               <Button
-                onClick={() => setModalPlantillas(true)}
                 variant="outline"
+                onClick={() => { setBusquedaDocs(''); setFiltroDocTipo('todos'); }}
                 className="font-semibold"
-                style={{ borderColor: '#2962FF', color: '#2962FF' }}
               >
-                <Library className="w-4 h-4 mr-2" />
-                Usar Plantilla
+                <X className="w-4 h-4 mr-1" />
+                Limpiar filtros
               </Button>
-              <Button
-                onClick={() => setModalSubirDocumento(true)}
-                style={{ background: '#003DA5', color: '#FFFFFF' }}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Subir Documento
-              </Button>
-              {(busquedaDocs || filtroDocTipo !== 'todos') && (
-                <Button
-                  variant="outline"
-                  onClick={() => { setBusquedaDocs(''); setFiltroDocTipo('todos'); }}
-                  className="font-semibold"
-                >
-                  <X className="w-4 h-4 mr-1" />
-                  Limpiar filtros
-                </Button>
-              )}
-            </div>
+            )}
           </Card>
         ) : (
           <div className="space-y-2">

@@ -16,7 +16,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Upload, Download, Trash2, Edit2, Plus, CheckSquare,
@@ -26,7 +26,7 @@ import {
 import { toast } from 'sonner';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
 import { controlInternoService, ListaChequeo as ListaChequeoService } from '../../../services/api/controlInternoService';
-import { getServiceUrl, API_MODE } from '../../../config/environment';
+import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN DE URLs PARA DOCUMENTOS
@@ -94,6 +94,7 @@ interface DocumentoBiblioteca {
   descripcion: string;
   categoria: CategoriaDocumento;
   etapaKanban?: EtapaKanban; // Etapa del Kanban asociada
+  auditoriaId?: string | null; // Auditoría asociada (opcional)
   archivoUrl: string;
   urlPreview: string;  // URL del endpoint /documentos/{id}/preview
   urlDownload: string; // URL del endpoint /documentos/{id}/download
@@ -250,6 +251,7 @@ const mapApiDocumentoToBiblioteca = (doc: any): DocumentoBiblioteca => {
     descripcion,
     categoria: mapApiTipoToCategoria(tipo),
     etapaKanban,
+    auditoriaId: doc?.auditoriaId ?? doc?.auditoria_id ?? doc?.visibleAuditoriaId ?? doc?.visible_auditoria_id ?? null,
     archivoUrl: doc?.archivoUrl || doc?.url || doc?.fileUrl || doc?.rutaArchivo || '#',
     urlPreview,
     urlDownload,
@@ -343,7 +345,8 @@ export function ListasChequeoModule() {
         if (cancelled) return;
 
         if (Array.isArray(docsApi) && docsApi.length > 0) {
-          setDocumentosBiblioteca(docsApi.map(mapApiDocumentoToBiblioteca));
+          const soloPlantillas = docsApi.filter((d: any) => !d.auditoriaId && !d.auditoria_id);
+          setDocumentosBiblioteca(soloPlantillas.map(mapApiDocumentoToBiblioteca));
         } else {
           setDocumentosBiblioteca([]);
         }
@@ -447,50 +450,64 @@ interface BibliotecaDocumentosProps {
   loadError: string | null;
 }
 
+const ETAPAS_ORDEN: EtapaKanban[] = ['PLANEACION', 'EJECUCION', 'COMUNICACION', 'SEGUIMIENTO', 'CIERRE'];
+const ETAPA_LABEL: Record<string, string> = {
+  PLANEACION: 'Planeación',
+  EJECUCION: 'Ejecución',
+  COMUNICACION: 'Comunicación',
+  SEGUIMIENTO: 'Seguimiento',
+  CIERRE: 'Cierre',
+};
+
 function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLoading, loadError }: BibliotecaDocumentosProps) {
   const [busqueda, setBusqueda] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState<string>('TODOS');
+  const [filtroEtapa, setFiltroEtapa] = useState<string>('TODOS');
   const [mostrarModalSubir, setMostrarModalSubir] = useState(false);
   const [documentoVistaPrevia, setDocumentoVistaPrevia] = useState<DocumentoBiblioteca | null>(null);
   const [documentoEliminar, setDocumentoEliminar] = useState<DocumentoBiblioteca | null>(null);
   const [documentoAEditar, setDocumentoAEditar] = useState<DocumentoBiblioteca | null>(null);
-  const sinDatosBackend = documentos.length === 0 && busqueda.trim() === '' && filtroCategoria === 'TODOS';
+  const sinDatosBackend = documentos.length === 0 && busqueda.trim() === '' && filtroCategoria === 'TODOS' && filtroEtapa === 'TODOS';
 
   const documentosFiltrados = documentos.filter(doc => {
     const cumpleBusqueda = doc.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
                           doc.descripcion.toLowerCase().includes(busqueda.toLowerCase());
     const cumpleCategoria = filtroCategoria === 'TODOS' || doc.categoria === filtroCategoria;
-    return cumpleBusqueda && cumpleCategoria;
+    const cumpleEtapa = filtroEtapa === 'TODOS' || doc.etapaKanban === filtroEtapa;
+    return cumpleBusqueda && cumpleCategoria && cumpleEtapa;
   });
 
-  // ═══════════════════════════════════════════════════════════════════
-  // FUNCIÓN REAL: DESCARGAR DOCUMENTO
-  // ═══════════════════════════════════════════════════════════════════
-  const handleDescargar = (documento: DocumentoBiblioteca) => {
-    try {
-      // Incrementar contador de descargas
-      setDocumentos(prev => 
-        prev.map(doc => 
-          doc.id === documento.id 
-            ? { ...doc, descargas: doc.descargas + 1 }
-            : doc
-        )
-      );
+  const documentosPorEtapa = ETAPAS_ORDEN.reduce((acc, etapa) => {
+    const docs = documentosFiltrados.filter(d => d.etapaKanban === etapa);
+    if (docs.length > 0) acc.push({ etapa, label: ETAPA_LABEL[etapa], docs });
+    return acc;
+  }, [] as { etapa: string; label: string; docs: DocumentoBiblioteca[] }[]);
+  const docsSinEtapa = documentosFiltrados.filter(d => !d.etapaKanban || !ETAPAS_ORDEN.includes(d.etapaKanban as EtapaKanban));
+  if (docsSinEtapa.length > 0) documentosPorEtapa.push({ etapa: 'OTROS', label: 'Otros', docs: docsSinEtapa });
 
-      // ✅ Usar la URL real del endpoint de descarga del backend
-      const downloadUrl = documento.urlDownload;
-      console.log('📥 Descargando desde:', downloadUrl);
-      
-      // Crear un elemento <a> temporal para forzar la descarga
+  // ═══════════════════════════════════════════════════════════════════
+  // FUNCIÓN REAL: DESCARGAR DOCUMENTO (con token para evitar 401)
+  // ═══════════════════════════════════════════════════════════════════
+  const handleDescargar = async (documento: DocumentoBiblioteca) => {
+    try {
+      const url = documento.urlDownload.startsWith('http') ? documento.urlDownload : `${window.location.origin}${documento.urlDownload}`;
+      const res = await fetch(url, { headers: getDefaultHeaders() });
+      if (!res.ok) {
+        throw new Error(res.status === 401 ? 'No autorizado. Inicia sesión nuevamente.' : `Error ${res.status}`);
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = downloadUrl;
+      link.href = blobUrl;
       link.download = documento.nombreArchivo || `${documento.nombre}.${documento.extension.toLowerCase()}`;
-      link.target = '_blank';
-      
-      // Simular click en el link
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+
+      setDocumentos(prev =>
+        prev.map(doc => doc.id === documento.id ? { ...doc, descargas: doc.descargas + 1 } : doc)
+      );
 
       toast.success('✅ Descarga iniciada', {
         description: `Se está descargando: ${documento.nombreArchivo || documento.nombre}`,
@@ -499,7 +516,7 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
     } catch (error) {
       console.error('Error al descargar documento:', error);
       toast.error('❌ Error al descargar', {
-        description: 'No se pudo iniciar la descarga del documento',
+        description: error instanceof Error ? error.message : 'No se pudo iniciar la descarga',
         duration: 4000
       });
     }
@@ -533,12 +550,29 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
     setDocumentoAEditar(documento);
   };
 
-  const confirmarEdicion = async (nombre: string, descripcion: string) => {
+  const confirmarEdicion = async (data: {
+    nombre: string;
+    descripcion: string;
+    categoria?: CategoriaDocumento;
+    etapaKanban?: EtapaKanban;
+    auditoriaId?: string | null;
+  }) => {
     if (!documentoAEditar) return;
     try {
-      await controlInternoService.updateDocumento(documentoAEditar.id, { nombre, descripcion });
-      setDocumentos(prev => prev.map(d => d.id === documentoAEditar.id ? { ...d, nombre, descripcion } : d));
-      toast.success('✅ Documento actualizado', { description: `"${nombre}" actualizado correctamente`, duration: 4000 });
+      const updatePayload: Record<string, any> = { nombre: data.nombre, descripcion: data.descripcion };
+      if (data.categoria) updatePayload.tipoDocumento = mapCategoriaToApiTipo(data.categoria);
+      if (data.etapaKanban) {
+        const etapaMap: Record<string, string> = {
+          'PLANEACION': 'planeacion', 'EJECUCION': 'ejecucion', 'COMUNICACION': 'comunicacion',
+          'SEGUIMIENTO': 'seguimiento', 'CIERRE': 'cierre',
+        };
+        updatePayload.etapa = etapaMap[data.etapaKanban];
+      }
+      // Plantillas: visibleAuditoriaId indica para qué auditoría se muestra (null=todas)
+      if (data.auditoriaId !== undefined) updatePayload.visibleAuditoriaId = data.auditoriaId || null;
+      await controlInternoService.updateDocumento(documentoAEditar.id, updatePayload);
+      setDocumentos(prev => prev.map(d => d.id === documentoAEditar.id ? { ...d, ...data } : d));
+      toast.success('✅ Documento actualizado', { description: `"${data.nombre}" actualizado correctamente`, duration: 4000 });
       setDocumentoAEditar(null);
     } catch (error) {
       console.error('Error actualizando documento:', error);
@@ -552,13 +586,14 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
         'PLANEACION': 'planeacion', 'EJECUCION': 'ejecucion', 'COMUNICACION': 'comunicacion', 'SEGUIMIENTO': 'seguimiento', 'CIERRE': 'cierre',
       };
       const etapaBackend = nuevoDocumento.etapaKanban ? etapaKanbanToBackend[nuevoDocumento.etapaKanban] : undefined;
+      // Plantillas: auditoriaId=null, visibleAuditoriaId=para qué auditoría se muestra (null=todas)
       const creado = await controlInternoService.createDocumento(nuevoDocumento.file, {
         nombre: nuevoDocumento.nombre,
         descripcion: nuevoDocumento.descripcion,
         tipoDocumento: mapCategoriaToApiTipo(nuevoDocumento.categoria),
         etapa: etapaBackend,
         subidoPor: nuevoDocumento.subidoPor,
-        ...(nuevoDocumento.auditoriaId && { auditoriaId: nuevoDocumento.auditoriaId }),
+        ...(nuevoDocumento.auditoriaId && { visibleAuditoriaId: nuevoDocumento.auditoriaId }),
       });
       const documentoCompleto: DocumentoBiblioteca = mapApiDocumentoToBiblioteca(creado);
       setDocumentos(prev => [documentoCompleto, ...prev]);
@@ -642,17 +677,29 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
 
       {/* Filtros y Búsqueda */}
       <div className="bg-white rounded-xl border-2 border-gray-200 p-6 mb-6">
-        <div className="flex items-center gap-4">
-          <div className="flex-1 relative">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex-1 min-w-[200px] relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar documentos por nombre o descripción..."
+              placeholder="Buscar plantilla..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
             />
           </div>
+          <select
+            value={filtroEtapa}
+            onChange={(e) => setFiltroEtapa(e.target.value)}
+            className="px-4 py-3 border-2 border-gray-300 rounded-lg font-semibold focus:border-blue-500 focus:outline-none"
+          >
+            <option value="TODOS">Todas las etapas</option>
+            <option value="PLANEACION">Planeación</option>
+            <option value="EJECUCION">Ejecución</option>
+            <option value="COMUNICACION">Comunicación</option>
+            <option value="SEGUIMIENTO">Seguimiento</option>
+            <option value="CIERRE">Cierre</option>
+          </select>
           <select
             value={filtroCategoria}
             onChange={(e) => setFiltroCategoria(e.target.value)}
@@ -670,9 +717,10 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
             <option value="OTRO">Otros</option>
           </select>
         </div>
+        <p className="mt-3 text-sm text-gray-500 font-medium">{documentosFiltrados.length} resultados</p>
       </div>
 
-      {/* Lista de Documentos */}
+      {/* Lista de Documentos agrupada por etapa */}
       <div className="bg-white rounded-xl border-2 border-gray-200 overflow-hidden">
         <div className="p-6 border-b-2 border-gray-200 bg-gray-50">
           <h2 className="text-xl font-black text-gray-900">
@@ -690,30 +738,37 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
             <AlertCircle className="w-16 h-16 text-red-300 mx-auto mb-4" />
             <p className="text-red-700 font-semibold">{loadError}</p>
           </div>
+        ) : documentosFiltrados.length === 0 ? (
+          <div className="p-12 text-center">
+            <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 font-semibold">
+              {sinDatosBackend ? 'No hay documentos cargados en el backend' : 'No se encontraron documentos con ese filtro'}
+            </p>
+          </div>
         ) : (
-          <>
-            <div className="divide-y-2 divide-gray-200">
-              {documentosFiltrados.map((doc) => (
-                <TarjetaDocumento
-                  key={doc.id}
-                  documento={doc}
-                  onEliminar={handleEliminar}
-                  onDescargar={handleDescargar}
-                  onVistaPrevia={handleVistaPrevia}
-                  onEditar={handleEditar}
-                />
-              ))}
-            </div>
-
-            {documentosFiltrados.length === 0 && (
-              <div className="p-12 text-center">
-                <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500 font-semibold">
-                  {sinDatosBackend ? 'No hay documentos cargados en el backend' : 'No se encontraron documentos con ese filtro'}
-                </p>
+          <div className="divide-y-2 divide-gray-200">
+            {documentosPorEtapa.map(({ etapa, label, docs }) => (
+              <div key={etapa}>
+                <div className="px-6 py-3 bg-gray-100 border-b border-gray-200">
+                  <h3 className="text-base font-black text-gray-800">
+                    {label} – {docs.length} plantilla{docs.length !== 1 ? 's' : ''}
+                  </h3>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {docs.map((doc) => (
+                    <TarjetaDocumento
+                      key={doc.id}
+                      documento={doc}
+                      onEliminar={handleEliminar}
+                      onDescargar={handleDescargar}
+                      onVistaPrevia={handleVistaPrevia}
+                      onEditar={handleEditar}
+                    />
+                  ))}
+                </div>
               </div>
-            )}
-          </>
+            ))}
+          </div>
         )}
       </div>
 
@@ -734,20 +789,13 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
         />
       )}
 
-      {/* Modal Editar Documento */}
-      {documentoAEditar && (
-        <ModalEditarDocumento
-          documento={documentoAEditar}
-          onClose={() => setDocumentoAEditar(null)}
-          onGuardar={confirmarEdicion}
-        />
-      )}
-
-      {/* Modal Subir Documento */}
-      {mostrarModalSubir && (
+      {/* Modal Subir / Editar Documento (unificado) */}
+      {(mostrarModalSubir || documentoAEditar) && (
         <ModalSubirDocumento
-          onClose={() => setMostrarModalSubir(false)}
+          onClose={() => { setMostrarModalSubir(false); setDocumentoAEditar(null); }}
           onSubir={handleSubirDocumento}
+          onEditar={documentoAEditar ? confirmarEdicion : undefined}
+          documentoEditar={documentoAEditar ?? undefined}
           auditorias={auditorias}
         />
       )}
@@ -2186,6 +2234,62 @@ interface ModalVistaPreviaProps {
 }
 
 function ModalVistaPrevia({ documento, onClose }: ModalVistaPreviaProps) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!documento.urlPreview) return;
+    const url = documento.urlPreview.startsWith('http') ? documento.urlPreview : `${window.location.origin}${documento.urlPreview}`;
+    let revoked = false;
+    setLoading(true);
+    setError(null);
+    fetch(url, { headers: getDefaultHeaders() })
+      .then(res => {
+        if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
+        return res.blob();
+      })
+      .then(blob => {
+        if (!revoked) setBlobUrl(URL.createObjectURL(blob));
+      })
+      .catch(e => {
+        if (!revoked) setError(e instanceof Error ? e.message : 'Error al cargar');
+      })
+      .finally(() => {
+        if (!revoked) setLoading(false);
+      });
+    return () => {
+      revoked = true;
+      setBlobUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+  }, [documento.urlPreview]);
+
+  const handleDescargarDesdeModal = useCallback(async () => {
+    if (!documento.urlDownload) return;
+    try {
+      const url = documento.urlDownload.startsWith('http') ? documento.urlDownload : `${window.location.origin}${documento.urlDownload}`;
+      const res = await fetch(url, { headers: getDefaultHeaders() });
+      if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
+      const blob = await res.blob();
+      const u = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = u;
+      link.download = documento.nombreArchivo || documento.nombre;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(u);
+      toast.success('Descarga iniciada');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al descargar');
+    }
+  }, [documento.urlDownload, documento.nombreArchivo, documento.nombre]);
+
+  const srcParaPreview = documento.tipoMime?.startsWith('image/') || documento.tipoMime === 'application/pdf' ? blobUrl : null;
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -2257,51 +2361,64 @@ function ModalVistaPrevia({ documento, onClose }: ModalVistaPreviaProps) {
             <h3 className="text-lg font-bold text-gray-900 mb-4">
               Vista Previa
             </h3>
-            <div className="flex items-center justify-center bg-white rounded-lg p-4">
-              {/* ✅ Usar la URL real del endpoint de preview del backend */}
-              {documento.tipoMime?.startsWith('image/') ? (
+            <div className="flex items-center justify-center bg-white rounded-lg p-4 min-h-[200px]">
+              {loading ? (
+                <div className="flex flex-col items-center gap-2 text-gray-500">
+                  <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  <p className="text-sm">Cargando...</p>
+                </div>
+              ) : error ? (
+                <div className="text-center py-8">
+                  <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+                  <p className="text-gray-600 mb-4">{error}</p>
+                  <button
+                    onClick={handleDescargarDesdeModal}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    <Download className="w-4 h-4" />
+                    Descargar archivo
+                  </button>
+                </div>
+              ) : documento.tipoMime?.startsWith('image/') && srcParaPreview ? (
                 <img
-                  src={documento.urlPreview}
+                  src={srcParaPreview}
                   alt={documento.nombre}
                   className="max-w-full max-h-96 object-contain rounded"
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = 'data:image/svg+xml,...';
                   }}
                 />
-              ) : documento.tipoMime === 'application/pdf' ? (
+              ) : documento.tipoMime === 'application/pdf' && srcParaPreview ? (
                 <iframe
-                  src={documento.urlPreview}
+                  src={srcParaPreview}
                   className="w-full h-96 border-0 rounded"
                   title={`Vista previa de ${documento.nombre}`}
                 />
               ) : documento.tipoMime?.includes('word') || documento.tipoMime?.includes('excel') || documento.tipoMime?.includes('powerpoint') || documento.tipoMime?.includes('sheet') || documento.tipoMime?.includes('presentation') ? (
                 <div className="text-center py-8">
                   <FileText className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-4">Vista previa no disponible para archivos Office</p>
-                  <a
-                    href={documento.urlDownload}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <p className="text-amber-700 font-medium mb-4">Este tipo no se puede visualizar.</p>
+                  <p className="text-sm text-gray-600 mb-4">Descargue el archivo para verlo.</p>
+                  <button
+                    onClick={handleDescargarDesdeModal}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                   >
                     <Download className="w-4 h-4" />
                     Descargar para ver
-                  </a>
+                  </button>
                 </div>
               ) : (
                 <div className="text-center py-8">
                   <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-4">Vista previa no disponible para este tipo de archivo</p>
-                  <p className="text-sm text-gray-500 mb-4">Tipo: {documento.tipoMime || 'Desconocido'}</p>
-                  <a
-                    href={documento.urlDownload}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <p className="text-amber-700 font-medium mb-4">Este tipo no se puede visualizar.</p>
+                  <p className="text-sm text-gray-600 mb-4">Descargue el archivo para verlo. Tipo: {documento.tipoMime || 'Desconocido'}</p>
+                  <button
+                    onClick={handleDescargarDesdeModal}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                   >
                     <Download className="w-4 h-4" />
                     Descargar archivo
-                  </a>
+                  </button>
                 </div>
               )}
             </div>
@@ -2447,102 +2564,39 @@ function ModalEliminar({ documento, onClose, onConfirmar }: ModalEliminarProps) 
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// MODAL: EDITAR DOCUMENTO
-// ════════════════════════════════════════════════════════════════════════════
-
-interface ModalEditarDocumentoProps {
-  documento: DocumentoBiblioteca;
-  onClose: () => void;
-  onGuardar: (nombre: string, descripcion: string) => void;
-}
-
-function ModalEditarDocumento({ documento, onClose, onGuardar }: ModalEditarDocumentoProps) {
-  const [nombre, setNombre] = useState(documento.nombre);
-  const [descripcion, setDescripcion] = useState(documento.descripcion || '');
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.9, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        className="bg-white rounded-xl shadow-2xl w-full max-w-lg flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex-shrink-0 bg-gradient-to-r from-purple-600 to-purple-700 text-white p-6 rounded-t-xl flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <Edit2 className="w-6 h-6" />
-            <h2 className="text-xl font-black">Editar Documento</h2>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-1">Nombre</label>
-            <input
-              type="text"
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-1">Descripción (incluye versión y normativa)</label>
-            <textarea
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              rows={3}
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none resize-none"
-              placeholder="Versión: v1.0 | Normativa: Guía DAFP v6 §4.1"
-            />
-          </div>
-        </div>
-        <div className="flex-shrink-0 p-6 border-t flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg font-bold text-gray-700 hover:bg-gray-50"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={() => onGuardar(nombre, descripcion)}
-            className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold flex items-center justify-center gap-2"
-          >
-            <Save className="w-5 h-5" />
-            Guardar
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// MODAL: SUBIR DOCUMENTO
+// MODAL: SUBIR / EDITAR DOCUMENTO (unificado)
 // ════════════════════════════════════════════════════════════════════════════
 
 interface ModalSubirDocumentoProps {
   onClose: () => void;
   onSubir: (documento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File; auditoriaId?: string }) => void;
+  onEditar?: (data: { nombre: string; descripcion: string; categoria?: CategoriaDocumento; etapaKanban?: EtapaKanban; auditoriaId?: string | null }) => void;
+  documentoEditar?: DocumentoBiblioteca;
   auditorias?: any[];
 }
 
-function ModalSubirDocumento({ onClose, onSubir, auditorias = [] }: ModalSubirDocumentoProps) {
-  const [descripcion, setDescripcion] = useState('');
-  const [categoria, setCategoria] = useState<CategoriaDocumento>('PLANTILLA');
-  const [etapaKanban, setEtapaKanban] = useState<EtapaKanban>('PLANEACION');
+function parseVersionNormativa(desc: string): { version: string; normativa: string } {
+  let version = 'v1.0';
+  let normativa = '';
+  const versionMatch = desc.match(/Versión:\s*([^\n|]+)/i);
+  const normativaMatch = desc.match(/Normativa:\s*([^\n|]+)/i);
+  if (versionMatch) version = versionMatch[1].trim();
+  if (normativaMatch) normativa = normativaMatch[1].trim();
+  return { version, normativa };
+}
+
+function ModalSubirDocumento({ onClose, onSubir, onEditar, documentoEditar, auditorias = [] }: ModalSubirDocumentoProps) {
+  const esEdicion = !!documentoEditar && !!onEditar;
+  const { version: v0, normativa: n0 } = documentoEditar?.descripcion ? parseVersionNormativa(documentoEditar.descripcion) : { version: 'v1.0', normativa: '' };
+  const [nombre, setNombre] = useState(documentoEditar?.nombre ?? '');
+  const [descripcion, setDescripcion] = useState(documentoEditar?.descripcion ?? '');
+  const [categoria, setCategoria] = useState<CategoriaDocumento>(documentoEditar?.categoria ?? 'PLANTILLA');
+  const [etapaKanban, setEtapaKanban] = useState<EtapaKanban>(documentoEditar?.etapaKanban ?? 'PLANEACION');
   const [archivo, setArchivo] = useState<File | null>(null);
   const [arrastrando, setArrastrando] = useState(false);
-  // Campos adicionales para plantillas (Planeación)
-  const [version, setVersion] = useState('v1.0');
-  const [normativa, setNormativa] = useState('');
-  const [auditoriaAsociada, setAuditoriaAsociada] = useState<string>('');
+  const [version, setVersion] = useState(v0 || 'v1.0');
+  const [normativa, setNormativa] = useState(n0 || '');
+  const [auditoriaAsociada, setAuditoriaAsociada] = useState<string>(documentoEditar?.auditoriaId ?? '');
 
   // Manejar selección de archivo
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2586,25 +2640,37 @@ function ModalSubirDocumento({ onClose, onSubir, auditorias = [] }: ModalSubirDo
     return parts.length > 1 ? parts[parts.length - 1].toUpperCase() : 'FILE';
   };
 
-  // Validar y subir
+  // Validar y subir o editar
   const handleSubmit = () => {
+    if (esEdicion) {
+      let descFinal = descripcion;
+      if (version || normativa) {
+        const partes = [];
+        if (version) partes.push(`Versión: ${version}`);
+        if (normativa) partes.push(`Normativa: ${normativa}`);
+        if (partes.length) descFinal = (descFinal ? descFinal + '\n\n' : '') + partes.join(' | ');
+      }
+      onEditar?.({
+        nombre: nombre.trim() || documentoEditar!.nombre,
+        descripcion: descFinal,
+        categoria,
+        etapaKanban,
+        auditoriaId: auditoriaAsociada || null
+      });
+      onClose();
+      return;
+    }
+
     if (!archivo) {
       toast.error('❌ Debes seleccionar un archivo');
       return;
     }
 
-    // Crear URL temporal (en producción sería upload a servidor)
     const archivoUrl = URL.createObjectURL(archivo);
-
-    // El nombre es el nombre del archivo sin extensión
-    const nombreDocumento = archivo.name.replace(/\.[^/.]+$/, '');
-
-    // El tipoMime se obtiene del archivo
+    const nombreDocumento = nombre.trim() || archivo.name.replace(/\.[^/.]+$/, '');
     const tipoMime = archivo.type || 'application/octet-stream';
-    
-    // Construir descripción con versión y normativa (solo en Planeación)
     let descFinal = descripcion;
-    if (etapaKanban === 'PLANEACION' && (version || normativa)) {
+    if (version || normativa) {
       const partes = [];
       if (version) partes.push(`Versión: ${version}`);
       if (normativa) partes.push(`Normativa: ${normativa}`);
@@ -2649,16 +2715,18 @@ function ModalSubirDocumento({ onClose, onSubir, auditorias = [] }: ModalSubirDo
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header - Sticky */}
-        <div className="flex-shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-xl">
+        <div className={`flex-shrink-0 bg-gradient-to-r text-white p-6 rounded-t-xl ${esEdicion ? 'from-purple-600 to-purple-700' : 'from-blue-600 to-blue-700'}`}>
           <div className="flex items-center justify-between">
             <div className="flex-1 pr-4">
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-                  <Upload className="w-6 h-6" />
+                  {esEdicion ? <Edit2 className="w-6 h-6" /> : <Upload className="w-6 h-6" />}
                 </div>
                 <div>
-                  <h2 className="text-2xl font-black">Subir Documento</h2>
-                  <p className="text-sm text-blue-100 mt-1">Agrega un nuevo documento a la biblioteca</p>
+                  <h2 className="text-2xl font-black">{esEdicion ? 'Editar Documento' : 'Subir Documento'}</h2>
+                  <p className="text-sm text-blue-100 mt-1">
+                    {esEdicion ? 'Modifica los datos del documento (nombre, descripción, auditoría asociada)' : 'Agrega un nuevo documento a la biblioteca'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -2673,7 +2741,20 @@ function ModalSubirDocumento({ onClose, onSubir, auditorias = [] }: ModalSubirDo
 
         {/* Contenido - Scrollable */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Zona de Drag & Drop */}
+          {/* Nombre (editable en ambos modos; en crear se sobreescribe si hay archivo) */}
+          <div>
+            <label className="block text-sm font-bold text-gray-900 mb-2">Nombre del documento</label>
+            <input
+              type="text"
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              placeholder="Ej: EXPLICACION DE UNIVERSO DE AUDITORIA"
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
+          {/* Zona de Drag & Drop - solo en modo crear */}
+          {!esEdicion && (
           <div>
             <label className="block text-sm font-bold text-gray-900 mb-2">
               Archivo <span className="text-red-600">*</span>
@@ -2741,6 +2822,16 @@ function ModalSubirDocumento({ onClose, onSubir, auditorias = [] }: ModalSubirDo
               )}
             </div>
           </div>
+          )}
+
+          {/* En modo edición: mostrar archivo actual */}
+          {esEdicion && documentoEditar && (
+            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <p className="text-sm font-bold text-gray-700">Archivo actual</p>
+              <p className="text-gray-600">{documentoEditar.nombreArchivo} ({documentoEditar.tamano})</p>
+              <p className="text-xs text-gray-500">No se puede cambiar el archivo. Para reemplazarlo, elimina y sube uno nuevo.</p>
+            </div>
+          )}
 
           {/* Tipo de Documento */}
           <div>
@@ -2785,9 +2876,8 @@ function ModalSubirDocumento({ onClose, onSubir, auditorias = [] }: ModalSubirDo
             </div>
           </div>
 
-          {/* Campos adicionales para Planeación */}
-          {etapaKanban === 'PLANEACION' && (
-            <>
+          {/* Campos adicionales (Versión, Normativa, Auditoría) - disponibles para todas las etapas P-E-C */}
+          <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-gray-900 mb-2">Versión</label>
@@ -2826,24 +2916,7 @@ function ModalSubirDocumento({ onClose, onSubir, auditorias = [] }: ModalSubirDo
                 </select>
                 <p className="text-xs text-gray-500 mt-1">Si seleccionas una auditoría específica, la plantilla solo aparecerá asociada a ella.</p>
               </div>
-            </>
-          )}
-
-          {/* Nombre del Documento (Auto desde archivo) */}
-          {archivo && (
-            <div>
-              <label className="block text-sm font-bold text-gray-900 mb-2">
-                Nombre del Documento
-              </label>
-              <div className="w-full px-4 py-3 border-2 border-gray-200 bg-gray-50 rounded-lg font-bold text-gray-700 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-blue-600" />
-                {archivo.name.replace(/\.[^/.]+$/, '')}
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                El nombre se toma automáticamente del archivo
-              </p>
-            </div>
-          )}
+          </>
 
           {/* Descripción */}
           <div>
@@ -2870,10 +2943,15 @@ function ModalSubirDocumento({ onClose, onSubir, auditorias = [] }: ModalSubirDo
           </button>
           <button
             onClick={handleSubmit}
-            className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-lg"
+            disabled={!esEdicion && !archivo}
+            className={`flex-1 px-6 py-3 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
+              esEdicion
+                ? 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800'
+                : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-50'
+            }`}
           >
-            <Upload className="w-5 h-5" />
-            Subir Documento
+            {esEdicion ? <Save className="w-5 h-5" /> : <Upload className="w-5 h-5" />}
+            {esEdicion ? 'Guardar cambios' : 'Subir Documento'}
           </button>
         </div>
       </motion.div>

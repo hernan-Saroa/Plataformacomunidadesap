@@ -269,29 +269,23 @@ function MenuDinamicoWrapper({
   onCambiarSeccion,
   navegacionManual
 }: MenuDinamicoWrapperProps) {
-  const { auditoriaSeleccionada } = useIntegracionAuditoriaPlanes();
-  const [yaNavego, setYaNavego] = useState(false); // ← Control de navegación única
+  const { auditoriaSeleccionada, auditoriaIdParaVerPlan } = useIntegracionAuditoriaPlanes();
+  const [yaNavego, setYaNavego] = useState(false);
+  const [yaNavegoVerPlan, setYaNavegoVerPlan] = useState(false);
 
-  // Navegación automática (solo la primera vez)
+  // Navegación: Crear plan (desde auditoría con hallazgos)
   useEffect(() => {
     const tiempoActual = Date.now();
-    const navegacionReciente = (tiempoActual - navegacionManual) < 500; // 500ms después de navegación manual
+    const navegacionReciente = (tiempoActual - navegacionManual) < 500;
     
     if (auditoriaSeleccionada && 
         seccionActiva !== 'planes-mejoramiento' && 
         !yaNavego && 
         !navegacionReciente) {
       
-      console.log('🚀 Navegación automática activada:', {
-        auditoria: auditoriaSeleccionada.codigo,
-        seccionActual: seccionActiva,
-        seccionDestino: 'planes-mejoramiento'
-      });
-      
-      setYaNavego(true); // ← Marcar que ya navegó
+      setYaNavego(true);
       onCambiarSeccion('planes-mejoramiento');
       
-      // Toast informativo mejorado
       toast.success(
         `Navegando a Planes de Mejoramiento`,
         {
@@ -301,11 +295,31 @@ function MenuDinamicoWrapper({
       );
     }
     
-    // Reset del flag cuando se limpia la selección
     if (!auditoriaSeleccionada && yaNavego) {
       setYaNavego(false);
     }
   }, [auditoriaSeleccionada, seccionActiva, onCambiarSeccion, navegacionManual, yaNavego]);
+
+  // Navegación: Ir a ver plan existente (sin abrir modal crear)
+  useEffect(() => {
+    const tiempoActual = Date.now();
+    const navegacionReciente = (tiempoActual - navegacionManual) < 500;
+    
+    if (auditoriaIdParaVerPlan && 
+        seccionActiva !== 'planes-mejoramiento' && 
+        !yaNavegoVerPlan && 
+        !navegacionReciente) {
+      
+      setYaNavegoVerPlan(true);
+      onCambiarSeccion('planes-mejoramiento');
+      
+      toast.success('Ir a ver plan', { description: 'Navegando al detalle del plan', duration: 2000 });
+    }
+    
+    if (!auditoriaIdParaVerPlan && yaNavegoVerPlan) {
+      setYaNavegoVerPlan(false);
+    }
+  }, [auditoriaIdParaVerPlan, seccionActiva, onCambiarSeccion, navegacionManual, yaNavegoVerPlan]);
 
   return null;
 }

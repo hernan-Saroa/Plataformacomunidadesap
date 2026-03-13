@@ -420,6 +420,24 @@ export function usePlanMejoramientoDetalle(planId: string) {
     }
   }, [planId]);
 
+  // Mapeo de estado UI -> Backend (borrador, revision, aprobado, en_ejecucion, completado, vencido, rechazado)
+  const mapearEstadoPlanABackend = (estadoUI: string): string => {
+    const mapa: Record<string, string> = {
+      'FORMULACION': 'borrador', 'formulacion': 'borrador',
+      'APROBACION': 'revision', 'aprobacion': 'revision',
+      'APROBADO': 'aprobado', 'aprobado': 'aprobado',
+      'EN_EJECUCION': 'en_ejecucion', 'en_ejecucion': 'en_ejecucion',
+      'EN_SEGUIMIENTO': 'en_ejecucion', 'en_seguimiento': 'en_ejecucion',
+      'CUMPLIDO': 'completado', 'cumplido': 'completado',
+      'COMPLETADO': 'completado', 'completado': 'completado',
+      'VENCIDO': 'vencido', 'vencido': 'vencido',
+      'RECHAZADO': 'rechazado', 'rechazado': 'rechazado',
+      'BORRADOR': 'borrador', 'borrador': 'borrador',
+      'REVISION': 'revision', 'revision': 'revision',
+    };
+    return mapa[estadoUI] || estadoUI.toLowerCase().replace(/-/g, '_');
+  };
+
   // ─────────────────────────────────────────────────────────────────────────
   // Actualizar plan
   // ─────────────────────────────────────────────────────────────────────────
@@ -428,8 +446,16 @@ export function usePlanMejoramientoDetalle(planId: string) {
 
     try {
       console.log('📝 [usePlanMejoramientoDetalle] Actualizando plan:', data);
-      
-      await controlInternoService.updatePlanMejoramiento(plan.id, data);
+
+      // Mapear datos UI -> Backend (solo campos aceptados por UpdatePlanMejoramientoDto)
+      const datosBackend: Record<string, unknown> = {};
+      if (data.estado) datosBackend.estado = mapearEstadoPlanABackend(data.estado);
+      if (data.fechaVencimiento) datosBackend.fechaLimite = data.fechaVencimiento;
+      if (data.responsableGeneral) datosBackend.responsableImplementacion = data.responsableGeneral;
+      // observaciones no existe en DTO del plan; observacionesAprobacion es para aprobación
+      if (data.observaciones) datosBackend.observacionesAprobacion = data.observaciones;
+
+      await controlInternoService.updatePlanMejoramiento(plan.id, datosBackend);
       
       // Actualizar estado local
       setPlan(prev => prev ? {

@@ -212,11 +212,15 @@ export default function App() {
   const [activeRole, setActiveRole] = useState<string>('Estudiante');
 
   // const [vistaActual, setVistaActual] = useState<Vista>('landing');
-  // Leer parámetro de vista desde URL
+  // Leer parámetros desde URL
   const urlParams = new URLSearchParams(window.location.search);
   const viewParam = urlParams.get('view') as Vista | null;
+  const hasMicrosoftOAuthCallback = urlParams.has('code') || urlParams.has('error');
 
-  const [vistaActual, setVistaActual] = useState<Vista>(viewParam || 'landing');
+  // Si Microsoft retorna con ?code= o ?error=, forzar vista de login para procesar callback
+  const [vistaActual, setVistaActual] = useState<Vista>(
+    viewParam || (hasMicrosoftOAuthCallback ? 'login' : 'landing'),
+  );
   const [usuarioActual, setUsuarioActual] = useState<Usuario | null>(null);
   const [mostrarAlertaInactividad, setMostrarAlertaInactividad] = useState(false);
 
@@ -231,6 +235,10 @@ export default function App() {
   useEffect(() => {
     // No restaurar sesión para rutas públicas de expediente compartido
     if (window.location.pathname.startsWith('/expediente-compartido/')) {
+      return;
+    }
+    // Priorizar procesamiento de callback OAuth de Microsoft antes de restaurar sesión local
+    if (hasMicrosoftOAuthCallback) {
       return;
     }
 

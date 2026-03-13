@@ -10,10 +10,11 @@ import {
   Gavel, FileText, Users, Clock, AlertTriangle, CheckCircle, X,
   Calendar, User, Building, Phone, Mail, MapPin, Briefcase,
   Eye, Download, Upload, Plus, Edit, Trash2, Send,
-  FileDown, Scale
+  FileDown, Scale, Link as LinkIcon, Unlink
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import type { ProcesoDisciplinario, DecisionDisciplinaria } from '../core/types';
+import { ModalAnexarProcesoDisciplinario } from './ModalAnexarProcesoDisciplinario';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { legalService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
@@ -72,11 +73,15 @@ interface ModalProcesoDisciplinarioProps {
   isOpen: boolean;
   onClose: () => void;
   proceso: ProcesoDisciplinario;
+  onRefresh?: () => void;
+  onVerExpedienteAnexado?: (procesoId: string) => void;
 }
 
-export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalProcesoDisciplinarioProps) {
+export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh, onVerExpedienteAnexado }: ModalProcesoDisciplinarioProps) {
   // ✅ Obtener configuraciones desde Context API
   const { tiposExcepcionesActivos, causalesEspecificasActivas } = useConfiguracionModulo('juzgamiento');
+
+  if (!proceso) return null;
 
   const [tabActivo, setTabActivo] = useState('general');
   const [hasChanges, setHasChanges] = useState(false);
@@ -146,6 +151,21 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   const [visorAbierto, setVisorAbierto] = useState(false);
   const [pruebaSeleccionada, setPruebaSeleccionada] = useState<any>(null);
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState<any>(null);
+
+  // ✅ Estado para modo edición del proceso
+  const [modoEdicion, setModoEdicion] = useState(false);
+  const [editData, setEditData] = useState({
+    tipoFalta: proceso.tipoFalta || '',
+    etapa: proceso.etapa || '',
+    abogadoAsignado: proceso.abogadoAsignado || '',
+    disciplinado: (proceso as any).investigado || proceso.disciplinado || '',
+    cargo: proceso.cargo || '',
+    dependencia: proceso.dependencia || '',
+    descripcionHechos: proceso.descripcionHechos || (proceso as any).hechos || ''
+  });
+
+  // ✅ Estado para modal de Anexar Proceso
+  const [modalAnexarAbierto, setModalAnexarAbierto] = useState(false);
 
   // Derived states for tabs options
   const pruebas = actuaciones.filter(a => a.tipoActuacion === 'EVIDENCIA');
@@ -237,22 +257,32 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     const baseUrl = getServiceUrl('legal');
     const prefix = API_MODE === 'direct' ? '' : '/legal';
 
-    // ✨ FIXED: Rutas de adjuntos de correos/oficios
+    // ✨ FIXED: Rutas de adjuntos de correos/oficios (usar /api/v1 para que gateway rutee correctamente)
     if (archivoUrl.includes('/correos/adjuntos/')) {
-      const regex = /\/adjuntos\/([^/]+)\//;
+      const regex = /\/adjuntos\/([^/]+)/;
       const match = archivoUrl.match(regex);
       if (match) {
-        const adjuntoId = match[1];
-        return `${baseUrl}${prefix}/correos/adjuntos/${adjuntoId}/download`;
+        let adjuntoId = match[1];
+        if (adjuntoId.endsWith('/download')) adjuntoId = adjuntoId.replace('/download', '');
+        // En gateway port 3000 NO lleva /legal sino /api/v1 directo
+        const adjuntoPrefix = API_MODE === 'direct' ? '' : '/api/v1';
+        return `${baseUrl}${adjuntoPrefix}/correos/adjuntos/${adjuntoId}/download`;
       }
     }
 
     // Manejar otras rutas directas de API evitando /files/ 
-    if (archivoUrl.includes('/api/') || archivoUrl.includes('/download')) {
+    if (archivoUrl.includes('/api/') || archivoUrl.includes('/download') || archivoUrl.includes('/export')) {
       let cleanUrl = archivoUrl.startsWith('/legal') ? archivoUrl.replace('/legal', '') : archivoUrl;
-      if (API_MODE === 'direct') {
+
+      // Ensure it has /api/v1 prefix if not direct mode and it doesn't already have it
+      if (API_MODE !== 'direct' && !cleanUrl.includes('/api/v1') && !cleanUrl.includes('/files/')) {
+        cleanUrl = `/api/v1${cleanUrl.startsWith('/') ? '' : '/'}${cleanUrl}`;
+      } else if (API_MODE === 'direct') {
         cleanUrl = cleanUrl.replace('/api/v1', ''); // remove /api/v1 since port 3008 doesn't use it
       }
+      // Ensure leading slash for cleanUrl to prevent duplicate slashes
+      if (!cleanUrl.startsWith('/')) cleanUrl = '/' + cleanUrl;
+
       return `${baseUrl}${prefix}${cleanUrl}`;
     }
 
@@ -300,14 +330,18 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
   // Handler para ver actuación con documento
   const handleVerActuacion = (act: any) => {
-    const url = act.documentoUrl || act.url;
+    const url = act.documentoUrl || act.url || act.archivoUrl;
     if (!url) {
       toast.error('No hay documento disponible');
       return;
     }
-    const fileUrl = getFileUrl(url);
-    window.open(fileUrl, '_blank');
-    toast.success('Documento abierto en nueva pestaña');
+
+    // Usar la función existente handleVerDocumento que abre el VisorDocumentoModal en la misma pestaña
+    handleVerDocumento({
+      documentoUrl: url,
+      nombre: act.documentoNombre || act.nombre || act.descripcion || 'Documento',
+      tipo: act.tipoActuacion || act.tipo || 'Documento'
+    });
   };
 
 
@@ -439,7 +473,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       doc.setFontSize(11);
       doc.setFont('times', 'normal');
       let y = 90;
-      doc.text(`Investigado: ${proceso.investigado || proceso.disciplinado || 'N/A'}`, 20, y); y += 8;
+      doc.text(`Investigado: ${(proceso as any).investigado || proceso.disciplinado || 'N/A'}`, 20, y); y += 8;
       doc.text(`Cargo: ${proceso.cargo || 'No registrado'}`, 20, y); y += 8;
       doc.text(`Dependencia: ${proceso.dependencia || 'No registrado'}`, 20, y); y += 8;
       doc.text(`Tipo de Falta: ${proceso.tipoFalta}`, 20, y); y += 8;
@@ -1083,825 +1117,1039 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleCerrar}>
-      <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl h-[90vh] flex flex-col p-0">
-        <DialogTitle className="sr-only">
-          Proceso Disciplinario {proceso.id}
-        </DialogTitle>
-        <DialogDescription className="sr-only">
-          Vista completa del proceso disciplinario {proceso.id} con información detallada de hechos, pruebas, actuaciones y decisiones
-        </DialogDescription>
+    <>
+      <Dialog open={isOpen} onOpenChange={handleCerrar}>
+        <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl h-[90vh] flex flex-col p-0">
+          <DialogTitle className="sr-only">
+            Proceso Disciplinario {proceso.id}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Vista completa del proceso disciplinario {proceso.id} con información detallada de hechos, pruebas, actuaciones y decisiones
+          </DialogDescription>
 
-        {/* ==================== HEADER LIMPIO ESAP 2025 ==================== */}
-        <ModalHeaderClean
-          icono={Gavel}
-          titulo={proceso.id}
-          subtitulo={proceso.tipoFalta}
-          badges={[
-            { texto: proceso.etapa, color: 'azul' },
-            { texto: `${proceso.diasRestantes} días restantes`, color: 'naranja' }
-          ]}
-          onClose={onClose}
-        />
+          {/* ==================== HEADER LIMPIO ESAP 2025 ==================== */}
+          <ModalHeaderClean
+            icono={Gavel}
+            titulo={proceso.id}
+            subtitulo={proceso.tipoFalta}
+            badges={[
+              { texto: proceso.etapa, color: 'azul' },
+              { texto: `${proceso.diasRestantes} días restantes`, color: 'naranja' }
+            ]}
+            onClose={onClose}
+          />
 
-        <BarraProgresoExpediente
-          diasTotales={proceso.diasTotales}
-          diasRestantes={proceso.diasRestantes}
-        />
+          <BarraProgresoExpediente
+            diasTotales={proceso.diasTotales}
+            diasRestantes={proceso.diasRestantes}
+          />
 
-        {/* ==================== TABS NAVIGATION ==================== */}
-        <Tabs value={tabActivo} onValueChange={setTabActivo} className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-6 pt-4 border-b bg-gray-50">
-            <TabsList className="bg-transparent border-0 p-0 h-auto gap-1">
-              <TabsTrigger
-                value="general"
-                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                General
-              </TabsTrigger>
-              <TabsTrigger
-                value="hechos"
-                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
-              >
-                <AlertTriangle className="w-4 h-4 mr-2" />
-                Hechos
-              </TabsTrigger>
-              <TabsTrigger
-                value="documento"
-                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                Documento
-              </TabsTrigger>
-              <TabsTrigger
-                value="actuaciones"
-                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
-              >
-                <Clock className="w-4 h-4 mr-2" />
-                Actuaciones
-              </TabsTrigger>
-              <TabsTrigger
-                value="tareas"
-                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
-              >
-                <Calendar className="w-4 h-4 mr-2" />
-                Tareas
-              </TabsTrigger>
-              <TabsTrigger
-                value="notas"
-                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
-              >
-                <Edit className="w-4 h-4 mr-2" />
-                Notas
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
-          {/* ==================== TAB: GENERAL ==================== */}
-          <TabsContent value="general" className="flex-1 overflow-y-auto p-6 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Información del Proceso */}
-              <Card className="p-4 border-2 border-blue-100">
-                <h3 className="font-black text-lg mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
-                  <Gavel className="w-5 h-5" /> Información del Proceso
-                </h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-gray-600">Número de Proceso</p>
-                    <p className="font-bold text-lg" style={{ color: '#003DA5' }}>{proceso.id}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Tipo de Falta</p>
-                    <Badge className="bg-orange-100 text-orange-700 font-semibold">{proceso.tipoFalta}</Badge>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Etapa Actual</p>
-                    <p className="font-bold">{proceso.etapa}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Investigador Asignado</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Avatar className="w-8 h-8">
-                        <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>{(proceso.abogadoAsignado || 'User').substring(0, 2)}</AvatarFallback>
-                      </Avatar>
-                      <p className="font-bold">{proceso.abogadoAsignado || 'Sin Asignar'}</p>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Información del Investigado */}
-              <Card className="p-4 border-2 border-gray-200">
-                <h3 className="font-black text-lg mb-4 flex items-center gap-2 text-gray-800">
-                  <User className="w-5 h-5" /> Investigado
-                </h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-gray-600">Nombre Completo</p>
-                    <p className="font-bold text-lg">{proceso.investigado}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Cargo</p>
-                    <p className="font-semibold">{proceso.cargo || 'No registrado'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Dependencia</p>
-                    <p className="font-semibold">{proceso.dependencia || 'No registrado'}</p>
-                  </div>
-                </div>
-              </Card>
+          {/* ==================== TABS NAVIGATION ==================== */}
+          <Tabs value={tabActivo} onValueChange={setTabActivo} className="flex-1 flex flex-col overflow-hidden">
+            <div className="px-6 pt-4 border-b bg-gray-50">
+              <TabsList className="bg-transparent border-0 p-0 h-auto gap-1">
+                <TabsTrigger
+                  value="general"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  General
+                </TabsTrigger>
+                <TabsTrigger
+                  value="hechos"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+                >
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                  Hechos
+                </TabsTrigger>
+                <TabsTrigger
+                  value="documento"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Documento
+                </TabsTrigger>
+                <TabsTrigger
+                  value="actuaciones"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+                >
+                  <Clock className="w-4 h-4 mr-2" />
+                  Actuaciones
+                </TabsTrigger>
+                <TabsTrigger
+                  value="tareas"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+                >
+                  <Calendar className="w-4 h-4 mr-2" />
+                  Tareas
+                </TabsTrigger>
+                <TabsTrigger
+                  value="notas"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Notas
+                </TabsTrigger>
+                <TabsTrigger
+                  value="anexos"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+                >
+                  <LinkIcon className="w-4 h-4 mr-2" />
+                  Anexos
+                </TabsTrigger>
+              </TabsList>
             </div>
 
-            {/* Cronología de Términos */}
-            <Card className="p-4 bg-blue-50 border-2 border-blue-200">
-              <h3 className="font-black text-lg mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
-                <Clock className="w-5 h-5" /> Cronología de Términos ({proceso.etapa})
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="text-center p-3 bg-white rounded-lg">
-                  <p className="text-sm text-gray-600 mb-1">Días Restantes</p>
-                  <p className="text-3xl font-black text-orange-600">{proceso.diasRestantes}</p>
-                </div>
-                <div className="text-center p-3 bg-white rounded-lg">
-                  <p className="text-sm text-gray-600 mb-1">Días Transcurridos</p>
-                  <p className="text-3xl font-black text-blue-600">{Math.max(0, diasTotalesEtapa - proceso.diasRestantes)}</p>
-                </div>
-                <div className="text-center p-3 bg-white rounded-lg">
-                  <p className="text-sm text-gray-600 mb-1">Días Totales Etapa</p>
-                  <p className="text-3xl font-black text-gray-600">{diasTotalesEtapa}</p>
-                </div>
-              </div>
-            </Card>
-
-            {/* Última Actuación */}
-            <Card className="p-6 border-2 border-blue-200 shadow-md">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-black text-xl flex items-center gap-2" style={{ color: '#003DA5' }}>
-                  <AlertTriangle className="w-6 h-6" /> ÚLTIMA ACTUACIÓN PROCESAL
-                </h3>
-              </div>
-
-              <div className="p-5 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl mb-5 border border-blue-200">
-                <p className="text-sm font-semibold text-gray-600 mb-2">Actuación:</p>
-                <p className="font-black text-lg text-gray-900">
-                  {proceso.ultimaActuacion?.descripcion || 'Solicitud de informes a RRHH'}
-                </p>
-                <div className="flex items-center gap-4 mt-3 text-xs font-semibold text-gray-500">
-                  <span>📅 {proceso.fechaActualizacion.toLocaleDateString('es-CO')}</span>
-                  <span>⏰ {proceso.fechaActualizacion.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  onClick={handleDescargarPDF}
-                  size="sm"
-                  className="font-semibold"
-                  style={{ background: '#F57C00', color: '#FFFFFF' }}
+            {/* ==================== TAB: GENERAL ==================== */}
+            <TabsContent value="general" className="flex-1 overflow-y-auto p-6 space-y-4">
+              {/* Botones Editar / Anexar */}
+              <div className="flex items-center justify-end gap-2 -mt-2 mb-2">
+                <button
+                  onClick={async () => {
+                    if (modoEdicion) {
+                      // Guardar cambios en backend
+                      try {
+                        toast.loading('Guardando cambios...', { id: 'saving-proceso' });
+                        await legalService.updateJuzgamientoProceso(proceso.id, {
+                          tipoFalta: editData.tipoFalta,
+                          etapa: editData.etapa,
+                          abogadoSustanciador: editData.abogadoAsignado,
+                          cargoInvestigado: editData.cargo,
+                          dependenciaInvestigado: editData.dependencia,
+                          hechos: editData.descripcionHechos,
+                          demandado: editData.disciplinado
+                        });
+                        toast.success('Cambios guardados exitosamente', {
+                          id: 'saving-proceso',
+                          description: 'Los datos del proceso han sido actualizados en el sistema'
+                        });
+                        setHasChanges(true);
+                        onRefresh?.();
+                      } catch (error) {
+                        console.error('Error updating proceso:', error);
+                        toast.error('Error al guardar los cambios', { id: 'saving-proceso' });
+                      }
+                    }
+                    setModoEdicion(!modoEdicion);
+                  }}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-all ${modoEdicion
+                      ? 'bg-green-600 text-white hover:bg-green-700'
+                      : 'bg-white text-blue-700 border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50'
+                    }`}
                 >
-                  <FileText className="w-4 h-4 mr-1.5" />
-                  Descargar PDF
+                  <Edit className="w-4 h-4" />
+                  {modoEdicion ? 'Guardar Cambios' : 'Editar Proceso'}
+                </button>
+                <button
+                  onClick={() => setModalAnexarAbierto(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white transition-all hover:shadow-lg"
+                  style={{ background: '#003DA5' }}
+                >
+                  <LinkIcon className="w-4 h-4" />
+                  Anexar Proceso
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Información del Proceso */}
+                <Card className="p-4 border-2 border-blue-100">
+                  <h3 className="font-black text-lg mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
+                    <Gavel className="w-5 h-5" /> Información del Proceso
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm text-gray-600">Número de Proceso</p>
+                      <p className="font-bold text-lg" style={{ color: '#003DA5' }}>{proceso.id}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Tipo de Falta</p>
+                      {modoEdicion ? (
+                        <input
+                          type="text"
+                          value={editData.tipoFalta}
+                          onChange={(e) => setEditData({ ...editData, tipoFalta: e.target.value })}
+                          className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <Badge className="bg-orange-100 text-orange-700 font-semibold">{proceso.tipoFalta}</Badge>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Etapa Actual</p>
+                      {modoEdicion ? (
+                        <input
+                          type="text"
+                          value={editData.etapa}
+                          onChange={(e) => setEditData({ ...editData, etapa: e.target.value })}
+                          className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="font-bold">{proceso.etapa}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Investigador Asignado</p>
+                      {modoEdicion ? (
+                        <input
+                          type="text"
+                          value={editData.abogadoAsignado}
+                          onChange={(e) => setEditData({ ...editData, abogadoAsignado: e.target.value })}
+                          className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <div className="flex items-center gap-2 mt-1">
+                          <Avatar className="w-8 h-8">
+                            <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>{(proceso.abogadoAsignado || 'User').substring(0, 2)}</AvatarFallback>
+                          </Avatar>
+                          <p className="font-bold">{proceso.abogadoAsignado || 'Sin Asignar'}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Información del Investigado */}
+                <Card className="p-4 border-2 border-gray-200">
+                  <h3 className="font-black text-lg mb-4 flex items-center gap-2 text-gray-800">
+                    <User className="w-5 h-5" /> Investigado
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm text-gray-600">Nombre Completo</p>
+                      {modoEdicion ? (
+                        <input
+                          type="text"
+                          value={editData.disciplinado}
+                          onChange={(e) => setEditData({ ...editData, disciplinado: e.target.value })}
+                          className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="font-bold text-lg">{(proceso as any).investigado}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Cargo</p>
+                      {modoEdicion ? (
+                        <input
+                          type="text"
+                          value={editData.cargo}
+                          onChange={(e) => setEditData({ ...editData, cargo: e.target.value })}
+                          className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="font-semibold">{proceso.cargo || 'No registrado'}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Dependencia</p>
+                      {modoEdicion ? (
+                        <input
+                          type="text"
+                          value={editData.dependencia}
+                          onChange={(e) => setEditData({ ...editData, dependencia: e.target.value })}
+                          className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="font-semibold">{proceso.dependencia || 'No registrado'}</p>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Cronología de Términos */}
+              <Card className="p-4 bg-blue-50 border-2 border-blue-200">
+                <h3 className="font-black text-lg mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
+                  <Clock className="w-5 h-5" /> Cronología de Términos ({proceso.etapa})
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center p-3 bg-white rounded-lg">
+                    <p className="text-sm text-gray-600 mb-1">Días Restantes</p>
+                    <p className="text-3xl font-black text-orange-600">{proceso.diasRestantes}</p>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg">
+                    <p className="text-sm text-gray-600 mb-1">Días Transcurridos</p>
+                    <p className="text-3xl font-black text-blue-600">{Math.max(0, diasTotalesEtapa - proceso.diasRestantes)}</p>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg">
+                    <p className="text-sm text-gray-600 mb-1">Días Totales Etapa</p>
+                    <p className="text-3xl font-black text-gray-600">{diasTotalesEtapa}</p>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Última Actuación */}
+              <Card className="p-6 border-2 border-blue-200 shadow-md">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-black text-xl flex items-center gap-2" style={{ color: '#003DA5' }}>
+                    <AlertTriangle className="w-6 h-6" /> ÚLTIMA ACTUACIÓN PROCESAL
+                  </h3>
+                </div>
+
+                <div className="p-5 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl mb-5 border border-blue-200">
+                  <p className="text-sm font-semibold text-gray-600 mb-2">Actuación:</p>
+                  <p className="font-black text-lg text-gray-900">
+                    {proceso.ultimaActuacion?.descripcion || 'Solicitud de informes a RRHH'}
+                  </p>
+                  <div className="flex items-center gap-4 mt-3 text-xs font-semibold text-gray-500">
+                    <span>📅 {proceso.fechaActualizacion ? new Date(proceso.fechaActualizacion).toLocaleDateString('es-CO') : 'N/A'}</span>
+                    <span>⏰ {proceso.fechaActualizacion ? new Date(proceso.fechaActualizacion).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : 'N/A'}</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={handleDescargarPDF}
+                    size="sm"
+                    className="font-semibold"
+                    style={{ background: '#F57C00', color: '#FFFFFF' }}
+                  >
+                    <FileText className="w-4 h-4 mr-1.5" />
+                    Descargar PDF
+                  </Button>
+                </div>
+              </Card>
+            </TabsContent>
+
+            {/* ==================== TAB: HECHOS ==================== */}
+            <TabsContent value="hechos" className="flex-1 overflow-y-auto p-6">
+              <Card className="p-6">
+                <h3 className="font-black text-xl mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
+                  <AlertTriangle className="w-6 h-6" /> Descripción de los Hechos
+                </h3>
+                <p className="text-gray-700 leading-relaxed mb-4">{(proceso as any).descripcionHechos || (proceso as any).hechos || 'No se han registrado hechos.'}</p>
+              </Card>
+            </TabsContent>
+
+            {/* ==================== TAB: DOCUMENTO ==================== */}
+            <TabsContent value="documento" className="flex-1 overflow-y-auto p-6 space-y-4">
+              <TabDocumentosExpediente
+                expedienteId={proceso.id}
+                documentos={documentosExpediente}
+                setDocumentos={(_next) => { }}
+                profesionalAsignado={proceso.abogadoAsignado || 'Control Disciplinario'}
+                tituloSeccion="Documentos del Proceso Disciplinario"
+                moduloContexto="juzgamiento"
+                onUploadDocument={handleUploadDocumentoDesdeTab}
+                onViewDocument={(doc) => handleVerDocumento({
+                  documentoUrl: doc.url,
+                  nombre: doc.nombre,
+                  tipo: doc.tipo
+                })}
+                onDownloadDocument={(doc) => handleDescargarDocumento(doc)}
+                onDownloadAll={handleDescargarTodosDocumentos}
+                onHasChanges={() => setHasChanges(true)}
+              />
+            </TabsContent>
+
+            {/* ==================== TAB: ACTUACIONES ==================== */}
+            <TabsContent value="actuaciones" className="flex-1 overflow-y-auto p-6">
+              <TabActuacionesExpediente
+                actuaciones={actuacionesParaTab}
+                botonesAccion={[
+                  {
+                    label: 'Decisión',
+                    icono: <CheckCircle className="w-3 h-3 mr-1" />,
+                    onClick: () => {
+                      setMostrarFormularioDecision(true);
+                      setHasChanges(true);
+                    },
+                    color: '#059669'
+                  },
+                  {
+                    label: 'Agregar Actuación',
+                    icono: <Plus className="w-3 h-3 mr-1" />,
+                    onClick: () => setModalNuevaActuacionOpen(true),
+                    color: '#003DA5'
+                  }
+                ]}
+                decisiones={decisiones.map((decision: any) => ({
+                  tipoDecision: decision.tipoDecision,
+                  tipoFallo: decision.tipoFallo,
+                  fecha: decision.fecha,
+                  responsable: decision.responsable,
+                  sancion: decision.sancion
+                }))}
+                labelRegistrar="Registrar Primera Actuación"
+                onRegistrarPrimera={() => setModalNuevaActuacionOpen(true)}
+              />
+            </TabsContent>
+
+            {/* ==================== TAB: TAREAS ==================== */}
+            <TabsContent value="tareas" className="flex-1 overflow-y-auto p-6 space-y-4">
+              <TabTareasExpediente
+                tareas={tareas}
+                setTareas={setTareas}
+                expedienteId={proceso.id}
+                onCrearTarea={() => {
+                  setModalCrearTareaAbierto(true);
+                }}
+                onEditarTarea={handleEditarTarea}
+                onMarcarCompletada={handleMarcarTareaCompletada}
+              />
+            </TabsContent>
+
+            {/* ==================== TAB: NOTAS ==================== */}
+            <TabsContent value="notas" className="flex-1 overflow-y-auto p-6 space-y-4">
+              <TabNotasExpediente
+                notas={notasInternas}
+                onAgregarNota={() => {
+                  setModalAgregarNotaAbierto(true);
+                }}
+              />
+            </TabsContent>
+
+            {/* ==================== TAB: ANEXOS ==================== */}
+            <TabsContent value="anexos" className="flex-1 overflow-y-auto p-6 space-y-4">
+              <Card className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-black text-xl flex items-center gap-2" style={{ color: '#003DA5' }}>
+                    <LinkIcon className="w-6 h-6" /> Procesos Anexados
+                  </h3>
+                  <Button
+                    onClick={() => setModalAnexarAbierto(true)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Anexar Proceso
+                  </Button>
+                </div>
+
+                <div className="space-y-4">
+                  {(proceso as any).procesosAnexados && (proceso as any).procesosAnexados.length > 0 ? (
+                    (proceso as any).procesosAnexados.map((anexo: any) => (
+                      <div key={anexo.id} className="flex flex-col md:flex-row gap-4 p-4 border rounded-lg bg-gray-50 items-start md:items-center justify-between">
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Badge className="bg-blue-100 text-blue-800">{anexo.radicado}</Badge>
+                            <Badge variant="outline">{anexo.estado}</Badge>
+                          </div>
+                          <p className="text-sm"><strong>Investigado:</strong> {anexo.investigado || 'No registrado'}</p>
+                          <p className="text-sm"><strong>Tipo Falta:</strong> {anexo.tipoFalta || 'No especificada'}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            onClick={() => {
+                              if (onVerExpedienteAnexado) {
+                                onVerExpedienteAnexado(anexo.radicado || anexo.id);
+                              } else {
+                                toast.info('La visualización de expedientes anexados no está configurada');
+                              }
+                            }}
+                          >
+                            <Eye className="w-4 h-4 mr-2" />
+                            Ver Expediente
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                            onClick={async () => {
+                              if (window.confirm('¿Está seguro de desanexar este proceso?')) {
+                                try {
+                                  await legalService.desanexarJuzgamientoProceso(anexo.radicado || anexo.id, 'Usuario Actual');
+                                  toast.success('Proceso desanexado exitosamente');
+                                  setHasChanges(true);
+                                  onRefresh?.();
+                                } catch (e: any) {
+                                  toast.error('Error al desanexar proceso');
+                                }
+                              }
+                            }}
+                          >
+                            <Unlink className="w-4 h-4 mr-2" />
+                            Desanexar
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center p-8 border-2 border-dashed rounded-lg bg-gray-50 text-gray-500">
+                      <LinkIcon className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                      <p className="font-semibold mb-1">No hay procesos anexados</p>
+                      <p className="text-sm">Haga clic en "Anexar Proceso" para vincular otro expediente a este proceso.</p>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </TabsContent>
+          </Tabs>
+
+          <FooterExpediente
+            expedienteId={proceso.id}
+            totalArchivos={documentosExpediente.length}
+            totalActuaciones={actuacionesTotales.length}
+            tercerConteo={{ label: 'tareas', valor: tareas.length, color: '#EA580C' }}
+            onClose={handleCerrar}
+            onNotificar={handleNotificar}
+            onCompartir={handleCompartir}
+            onDescargarPDF={handleDescargarPDF}
+            onGuardar={
+              authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT)
+                ? handleGuardarCambios
+                : undefined
+            }
+            hasChanges={hasChanges}
+            labelId="Proceso"
+          />
+        </DialogContent>
+
+        <FormularioRegistrarDecision
+          isOpen={mostrarFormularioDecision}
+          onClose={() => setMostrarFormularioDecision(false)}
+          onGuardar={handleGuardarNuevaDecision}
+          procesoId={proceso.id}
+        />
+
+        {/* ==================== MODAL: NUEVA EXCEPCIÓN PROCESAL ==================== */}
+        {modalNuevaExcepcion && (
+          <Dialog open={modalNuevaExcepcion} onOpenChange={setModalNuevaExcepcion}>
+            <DialogContent hideCloseButton className="w-[90vw] max-w-[420px] p-0">
+              <DialogTitle className="sr-only">Nueva Excepción Procesal</DialogTitle>
+              <DialogDescription className="sr-only">
+                Registrar nueva excepción procesal en el proceso {proceso.id}
+              </DialogDescription>
+
+              <ModalHeaderClean
+                titulo="Nueva Excepción Procesal"
+                subtitulo={`Proceso ${proceso.id}`}
+                icono={AlertTriangle}
+                colorIcono="orange"
+                onClose={() => setModalNuevaExcepcion(false)}
+              />
+
+              <div className="p-6 space-y-5">
+                {/* SECCIÓN: Tipo de Excepción (Radio Buttons) - Parametrizable desde Configuraciones */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-3">
+                    Tipo de Excepción Procesal *
+                  </label>
+                  <div className="space-y-3">
+                    {tiposExcepcionesActivos && tiposExcepcionesActivos.length > 0 ? (
+                      tiposExcepcionesActivos.map((tipo) => (
+                        <label key={tipo.id} className="flex items-start gap-3 p-3 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-all">
+                          <input
+                            type="radio"
+                            name="tipo-excepcion"
+                            value={tipo.nombre}
+                            className="mt-1 w-4 h-4 text-orange-600 focus:ring-orange-500"
+                            id={`radio-${tipo.id}`}
+                          />
+                          <div className="flex-1">
+                            <div className="font-bold text-gray-900">{tipo.icono} {tipo.nombre}</div>
+                            <div className="text-xs text-gray-600 mt-1">
+                              {tipo.descripcion}
+                            </div>
+                          </div>
+                        </label>
+                      ))
+                    ) : (
+                      <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-center">
+                        <p className="text-sm text-gray-600">
+                          No hay tipos de excepciones configurados. <br />
+                          <span className="text-xs">Configure los tipos en <strong>Configuraciones del Sistema</strong></span>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* SECCIÓN: Causal Específica (Dropdown) - Parametrizable desde Configuraciones */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Causal Específica (Opcional)
+                  </label>
+                  <select
+                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                    id="impedimento-excepcion"
+                  >
+                    <option value="">Seleccione una causal...</option>
+                    {causalesEspecificasActivas && causalesEspecificasActivas.length > 0 ? (
+                      causalesEspecificasActivas.map((causal) => (
+                        <option key={causal.id} value={causal.nombre}>
+                          {causal.icono} {causal.nombre} {causal.descripcion && `(${causal.descripcion})`}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>No hay causales configuradas</option>
+                    )}
+                  </select>
+                </div>
+
+                {/* SECCIÓN: Descripción de la Excepción */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    📋 Descripción de la Excepción *
+                  </label>
+                  <textarea
+                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none text-sm"
+                    rows={5}
+                    placeholder="Describa detalladamente la excepción procesal. Indíquelas los hechos que la fundamentan o la excepción..."
+                    id="descripcion-excepcion"
+                  />
+                </div>
+
+                {/* SECCIÓN: Fundamento Legal */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    ⚖️ Fundamento Legal *
+                  </label>
+                  <textarea
+                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none text-sm"
+                    rows={3}
+                    placeholder="Indique las normas aplicables o jurisprudencia que fundamenta la excepción (Ej: Art. 100 CGP, Ley 734 de 2002...)"
+                    id="fundamento-excepcion"
+                  />
+                </div>
+
+                {/* SECCIÓN: Presentada Por (Opcional) */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    👤 Presentada Por (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                    placeholder="Nombre de quien presenta la excepción"
+                    id="responsable-excepcion"
+                  />
+                </div>
+
+                {/* ALERTA INFORMATIVA */}
+                <Card className="p-3 bg-orange-50 border-2 border-orange-200">
+                  <p className="text-sm text-orange-800">
+                    <AlertTriangle className="w-4 h-4 inline mr-1" />
+                    Las excepciones procesales deben ser fundamentadas jurídicamente y presentadas dentro de los términos legales establecidos.
+                  </p>
+                </Card>
+              </div>
+
+              <div className="sticky bottom-0 bg-white border-t-2 px-6 py-4 flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setModalNuevaExcepcion(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  className="bg-orange-600 hover:bg-orange-700 text-white"
+                  onClick={() => {
+                    // Obtener valores de radio buttons
+                    const radioSeleccionado = document.querySelector('input[name="tipo-excepcion"]:checked') as HTMLInputElement;
+                    const impedimentoSelect = document.getElementById('impedimento-excepcion') as HTMLSelectElement;
+                    const descripcionTextarea = document.getElementById('descripcion-excepcion') as HTMLTextAreaElement;
+                    const fundamentoTextarea = document.getElementById('fundamento-excepcion') as HTMLTextAreaElement;
+                    const responsableInput = document.getElementById('responsable-excepcion') as HTMLInputElement;
+
+                    const tipoExcepcion = radioSeleccionado?.value;
+                    const impedimento = impedimentoSelect?.value;
+                    const descripcion = descripcionTextarea?.value;
+                    const fundamento = fundamentoTextarea?.value;
+                    const responsable = responsableInput?.value || 'Sin especificar';
+
+                    // Validaciones
+                    if (!tipoExcepcion) {
+                      toast.error('⚠️ Tipo de excepción requerido', {
+                        description: 'Debe seleccionar un tipo de excepción procesal'
+                      });
+                      return;
+                    }
+
+                    if (!descripcion) {
+                      toast.error('⚠️ Descripción requerida', {
+                        description: 'Debe describir la excepción procesal'
+                      });
+                      return;
+                    }
+
+                    if (!fundamento) {
+                      toast.error('⚠️ Fundamento legal requerido', {
+                        description: 'Debe indicar el fundamento legal de la excepción'
+                      });
+                      return;
+                    }
+
+                    // Construir tipo completo
+                    let tipoCompleto = tipoExcepcion;
+                    if (impedimento) {
+                      tipoCompleto += ` - ${impedimento}`;
+                    }
+
+                    const nuevaExcepcion = {
+                      tipo: tipoCompleto,
+                      descripcion,
+                      fundamento,
+                      presentadoPor: responsable
+                    };
+
+                    // Llamar al backend via handleGuardarNuevaExcepcion
+                    handleGuardarNuevaExcepcion(nuevaExcepcion);
+                    setModalNuevaExcepcion(false);
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Registrar Excepción
                 </Button>
               </div>
-            </Card>
-          </TabsContent>
+            </DialogContent>
+          </Dialog>
+        )}
 
-          {/* ==================== TAB: HECHOS ==================== */}
-          <TabsContent value="hechos" className="flex-1 overflow-y-auto p-6">
-            <Card className="p-6">
-              <h3 className="font-black text-xl mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
-                <AlertTriangle className="w-6 h-6" /> Descripción de los Hechos
-              </h3>
-              <p className="text-gray-700 leading-relaxed mb-4">{proceso.hechos || 'No se han registrado hechos.'}</p>
-            </Card>
-          </TabsContent>
+        {/* ==================== MODAL: VISOR DE DOCUMENTOS ==================== */}
+        {/* ==================== MODAL: VISOR DE DOCUMENTOS ==================== */}
+        {pruebaSeleccionada && (
+          <VisorDocumentoModal
+            isOpen={visorAbierto}
+            onClose={() => setVisorAbierto(false)}
+            archivo={getFileUrl(pruebaSeleccionada.documentoUrl || pruebaSeleccionada.archivo || pruebaSeleccionada.url)}
+            numero={pruebaSeleccionada.documentoNombre || pruebaSeleccionada.nombre}
+            asunto={pruebaSeleccionada.descripcion}
+          />
+        )}
 
-          {/* ==================== TAB: DOCUMENTO ==================== */}
-          <TabsContent value="documento" className="flex-1 overflow-y-auto p-6 space-y-4">
-            <TabDocumentosExpediente
-              expedienteId={proceso.id}
-              documentos={documentosExpediente}
-              setDocumentos={(_next) => { }}
-              profesionalAsignado={proceso.abogadoAsignado || 'Control Disciplinario'}
-              tituloSeccion="Documentos del Proceso Disciplinario"
-              moduloContexto="juzgamiento"
-              onUploadDocument={handleUploadDocumentoDesdeTab}
-              onViewDocument={(doc) => handleVerDocumento(doc)}
-              onDownloadDocument={(doc) => handleDescargarDocumento(doc)}
-              onDownloadAll={handleDescargarTodosDocumentos}
-              onHasChanges={() => setHasChanges(true)}
-            />
-          </TabsContent>
+        {documentoSeleccionado && (
+          <VisorDocumentoModal
+            isOpen={visorAbierto}
+            onClose={() => setVisorAbierto(false)}
+            archivo={getFileUrl(documentoSeleccionado.documentoUrl || documentoSeleccionado.archivo || documentoSeleccionado.url)}
+            numero={documentoSeleccionado.documentoNombre || documentoSeleccionado.nombre}
+            asunto={`Documento del proceso ${proceso.id}`}
+          />
+        )}
 
-          {/* ==================== TAB: ACTUACIONES ==================== */}
-          <TabsContent value="actuaciones" className="flex-1 overflow-y-auto p-6">
-            <TabActuacionesExpediente
-              actuaciones={actuacionesParaTab}
-              botonesAccion={[
-                {
-                  label: 'Decisión',
-                  icono: <CheckCircle className="w-3 h-3 mr-1" />,
-                  onClick: () => {
-                    setMostrarFormularioDecision(true);
-                    setHasChanges(true);
-                  },
-                  color: '#059669'
-                },
-                {
-                  label: 'Agregar Actuación',
-                  icono: <Plus className="w-3 h-3 mr-1" />,
-                  onClick: () => setModalNuevaActuacionOpen(true),
-                  color: '#003DA5'
-                }
-              ]}
-              decisiones={decisiones.map((decision: any) => ({
-                tipoDecision: decision.tipoDecision,
-                tipoFallo: decision.tipoFallo,
-                fecha: decision.fecha,
-                responsable: decision.responsable,
-                sancion: decision.sancion
-              }))}
-              labelRegistrar="Registrar Primera Actuación"
-              onRegistrarPrimera={() => setModalNuevaActuacionOpen(true)}
-            />
-          </TabsContent>
+        {decisionSeleccionada && (
+          <Dialog open={!!decisionSeleccionada} onOpenChange={() => setDecisionSeleccionada(null)}>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogTitle className="flex items-center gap-2 text-2xl font-black text-blue-900">
+                <Gavel className="w-6 h-6" /> {decisionSeleccionada.tipoDecision}
+              </DialogTitle>
+              <div className="space-y-6 pt-4">
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
+                  <div>
+                    <p className="text-sm text-gray-500">Tipo de Fallo</p>
+                    <Badge className={decisionSeleccionada.tipoFallo === 'Absolutoria' ? 'bg-green-600' : 'bg-red-600'}>
+                      {decisionSeleccionada.tipoFallo}
+                    </Badge>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500">Fecha</p>
+                    <p className="font-bold">{decisionSeleccionada.fecha}</p>
+                  </div>
+                </div>
 
-          {/* ==================== TAB: TAREAS ==================== */}
-          <TabsContent value="tareas" className="flex-1 overflow-y-auto p-6 space-y-4">
-            <TabTareasExpediente
-              tareas={tareas}
-              setTareas={setTareas}
-              expedienteId={proceso.id}
-              onCrearTarea={() => {
-                setModalCrearTareaAbierto(true);
-              }}
-              onEditarTarea={handleEditarTarea}
-              onMarcarCompletada={handleMarcarTareaCompletada}
-            />
-          </TabsContent>
+                <Card className="p-4 border-l-4 border-orange-500 shadow-sm">
+                  <h4 className="font-bold text-lg mb-2 text-orange-900">Sanción</h4>
+                  <p className="text-gray-800">{decisionSeleccionada.sancion || 'No aplica'}</p>
+                </Card>
 
-          {/* ==================== TAB: NOTAS ==================== */}
-          <TabsContent value="notas" className="flex-1 overflow-y-auto p-6 space-y-4">
-            <TabNotasExpediente
-              notas={notasInternas}
-              onAgregarNota={() => {
-                setModalAgregarNotaAbierto(true);
-              }}
-            />
-          </TabsContent>
-        </Tabs>
+                <div className="space-y-2">
+                  <h4 className="font-bold text-blue-900 border-b pb-1">Consideraciones</h4>
+                  <p className="text-sm text-gray-700 leading-relaxed text-justify whitespace-pre-wrap">
+                    {decisionSeleccionada.consideraciones}
+                  </p>
+                </div>
 
-        <FooterExpediente
-          expedienteId={proceso.id}
-          totalArchivos={documentosExpediente.length}
-          totalActuaciones={actuacionesTotales.length}
-          tercerConteo={{ label: 'tareas', valor: tareas.length, color: '#EA580C' }}
-          onClose={handleCerrar}
-          onNotificar={handleNotificar}
-          onCompartir={handleCompartir}
-          onDescargarPDF={handleDescargarPDF}
-          onGuardar={
-            authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT)
-              ? handleGuardarCambios
-              : undefined
-          }
-          hasChanges={hasChanges}
-          labelId="Proceso"
-        />
-      </DialogContent>
+                <div className="space-y-2">
+                  <h4 className="font-bold text-blue-900 border-b pb-1">Fundamentos Jurídicos</h4>
+                  <p className="text-sm text-gray-700 leading-relaxed text-justify whitespace-pre-wrap">
+                    {decisionSeleccionada.fundamentosJuridicos}
+                  </p>
+                </div>
 
-      <FormularioRegistrarDecision
-        isOpen={mostrarFormularioDecision}
-        onClose={() => setMostrarFormularioDecision(false)}
-        onGuardar={handleGuardarNuevaDecision}
-        procesoId={proceso.id}
-      />
-
-      {/* ==================== MODAL: NUEVA EXCEPCIÓN PROCESAL ==================== */}
-      {modalNuevaExcepcion && (
-        <Dialog open={modalNuevaExcepcion} onOpenChange={setModalNuevaExcepcion}>
-          <DialogContent hideCloseButton className="w-[90vw] max-w-[420px] p-0">
-            <DialogTitle className="sr-only">Nueva Excepción Procesal</DialogTitle>
-            <DialogDescription className="sr-only">
-              Registrar nueva excepción procesal en el proceso {proceso.id}
-            </DialogDescription>
-
-            <ModalHeaderClean
-              titulo="Nueva Excepción Procesal"
-              subtitulo={`Proceso ${proceso.id}`}
-              icono={AlertTriangle}
-              colorIcono="orange"
-              onClose={() => setModalNuevaExcepcion(false)}
-            />
-
-            <div className="p-6 space-y-5">
-              {/* SECCIÓN: Tipo de Excepción (Radio Buttons) - Parametrizable desde Configuraciones */}
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-3">
-                  Tipo de Excepción Procesal *
-                </label>
-                <div className="space-y-3">
-                  {tiposExcepcionesActivos && tiposExcepcionesActivos.length > 0 ? (
-                    tiposExcepcionesActivos.map((tipo) => (
-                      <label key={tipo.id} className="flex items-start gap-3 p-3 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-all">
-                        <input
-                          type="radio"
-                          name="tipo-excepcion"
-                          value={tipo.nombre}
-                          className="mt-1 w-4 h-4 text-orange-600 focus:ring-orange-500"
-                          id={`radio-${tipo.id}`}
-                        />
-                        <div className="flex-1">
-                          <div className="font-bold text-gray-900">{tipo.icono} {tipo.nombre}</div>
-                          <div className="text-xs text-gray-600 mt-1">
-                            {tipo.descripcion}
-                          </div>
-                        </div>
-                      </label>
-                    ))
-                  ) : (
-                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-center">
-                      <p className="text-sm text-gray-600">
-                        No hay tipos de excepciones configurados. <br />
-                        <span className="text-xs">Configure los tipos en <strong>Configuraciones del Sistema</strong></span>
-                      </p>
-                    </div>
-                  )}
+                <div className="flex justify-end pt-4 border-t">
+                  <Button onClick={() => setDecisionSeleccionada(null)}>Cerrar</Button>
                 </div>
               </div>
+            </DialogContent>
+          </Dialog>
+        )}
 
-              {/* SECCIÓN: Causal Específica (Dropdown) - Parametrizable desde Configuraciones */}
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Causal Específica (Opcional)
-                </label>
-                <select
-                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  id="impedimento-excepcion"
-                >
-                  <option value="">Seleccione una causal...</option>
-                  {causalesEspecificasActivas && causalesEspecificasActivas.length > 0 ? (
-                    causalesEspecificasActivas.map((causal) => (
-                      <option key={causal.id} value={causal.nombre}>
-                        {causal.icono} {causal.nombre} {causal.descripcion && `(${causal.descripcion})`}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="" disabled>No hay causales configuradas</option>
-                  )}
-                </select>
-              </div>
+        {/* Modal para Registrar Excepción Procesal */}
+        {mostrarFormularioExcepcion && (
+          <FormularioExcepcionProcesal
+            isOpen={mostrarFormularioExcepcion}
+            onClose={() => setMostrarFormularioExcepcion(false)}
+            onGuardar={handleGuardarNuevaExcepcion}
+            procesoId={proceso.id || ''}
+          />
+        )}
 
-              {/* SECCIÓN: Descripción de la Excepción */}
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  📋 Descripción de la Excepción *
-                </label>
-                <textarea
-                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none text-sm"
-                  rows={5}
-                  placeholder="Describa detalladamente la excepción procesal. Indíquelas los hechos que la fundamentan o la excepción..."
-                  id="descripcion-excepcion"
-                />
-              </div>
-
-              {/* SECCIÓN: Fundamento Legal */}
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  ⚖️ Fundamento Legal *
-                </label>
-                <textarea
-                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none text-sm"
-                  rows={3}
-                  placeholder="Indique las normas aplicables o jurisprudencia que fundamenta la excepción (Ej: Art. 100 CGP, Ley 734 de 2002...)"
-                  id="fundamento-excepcion"
-                />
-              </div>
-
-              {/* SECCIÓN: Presentada Por (Opcional) */}
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  👤 Presentada Por (Opcional)
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  placeholder="Nombre de quien presenta la excepción"
-                  id="responsable-excepcion"
-                />
-              </div>
-
-              {/* ALERTA INFORMATIVA */}
-              <Card className="p-3 bg-orange-50 border-2 border-orange-200">
-                <p className="text-sm text-orange-800">
-                  <AlertTriangle className="w-4 h-4 inline mr-1" />
-                  Las excepciones procesales deben ser fundamentadas jurídicamente y presentadas dentro de los términos legales establecidos.
-                </p>
-              </Card>
-            </div>
-
-            <div className="sticky bottom-0 bg-white border-t-2 px-6 py-4 flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setModalNuevaExcepcion(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                className="bg-orange-600 hover:bg-orange-700 text-white"
-                onClick={() => {
-                  // Obtener valores de radio buttons
-                  const radioSeleccionado = document.querySelector('input[name="tipo-excepcion"]:checked') as HTMLInputElement;
-                  const impedimentoSelect = document.getElementById('impedimento-excepcion') as HTMLSelectElement;
-                  const descripcionTextarea = document.getElementById('descripcion-excepcion') as HTMLTextAreaElement;
-                  const fundamentoTextarea = document.getElementById('fundamento-excepcion') as HTMLTextAreaElement;
-                  const responsableInput = document.getElementById('responsable-excepcion') as HTMLInputElement;
-
-                  const tipoExcepcion = radioSeleccionado?.value;
-                  const impedimento = impedimentoSelect?.value;
-                  const descripcion = descripcionTextarea?.value;
-                  const fundamento = fundamentoTextarea?.value;
-                  const responsable = responsableInput?.value || 'Sin especificar';
-
-                  // Validaciones
-                  if (!tipoExcepcion) {
-                    toast.error('⚠️ Tipo de excepción requerido', {
-                      description: 'Debe seleccionar un tipo de excepción procesal'
-                    });
-                    return;
-                  }
-
-                  if (!descripcion) {
-                    toast.error('⚠️ Descripción requerida', {
-                      description: 'Debe describir la excepción procesal'
-                    });
-                    return;
-                  }
-
-                  if (!fundamento) {
-                    toast.error('⚠️ Fundamento legal requerido', {
-                      description: 'Debe indicar el fundamento legal de la excepción'
-                    });
-                    return;
-                  }
-
-                  // Construir tipo completo
-                  let tipoCompleto = tipoExcepcion;
-                  if (impedimento) {
-                    tipoCompleto += ` - ${impedimento}`;
-                  }
-
-                  const nuevaExcepcion = {
-                    tipo: tipoCompleto,
-                    descripcion,
-                    fundamento,
-                    presentadoPor: responsable
-                  };
-
-                  // Llamar al backend via handleGuardarNuevaExcepcion
-                  handleGuardarNuevaExcepcion(nuevaExcepcion);
-                  setModalNuevaExcepcion(false);
-                }}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Registrar Excepción
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* ==================== MODAL: VISOR DE DOCUMENTOS ==================== */}
-      {/* ==================== MODAL: VISOR DE DOCUMENTOS ==================== */}
-      {pruebaSeleccionada && (
-        <VisorDocumentoModal
-          isOpen={visorAbierto}
-          onClose={() => setVisorAbierto(false)}
-          archivo={getFileUrl(pruebaSeleccionada.documentoUrl || pruebaSeleccionada.archivo || pruebaSeleccionada.url)}
-          numero={pruebaSeleccionada.documentoNombre || pruebaSeleccionada.nombre}
-          asunto={pruebaSeleccionada.descripcion}
+        {/* Hidden File Input for Pruebas Upload */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          className="hidden"
+          style={{ display: 'none' }}
+          accept=".pdf,.doc,.docx,.jpg,.png,.xlsx,.zip"
+          onChange={(e) => handleFileUpload(e, 'EVIDENCIA')}
         />
-      )}
-
-      {documentoSeleccionado && (
-        <VisorDocumentoModal
-          isOpen={visorAbierto}
-          onClose={() => setVisorAbierto(false)}
-          archivo={getFileUrl(documentoSeleccionado.documentoUrl || documentoSeleccionado.archivo || documentoSeleccionado.url)}
-          numero={documentoSeleccionado.documentoNombre || documentoSeleccionado.nombre}
-          asunto={`Documento del proceso ${proceso.id}`}
+        {/* ==================== MODAL: NUEVA ACTUACIÓN ==================== */}
+        <ModalNuevaActuacion
+          isOpen={modalNuevaActuacionOpen}
+          onClose={() => setModalNuevaActuacionOpen(false)}
+          onSave={handleGuardarActuacion}
+          procesoId={proceso.id}
         />
-      )}
+        {/* ==================== MODAL: CREAR TAREA ==================== */}
+        {modalCrearTareaAbierto && (
+          <Dialog open={modalCrearTareaAbierto} onOpenChange={(open) => {
+            setModalCrearTareaAbierto(open);
+            if (!open) { setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }
+          }}>
+            <DialogContent hideCloseButton className="w-[90vw] max-w-[500px] p-0">
+              <DialogTitle className="sr-only">Nueva Tarea</DialogTitle>
+              <DialogDescription className="sr-only">
+                Crear nueva tarea para el expediente {proceso.id}
+              </DialogDescription>
 
-      {decisionSeleccionada && (
-        <Dialog open={!!decisionSeleccionada} onOpenChange={() => setDecisionSeleccionada(null)}>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-            <DialogTitle className="flex items-center gap-2 text-2xl font-black text-blue-900">
-              <Gavel className="w-6 h-6" /> {decisionSeleccionada.tipoDecision}
-            </DialogTitle>
-            <div className="space-y-6 pt-4">
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
+              <ModalHeaderClean
+                titulo="Nueva Tarea"
+                subtitulo={`Proceso ${proceso.id}`}
+                icono={Calendar}
+                colorIcono="orange"
+                onClose={() => { setModalCrearTareaAbierto(false); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }}
+              />
+
+              <div className="p-6 space-y-4">
                 <div>
-                  <p className="text-sm text-gray-500">Tipo de Fallo</p>
-                  <Badge className={decisionSeleccionada.tipoFallo === 'Absolutoria' ? 'bg-green-600' : 'bg-red-600'}>
-                    {decisionSeleccionada.tipoFallo}
-                  </Badge>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-gray-500">Fecha</p>
-                  <p className="font-bold">{decisionSeleccionada.fecha}</p>
-                </div>
-              </div>
-
-              <Card className="p-4 border-l-4 border-orange-500 shadow-sm">
-                <h4 className="font-bold text-lg mb-2 text-orange-900">Sanción</h4>
-                <p className="text-gray-800">{decisionSeleccionada.sancion || 'No aplica'}</p>
-              </Card>
-
-              <div className="space-y-2">
-                <h4 className="font-bold text-blue-900 border-b pb-1">Consideraciones</h4>
-                <p className="text-sm text-gray-700 leading-relaxed text-justify whitespace-pre-wrap">
-                  {decisionSeleccionada.consideraciones}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="font-bold text-blue-900 border-b pb-1">Fundamentos Jurídicos</h4>
-                <p className="text-sm text-gray-700 leading-relaxed text-justify whitespace-pre-wrap">
-                  {decisionSeleccionada.fundamentosJuridicos}
-                </p>
-              </div>
-
-              <div className="flex justify-end pt-4 border-t">
-                <Button onClick={() => setDecisionSeleccionada(null)}>Cerrar</Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* Modal para Registrar Excepción Procesal */}
-      {mostrarFormularioExcepcion && (
-        <FormularioExcepcionProcesal
-          isOpen={mostrarFormularioExcepcion}
-          onClose={() => setMostrarFormularioExcepcion(false)}
-          onGuardar={handleGuardarNuevaExcepcion}
-          procesoId={proceso.id || ''}
-        />
-      )}
-
-      {/* Hidden File Input for Pruebas Upload */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        className="hidden"
-        style={{ display: 'none' }}
-        accept=".pdf,.doc,.docx,.jpg,.png,.xlsx,.zip"
-        onChange={(e) => handleFileUpload(e, 'EVIDENCIA')}
-      />
-      {/* ==================== MODAL: NUEVA ACTUACIÓN ==================== */}
-      <ModalNuevaActuacion
-        isOpen={modalNuevaActuacionOpen}
-        onClose={() => setModalNuevaActuacionOpen(false)}
-        onSave={handleGuardarActuacion}
-        procesoId={proceso.id}
-      />
-      {/* ==================== MODAL: CREAR TAREA ==================== */}
-      {modalCrearTareaAbierto && (
-        <Dialog open={modalCrearTareaAbierto} onOpenChange={(open) => {
-          setModalCrearTareaAbierto(open);
-          if (!open) { setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }
-        }}>
-          <DialogContent hideCloseButton className="w-[90vw] max-w-[500px] p-0">
-            <DialogTitle className="sr-only">Nueva Tarea</DialogTitle>
-            <DialogDescription className="sr-only">
-              Crear nueva tarea para el expediente {proceso.id}
-            </DialogDescription>
-
-            <ModalHeaderClean
-              titulo="Nueva Tarea"
-              subtitulo={`Proceso ${proceso.id}`}
-              icono={Calendar}
-              colorIcono="orange"
-              onClose={() => { setModalCrearTareaAbierto(false); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }}
-            />
-
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">Título de la tarea *</label>
-                <input
-                  type="text"
-                  value={formTareaTitulo}
-                  onChange={(e) => setFormTareaTitulo(e.target.value)}
-                  placeholder="Ej: Recopilar soportes documentales"
-                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">Descripción</label>
-                <textarea
-                  value={formTareaDescripcion}
-                  onChange={(e) => setFormTareaDescripcion(e.target.value)}
-                  placeholder="Describa los detalles de la tarea..."
-                  rows={3}
-                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Prioridad</label>
-                  <select
-                    value={formTareaPrioridad}
-                    onChange={(e) => setFormTareaPrioridad(e.target.value)}
-                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  >
-                    <option value="baja">Baja</option>
-                    <option value="media">Media</option>
-                    <option value="alta">Alta</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Fecha de vencimiento</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Título de la tarea *</label>
                   <input
-                    type="date"
-                    value={formTareaVencimiento}
-                    onChange={(e) => setFormTareaVencimiento(e.target.value)}
+                    type="text"
+                    value={formTareaTitulo}
+                    onChange={(e) => setFormTareaTitulo(e.target.value)}
+                    placeholder="Ej: Recopilar soportes documentales"
                     className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   />
                 </div>
-              </div>
-            </div>
 
-            <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setModalCrearTareaAbierto(false); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }}>
-                Cancelar
-              </Button>
-              <Button
-                className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-                onClick={handleCrearTarea}
-                disabled={!formTareaTitulo.trim()}
-              >
-                Crear Tarea
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* ==================== MODAL: EDITAR TAREA ==================== */}
-      {modalEditarTareaAbierto && tareaEnEdicion && (
-        <Dialog open={modalEditarTareaAbierto} onOpenChange={(open) => {
-          setModalEditarTareaAbierto(open);
-          if (!open) { setTareaEnEdicion(null); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }
-        }}>
-          <DialogContent hideCloseButton className="w-[90vw] max-w-[500px] p-0">
-            <DialogTitle className="sr-only">Editar Tarea</DialogTitle>
-            <DialogDescription className="sr-only">
-              Editar tarea del expediente {proceso.id}
-            </DialogDescription>
-
-            <ModalHeaderClean
-              titulo="Editar Tarea"
-              subtitulo={`Proceso ${proceso.id}`}
-              icono={Edit}
-              colorIcono="orange"
-              onClose={() => { setModalEditarTareaAbierto(false); setTareaEnEdicion(null); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }}
-            />
-
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">Título de la tarea *</label>
-                <input
-                  type="text"
-                  value={formTareaTitulo}
-                  onChange={(e) => setFormTareaTitulo(e.target.value)}
-                  placeholder="Ej: Recopilar soportes documentales"
-                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">Descripción</label>
-                <textarea
-                  value={formTareaDescripcion}
-                  onChange={(e) => setFormTareaDescripcion(e.target.value)}
-                  placeholder="Describa los detalles de la tarea..."
-                  rows={3}
-                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Prioridad</label>
-                  <select
-                    value={formTareaPrioridad}
-                    onChange={(e) => setFormTareaPrioridad(e.target.value)}
-                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  >
-                    <option value="baja">Baja</option>
-                    <option value="media">Media</option>
-                    <option value="alta">Alta</option>
-                  </select>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Descripción</label>
+                  <textarea
+                    value={formTareaDescripcion}
+                    onChange={(e) => setFormTareaDescripcion(e.target.value)}
+                    placeholder="Describa los detalles de la tarea..."
+                    rows={3}
+                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
+                  />
                 </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1.5">Prioridad</label>
+                    <select
+                      value={formTareaPrioridad}
+                      onChange={(e) => setFormTareaPrioridad(e.target.value)}
+                      className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    >
+                      <option value="baja">Baja</option>
+                      <option value="media">Media</option>
+                      <option value="alta">Alta</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1.5">Fecha de vencimiento</label>
+                    <input
+                      type="date"
+                      value={formTareaVencimiento}
+                      onChange={(e) => setFormTareaVencimiento(e.target.value)}
+                      className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-2">
+                <Button variant="outline" onClick={() => { setModalCrearTareaAbierto(false); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }}>
+                  Cancelar
+                </Button>
+                <Button
+                  className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
+                  onClick={handleCrearTarea}
+                  disabled={!formTareaTitulo.trim()}
+                >
+                  Crear Tarea
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* ==================== MODAL: EDITAR TAREA ==================== */}
+        {modalEditarTareaAbierto && tareaEnEdicion && (
+          <Dialog open={modalEditarTareaAbierto} onOpenChange={(open) => {
+            setModalEditarTareaAbierto(open);
+            if (!open) { setTareaEnEdicion(null); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }
+          }}>
+            <DialogContent hideCloseButton className="w-[90vw] max-w-[500px] p-0">
+              <DialogTitle className="sr-only">Editar Tarea</DialogTitle>
+              <DialogDescription className="sr-only">
+                Editar tarea del expediente {proceso.id}
+              </DialogDescription>
+
+              <ModalHeaderClean
+                titulo="Editar Tarea"
+                subtitulo={`Proceso ${proceso.id}`}
+                icono={Edit}
+                colorIcono="orange"
+                onClose={() => { setModalEditarTareaAbierto(false); setTareaEnEdicion(null); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }}
+              />
+
+              <div className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Fecha de vencimiento</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Título de la tarea *</label>
                   <input
-                    type="date"
-                    value={formTareaVencimiento}
-                    onChange={(e) => setFormTareaVencimiento(e.target.value)}
+                    type="text"
+                    value={formTareaTitulo}
+                    onChange={(e) => setFormTareaTitulo(e.target.value)}
+                    placeholder="Ej: Recopilar soportes documentales"
                     className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Descripción</label>
+                  <textarea
+                    value={formTareaDescripcion}
+                    onChange={(e) => setFormTareaDescripcion(e.target.value)}
+                    placeholder="Describa los detalles de la tarea..."
+                    rows={3}
+                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1.5">Prioridad</label>
+                    <select
+                      value={formTareaPrioridad}
+                      onChange={(e) => setFormTareaPrioridad(e.target.value)}
+                      className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    >
+                      <option value="baja">Baja</option>
+                      <option value="media">Media</option>
+                      <option value="alta">Alta</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1.5">Fecha de vencimiento</label>
+                    <input
+                      type="date"
+                      value={formTareaVencimiento}
+                      onChange={(e) => setFormTareaVencimiento(e.target.value)}
+                      className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setModalEditarTareaAbierto(false); setTareaEnEdicion(null); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }}>
-                Cancelar
-              </Button>
-              <Button
-                className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-                onClick={handleGuardarEdicionTarea}
-                disabled={!formTareaTitulo.trim()}
-              >
-                Guardar Cambios
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* ==================== MODAL: AGREGAR NOTA ==================== */}
-      {modalAgregarNotaAbierto && (
-        <Dialog open={modalAgregarNotaAbierto} onOpenChange={(open) => {
-          setModalAgregarNotaAbierto(open);
-          if (!open) { setFormNotaContenido(''); setFormNotaTipo('seguimiento'); }
-        }}>
-          <DialogContent hideCloseButton className="w-[90vw] max-w-[500px] p-0">
-            <DialogTitle className="sr-only">Nueva Nota Interna</DialogTitle>
-            <DialogDescription className="sr-only">
-              Agregar nota interna al expediente {proceso.id}
-            </DialogDescription>
-
-            <ModalHeaderClean
-              titulo="Nueva Nota Interna"
-              subtitulo={`Proceso ${proceso.id}`}
-              icono={Edit}
-              colorIcono="yellow"
-              onClose={() => { setModalAgregarNotaAbierto(false); setFormNotaContenido(''); setFormNotaTipo('seguimiento'); }}
-            />
-
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">Tipo de nota</label>
-                <select
-                  value={formNotaTipo}
-                  onChange={(e) => setFormNotaTipo(e.target.value)}
-                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+              <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-2">
+                <Button variant="outline" onClick={() => { setModalEditarTareaAbierto(false); setTareaEnEdicion(null); setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }}>
+                  Cancelar
+                </Button>
+                <Button
+                  className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
+                  onClick={handleGuardarEdicionTarea}
+                  disabled={!formTareaTitulo.trim()}
                 >
-                  <option value="seguimiento">📋 Seguimiento</option>
-                  <option value="importante">⚠️ Importante</option>
-                  <option value="alerta">🔔 Alerta</option>
-                </select>
+                  Guardar Cambios
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* ==================== MODAL: AGREGAR NOTA ==================== */}
+        {modalAgregarNotaAbierto && (
+          <Dialog open={modalAgregarNotaAbierto} onOpenChange={(open) => {
+            setModalAgregarNotaAbierto(open);
+            if (!open) { setFormNotaContenido(''); setFormNotaTipo('seguimiento'); }
+          }}>
+            <DialogContent hideCloseButton className="w-[90vw] max-w-[500px] p-0">
+              <DialogTitle className="sr-only">Nueva Nota Interna</DialogTitle>
+              <DialogDescription className="sr-only">
+                Agregar nota interna al expediente {proceso.id}
+              </DialogDescription>
+
+              <ModalHeaderClean
+                titulo="Nueva Nota Interna"
+                subtitulo={`Proceso ${proceso.id}`}
+                icono={Edit}
+                colorIcono="yellow"
+                onClose={() => { setModalAgregarNotaAbierto(false); setFormNotaContenido(''); setFormNotaTipo('seguimiento'); }}
+              />
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Tipo de nota</label>
+                  <select
+                    value={formNotaTipo}
+                    onChange={(e) => setFormNotaTipo(e.target.value)}
+                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                  >
+                    <option value="seguimiento">📋 Seguimiento</option>
+                    <option value="importante">⚠️ Importante</option>
+                    <option value="alerta">🔔 Alerta</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Contenido de la nota *</label>
+                  <textarea
+                    value={formNotaContenido}
+                    onChange={(e) => setFormNotaContenido(e.target.value)}
+                    placeholder="Escriba el contenido de la nota interna..."
+                    rows={5}
+                    className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 resize-none"
+                  />
+                </div>
+
+                <Card className="p-3 bg-yellow-50 border-2 border-yellow-200">
+                  <p className="text-xs text-yellow-800">
+                    <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+                    Las notas internas son visibles solo para el equipo jurídico y no forman parte del expediente oficial.
+                  </p>
+                </Card>
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">Contenido de la nota *</label>
-                <textarea
-                  value={formNotaContenido}
-                  onChange={(e) => setFormNotaContenido(e.target.value)}
-                  placeholder="Escriba el contenido de la nota interna..."
-                  rows={5}
-                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 resize-none"
-                />
+              <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-2">
+                <Button variant="outline" onClick={() => { setModalAgregarNotaAbierto(false); setFormNotaContenido(''); setFormNotaTipo('seguimiento'); }}>
+                  Cancelar
+                </Button>
+                <Button
+                  className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
+                  onClick={handleAgregarNota}
+                  disabled={!formNotaContenido.trim()}
+                >
+                  Guardar Nota
+                </Button>
               </div>
+            </DialogContent>
+          </Dialog>
+        )}
+      </Dialog>
 
-              <Card className="p-3 bg-yellow-50 border-2 border-yellow-200">
-                <p className="text-xs text-yellow-800">
-                  <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
-                  Las notas internas son visibles solo para el equipo jurídico y no forman parte del expediente oficial.
-                </p>
-              </Card>
-            </div>
-
-            <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setModalAgregarNotaAbierto(false); setFormNotaContenido(''); setFormNotaTipo('seguimiento'); }}>
-                Cancelar
-              </Button>
-              <Button
-                className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
-                onClick={handleAgregarNota}
-                disabled={!formNotaContenido.trim()}
-              >
-                Guardar Nota
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+      {/* Modal Anexar Proceso Disciplinario */}
+      {modalAnexarAbierto && (
+        <ModalAnexarProcesoDisciplinario
+          isOpen={modalAnexarAbierto}
+          onClose={() => setModalAnexarAbierto(false)}
+          procesoActual={{
+            id: proceso.id,
+            uuid: (proceso as any).uuid,
+            disciplinado: proceso.disciplinado,
+            investigado: (proceso as any).investigado,
+            tipoFalta: proceso.tipoFalta,
+            etapa: proceso.etapa
+          }}
+          onAnexado={() => {
+            setHasChanges(true);
+            setModalAnexarAbierto(false);
+            onRefresh?.();
+          }}
+        />
       )}
-    </Dialog>
+    </>
   );
 }

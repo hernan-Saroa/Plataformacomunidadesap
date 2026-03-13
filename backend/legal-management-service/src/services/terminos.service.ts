@@ -88,7 +88,12 @@ export class TerminosService {
             termino.fechaAlertaCritica = alertaCritica;
             termino.responsableId = responsableId || null;
             termino.responsableNombre = responsableNombre || null;
-            termino.observaciones = observaciones || null;
+            
+            // BUG FIX 11: Solo asignamos observaciones si viene algo nuevo de la sincronización 
+            // y el término actual no tiene observaciones, para NO SOBRESCRIBIR adjuntos ni comentarios del usuario.
+            if (observaciones && !termino.observaciones) {
+                termino.observaciones = observaciones;
+            }
         } else {
             termino = this.terminoRepository.create({
                 origenModulo: origen,
@@ -156,14 +161,14 @@ export class TerminosService {
 
     async getSemaforoList(responsableId?: string): Promise<any[]> {
         // Auto-sincronizar al consultar el listado para tener datos actualizados
-        try {
-            await this.sincronizar();
-        } catch (err) {
-            this.logger.warn('Error en sincronización automática:', err);
-            // Continuar aunque falle la sincronización
-        }
+        // try {
+        //     await this.sincronizar();
+        // } catch (err) {
+        //     this.logger.warn('Error en sincronización automática:', err);
+        //     // Continuar aunque falle la sincronización
+        // }
 
-        const terminos = await this.findAll({ responsableId, estado: 'PENDIENTE' });
+        const terminos = await this.findAll({ responsableId });
 
         return terminos.map(t => {
             const now = new Date();
@@ -185,6 +190,93 @@ export class TerminosService {
         const termino = await this.terminoRepository.findOne({ where: { id } });
         if (!termino) throw new NotFoundException('Término no encontrado');
         return termino;
+    }
+
+    async update(id: string, data: any): Promise<TerminoProcesal> {
+        const termino = await this.findOne(id);
+        
+        // Si viene un comentario nuevo, lo concatenamos de forma segura
+        if (data.nuevoComentario) {
+            const prefix = termino.observaciones ? '\n\n---\n' : '';
+            termino.observaciones = (termino.observaciones || '') + prefix + data.nuevoComentario;
+            delete data.nuevoComentario;
+        }
+
+        // Ya no dejamos que sobrescriban observaciones por completo si viene el comentario
+        if (data.observaciones && data.nuevoComentario) {
+            delete data.observaciones; 
+        }
+
+        Object.assign(termino, data);
+        return this.terminoRepository.save(termino);
+    }
+
+    async remove(id: string): Promise<void> {
+        const termino = await this.findOne(id);
+        // Soft delete para evitar que la función sincronizar() lo vuelva a crear
+        termino.estado = 'ELIMINADO';
+        await this.terminoRepository.save(termino);
+    }
+
+    // NEW: Generate PDF Report
+    async generarPDF(id: string): Promise<Buffer> {
+        const termino = await this.findOne(id);
+        const PDFDocument = require('pdfkit');
+        
+        return new Promise<Buffer>((resolve, reject) => {
+            const doc = new PDFDocument({ margin: 50 });
+            const buffers: Buffer[] = [];
+            
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', reject);
+
+            // Header
+            doc.fontSize(16).font('Helvetica-Bold').text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP', { align: 'center' });
+            doc.fontSize(14).text('SOLICITUD DE INFORME', { align: 'center' });
+            doc.moveDown(2);
+
+            // General Info
+            doc.fontSize(12).font('Helvetica-Bold').text('INFORMACIÓN GENERAL').moveDown(0.5);
+            doc.font('Helvetica').fontSize(10);
+            doc.text(`ID Solicitud: ${termino.id}`);
+            doc.text(`Radicado: ${termino.numeroRadicado || 'N/A'}`);
+            doc.text(`Módulo Origen: ${termino.origenModulo}`);
+            doc.text(`Estado: ${termino.estado}`);
+            doc.moveDown();
+
+            // Responsable
+            doc.font('Helvetica-Bold').text('RESPONSABLE ESAP').moveDown(0.5);
+            doc.font('Helvetica').text(termino.responsableNombre || termino.responsableId || 'Sin asignar');
+            doc.moveDown();
+
+            // Dates & Deadlines
+            doc.font('Helvetica-Bold').text('PLAZOS Y VENCIMIENTOS').moveDown(0.5);
+            doc.font('Helvetica');
+            doc.text(`Fecha Base: ${termino.fechaBase ? new Date(termino.fechaBase).toLocaleDateString() : 'N/A'}`);
+            doc.text(`Fecha Vencimiento: ${termino.fechaVencimiento ? new Date(termino.fechaVencimiento).toLocaleDateString() : 'N/A'}`);
+            doc.text(`Días Término: ${termino.diasTermino} ${termino.tipoDias}`);
+            doc.moveDown();
+
+            // Asunto
+            doc.font('Helvetica-Bold').text('ASUNTO').moveDown(0.5);
+            doc.font('Helvetica').text(termino.nombreActuacion || 'N/A');
+            doc.moveDown();
+
+            // Observaciones
+            if (termino.observaciones) {
+                doc.font('Helvetica-Bold').text('NOTAS Y COMENTARIOS').moveDown(0.5);
+                doc.font('Helvetica').text(termino.observaciones);
+                doc.moveDown();
+            }
+
+            // Footer
+            doc.moveDown(2);
+            doc.fontSize(8).text(`Documento generado el: ${new Date().toLocaleDateString('es-CO')} a las ${new Date().toLocaleTimeString('es-CO')}`, { align: 'center' });
+            doc.text('Sistema SIGL - Gestión Legal ESAP', { align: 'center' });
+
+            doc.end();
+        });
     }
 
     // NEW: Get associated documents
@@ -288,7 +380,40 @@ export class TerminosService {
             }
         }
 
+        // 5. Parse Documentos Lógicos from Observaciones
+        if (termino.observaciones) {
+            const matches = termino.observaciones.match(/\[ARCHIVO_ADJUNTO\](.*)/g);
+            if (matches) {
+                matches.forEach(m => {
+                    const parts = m.replace('[ARCHIVO_ADJUNTO] ', '').split('|');
+                    if (parts.length >= 4) {
+                        docs.push({
+                            nombre: parts[0],
+                            tipo: 'ADJUNTO_TERMINO',
+                            url: `files/${parts[1]}`,
+                            fecha: new Date(parts[3])
+                        });
+                    }
+                });
+            }
+        }
+
         return docs;
+    }
+
+    // NEW: Add Document logic without altering schema
+    async addDocumentoLogico(id: string, file: Express.Multer.File): Promise<any> {
+        const termino = await this.findOne(id);
+        const metadata = `\n[ARCHIVO_ADJUNTO] ${file.originalname}|${file.filename}|${(file.size/1024).toFixed(2)} KB|${new Date().toISOString()}`;
+        termino.observaciones = (termino.observaciones || '') + metadata;
+        await this.terminoRepository.save(termino);
+        return {
+            nombre: file.originalname,
+            tipo: 'ADJUNTO_TERMINO',
+            url: `files/${file.filename}`,
+            fecha: new Date(),
+            tamaño: `${(file.size/1024).toFixed(2)} KB`
+        };
     }
 
     async getReporteEficiencia(): Promise<any> {
@@ -507,7 +632,7 @@ export class TerminosService {
                 ? new Date(proc.obligacion.fechaVencimiento)
                 : null;
 
-            const estadoActivo = proc.estado !== 'FINALIZADO';
+            const estadoActivo = proc.estado !== 'LIQUIDACION';
 
             if (fechaVencimiento && estadoActivo) {
                 this.logger.debug(`[PROCESOS_COACTIVOS] Sincronizando ${proc.radicado}...`);

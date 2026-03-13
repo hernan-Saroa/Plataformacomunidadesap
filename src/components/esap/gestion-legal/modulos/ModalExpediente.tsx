@@ -37,8 +37,9 @@ import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalGestionDocumentos } from './ModalGestionDocumentos';
 import { ModalNuevaDemandaRESTAURADO } from './ModalNuevaDemandaRESTAURADO';
 import { ModalAnexarProceso } from './ModalAnexarProceso';
+import { DialogoConfirmacion } from './DialogoConfirmacion';
 import { copyToClipboard } from '../../../../utils/clipboard';
-import { legalService } from '../../../../services/api/legal.service';
+import { legalService, correosJuridicosService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { authService } from '../../../../services/api/authService';
@@ -49,6 +50,7 @@ import { TabActuacionesExpediente } from '../core/TabActuacionesExpediente';
 import { TabTareasExpediente } from '../core/TabTareasExpediente';
 import { TabNotasExpediente } from '../core/TabNotasExpediente';
 import { TabDocumentosExpediente } from '../core/TabDocumentosExpediente';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 interface ModalExpedienteProps {
   isOpen: boolean;
@@ -74,6 +76,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [modalProgramarAudienciaAbierto, setModalProgramarAudienciaAbierto] = useState(false);
   const [modalAnexarAbierto, setModalAnexarAbierto] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // Estado para visor de documentos inline
+  const [visorAbierto, setVisorAbierto] = useState(false);
+  const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string } | null>(null);
   const [selectedAnexado, setSelectedAnexado] = useState<any>(null); // Sub-modal para ver anexados
 
   // Estado para modal de reasignar
@@ -86,6 +92,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [loadingAbogados, setLoadingAbogados] = useState(false);
   const [selectedAbogado, setSelectedAbogado] = useState('');
   const [reasignando, setReasignando] = useState(false);
+  const [audienciaIdPendienteEliminar, setAudienciaIdPendienteEliminar] = useState<string | null>(null);
 
   // Estados de datos
   const [documentos, setDocumentos] = useState<any[]>([]);
@@ -102,6 +109,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [audienciaAReasignar, setAudienciaAReasignar] = useState<any>(null);
   const [tareaParaEditar, setTareaParaEditar] = useState<any>(null);
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [showDesanexarConfirm, setShowDesanexarConfirm] = useState(false);
+  const [anexadoADesanexar, setAnexadoADesanexar] = useState<any>(null);
 
   // Ref para input file
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -147,11 +156,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const loadDocumentos = async (id: string) => {
     try {
       setLoadingDocumentos(true);
-      // Fetch both documents and linked emails concurrently
-      const [docsData, oficiosData] = await Promise.all([
-        legalService.getDocumentos(id),
-        legalService.getCorreosByExpediente(id)
-      ]);
+      // Fetch documents (emails omitted per user request)
+      const docsData = await legalService.getDocumentos(id);
 
       // Map native documents
       const mappedDocs = docsData.map((d: any) => ({
@@ -167,46 +173,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         etapa: d.etapa || null
       }));
 
-      // Map linked emails and their attachments -> Oficios
-      const mappedOficios = Array.isArray(oficiosData) ? oficiosData.flatMap((correo: any) => {
-        const rows = [];
-
-        // Base email row
-        rows.push({
-          id: correo.id,
-          nombre: correo.asunto || 'Oficio sin asunto',
-          fecha: new Date(correo.fechaRecepcion).toLocaleDateString('es-CO'),
-          tipo: 'Correo Jurídico',
-          tamaño: correo.tieneAdjuntos ? 'Con adjuntos' : 'N/A',
-          firmante: correo.remitenteNombre || correo.remitenteEmail || 'Sistema',
-          url: null, // URLs for emails might be handled via a custom view rather than a direct download link
-          descripcion: `De: ${correo.remitenteNombre || correo.remitenteEmail} - ${correo.cuerpoTexto ? (correo.cuerpoTexto.length > 50 ? correo.cuerpoTexto.substring(0, 50) + '...' : correo.cuerpoTexto) : 'Sin cuerpo'}`,
-          categoria: 'oficios',
-          etapa: null
-        });
-
-        // Attachment rows
-        if (correo.adjuntos && Array.isArray(correo.adjuntos)) {
-          correo.adjuntos.forEach((adj: any) => {
-            rows.push({
-              id: adj.id,
-              nombre: `📎 ${adj.nombre}`,
-              fecha: new Date(adj.createdAt || correo.fechaRecepcion).toLocaleDateString('es-CO'),
-              tipo: 'Anexo de Oficio',
-              tamaño: formatBytes(adj.tamanio || 0),
-              firmante: correo.remitenteNombre || correo.remitenteEmail || 'Sistema',
-              url: `/legal/api/v1/correos/adjuntos/${adj.id}/download`,
-              descripcion: `Archivo adjunto al oficio: ${correo.asunto}`,
-              categoria: 'oficios',
-              etapa: null
-            });
-          });
-        }
-
-        return rows;
-      }) : [];
-
-      setDocumentos([...mappedDocs, ...mappedOficios]);
+      setDocumentos(mappedDocs);
     } catch (error) {
       console.error('Error cargando documentos', error);
       setDocumentos([]);
@@ -301,7 +268,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         descripcion: a.descripcion,
         responsable: a.usuarioResponsable || 'Sistema',
         tipo: a.tipoActuacion,
-        estado: 'Registrado',
+        estado: a.metadata?.estado || 'Registrado',
         origen: a.origen || 'MANUAL',
         metadata: a.metadata,
         documentoUrl: a.documentoUrl,
@@ -332,6 +299,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         abogadoResponsable: a.nombreAbogado || expediente.abogadoAsignado || 'Abogado Asignado',
         estado: a.estado || 'Programada',
         historial: a.historial || [],
+        descripcion: a.notasPreparacion,
         observaciones: a.notasPreparacion,
         objetivo: a.objetivo
       }));
@@ -371,13 +339,17 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     const baseUrl = getServiceUrl('legal');
     const prefix = API_MODE === 'direct' ? '' : '/legal';
 
-    // ✨ FIXED: Rutas de adjuntos de correos/oficios
+    // ✨ FIXED: Rutas de adjuntos de correos/oficios (usar /api/v1 para que gateway rutee correctamente)
     if (url.includes('/correos/adjuntos/')) {
-      const regex = /\/adjuntos\/([^/]+)\//;
+      const regex = /\/adjuntos\/([^/]+)/;
       const match = url.match(regex);
       if (match) {
-        const adjuntoId = match[1];
-        return `${baseUrl}${prefix}/correos/adjuntos/${adjuntoId}/download`;
+        let adjuntoId = match[1];
+        // Quitar /download del final si por error lo agarró
+        if (adjuntoId.endsWith('/download')) adjuntoId = adjuntoId.replace('/download', '');
+        
+        const adjuntoPrefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        return `${baseUrl}${adjuntoPrefix}/correos/adjuntos/${adjuntoId}/download`;
       }
     }
 
@@ -532,18 +504,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       return;
     }
     const fullUrl = getFullUrl(doc.url);
-    // ModalGestionDocumentos is used for preview? Or just open in new tab?
-    // User requested "boton de ver sirve para todo menos word y excel"
-    // Since we don't have an embedded viewer yet in this file specific for preview (unless using ModalGestionDocumentos),
-    // let's try to open in new tab for now, or use ModalGestionDocumentos if it supports it.
-    // Looking at imports, ModalGestionDocumentos is imported. PROBABLY use that or a light box.
-    // For now, simple approach:
-
-    window.open(fullUrl, '_blank');
-
-    toast.info('👁️ Abriendo documento', {
-      description: doc.nombre
-    });
+    // Abrir el documento en el visor inline
+    setDocParaVisor({ url: fullUrl, nombre: doc.nombre || 'Documento', asunto: doc.tipo || '' });
+    setVisorAbierto(true);
   };
 
   const handleDescargarTodos = async () => {
@@ -912,6 +875,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         tipoActuacion: data.tipo,
         descripcion: data.descripcion,
         fechaActuacion: data.fecha ? new Date(data.fecha).toISOString() : new Date().toISOString(),
+        responsable: data.responsable,
+        estado: data.estado,
+        observaciones: data.observaciones,
         file: file
       });
 
@@ -981,7 +947,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         modalidad: modalidadVal,
         linkReunion: audienciaData.linkVirtual,
         abogadoResponsable: abogadoNombre,
-        estado: 'Programada'
+        estado: 'Programada',
+        descripcion: audienciaData.observaciones
       };
 
       setAudienciasProgramadas(prev => {
@@ -998,10 +965,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   };
 
   const handleEliminarAudiencia = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta audiencia?')) return;
+    setAudienciaIdPendienteEliminar(id.toString());
+  };
+
+  const confirmarEliminarAudiencia = async () => {
+    const id = audienciaIdPendienteEliminar;
+    if (!id) return;
+    setAudienciaIdPendienteEliminar(null);
 
     try {
-      await legalService.deleteAudiencia(id.toString());
+      await legalService.deleteAudiencia(id);
       toast.success('🗑️ Audiencia eliminada');
       setAudienciasProgramadas(prev => prev.filter(a => a.id !== id));
     } catch (error) {
@@ -1332,6 +1305,44 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   });
 
   const tiposDocumento = ['TODOS', ...Array.from(new Set(documentos.map(d => d.tipo)))];
+
+  // ==================== ABOGADOS DISPONIBLES PARA TAREAS ====================
+  const abogadosDisponibles = (() => {
+    const lista: { nombre: string; rol: string }[] = [];
+    const nombresVistos = new Set<string>();
+
+    // 1. Abogado principal del caso
+    const abogadoPrincipal = expediente.abogadoAsignado;
+    if (abogadoPrincipal && !nombresVistos.has(abogadoPrincipal)) {
+      lista.push({ nombre: abogadoPrincipal, rol: 'Abogado del caso' });
+      nombresVistos.add(abogadoPrincipal);
+    }
+
+    // 2. Abogados de demandas anexadas
+    const anexados = (expediente as any).procesosAnexados;
+    if (Array.isArray(anexados)) {
+      anexados.forEach((anexado: any) => {
+        const nombre = anexado.abogadoSustanciador || anexado.abogadoAsignado;
+        if (nombre && !nombresVistos.has(nombre)) {
+          lista.push({ nombre, rol: `Abogado caso anexado (${anexado.radicado || 'N/A'})` });
+          nombresVistos.add(nombre);
+        }
+      });
+    }
+
+    // 3. Abogados anteriores (reasignados)
+    const anteriores = (expediente as any).abogadosAnteriores;
+    if (Array.isArray(anteriores)) {
+      anteriores.forEach((nombre: string) => {
+        if (nombre && !nombresVistos.has(nombre)) {
+          lista.push({ nombre, rol: 'Abogado anterior (reasignado)' });
+          nombresVistos.add(nombre);
+        }
+      });
+    }
+
+    return lista;
+  })();
 
   return (
     <>
@@ -1964,16 +1975,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                                   variant="ghost"
                                   size="sm"
                                   className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-1.5 h-auto transition-colors focus:ring-0"
-                                  onClick={async () => {
-                                    if (confirm('¿Seguro que desea desanexar este proceso? Volverá a aparecer como un proceso independiente en el Kanban principal.')) {
-                                      try {
-                                        await legalService.desanexarExpediente(anexado.id || anexado.uuid, 'Usuario Actual');
-                                        toast.success('Proceso desanexado con éxito');
-                                        if (onUpdate) onUpdate();
-                                      } catch (e) {
-                                        toast.error('Error al desanexar el proceso');
-                                      }
-                                    }
+                                  onClick={() => {
+                                    setAnexadoADesanexar(anexado);
+                                    setShowDesanexarConfirm(true);
                                   }}
                                   title="Desanexar proceso"
                                 >
@@ -2249,6 +2253,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         onClose={() => setModalNotificarAbierto(false)
         }
         expediente={expediente}
+        abogadosDisponibles={abogadosDisponibles}
       />
       <ModalCompartir
         isOpen={modalCompartirAbierto}
@@ -2260,6 +2265,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         onClose={() => setModalCrearTareaAbierto(false)}
         expediente={expediente}
         onGuardar={handleCrearTarea}
+        abogadosDisponibles={abogadosDisponibles}
       />
       {
         tareaParaEditar && (
@@ -2273,6 +2279,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
             tareaInicial={tareaParaEditar}
             onGuardar={handleGuardarEdicionTarea}
             modoEdicion={true}
+            abogadosDisponibles={abogadosDisponibles}
           />
         )
       }
@@ -2450,6 +2457,91 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       )}
 
 
+      {/* ==================== DIALOG DE CONFIRMACIÓN DE DESANEXAR ==================== */}
+      <Dialog open={showDesanexarConfirm} onOpenChange={setShowDesanexarConfirm}>
+        <DialogContent 
+          hideCloseButton 
+          className="p-0 overflow-hidden border-none shadow-2xl z-[10001] rounded-2xl mx-auto"
+          style={{ width: '380px', maxWidth: '380px' }}
+        >
+          <DialogTitle className="sr-only">Confirmar desanexar proceso</DialogTitle>
+          <DialogDescription className="sr-only">
+            Confirmación para volver a independizar un proceso del expediente actual.
+          </DialogDescription>
+          
+          <div className="bg-white overflow-hidden w-full">
+            <div className="h-2 w-full bg-[#004884]"></div>
+            
+            <div className="p-10 flex flex-col items-center text-center">
+              <div className="w-20 h-20 rounded-3xl bg-blue-50 flex items-center justify-center mb-8 rotate-3 hover:rotate-0 transition-all duration-300 shadow-sm border border-blue-100">
+                <Unlink className="w-10 h-10 text-[#004884]" />
+              </div>
+              
+              <h3 className="text-2xl font-black text-gray-900 mb-4 tracking-tight leading-tight">
+                ¿Desanexar este proceso?
+              </h3>
+              
+              <p className="text-base text-gray-500 leading-relaxed mb-10 px-4">
+                El proceso <span className="font-bold text-gray-900">{anexadoADesanexar?.radicado || anexadoADesanexar?.id}</span> volverá a ser independiente.
+              </p>
+
+              <div className="flex flex-col w-full gap-4">
+                <Button
+                  onClick={async () => {
+                    if (!anexadoADesanexar) return;
+                    try {
+                      await legalService.desanexarExpediente(anexadoADesanexar.id || anexadoADesanexar.uuid, 'Usuario Actual');
+                      toast.success('Proceso desanexado con éxito');
+                      setShowDesanexarConfirm(false);
+                      setAnexadoADesanexar(null);
+                      if (onUpdate) onUpdate();
+                    } catch (e) {
+                      toast.error('Error al desanexar el proceso');
+                    }
+                  }}
+                  className="w-full py-8 !bg-[#004884] hover:!bg-[#003663] !text-white font-black rounded-2xl shadow-xl shadow-blue-100 transition-all active:scale-[0.98] text-lg border-none"
+                >
+                  Sí, desanexar ahora
+                </Button>
+                
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setShowDesanexarConfirm(false);
+                    setAnexadoADesanexar(null);
+                  }}
+                  className="w-full py-6 rounded-xl font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-50 transition-colors text-sm"
+                >
+                  No, mantener anexado
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <DialogoConfirmacion
+        isOpen={!!audienciaIdPendienteEliminar}
+        onClose={() => setAudienciaIdPendienteEliminar(null)}
+        onConfirm={confirmarEliminarAudiencia}
+        titulo="Eliminar Audiencia"
+        mensaje="¿Estás seguro de eliminar esta audiencia programada? Esta acción no se puede deshacer."
+        tipo="peligro"
+        textoConfirmar="Sí, eliminar"
+        textoCancelar="Cancelar"
+        icono="eliminar"
+      />
+
+      {/* VISOR INLINE DE DOCUMENTOS */}
+      {docParaVisor && (
+        <VisorDocumentoModal
+          isOpen={visorAbierto}
+          onClose={() => { setVisorAbierto(false); setDocParaVisor(null); }}
+          archivo={docParaVisor.url}
+          numero={docParaVisor.nombre}
+          asunto={docParaVisor.asunto}
+        />
+      )}
     </>
   );
 }

@@ -20,7 +20,7 @@ import {
   X, Mail, FileText, Download, Upload, CheckCircle, AlertCircle, AlertTriangle,
   Calendar, User, Send, Search, Clock, Paperclip, Eye, Shield,
   Sparkles, Zap, Star, FileCheck, MessageSquare, Building2,
-  Info, Tag
+  Info, Tag, File
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { CATEGORIAS_OFICIOS, type CategoriaOficioId, type TipoOficio } from './configuracion/SeccionPlantillasOficiosUnificada';
@@ -192,8 +192,8 @@ export function WizardOficiosWorldClass({
   const [guardando, setGuardando] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Estados de Oficios Generados
-  const [oficiosGenerados] = useState<OficioGenerado[]>([]);
+  // Estados de Oficios Generados - se cargan desde el backend
+  const [oficiosGenerados, setOficiosGenerados] = useState<OficioGenerado[]>([]);
 
   // Hook para obtener configuraciones de oficios del backend
   const { configurations: tiposOficiosBackend, loading: loadingTipos, refetch: recargarTipos } = useOficiosConfigurationActive();
@@ -203,6 +203,36 @@ export function WizardOficiosWorldClass({
     console.log('🔵 [WizardOficiosWorldClass] Montado, recargando tipos...');
     recargarTipos();
   }, []);
+
+  // Efecto para cargar oficios generados del proceso
+  useEffect(() => {
+    const cargarOficiosGenerados = async () => {
+      if (proceso?.id) {
+        try {
+          console.log('🔵 [WizardOficiosWorldClass] Cargando oficios del proceso:', proceso.id);
+          const oficios = await disciplinaryService.getOficios(proceso.id);
+          console.log('✅ [WizardOficiosWorldClass] Oficios cargados:', oficios.length);
+          
+          // Mapear los documentos al formato de oficios generados
+          const oficiosMapeados: OficioGenerado[] = oficios.map((oficio: any) => ({
+            id: oficio.id,
+            numero: oficio.nombre || `Oficio-${oficio.id}`,
+            tipo: oficio.descripcion || 'Oficio',
+            fecha: oficio.fechaCarga ? new Date(oficio.fechaCarga).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            destinatario: oficio.destinatario || 'No especificado',
+            asunto: oficio.asunto || oficio.descripcion || 'Sin asunto',
+            estado: 'generado'
+          }));
+          
+          setOficiosGenerados(oficiosMapeados);
+        } catch (error) {
+          console.error('❌ [WizardOficiosWorldClass] Error cargando oficios:', error);
+        }
+      }
+    };
+    
+    cargarOficiosGenerados();
+  }, [proceso?.id]);
 
   // Combinar datos mock con datos del backend - SOLO ACTIVOS
   const tiposOficios = useMemo(() => {
@@ -403,6 +433,18 @@ export function WizardOficiosWorldClass({
         duration: 4000,
       });
       
+      // Actualizar la lista de oficios generados
+      const nuevoOficio: OficioGenerado = {
+        id: oficioCreado?.id || `oficio-${Date.now()}`,
+        numero: oficioCreado?.id || `Oficio-${Date.now()}`,
+        tipo: tipoSeleccionado.nombre,
+        fecha: fechaOficio,
+        destinatario: destinatario,
+        asunto: asunto,
+        estado: 'generado'
+      };
+      setOficiosGenerados(prev => [nuevoOficio, ...prev]);
+      
       if (onOficioCreado) {
         onOficioCreado({
           tipo: tipoSeleccionado.nombre,
@@ -513,7 +555,7 @@ export function WizardOficiosWorldClass({
                     </p>
                     <div className="w-1 h-1 rounded-full bg-emerald-300" />
                     <p className="text-sm text-emerald-100 font-medium hidden sm:block">
-                      {proceso.denunciado.nombre}
+                      {proceso.denunciado?.nombre || 'Cargando...'}
                     </p>
                   </div>
                 </div>
@@ -708,7 +750,7 @@ export function WizardOficiosWorldClass({
                             </div>
                             <div className="bg-white/60 rounded-lg px-3 py-2 backdrop-blur-sm sm:col-span-1 col-span-1">
                               <span className="text-emerald-700 font-semibold">Investigado:</span>
-                              <span className="ml-1.5 text-emerald-900 font-bold">{proceso.denunciado.nombre}</span>
+                              <span className="ml-1.5 text-emerald-900 font-bold">{proceso.denunciado?.nombre || 'Cargando...'}</span>
                             </div>
                           </div>
                         </div>
@@ -1162,7 +1204,7 @@ export function WizardOficiosWorldClass({
                             {subiendo ? 'Cargando archivo...' : 'Arrastra o haz clic para subir'}
                           </p>
                           <p className="text-sm text-gray-600 mb-4">
-                            Formatos soportados: .doc, .docx, .pdf
+                            Formatos soportados: .pdf
                           </p>
                           {subiendo && (
                             <div className="w-48 h-1.5 mx-auto bg-gray-200 rounded-full overflow-hidden">
@@ -1391,7 +1433,82 @@ export function WizardOficiosWorldClass({
                     Crear Primer Oficio
                   </button>
                 </div>
-              ) : null}
+              ) : (
+                <div className="space-y-4">
+                  {/* Header de la lista */}
+                  <div className="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-xl p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-emerald-100">
+                          <Mail className="w-5 h-5 text-emerald-600" />
+                        </div>
+                        <div>
+                          <h3 className="text-base font-bold text-gray-900">
+                            Oficios del Proceso
+                          </h3>
+                          <p className="text-sm text-gray-600">
+                            {oficiosGenerados.length} oficio{oficiosGenerados.length !== 1 ? 's' : ''} generado{oficiosGenerados.length !== 1 ? 's' : ''}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Lista de oficios */}
+                  <div className="grid gap-3">
+                    {oficiosGenerados.map((oficio, index) => (
+                      <motion.div
+                        key={oficio.id || index}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        className="bg-white border-2 border-gray-200 rounded-xl p-4 hover:border-emerald-300 hover:shadow-md transition-all"
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className="p-2 rounded-lg bg-emerald-100 flex-shrink-0">
+                            <FileText className="w-5 h-5 text-emerald-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <div>
+                                <h4 className="text-sm font-bold text-gray-900">
+                                  {oficio.tipo}
+                                </h4>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                  {oficio.numero}
+                                </p>
+                              </div>
+                              <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg flex-shrink-0">
+                                {oficio.estado === 'generado' ? 'Generado' : oficio.estado}
+                              </span>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <span className="text-gray-500">Fecha:</span>
+                                <span className="ml-1 font-medium text-gray-900">{oficio.fecha}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Destinatario:</span>
+                                <span className="ml-1 font-medium text-gray-900 truncate">{oficio.destinatario}</span>
+                              </div>
+                            </div>
+                            
+                            {oficio.asunto && (
+                              <div className="mt-2 pt-2 border-t border-gray-100">
+                                <span className="text-xs text-gray-500">Asunto:</span>
+                                <p className="text-xs text-gray-900 font-medium mt-0.5 line-clamp-2">
+                                  {oficio.asunto}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

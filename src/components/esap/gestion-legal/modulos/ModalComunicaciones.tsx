@@ -16,6 +16,7 @@ import {
 import type { ExpedienteJudicial } from '../core/types';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { DialogoConfirmacion } from './DialogoConfirmacion';
 
 interface ModalComunicacionesProps {
   isOpen: boolean;
@@ -40,6 +41,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
   const [nuevoMensaje, setNuevoMensaje] = useState('');
   const [comunicaciones, setComunicaciones] = useState<any[]>([]);
   const [responderA, setResponderA] = useState<number | null>(null);
+  const [idAEliminar, setIdAEliminar] = useState<number | null>(null);
 
   const handleEnviarMensaje = () => {
     if (!nuevoMensaje.trim()) {
@@ -133,10 +135,14 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
   };
 
   const handleEliminarComentario = (idMensaje: number) => {
-    if (!confirm('¿Estás seguro de eliminar este comentario?')) return;
+    setIdAEliminar(idMensaje);
+  };
 
-    setComunicaciones(prev => prev.filter(c => c.id !== idMensaje));
+  const confirmarEliminar = () => {
+    if (idAEliminar === null) return;
+    setComunicaciones(prev => prev.filter(c => c.id !== idAEliminar));
     toast.success('Comentario eliminado');
+    setIdAEliminar(null);
   };
 
   const handleAdjuntar = () => {
@@ -264,6 +270,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
   };
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-4xl !max-h-[82vh] overflow-hidden flex flex-col p-0">
         <DialogTitle className="sr-only">
@@ -510,5 +517,16 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
         </div>
       </DialogContent>
     </Dialog>
+
+    <DialogoConfirmacion
+      isOpen={idAEliminar !== null}
+      onClose={() => setIdAEliminar(null)}
+      onConfirm={confirmarEliminar}
+      titulo="Eliminar comentario"
+      mensaje="¿Estás seguro de que deseas eliminar este comentario? Esta acción no se puede deshacer."
+      tipo="peligro"
+      textoConfirmar="Eliminar"
+    />
+    </>
   );
 }

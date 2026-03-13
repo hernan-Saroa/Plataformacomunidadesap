@@ -335,7 +335,7 @@ export function ModalNuevaActuacion({ isOpen, onClose, onSave, procesoId }: Moda
                         onClick={() => {
                           const input = document.createElement('input');
                           input.type = 'file';
-                          input.accept = '.pdf,.doc,.docx';
+                          input.accept = '.pdf';
                           input.onchange = (e: any) => {
                             const file = e.target?.files?.[0];
                             if (file) {
@@ -360,7 +360,7 @@ export function ModalNuevaActuacion({ isOpen, onClose, onSave, procesoId }: Moda
                       )}
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
-                      Formatos permitidos: PDF, DOC, DOCX (máx. 10 MB)
+                      Solo archivos PDF (máx. 10 MB)
                     </p>
                   </div>
                 </div>

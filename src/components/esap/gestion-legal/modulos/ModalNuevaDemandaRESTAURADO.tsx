@@ -282,6 +282,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   const [cargandoCiudades, setCargandoCiudades] = useState(false);
   const [abogadosAPI, setAbogadosAPI] = useState<{ id: string; nombre: string }[]>([]);
   const [enviando, setEnviando] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // Resetear o pre-llenar el formulario al abrir el modal
   useEffect(() => {
@@ -335,7 +336,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           etapaProcesal: expedienteEdit.etapa as string || '',
           cuantia: typeof expedienteEdit.cuantia === 'string' ? parseFloat(expedienteEdit.cuantia.replace(/[^0-9.-]+/g, "")) : (expedienteEdit.cuantia || 0),
           nivelRiesgo: (expedienteEdit as any).nivelRiesgo || '',
-          provisionContable: (expedienteEdit as any).provisionContable || 0,
+          provisionContable: typeof (expedienteEdit as any).provisionContable === 'string' ? parseInt(String((expedienteEdit as any).provisionContable).replace(/[^0-9]/g, ''), 10) || 0 : Math.floor(Number((expedienteEdit as any).provisionContable) || 0),
           fechaEstimacionProvision: (expedienteEdit as any).fechaEstimacionProvision ? new Date((expedienteEdit as any).fechaEstimacionProvision).toISOString().split('T')[0] : '',
           observacionesProvision: (expedienteEdit as any).observacionProvision || '',
           demandantes: expedienteEdit.demandantes ? expedienteEdit.demandantes.map(mapDemandante) : [],
@@ -798,10 +799,14 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
   const handleCancel = () => {
     if (formData.numeroRadicado || formData.pretensiones) {
-      if (!window.confirm('¿Está seguro que desea cancelar? Se perderán los datos ingresados.')) {
-        return;
-      }
+      setShowCancelConfirm(true);
+    } else {
+      onClose();
     }
+  };
+
+  const handleConfirmCancel = () => {
+    setShowCancelConfirm(false);
     onClose();
   };
 
@@ -818,7 +823,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   // ==================== RENDER ====================
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <>
+      <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-5xl h-[90vh] flex flex-col p-0">
         <DialogTitle className="sr-only">{expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}</DialogTitle>
         <DialogDescription className="sr-only">
@@ -934,7 +940,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </Label>
                         <Select
                           value={formData.medioControl}
-                          onValueChange={(value) => setFormData({ ...formData, medioControl: value })}
+                          onValueChange={(value: string) => setFormData({ ...formData, medioControl: value })}
                         >
                           <SelectTrigger id="medioControl" className="bg-white">
                             <SelectValue placeholder="Seleccione medio de control..." />
@@ -953,7 +959,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </Label>
                         <Select
                           value={formData.tipoProcesoJudicial}
-                          onValueChange={(value) => setFormData({ ...formData, tipoProcesoJudicial: value })}
+                          onValueChange={(value: string) => setFormData({ ...formData, tipoProcesoJudicial: value })}
                         >
                           <SelectTrigger id="tipoProcesoJudicial" className="bg-white">
                             <SelectValue placeholder="Seleccione tipo de proceso..." />
@@ -972,7 +978,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </Label>
                         <Select
                           value={formData.etapaProcesal}
-                          onValueChange={(value) => setFormData({ ...formData, etapaProcesal: value })}
+                          onValueChange={(value: string) => setFormData({ ...formData, etapaProcesal: value })}
                         >
                           <SelectTrigger id="etapaProcesal" className="bg-white">
                             <SelectValue placeholder="Seleccione etapa procesal..." />
@@ -1035,7 +1041,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                       </Label>
                       <Select
                         value={formData.nivelRiesgo}
-                        onValueChange={(value) => setFormData({ ...formData, nivelRiesgo: value })}
+                        onValueChange={(value: string) => setFormData({ ...formData, nivelRiesgo: value })}
                       >
                         <SelectTrigger id="nivelRiesgo" className="bg-white">
                           <SelectValue placeholder="Seleccione riesgo..." />
@@ -1058,7 +1064,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         type="text"
                         inputMode="numeric"
                         placeholder="0"
-                        value={formData.provisionContable === 0 ? '' : String(formData.provisionContable)}
+                        value={formData.provisionContable === 0 ? '' : String(Math.floor(Number(formData.provisionContable) || 0))}
                         onChange={(e) => {
                           const raw = e.target.value.replace(/[^0-9]/g, '');
                           if (!raw || raw.startsWith('0')) {
@@ -1160,7 +1166,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             </Label>
                             <Select
                               value={demandante.tipoPersona}
-                              onValueChange={(value) => actualizarDemandante(demandante.id, 'tipoPersona', value)}
+                              onValueChange={(value: 'Natural' | 'Juridica') => actualizarDemandante(demandante.id, 'tipoPersona', value)}
                             >
                               <SelectTrigger className="bg-white">
                                 <SelectValue />
@@ -1367,7 +1373,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             </Label>
                             <Select
                               value={demandado.tipoPersona}
-                              onValueChange={(value) => actualizarDemandado(demandado.id, 'tipoPersona', value)}
+                              onValueChange={(value: 'Natural' | 'Juridica') => actualizarDemandado(demandado.id, 'tipoPersona', value)}
                             >
                               <SelectTrigger className="bg-white">
                                 <SelectValue />
@@ -1581,7 +1587,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             <Label className="text-sm font-bold text-gray-700">Tipo de Persona</Label>
                             <Select
                               value={actor.tipoPersona}
-                              onValueChange={(value) => actualizarOtroActor(actor.id, 'tipoPersona', value)}
+                              onValueChange={(value: 'Natural' | 'Juridica') => actualizarOtroActor(actor.id, 'tipoPersona', value)}
                             >
                               <SelectTrigger className="bg-white">
                                 <SelectValue />
@@ -1776,7 +1782,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </Label>
                         <Select
                           value={formData.departamento}
-                          onValueChange={(value) => setFormData({ ...formData, departamento: value })}
+                          onValueChange={(value: string) => setFormData({ ...formData, departamento: value })}
                         >
                           <SelectTrigger id="departamento" className="bg-white">
                             <SelectValue placeholder="Seleccione departamento..." />
@@ -1795,7 +1801,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </Label>
                         <Select
                           value={formData.ciudad}
-                          onValueChange={(value) => setFormData({ ...formData, ciudad: value })}
+                          onValueChange={(value: string) => setFormData({ ...formData, ciudad: value })}
                           disabled={!formData.departamento || cargandoCiudades}
                         >
                           <SelectTrigger id="ciudad" className="bg-white">
@@ -1837,7 +1843,14 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </Label>
                         <Select
                           value={formData.tipoPlazo}
-                          onValueChange={(value) => setFormData({ ...formData, tipoPlazo: value as 'Dias Habiles' | 'Dias Calendario' })}
+                          onValueChange={(value: string) => {
+                            const nuevoTipo = value as 'Dias Habiles' | 'Dias Calendario';
+                            // Si se cambia a Días Hábiles, normalizamos la fecha existente si la hay
+                            const nuevaFechaNotificacion = (nuevoTipo === 'Dias Habiles' && formData.fechaNotificacion)
+                              ? normalizarAHorarioHabil(formData.fechaNotificacion)
+                              : formData.fechaNotificacion;
+                            setFormData({ ...formData, tipoPlazo: nuevoTipo, fechaNotificacion: nuevaFechaNotificacion });
+                          }}
                         >
                           <SelectTrigger id="tipoPlazo" className="bg-white">
                             <SelectValue />
@@ -1875,7 +1888,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           type="datetime-local"
                           value={formData.fechaNotificacion}
                           onChange={(e) => {
-                            const normalizada = normalizarAHorarioHabil(e.target.value);
+                            const normalizada = formData.tipoPlazo === 'Dias Habiles'
+                              ? normalizarAHorarioHabil(e.target.value)
+                              : e.target.value;
                             setFormData({ ...formData, fechaNotificacion: normalizada });
                           }}
                         />
@@ -1906,7 +1921,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                       </Label>
                       <Select
                         value={formData.abogadoResponsable}
-                        onValueChange={(value) => setFormData({ ...formData, abogadoResponsable: value })}
+                        onValueChange={(value: string) => setFormData({ ...formData, abogadoResponsable: value })}
                       >
                         <SelectTrigger id="abogadoResponsable" className="bg-white">
                           <SelectValue placeholder="Seleccione abogado..." />
@@ -2071,5 +2086,51 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         </div>
       </DialogContent>
     </Dialog>
-  );
+
+      {/* ==================== DIALOG DE CONFIRMACIÓN DE CANCELACIÓN ==================== */}
+      {/* ==================== DIALOG DE CONFIRMACIÓN DE CANCELACIÓN ==================== */}
+      <Dialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+        <DialogContent 
+          hideCloseButton 
+          className="p-0 overflow-hidden border-none shadow-2xl z-[10002] rounded-2xl mx-auto"
+          style={{ width: '380px', maxWidth: '380px' }}
+        >
+          <div className="bg-white overflow-hidden w-full">
+            <div className="h-2 w-full bg-gradient-to-r from-orange-500 to-red-600"></div>
+            
+            <div className="p-10 flex flex-col items-center text-center">
+              <div className="w-20 h-20 rounded-3xl bg-red-50 flex items-center justify-center mb-8 shadow-sm border border-red-100">
+                <AlertCircle className="w-10 h-10 text-red-600" />
+              </div>
+              
+              <h3 className="text-2xl font-black text-gray-900 mb-4 tracking-tight leading-tight">
+                ¿Cancelar edición?
+              </h3>
+              
+              <p className="text-base text-gray-500 leading-relaxed mb-10 px-4">
+                Se perderán todos los datos ingresados en el formulario.
+              </p>
+
+              <div className="flex flex-col w-full gap-4">
+                <Button
+                  onClick={handleConfirmCancel}
+                  className="w-full py-8 !bg-red-600 hover:!bg-red-700 !text-white font-black rounded-2xl shadow-xl shadow-red-100 transition-all active:scale-[0.98] text-lg border-none"
+                >
+                  Sí, cancelar y salir
+                </Button>
+                
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowCancelConfirm(false)}
+                  className="w-full py-6 rounded-xl font-bold text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors text-sm"
+                >
+                  No, continuar editando
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+);
 }

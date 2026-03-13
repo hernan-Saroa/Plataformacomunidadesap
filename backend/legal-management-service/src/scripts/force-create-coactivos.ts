@@ -26,12 +26,11 @@ async function run() {
         await client.query(`
       DO $$ BEGIN
           CREATE TYPE estado_proceso_coactivo AS ENUM (
-              'IDENTIFICADO',
-              'PERSUASIVO', 
-              'PREJURIDICO',
-              'MANDAMIENTO',
-              'EMBARGO',
-              'FINALIZADO'
+              'PERSUASIVA', 
+              'COACTIVA',
+              'MEDIDAS_CAUTELARES',
+              'EXCEPCIONES',
+              'LIQUIDACION'
           );
       EXCEPTION
           WHEN duplicate_object THEN null;
@@ -46,7 +45,7 @@ async function run() {
         radicado VARCHAR(50) UNIQUE NOT NULL,
         deudor JSONB NOT NULL DEFAULT '{}',
         obligacion JSONB NOT NULL DEFAULT '{}',
-        estado estado_proceso_coactivo DEFAULT 'IDENTIFICADO',
+        estado estado_proceso_coactivo DEFAULT 'PERSUASIVA',
         responsable VARCHAR(255),
         documentos_adjuntos INTEGER DEFAULT 0,
         notificaciones_enviadas INTEGER DEFAULT 0,

@@ -176,28 +176,28 @@ export class ExpedienteService {
 
         const { entities, raw } = await queryBuilder.orderBy('expediente.createdAt', 'DESC').getRawAndEntities();
 
-        // Populate actuaciones manually
-        // Optimization: Fetch all needed actuaciones in one query
-        const ids = entities.map(e => e.id);
-        const radicados = entities.map(e => e.radicado).filter(r => r); // Filter out null/undefined radicados
+        // // Populate actuaciones manually
+        // // Optimization: Fetch all needed actuaciones in one query
+        // const ids = entities.map(e => e.id);
+        // const radicados = entities.map(e => e.radicado).filter(r => r); // Filter out null/undefined radicados
 
-        if (ids.length > 0) {
-            const query = this.actuacionRepository.createQueryBuilder('act')
-                .where('act.expedienteId IN (:...ids)', { ids });
+        // if (ids.length > 0) {
+        //     const query = this.actuacionRepository.createQueryBuilder('act')
+        //         .where('act.expedienteId IN (:...ids)', { ids });
 
-            if (radicados.length > 0) {
-                query.orWhere('act.expedienteId IN (:...radicados)', { radicados });
-            }
+        //     if (radicados.length > 0) {
+        //         query.orWhere('act.expedienteId IN (:...radicados)', { radicados });
+        //     }
 
-            const allActuaciones = await query.orderBy('act.fechaActuacion', 'DESC').getMany();
+        //     const allActuaciones = await query.orderBy('act.fechaActuacion', 'DESC').getMany();
 
-            entities.forEach(entity => {
-                // Attach if it matches either ID or Radicado
-                entity.actuaciones = allActuaciones.filter(a =>
-                    a.expedienteId === entity.id || a.expedienteId === entity.radicado
-                );
-            });
-        }
+        //     entities.forEach(entity => {
+        //         // Attach if it matches either ID or Radicado
+        //         entity.actuaciones = allActuaciones.filter(a =>
+        //             a.expedienteId === entity.id || a.expedienteId === entity.radicado
+        //         );
+        //     });
+        // }
 
         return entities.map((entity) => {
             const rawRow = raw.find(r => r.expediente_id === entity.id);
@@ -231,6 +231,19 @@ export class ExpedienteService {
                 fechaActuacion: new Date(),
                 usuarioResponsable: 'Sistema'
             });
+        }
+
+        // 2b. Detectar reasignación de abogado
+        if (data.abogadoSustanciador && data.abogadoSustanciador !== currentExpediente.abogadoSustanciador) {
+            const abogadoAnterior = currentExpediente.abogadoSustanciador;
+            if (abogadoAnterior) {
+                // Append to abogadosAnteriores (deduplicated)
+                const anteriores = currentExpediente.abogadosAnteriores || [];
+                if (!anteriores.includes(abogadoAnterior)) {
+                    anteriores.push(abogadoAnterior);
+                }
+                data.abogadosAnteriores = anteriores;
+            }
         }
 
         // 3. Actualizar

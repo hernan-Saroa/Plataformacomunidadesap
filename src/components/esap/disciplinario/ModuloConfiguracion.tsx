@@ -408,22 +408,37 @@ export function ModuloConfiguracion() {
 
   /* MODIFIED: Persist deletion immediately */
   const handleEliminarEtapa = async (id: string) => {
+    // Confirmar eliminación
+    if (!confirm('¿Está seguro de eliminar esta etapa? Esta acción puede afectar procesos existentes.')) {
+      return;
+    }
+    
+    const etapaAEliminar = etapas.find(e => e.id === id);
     const updatedEtapas = etapas.filter(etapa => etapa.id !== id);
     setEtapas(updatedEtapas);
 
     try {
+      // Incluir todos los campos requeridos por el backend, incluyendo el ID para identificar qué eliminar
       const stagesPayload = updatedEtapas.map(e => ({
         id: e.id,
         etapa: e.nombre,
         diasHabiles: e.dias,
         descripcion: `Etapa de ${e.nombre}`,
-        activo: true
+        activo: true,
+        orden: e.orden
       }));
+      
+      console.log('Eliminando etapa:', { idEliminado: id, nombre: etapaAEliminar?.nombre, payload: stagesPayload });
+      
       await disciplinaryService.updateStageConfiguration(stagesPayload);
-      toast.info('Etapa eliminada');
+      toast.info('Etapa eliminada', {
+        description: `La etapa "${etapaAEliminar?.nombre}" ha sido eliminada`
+      });
     } catch (error) {
       console.error('Error deleting stage:', error);
       toast.error('Error al eliminar etapa');
+      // Revertir el cambio local si hay error
+      setEtapas(etapas);
     }
   };
 
@@ -828,7 +843,137 @@ export function ModuloConfiguracion() {
             </div>
           </div>
 
-          {/* 2. AUTOS PARAMETRIZADOS - Lista los autos de la BD */}
+          {/* 2. ETAPAS DEL PROCESO - Configuración de etapas del backend */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="p-3 sm:p-4 lg:p-6">
+              <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <FileText className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#8B5CF6' }} />
+                    Etapas del Proceso Disciplinario
+                  </h2>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                    Define las etapas oficiales del proceso disciplinario (configuración avanzada)
+                  </p>
+                </div>
+                <button
+                  onClick={handleAgregarEtapa}
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
+                    boxShadow: '0 2px 4px rgba(139, 92, 246, 0.2)'
+                  }}
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Agregar Etapa</span>
+                </button>
+              </div>
+
+              {etapas.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No hay etapas configuradas</p>
+                  <p className="text-xs mt-1">Haga clic en "Agregar Etapa" para comenzar</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {etapas.map((etapa, index) => (
+                    <div 
+                      key={etapa.id} 
+                      className="p-4 rounded-lg border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-white"
+                    >
+                      {editandoEtapa === etapa.id ? (
+                        // Modo edición
+                        <div className="space-y-3">
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <div className="flex-1">
+                              <label className="text-xs font-semibold text-gray-700 mb-1 block">
+                                Nombre de la Etapa
+                              </label>
+                              <input
+                                type="text"
+                                value={nombreEditando}
+                                onChange={(e) => setNombreEditando(e.target.value.toUpperCase())}
+                                className="w-full px-3 py-2 text-sm font-bold uppercase border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                placeholder="NOMBRE DE LA ETAPA"
+                              />
+                            </div>
+                            <div className="w-full sm:w-24">
+                              <label className="text-xs font-semibold text-gray-700 mb-1 block">
+                                Días Hábiles
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={diasEditando}
+                                onChange={(e) => setDiasEditando(parseInt(e.target.value) || 0)}
+                                className="w-full px-3 py-2 text-sm font-bold border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-center"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => setEditandoEtapa(null)}
+                              className="px-3 py-1.5 text-sm font-semibold border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={() => handleGuardarEdicionEtapa(etapa.id)}
+                              className="px-3 py-1.5 text-sm font-semibold text-white bg-purple-600 rounded-lg hover:bg-purple-700"
+                            >
+                              Guardar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        // Modo visualización
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-purple-100 border-2 border-purple-300 flex items-center justify-center font-bold text-sm text-purple-700">
+                              {index + 1}
+                            </div>
+                            <div>
+                              <p className="font-bold text-gray-900">{etapa.nombre}</p>
+                              <p className="text-xs text-gray-600">
+                                <Clock className="w-3 h-3 inline mr-1" />
+                                {etapa.dias} días hábiles
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleEditarEtapa(etapa.id)}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Editar etapa"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleEliminarEtapa(etapa.id)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Eliminar etapa"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-4 p-3 rounded-lg bg-purple-50 border border-purple-200">
+                <p className="text-xs text-purple-800">
+                  <strong>Nota:</strong> Las etapas definidas aquí son las etapas oficiales del proceso disciplinario. 
+                  Los estados Kanban son las columnas visuales del tablero y pueden configurarse de forma independiente.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. AUTOS PARAMETRIZADOS - Lista los autos de la BD */}
           <SeccionAutosParametrizados />
 
           {/* 3. CAPACIDAD POR CARGO */}

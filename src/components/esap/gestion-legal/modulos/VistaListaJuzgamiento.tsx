@@ -36,6 +36,27 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
   const [paginaActual, setPaginaActual] = useState(1);
   const itemsPorPagina = isMobile ? 10 : 20;
 
+  // Guard: si no hay procesos, mostrar estado vacío
+  if (!procesos || !Array.isArray(procesos)) {
+    return (
+      <Card className="p-8 text-center">
+        <Gavel className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+        <p className="text-gray-500 font-medium">No se pudieron cargar los procesos</p>
+        <p className="text-sm text-gray-400 mt-1">Intente recargar la página</p>
+      </Card>
+    );
+  }
+
+  if (procesos.length === 0) {
+    return (
+      <Card className="p-8 text-center">
+        <Gavel className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+        <p className="text-gray-500 font-medium">No hay procesos disciplinarios registrados</p>
+        <p className="text-sm text-gray-400 mt-1">Los procesos aparecerán aquí cuando se creen</p>
+      </Card>
+    );
+  }
+
   // Función para cambiar orden
   const handleOrdenar = (campo: 'fecha' | 'dias' | 'etapa' | 'investigado') => {
     if (ordenarPor === campo) {
@@ -47,21 +68,29 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
   };
 
   // Ordenar procesos
+  // Helper to safely get time from a date field
+  const safeGetTime = (d: any) => {
+    if (!d) return 0;
+    if (d instanceof Date) return d.getTime();
+    const parsed = new Date(d);
+    return isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+  };
+
   const procesosOrdenados = [...procesos].sort((a, b) => {
     let comparacion = 0;
     
     switch (ordenarPor) {
       case 'fecha':
-        comparacion = a.fechaActualizacion.getTime() - b.fechaActualizacion.getTime();
+        comparacion = safeGetTime(a.fechaActualizacion) - safeGetTime(b.fechaActualizacion);
         break;
       case 'dias':
-        comparacion = a.diasRestantes - b.diasRestantes;
+        comparacion = (a.diasRestantes || 0) - (b.diasRestantes || 0);
         break;
       case 'etapa':
-        comparacion = a.etapa.localeCompare(b.etapa);
+        comparacion = (a.etapa || '').localeCompare(b.etapa || '');
         break;
       case 'investigado':
-        comparacion = a.investigado.localeCompare(b.investigado);
+        comparacion = (a.investigado || '').localeCompare(b.investigado || '');
         break;
     }
     
@@ -98,8 +127,8 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
   };
 
   // Tipo de falta helper
-  const getTipoFaltaConfig = (tipo: string) => {
-    switch (tipo.toUpperCase()) {
+  const getTipoFaltaConfig = (tipo?: string) => {
+    switch ((tipo || '').toUpperCase()) {
       case 'LEVE':
         return 'bg-green-100 text-green-700 border-green-300';
       case 'GRAVE':
@@ -196,7 +225,7 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
           {/* Tipo de Falta */}
           <td className="px-4 py-3">
             <Badge className={`${faltaClass} border font-semibold`}>
-              {proceso.tipoFalta}
+              {proceso.tipoFalta || 'Sin clasificar'}
             </Badge>
           </td>
 
@@ -219,10 +248,10 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
           <td className="px-4 py-3">
             <div className="max-w-xs">
               <p className="text-sm text-gray-900 truncate">
-                {proceso.ultimaActuacion}
+                {proceso.ultimaActuacion || 'Sin actuaciones'}
               </p>
               <p className="text-xs text-gray-500">
-                {proceso.fechaUltimaActuacion.toLocaleDateString('es-CO')}
+                {proceso.fechaUltimaActuacion ? (proceso.fechaUltimaActuacion instanceof Date ? proceso.fechaUltimaActuacion.toLocaleDateString('es-CO') : new Date(proceso.fechaUltimaActuacion).toLocaleDateString('es-CO')) : 'N/A'}
               </p>
             </div>
           </td>
@@ -477,7 +506,7 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
                 {etapaConfig.label}
               </Badge>
               <Badge className={`${faltaClass} border text-xs`}>
-                {proceso.tipoFalta}
+                {proceso.tipoFalta || 'Sin clasificar'}
               </Badge>
             </div>
 

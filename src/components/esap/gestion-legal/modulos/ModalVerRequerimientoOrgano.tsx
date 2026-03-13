@@ -213,7 +213,7 @@ export function ModalVerRequerimientoOrgano({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[90%] max-w-lg !max-h-[85vh] !top-1/2 !-translate-y-1/2 overflow-y-auto rounded-lg">
+      <DialogContent hideCloseButton className="w-[90%] max-w-lg !max-h-[85vh] !top-1/2 !-translate-y-1/2 overflow-y-auto rounded-lg">
         <DialogTitle className="sr-only">Detalle del Requerimiento</DialogTitle>
         <DialogDescription className="sr-only">
           Vista detallada del requerimiento {requerimiento.numeroOficio}

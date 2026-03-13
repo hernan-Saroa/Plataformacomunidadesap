@@ -30,7 +30,7 @@ import { toast } from 'sonner';
 
 // Tipos locales para UI
 type CategoriaHallazgo = 'critico' | 'controversia' | 'borrador';
-type EstadoHallazgo = 'borrador' | 'notificado' | 'en-controversia' | 'ratificado' | 'modificado' | 'cerrado';
+type EstadoHallazgo = 'borrador' | 'notificado' | 'aceptado' | 'en-controversia' | 'ratificado' | 'modificado' | 'retirado' | 'cerrado';
 
 // Áreas/Dependencias de la ESAP
 const AREAS_ESAP = [
@@ -53,6 +53,8 @@ const AREAS_ESAP = [
 interface Props {
   auditoriaId: string;
   auditoriaNombre: string;
+  /** Si true, muestra selector Tipo (Preliminar/Identificado). Preliminar oculta el bloque de evidencia */
+  permitirTipoPreliminar?: boolean;
 }
 
 // Tipo para personas disponibles
@@ -62,7 +64,7 @@ interface PersonaDisponible {
   cargo?: string;
 }
 
-export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Props) {
+export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permitirTipoPreliminar }: Props) {
   // Estados para datos
   const [hallazgos, setHallazgos] = useState<Hallazgo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,6 +91,8 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
   
   // Estado para edición (null = creando nuevo, string = editando ese ID)
   const [hallazgoEditandoId, setHallazgoEditandoId] = useState<string | null>(null);
+
+  const [tipoHallazgo, setTipoHallazgo] = useState<'preliminar' | 'identificado'>('identificado');
 
   // Estado para nuevo hallazgo
   const [nuevoHallazgo, setNuevoHallazgo] = useState({
@@ -256,8 +260,8 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
         toast.success('Hallazgo creado exitosamente');
       }
       
-      // Subir archivos de evidencia usando el endpoint de upload (NO base64)
-      if (archivosEvidencia.length > 0 && hallazgoId) {
+      // Subir archivos de evidencia (solo si no es preliminar)
+      if (archivosEvidencia.length > 0 && hallazgoId && tipoHallazgo === 'identificado') {
         toast.info(`Subiendo ${archivosEvidencia.length} archivo(s)...`);
         
         for (const archivo of archivosEvidencia) {
@@ -292,6 +296,7 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
         responsable: ''
       });
       setArchivosEvidencia([]);
+      setTipoHallazgo('identificado');
       cargarHallazgos();
     } catch (err: any) {
       console.error('Error creando hallazgo:', err);
@@ -320,6 +325,7 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
   const handleCancelarFormulario = () => {
     setMostrarFormulario(false);
     setHallazgoEditandoId(null);
+    setTipoHallazgo('identificado');
     setNuevoHallazgo({
       titulo: '',
       categoria: 'borrador',
@@ -414,12 +420,16 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
         return 'bg-gray-50 text-gray-700 border-gray-200';
       case 'notificado':
         return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'aceptado':
+        return 'bg-green-50 text-green-700 border-green-200';
       case 'en-controversia':
         return 'bg-orange-50 text-orange-700 border-orange-200';
       case 'ratificado':
         return 'bg-red-50 text-red-700 border-red-200';
       case 'modificado':
         return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'retirado':
+        return 'bg-slate-50 text-slate-600 border-slate-200';
       case 'cerrado':
         return 'bg-green-50 text-green-700 border-green-200';
       default:
@@ -432,7 +442,7 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
     switch (cat) {
       case 'critico': return 'Crítico';
       case 'controversia': return 'Controversia';
-      case 'borrador': return 'Borrador';
+      case 'borrador': return 'Por clasificar';
       default: return cat;
     }
   };
@@ -442,9 +452,11 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
     switch (est) {
       case 'borrador': return 'Borrador';
       case 'notificado': return 'Notificado';
+      case 'aceptado': return 'Aceptado';
       case 'en-controversia': return 'En Controversia';
       case 'ratificado': return 'Ratificado';
       case 'modificado': return 'Modificado';
+      case 'retirado': return 'Retirado';
       case 'cerrado': return 'Cerrado';
       default: return est;
     }
@@ -508,6 +520,20 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
                 </button>
               </div>
 
+              {permitirTipoPreliminar && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Tipo de hallazgo</label>
+                  <select
+                    value={tipoHallazgo}
+                    onChange={(e) => setTipoHallazgo(e.target.value as 'preliminar' | 'identificado')}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="preliminar">Preliminar (sin evidencia)</option>
+                    <option value="identificado">Identificado (con evidencia)</option>
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
@@ -518,7 +544,7 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
                     onChange={(e) => setNuevoHallazgo(prev => ({ ...prev, categoria: e.target.value as CategoriaHallazgo }))}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="borrador">Borrador</option>
+                    <option value="borrador">Por clasificar</option>
                     <option value="critico">Crítico</option>
                     <option value="controversia">En Controversia</option>
                   </select>
@@ -602,7 +628,8 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
                 </div>
               </div>
 
-              {/* Subir Evidencia */}
+              {/* Subir Evidencia - oculto cuando es preliminar */}
+              {(!permitirTipoPreliminar || tipoHallazgo === 'identificado') && (
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
                   <Paperclip className="w-3 h-3 inline mr-1" />
@@ -650,6 +677,7 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
                   </div>
                 )}
               </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-2">
                 <ButtonSIGL
@@ -718,7 +746,7 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
                     <option value="">Todas</option>
                     <option value="critico">Crítico</option>
                     <option value="controversia">En Controversia</option>
-                    <option value="borrador">Borrador</option>
+                    <option value="borrador">Por clasificar</option>
                   </select>
                 </div>
 
@@ -734,9 +762,11 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
                     <option value="">Todos</option>
                     <option value="borrador">Borrador</option>
                     <option value="notificado">Notificado</option>
+                    <option value="aceptado">Aceptado</option>
                     <option value="en-controversia">En Controversia</option>
                     <option value="ratificado">Ratificado</option>
                     <option value="modificado">Modificado</option>
+                    <option value="retirado">Retirado</option>
                     <option value="cerrado">Cerrado</option>
                   </select>
                 </div>
@@ -991,6 +1021,34 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
                   )}
                 </div>
 
+                {hallazgoSeleccionado.observacionesControversia && (() => {
+                  const obs = hallazgoSeleccionado.observacionesControversia;
+                  const causaMatch = obs.match(/CAUSA:\s*([\s\S]*?)(?=EFECTO:|$)/i);
+                  const efectoMatch = obs.match(/EFECTO:\s*([\s\S]*?)$/i);
+                  const tieneCausaEfecto = causaMatch?.[1] || efectoMatch?.[1];
+                  return tieneCausaEfecto ? (
+                    <div className="grid grid-cols-2 gap-4">
+                      {causaMatch?.[1] && (
+                        <div>
+                          <label className="block text-sm font-bold text-gray-900 mb-1">Causa:</label>
+                          <p className="text-sm text-gray-700">{causaMatch[1].trim()}</p>
+                        </div>
+                      )}
+                      {efectoMatch?.[1] && (
+                        <div>
+                          <label className="block text-sm font-bold text-gray-900 mb-1">Efecto:</label>
+                          <p className="text-sm text-gray-700">{efectoMatch[1].trim()}</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-bold text-gray-900 mb-1">Observaciones:</label>
+                      <p className="text-sm text-gray-700">{obs}</p>
+                    </div>
+                  );
+                })()}
+
                 {hallazgoSeleccionado.recomendaciones && hallazgoSeleccionado.recomendaciones.length > 0 && (
                   <div>
                     <label className="block text-sm font-bold text-gray-900 mb-1">
@@ -1001,17 +1059,6 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
                         <li key={idx}>{rec}</li>
                       ))}
                     </ul>
-                  </div>
-                )}
-
-                {hallazgoSeleccionado.observacionesControversia && (
-                  <div>
-                    <label className="block text-sm font-bold text-gray-900 mb-1">
-                      Observaciones de Controversia:
-                    </label>
-                    <p className="text-sm text-gray-700">
-                      {hallazgoSeleccionado.observacionesControversia}
-                    </p>
                   </div>
                 )}
 

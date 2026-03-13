@@ -264,6 +264,9 @@ export interface ConsultaJuridica {
   solicitante: string;
   funcionarioSolicitante: string;
   emailSolicitante?: string;
+  cargoSolicitante?: string;
+  telefonoSolicitante?: string;
+  antecedentes?: string;
 
   // Consulta
   consulta: string; // Pregunta o solicitud
@@ -684,15 +687,11 @@ export interface RequerimientoOrgControl {
 // ============================================================================
 
 export type EtapaProcesoCoactivo =
-  | 'IDENTIFICADO'
-  | 'PERSUASIVO'
-  | 'PREJURIDICO'
-  | 'MANDAMIENTO'
+  | 'PERSUASIVA'
+  | 'COACTIVA'
+  | 'MEDIDAS_CAUTELARES'
   | 'EXCEPCIONES'
-  | 'CAUTELARES'
-  | 'LIQUIDACION'
-  | 'REMATE'
-  | 'RECAUDADO';
+  | 'LIQUIDACION';
 
 export type ConceptoCoactivo =
   | 'MATRICULA'
@@ -713,6 +712,10 @@ export interface ProcesoCoactivo {
   fechaObligacion: Date;
   fechaPrescripcion: Date;
   diasPrescripcion: number;
+  // Nuevos campos Resolución 492
+  fechaEjecutoria?: Date;
+  tipoInteresAplicable?: string;
+  valorCostas?: number;
   responsable: string;
   acuerdoPago?: {
     cuotas: number;

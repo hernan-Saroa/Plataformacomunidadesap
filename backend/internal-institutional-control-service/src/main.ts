@@ -72,7 +72,11 @@ async function bootstrap() {
       origin: true,
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Accept-Charset', 'x-user-id', 'x-user-username', 'x-user-roles'],
+      allowedHeaders: [
+        'Content-Type', 'Authorization', 'Accept', 'Accept-Charset',
+        'x-user-id', 'x-user-username', 'x-user-roles',
+        'X-Client-Version', 'X-Client-Platform', 'X-Access-Token',
+      ],
     });
 
     // Aumentar límite de body-parser para archivos grandes (base64)

@@ -81,16 +81,9 @@ export function TabTareasExpediente({
         <Card className="p-8 text-center border-2 border-dashed border-gray-300">
           <Target className="w-16 h-16 mx-auto mb-4 text-gray-300" />
           <h4 className="font-bold text-lg text-gray-600 mb-2">Sin tareas</h4>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="text-sm text-gray-500">
             Crea la primera tarea para este expediente
           </p>
-          <Button
-            onClick={onCrearTarea}
-            className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Nueva Tarea
-          </Button>
         </Card>
       ) : (
         <div className="space-y-3">

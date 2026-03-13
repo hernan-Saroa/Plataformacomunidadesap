@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -36,6 +37,7 @@ export class UniversoAuditoriasController {
     @Query('nivelRiesgo') nivelRiesgo?: string,
     @Query('territorial') territorial?: string,
     @Query('search') search?: string,
+    @Query('soloActivos') soloActivos?: string,
   ) {
     return this.universoAuditoriasService.findAll({
       tipo,
@@ -43,6 +45,7 @@ export class UniversoAuditoriasController {
       nivelRiesgo,
       territorial,
       search,
+      soloActivos: soloActivos !== 'false',
     });
   }
 
@@ -78,6 +81,28 @@ export class UniversoAuditoriasController {
   @Permissions(CIP.AUDITORIA_EDIT)
   update(@Param('id') id: string, @Body() updateDto: UpdateProcesoAuditableDto) {
     return this.universoAuditoriasService.update(id, updateDto);
+  }
+
+  /**
+   * PATCH /universo-auditorias/procesos/:id/inactivar
+   * Inactiva un proceso (sin eliminar historial)
+   */
+  @Patch('procesos/:id/inactivar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
+  inactivar(@Param('id') id: string) {
+    return this.universoAuditoriasService.inactivar(id);
+  }
+
+  /**
+   * PATCH /universo-auditorias/procesos/:id/activar
+   * Reactiva un proceso
+   */
+  @Patch('procesos/:id/activar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
+  activar(@Param('id') id: string) {
+    return this.universoAuditoriasService.activar(id);
   }
 
   /**

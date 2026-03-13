@@ -112,6 +112,16 @@ export interface OrganismoControl {
   activo: boolean;
 }
 
+// Entes de control dedicados para Planes de Mejoramiento
+export interface EnteControlPM {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  icono: string;
+  color: string;
+  activo: boolean;
+}
+
 export interface ConfiguracionModulo {
   id: string;
   nombre: string;
@@ -424,6 +434,15 @@ const organismosControlIniciales: OrganismoControl[] = [
   }
 ];
 
+// ============ ENTES DE CONTROL PLANES DE MEJORAMIENTO ============
+
+const entesControlPMIniciales: EnteControlPM[] = [
+  { id: 'CONTRALORIA', nombre: 'Contraloría General', descripcion: 'Máximo órgano de control fiscal del Estado', icono: '🏛️', color: '#DC2626', activo: true },
+  { id: 'PROCURADURIA', nombre: 'Procuraduría General', descripcion: 'Órgano de vigilancia de la conducta oficial de servidores públicos', icono: '⚖️', color: '#059669', activo: true },
+  { id: 'OCI', nombre: 'Oficina Control Interno', descripcion: 'Control interno institucional', icono: '🔍', color: '#2962FF', activo: true },
+  { id: 'AUDITORIA_EXTERNA', nombre: 'Auditoría Externa', descripcion: 'Revisiones de firmas de auditoría externas', icono: '📊', color: '#9C27B0', activo: true },
+];
+
 // ============ CONTEXT TYPE ============
 
 interface ConfiguracionesSIGLContextType {
@@ -432,6 +451,7 @@ interface ConfiguracionesSIGLContextType {
   tiposIndicadores: TipoIndicador[];
   tiposRequerimientos: TipoRequerimiento[];
   organismosControl: OrganismoControl[];
+  entesControlPM: EnteControlPM[];
   cambiosPendientes: boolean;
   getConfiguracionModulo: (moduloId: string) => ConfiguracionModulo | undefined;
   getEstadosActivos: (moduloId: string) => EstadoKanban[];
@@ -444,10 +464,14 @@ interface ConfiguracionesSIGLContextType {
   getEjesEstrategicosActivos: () => EjeEstrategico[];
   getTiposIndicadoresActivos: () => TipoIndicador[];
   getTiposRequerimientosActivos: () => TipoRequerimiento[];
+  getOrganismosControlActivos: () => OrganismoControl[];
+  getEntesControlPMActivos: () => EnteControlPM[];
   actualizarConfiguraciones: (nuevasConfigs: ConfiguracionModulo[]) => void;
   actualizarEjesEstrategicos: (nuevosEjes: EjeEstrategico[]) => void;
   actualizarTiposIndicadores: (nuevosTipos: TipoIndicador[]) => void;
   actualizarTiposRequerimientos: (nuevosTipos: TipoRequerimiento[]) => void;
+  actualizarOrganismosControl: (nuevosOrganismos: OrganismoControl[]) => void;
+  actualizarEntesControlPM: (nuevosEntes: EnteControlPM[]) => void;
   guardarConfiguraciones: () => void;
   restablecerDefecto: () => void;
   setCambiosPendientes: (value: boolean) => void;
@@ -465,6 +489,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   const [tiposIndicadores, setTiposIndicadores] = useState<TipoIndicador[]>(tiposIndicadoresIniciales);
   const [tiposRequerimientos, setTiposRequerimientos] = useState<TipoRequerimiento[]>(tiposRequerimientosIniciales);
   const [organismosControl, setOrganismosControl] = useState<OrganismoControl[]>(organismosControlIniciales);
+  const [entesControlPM, setEntesControlPM] = useState<EnteControlPM[]>(entesControlPMIniciales);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
 
   // Cargar configuraciones desde API
@@ -557,6 +582,17 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         console.error('❌ Error al cargar organismos de control:', error);
       }
     }
+
+    const entesGuardados = localStorage.getItem('sigl-entes-control-pm');
+    if (entesGuardados) {
+      try {
+        const parsed = JSON.parse(entesGuardados);
+        setEntesControlPM(parsed);
+        console.log('✅ Entes de Control PM cargados desde localStorage');
+      } catch (error) {
+        console.error('❌ Error al cargar entes de control PM:', error);
+      }
+    }
   }, []);
 
   // Obtener configuración de un módulo específico
@@ -627,6 +663,10 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     return organismosControl.filter(e => e.activo);
   };
 
+  const getEntesControlPMActivos = (): EnteControlPM[] => {
+    return entesControlPM.filter(e => e.activo);
+  };
+
   // Actualizar configuraciones
   const actualizarConfiguraciones = (nuevasConfig: ConfiguracionModulo[]) => {
     setConfiguraciones(nuevasConfig);
@@ -658,6 +698,11 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     setCambiosPendientes(true);
   };
 
+  const actualizarEntesControlPM = (nuevosEntes: EnteControlPM[]) => {
+    setEntesControlPM(nuevosEntes);
+    setCambiosPendientes(true);
+  };
+
   // Guardar configuraciones
   const guardarConfiguraciones = async (): Promise<void> => {
     try {
@@ -677,6 +722,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       localStorage.setItem('sigl-tipos-indicadores', JSON.stringify(tiposIndicadores));
       localStorage.setItem('sigl-tipos-requerimientos', JSON.stringify(tiposRequerimientos));
       localStorage.setItem('sigl-organismos-control', JSON.stringify(organismosControl));
+      localStorage.setItem('sigl-entes-control-pm', JSON.stringify(entesControlPM));
 
       // Aquí se enviaría al backend en producción
       // await fetch('/api/sigl/configuraciones', { method: 'POST', body: JSON.stringify(configuraciones) });
@@ -711,6 +757,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     tiposIndicadores,
     tiposRequerimientos,
     organismosControl,
+    entesControlPM,
     cambiosPendientes,
     getConfiguracionModulo,
     getEstadosActivos,
@@ -724,11 +771,13 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     getTiposIndicadoresActivos,
     getTiposRequerimientosActivos,
     getOrganismosControlActivos,
+    getEntesControlPMActivos,
     actualizarConfiguraciones,
     actualizarEjesEstrategicos,
     actualizarTiposIndicadores,
     actualizarTiposRequerimientos,
     actualizarOrganismosControl,
+    actualizarEntesControlPM,
     guardarConfiguraciones,
     restablecerDefecto,
     setCambiosPendientes,

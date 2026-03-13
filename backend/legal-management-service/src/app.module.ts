@@ -44,6 +44,7 @@ import { ConsultaJuridicaHistorial } from './entities/consulta-juridica-historia
 import { SystemConfiguration } from './entities/system-configuration.entity';
 import { TipoRequerimientoOC } from './entities/tipo-requerimiento-oc.entity';
 import { OficioEnviado } from './entities/oficio-enviado.entity';
+import { TasaReferencia } from './entities/tasa-referencia.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
@@ -71,6 +72,7 @@ import { CorreosJuridicosController } from './controllers/correos-juridicos.cont
 import { ProcesoCoactivoController } from './controllers/proceso-coactivo.controller';
 import { ConfigurationsController } from './controllers/configurations.controller';
 import { OficiosController } from './controllers/oficios.controller';
+import { TasaReferenciaController } from './controllers/tasa-referencia.controller';
 
 // Services
 import { ExpedienteService } from './services/expediente.service';
@@ -103,6 +105,7 @@ import { DiasHabilesService } from './services/dias-habiles.service';
 import { AlertasVencimientoService } from './services/alertas-vencimiento.service';
 import { SmartClassificationService } from './services/smart-classification.service';
 import { OficiosService } from './services/oficios.service';
+import { TasaReferenciaService } from './services/tasa-referencia.service';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -163,7 +166,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // System Configurations
       SystemConfiguration,
       // Oficios Enviados
-      OficioEnviado
+      OficioEnviado,
+      // Tasas de Referencia
+      TasaReferencia
     ]),
     PeiModule,
     PlanesMejoramientoModule
@@ -199,11 +204,8 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     // Configurations
     ConfigurationsController,
     // Oficios
-    OficiosController
-    // PlanesMejoramientoController is usually inside PlanesMejoramientoModule, 
-    // but if it was here in HEAD, I should check. 
-    // HEAD didn't have it in controllers array explicitly (it had PlanesMejoramientoModule in imports).
-    // I won't add it to controllers array if it's in the module.
+    OficiosController,
+    TasaReferenciaController
   ],
   providers: [
     AppService,
@@ -239,7 +241,8 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     DiasHabilesService,
     AlertasVencimientoService,
     // Oficios
-    OficiosService
+    OficiosService,
+    TasaReferenciaService
   ],
 })
 export class AppModule { }

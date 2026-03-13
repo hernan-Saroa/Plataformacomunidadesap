@@ -26,7 +26,7 @@ import { toast } from 'sonner';
 import { useFormValidation, CommonValidations } from '../hooks/useFormValidation';
 import { FormField, FormSection, FormProgress } from '../design-system/FormField';
 import { ModalHeaderClean } from './ModalHeaderClean';
-import type { TemaJuridico, PrioridadConsulta } from '../core/types';
+import type { TemaJuridico, PrioridadConsulta, ConsultaJuridica } from '../core/types';
 import { legalService } from '../../../../services/api/legal.service';
 
 // ✅ Importar hooks responsive
@@ -37,6 +37,8 @@ interface ModalNuevaConsultaProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  modoEdicion?: boolean;
+  consultaInicial?: ConsultaJuridica;
 }
 
 export interface NuevaConsultaData {
@@ -51,7 +53,6 @@ export interface NuevaConsultaData {
   consulta: string;
   antecedentes?: string;
   prioridad: PrioridadConsulta;
-  abogadoAsignadoId: string;
   abogadoAsignadoId: string;
   documentoAdjunto?: File;
 }
@@ -121,10 +122,11 @@ const initialData: NuevaConsultaData = {
   abogadoAsignadoId: ''
 };
 
-export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaConsultaProps) {
+export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = false, consultaInicial }: ModalNuevaConsultaProps) {
   const [abogados, setAbogados] = useState<Abogado[]>([]);
   const [loadingAbogados, setLoadingAbogados] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // ========== HOOK DE VALIDACIÓN ==========
   const {
@@ -151,6 +153,27 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
       loadAbogados();
     }
   }, [isOpen]);
+
+  // Pre-llenar formulario en modo edición
+  useEffect(() => {
+    if (isOpen && modoEdicion && consultaInicial) {
+      const c = consultaInicial as any;
+      updateField('tipoSolicitud', c.tipoSolicitud || 'Consulta');
+      updateField('canalEntrada', c.canalEntrada || 'Correo Electrónico');
+      updateField('temaJuridico', c.temaJuridico || c.materiaJuridica || 'Contractual');
+      updateField('solicitante', c.dependenciaSolicitante || c.solicitante || '');
+      updateField('funcionarioSolicitante', c.funcionarioSolicitante || c.nombreSolicitante || '');
+      updateField('cargo', c.cargoSolicitante || c.cargo || '');
+      updateField('emailSolicitante', c.emailSolicitante || '');
+      updateField('telefonoSolicitante', c.telefonoSolicitante || '');
+      updateField('consulta', c.descripcion || c.consulta || '');
+      updateField('antecedentes', c.antecedentes || '');
+      updateField('prioridad', (c.prioridad || 'MEDIA').toUpperCase());
+      updateField('abogadoAsignadoId', c.abogadoAsignadoId || '');
+    } else if (isOpen && !modoEdicion) {
+      resetForm();
+    }
+  }, [isOpen, modoEdicion, consultaInicial]);
 
   const loadAbogados = async () => {
     setLoadingAbogados(true);
@@ -241,34 +264,48 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
     setEnviando(true);
 
     try {
-      // await new Promise(resolve => setTimeout(resolve, 1500));
+      if (modoEdicion && consultaInicial) {
+        // MODO EDICIÓN: PATCH con JSON
+        const editPayload = {
+          tipoSolicitud: formData.tipoSolicitud,
+          canalEntrada: formData.canalEntrada,
+          materiaJuridica: formData.temaJuridico,
+          dependenciaSolicitante: formData.solicitante,
+          nombreSolicitante: formData.funcionarioSolicitante,
+          cargoSolicitante: formData.cargo,
+          emailSolicitante: formData.emailSolicitante,
+          telefonoSolicitante: formData.telefonoSolicitante,
+          descripcion: formData.consulta,
+          antecedentes: formData.antecedentes,
+          prioridad: formData.prioridad.toLowerCase(),
+          abogadoAsignadoId: formData.abogadoAsignadoId,
+        };
+        const id = (consultaInicial as any).uuid || consultaInicial.id;
+        await legalService.updateConsultaJuridica(id, editPayload);
+      } else {
+        // MODO CREACIÓN: FormData con posible archivo
+        const payload = {
+          ...formData,
+          dependenciaSolicitante: formData.solicitante,
+          nombreSolicitante: formData.funcionarioSolicitante,
+          cargoSolicitante: formData.cargo,
+          descripcion: formData.consulta,
+          materiaJuridica: formData.temaJuridico,
+          terminoLegalDias: 30
+        };
 
-      const payload = {
-        ...formData,
-        dependenciaSolicitante: formData.solicitante,
-        nombreSolicitante: formData.funcionarioSolicitante,
-        cargoSolicitante: formData.cargo,
-        descripcion: formData.consulta,
-        materiaJuridica: formData.temaJuridico, // Map temaJuridico to materiaJuridica
-        terminoLegalDias: 30 // Default 30 business days
-      };
-
-      // Create FormData to handle file upload
-      const formDataToSend = new FormData();
-
-      // Append all fields from payload to FormData
-      Object.keys(payload).forEach(key => {
-        if (key !== 'documentoAdjunto' && payload[key] !== undefined && payload[key] !== null) {
-          formDataToSend.append(key, payload[key].toString());
+        const formDataToSend = new FormData();
+        Object.keys(payload).forEach(key => {
+          const value = (payload as any)[key];
+          if (key !== 'documentoAdjunto' && value !== undefined && value !== null) {
+            formDataToSend.append(key, value.toString());
+          }
+        });
+        if (formData.documentoAdjunto) {
+          formDataToSend.append('file', formData.documentoAdjunto);
         }
-      });
-
-      // Append file if exists
-      if (formData.documentoAdjunto) {
-        formDataToSend.append('file', formData.documentoAdjunto);
+        await legalService.createConsultaJuridica(formDataToSend);
       }
-
-      await legalService.createConsultaJuridica(formDataToSend);
 
       // const consecutivo = `CJ-2025-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}`;
 
@@ -277,14 +314,18 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
       //   duration: 4000
       // });
 
+      toast.success(modoEdicion ? '✅ Consulta actualizada' : '✅ Consulta registrada', {
+        description: modoEdicion ? 'Los cambios se guardaron correctamente' : 'La consulta jurídica fue registrada exitosamente',
+        duration: 4000
+      });
       resetForm();
       if (onSuccess) {
         onSuccess();
       }
       onClose();
     } catch (error) {
-      console.error('Error creando consulta:', error);
-      toast.error('❌ Error al registrar consulta', {
+      console.error('Error en consulta:', error);
+      toast.error(modoEdicion ? '❌ Error al actualizar consulta' : '❌ Error al registrar consulta', {
         description: 'Por favor intente nuevamente'
       });
     } finally {
@@ -294,13 +335,16 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
 
   const handleCancel = () => {
     if (completedFields > 0) {
-      if (confirm('¿Desea cancelar? Se perderán los datos ingresados.')) {
-        resetForm();
-        onClose();
-      }
+      setShowCancelConfirm(true);
     } else {
       onClose();
     }
+  };
+
+  const handleConfirmCancel = () => {
+    setShowCancelConfirm(false);
+    resetForm();
+    onClose();
   };
 
   // ✅ Hooks responsive
@@ -308,6 +352,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
   const keyboardVisible = useKeyboardVisible();
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && handleCancel()}>
       <DialogContent
         hideCloseButton
@@ -319,21 +364,21 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
         `}
       >
         <DialogTitle className="sr-only">
-          Nueva Consulta Jurídica - Validación Mejorada
+          {modoEdicion ? 'Editar Consulta Jurídica' : 'Nueva Consulta Jurídica - Validación Mejorada'}
         </DialogTitle>
         <DialogDescription className="sr-only">
-          Formulario para registrar nueva consulta de asesoría jurídica interna con validación en tiempo real
+          {modoEdicion ? 'Formulario para editar consulta de asesoría jurídica' : 'Formulario para registrar nueva consulta de asesoría jurídica interna con validación en tiempo real'}
         </DialogDescription>
 
         {/* ==================== HEADER ==================== */}
         <ModalHeaderClean
           icono={FileQuestion}
-          titulo="Nueva Consulta Jurídica"
-          subtitulo="Registrar solicitud de asesoría jurídica interna con validación en tiempo real"
-          badgePrincipal="NUEVA CONSULTA"
+          titulo={modoEdicion ? 'Editar Consulta Jurídica' : 'Nueva Consulta Jurídica'}
+          subtitulo={modoEdicion ? `Editando: ${consultaInicial?.id || ''}` : 'Registrar solicitud de asesoría jurídica interna con validación en tiempo real'}
+          badgePrincipal={modoEdicion ? 'EDICIÓN' : 'NUEVA CONSULTA'}
           badges={
-            <Badge className="bg-green-100 text-green-700 font-semibold text-xs">
-              ✅ Validación Reactiva
+            <Badge className={modoEdicion ? 'bg-orange-100 text-orange-700 font-semibold text-xs' : 'bg-green-100 text-green-700 font-semibold text-xs'}>
+              {modoEdicion ? '✏️ Modo Edición' : '✅ Validación Reactiva'}
             </Badge>
           }
           onClose={handleCancel}
@@ -610,10 +655,16 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
                 </Label>
                 <Input
                   type="file"
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  accept=".pdf"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
+                      // Validar tipo PDF
+                      if (file.type !== 'application/pdf') {
+                        toast.error('Solo se permiten archivos en formato PDF');
+                        e.target.value = '';
+                        return;
+                      }
                       // Validar tamaño (ej. 10MB)
                       if (file.size > 10 * 1024 * 1024) {
                         toast.error('El archivo excede el tamaño máximo permitido (10MB)');
@@ -628,7 +679,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
                   className="cursor-pointer"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Formatos permitidos: PDF, Word, Imágenes. Máximo 10MB.
+                  Formatos permitidos: PDF únicamente. Máximo 10MB.
                 </p>
               </div>
             </FormSection>
@@ -721,7 +772,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
               ) : (
                 <>
                   <Send className="w-4 h-4 mr-2" />
-                  Registrar Consulta
+                  {modoEdicion ? 'Guardar Cambios' : 'Registrar Consulta'}
                 </>
               )}
             </Button>
@@ -729,5 +780,50 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
         </div>
       </DialogContent>
     </Dialog>
+
+      {/* ==================== DIALOG DE CONFIRMACIÓN DE CANCELACIÓN ==================== */}
+      <Dialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+        <DialogContent 
+          hideCloseButton 
+          className="p-0 overflow-hidden border-none shadow-2xl z-[10002] rounded-2xl mx-auto"
+          style={{ width: '380px', maxWidth: '380px' }}
+        >
+          <div className="bg-white overflow-hidden w-full">
+            <div className="h-2 w-full bg-gradient-to-r from-orange-500 to-red-600"></div>
+            
+            <div className="p-10 flex flex-col items-center text-center">
+              <div className="w-20 h-20 rounded-3xl bg-red-50 flex items-center justify-center mb-8 shadow-sm border border-red-100">
+                <AlertCircle className="w-10 h-10 text-red-600" />
+              </div>
+              
+              <h3 className="text-2xl font-black text-gray-900 mb-4 tracking-tight leading-tight">
+                ¿Cancelar registro?
+              </h3>
+              
+              <p className="text-base text-gray-500 leading-relaxed mb-10 px-4">
+                Se perderán todos los datos ingresados en la consulta.
+              </p>
+
+              <div className="flex flex-col w-full gap-4">
+                <Button
+                  onClick={handleConfirmCancel}
+                  className="w-full py-8 !bg-red-600 hover:!bg-red-700 !text-white font-black rounded-2xl shadow-xl shadow-red-100 transition-all active:scale-[0.98] text-lg border-none"
+                >
+                  Sí, cancelar y salir
+                </Button>
+                
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowCancelConfirm(false)}
+                  className="w-full py-6 rounded-xl font-bold text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors text-sm"
+                >
+                  No, continuar editando
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

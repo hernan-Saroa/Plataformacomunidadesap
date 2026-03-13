@@ -11,15 +11,14 @@ import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
-import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Card } from '../../../ui/card';
 import {
   X, Target, Calendar, User, Flag,
-  AlertCircle, CheckCircle, Clock, Plus
+  AlertCircle, CheckCircle, Clock
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
 
@@ -30,6 +29,7 @@ interface ModalCrearTareaProps {
   tareaInicial?: any;
   onGuardar?: (tarea: any) => void;
   modoEdicion?: boolean;
+  abogadosDisponibles?: { nombre: string; rol: string }[];
 }
 
 export function ModalCrearTarea({
@@ -38,7 +38,8 @@ export function ModalCrearTarea({
   expediente,
   tareaInicial,
   onGuardar,
-  modoEdicion = false
+  modoEdicion = false,
+  abogadosDisponibles = []
 }: ModalCrearTareaProps) {
   const [titulo, setTitulo] = useState('');
   const [descripcion, setDescripcion] = useState('');
@@ -385,31 +386,33 @@ export function ModalCrearTarea({
             </div>
           )}
 
-          {/* Estado */}
-          <div>
-            <Label className="text-sm font-bold text-gray-700 mb-2 block">
-              ⚡ Estado inicial
-            </Label>
-            <div className="flex gap-2">
-              {(['Pendiente', 'En proceso'] as const).map((estadoOpt) => (
-                <Button
-                  key={estadoOpt}
-                  type="button"
-                  variant={estado === estadoOpt ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setEstado(estadoOpt)}
-                  className="flex-1 font-bold text-xs"
-                  style={
-                    estado === estadoOpt
-                      ? { background: '#2962FF', color: '#FFFFFF' }
-                      : { borderColor: '#2962FF', color: '#2962FF' }
-                  }
-                >
-                  {estadoOpt}
-                </Button>
-              ))}
+          {/* Estado (solo en creación) */}
+          {!modoEdicion && (
+            <div>
+              <Label className="text-sm font-bold text-gray-700 mb-2 block">
+                ⚡ Estado inicial
+              </Label>
+              <div className="flex gap-2">
+                {(['Pendiente', 'En proceso'] as const).map((estadoOpt) => (
+                  <Button
+                    key={estadoOpt}
+                    type="button"
+                    variant={estado === estadoOpt ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setEstado(estadoOpt)}
+                    className="flex-1 font-bold text-xs"
+                    style={
+                      estado === estadoOpt
+                        ? { background: '#2962FF', color: '#FFFFFF' }
+                        : { borderColor: '#2962FF', color: '#2962FF' }
+                    }
+                  >
+                    {estadoOpt}
+                  </Button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Asignar responsable */}
           <div>
@@ -417,51 +420,35 @@ export function ModalCrearTarea({
               👤 Asignar responsable <span className="text-red-500">*</span>
             </Label>
             <div className="w-full">
-              <Input
-                value={responsableSeleccionado}
-                onChange={(e) => setResponsableSeleccionado(e.target.value)}
-                placeholder="Escribe el nombre del responsable..."
-                className="text-sm"
-              />
-              {/*
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {usuariosDisponibles.map((usuario) => {
-                const isSelected = responsableSeleccionado === usuario.id;
-                return (
-                  <Card
-                    key={usuario.id}
-                    className={`p-3 cursor-pointer transition-all hover:shadow-md ${isSelected ? 'border-2 bg-blue-50' : 'border-2 border-transparent'
-                      }`}
-                    style={isSelected ? { borderColor: '#2962FF' } : {}}
-                    onClick={() => setResponsableSeleccionado(usuario.id)}
+              {abogadosDisponibles.length > 0 ? (
+                <>
+                  <select
+                    value={responsableSeleccionado}
+                    onChange={(e) => setResponsableSeleccionado(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
-                    <div className="flex items-center gap-3">
-                      <Avatar className="w-12 h-12">
-                        <AvatarFallback
-                          className="font-black"
-                          style={
-                            isSelected
-                              ? { background: '#2962FF', color: '#FFFFFF' }
-                              : { background: '#E0EDFF', color: '#2962FF' }
-                          }
-                        >
-                          {usuario.avatar}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-black text-gray-900 truncate flex items-center gap-2">
-                          {usuario.nombre}
-                          {isSelected && <CheckCircle className="w-4 h-4 text-green-600" />}
-                        </p>
-                        <p className="text-xs text-gray-600 truncate">{usuario.cargo}</p>
-                        <p className="text-xs text-gray-500 truncate">{usuario.email}</p>
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-            */}
+                    <option value="">Selecciona un responsable...</option>
+                    {abogadosDisponibles.map((abogado, idx) => (
+                      <option key={`${abogado.nombre}-${idx}`} value={abogado.nombre}>
+                        {abogado.nombre} — {abogado.rol}
+                      </option>
+                    ))}
+                  </select>
+                  {responsableSeleccionado && (
+                    <p className="text-xs text-green-600 mt-1.5 flex items-center gap-1">
+                      <CheckCircle className="w-3 h-3" />
+                      {abogadosDisponibles.find(a => a.nombre === responsableSeleccionado)?.rol || 'Responsable seleccionado'}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <Input
+                  value={responsableSeleccionado}
+                  onChange={(e) => setResponsableSeleccionado(e.target.value)}
+                  placeholder="Escribe el nombre del responsable..."
+                  className="text-sm"
+                />
+              )}
             </div>
           </div>
 

@@ -233,6 +233,10 @@ interface Proceso {
   origenNoticia?: string;
   fechaRecepcionNoticia?: string;
   prioridadNoticia?: 'alta' | 'media' | 'baja';
+  procesoAsociadoId?: string;
+  procesoAsociadoNumero?: string;
+  procesoAsociadoTipo?: 'conexo' | 'similar' | 'consolidado';
+  procesoAsociadoFecha?: string;
 }
 
 type Item = Noticia | Proceso;
@@ -411,7 +415,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             </KanbanActionRowPrimary>
 
             <KanbanActionRowTertiary>
-              {onEditarNoticia && (etapa === 'Recepción' || etapa === 'Valoración') && (
+              {onEditarNoticia && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
                 <KanbanButtonTertiary
                   onClick={() => onEditarNoticia(noticia)}
                   icon={<Edit className="w-3.5 h-3.5" />}
@@ -607,6 +611,13 @@ function TarjetaProceso({
                 {noticiasExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
               </button>
             )}
+            {/* ✅ NUEVO: Badge de proceso asociado */}
+            {proceso.procesoAsociadoId && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-300 flex items-center gap-0.5" title={`Asociado a: ${proceso.procesoAsociadoNumero}`}>
+                <Link2 className="w-2.5 h-2.5" />
+                {proceso.procesoAsociadoTipo === 'conexo' ? 'Conexo' : proceso.procesoAsociadoTipo === 'similar' ? 'Similar' : proceso.procesoAsociadoTipo === 'consolidado' ? 'Consolidado' : 'Asociado'}
+              </span>
+            )}
           </div>
 
           {/* Noticias Asociadas Expandible */}
@@ -637,6 +648,19 @@ function TarjetaProceso({
           )}
 
           {/* Métricas — fila compacta inline */}
+          {proceso.procesoAsociadoId && (
+            <div className="mt-2 pt-2 border-t border-blue-200 bg-blue-50 p-2 rounded-md">
+              <div className="flex items-center gap-1.5">
+                <Link2 className="w-3 h-3 text-blue-600" />
+                <span className="text-[10px] font-bold text-blue-800">Proceso Asociado:</span>
+              </div>
+              <p className="text-[11px] text-blue-900 font-semibold mt-1">{proceso.procesoAsociadoNumero}</p>
+              <p className="text-[9px] text-blue-700">Tipo: {proceso.procesoAsociadoTipo === 'conexo' ? 'Conexo' : proceso.procesoAsociadoTipo === 'similar' ? 'Similar' : proceso.procesoAsociadoTipo === 'consolidado' ? 'Consolidado' : 'Asociado'}</p>
+              {proceso.procesoAsociadoFecha && (
+                <p className="text-[9px] text-blue-600">Asociado el: {new Date(proceso.procesoAsociadoFecha).toLocaleDateString('es-CO')}</p>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-3 text-xs py-1">
             <div className="flex items-center gap-1.5 text-gray-600">
               <FileEdit className="w-3.5 h-3.5 text-gray-400" />
@@ -1301,6 +1325,7 @@ interface ColumnaKanbanProps {
   color: string;
   icono: ReactNode;
   diasEstimados?: number;
+  etapasConfig?: any[]; // ✅ NUEVO: Configuración de etapas con orden
   onDrop: (item: Item, nuevaEtapa: string) => void;
   onConvertirNoticia: (noticia: Noticia) => void;
   onDevolverNoticia: (noticia: Noticia) => void;
@@ -1336,6 +1361,7 @@ function ColumnaKanban({
   color,
   icono,
   diasEstimados,
+  etapasConfig = [], // ✅ NUEVO
   onDrop,
   onConvertirNoticia,
   onDevolverNoticia,
@@ -1372,8 +1398,46 @@ function ColumnaKanban({
       onDrop(item, etapa);
     },
     canDrop: (item: any) => {
+      // ✅ NUEVO: Validar orden de etapas desde backend config
+      if (etapasConfig.length > 0) {
+        // Obtener el orden de la etapa actual (donde está el item)
+        let itemOrden: number = 0;
+        
+        if (item.tipo === 'noticia') {
+          // Las noticias siempre están en Recepción (orden 1 o 0)
+          // Solo pueden pasar a la siguiente etapa (orden + 1)
+          const etapaRecepcion = etapasConfig.find(e => 
+            e.etapa?.toLowerCase().includes('recep') || 
+            e.etapa?.toLowerCase().includes('recib')
+          );
+          itemOrden = etapaRecepcion?.orden ?? 0;
+        } else {
+          // Para procesos, buscar la etapa actual del proceso
+          const etapaActualProceso = etapasConfig.find(e => 
+            e.etapa === item.etapaActual || 
+            e.etapa.toLowerCase() === item.etapaActual?.toLowerCase()
+          );
+          itemOrden = etapaActualProceso?.orden ?? 0;
+        }
+        
+        // Obtener el orden de la etapa de destino
+        const etapaDestino = etapasConfig.find(e => 
+          e.etapa === etapa || 
+          e.etapa.toLowerCase() === etapa.toLowerCase()
+        );
+        const etapaDestinoOrden = etapaDestino?.orden ?? itemOrden + 1;
+        
+        // Solo permitir drop si es la siguiente etapa en el orden
+        return etapaDestinoOrden === itemOrden + 1;
+      }
+      
+      // Fallback: lógica original si no hay configuración
+      // ✅ Usar comparación normalizada para soportar etapas con/sin tildes
+      const etapaNormalizadaDrop = normalizeText(etapa);
+      const etapaInicialNormalizadaDrop = normalizeText(etapaInicial);
+      
       if (item.tipo === 'noticia') {
-        return etapa === 'Recepción' || etapa === 'Valoración';
+        return etapaNormalizadaDrop === etapaInicialNormalizadaDrop || etapa === 'Valoración' || normalizeText(etapa) === normalizeText('Valoración');
       }
       return true;
     },
@@ -1405,9 +1469,21 @@ function ColumnaKanban({
     };
   }, [isOver, canDrop, colapsada]);
 
+  // ✅ NUEVO: Obtener la etapa inicial (orden 1) desde la configuración
+  const etapaInicial = etapasConfig.length > 0
+    ? etapasConfig
+        .sort((a, b) => (a.orden || 0) - (b.orden || 0))[0]?.etapa || 'RECEPCION'
+    : 'RECEPCION';
+
+  // Normalizar para comparación (sin tilde, minúsculas)
+  const normalizeEtapa = (e: string) => e?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') || '';
+  const etapaNormalizada = normalizeEtapa(etapa);
+  const etapaInicialNormalizada = normalizeEtapa(etapaInicial);
+
   const itemsFiltrados = items.filter(item => {
     if (item.tipo === 'noticia') {
-      return etapa === 'Recepción';
+      // Las noticias se muestran en la etapa inicial (orden 1) - comparar de forma normalizada
+      return etapaNormalizada === etapaInicialNormalizada;
     }
     return item.tipo === 'proceso' && item.etapaActual === etapa;
   });
@@ -1500,8 +1576,8 @@ function ColumnaKanban({
                 </div>
               )}
 
-              {/* Indicador de noticias - Solo en Recepción */}
-              {etapa === 'Recepción' && noticias.length > 0 && (
+              {/* Indicador de noticias - Solo en etapa inicial (orden 1) */}
+              {etapaNormalizada === etapaInicialNormalizada && noticias.length > 0 && (
                 <div className="py-2">
                   <div className="flex items-center gap-1" title={`${noticias.length} noticias`}>
                     <FileText className="w-3 h-3 text-orange-600" />
@@ -1596,8 +1672,8 @@ function ColumnaKanban({
             </div>
           </div>
 
-          {/* Indicador de Noticias en Recepción */}
-          {etapa === 'Recepción' && noticias.length > 0 && (
+          {/* Indicador de Noticias en etapa inicial (orden 1) */}
+          {etapaNormalizada === etapaInicialNormalizada && noticias.length > 0 && (
             <div className="flex items-center gap-1.5 mt-2.5 px-2 py-1.5 bg-orange-50 rounded-lg">
               <FileText className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-orange-600`} />
               <span className="text-[11px] font-bold text-orange-600">
@@ -1675,7 +1751,7 @@ function ColumnaKanban({
             <div className="text-center py-16 text-gray-300">
               <FolderOpen className={`${isMobile ? 'w-10 h-10' : 'w-12 h-12'} mx-auto mb-3 opacity-40`} />
               <p className="text-xs font-medium text-gray-400">
-                {etapa === 'Recepción' ? 'Sin items' : 'Sin procesos'}
+                {etapaNormalizada === etapaInicialNormalizada ? 'Sin items' : 'Sin procesos'}
               </p>
               <p className="text-[11px] text-gray-300 mt-1">en esta etapa</p>
             </div>
@@ -2536,6 +2612,7 @@ export function DashboardKanbanOperativo({
   };
 
   // Transformar noticia desde API al formato interno
+  // ✅ MEJORADA: Usa la primera etapa de etapasConfig cuando no viene del backend
   const toNoticiaFromApi = (noticia: ApiNoticia, currentStages: any[] = []): Noticia => {
     const fechaRecepcion = (noticia as any)?.fechaRecepcion;
     const fecha = fechaRecepcion ? new Date(fechaRecepcion) : new Date();
@@ -2551,9 +2628,9 @@ export function DashboardKanbanOperativo({
     const fechaQuejaRaw = (noticia as any).fechaQueja;
     const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
 
-    // Normalizar etapa usando las etapas del backend
+    // ✅ OBTENER ETAPA: usar kanbanStage del backend, o buscar en stages, o usar primera etapa config
     let etapaRaw = (noticia as any).kanbanStage || (noticia as any).etapaActual;
-    let etapaNormalizada = etapaRaw;
+    let etapaNormalizada: string;
 
     if (etapaRaw) {
       // Buscar coincidencia en etapas del backend
@@ -2569,7 +2646,13 @@ export function DashboardKanbanOperativo({
         }
       }
     } else {
-      etapaNormalizada = 'Recepción';
+      // ✅ NUEVO: Si no hay etapa, usar la primera etapa de la configuración (menor orden)
+      if (currentStages.length > 0) {
+        const etapasOrdenadas = [...currentStages].sort((a, b) => (a.orden || 0) - (b.orden || 0));
+        etapaNormalizada = etapasOrdenadas[0]?.etapa || 'Recepcion';
+      } else {
+        etapaNormalizada = 'Recepcion';
+      }
     }
 
     return {
@@ -2675,6 +2758,12 @@ export function DashboardKanbanOperativo({
 
     const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
 
+    // ✅ NUEVO: Mapear campos de asociación a proceso desde el backend
+    const procesoAsociadoId = (proceso as any).procesoAsociadoId || undefined;
+    const procesoAsociadoNumero = (proceso as any).procesoAsociadoNumero || undefined;
+    const procesoAsociadoTipo = (proceso as any).procesoAsociadoTipo || undefined;
+    const procesoAsociadoFecha = (proceso as any).procesoAsociadoFecha || undefined;
+
     return {
       id: proceso.id,
       numeroProceso: proceso.radicadoProceso,
@@ -2684,7 +2773,7 @@ export function DashboardKanbanOperativo({
         tipoIdentificacion: 'CC',
         numeroIdentificacion: (proceso.news?.denunciante as any)?.cedula || 'N/A'
       },
-      denunciado: {
+      denunciante: {
         nombre: (proceso.news?.disciplinable as any)?.nombre || 'Sin disciplinable',
         tipoIdentificacion: 'CC',
         numeroIdentificacion: (proceso.news?.disciplinable as any)?.cedula || 'N/A'
@@ -2706,7 +2795,12 @@ export function DashboardKanbanOperativo({
       ultimaActuacion: 'Actualizado desde backend',
       fechaCreacion: fechaCreacion.toISOString().split('T')[0],
       tipo: 'proceso' as const,
-      hechos: proceso.news?.hechos
+      hechos: proceso.news?.hechos,
+      // ✅ NUEVO: Incluir campos de asociación
+      procesoAsociadoId,
+      procesoAsociadoNumero,
+      procesoAsociadoTipo,
+      procesoAsociadoFecha,
     };
   };
 
@@ -2761,7 +2855,47 @@ export function DashboardKanbanOperativo({
   }
 
   // ==================== HANDLERS ====================
-  const handleDropItem = (item: Item, nuevaEtapa: string) => {
+  const handleDropItem = async (item: Item, nuevaEtapa: string) => {
+    // ✅ NUEVO: Validar orden de etapas desde backend config
+    if (etapasConfig.length > 0) {
+      // Obtener el orden de la etapa actual del item
+      let itemOrden: number = 0;
+      let etapaActualItem: string = 'Recepción';
+      
+      if (item.tipo === 'noticia') {
+        // Las noticias siempre están en Recepción
+        const etapaRecepcion = etapasConfig.find(e => 
+          e.etapa?.toLowerCase().includes('recep') || 
+          e.etapa?.toLowerCase().includes('recib')
+        );
+        itemOrden = etapaRecepcion?.orden ?? 0;
+        etapaActualItem = etapaRecepcion?.etapa || 'Recepción';
+      } else {
+        // Para procesos, buscar la etapa actual
+        const etapaActualProceso = etapasConfig.find(e => 
+          e.etapa === item.etapaActual || 
+          e.etapa.toLowerCase() === item.etapaActual?.toLowerCase()
+        );
+        itemOrden = etapaActualProceso?.orden ?? 0;
+        etapaActualItem = etapaActualProceso?.etapa || item.etapaActual;
+      }
+      
+      // Obtener el orden de la etapa de destino
+      const etapaDestino = etapasConfig.find(e => 
+        e.etapa === nuevaEtapa || 
+        e.etapa.toLowerCase() === nuevaEtapa.toLowerCase()
+      );
+      const etapaDestinoOrden = etapaDestino?.orden ?? itemOrden + 1;
+      
+      // Validar que solo permita mover a la siguiente etapa en el orden
+      if (etapaDestinoOrden !== itemOrden + 1) {
+        toast.error('No puede saltar etapas', {
+          description: `Debe avanzar secuencialmente. La etapa actual es "${etapaActualItem}" (orden ${itemOrden}).`
+        });
+        return;
+      }
+    }
+    
     if (item.tipo === 'noticia') {
       if (nuevaEtapa === 'Valoración') {
         // ✅ Arrastrar noticia de Recepción a Valoración → activa wizard de conversión a proceso
@@ -2786,6 +2920,38 @@ export function DashboardKanbanOperativo({
 
         const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
 
+        // ✅ NUEVO: Persistir cambio de etapa en la base de datos
+        const toastId = toast.loading('Cambiando etapa del proceso...');
+        try {
+          // Mapear el nombre de la etapa al formato del backend
+          const stageMap: Record<string, string> = {
+            'Recepción': 'RECEPCION',
+            'Valoración': 'EVALUACION',
+            'Indagación': 'INDAGACION',
+            'Investigación': 'INVESTIGACION',
+            'Juzgamiento': 'JUZGAMIENTO',
+            'Fallo': 'FALLO',
+            'Archivo': 'ARCHIVO'
+          };
+          const backendStage = stageMap[nuevaEtapa] || nuevaEtapa.toUpperCase();
+          
+          // Llamar al backend para cambiar la etapa
+          await disciplinaryService.cambiarEtapa(item.id, backendStage, nuevaEtapa);
+          
+          toast.success('Etapa actualizada', {
+            id: toastId,
+            description: `${item.numeroProceso} → ${nuevaEtapa}`
+          });
+        } catch (error: any) {
+          console.error('Error al cambiar etapa en BD:', error);
+          toast.error('Error al guardar cambio', {
+            id: toastId,
+            description: error?.message || 'No se pudo persistir el cambio en la base de datos'
+          });
+          // Continuamos con la actualización local aunque haya error en el backend
+        }
+
+        // Actualizar estado local
         setItems(prev => prev.map(i =>
           i.id === item.id && i.tipo === 'proceso'
             ? {
@@ -2809,17 +2975,22 @@ export function DashboardKanbanOperativo({
           etapaNueva: nuevaEtapa
         };
 
-        // En producción, esto se guardaría en el backend
         console.log('📋 Trazabilidad - Movimiento de proceso:', eventoTrazabilidad);
-
-        toast.success('Proceso Movido', {
-          description: `${item.numeroProceso} → ${nuevaEtapa} (registrado en trazabilidad)`
-        });
       }
     }
   };
 
-  const handleCrearNoticia = (data: any) => {
+  // ✅ NUEVO: Handler para crear noticia - guarda en backend y usa primera etapa de configuración
+  const handleCrearNoticia = async (data: any) => {
+    // Determinar la primera etapa desde la configuración del backend (menor orden)
+    let etapaInicial = 'Recepcion'; // Valor por defecto (sin tilde para el backend)
+    if (etapasConfig.length > 0) {
+      const etapasOrdenadas = [...etapasConfig].sort((a, b) => (a.orden || 0) - (b.orden || 0));
+      if (etapasOrdenadas.length > 0) {
+        etapaInicial = etapasOrdenadas[0].etapa;
+      }
+    }
+    
     // Extraer primer denunciado y denunciante para campos principales
     const primerDenunciado = data.denunciados?.[0] || data.denunciado;
     const primerDenunciante = data.denunciantes?.[0];
@@ -2838,42 +3009,125 @@ export function DashboardKanbanOperativo({
       fechaSubida: new Date().toISOString().split('T')[0]
     }));
 
-    const nuevaNoticia: Noticia = {
-      id: `n${Date.now()}`,
-      numero: `NOT-2026-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
-      fechaRecepcion: data.fechaQueja || new Date().toISOString().split('T')[0],
-      fechaRegistro: new Date().toISOString(),
-      radicador: data.radicador || 'Usuario Actual',
-      origen: data.origen || 'Denuncia Ciudadana',
-      territorial: data.territorial || undefined,
-      fechaHechos: data.fechaHechos || undefined,
-      cargo: primerDenunciado?.cargo || data.denunciado?.cargo || undefined,
-      dependencia: primerDenunciado?.lugarHechos || data.denunciado?.dependencia || undefined,
-      conductaSeleccionada: data.conductaSeleccionada || undefined,
-      conductaPersonalizada: data.conductaPersonalizada || undefined,
-      denunciante: denunciantePersona,
-      denunciado: denunciadoPersona,
-      denunciados: data.denunciados || [],
-      denunciantes: data.denunciantes || [],
-      hechos: data.descripcionHechos || '',
-      hechosSeparados: data.hechosSeparados || [],
-      archivosAdjuntos: archivosMetadata,
-      estado: 'pendiente',
-      prioridad: 'media',
-      diasPendientes: 0,
-      tipo: 'noticia'
+    // ✅ MAPEO DE VALORES AL FORMATO DEL BACKEND
+    // origen: debe ser uno de ANONIMO, QUEJOSO, OFICIO, REMISION, POR_DETERMINAR
+    const origenMap: Record<string, string> = {
+      'Anónimo': 'ANONIMO',
+      'Anonimo': 'ANONIMO',
+      'Denuncia Ciudadana': 'QUEJOSO',
+      'Quejoso': 'QUEJOSO',
+      'Oficio': 'OFICIO',
+      'Remisión': 'REMISION',
+      'Remision': 'REMISION',
+      'Por Determinar': 'POR_DETERMINAR',
+      'Por determinar': 'POR_DETERMINAR'
     };
+    
+    const origenNormalizado = origenMap[data.origen] || 'POR_DETERMINAR';
 
-    setItems(prev => [...prev, nuevaNoticia]);
-    // ✅ Persistir en Supabase
-    noticiasService.create(nuevaNoticia).catch(err => {
-      console.error('[DashboardKanban] Error al guardar noticia en Supabase:', err);
-      toast.error('Advertencia', { description: 'Noticia creada localmente pero no pudo guardarse en Supabase.' });
-    });
-    toast.success('Noticia Creada', {
-      description: `${nuevaNoticia.numero} en Recepción`
-    });
-    setModalActivo(null);
+    // ✅ NUEVO: Intentar guardar en el backend
+    const toastId = toast.loading('Creando noticia en el sistema...');
+    
+    try {
+      // Preparar datos para el backend
+      const newsData = {
+        origen: origenNormalizado,
+        radicador: data.radicador || 'Usuario Actual',
+        territorial: data.territorial || undefined,
+        dependenciaDenunciado: primerDenunciado?.dependencia || primerDenunciado?.lugarHechos || data.denunciado?.dependencia || '',
+        fechaQueja: data.fechaQueja || new Date().toISOString().split('T')[0],
+        fechaHechos: data.fechaHechos || undefined,
+        hechos: data.descripcionHechos || '',
+        conductas: data.conductaSeleccionada ? [data.conductaSeleccionada] : [],
+        prioridad: (data.prioridad || 'media').toUpperCase(),
+        // Denunciante
+        denunciante: primerDenunciante ? {
+          nombre: primerDenunciante.nombre,
+          tipoIdentificacion: 'CC',
+          numeroIdentificacion: primerDenunciante.identificacion || '',
+          telefono: primerDenunciante.telefono || '',
+          correo: primerDenunciante.correo || '',
+          direccion: primerDenunciante.direccion || '',
+          entidad: primerDenunciante.entidad || '',
+          cargo: primerDenunciante.cargo || ''
+        } : undefined,
+        // Denunciado/Disciplinable
+        disciplinable: primerDenunciado ? {
+          nombre: primerDenunciado.nombre,
+          tipoIdentificacion: primerDenunciado.tipoIdentificacion || 'CC',
+          numeroIdentificacion: primerDenunciado.identificacion || '',
+          cargo: primerDenunciado.cargo || '',
+          dependencia: primerDenunciado.dependencia || primerDenunciado.lugarHechos || ''
+        } : undefined
+      };
+
+      console.log('[DashboardKanban] Enviando datos al backend:', JSON.stringify(newsData, null, 2));
+
+      // Llamar al backend para crear la noticia
+      const noticiaCreada = await disciplinaryService.radicarNoticia(newsData);
+      
+      console.log('[DashboardKanban] Noticia creada en backend:', noticiaCreada);
+
+      // Transformar la respuesta del backend al formato interno
+      const nuevaNoticia = toNoticiaFromApi(noticiaCreada);
+      
+      // Asegurar que use la etapa inicial correcta
+      nuevaNoticia.etapaActual = etapaInicial;
+
+      // Agregar al estado
+      setItems(prev => [...prev, nuevaNoticia]);
+      
+      toast.success('Noticia Creada', {
+        id: toastId,
+        description: `${nuevaNoticia.numero} en ${etapaInicial}`
+      });
+      setModalActivo(null);
+    } catch (error: any) {
+      console.error('[DashboardKanban] Error al crear noticia en backend:', error);
+      
+      // ✅ Fallback: crear localmente si el backend falla
+      console.log('[DashboardKanban] Creando noticia localmente como fallback...');
+      
+      const nuevaNoticiaLocal: Noticia = {
+        id: `n${Date.now()}`,
+        numero: `NOT-2026-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
+        fechaRecepcion: data.fechaQueja || new Date().toISOString().split('T')[0],
+        fechaRegistro: new Date().toISOString(),
+        radicador: data.radicador || 'Usuario Actual',
+        origen: data.origen || 'Denuncia Ciudadana',
+        territorial: data.territorial || undefined,
+        fechaHechos: data.fechaHechos || undefined,
+        cargo: primerDenunciado?.cargo || data.denunciado?.cargo || undefined,
+        dependencia: primerDenunciado?.lugarHechos || data.denunciado?.dependencia || undefined,
+        conductaSeleccionada: data.conductaSeleccionada || undefined,
+        conductaPersonalizada: data.conductaPersonalizada || undefined,
+        denunciante: denunciantePersona,
+        denunciado: denunciadoPersona,
+        denunciados: data.denunciados || [],
+        denunciantes: data.denunciantes || [],
+        hechos: data.descripcionHechos || '',
+        hechosSeparados: data.hechosSeparados || [],
+        archivosAdjuntos: archivosMetadata,
+        estado: 'pendiente',
+        prioridad: 'media',
+        diasPendientes: 0,
+        tipo: 'noticia',
+        etapaActual: etapaInicial // ✅ Usar etapa desde configuración
+      };
+
+      setItems(prev => [...prev, nuevaNoticiaLocal]);
+      
+      // Persistir en Supabase como fallback secundario
+      noticiasService.create(nuevaNoticiaLocal).catch(err => {
+        console.error('[DashboardKanban] Error al guardar noticia en Supabase:', err);
+      });
+      
+      toast.warning('Noticia creada localmente', {
+        id: toastId,
+        description: 'No se pudo guardar en el servidor. La noticia se guardó localmente.'
+      });
+      setModalActivo(null);
+    }
   };
 
   const handleConvertirNoticia = (noticia: Noticia) => {
@@ -3228,10 +3482,37 @@ export function DashboardKanbanOperativo({
     setModalActivo('devolver-competencia');
   };
 
-  const handleConfirmarDevolucionCompetencia = (datos: {
+  const handleConfirmarDevolucionCompetencia = async (datos: {
     entidadId: string; entidadNombre: string; entidadCorreo: string;
     tipoRemision: string; justificacion: string; fundamentoLegal: string; numeroRC: string;
   }) => {
+    // ✅ NUEVO: Llamar al backend API para remitir por competencia
+    const toastId = toast.loading('Remitiendo noticia por competencia...');
+    
+    try {
+      await disciplinaryService.remitirPorCompetencia({
+        newsId: itemSeleccionado.id,
+        emailDestinatario: datos.entidadCorreo,
+        entidadDestino: datos.entidadNombre,
+        justificacion: `${datos.numeroRC} — Tipo: ${datos.tipoRemision}. Fundamento: ${datos.fundamentoLegal || 'N/A'}. ${datos.justificacion}`,
+        usuarioRemision: 'Sistema'
+      });
+      
+      toast.success('Remitida por Competencia', {
+        id: toastId,
+        description: datos.entidadCorreo
+          ? `${itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}\nCorreo: ${datos.entidadCorreo}`
+          : `${itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}`,
+      });
+    } catch (error: any) {
+      console.error('Error al remitir por competencia:', error);
+      toast.error('Error al remitir', {
+        id: toastId,
+        description: error?.message || 'No se pudo completar la remisión'
+      });
+      // Continuar con la actualización local aunque haya error en el backend
+    }
+
     // Actualizar estado de la noticia a 'remitida' antes de eliminar
     setItems(prev => prev.map(item => {
       if (item.id === itemSeleccionado.id && item.tipo === 'noticia') {
@@ -3243,7 +3524,7 @@ export function DashboardKanbanOperativo({
             {
               fecha: new Date().toISOString(),
               accion: 'Remision por Competencia',
-              detalle: `${datos.numeroRC} — Remitida a: ${datos.entidadNombre}. Tipo: ${datos.tipoRemision}. Fundamento: ${datos.fundamentoLegal}. ${datos.justificacion}`,
+              detalle: `${datos.numeroRC} — Remitida a: ${datos.entidadNombre}. Tipo: ${datos.tipoRemision}. Fundamento: ${datos.fundamentoLegal || 'N/A'}. ${datos.justificacion}`,
               usuario: 'Usuario Actual',
             }
           ],
@@ -3255,11 +3536,6 @@ export function DashboardKanbanOperativo({
     setTimeout(() => {
       setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
     }, 100);
-    toast.success('Remitida por Competencia', {
-      description: datos.entidadCorreo
-        ? `${itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}\nCorreo: ${datos.entidadCorreo}`
-        : `${itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}`,
-    });
     setModalActivo(null);
     setItemSeleccionado(null);
   };
@@ -3320,17 +3596,74 @@ export function DashboardKanbanOperativo({
   };
 
   // ✅ NUEVO: Handler para asignar profesional en transición Recepción → Valoración
-  const handleAsignarProfesional = (profesionalId: string, profesionalNombre: string, observaciones: string) => {
+  // ✅ MODIFICADO: Ahora sigue el orden de etapas desde la configuración del backend Y persiste en BD
+  const handleAsignarProfesional = async (profesionalId: string, profesionalNombre: string, observaciones: string) => {
     if (!itemSeleccionado) return;
 
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
 
-    // Actualizar el proceso con el profesional asignado y moverlo a Valoración
+    // ✅ NUEVO: Determinar la siguiente etapa basándose en el orden de etapasConfig
+    let siguienteEtapa = 'Valoración'; // Valor por defecto
+    
+    if (etapasConfig.length > 0) {
+      // Obtener la etapa actual del proceso
+      const etapaActual = etapasConfig.find(e => 
+        e.etapa === itemSeleccionado.etapaActual || 
+        e.etapa.toLowerCase() === itemSeleccionado.etapaActual?.toLowerCase()
+      );
+      const ordenActual = etapaActual?.orden ?? 0;
+      
+      // Buscar la siguiente etapa (orden + 1)
+      const siguiente = etapasConfig.find(e => e.orden === ordenActual + 1);
+      if (siguiente) {
+        siguienteEtapa = siguiente.etapa;
+      }
+    }
+
+    // Mapear el nombre de la etapa al formato del backend
+    const stageMap: Record<string, string> = {
+      'Recepción': 'RECEPCION',
+      'Valoración': 'EVALUACION',
+      'Indagación': 'INDAGACION',
+      'Investigación': 'INVESTIGACION',
+      'Juzgamiento': 'JUZGAMIENTO',
+      'Fallo': 'FALLO',
+      'Archivo': 'ARCHIVO'
+    };
+    const backendStage = stageMap[siguienteEtapa] || siguienteEtapa.toUpperCase();
+
+    // ✅ NUEVO: Persistir cambio de etapa y asignación de profesional en la base de datos
+    const toastId = toast.loading('Asignando profesional y cambiando etapa...');
+    try {
+      // Llamar al backend para cambiar la etapa y asignar el profesional
+      await disciplinaryService.cambiarEtapa(itemSeleccionado.id, backendStage, siguienteEtapa);
+      
+      // También actualizar el proceso con el profesional asignado usando updateProcess
+      await disciplinaryService.updateProcess(itemSeleccionado.id, {
+        etapaActual: backendStage,
+        kanbanStage: siguienteEtapa,
+        abogadoId: profesionalId
+      });
+      
+      toast.success('Profesional Asignado y Etapa Actualizada', {
+        id: toastId,
+        description: `${itemSeleccionado.numeroProceso} → ${profesionalNombre} (${siguienteEtapa})`
+      });
+    } catch (error: any) {
+      console.error('Error al guardar asignación en BD:', error);
+      toast.error('Error al guardar', {
+        id: toastId,
+        description: error?.message || 'No se pudo persistir la asignación en la base de datos'
+      });
+      // Continuamos con la actualización local aunque haya error en el backend
+    }
+
+    // Actualizar el proceso con el profesional asignado y moverlo a la siguiente etapa
     setItems(prev => prev.map(i =>
       i.id === itemSeleccionado.id && i.tipo === 'proceso'
         ? {
           ...i,
-          etapaActual: 'Valoración' as any,
+          etapaActual: siguienteEtapa as any,
           profesionalAsignado: {
             nombre: profesionalNombre,
             tipoIdentificacion: 'CC' as const,
@@ -3348,7 +3681,7 @@ export function DashboardKanbanOperativo({
       id: `evt-${Date.now()}`,
       tipo: 'asignacion-profesional' as const,
       titulo: `Proceso asignado a ${profesionalNombre}`,
-      descripcion: `El proceso fue movido de "Recepción" a "Valoración" y asignado al profesional ${profesionalNombre}. ${observaciones ? `Observaciones: ${observaciones}` : ''}`,
+      descripcion: `El proceso fue movido de "Recepción" a "${siguienteEtapa}" y asignado al profesional ${profesionalNombre}. ${observaciones ? `Observaciones: ${observaciones}` : ''}`,
       usuario: usuario,
       fecha: new Date(),
       procesoId: itemSeleccionado.id,
@@ -3359,7 +3692,7 @@ export function DashboardKanbanOperativo({
     console.log('📋 Trazabilidad - Asignación de profesional:', eventoTrazabilidad);
 
     toast.success('Profesional Asignado', {
-      description: `${itemSeleccionado.numeroProceso} → ${profesionalNombre} (Valoración)`
+      description: `${itemSeleccionado.numeroProceso} → ${profesionalNombre} (${siguienteEtapa})`
     });
 
     setModalActivo(null);
@@ -3649,7 +3982,7 @@ export function DashboardKanbanOperativo({
     setModalActivo('asociar-proceso-proceso');
   };
 
-  const handleConfirmarAsociacionProcesoProceso = (procesoOrigenId: string, procesoDestinoId: string, justificacion: string, tipoAsociacion: 'conexo' | 'similar' | 'consolidado') => {
+  const handleConfirmarAsociacionProcesoProceso = async (procesoOrigenId: string, procesoDestinoId: string, justificacion: string, tipoAsociacion: 'conexo' | 'similar' | 'consolidado') => {
     if (!itemSeleccionado) return;
 
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
@@ -3661,27 +3994,25 @@ export function DashboardKanbanOperativo({
       return;
     }
 
-    // Registrar en trazabilidad
-    const eventoTrazabilidad = {
-      id: `evt-${Date.now()}`,
-      tipo: 'asociacion-proceso-proceso' as const,
-      titulo: `Proceso asociado a otro proceso (${tipoAsociacion})`,
-      descripcion: `El proceso ${procesoOrigen.numeroProceso} fue asociado al proceso ${procesoDestino.numeroProceso}. Tipo: ${tipoAsociacion}. Justificación: ${justificacion}`,
-      usuario: usuario,
-      fecha: new Date(),
-      procesoOrigenId: procesoOrigenId,
-      procesoDestinoId: procesoDestinoId,
-      tipoAsociacion: tipoAsociacion,
-      justificacion: justificacion
-    };
+    // Llamar al backend para persistir la asociacion
+    try {
+      await disciplinaryService.asociarProcesoAProceso(procesoOrigenId, procesoDestinoId, tipoAsociacion, justificacion);
 
-    console.log('📋 Trazabilidad - Asociación proceso-proceso:', eventoTrazabilidad);
+      // Actualizar el estado local con la informacion de la asociacion
+      setItems(prevItems => prevItems.map(item => {
+        if (item.id === procesoOrigenId && item.tipo === 'proceso') {
+          return { ...item, procesoAsociadoId: procesoDestinoId, procesoAsociadoNumero: procesoDestino.numeroProceso, procesoAsociadoTipo: tipoAsociacion, procesoAsociadoFecha: new Date().toISOString() } as Proceso;
+        }
+        return item;
+      }));
 
-    toast.success('Procesos Asociados Exitosamente', {
-      description: `${procesoOrigen.numeroProceso} ↔ ${procesoDestino.numeroProceso} (${tipoAsociacion})`
-    });
+      toast.success('Procesos Asociados', { description: `${procesoOrigen.numeroProceso} -> ${procesoDestino.numeroProceso}` });
+    } catch (error: any) {
+      console.error('Error al asociar:', error);
+      toast.error('Error', { description: error?.message || 'No se pudo asociar' });
+      return;
+    }
 
-    // Cerrar modal
     setModalActivo(null);
     setItemSeleccionado(null);
   };
@@ -4272,6 +4603,7 @@ export function DashboardKanbanOperativo({
                         isMobile={isMobile}
                         colapsada={columnasColapsadas.has(etapa.nombre)}
                         onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
+                        etapasConfig={etapasConfig}
                         tarjetasColapsadas={tarjetasColapsadas}
                         onToggleColapsoTarjeta={toggleTarjetaColapsada}
                       />

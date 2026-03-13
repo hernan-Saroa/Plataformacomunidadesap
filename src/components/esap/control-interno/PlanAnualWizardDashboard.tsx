@@ -2159,8 +2159,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-shrink-0">
-            {/* Selector de Plan Activo */}
-            {planesDisponibles.length > 1 && onCambiarPlan && (
+            {/* Selector de Plan Anual - Comentado temporalmente para pruebas */}
+            {/* {planesDisponibles.length > 1 && onCambiarPlan && (
               <select
                 value={plan.id}
                 onChange={(e) => onCambiarPlan(e.target.value)}
@@ -2172,7 +2172,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
                   </option>
                 ))}
               </select>
-            )}
+            )} */}
 
             <span className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold border-2 text-sm ${plan.estado === 'VIGENTE' ? 'bg-green-100 text-green-700 border-green-300' : plan.estado === 'APROBADO' ? 'bg-blue-100 text-blue-700 border-blue-300' : plan.estado === 'EN_REVISION' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-gray-100 text-gray-700 border-gray-300'}`}>
               {plan.estado === 'BORRADOR' ? 'Borrador' : plan.estado === 'EN_REVISION' ? 'En revisión' : plan.estado === 'APROBADO' ? 'Aprobado' : plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado'}

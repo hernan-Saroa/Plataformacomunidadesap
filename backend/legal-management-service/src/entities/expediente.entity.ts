@@ -79,6 +79,9 @@ export class Expediente {
     @Column({ name: 'abogado_sustanciador', nullable: true })
     abogadoSustanciador: string;
 
+    @Column('text', { name: 'abogados_anteriores', array: true, default: '{}' })
+    abogadosAnteriores: string[];
+
     @Column({ name: 'fecha_prescripcion', type: 'timestamp', nullable: true })
     fechaPrescripcion: Date;
 

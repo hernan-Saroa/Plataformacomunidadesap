@@ -22,6 +22,7 @@ export enum TipoDocumento {
   ACTA_REUNION_CIERRE = 'acta_reunion_cierre',
   LISTA_CHEQUEO = 'lista_chequeo',
   EVIDENCIA_HALLAZGO = 'evidencia_hallazgo',
+  EVIDENCIA_CONTROVERSIA = 'evidencia_controversia',
   INFORME_PRELIMINAR = 'informe_preliminar',
   INFORME_FINAL = 'informe_final',
   INFORME_EJECUTIVO = 'informe_ejecutivo',
@@ -103,6 +104,10 @@ export class Documento {
   /** Documento plantilla de biblioteca que cumple este subido (auditoria + documento_biblioteca_id) */
   @Column({ name: 'documento_biblioteca_id', type: 'uuid', nullable: true })
   documentoBibliotecaId?: string | null;
+
+  /** Plantilla: visible solo para esta auditoría. NULL = visible para todas */
+  @Column({ name: 'visible_auditoria_id', type: 'uuid', nullable: true })
+  visibleAuditoriaId?: string | null;
 
   @ManyToOne(() => Documento, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'documento_biblioteca_id' })

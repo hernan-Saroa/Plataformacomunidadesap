@@ -92,6 +92,10 @@ export class LegalService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento`);
     }
 
+    async getJuzgamientoProceso(radicado: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}`);
+    }
+
     async uploadJuzgamientoDocumento(radicado: string, file: File, tipo: string = 'DOCUMENTO', descripcion?: string): Promise<any> {
         const formData = new FormData();
         formData.append('file', file);
@@ -312,6 +316,9 @@ export class LegalService {
         tipoActuacion: string;
         descripcion: string;
         fechaActuacion: string;
+        responsable?: string;
+        estado?: string;
+        observaciones?: string;
         file?: File;
     }): Promise<Actuacion> {
         if (data.file) {
@@ -320,6 +327,9 @@ export class LegalService {
             formData.append('tipoActuacion', data.tipoActuacion);
             formData.append('descripcion', data.descripcion);
             formData.append('fechaActuacion', data.fechaActuacion); // Backend espera string ISO o similar
+            if (data.responsable) formData.append('responsable', data.responsable);
+            if (data.estado) formData.append('estado', data.estado);
+            if (data.observaciones) formData.append('observaciones', data.observaciones);
             return apiClient.upload<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, formData);
         }
         return apiClient.post<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, data);
@@ -606,6 +616,28 @@ export class LegalService {
         return apiClient.get(`${SERVICE_PREFIX}/terminos/${id}`);
     }
 
+    async updateTermino(id: string, data: any): Promise<any> {
+        return apiClient.patch(`${SERVICE_PREFIX}/terminos/${id}`, data);
+    }
+
+    async exportarTerminoPdf(id: string): Promise<Blob> {
+        return apiClient.getBlob(`${SERVICE_PREFIX}/terminos/${id}/exportar/pdf`);
+    }
+
+    async getDocumentosTermino(id: string): Promise<any[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/terminos/${id}/documentos`);
+    }
+
+    async cargarDocumentoTermino(id: string, file: File): Promise<any> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.post(`${SERVICE_PREFIX}/terminos/${id}/upload-documento`, formData);
+    }
+
+    async eliminarTermino(id: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/terminos/${id}`);
+    }
+
 
     // --- TAREAS DE EXPEDIENTE ---
 
@@ -771,6 +803,14 @@ export class LegalService {
     // ==================== JUZGAMIENTO DISCIPLINARIO ====================
     async createJuzgamientoProceso(data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento`, data);
+    }
+
+    async anexarJuzgamientoProceso(radicadoAnexado: string, radicadoPrincipal: string, usuario?: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/juzgamiento/${radicadoAnexado}/anexar`, { principalRadicado: radicadoPrincipal, usuario });
+    }
+
+    async desanexarJuzgamientoProceso(radicado: string, usuario?: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/juzgamiento/${radicado}/desanexar`, { usuario });
     }
 }
 
@@ -1371,7 +1411,10 @@ export interface ProcesoCoactivo {
     radicado: string;
     deudor: ProcesoCoactivoDeudor;
     obligacion: ProcesoCoactivoObligacion;
-    estado: 'IDENTIFICADO' | 'PERSUASIVO' | 'PREJURIDICO' | 'MANDAMIENTO' | 'EMBARGO' | 'FINALIZADO';
+    estado: 'PERSUASIVA' | 'COACTIVA' | 'MEDIDAS_CAUTELARES' | 'EXCEPCIONES' | 'LIQUIDACION';
+    fechaEjecutoria?: string;
+    tipoInteresAplicable?: string;
+    valorCostas?: number;
     responsable?: string;
     documentosAdjuntos: number;
     notificacionesEnviadas: number;
@@ -1422,6 +1465,8 @@ export interface CreateProcesoCoactivoDto {
     obligacion: ProcesoCoactivoObligacion;
     responsable?: string;
     observaciones?: string;
+    fechaEjecutoria?: string;
+    tipoInteresAplicable?: string;
 }
 
 export interface ProcesoCoactivoAdjunto {
@@ -1460,9 +1505,19 @@ export class ProcesosCoactivosService {
     }
 
     // Archivos
-    async uploadAdjunto(procesoId: string, file: File): Promise<ProcesoCoactivoAdjunto> {
+    async uploadAdjunto(
+        procesoId: string,
+        file: File,
+        metadata?: { esTituloEjecutivo?: boolean; fechaEjecutoria?: string }
+    ): Promise<ProcesoCoactivoAdjunto> {
         const formData = new FormData();
         formData.append('file', file);
+        if (metadata?.esTituloEjecutivo) {
+            formData.append('esTituloEjecutivo', 'true');
+        }
+        if (metadata?.fechaEjecutoria) {
+            formData.append('fechaEjecutoria', metadata.fechaEjecutoria);
+        }
         return apiClient.upload<ProcesoCoactivoAdjunto>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/adjuntos`, formData);
     }
 
@@ -1485,6 +1540,12 @@ export class ProcesosCoactivosService {
         const baseUrl = getServiceUrl('legal');
         const prefix = API_MODE === 'direct' ? '' : '/legal';
         return `${baseUrl}${prefix}/procesos-coactivos/${procesoId}/download-zip`;
+    }
+
+    getExportPdfUrl(procesoId: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        return `${baseUrl}${prefix}/procesos-coactivos/${procesoId}/export-pdf`;
     }
 
     async registrarPago(procesoId: string, data: any): Promise<PagoCoactivo> {

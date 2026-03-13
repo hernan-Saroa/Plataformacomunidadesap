@@ -911,7 +911,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                               ? 'La acción disciplinaria ha perdido vigencia. Han transcurrido más de 5 años desde la ocurrencia de los hechos.'
                               : verificarProximoVencimiento(formData.fechaHechos)
                               ? 'Menos de 6 meses para el vencimiento. Se recomienda priorizar esta noticia.'
-                              : 'Según la Ley 734 de 2002, la acción disciplinaria caduca a los 5 años desde la ocurrencia de los hechos.'
+                              : 'Según la ley 1952 de 2019 del Código general disciplinario, la acción disciplinaria caduca a los 5 años desde la ocurrencia de los hechos.'
                             }
                           </p>
                         </div>
@@ -921,10 +921,10 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     {/* Información Legal */}
                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
                       <p className="text-xs text-gray-700 font-medium mb-1">
-                        📖 Marco Legal - Ley 734 de 2002 (Código Disciplinario Único)
+                        📖 Marco Legal - ley 1952 de 2019 (Código General Disciplinario)
                       </p>
                       <p className="text-xs text-gray-600">
-                        <strong>Artículo 30:</strong> "La acción disciplinaria caducará si transcurridos cinco (5) años desde la ocurrencia de la falta, no se ha proferido auto de apertura de investigación disciplinaria."
+                        <strong>Artículo 33. Caducidad y prescripción de la acción disciplinaria:</strong> "La acción disciplinaria caducará si transcurridos cinco (5) años desde la ocurrencia de la falta, no se ha proferido auto de apertura de investigación disciplinaria."
                       </p>
                     </div>
                   </div>

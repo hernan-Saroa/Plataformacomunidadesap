@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   FileText, 
@@ -17,15 +17,19 @@ import {
   TrendingUp,
   X,
   Upload,
-  Trash2
+  Trash2,
+  Target
 } from 'lucide-react';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
+import { Button } from '../../ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../ui/dialog';
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
-import { InputSIGL } from '../gestion-legal/design-system/InputSIGL';
-import { TextareaSIGL } from '../gestion-legal/design-system/TextareaSIGL';
+import { InputSIGL, TextareaSIGL } from '../gestion-legal/design-system/InputSIGL';
 import { toast } from 'sonner@2.0.3';
+import controlInternoService from '../../../services/api/controlInternoService';
+import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
 
 // ====================================
 // TIPOS Y DATOS
@@ -46,12 +50,22 @@ interface Auditoria {
 
 interface Hallazgo {
   id: string;
-  titulo: string;
-  gravedad: 'LEVE' | 'MODERADO' | 'GRAVE';
+  codigo?: string;
+  titulo?: string;
+  gravedad?: 'LEVE' | 'MODERADO' | 'GRAVE' | 'CRITICO';
   descripcion: string;
-  causas: string[];
-  efectos: string[];
-  recomendaciones: string[];
+  criterioIncumplido?: string;
+  causas?: string[];
+  efectos?: string[];
+  recomendaciones?: string[];
+  /** Estado del flujo comunicación: notificado | aceptado | en-controversia | ratificado | modificado | retirado | cerrado */
+  estado?: string;
+  argumentosControversia?: string;
+  documentoControversiaUrl?: string;
+  documentoControversiaNombre?: string;
+  decisionAuditor?: string;
+  fundamentacionTecnica?: string;
+  fechaDecision?: string;
 }
 
 interface Controversia {
@@ -86,203 +100,379 @@ interface InformeFinal {
   generado: boolean;
 }
 
-interface InformeEjecutivo {
-  fecha: string;
-  resumenEjecutivo: string;
-  aspectosPositivos: string[];
-  oportunidadesMejora: string[];
-  conclusiones: string;
-  generado: boolean;
-}
-
 // ====================================
 // COMPONENTE PRINCIPAL
 // ====================================
 
-export const ComunicacionAuditoriaModule: React.FC<{ auditoriaId?: string }> = ({ auditoriaId = 'aud-001' }) => {
-  // Estado de la auditoría (mock - después se conecta con backend)
-  const [auditoria] = useState<Auditoria>({
-    id: auditoriaId,
-    codigo: 'AUD-2025-005',
-    nombre: 'Auditoría Gestión Financiera',
-    proceso: 'Gestión Financiera',
-    auditorLider: 'Fernando Ávila',
-    fechaInicio: '2025-01-15',
-    fechaFin: '2025-02-15',
-    esTerritoriales: false,
-    stage: 'COMUNICACION',
-    hallazgos: [
-      {
-        id: 'h1',
-        titulo: 'Falta de conciliaciones bancarias mensuales',
-        gravedad: 'GRAVE',
-        descripcion: 'No se realizan conciliaciones bancarias de manera mensual...',
-        causas: ['Falta de personal', 'Procesos manuales'],
-        efectos: ['Riesgo de fraude', 'Información financiera inexacta'],
-        recomendaciones: ['Implementar software', 'Capacitar personal']
-      },
-      {
-        id: 'h2',
-        titulo: 'Documentación de gastos incompleta',
-        gravedad: 'MODERADO',
-        descripcion: 'Algunos gastos no tienen toda la documentación soporte...',
-        causas: ['Falta de procedimiento claro'],
-        efectos: ['Posibles observaciones CGR'],
-        recomendaciones: ['Crear checklist de documentos obligatorios']
-      },
-      {
-        id: 'h3',
-        titulo: 'Retraso en reportes presupuestales',
-        gravedad: 'LEVE',
-        descripcion: 'Los reportes se entregan 2-3 días después del plazo...',
-        causas: ['Volumen de trabajo'],
-        efectos: ['Información no oportuna'],
-        recomendaciones: ['Redistribuir carga de trabajo']
-      }
-    ]
-  });
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isValidUUID = (s: string) => s && UUID_REGEX.test(s);
 
-  // Estados del módulo
+// Mock para cuando no hay auditoriaId válido
+const AUDITORIA_MOCK: Auditoria = {
+  id: 'aud-001',
+  codigo: 'AUD-2025-005',
+  nombre: 'Auditoría Gestión Financiera',
+  proceso: 'Gestión Financiera',
+  auditorLider: 'Fernando Ávila',
+  fechaInicio: '2025-01-15',
+  fechaFin: '2025-02-15',
+  esTerritoriales: false,
+  stage: 'COMUNICACION',
+  hallazgos: [
+    { id: 'h1', titulo: 'Falta de conciliaciones bancarias mensuales', gravedad: 'GRAVE', descripcion: 'No se realizan conciliaciones bancarias de manera mensual...', causas: [], efectos: [], recomendaciones: [] },
+    { id: 'h2', titulo: 'Documentación de gastos incompleta', gravedad: 'MODERADO', descripcion: 'Algunos gastos no tienen toda la documentación soporte...', causas: [], efectos: [], recomendaciones: [] },
+  ],
+};
+
+export const ComunicacionAuditoriaModule: React.FC<{
+  auditoriaId?: string;
+  auditoriaInfo?: { codigo?: string; nombre?: string };
+  /** true = modo embebido dentro del expediente (sin header grande, sin fondo pantalla completa) */
+  embedded?: boolean;
+  /** Callback cuando se finaliza la comunicación y pasa a Seguimiento */
+  onComunicacionCompletada?: () => void;
+}> = ({ auditoriaId, auditoriaInfo, embedded = false, onComunicacionCompletada }) => {
+  const id = auditoriaId || 'aud-001';
+  const useAPI = isValidUUID(id);
+
+  const [auditoria, setAuditoria] = useState<Auditoria>({ ...AUDITORIA_MOCK, ...auditoriaInfo, id });
+  const [hallazgos, setHallazgos] = useState<Hallazgo[]>(AUDITORIA_MOCK.hallazgos);
+  const [estadoComunicacion, setEstadoComunicacion] = useState<{
+    informePreliminarGenerado: boolean;
+    hayControversiasPendientes: boolean;
+    puedeGenerarInformeFinal: boolean;
+    conteo: { pendiente: number; aceptado: number; enControversia: number };
+  } | null>(null);
+  const [loading, setLoading] = useState(useAPI);
   const [seccionActual, setSeccionActual] = useState<number>(1);
   const [informePreliminar, setInformePreliminar] = useState<InformePreliminar>({
-    fecha: '',
-    hallazgos: auditoria.hallazgos.length,
-    graves: auditoria.hallazgos.filter(h => h.gravedad === 'GRAVE').length,
-    moderados: auditoria.hallazgos.filter(h => h.gravedad === 'MODERADO').length,
-    leves: auditoria.hallazgos.filter(h => h.gravedad === 'LEVE').length,
-    observaciones: '',
-    generado: false
+    fecha: '', hallazgos: 0, graves: 0, moderados: 0, leves: 0, observaciones: '', generado: false,
   });
-
   const [controversias, setControversias] = useState<Controversia[]>([]);
   const [informeFinal, setInformeFinal] = useState<InformeFinal>({
-    fecha: '',
-    controversiasResueltas: 0,
-    hallazgosAjustados: 0,
-    plazosPlanMejora: '30',
-    observacionesFinales: '',
-    generado: false
+    fecha: '', controversiasResueltas: 0, hallazgosAjustados: 0, plazosPlanMejora: '30', observacionesFinales: '', generado: false,
   });
-
-  const [informeEjecutivo, setInformeEjecutivo] = useState<InformeEjecutivo>({
-    fecha: '',
-    resumenEjecutivo: '',
-    aspectosPositivos: [],
-    oportunidadesMejora: [],
-    conclusiones: '',
-    generado: false
-  });
-
+  const [planCreado, setPlanCreado] = useState<boolean>(false);
+  const [planEstadisticas, setPlanEstadisticas] = useState<{
+    totalAcciones: number;
+    accionesCompletadas: number;
+    porcentajeAvance: number;
+  } | null>(null);
   const [modalControversia, setModalControversia] = useState(false);
+  const [modalControversiaHallazgoId, setModalControversiaHallazgoId] = useState<string | null>(null);
+  const [modalDecisionHallazgoId, setModalDecisionHallazgoId] = useState<string | null>(null);
   const [modalPreview, setModalPreview] = useState<{ tipo: string; abierto: boolean }>({ tipo: '', abierto: false });
 
-  // Cálculo de progreso
-  const progreso = useMemo(() => {
-    let completadas = 0;
-    if (informePreliminar.generado) completadas++;
-    if (controversias.every(c => c.estado !== 'PENDIENTE')) completadas++;
-    if (informeFinal.generado) completadas++;
-    if (informeEjecutivo.generado) completadas++;
-    return Math.round((completadas / 4) * 100);
-  }, [informePreliminar, controversias, informeFinal, informeEjecutivo]);
+  const { agregarAuditoriaConHallazgos, seleccionarAuditoria, navegarAVerPlan } = useIntegracionAuditoriaPlanes();
 
-  const puedeAvanzar = useMemo(() => {
-    return informePreliminar.generado && 
-           controversias.every(c => c.estado !== 'PENDIENTE') && 
-           informeFinal.generado && 
-           informeEjecutivo.generado;
-  }, [informePreliminar, controversias, informeFinal, informeEjecutivo]);
-
-  // ====================================
-  // HANDLERS
-  // ====================================
-
-  const handleGenerarInformePreliminar = () => {
-    if (!informePreliminar.observaciones.trim()) {
-      toast.error('Debe agregar observaciones generales');
+  const handleCrearPlanMejoramiento = useCallback(async () => {
+    if (hallazgos.length === 0) {
+      toast.error('No hay hallazgos para crear el plan de mejoramiento');
       return;
     }
-
-    setInformePreliminar(prev => ({
-      ...prev,
-      fecha: new Date().toISOString(),
-      generado: true
-    }));
-
-    toast.success('Informe Preliminar generado exitosamente');
-  };
-
-  const handleAgregarControversia = (controversia: Omit<Controversia, 'id' | 'fechaPresentacion' | 'estado'>) => {
-    const nueva: Controversia = {
-      ...controversia,
-      id: `c${Date.now()}`,
-      fechaPresentacion: new Date().toISOString(),
-      estado: 'PENDIENTE'
+    const hallazgosParaPlan: HallazgoAuditoria[] = hallazgos
+      .filter(h => h.estado !== 'retirado')
+      .map(h => ({
+        id: h.id,
+        titulo: h.titulo || h.descripcion?.substring(0, 80) || 'Sin título',
+        gravedad: ((h.gravedad || 'MODERADO') === 'CRITICO' ? 'GRAVE' : (h.gravedad || 'MODERADO')) as 'LEVE' | 'MODERADO' | 'GRAVE',
+        descripcion: h.descripcion || '',
+        causas: h.causas || [],
+        efectos: h.efectos || [],
+        recomendaciones: h.recomendaciones || []
+      }));
+    const fechaFinRaw = auditoria.fechaFin || new Date().toISOString().split('T')[0];
+    let fechaFin: string;
+    if (fechaFinRaw.includes('/')) {
+      const [d, m, a] = fechaFinRaw.split('/');
+      fechaFin = `${a}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    } else {
+      fechaFin = fechaFinRaw.split('T')[0];
+    }
+    const fechaLimiteObj = new Date(fechaFin);
+    if (!isNaN(fechaLimiteObj.getTime())) fechaLimiteObj.setDate(fechaLimiteObj.getDate() + 30);
+    const fechaLimiteStr = !isNaN(fechaLimiteObj.getTime())
+      ? fechaLimiteObj.toISOString().split('T')[0]
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const auditoriaParaPlan: AuditoriaParaPlan = {
+      id,
+      codigo: auditoria.codigo || 'AUD',
+      nombre: auditoria.nombre || auditoria.proceso || 'Auditoría',
+      areaResponsable: (auditoria as any).areaResponsable || (auditoria as any).areaObjetivo || auditoria.proceso || 'N/A',
+      responsable: typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria.auditorLider as any)?.nombre || 'N/A',
+      cargo: typeof auditoria.auditorLider === 'object' && (auditoria.auditorLider as any)?.cargo ? (auditoria.auditorLider as any).cargo : '',
+      fechaFinalizacion: fechaFin,
+      estadoPlan: 'SIN_PLAN',
+      fechaLimitePlan: fechaLimiteStr,
+      plazoFormulacion: 30,
+      hallazgos: hallazgosParaPlan
     };
+    agregarAuditoriaConHallazgos(auditoriaParaPlan);
+    seleccionarAuditoria(auditoriaParaPlan);
+    toast.success('Ir a crear Plan de Mejoramiento', {
+      description: `${hallazgosParaPlan.length} hallazgos vinculados. Complete las acciones correctivas para cada uno.`,
+      duration: 5000
+    });
+  }, [id, auditoria, hallazgos, agregarAuditoriaConHallazgos, seleccionarAuditoria]);
 
-    setControversias(prev => [...prev, nueva]);
-    setModalControversia(false);
-    toast.success('Controversia registrada');
+  const handleIrAVerPlan = useCallback(() => {
+    // Plan ya existe: navegar a ver plan sin abrir modal de crear
+    navegarAVerPlan(id);
+  }, [id, navegarAVerPlan]);
+
+  const cargarDatos = useCallback(async () => {
+    if (!useAPI) return;
+    try {
+      setLoading(true);
+      const [hallazgosData, estadoData, audData] = await Promise.all([
+        controlInternoService.getHallazgosByAuditoria(id),
+        controlInternoService.getEstadoComunicacion(id),
+        controlInternoService.getAuditoriaById(id).catch(() => null),
+      ]);
+      const parseCausaEfecto = (obs: string | undefined) => {
+        if (!obs) return { causas: [] as string[], efectos: [] as string[] };
+        const causas: string[] = [];
+        const efectos: string[] = [];
+        const causaMatch = obs.match(/CAUSA:\s*([\s\S]*?)(?=EFECTO:|$)/i);
+        const efectoMatch = obs.match(/EFECTO:\s*([\s\S]*?)$/i);
+        if (causaMatch?.[1]) causas.push(causaMatch[1].trim());
+        if (efectoMatch?.[1]) efectos.push(efectoMatch[1].trim());
+        return { causas, efectos };
+      };
+      const h = (hallazgosData || []).map((x: any) => {
+        const { causas, efectos } = parseCausaEfecto(x.observacionesControversia);
+        const recs = Array.isArray(x.recomendaciones) ? x.recomendaciones : (x.recomendaciones ? [x.recomendaciones] : []);
+        return {
+        id: x.id,
+        codigo: x.codigo,
+        titulo: x.titulo || x.descripcion?.substring(0, 80),
+        gravedad: (x.categoria === 'critico' ? 'CRITICO' : 'MODERADO') as any,
+        descripcion: x.descripcion || '',
+        criterioIncumplido: x.criterioIncumplido,
+        causas, efectos, recomendaciones: recs,
+        estado: x.estado,
+        argumentosControversia: x.argumentosControversia || x.observacionesControversia,
+        documentoControversiaNombre: x.documentoControversiaNombre,
+        decisionAuditor: x.decisionAuditor,
+        fundamentacionTecnica: x.fundamentacionTecnica,
+        fechaDecision: x.fechaDecision,
+      };
+      });
+      setHallazgos(h);
+      setEstadoComunicacion(estadoData);
+      setInformePreliminar(prev => ({
+        ...prev,
+        hallazgos: h.length,
+        graves: h.filter((x: Hallazgo) => (x.gravedad || '').toUpperCase() === 'GRAVE' || (x.gravedad || '').toUpperCase() === 'CRITICO').length,
+        moderados: h.filter((x: Hallazgo) => (x.gravedad || '').toUpperCase() === 'MODERADO').length,
+        leves: h.filter((x: Hallazgo) => (x.gravedad || '').toUpperCase() === 'LEVE').length,
+        generado: estadoData?.informePreliminarGenerado ?? false,
+      }));
+      setInformeFinal(prev => ({ ...prev, generado: estadoData?.informeFinalGenerado ?? false }));
+      try {
+        const planes = await controlInternoService.getPlanesMejoramiento();
+        const planesDeEstaAuditoria = Array.isArray(planes)
+          ? planes.filter((p: any) =>
+              (p.auditoriaId || p.auditoria_id || p.auditoria?.id || p.hallazgo?.auditoriaId || p.hallazgo?.auditoriaEntity?.id) === id
+            )
+          : [];
+        setPlanCreado(planesDeEstaAuditoria.length > 0);
+        if (planesDeEstaAuditoria.length > 0) {
+          let totalAcciones = 0;
+          let accionesCompletadas = 0;
+          const esCompletada = (estado: string) => {
+            const e = String(estado || '').toLowerCase();
+            return e === 'completada' || e === 'implementada' || e === 'completado' || e === 'implementado';
+          };
+          for (const plan of planesDeEstaAuditoria) {
+            const acciones = plan.acciones || [];
+            if (acciones.length > 0) {
+              totalAcciones += acciones.length;
+              accionesCompletadas += acciones.filter((a: any) => esCompletada(a.estado)).length;
+            } else {
+              // Fallback: usar totalAcciones/accionesCompletadas del plan si el listado no incluye acciones
+              const t = plan.totalAcciones ?? plan.total_acciones ?? 0;
+              const c = plan.accionesCompletadas ?? plan.acciones_completadas ?? 0;
+              totalAcciones += t;
+              accionesCompletadas += c;
+            }
+          }
+          const porcentajeAvance = totalAcciones > 0
+            ? Math.round((accionesCompletadas / totalAcciones) * 100)
+            : 0;
+          setPlanEstadisticas({ totalAcciones, accionesCompletadas, porcentajeAvance });
+        } else {
+          setPlanEstadisticas(null);
+        }
+      } catch {
+        setPlanCreado(false);
+        setPlanEstadisticas(null);
+      }
+      if (audData) {
+        setAuditoria(prev => ({
+          ...prev,
+          id: audData.id,
+          codigo: audData.codigo || prev.codigo,
+          nombre: audData.nombre || audData.titulo || prev.nombre,
+          auditorLider: typeof audData.auditorLider === 'string' ? audData.auditorLider : (audData.auditorLider?.nombre || prev.auditorLider),
+          hallazgos: h,
+        }));
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al cargar datos');
+    } finally {
+      setLoading(false);
+    }
+  }, [id, useAPI]);
+
+  useEffect(() => { cargarDatos(); }, [cargarDatos]);
+
+  const planCompleto = useMemo(() => {
+    if (!planCreado || !planEstadisticas) return false;
+    return planEstadisticas.totalAcciones >= 1 && planEstadisticas.accionesCompletadas >= 1;
+  }, [planCreado, planEstadisticas]);
+
+  const progreso = useMemo(() => {
+    let c = 0;
+    if (estadoComunicacion?.informePreliminarGenerado) c++;
+    if (!estadoComunicacion?.hayControversiasPendientes) c++;
+    if (informeFinal.generado) c++;
+    if (planCompleto) c++;
+    return Math.round((c / 4) * 100);
+  }, [estadoComunicacion, informeFinal.generado, planCompleto]);
+
+  const puedeAvanzar = useMemo(() => {
+    return (estadoComunicacion?.informePreliminarGenerado ?? false) &&
+           !estadoComunicacion?.hayControversiasPendientes &&
+           informeFinal.generado &&
+           planCompleto;
+  }, [estadoComunicacion, informeFinal.generado, planCompleto]);
+
+  const handleGenerarInformePreliminar = async () => {
+    if (useAPI) {
+      try {
+        const res = await controlInternoService.generarInformePreliminar(id);
+        toast.success(res?.mensaje || 'Informe preliminar generado');
+        setInformePreliminar(prev => ({ ...prev, generado: true }));
+        await cargarDatos();
+      } catch (err: any) {
+        toast.error(err?.message || 'Error al generar');
+      }
+    } else {
+      setInformePreliminar(prev => ({ ...prev, generado: true }));
+      toast.success('Informe Preliminar generado (demo)');
+    }
   };
 
-  const handleResolverControversia = (id: string, decision: 'ACEPTADA' | 'RECHAZADA', resolucion: string) => {
-    setControversias(prev => prev.map(c => 
-      c.id === id 
-        ? { ...c, estado: decision, resolucion, fechaResolucion: new Date().toISOString() }
-        : c
-    ));
-
-    toast.success(`Controversia ${decision === 'ACEPTADA' ? 'aceptada' : 'rechazada'}`);
+  const handleAceptarHallazgo = async (hallazgoId: string) => {
+    if (!useAPI) {
+      setHallazgos(prev => prev.map(h => h.id === hallazgoId ? { ...h, estado: 'aceptado' } : h));
+      toast.success('Hallazgo aceptado (demo)');
+      return;
+    }
+    try {
+      await controlInternoService.aceptarHallazgo(hallazgoId);
+      toast.success('Hallazgo aceptado');
+      await cargarDatos();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al aceptar');
+    }
   };
 
-  const handleGenerarInformeFinal = () => {
-    if (!informeFinal.observacionesFinales.trim()) {
+  const handlePresentarControversia = async (hallazgoId: string, argumentos: string, documentoId: string, documentoNombre: string) => {
+    if (!argumentos?.trim()) {
+      toast.error('Los argumentos son obligatorios');
+      return;
+    }
+    if (!documentoId || !documentoNombre) {
+      toast.error('El documento adjunto es obligatorio');
+      return;
+    }
+    if (!useAPI) {
+      setHallazgos(prev => prev.map(h => h.id === hallazgoId ? { ...h, estado: 'en-controversia', argumentosControversia: argumentos } : h));
+      setModalControversiaHallazgoId(null);
+      toast.success('Controversia presentada (demo)');
+      return;
+    }
+    try {
+      await controlInternoService.presentarControversia(hallazgoId, { argumentos, documentoId, documentoNombre });
+      toast.success('Controversia presentada');
+      setModalControversiaHallazgoId(null);
+      await cargarDatos();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al presentar controversia');
+    }
+  };
+
+  const handleDecisionAuditor = async (hallazgoId: string, tipoDecision: 'ratificado' | 'modificado' | 'retirado', fundamentacion: string) => {
+    if (!fundamentacion?.trim()) {
+      toast.error('La fundamentación técnica es obligatoria');
+      return;
+    }
+    if (!useAPI) {
+      setHallazgos(prev => prev.map(h => h.id === hallazgoId ? { ...h, estado: tipoDecision, decisionAuditor: tipoDecision, fundamentacionTecnica: fundamentacion } : h));
+      setModalDecisionHallazgoId(null);
+      toast.success(`Decisión registrada: ${tipoDecision}`);
+      return;
+    }
+    try {
+      await controlInternoService.decisionAuditor(hallazgoId, { tipoDecision, fundamentacionTecnica: fundamentacion });
+      toast.success(`Decisión registrada: ${tipoDecision}`);
+      setModalDecisionHallazgoId(null);
+      await cargarDatos();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al registrar decisión');
+    }
+  };
+
+  const handleGenerarInformeFinal = async () => {
+    if (estadoComunicacion?.hayControversiasPendientes) {
+      toast.error('No se puede generar el Informe Final mientras existan controversias pendientes de decisión');
+      return;
+    }
+    if (!informeFinal.observacionesFinales?.trim()) {
       toast.error('Debe agregar observaciones finales');
       return;
     }
-
-    const controversiasResueltas = controversias.filter(c => c.estado !== 'PENDIENTE').length;
-    const hallazgosAjustados = controversias.filter(c => c.estado === 'ACEPTADA').length;
-
-    setInformeFinal(prev => ({
-      ...prev,
-      fecha: new Date().toISOString(),
-      controversiasResueltas,
-      hallazgosAjustados,
-      generado: true
-    }));
-
-    toast.success('Informe Final generado exitosamente');
+    if (useAPI) {
+      try {
+        await controlInternoService.generarInformeFinal(id);
+        setInformeFinal(prev => ({ ...prev, fecha: new Date().toISOString(), generado: true }));
+        await cargarDatos();
+        toast.success('Informe Final generado exitosamente');
+      } catch (err: any) {
+        toast.error(err?.message || 'Error al generar');
+      }
+    } else {
+      setInformeFinal(prev => ({
+        ...prev,
+        fecha: new Date().toISOString(),
+        controversiasResueltas: hallazgos.filter(h => ['ratificado', 'modificado', 'retirado'].includes(h.estado || '')).length,
+        hallazgosAjustados: hallazgos.filter(h => h.estado === 'retirado').length,
+        generado: true
+      }));
+      toast.success('Informe Final generado exitosamente');
+    }
   };
 
-  const handleGenerarInformeEjecutivo = () => {
-    if (!informeEjecutivo.resumenEjecutivo.trim() || !informeEjecutivo.conclusiones.trim()) {
-      toast.error('Debe completar resumen ejecutivo y conclusiones');
-      return;
-    }
-
-    if (informeEjecutivo.aspectosPositivos.length === 0 || informeEjecutivo.oportunidadesMejora.length === 0) {
-      toast.error('Debe agregar al menos un aspecto positivo y una oportunidad de mejora');
-      return;
-    }
-
-    setInformeEjecutivo(prev => ({
-      ...prev,
-      fecha: new Date().toISOString(),
-      generado: true
-    }));
-
-    toast.success('Informe Ejecutivo generado exitosamente');
-  };
-
-  const handleFinalizarComunicacion = () => {
+  const handleFinalizarComunicacion = async () => {
     if (!puedeAvanzar) {
       toast.error('Debe completar todas las secciones antes de finalizar');
       return;
     }
 
-    toast.success('Fase de Comunicación completada. Auditoría pasa a Seguimiento.');
-    // Aquí se cambiaría el stage de la auditoría a SEGUIMIENTO
+    if (useAPI) {
+      try {
+        await controlInternoService.updateEstadoKanbanAuditoria(id, 'Seguimiento');
+        toast.success('Fase de Comunicación completada. Auditoría pasa a Seguimiento.');
+        onComunicacionCompletada?.();
+      } catch (err: any) {
+        toast.error(err?.message || 'Error al finalizar la comunicación');
+      }
+    } else {
+      toast.success('Fase de Comunicación completada. Auditoría pasa a Seguimiento.');
+      onComunicacionCompletada?.();
+    }
   };
 
   // ====================================
@@ -292,10 +482,11 @@ export const ComunicacionAuditoriaModule: React.FC<{ auditoriaId?: string }> = (
   const duracionDias = auditoria.esTerritoriales ? 2 : 10; // SEDE: 10-15d, TERRITORIAL: 2d
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className={embedded ? 'space-y-4' : 'min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 p-6'}>
+      <div className={embedded ? 'space-y-4' : 'max-w-7xl mx-auto space-y-6'}>
         
-        {/* HEADER */}
+        {/* HEADER - oculto en modo embebido (el expediente ya tiene Card de fase) */}
+        {!embedded && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -345,38 +536,56 @@ export const ComunicacionAuditoriaModule: React.FC<{ auditoriaId?: string }> = (
             </div>
           </div>
         </motion.div>
+        )}
 
-        {/* NAVEGACIÓN DE SECCIONES */}
-        <div className="bg-white rounded-xl shadow-lg p-4">
+        {/* NAVEGACIÓN DE SECCIONES - estilo expediente cuando embedded */}
+        <div className={embedded ? 'bg-white border-2 border-green-200 rounded-lg p-4' : 'bg-white rounded-xl shadow-lg p-4'}>
           <div className="flex items-center gap-2 overflow-x-auto">
             {[
               { id: 1, nombre: 'Informe Preliminar', icono: FileText, completado: informePreliminar.generado },
-              { id: 2, nombre: 'Controversias', icono: MessageSquare, completado: controversias.every(c => c.estado !== 'PENDIENTE') },
-              { id: 3, nombre: 'Informe Final', icono: FileCheck, completado: informeFinal.generado },
-              { id: 4, nombre: 'Informe Ejecutivo', icono: TrendingUp, completado: informeEjecutivo.generado }
-            ].map((seccion, index) => (
-              <React.Fragment key={seccion.id}>
-                <button
-                  onClick={() => setSeccionActual(seccion.id)}
-                  className={`flex items-center gap-2 px-4 py-3 rounded-lg transition-all flex-1 min-w-[200px] ${
-                    seccionActual === seccion.id
-                      ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg'
-                      : seccion.completado
-                      ? 'bg-green-50 text-green-700 hover:bg-green-100'
-                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  <seccion.icono className="w-5 h-5" />
-                  <span className="font-medium">{seccion.nombre}</span>
-                  {seccion.completado && <CheckCircle2 className="w-4 h-4 ml-auto" />}
-                </button>
-                {index < 3 && <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
-              </React.Fragment>
-            ))}
+              { id: 2, nombre: 'Gestión Hallazgos', icono: MessageSquare, completado: !estadoComunicacion?.hayControversiasPendientes },
+              { id: 3, nombre: 'Decisión / Informe Final', icono: FileCheck, completado: informeFinal.generado },
+              { id: 4, nombre: 'Plan de Mejoramiento', icono: TrendingUp, completado: planCompleto }
+            ].map((seccion, index) => {
+              const seccion1Completa = informePreliminar.generado;
+              const seccion2Completa = !estadoComunicacion?.hayControversiasPendientes;
+              const seccion3Completa = informeFinal.generado;
+              const puedeAcceder =
+                seccion.id === 1 ||
+                (seccion.id === 2 && seccion1Completa) ||
+                (seccion.id === 3 && seccion1Completa && seccion2Completa) ||
+                (seccion.id === 4 && seccion1Completa && seccion2Completa && seccion3Completa);
+              return (
+                <React.Fragment key={seccion.id}>
+                  <button
+                    onClick={() => puedeAcceder && setSeccionActual(seccion.id)}
+                    disabled={!puedeAcceder}
+                    title={!puedeAcceder ? 'Complete la sección anterior primero' : undefined}
+                    className={`flex items-center gap-2 px-4 py-3 rounded-lg transition-all flex-1 min-w-[200px] ${
+                      !puedeAcceder
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : seccionActual === seccion.id
+                        ? embedded
+                          ? 'bg-green-600 text-white'
+                          : 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg'
+                        : seccion.completado
+                        ? 'bg-green-50 text-green-700 hover:bg-green-100'
+                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <seccion.icono className="w-5 h-5" />
+                    <span className="font-medium">{seccion.nombre}</span>
+                    {seccion.completado && <CheckCircle2 className="w-4 h-4 ml-auto" />}
+                  </button>
+                  {index < 3 && <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
+                </React.Fragment>
+              );
+            })}
           </div>
         </div>
 
-        {/* CONTENIDO DINÁMICO */}
+        {/* CONTENIDO DINÁMICO - wrapper con estilo expediente cuando embedded */}
+        <div className={embedded ? 'bg-white border-2 border-green-200 rounded-lg p-4 mt-4' : ''}>
         <AnimatePresence mode="wait">
           <motion.div
             key={seccionActual}
@@ -387,27 +596,35 @@ export const ComunicacionAuditoriaModule: React.FC<{ auditoriaId?: string }> = (
           >
             {seccionActual === 1 && (
               <SeccionInformePreliminar
-                auditoria={auditoria}
+                auditoria={{ ...auditoria, hallazgos }}
                 informe={informePreliminar}
                 setInforme={setInformePreliminar}
                 onGenerar={handleGenerarInformePreliminar}
                 onPreview={() => setModalPreview({ tipo: 'preliminar', abierto: true })}
+                loading={loading}
+                puedeGenerar={!informePreliminar.generado}
+                embedded={embedded}
               />
             )}
 
             {seccionActual === 2 && (
-              <SeccionControversias
-                auditoria={auditoria}
-                controversias={controversias}
-                onAgregar={() => setModalControversia(true)}
-                onResolver={handleResolverControversia}
+              <SeccionGestionHallazgos
+                auditoria={{ ...auditoria, hallazgos }}
+                hallazgos={hallazgos}
+                estadoComunicacion={estadoComunicacion}
+                onAceptar={handleAceptarHallazgo}
+                onPresentarControversia={(hid) => setModalControversiaHallazgoId(hid)}
+                onDecisionAuditor={(hid) => setModalDecisionHallazgoId(hid)}
+                onDecisionConfirmar={handleDecisionAuditor}
+                loading={loading}
               />
             )}
 
             {seccionActual === 3 && (
               <SeccionInformeFinal
-                auditoria={auditoria}
-                controversias={controversias}
+                auditoria={{ ...auditoria, hallazgos }}
+                hallazgos={hallazgos}
+                estadoComunicacion={estadoComunicacion}
                 informe={informeFinal}
                 setInforme={setInformeFinal}
                 onGenerar={handleGenerarInformeFinal}
@@ -416,49 +633,62 @@ export const ComunicacionAuditoriaModule: React.FC<{ auditoriaId?: string }> = (
             )}
 
             {seccionActual === 4 && (
-              <SeccionInformeEjecutivo
+              <SeccionPlanMejoramiento
                 auditoria={auditoria}
-                informe={informeEjecutivo}
-                setInforme={setInformeEjecutivo}
-                onGenerar={handleGenerarInformeEjecutivo}
-                onPreview={() => setModalPreview({ tipo: 'ejecutivo', abierto: true })}
+                planCreado={planCreado}
+                planEstadisticas={planEstadisticas}
+                planCompleto={planCompleto}
+                onCrearPlanMejoramiento={handleCrearPlanMejoramiento}
+                hallazgosCount={hallazgos.filter(h => h.estado !== 'retirado').length}
+                onIrAPlan={handleIrAVerPlan}
               />
             )}
           </motion.div>
         </AnimatePresence>
+        </div>
 
         {/* BOTÓN FINALIZAR */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="bg-white rounded-xl shadow-lg p-6"
+          className={embedded ? 'bg-white border-2 border-green-200 rounded-lg p-4 mt-4' : 'bg-white rounded-xl shadow-lg p-6'}
         >
-          <div className="flex items-center justify-between">
+          <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${puedeAvanzar ? 'p-4 bg-green-50/50 border border-green-200 rounded-lg' : ''}`}>
             <div>
               <h3 className="font-semibold text-gray-900 mb-1">¿Listo para finalizar la comunicación?</h3>
               <p className="text-sm text-gray-600">
                 {puedeAvanzar 
-                  ? 'Todas las secciones completadas. Puede avanzar a Seguimiento.'
-                  : 'Complete todas las secciones para poder finalizar.'}
+                  ? 'Todas las secciones completadas. Puede avanzar a Seguimiento (el plan de mejoramiento ya fue creado con las acciones correctivas).'
+                  : 'Complete: Informe Preliminar, Gestión Hallazgos, Informe Final y Plan de Mejoramiento (con acciones correctivas para cada hallazgo) para poder finalizar.'}
               </p>
             </div>
-            <ButtonSIGL
-              variant={puedeAvanzar ? 'primary' : 'default'}
+            <Button
+              size="sm"
               onClick={handleFinalizarComunicacion}
               disabled={!puedeAvanzar}
+              className={`font-medium shrink-0 ${puedeAvanzar ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}
             >
-              <Send className="w-4 h-4" />
+              <Send className="w-4 h-4 mr-2" />
               Finalizar y Pasar a Seguimiento
-            </ButtonSIGL>
+            </Button>
           </div>
         </motion.div>
 
-        {/* MODAL CONTROVERSIA */}
-        {modalControversia && (
-          <ModalAgregarControversia
-            hallazgos={auditoria.hallazgos}
-            onClose={() => setModalControversia(false)}
-            onAgregar={handleAgregarControversia}
+        {/* MODAL PRESENTAR CONTROVERSIA (por hallazgo) */}
+        {modalControversiaHallazgoId && (
+          <ModalControversiaPorHallazgo
+            hallazgo={hallazgos.find(h => h.id === modalControversiaHallazgoId)}
+            onClose={() => setModalControversiaHallazgoId(null)}
+            onEnviar={handlePresentarControversia}
+          />
+        )}
+
+        {/* MODAL DECISIÓN DEL AUDITOR */}
+        {modalDecisionHallazgoId && (
+          <ModalDecisionAuditor
+            hallazgo={hallazgos.find(h => h.id === modalDecisionHallazgoId)}
+            onClose={() => setModalDecisionHallazgoId(null)}
+            onConfirmar={handleDecisionAuditor}
           />
         )}
 
@@ -469,8 +699,7 @@ export const ComunicacionAuditoriaModule: React.FC<{ auditoriaId?: string }> = (
             auditoria={auditoria}
             informe={
               modalPreview.tipo === 'preliminar' ? informePreliminar :
-              modalPreview.tipo === 'final' ? informeFinal :
-              informeEjecutivo
+              informeFinal
             }
             onClose={() => setModalPreview({ tipo: '', abierto: false })}
           />
@@ -490,48 +719,62 @@ const SeccionInformePreliminar: React.FC<{
   setInforme: React.Dispatch<React.SetStateAction<InformePreliminar>>;
   onGenerar: () => void;
   onPreview: () => void;
-}> = ({ auditoria, informe, setInforme, onGenerar, onPreview }) => {
+  loading?: boolean;
+  puedeGenerar?: boolean;
+  embedded?: boolean;
+}> = ({ auditoria, informe, setInforme, onGenerar, onPreview, loading, puedeGenerar = true, embedded = false }) => {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Banner: Informe ya terminado */}
+      {informe.generado && (
+        <div className={`${embedded ? 'p-3' : 'p-4'} bg-green-50 border-2 border-green-300 rounded-lg flex items-center gap-3`}>
+          <CheckCircle2 className="w-8 h-8 text-green-600 flex-shrink-0" />
+          <div>
+            <p className="font-bold text-green-900 text-lg">Informe Preliminar ya terminado</p>
+            <p className="text-sm text-green-700">Área auditada notificada. Período de controversias cerrado.</p>
+          </div>
+        </div>
+      )}
+
       {/* Estadísticas de Hallazgos */}
-      <CardSIGL>
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-purple-600" />
+      <CardSIGL className={embedded ? '!border !border-gray-200 !shadow-none' : ''}>
+        <div className={embedded ? 'p-4' : 'p-6'}>
+          <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-green-600" />
             Resumen de Hallazgos Identificados
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg p-4 border border-slate-200">
-              <div className="text-3xl font-bold text-gray-900 mb-1">{informe.hallazgos}</div>
-              <div className="text-sm text-gray-600">Total Hallazgos</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+              <div className="text-2xl font-bold text-gray-900">{informe.hallazgos}</div>
+              <div className="text-xs text-gray-600">Total Hallazgos</div>
             </div>
 
-            <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg p-4 border border-red-200">
-              <div className="text-3xl font-bold text-red-700 mb-1">{informe.graves}</div>
-              <div className="text-sm text-red-600 flex items-center gap-1">
-                <AlertTriangle className="w-4 h-4" />
+            <div className="bg-red-50 rounded-lg p-3 border border-red-200">
+              <div className="text-2xl font-bold text-red-700">{informe.graves}</div>
+              <div className="text-xs text-red-600 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
                 Graves
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg p-4 border border-yellow-200">
-              <div className="text-3xl font-bold text-yellow-700 mb-1">{informe.moderados}</div>
-              <div className="text-sm text-yellow-600">Moderados</div>
+            <div className="bg-yellow-50 rounded-lg p-3 border border-yellow-200">
+              <div className="text-2xl font-bold text-yellow-700">{informe.moderados}</div>
+              <div className="text-xs text-yellow-600">Moderados</div>
             </div>
 
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
-              <div className="text-3xl font-bold text-blue-700 mb-1">{informe.leves}</div>
-              <div className="text-sm text-blue-600">Leves</div>
+            <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+              <div className="text-2xl font-bold text-blue-700">{informe.leves}</div>
+              <div className="text-xs text-blue-600">Leves</div>
             </div>
           </div>
         </div>
       </CardSIGL>
 
       {/* Lista de Hallazgos */}
-      <CardSIGL>
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Detalle de Hallazgos</h3>
+      <CardSIGL className={embedded ? '!border !border-gray-200 !shadow-none' : ''}>
+        <div className={embedded ? 'p-4' : 'p-6'}>
+          <h3 className="text-base font-semibold text-gray-900 mb-4">Detalle de Hallazgos</h3>
           <div className="space-y-3">
             {auditoria.hallazgos.map((hallazgo, index) => (
               <div key={hallazgo.id} className="border border-gray-200 rounded-lg p-4 hover:border-purple-300 transition-colors">
@@ -553,24 +796,40 @@ const SeccionInformePreliminar: React.FC<{
                   </BadgeSIGL>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 mt-3 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3 text-sm">
                   <div>
                     <span className="font-medium text-gray-700">Causas:</span>
-                    <ul className="list-disc list-inside text-gray-600 mt-1">
-                      {hallazgo.causas.map((c, i) => <li key={i}>{c}</li>)}
-                    </ul>
+                    <div className="text-gray-600 mt-1">
+                      {hallazgo.causas?.length ? (
+                        <ul className="list-disc list-inside">{hallazgo.causas.map((c, i) => <li key={i}>{c}</li>)}</ul>
+                      ) : hallazgo.descripcion ? (
+                        <p className="text-gray-600">{hallazgo.descripcion}</p>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <span className="font-medium text-gray-700">Efectos:</span>
-                    <ul className="list-disc list-inside text-gray-600 mt-1">
-                      {hallazgo.efectos.map((e, i) => <li key={i}>{e}</li>)}
-                    </ul>
+                    <div className="text-gray-600 mt-1">
+                      {hallazgo.efectos?.length ? (
+                        <ul className="list-disc list-inside">{hallazgo.efectos.map((e, i) => <li key={i}>{e}</li>)}</ul>
+                      ) : hallazgo.criterioIncumplido ? (
+                        <p className="text-gray-600">{hallazgo.criterioIncumplido}</p>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <span className="font-medium text-gray-700">Recomendaciones:</span>
-                    <ul className="list-disc list-inside text-gray-600 mt-1">
-                      {hallazgo.recomendaciones.map((r, i) => <li key={i}>{r}</li>)}
-                    </ul>
+                    <div className="text-gray-600 mt-1">
+                      {hallazgo.recomendaciones?.length ? (
+                        <ul className="list-disc list-inside">{hallazgo.recomendaciones.map((r, i) => <li key={i}>{r}</li>)}</ul>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -579,58 +838,169 @@ const SeccionInformePreliminar: React.FC<{
         </div>
       </CardSIGL>
 
-      {/* Observaciones Generales */}
-      <CardSIGL>
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Observaciones Generales del Auditor</h3>
-          <TextareaSIGL
-            value={informe.observaciones}
-            onChange={(e) => setInforme(prev => ({ ...prev, observaciones: e.target.value }))}
-            placeholder="Ingrese las observaciones generales que se incluirán en el informe preliminar..."
-            rows={6}
-            disabled={informe.generado}
-          />
-          
-          {informe.generado && (
-            <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
-              <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
-              <div>
-                <p className="font-medium text-green-900">Informe Preliminar Generado</p>
-                <p className="text-sm text-green-700">Fecha: {new Date(informe.fecha).toLocaleDateString()}</p>
-              </div>
+      {informe.generado && (
+        <CardSIGL className={embedded ? '!border !border-green-200 !shadow-none' : ''}>
+          <div className={`${embedded ? 'p-4' : 'p-6'} bg-green-50/50 border border-green-200 rounded-lg`}>
+            <div className="flex flex-wrap gap-2">
+              <span className="px-2 py-1 bg-green-200 text-green-800 rounded text-sm">{informe.hallazgos} hallazgos incluidos</span>
+              <span className="px-2 py-1 bg-green-200 text-green-800 rounded text-sm">Área auditada notificada</span>
+              <span className="px-2 py-1 bg-amber-200 text-amber-800 rounded text-sm">Período de controversias cerrado</span>
             </div>
-          )}
-        </div>
-      </CardSIGL>
+          </div>
+        </CardSIGL>
+      )}
 
       {/* Acciones */}
-      <div className="flex items-center justify-between gap-4">
-        <ButtonSIGL variant="default" onClick={onPreview} disabled={!informe.generado}>
-          <Eye className="w-4 h-4" />
+      <div className="flex flex-wrap gap-3 justify-end">
+        <Button variant="outline" size="sm" onClick={onPreview} disabled={!informe.generado} className="font-medium">
+          <Eye className="w-4 h-4 mr-2" />
           Vista Previa
-        </ButtonSIGL>
-
-        <div className="flex gap-3">
-          <ButtonSIGL variant="default" disabled={!informe.generado}>
-            <Download className="w-4 h-4" />
-            Descargar PDF
-          </ButtonSIGL>
-          <ButtonSIGL 
-            variant="primary" 
+        </Button>
+        <Button variant="outline" size="sm" disabled={!informe.generado} className="font-medium">
+          <Download className="w-4 h-4 mr-2" />
+          Descargar PDF
+        </Button>
+        {!informe.generado && (
+          <Button
+            size="sm"
             onClick={onGenerar}
-            disabled={informe.generado || !informe.observaciones.trim()}
+            disabled={!puedeGenerar || loading}
+            className="font-medium bg-green-600 hover:bg-green-700 text-white"
           >
-            <FileText className="w-4 h-4" />
-            {informe.generado ? 'Ya Generado' : 'Generar Informe Preliminar'}
-          </ButtonSIGL>
-        </div>
+            <FileText className="w-4 h-4 mr-2" />
+            Generar Informe Preliminar y Notificar al Área
+          </Button>
+        )}
       </div>
     </div>
   );
 };
 
 // ====================================
-// SECCIÓN 2: CONTROVERSIAS
+// SECCIÓN 2: GESTIÓN DE HALLAZGOS - ÁREA AUDITADA
+// ====================================
+
+const SeccionGestionHallazgos: React.FC<{
+  auditoria: Auditoria;
+  hallazgos: Hallazgo[];
+  estadoComunicacion: { conteo?: { pendiente: number; aceptado: number; enControversia: number } } | null;
+  onAceptar: (id: string) => void;
+  onPresentarControversia: (hallazgoId: string) => void;
+  onDecisionAuditor: (hallazgoId: string) => void;
+  onDecisionConfirmar: (hallazgoId: string, tipo: 'ratificado' | 'modificado' | 'retirado', fundamentacion: string) => void;
+  loading?: boolean;
+}> = ({ hallazgos, estadoComunicacion, onAceptar, onPresentarControversia, onDecisionAuditor, onDecisionConfirmar, loading }) => {
+  const conteo = estadoComunicacion?.conteo || { pendiente: 0, aceptado: 0, enControversia: 0 };
+  const pendientes = hallazgos.filter(h => h.estado === 'notificado');
+  const aceptados = hallazgos.filter(h => h.estado === 'aceptado');
+  const enControversia = hallazgos.filter(h => h.estado === 'en-controversia');
+  const conDecision = hallazgos.filter(h => ['ratificado', 'modificado', 'retirado'].includes(h.estado || ''));
+
+  return (
+    <div className="space-y-6">
+      <CardSIGL>
+        <div className="p-6 bg-gradient-to-r from-purple-50 to-blue-50">
+          <h3 className="font-semibold text-gray-900 mb-2">Gestión de Hallazgos — Área Auditada</h3>
+          <p className="text-sm text-gray-700 mb-4">
+            El área auditada debe responder cada hallazgo dentro del período de 10 días hábiles: aceptarlo o presentar controversia con argumento escrito y documento adjunto obligatorio.
+          </p>
+          <div className="flex gap-4 text-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-amber-400 rounded-full" />
+              <span className="text-gray-600">{pendientes.length} Pendiente</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-green-500 rounded-full" />
+              <span className="text-gray-600">{aceptados.length} Aceptado</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-orange-500 rounded-full" />
+              <span className="text-gray-600">{enControversia.length} En controversia</span>
+            </div>
+          </div>
+        </div>
+      </CardSIGL>
+
+      <div className="space-y-4">
+        {hallazgos.map((hallazgo) => {
+          const estado = hallazgo.estado || 'notificado';
+          const pendiente = estado === 'notificado';
+          const enControv = estado === 'en-controversia';
+          const conDec = ['ratificado', 'modificado', 'retirado'].includes(estado);
+
+          return (
+            <CardSIGL key={hallazgo.id}>
+              <div className="p-6">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <span className="text-sm font-medium text-gray-500">{hallazgo.codigo || hallazgo.id}</span>
+                    <h4 className="font-semibold text-gray-900 mt-1">{hallazgo.titulo || hallazgo.descripcion?.substring(0, 60)}</h4>
+                  </div>
+                  <BadgeSIGL variant={
+                    conDec ? (estado === 'retirado' ? 'success' : estado === 'ratificado' ? 'danger' : 'info') :
+                    enControv ? 'warning' : pendiente ? 'default' : 'success'
+                  }>
+                    {estado === 'notificado' ? 'Pendiente respuesta' : estado.replace('-', ' ')}
+                  </BadgeSIGL>
+                </div>
+                <p className="text-sm text-gray-600 mb-2">{hallazgo.descripcion}</p>
+                {hallazgo.criterioIncumplido && (
+                  <p className="text-xs text-gray-500">Criterio: {hallazgo.criterioIncumplido}</p>
+                )}
+
+                {pendiente && (
+                  <div className="flex gap-2 mt-4">
+                    <Button variant="outline" size="sm" className="border-green-600 text-green-700 hover:bg-green-50" onClick={() => onAceptar(hallazgo.id)} disabled={loading}>
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
+                      Aceptar hallazgo
+                    </Button>
+                    <Button variant="outline" size="sm" className="border-amber-500 text-amber-700 hover:bg-amber-50" onClick={() => onPresentarControversia(hallazgo.id)} disabled={loading}>
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      Presentar controversia
+                    </Button>
+                  </div>
+                )}
+
+                {enControv && !conDec && (
+                  <div className="mt-4">
+                    {hallazgo.argumentosControversia && (
+                      <div className="bg-amber-50 border border-amber-200 rounded p-3 mb-3">
+                        <p className="text-sm font-medium text-amber-800">Argumentos:</p>
+                        <p className="text-sm text-amber-900">{hallazgo.argumentosControversia}</p>
+                        {hallazgo.documentoControversiaNombre && (
+                          <p className="text-xs text-amber-700 mt-1">Doc: {hallazgo.documentoControversiaNombre}</p>
+                        )}
+                      </div>
+                    )}
+                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => onDecisionAuditor(hallazgo.id)} disabled={loading}>
+                      Decisión del auditor
+                    </Button>
+                  </div>
+                )}
+
+                {conDec && hallazgo.fundamentacionTecnica && (
+                  <div className={`mt-4 p-3 rounded border ${
+                    estado === 'ratificado' ? 'bg-red-50 border-red-200' :
+                    estado === 'retirado' ? 'bg-green-50 border-green-200' : 'bg-violet-50 border-violet-200'
+                  }`}>
+                    <p className="text-sm font-medium">Decisión: {estado}</p>
+                    <p className="text-sm mt-1">{hallazgo.fundamentacionTecnica}</p>
+                    {hallazgo.fechaDecision && (
+                      <p className="text-xs mt-1 opacity-75">{new Date(hallazgo.fechaDecision).toLocaleString()}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </CardSIGL>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ====================================
+// SECCIÓN 2 LEGACY: CONTROVERSIAS (referencia para Sección 3)
 // ====================================
 
 const SeccionControversias: React.FC<{
@@ -730,7 +1100,7 @@ const SeccionControversias: React.FC<{
                     <div className="space-y-3">
                       <TextareaSIGL
                         value={resolucion}
-                        onChange={(e) => setResolucion(e.target.value)}
+                        onChange={(val) => setResolucion(val)}
                         placeholder="Escriba la resolución de la controversia..."
                         rows={3}
                       />
@@ -842,39 +1212,71 @@ const SeccionControversias: React.FC<{
 };
 
 // ====================================
-// SECCIÓN 3: INFORME FINAL
+// SECCIÓN 3: DECISIÓN DEL AUDITOR / INFORME FINAL
 // ====================================
 
 const SeccionInformeFinal: React.FC<{
   auditoria: Auditoria;
-  controversias: Controversia[];
+  hallazgos?: Hallazgo[];
+  estadoComunicacion?: { hayControversiasPendientes?: boolean; puedeGenerarInformeFinal?: boolean } | null;
+  controversias?: Controversia[];
   informe: InformeFinal;
   setInforme: React.Dispatch<React.SetStateAction<InformeFinal>>;
   onGenerar: () => void;
   onPreview: () => void;
-}> = ({ auditoria, controversias, informe, setInforme, onGenerar, onPreview }) => {
+}> = ({ auditoria, hallazgos = [], estadoComunicacion, controversias = [], informe, setInforme, onGenerar, onPreview }) => {
+  const hayBloqueo = estadoComunicacion?.hayControversiasPendientes ?? (hallazgos.filter(h => h.estado === 'en-controversia').length > 0);
+  const enControversia = hallazgos.filter(h => h.estado === 'en-controversia').length;
   return (
     <div className="space-y-6">
-      {/* Resumen de Controversias */}
+      {/* Banner: Informe Final ya terminado */}
+      {informe.generado && (
+        <div className="p-4 bg-green-50 border-2 border-green-300 rounded-lg flex items-center gap-3">
+          <CheckCircle2 className="w-8 h-8 text-green-600 flex-shrink-0" />
+          <div>
+            <p className="font-bold text-green-900 text-lg">Informe Final ya terminado</p>
+            <p className="text-sm text-green-700">Aprobado como Jefe OCI. Plazo de Plan de Mejoramiento definido.</p>
+          </div>
+        </div>
+      )}
+
+      {/* BLOQUEO: No avanzar si hay controversias pendientes */}
+      {hayBloqueo && !informe.generado && (
+        <CardSIGL>
+          <div className="p-6 bg-red-50 border-2 border-red-200 rounded-lg">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-8 h-8 text-red-600 flex-shrink-0" />
+              <div>
+                <p className="font-bold text-red-900">No se puede avanzar al Informe Final</p>
+                <p className="text-sm text-red-700">
+                  Existen {enControversia} controversia(s) pendiente(s) de decisión del auditor.
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardSIGL>
+      )}
+
+      {/* Resumen */}
       <CardSIGL>
         <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Resultado de Controversias</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Resultado de Hallazgos</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
-              <div className="text-3xl font-bold text-blue-700 mb-1">{controversias.length}</div>
-              <div className="text-sm text-blue-600">Total Controversias</div>
+              <div className="text-3xl font-bold text-blue-700 mb-1">{hallazgos.length}</div>
+              <div className="text-sm text-blue-600">Total Hallazgos</div>
             </div>
             <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
               <div className="text-3xl font-bold text-green-700 mb-1">
-                {controversias.filter(c => c.estado === 'ACEPTADA').length}
+                {hallazgos.filter(h => h.estado === 'aceptado' || h.estado === 'retirado').length}
               </div>
-              <div className="text-sm text-green-600">Aceptadas</div>
+              <div className="text-sm text-green-600">Cerrados</div>
             </div>
-            <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg p-4 border border-red-200">
-              <div className="text-3xl font-bold text-red-700 mb-1">
-                {controversias.filter(c => c.estado === 'RECHAZADA').length}
+            <div className="bg-gradient-to-br from-violet-50 to-violet-100 rounded-lg p-4 border border-violet-200">
+              <div className="text-3xl font-bold text-violet-700 mb-1">
+                {hallazgos.filter(h => ['ratificado', 'modificado'].includes(h.estado || '')).length}
               </div>
-              <div className="text-sm text-red-600">Rechazadas</div>
+              <div className="text-sm text-violet-600">Ratificados/Modificados</div>
             </div>
           </div>
         </div>
@@ -889,31 +1291,31 @@ const SeccionInformeFinal: React.FC<{
               <AlertCircle className="w-5 h-5 text-purple-600" />
               <div>
                 <p className="font-medium text-purple-900">
-                  {auditoria.hallazgos.length - controversias.filter(c => c.estado === 'ACEPTADA').length} Hallazgos Definitivos
+                  {hallazgos.filter(h => h.estado !== 'retirado').length} Hallazgos Definitivos
                 </p>
                 <p className="text-sm text-purple-700">
-                  ({controversias.filter(c => c.estado === 'ACEPTADA').length} hallazgos eliminados por controversias aceptadas)
+                  ({hallazgos.filter(h => h.estado === 'retirado').length} retirados por decisión del auditor)
                 </p>
               </div>
             </div>
           </div>
 
           <div className="space-y-2">
-            {auditoria.hallazgos
-              .filter(h => !controversias.some(c => c.hallazgoId === h.id && c.estado === 'ACEPTADA'))
+            {hallazgos
+              .filter(h => h.estado !== 'retirado')
               .map((hallazgo, index) => (
                 <div key={hallazgo.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
                   <div className="flex items-center gap-3">
                     <div className="w-7 h-7 bg-white rounded-lg flex items-center justify-center text-sm font-semibold border border-gray-300">
                       {index + 1}
                     </div>
-                    <span className="font-medium text-gray-900">{hallazgo.titulo}</span>
+                    <span className="font-medium text-gray-900">{hallazgo.titulo || hallazgo.descripcion?.substring(0, 50)}</span>
                   </div>
                   <BadgeSIGL variant={
-                    hallazgo.gravedad === 'GRAVE' ? 'danger' :
-                    hallazgo.gravedad === 'MODERADO' ? 'warning' : 'info'
+                    (hallazgo.gravedad || '').toUpperCase() === 'GRAVE' || (hallazgo.gravedad || '').toUpperCase() === 'CRITICO' ? 'danger' :
+                    (hallazgo.gravedad || '').toUpperCase() === 'MODERADO' ? 'warning' : 'info'
                   }>
-                    {hallazgo.gravedad}
+                    {hallazgo.gravedad || 'N/A'}
                   </BadgeSIGL>
                 </div>
               ))}
@@ -933,7 +1335,7 @@ const SeccionInformeFinal: React.FC<{
               <InputSIGL
                 type="number"
                 value={informe.plazosPlanMejora}
-                onChange={(e) => setInforme(prev => ({ ...prev, plazosPlanMejora: e.target.value }))}
+                onChange={(val) => setInforme(prev => ({ ...prev, plazosPlanMejora: val }))}
                 min="15"
                 max="60"
                 disabled={informe.generado}
@@ -959,7 +1361,7 @@ const SeccionInformeFinal: React.FC<{
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Observaciones Finales</h3>
           <TextareaSIGL
             value={informe.observacionesFinales}
-            onChange={(e) => setInforme(prev => ({ ...prev, observacionesFinales: e.target.value }))}
+            onChange={(val) => setInforme(prev => ({ ...prev, observacionesFinales: val }))}
             placeholder="Ingrese las observaciones finales que se incluirán en el informe final..."
             rows={6}
             disabled={informe.generado}
@@ -978,257 +1380,233 @@ const SeccionInformeFinal: React.FC<{
       </CardSIGL>
 
       {/* Acciones */}
-      <div className="flex items-center justify-between gap-4">
-        <ButtonSIGL variant="default" onClick={onPreview} disabled={!informe.generado}>
-          <Eye className="w-4 h-4" />
+      <div className="flex flex-wrap gap-3 justify-end">
+        <Button variant="outline" size="sm" onClick={onPreview} disabled={!informe.generado} className="font-medium">
+          <Eye className="w-4 h-4 mr-2" />
           Vista Previa
-        </ButtonSIGL>
-
-        <div className="flex gap-3">
-          <ButtonSIGL variant="default" disabled={!informe.generado}>
-            <Download className="w-4 h-4" />
-            Descargar PDF
-          </ButtonSIGL>
-          <ButtonSIGL 
-            variant="primary" 
+        </Button>
+        <Button variant="outline" size="sm" disabled={!informe.generado} className="font-medium">
+          <Download className="w-4 h-4 mr-2" />
+          Descargar PDF
+        </Button>
+        {!informe.generado && (
+          <Button
+            size="sm"
             onClick={onGenerar}
-            disabled={informe.generado || !informe.observacionesFinales.trim()}
+            disabled={hayBloqueo || !informe.observacionesFinales?.trim()}
+            className="font-medium bg-green-600 hover:bg-green-700 text-white"
           >
-            <FileCheck className="w-4 h-4" />
-            {informe.generado ? 'Ya Generado' : 'Generar Informe Final'}
-          </ButtonSIGL>
-        </div>
+            <FileCheck className="w-4 h-4 mr-2" />
+            Generar Informe Final — Aprobar como Jefe OCI
+          </Button>
+        )}
       </div>
     </div>
   );
 };
 
 // ====================================
-// SECCIÓN 4: INFORME EJECUTIVO
+// SECCIÓN 4: PLAN DE MEJORAMIENTO
 // ====================================
+// Las acciones correctivas se definen en el Plan de Mejoramiento (módulo Planes),
+// no en el Informe Ejecutivo. Esta sección solo permite crear el plan con los
+// hallazgos de la auditoría para luego formular las acciones correctivas allí.
 
-const SeccionInformeEjecutivo: React.FC<{
+const SeccionPlanMejoramiento: React.FC<{
   auditoria: Auditoria;
-  informe: InformeEjecutivo;
-  setInforme: React.Dispatch<React.SetStateAction<InformeEjecutivo>>;
-  onGenerar: () => void;
-  onPreview: () => void;
-}> = ({ informe, setInforme, onGenerar, onPreview }) => {
-  const [nuevoPositivo, setNuevoPositivo] = useState('');
-  const [nuevaMejora, setNuevaMejora] = useState('');
-
+  planCreado: boolean;
+  planEstadisticas: { totalAcciones: number; accionesCompletadas: number; porcentajeAvance: number } | null;
+  planCompleto: boolean;
+  onCrearPlanMejoramiento: () => void;
+  hallazgosCount: number;
+  onIrAPlan: () => void;
+}> = ({ planCreado, planEstadisticas, planCompleto, onCrearPlanMejoramiento, hallazgosCount, onIrAPlan }) => {
   return (
     <div className="space-y-6">
-      {/* Resumen Ejecutivo */}
-      <CardSIGL>
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-purple-600" />
-            Resumen Ejecutivo
-          </h3>
-          <TextareaSIGL
-            value={informe.resumenEjecutivo}
-            onChange={(e) => setInforme(prev => ({ ...prev, resumenEjecutivo: e.target.value }))}
-            placeholder="Escriba un resumen ejecutivo de máximo 500 palabras dirigido a la alta dirección..."
-            rows={6}
-            disabled={informe.generado}
-          />
-          <p className="text-xs text-gray-500 mt-2">
-            {informe.resumenEjecutivo.length} caracteres • Recomendado: 300-500 palabras
-          </p>
-        </div>
-      </CardSIGL>
-
-      {/* Aspectos Positivos */}
-      <CardSIGL>
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-green-600" />
-            Aspectos Positivos Identificados
-          </h3>
-
-          {!informe.generado && (
-            <div className="flex gap-2 mb-4">
-              <InputSIGL
-                value={nuevoPositivo}
-                onChange={(e) => setNuevoPositivo(e.target.value)}
-                placeholder="Agregar aspecto positivo..."
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' && nuevoPositivo.trim()) {
-                    setInforme(prev => ({
-                      ...prev,
-                      aspectosPositivos: [...prev.aspectosPositivos, nuevoPositivo.trim()]
-                    }));
-                    setNuevoPositivo('');
-                  }
-                }}
-              />
-              <ButtonSIGL
-                variant="success"
-                onClick={() => {
-                  if (nuevoPositivo.trim()) {
-                    setInforme(prev => ({
-                      ...prev,
-                      aspectosPositivos: [...prev.aspectosPositivos, nuevoPositivo.trim()]
-                    }));
-                    setNuevoPositivo('');
-                  }
-                }}
-              >
-                Agregar
-              </ButtonSIGL>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            {informe.aspectosPositivos.map((aspecto, index) => (
-              <div key={index} className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                <span className="flex-1 text-gray-900">{aspecto}</span>
-                {!informe.generado && (
-                  <button
-                    onClick={() => setInforme(prev => ({
-                      ...prev,
-                      aspectosPositivos: prev.aspectosPositivos.filter((_, i) => i !== index)
-                    }))}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            ))}
+      {planCreado ? (
+        <div className={`p-6 rounded-lg flex items-center gap-4 border-2 ${planCompleto ? 'bg-green-50 border-green-300' : 'bg-amber-50 border-amber-300'}`}>
+          <div className="relative w-20 h-20 flex-shrink-0 flex items-center justify-center rounded-full bg-white border-2 border-gray-200">
+            <span className={`text-xl font-bold ${planCompleto ? 'text-green-600' : 'text-amber-600'}`}>
+              {planEstadisticas?.porcentajeAvance ?? 0}%
+            </span>
           </div>
-
-          {informe.aspectosPositivos.length === 0 && (
-            <p className="text-sm text-gray-500 text-center py-4">
-              No hay aspectos positivos agregados. Agregue al menos uno.
+          <div className="flex-1">
+            <p className={`font-bold text-lg ${planCompleto ? 'text-green-900' : 'text-amber-900'}`}>
+              Plan de Mejoramiento creado
             </p>
-          )}
-        </div>
-      </CardSIGL>
-
-      {/* Oportunidades de Mejora */}
-      <CardSIGL>
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-blue-600" />
-            Oportunidades de Mejora
-          </h3>
-
-          {!informe.generado && (
-            <div className="flex gap-2 mb-4">
-              <InputSIGL
-                value={nuevaMejora}
-                onChange={(e) => setNuevaMejora(e.target.value)}
-                placeholder="Agregar oportunidad de mejora..."
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' && nuevaMejora.trim()) {
-                    setInforme(prev => ({
-                      ...prev,
-                      oportunidadesMejora: [...prev.oportunidadesMejora, nuevaMejora.trim()]
-                    }));
-                    setNuevaMejora('');
-                  }
-                }}
-              />
-              <ButtonSIGL
-                variant="primary"
-                onClick={() => {
-                  if (nuevaMejora.trim()) {
-                    setInforme(prev => ({
-                      ...prev,
-                      oportunidadesMejora: [...prev.oportunidadesMejora, nuevaMejora.trim()]
-                    }));
-                    setNuevaMejora('');
-                  }
-                }}
-              >
-                Agregar
-              </ButtonSIGL>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            {informe.oportunidadesMejora.map((oportunidad, index) => (
-              <div key={index} className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <TrendingUp className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <span className="flex-1 text-gray-900">{oportunidad}</span>
-                {!informe.generado && (
-                  <button
-                    onClick={() => setInforme(prev => ({
-                      ...prev,
-                      oportunidadesMejora: prev.oportunidadesMejora.filter((_, i) => i !== index)
-                    }))}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            ))}
+            <p className="text-sm text-gray-700 mt-1">
+              {planEstadisticas
+                ? `${planEstadisticas.accionesCompletadas}/${planEstadisticas.totalAcciones} acciones completadas. `
+                : ''}
+              {planCompleto
+                ? 'El plan cumple los requisitos. Puede finalizar la comunicación y pasar a Seguimiento.'
+                : 'Complete al menos una acción correctiva en el módulo de Planes de Mejoramiento para poder finalizar.'}
+            </p>
+            <Button variant="outline" size="sm" onClick={onIrAPlan} className="mt-3">
+              <ChevronRight className="w-4 h-4 mr-2" />
+              Ir a ver plan
+            </Button>
           </div>
-
-          {informe.oportunidadesMejora.length === 0 && (
-            <p className="text-sm text-gray-500 text-center py-4">
-              No hay oportunidades de mejora agregadas. Agregue al menos una.
+        </div>
+      ) : (
+        <CardSIGL>
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <Target className="w-5 h-5 text-amber-600" />
+              Crear Plan de Mejoramiento
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Con los hallazgos de esta auditoría debe crear un Plan de Mejoramiento. Las <strong>acciones correctivas</strong> para cada hallazgo se formularán en el módulo de Planes, no en el Informe Ejecutivo.
             </p>
-          )}
-        </div>
-      </CardSIGL>
-
-      {/* Conclusiones */}
-      <CardSIGL>
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Conclusiones Generales</h3>
-          <TextareaSIGL
-            value={informe.conclusiones}
-            onChange={(e) => setInforme(prev => ({ ...prev, conclusiones: e.target.value }))}
-            placeholder="Escriba las conclusiones generales de la auditoría..."
-            rows={5}
-            disabled={informe.generado}
-          />
-
-          {informe.generado && (
-            <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
-              <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
-              <div>
-                <p className="font-medium text-green-900">Informe Ejecutivo Generado</p>
-                <p className="text-sm text-green-700">Fecha: {new Date(informe.fecha).toLocaleDateString()}</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </CardSIGL>
-
-      {/* Acciones */}
-      <div className="flex items-center justify-between gap-4">
-        <ButtonSIGL variant="default" onClick={onPreview} disabled={!informe.generado}>
-          <Eye className="w-4 h-4" />
-          Vista Previa
-        </ButtonSIGL>
-
-        <div className="flex gap-3">
-          <ButtonSIGL variant="default" disabled={!informe.generado}>
-            <Download className="w-4 h-4" />
-            Descargar PDF
-          </ButtonSIGL>
-          <ButtonSIGL 
-            variant="primary" 
-            onClick={onGenerar}
-            disabled={informe.generado}
-          >
-            <TrendingUp className="w-4 h-4" />
-            {informe.generado ? 'Ya Generado' : 'Generar Informe Ejecutivo'}
-          </ButtonSIGL>
-        </div>
-      </div>
+            {hallazgosCount > 0 ? (
+              <Button
+                onClick={onCrearPlanMejoramiento}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-medium"
+              >
+                <Target className="w-4 h-4 mr-2" />
+                Crear Plan de Mejoramiento ({hallazgosCount} hallazgos)
+              </Button>
+            ) : (
+              <p className="text-amber-700 text-sm">
+                No hay hallazgos vinculados a esta auditoría. Gestione los hallazgos en la sección anterior.
+              </p>
+            )}
+          </div>
+        </CardSIGL>
+      )}
     </div>
   );
 };
 
 // ====================================
-// MODAL: AGREGAR CONTROVERSIA
+// MODAL: PRESENTAR CONTROVERSIA (por hallazgo)
+// ====================================
+
+const ModalControversiaPorHallazgo: React.FC<{
+  hallazgo?: Hallazgo | null;
+  onClose: () => void;
+  onEnviar: (hallazgoId: string, argumentos: string, documentoId: string, documentoNombre: string) => void;
+}> = ({ hallazgo, onClose, onEnviar }) => {
+  const [argumentos, setArgumentos] = useState('');
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [subiendo, setSubiendo] = useState(false);
+
+  const handleEnviar = async () => {
+    if (!hallazgo) return;
+    if (!argumentos.trim()) {
+      toast.error('Los argumentos técnicos son obligatorios');
+      return;
+    }
+    if (!archivo) {
+      toast.error('El documento adjunto es obligatorio (PDF, DOCX, JPG)');
+      return;
+    }
+    setSubiendo(true);
+    try {
+      const doc = await controlInternoService.createDocumento(archivo, {
+        nombre: `Controversia - ${hallazgo.codigo || hallazgo.id}`,
+        tipoDocumento: 'evidencia_controversia',
+        etapa: 'comunicacion',
+        hallazgoId: hallazgo.id,
+        auditoriaId: (hallazgo as any).auditoriaId,
+      });
+      onEnviar(hallazgo.id, argumentos, doc.id, doc.nombreArchivo || archivo.name);
+      onClose();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al subir documento');
+    } finally {
+      setSubiendo(false);
+    }
+  };
+
+  if (!hallazgo) return null;
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md w-[95vw]">
+        <DialogHeader className="border-b pb-3">
+          <DialogTitle className="text-base font-semibold flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-amber-600" />
+            Presentar controversia
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <p className="text-sm text-gray-600 line-clamp-2">{hallazgo.titulo || hallazgo.descripcion}</p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Argumentos técnicos y normativa aplicable *</label>
+            <TextareaSIGL value={argumentos} onChange={(val) => setArgumentos(val)} rows={4} placeholder="Describa los argumentos..." />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Documento de soporte (adjunto obligatorio) *</label>
+            <input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg" onChange={(e) => setArchivo(e.target.files?.[0] || null)} className="block w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-green-500 focus:border-green-500" />
+            <p className="text-xs text-gray-500 mt-1">PDF, DOCX o JPG</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-3">
+            <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={handleEnviar} disabled={subiendo}>
+              {subiendo ? 'Enviando...' : 'Enviar controversia'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// ====================================
+// MODAL: DECISIÓN DEL AUDITOR
+// ====================================
+
+const ModalDecisionAuditor: React.FC<{
+  hallazgo?: Hallazgo | null;
+  onClose: () => void;
+  onConfirmar: (hallazgoId: string, tipo: 'ratificado' | 'modificado' | 'retirado', fundamentacion: string) => void;
+}> = ({ hallazgo, onClose, onConfirmar }) => {
+  const [tipo, setTipo] = useState<'ratificado' | 'modificado' | 'retirado'>('ratificado');
+  const [fundamentacion, setFundamentacion] = useState('');
+
+  const handleConfirmar = () => {
+    if (!hallazgo) return;
+    onConfirmar(hallazgo.id, tipo, fundamentacion);
+  };
+
+  if (!hallazgo) return null;
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Decisión del auditor</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <p className="text-sm text-gray-600">{hallazgo.titulo || hallazgo.descripcion}</p>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+            La decisión no puede modificarse una vez aplicada.
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de decisión *</label>
+            <select value={tipo} onChange={(e) => setTipo(e.target.value as any)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <option value="ratificado">Ratificado</option>
+              <option value="modificado">Modificado</option>
+              <option value="retirado">Retirado</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Fundamentación técnica *</label>
+            <TextareaSIGL value={fundamentacion} onChange={(val) => setFundamentacion(val)} rows={4} placeholder="Fundamentación..." />
+          </div>
+          <div className="flex justify-end gap-3 pt-4">
+            <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={handleConfirmar} disabled={!fundamentacion.trim()}>
+              Confirmar decisión
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// ====================================
+// MODAL: AGREGAR CONTROVERSIA (legacy)
 // ====================================
 
 const ModalAgregarControversia: React.FC<{
@@ -1301,7 +1679,7 @@ const ModalAgregarControversia: React.FC<{
           </label>
           <TextareaSIGL
             value={argumentos}
-            onChange={(e) => setArgumentos(e.target.value)}
+            onChange={(val) => setArgumentos(val)}
             placeholder="Describa los argumentos por los cuales el área no está de acuerdo con el hallazgo..."
             rows={5}
           />
@@ -1378,18 +1756,17 @@ const ModalPreviewInforme: React.FC<{
   informe: any;
   onClose: () => void;
 }> = ({ tipo, auditoria, informe, onClose }) => {
+  const titulo = tipo === 'preliminar' ? 'Informe Preliminar' : tipo === 'final' ? 'Informe Final' : 'Informe Ejecutivo';
   return (
-    <ModalSIGL
-      isOpen={true}
-      onClose={onClose}
-      title={`Vista Previa - ${
-        tipo === 'preliminar' ? 'Informe Preliminar' :
-        tipo === 'final' ? 'Informe Final' :
-        'Informe Ejecutivo'
-      }`}
-      size="large"
-    >
-      <div className="prose max-w-none">
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" size="lg">
+        <DialogHeader className="border-b pb-3">
+          <DialogTitle className="text-lg font-semibold flex items-center gap-2">
+            <Eye className="w-5 h-5 text-green-600" />
+            Vista Previa - {titulo}
+          </DialogTitle>
+        </DialogHeader>
+      <div className="prose max-w-none pt-2">
         <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-lg mb-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
             ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP
@@ -1461,41 +1838,17 @@ const ModalPreviewInforme: React.FC<{
           </>
         )}
 
-        {tipo === 'ejecutivo' && (
-          <>
-            <h4 className="text-lg font-bold text-gray-900 mb-3">Resumen Ejecutivo</h4>
-            <p className="text-gray-700 whitespace-pre-wrap mb-6">{informe.resumenEjecutivo}</p>
-
-            <h4 className="text-lg font-bold text-gray-900 mb-3">Aspectos Positivos</h4>
-            <ul className="list-disc list-inside text-gray-700 mb-6 space-y-1">
-              {informe.aspectosPositivos.map((aspecto: string, i: number) => (
-                <li key={i}>{aspecto}</li>
-              ))}
-            </ul>
-
-            <h4 className="text-lg font-bold text-gray-900 mb-3">Oportunidades de Mejora</h4>
-            <ul className="list-disc list-inside text-gray-700 mb-6 space-y-1">
-              {informe.oportunidadesMejora.map((oportunidad: string, i: number) => (
-                <li key={i}>{oportunidad}</li>
-              ))}
-            </ul>
-
-            <h4 className="text-lg font-bold text-gray-900 mb-3">Conclusiones</h4>
-            <p className="text-gray-700 whitespace-pre-wrap">{informe.conclusiones}</p>
-          </>
-        )}
       </div>
 
       <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-        <ButtonSIGL variant="default" onClick={onClose}>
-          Cerrar
-        </ButtonSIGL>
-        <ButtonSIGL variant="primary">
-          <Download className="w-4 h-4" />
+        <Button variant="outline" size="sm" onClick={onClose}>Cerrar</Button>
+        <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+          <Download className="w-4 h-4 mr-2" />
           Descargar PDF
-        </ButtonSIGL>
+        </Button>
       </div>
-    </ModalSIGL>
+    </DialogContent>
+    </Dialog>
   );
 };
 

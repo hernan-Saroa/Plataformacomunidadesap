@@ -5,8 +5,8 @@
  */
 
 import { useState } from 'react';
-import { Search, Plus, Filter, MoreVertical, DollarSign, Calendar, User, Eye, CreditCard, MessageSquare, Scale, Download, FileText, RefreshCw, Folder } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { Search, Plus, Filter, MoreVertical, DollarSign, Calendar, User, Eye, CreditCard, MessageSquare, Scale, Download, FileText, RefreshCw, Folder, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
 import { ModalVerExpedienteCoactivo } from './procesos-coactivos/ModalVerExpedienteCoactivo';
 import { ModalGestionarPagos } from './procesos-coactivos/ModalGestionarPagos';
 import { ModalGenerarActoAdministrativo } from './procesos-coactivos/ModalGenerarActoAdministrativo';
@@ -31,11 +31,13 @@ interface ProcesoCoactivo {
     direccion: string;
   };
   responsable: string;
-  etapa: 'IDENTIFICADO' | 'PERSUASIVO' | 'PREJUDICIAL' | 'MANDAMIENTO';
+  etapa: 'PERSUASIVA' | 'COACTIVA' | 'MEDIDAS_CAUTELARES' | 'EXCEPCIONES' | 'LIQUIDACION';
   fechaInicio: Date;
   fechaLimite: Date;
   diasRestantes: number;
-  valorDeuda: number;
+  capital: number;
+  intereses: number;
+  costas: number;
   valorTotal: number;
   valorPagado: number;
   ultimaActuacion: string;
@@ -63,6 +65,7 @@ interface ProcesoCoactivo {
     fecha: Date;
     url: string;
   }[];
+  fechaEjecutoria?: Date;
 }
 
 export function ProcesosCoactivosView() {
@@ -87,14 +90,16 @@ export function ProcesosCoactivosView() {
         direccion: 'Calle 123 # 45-67, Bogotá'
       },
       responsable: 'Dra. Laura Sánchez',
-      etapa: 'PERSUASIVO',
+      etapa: 'PERSUASIVA',
       fechaInicio: new Date('2025-01-15'),
       fechaLimite: new Date('2025-03-15'),
       diasRestantes: 45,
-      valorDeuda: 5500000,
+      capital: 5000000,
+      intereses: 500000,
+      costas: 550000,
       valorTotal: 6050000,
       valorPagado: 0,
-      ultimaActuacion: 'Proceso en etapa de PERSUASIVO',
+      ultimaActuacion: 'Proceso en etapa PERSUASIVA',
       fechaUltimaActuacion: new Date('2025-01-15'),
       obligaciones: [
         { concepto: 'Matrícula 2024-2', valor: 3500000, periodo: '2024-2' }
@@ -115,7 +120,8 @@ export function ProcesosCoactivosView() {
           fecha: new Date('2025-01-15'),
           url: '#'
         }
-      ]
+      ],
+      fechaEjecutoria: new Date('2021-05-15')
     }
   ]);
 
@@ -129,10 +135,11 @@ export function ProcesosCoactivosView() {
 
   const getEtapaColor = (etapa: string) => {
     switch (etapa) {
-      case 'IDENTIFICADO': return { bg: 'bg-gray-100', text: 'text-gray-800', border: 'border-gray-300' };
-      case 'PERSUASIVO': return { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300' };
-      case 'PREJUDICIAL': return { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300' };
-      case 'MANDAMIENTO': return { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300' };
+      case 'PERSUASIVA': return { bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-300' };
+      case 'COACTIVA': return { bg: 'bg-indigo-100', text: 'text-indigo-800', border: 'border-indigo-300' };
+      case 'MEDIDAS_CAUTELARES': return { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-300' };
+      case 'EXCEPCIONES': return { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300' };
+      case 'LIQUIDACION': return { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300' };
       default: return { bg: 'bg-gray-100', text: 'text-gray-800', border: 'border-gray-300' };
     }
   };
@@ -222,17 +229,19 @@ export function ProcesosCoactivosView() {
 
   // Agrupar por etapa
   const procesosPorEtapa = {
-    IDENTIFICADO: procesosFiltrados.filter(p => p.etapa === 'IDENTIFICADO'),
-    PERSUASIVO: procesosFiltrados.filter(p => p.etapa === 'PERSUASIVO'),
-    PREJUDICIAL: procesosFiltrados.filter(p => p.etapa === 'PREJUDICIAL'),
-    MANDAMIENTO: procesosFiltrados.filter(p => p.etapa === 'MANDAMIENTO')
+    PERSUASIVA: procesosFiltrados.filter(p => p.etapa === 'PERSUASIVA'),
+    COACTIVA: procesosFiltrados.filter(p => p.etapa === 'COACTIVA'),
+    MEDIDAS_CAUTELARES: procesosFiltrados.filter(p => p.etapa === 'MEDIDAS_CAUTELARES'),
+    EXCEPCIONES: procesosFiltrados.filter(p => p.etapa === 'EXCEPCIONES'),
+    LIQUIDACION: procesosFiltrados.filter(p => p.etapa === 'LIQUIDACION')
   };
 
   const etapas = [
-    { key: 'IDENTIFICADO', label: 'Identificado', icon: '📋', count: procesosPorEtapa.IDENTIFICADO.length },
-    { key: 'PERSUASIVO', label: 'Persuasivo', icon: '⚠️', count: procesosPorEtapa.PERSUASIVO.length },
-    { key: 'PREJUDICIAL', label: 'Prejudicial', icon: '📢', count: procesosPorEtapa.PREJUDICIAL.length },
-    { key: 'MANDAMIENTO', label: 'Mandamiento', icon: '⚖️', count: procesosPorEtapa.MANDAMIENTO.length }
+    { key: 'PERSUASIVA', label: 'Persuasiva', icon: '⚠️', count: procesosPorEtapa.PERSUASIVA.length },
+    { key: 'COACTIVA', label: 'Coactiva', icon: '⚖️', count: procesosPorEtapa.COACTIVA.length },
+    { key: 'MEDIDAS_CAUTELARES', label: 'Med. Cautelares', icon: '🔒', count: procesosPorEtapa.MEDIDAS_CAUTELARES.length },
+    { key: 'EXCEPCIONES', label: 'Excepciones', icon: '🛡️', count: procesosPorEtapa.EXCEPCIONES.length },
+    { key: 'LIQUIDACION', label: 'Liquidación', icon: '💰', count: procesosPorEtapa.LIQUIDACION.length }
   ];
 
   return (
@@ -318,6 +327,13 @@ export function ProcesosCoactivosView() {
                       const saldoPendiente = proceso.valorTotal - proceso.valorPagado;
                       const porcentajePagado = (proceso.valorPagado / proceso.valorTotal) * 100;
 
+                      // Calculo de Prescripción (5 años = 1825 días)
+                      const diasDesdeEjecutoria = proceso.fechaEjecutoria
+                        ? Math.max(0, Math.floor((new Date().getTime() - proceso.fechaEjecutoria.getTime()) / (1000 * 60 * 60 * 24)))
+                        : 0;
+                      const diasParaPrescripcion = 1825 - diasDesdeEjecutoria;
+                      const prescripcionEnRiesgo = proceso.fechaEjecutoria && diasParaPrescripcion <= 180;
+
                       return (
                         <div
                           key={proceso.id}
@@ -326,9 +342,16 @@ export function ProcesosCoactivosView() {
                           {/* Header de tarjeta */}
                           <div className="flex items-start justify-between mb-3">
                             <div className="flex-1">
-                              <p className="text-xs font-bold text-blue-600 mb-1">
-                                {proceso.id}
-                              </p>
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="text-xs font-bold text-blue-600">
+                                  {proceso.id}
+                                </p>
+                                {proceso.fechaEjecutoria && prescripcionEnRiesgo && (
+                                  <span title={`Riesgo de prescripción: ${diasParaPrescripcion} días restantes`}>
+                                    <AlertTriangle className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-sm font-bold text-gray-900">
                                 {proceso.deudor.tipo === 'PERSONA' ? '👤' : '🏢'} {proceso.deudor.nombre}
                               </p>
@@ -336,11 +359,11 @@ export function ProcesosCoactivosView() {
                                 📄 {proceso.deudor.documento}
                               </p>
                             </div>
-                            
+
                             {/* Menú de tres puntos */}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <button 
+                                <button
                                   className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
                                   onClick={(e) => e.stopPropagation()}
                                 >
@@ -435,13 +458,12 @@ export function ProcesosCoactivosView() {
                           </div>
 
                           {/* Última actuación */}
-                          <div className={`px-3 py-2 rounded-lg text-xs mb-3 ${
-                            proceso.diasRestantes < 0
-                              ? 'bg-red-50 border border-red-200 text-red-700'
-                              : proceso.diasRestantes <= 10
+                          <div className={`px-3 py-2 rounded-lg text-xs mb-3 ${proceso.diasRestantes < 0
+                            ? 'bg-red-50 border border-red-200 text-red-700'
+                            : proceso.diasRestantes <= 10
                               ? 'bg-yellow-50 border border-yellow-200 text-yellow-700'
                               : 'bg-green-50 border border-green-200 text-green-700'
-                          }`}>
+                            }`}>
                             <p className="font-bold">• {proceso.ultimaActuacion}</p>
                             <p className="mt-1">
                               📅 {proceso.fechaUltimaActuacion.toLocaleDateString('es-CO')}
@@ -506,6 +528,9 @@ export function ProcesosCoactivosView() {
             proceso={{
               id: procesoSeleccionado.id,
               deudor: procesoSeleccionado.deudor.nombre,
+              capital: procesoSeleccionado.capital,
+              intereses: procesoSeleccionado.intereses,
+              costas: procesoSeleccionado.costas,
               valorTotal: procesoSeleccionado.valorTotal,
               etapa: procesoSeleccionado.etapa
             }}

@@ -53,7 +53,7 @@ interface ProcesoCoactivo {
     valorPagado: number;
     saldoPendiente: number;
   };
-  estado: 'IDENTIFICADO' | 'PERSUASIVO' | 'PREJURIDICO' | 'MANDAMIENTO' | 'EMBARGO' | 'FINALIZADO';
+  estado: 'PERSUASIVA' | 'COACTIVA' | 'MEDIDAS_CAUTELARES' | 'EXCEPCIONES' | 'LIQUIDACION';
   fechaCreacion: Date;
   ultimaActuacion: Date;
   responsable: string;
@@ -65,6 +65,7 @@ interface ProcesoCoactivo {
   fechaArchivo?: Date;
   usuarioArchivo?: string;
   motivoArchivo?: string;
+  fechaEjecutoria?: Date;
 }
 
 // Función helper para mapear datos del API al formato del componente
@@ -101,7 +102,8 @@ const mapApiToLocal = (apiProceso: ProcesoCoactivoAPI): ProcesoCoactivo => {
     estadoArchivo: apiProceso.estadoArchivo,
     fechaArchivo: apiProceso.fechaArchivo ? new Date(apiProceso.fechaArchivo) : undefined,
     usuarioArchivo: apiProceso.usuarioArchivo,
-    motivoArchivo: apiProceso.motivoArchivo
+    motivoArchivo: apiProceso.motivoArchivo,
+    fechaEjecutoria: apiProceso.fechaEjecutoria ? new Date(apiProceso.fechaEjecutoria) : undefined
   };
 };
 
@@ -401,12 +403,11 @@ export function ModuloProcesosCoactivosV3() {
                   className="px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="TODOS">Todos los estados</option>
-                  <option value="IDENTIFICADO">Identificado</option>
-                  <option value="PERSUASIVO">Persuasivo</option>
-                  <option value="PREJURIDICO">Prejurídico</option>
-                  <option value="MANDAMIENTO">Mandamiento</option>
-                  <option value="EMBARGO">Embargo</option>
-                  <option value="FINALIZADO">Finalizado</option>
+                  <option value="PERSUASIVA">Persuasiva</option>
+                  <option value="COACTIVA">Coactiva</option>
+                  <option value="MEDIDAS_CAUTELARES">Medidas Cautelares</option>
+                  <option value="EXCEPCIONES">Excepciones</option>
+                  <option value="LIQUIDACION">Liquidación</option>
                 </select>
 
                 {/* Ordenamiento */}
@@ -592,18 +593,24 @@ function TarjetaProceso({
 }) {
   const getEstadoConfig = (estado: ProcesoCoactivo['estado']) => {
     const configs = {
-      IDENTIFICADO: { label: 'Identificado', color: 'bg-gray-100 text-gray-700 border-gray-300' },
-      PERSUASIVO: { label: 'Persuasivo', color: 'bg-amber-100 text-amber-700 border-amber-300' },
-      PREJURIDICO: { label: 'Prejurídico', color: 'bg-blue-100 text-blue-700 border-blue-300' },
-      MANDAMIENTO: { label: 'Mandamiento', color: 'bg-indigo-100 text-indigo-700 border-indigo-300' },
-      EMBARGO: { label: 'Embargo', color: 'bg-purple-100 text-purple-700 border-purple-300' },
-      FINALIZADO: { label: 'Finalizado', color: 'bg-green-100 text-green-700 border-green-300' }
+      PERSUASIVA: { label: 'Persuasiva', color: 'bg-amber-100 text-amber-700 border-amber-300' },
+      COACTIVA: { label: 'Coactiva', color: 'bg-indigo-100 text-indigo-700 border-indigo-300' },
+      MEDIDAS_CAUTELARES: { label: 'Med. Cautelares', color: 'bg-purple-100 text-purple-700 border-purple-300' },
+      EXCEPCIONES: { label: 'Excepciones', color: 'bg-red-100 text-red-700 border-red-300' },
+      LIQUIDACION: { label: 'Liquidación', color: 'bg-green-100 text-green-700 border-green-300' }
     };
-    return configs[estado];
+    return configs[estado] || { label: estado, color: 'bg-gray-100 text-gray-700 border-gray-300' };
   };
 
   const estadoConfig = getEstadoConfig(proceso.estado);
   const esCritico = proceso.obligacion.diasVencidos > 180;
+
+  // Calculo de Prescripción (5 años = 1825 días)
+  const diasDesdeEjecutoria = proceso.fechaEjecutoria
+    ? Math.max(0, Math.floor((new Date().getTime() - proceso.fechaEjecutoria.getTime()) / (1000 * 60 * 60 * 24)))
+    : 0;
+  const diasParaPrescripcion = 1825 - diasDesdeEjecutoria;
+  const prescripcionEnRiesgo = proceso.fechaEjecutoria && diasParaPrescripcion <= 180;
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow">
@@ -615,18 +622,26 @@ function TarjetaProceso({
               <h3 className="font-semibold text-gray-900 text-sm sm:text-base truncate">
                 {proceso.radicado}
               </h3>
-              {esCritico && (
-                <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+              {(esCritico || prescripcionEnRiesgo) && (
+                <span title={prescripcionEnRiesgo ? `Riesgo de prescripción: ${diasParaPrescripcion} días restantes` : 'Obligación crítica'}>
+                  <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                </span>
               )}
             </div>
             <p className="text-sm text-gray-600 mb-1">{proceso.deudor.nombre}</p>
             <p className="text-xs text-gray-500">CC: {proceso.deudor.identificacion}</p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${estadoConfig.color}`}>
               {estadoConfig.label}
             </span>
+            {proceso.fechaEjecutoria && (
+              <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${prescripcionEnRiesgo ? 'bg-red-100 text-red-700 border-red-300' : 'bg-gray-100 text-gray-700 border-gray-300'
+                }`} title={`Vence en: ${diasParaPrescripcion} días`}>
+                ⏱️ {diasParaPrescripcion}d para Prescribir
+              </span>
+            )}
           </div>
         </div>
 
@@ -782,7 +797,9 @@ function ModalNuevoProceso({
     fechaVencimiento: '',
     responsable: '',
     observaciones: '',
-    estado: 'IDENTIFICADO'
+    fechaEjecutoria: '',
+    tipoInteresAplicable: '',
+    estado: 'PERSUASIVA'
   });
   const [loading, setLoading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -856,6 +873,8 @@ function ModalNuevoProceso({
         fechaVencimiento: new Date(procesoEditar.obligacion.fechaVencimiento).toISOString().split('T')[0],
         responsable: procesoEditar.responsable,
         observaciones: procesoEditar.observaciones || '',
+        fechaEjecutoria: procesoEditar.fechaEjecutoria ? new Date(procesoEditar.fechaEjecutoria).toISOString().split('T')[0] : '',
+        tipoInteresAplicable: procesoEditar.tipoInteresAplicable || '',
         estado: procesoEditar.estado
       });
     } else {
@@ -870,7 +889,9 @@ function ModalNuevoProceso({
         fechaVencimiento: '',
         responsable: '',
         observaciones: '',
-        estado: 'IDENTIFICADO'
+        fechaEjecutoria: '',
+        tipoInteresAplicable: '',
+        estado: 'PERSUASIVA'
       });
     }
   }, [procesoEditar, isOpen]);
@@ -903,6 +924,8 @@ function ModalNuevoProceso({
           valor: parseFloat(formData.valor),
           fechaVencimiento: formData.fechaVencimiento
         },
+        fechaEjecutoria: formData.fechaEjecutoria || undefined,
+        tipoInteresAplicable: formData.tipoInteresAplicable || undefined,
         responsable: formData.responsable || undefined,
         observaciones: formData.observaciones || undefined,
         estado: formData.estado as any
@@ -1106,6 +1129,29 @@ function ModalNuevoProceso({
                   placeholder="Ej: Dra. María Fernández López"
                 />
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Fecha de Ejecutoria (Título)</label>
+                  <input
+                    type="date"
+                    value={formData.fechaEjecutoria}
+                    onChange={(e) => setFormData({ ...formData, fechaEjecutoria: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de Interés</label>
+                  <select
+                    value={formData.tipoInteresAplicable}
+                    onChange={(e) => setFormData({ ...formData, tipoInteresAplicable: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Seleccione interés...</option>
+                    <option value="USURA">Tasa de Usura Vigente</option>
+                    <option value="DIAN">Interés DIAN</option>
+                  </select>
+                </div>
+              </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Observaciones</label>
                 <textarea
@@ -1161,14 +1207,14 @@ function ModalDetalleProceso({
   isOpen: boolean;
   onClose: () => void;
 }) {
-  const estadoConfig = {
-    IDENTIFICADO: { label: 'Identificado', color: 'bg-gray-100 text-gray-700' },
-    PERSUASIVO: { label: 'Persuasivo', color: 'bg-amber-100 text-amber-700' },
-    PREJURIDICO: { label: 'Prejurídico', color: 'bg-blue-100 text-blue-700' },
-    MANDAMIENTO: { label: 'Mandamiento', color: 'bg-indigo-100 text-indigo-700' },
-    EMBARGO: { label: 'Embargo', color: 'bg-purple-100 text-purple-700' },
-    FINALIZADO: { label: 'Finalizado', color: 'bg-green-100 text-green-700' }
-  }[proceso.estado];
+  const configs = {
+    PERSUASIVA: { label: 'Persuasiva', color: 'bg-amber-100 text-amber-700' },
+    COACTIVA: { label: 'Coactiva', color: 'bg-indigo-100 text-indigo-700' },
+    MEDIDAS_CAUTELARES: { label: 'Med. Cautelares', color: 'bg-purple-100 text-purple-700' },
+    EXCEPCIONES: { label: 'Excepciones', color: 'bg-red-100 text-red-700' },
+    LIQUIDACION: { label: 'Liquidación', color: 'bg-green-100 text-green-700' }
+  };
+  const estadoConfig = configs[proceso.estado as keyof typeof configs] || { label: proceso.estado, color: 'bg-gray-100 text-gray-700' };
 
   if (!isOpen) return null;
 

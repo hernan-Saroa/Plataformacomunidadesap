@@ -108,20 +108,30 @@ function calcularDiasRestantes(fechaFin: string): number {
 /**
  * Transforma un plan del backend al formato del Kanban
  */
+function esAccionCompletada(estado: string): boolean {
+  const e = String(estado || '').toLowerCase();
+  return e === 'completada' || e === 'implementada' || e === 'completado' || e === 'implementado';
+}
+
 function transformarPlan(planBackend: any): PlanMejoramientoKanban {
   const diasRestantes = calcularDiasRestantes(planBackend.fechaFin || planBackend.fecha_fin);
-  const porcentajeAvance = planBackend.porcentajeAvance || planBackend.porcentaje_avance || 0;
   
   // Calcular acciones
   const acciones = planBackend.acciones || [];
-  const accionesCompletadas = acciones.filter((a: any) => 
-    a.estado === 'completada' || a.estado === 'implementada'
-  ).length;
-  const accionesEnProceso = acciones.filter((a: any) => 
-    a.estado === 'en_proceso' || a.estado === 'en_ejecucion'
-  ).length;
-  const accionesPendientes = acciones.filter((a: any) => 
-    a.estado === 'pendiente' || a.estado === 'sin_iniciar'
+  const accionesCompletadas = acciones.length > 0
+    ? acciones.filter((a: any) => esAccionCompletada(a.estado)).length
+    : (planBackend.accionesCompletadas ?? planBackend.acciones_completadas ?? 0);
+  const totalAccionesCalc = acciones.length || (planBackend.totalAcciones ?? planBackend.total_acciones ?? 0);
+  // Calcular porcentaje desde acciones; si no hay datos, usar el del backend
+  const porcentajeAvance = totalAccionesCalc > 0
+    ? Math.round((accionesCompletadas / totalAccionesCalc) * 100)
+    : (planBackend.porcentajeAvance ?? planBackend.porcentaje_avance ?? 0);
+  const accionesEnProceso = acciones.filter((a: any) => {
+    const e = String(a.estado || '').toLowerCase().replace(/-/g, '_');
+    return e === 'en_progreso' || e === 'en_proceso' || e === 'en_ejecucion';
+  }).length;
+  const accionesPendientes = acciones.filter((a: any) =>
+    ['pendiente', 'programada', 'sin_iniciar', 'sin iniciar'].includes(String(a.estado || '').toLowerCase())
   ).length;
 
   // Calcular hallazgos por gravedad
@@ -155,7 +165,7 @@ function transformarPlan(planBackend: any): PlanMejoramientoKanban {
     estado: mapearEstado(planBackend.estado),
     semaforo: (planBackend.semaforo as SemaforoPlan) || calcularSemaforo(porcentajeAvance, diasRestantes),
     totalHallazgos: hallazgos.length || planBackend.totalHallazgos || 0,
-    totalAcciones: acciones.length || planBackend.totalAcciones || 0,
+    totalAcciones: totalAccionesCalc,
     accionesCompletadas,
     accionesEnProceso,
     accionesPendientes,

@@ -151,9 +151,13 @@ export class CorreosJuridicosController {
         // Convert base64 to buffer
         const buffer = Buffer.from(attachment.contentBytes, 'base64');
 
-        // Set headers for file download
+        // Determinar si es un archivo visualizable en el navegador (PDF, imágenes)
+        const isViewable = attachment.contentType === 'application/pdf' || attachment.contentType.startsWith('image/');
+        const disposition = isViewable ? 'inline' : 'attachment';
+
+        // Set headers for file download/view
         res.setHeader('Content-Type', attachment.contentType);
-        res.setHeader('Content-Disposition', `attachment; filename="${attachment.name}"`);
+        res.setHeader('Content-Disposition', `${disposition}; filename="${attachment.name}"`);
         res.setHeader('Content-Length', buffer.length); // Use actual buffer length
 
         res.send(buffer);
@@ -175,7 +179,24 @@ export class CorreosJuridicosController {
             return res.status(HttpStatus.NOT_FOUND).json({ message: 'Attachment not found' });
         }
 
-        res.download(filepath);
+        const ext = path.extname(filename).toLowerCase();
+        const MIME_TYPES: Record<string, string> = {
+            '.pdf': 'application/pdf',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp'
+        };
+
+        const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+        const isViewable = contentType === 'application/pdf' || contentType.startsWith('image/');
+        const disposition = isViewable ? 'inline' : 'attachment';
+
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `${disposition}; filename="${filename}"`);
+        
+        res.sendFile(filepath);
     }
 
     /**
