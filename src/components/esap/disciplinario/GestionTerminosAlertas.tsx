@@ -231,7 +231,8 @@ const ALERTAS_MOCK: Alerta[] = [
 export function GestionTerminosAlertas() {
   const [terminos, setTerminos] = useState<Termino[]>(TERMINOS_MOCK);
   const [diasFestivos, setDiasFestivos] = useState<DiaFestivo[]>(DIAS_FESTIVOS_MOCK);
-  const [vistaActual, setVistaActual] = useState<'terminos' | 'calendario' | 'reglas' | 'historial'>('terminos');
+  // const [vistaActual, setVistaActual] = useState<'terminos' | 'calendario' | 'reglas' | 'historial'>('terminos');
+  const [vistaActual, setVistaActual] = useState<'terminos' | 'calendario' | 'historial'>('terminos');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterEstado, setFilterEstado] = useState<string>('all');
   const [showModalNuevoTermino, setShowModalNuevoTermino] = useState(false);
@@ -596,7 +597,7 @@ export function GestionTerminosAlertas() {
             {[
               { id: 'terminos', label: 'Términos', icon: <Clock className="w-4 h-4" />, count: terminos.length },
               { id: 'calendario', label: 'Festivos', icon: <Calendar className="w-4 h-4" />, count: diasFestivos.length },
-              { id: 'reglas', label: 'Reglas', icon: <Settings className="w-4 h-4" />, count: REGLAS_ALERTA_MOCK.length },
+              // { id: 'reglas', label: 'Reglas', icon: <Settings className="w-4 h-4" />, count: REGLAS_ALERTA_MOCK.length },
               { id: 'historial', label: 'Historial', icon: <Bell className="w-4 h-4" />, count: ALERTAS_MOCK.length }
             ].map((vista) => (
               <button
@@ -972,7 +973,7 @@ export function GestionTerminosAlertas() {
             </div>
           )}
 
-          {/* VISTA: REGLAS DE ALERTA */}
+          {/* VISTA: REGLAS DE ALERTA NO FUNCIONAL */}
           {vistaActual === 'reglas' && (
             <div className="space-y-4">
               {/* Información */}
