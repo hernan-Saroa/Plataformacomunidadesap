@@ -149,7 +149,6 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   const [formData, setFormData] = useState({
     origen: origenInicial,
     fechaQueja: (noticiaToEdit as any)?.fechaQueja || noticiaToEdit?.fechaRecepcion || new Date().toISOString().split('T')[0],
-    usarFechaActual: !noticiaToEdit,
     fechaHechos: noticiaToEdit?.fechaHechos || '',
     territorial: noticiaToEdit?.territorial || '',
     denunciado: {
@@ -717,47 +716,17 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Fecha de la Queja *
+                  Fecha *
                 </label>
-                <div className="space-y-3">
-                  <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50"
-                    style={{ borderColor: formData.usarFechaActual ? '#003DA5' : '#D1D5DB' }}
-                  >
-                    <input
-                      type="radio"
-                      checked={formData.usarFechaActual}
-                      onChange={() => {
-                        handleChange('usarFechaActual', true);
-                        handleChange('fechaQueja', new Date().toISOString().split('T')[0]);
-                      }}
-                    />
-                    <div>
-                      <p className="font-medium text-gray-900">Fecha actual (automática)</p>
-                      <p className="text-xs text-gray-500">El sistema registrará la fecha de hoy</p>
-                    </div>
-                  </label>
-
-                  <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50"
-                    style={{ borderColor: !formData.usarFechaActual ? '#003DA5' : '#D1D5DB' }}
-                  >
-                    <input
-                      type="radio"
-                      checked={!formData.usarFechaActual}
-                      onChange={() => handleChange('usarFechaActual', false)}
-                    />
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900 mb-2">Fecha específica</p>
-                      {!formData.usarFechaActual && (
-                        <input
-                          type="date"
-                          value={formData.fechaQueja}
-                          onChange={(e) => handleChange('fechaQueja', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      )}
-                    </div>
-                  </label>
-                </div>
+                <input
+                  type="date"
+                  value={formData.fechaQueja}
+                  onChange={(e) => handleChange('fechaQueja', e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Fecha de la queja o notificación
+                </p>
               </div>
 
               <div>
