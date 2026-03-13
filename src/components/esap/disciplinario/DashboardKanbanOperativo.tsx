@@ -3482,10 +3482,37 @@ export function DashboardKanbanOperativo({
     setModalActivo('devolver-competencia');
   };
 
-  const handleConfirmarDevolucionCompetencia = (datos: {
+  const handleConfirmarDevolucionCompetencia = async (datos: {
     entidadId: string; entidadNombre: string; entidadCorreo: string;
     tipoRemision: string; justificacion: string; fundamentoLegal: string; numeroRC: string;
   }) => {
+    // ✅ NUEVO: Llamar al backend API para remitir por competencia
+    const toastId = toast.loading('Remitiendo noticia por competencia...');
+    
+    try {
+      await disciplinaryService.remitirPorCompetencia({
+        newsId: itemSeleccionado.id,
+        emailDestinatario: datos.entidadCorreo,
+        entidadDestino: datos.entidadNombre,
+        justificacion: `${datos.numeroRC} — Tipo: ${datos.tipoRemision}. Fundamento: ${datos.fundamentoLegal || 'N/A'}. ${datos.justificacion}`,
+        usuarioRemision: 'Sistema'
+      });
+      
+      toast.success('Remitida por Competencia', {
+        id: toastId,
+        description: datos.entidadCorreo
+          ? `${itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}\nCorreo: ${datos.entidadCorreo}`
+          : `${itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}`,
+      });
+    } catch (error: any) {
+      console.error('Error al remitir por competencia:', error);
+      toast.error('Error al remitir', {
+        id: toastId,
+        description: error?.message || 'No se pudo completar la remisión'
+      });
+      // Continuar con la actualización local aunque haya error en el backend
+    }
+
     // Actualizar estado de la noticia a 'remitida' antes de eliminar
     setItems(prev => prev.map(item => {
       if (item.id === itemSeleccionado.id && item.tipo === 'noticia') {
@@ -3497,7 +3524,7 @@ export function DashboardKanbanOperativo({
             {
               fecha: new Date().toISOString(),
               accion: 'Remision por Competencia',
-              detalle: `${datos.numeroRC} — Remitida a: ${datos.entidadNombre}. Tipo: ${datos.tipoRemision}. Fundamento: ${datos.fundamentoLegal}. ${datos.justificacion}`,
+              detalle: `${datos.numeroRC} — Remitida a: ${datos.entidadNombre}. Tipo: ${datos.tipoRemision}. Fundamento: ${datos.fundamentoLegal || 'N/A'}. ${datos.justificacion}`,
               usuario: 'Usuario Actual',
             }
           ],
@@ -3509,11 +3536,6 @@ export function DashboardKanbanOperativo({
     setTimeout(() => {
       setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
     }, 100);
-    toast.success('Remitida por Competencia', {
-      description: datos.entidadCorreo
-        ? `${itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}\nCorreo: ${datos.entidadCorreo}`
-        : `${itemSeleccionado.numero} → ${datos.numeroRC}\nEntidad: ${datos.entidadNombre}`,
-    });
     setModalActivo(null);
     setItemSeleccionado(null);
   };
