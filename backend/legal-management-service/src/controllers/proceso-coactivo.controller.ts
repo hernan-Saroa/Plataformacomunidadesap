@@ -75,6 +75,22 @@ export class ProcesoCoactivoController {
         }
     }
 
+    @Get('pagos/soporte/:filename')
+    async getSoportePago(@Param('filename') filename: string, @Res() res: any) {
+        try {
+            const fileStream = await this.procesoCoactivoService.getSoportePagoStream(filename);
+            res.set({
+                'Content-Type': 'application/octet-stream',
+                'Content-Disposition': `attachment; filename="${filename}"`
+            });
+            fileStream.pipe(res);
+        } catch (error) {
+            console.error('Error descargando soporte:', error);
+            if (error instanceof HttpException) throw error;
+            throw new HttpException('Error al descargar archivo', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
     @Get(':id')
     async findOne(@Param('id') id: string) {
         try {
@@ -264,19 +280,4 @@ export class ProcesoCoactivoController {
         }
     }
 
-    @Get('pagos/soporte/:filename')
-    async getSoportePago(@Param('filename') filename: string, @Res() res: any) {
-        try {
-            const fileStream = await this.procesoCoactivoService.getSoportePagoStream(filename);
-            res.set({
-                'Content-Type': 'application/octet-stream',
-                'Content-Disposition': `attachment; filename="${filename}"`
-            });
-            fileStream.pipe(res);
-        } catch (error) {
-            console.error('Error descargando soporte:', error);
-            if (error instanceof HttpException) throw error;
-            throw new HttpException('Error al descargar archivo', HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
 }

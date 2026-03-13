@@ -154,6 +154,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const isLoadingCertificatesRef = useRef(false);
   const lastCertificatesLoadAtRef = useRef(0);
   const FOCUS_RELOAD_COOLDOWN_MS = 20000;
+  const QR_HISTORY_POLL_INTERVAL_MS = 7000;
   const [resendingCertificateId, setResendingCertificateId] = useState<string | null>(null);
   const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -244,6 +245,51 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       return (value as { data?: T[] }).data as T[];
     }
     return [];
+  };
+
+  const mapScanHistory = (
+    validations: ValidacionCertificado[]
+  ): CertificateRecord['scanHistory'] => {
+    return [...validations]
+      .sort((a, b) => {
+        const aTime = new Date(normalizeDate(a.validationDate)).getTime();
+        const bTime = new Date(normalizeDate(b.validationDate)).getTime();
+        return bTime - aTime;
+      })
+      .map((validation) => ({
+        id: validation.id,
+        scannedAt: normalizeDate(validation.validationDate),
+        ipAddress: validation.ipAddress || 'N/A',
+        location: validation.location || 'No disponible',
+        userAgent: validation.userAgent || 'No disponible',
+        verified: validation.result === 'VALID',
+      }));
+  };
+
+  const applyScanHistoryUpdate = (
+    certificate: CertificateRecord,
+    scanHistory: CertificateRecord['scanHistory']
+  ): CertificateRecord => {
+    const latestScan = scanHistory.length ? scanHistory[0].scannedAt : '';
+    const lastActivityCandidates = [
+      certificate.lastRequestedAt,
+      latestScan,
+      certificate.generatedAt,
+    ]
+      .filter(Boolean)
+      .map((value) => new Date(value).getTime())
+      .filter((time) => !Number.isNaN(time));
+
+    const lastActivity = lastActivityCandidates.length
+      ? new Date(Math.max(...lastActivityCandidates)).toISOString()
+      : certificate.lastActivity;
+
+    return {
+      ...certificate,
+      scanHistory,
+      qrScanCount: scanHistory.length,
+      lastActivity,
+    };
   };
 
   useEffect(() => {
@@ -343,14 +389,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           const firstRequestedAt = normalizedRequestDate || fallbackIssueDate;
           const lastRequestedAt = normalizedRequestDate || fallbackIssueDate;
 
-          const scanHistory = (validationsByCertificate.get(certificate.id) || []).map((validation) => ({
-            id: validation.id,
-            scannedAt: normalizeDate(validation.validationDate),
-            ipAddress: validation.ipAddress || 'N/A',
-            location: validation.location || 'No disponible',
-            userAgent: validation.userAgent || 'No disponible',
-            verified: validation.result === 'VALID',
-          }));
+          const scanHistory = mapScanHistory(
+            validationsByCertificate.get(certificate.id) || []
+          );
           const downloadCount = (downloadsByCertificate.get(certificate.id) || []).length;
 
           const lastScan = scanHistory.length
@@ -381,7 +422,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   : '')
               : '';
 
-          return {
+          const baseCertificate = {
             id: certificate.id,
             graduateId: certificate.graduateId,
             certificateNumber: certificate.certificateNumber,
@@ -424,7 +465,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             acceptedAt: normalizeDate(acceptedAtRaw),
             generatedBy: certificate.signerName || 'Registro Academico',
             requestCount: 1,
-            qrScanCount: scanHistory.length,
+            qrScanCount: 0,
             viewCount: 1,
             downloadCount,
             lastActivity,
@@ -438,8 +479,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   },
                 ]
               : [],
-            scanHistory,
+            scanHistory: [],
           } as CertificateRecord;
+
+          return applyScanHistoryUpdate(baseCertificate, scanHistory);
         });
 
       const getSortTime = (value?: string) => {
@@ -486,6 +529,68 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [loadCertificates]);
+
+  useEffect(() => {
+    if (!isQrModalOpen || !qrPreviewCertificate?.id) {
+      return;
+    }
+
+    let isMounted = true;
+    let syncing = false;
+    const certificateId = qrPreviewCertificate.id;
+
+    const syncQrHistory = async () => {
+      if (syncing) {
+        return;
+      }
+
+      syncing = true;
+      try {
+        const validationsResponse = await graduadosService.validaciones.listar(
+          certificateId
+        );
+        if (!isMounted) return;
+
+        const validationsData = ensureArray<ValidacionCertificado>(
+          validationsResponse
+        );
+        const updatedScanHistory = mapScanHistory(validationsData);
+
+        setQrPreviewCertificate((prev) => {
+          if (!prev || prev.id !== certificateId) {
+            return prev;
+          }
+          return applyScanHistoryUpdate(prev, updatedScanHistory);
+        });
+
+        setCertificates((prev) =>
+          prev.map((item) =>
+            item.id === certificateId
+              ? applyScanHistoryUpdate(item, updatedScanHistory)
+              : item
+          )
+        );
+      } catch (error) {
+        // Evitar ruido visual en UI; la siguiente iteración volverá a intentar.
+        console.warn(
+          'No se pudo actualizar el historial de validaciones en tiempo real:',
+          error
+        );
+      } finally {
+        syncing = false;
+      }
+    };
+
+    void syncQrHistory();
+    const intervalId = window.setInterval(() => {
+      void syncQrHistory();
+    }, QR_HISTORY_POLL_INTERVAL_MS);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [isQrModalOpen, qrPreviewCertificate?.id]);
 
   const handleOpenEditCertificate = async (cert: CertificateRecord) => {
     setSelectedCertificate(cert);
@@ -992,9 +1097,31 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       });
     } catch (error: any) {
       console.error('Error reenviando certificado:', error);
+      const status = error?.status ?? error?.response?.status;
+      const backendMessage = error?.response?.data?.message;
+      const rawMessage =
+        typeof error?.message === 'string' ? error.message.toLowerCase() : '';
+
+      const isGatewayEmpty400 =
+        status === 400 &&
+        (!backendMessage || !String(backendMessage).trim()) &&
+        (rawMessage.includes('sin detalles') ||
+          rawMessage.includes('error en la petición'));
+
+      if (isGatewayEmpty400) {
+        toast.success('Certificado reenviado', {
+          id: resendToastId,
+          description: `Se reenvio el certificado a ${cert.requester.email}`,
+        });
+        return;
+      }
+
       toast.error('No se pudo reenviar el certificado', {
         id: resendToastId,
-        description: error?.response?.data?.message || error?.message,
+        description:
+          backendMessage ||
+          error?.message ||
+          'Error enviando el certificado. Intenta nuevamente.',
       });
     } finally {
       setResendingCertificateId(null);

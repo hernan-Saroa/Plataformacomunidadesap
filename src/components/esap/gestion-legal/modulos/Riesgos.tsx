@@ -24,7 +24,8 @@ import {
   TrendingUp,
   TrendingDown,
   Circle,
-  Download
+  Download,
+  Archive
 } from 'lucide-react';
 import type { Riesgo, EtapaRiesgo } from '../core/types';
 import { toast } from 'sonner';
@@ -40,7 +41,7 @@ import { Permissions } from '../../../../enums/permissions';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
 import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
-type VistaModulo = 'matriz' | 'tabla';
+type VistaModulo = 'matriz' | 'tabla' | 'archivados';
 
 const ZONA_RIESGO_CONFIG = {
   EXTREMO: { color: '#DC2626', label: '🔴 Extremo', bg: '#FEE2E2', border: '#DC2626' },
@@ -368,7 +369,8 @@ export function Riesgos() {
           onChange: (view) => setVistaActual(view as VistaModulo),
           options: [
             { label: 'Matriz', icon: <Grid3x3 className="w-4 h-4" />, value: 'matriz' },
-            { label: 'Tabla', icon: <List className="w-4 h-4" />, value: 'tabla' }
+            { label: 'Tabla', icon: <List className="w-4 h-4" />, value: 'tabla' },
+            { label: 'Archivados', icon: <Archive className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
         buttons={addBtnsPermission()}
@@ -428,7 +430,9 @@ export function Riesgos() {
       />
 
       {/* Métricas */}
-      <ModuleMetrics
+      {vistaActual !== 'archivados' && (
+        <>
+          <ModuleMetrics
         metrics={[
           {
             label: 'Riesgos Activos',
@@ -498,11 +502,22 @@ export function Riesgos() {
           setFiltroTipo('TODOS');
         }}
       />
+        </>
+      )}
 
-      {vistaActual === 'matriz' ? (
+      {vistaActual === 'matriz' && (
         <MatrizRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalle} />
-      ) : (
+      )}
+      {vistaActual === 'tabla' && (
         <TablaRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalle} />
+      )}
+      {vistaActual === 'archivados' && (
+        <VistaArchivados
+          moduloNombre="Gestión de Riesgos"
+          items={itemsArchivados}
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
+        />
       )}
 
       {/* Modal Nuevo/Editar Riesgo */}
@@ -526,13 +541,7 @@ export function Riesgos() {
         onArchive={handleArchivarRiesgo}
       />
 
-      {/* Vista de Archivados */}
-      <VistaArchivados
-        moduloNombre="Gestión de Riesgos"
-        items={itemsArchivados}
-        onRestaurar={handleRestaurar}
-        onEliminarPermanente={handleEliminarPermanente}
-      />
+
     </div>
   );
 }
