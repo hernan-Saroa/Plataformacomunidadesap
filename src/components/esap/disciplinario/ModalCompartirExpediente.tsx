@@ -169,13 +169,44 @@ export function ModalCompartirExpediente({ expediente, onClose }: ModalCompartir
     if (!enlaceGenerado) return;
     
     try {
-      await navigator.clipboard.writeText(enlaceGenerado.url);
-      setLinkCopiado(true);
-      toast.success('Link copiado', {
-        description: 'El enlace ha sido copiado al portapapeles'
-      });
-      setTimeout(() => setLinkCopiado(false), 2000);
+      // Intentar usar la API del portapapeles
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(enlaceGenerado.url);
+        setLinkCopiado(true);
+        toast.success('Link copiado', {
+          description: 'El enlace ha sido copiado al portapapeles'
+        });
+        setTimeout(() => setLinkCopiado(false), 2000);
+      } else {
+        // Fallback para navegadores que no soportan la API o en contextos no seguros
+        // Crear un textarea temporal para copiar
+        const textArea = document.createElement('textarea');
+        textArea.value = enlaceGenerado.url;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        textArea.style.top = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+          document.execCommand('copy');
+          setLinkCopiado(true);
+          toast.success('Link copiado', {
+            description: 'El enlace ha sido copiado al portapapeles'
+          });
+          setTimeout(() => setLinkCopiado(false), 2000);
+        } catch (err) {
+          console.error('Fallback copy failed:', err);
+          toast.error('Error al copiar', {
+            description: 'No se pudo copiar el enlace. Por favor, copie manualmente.'
+          });
+        }
+        
+        document.body.removeChild(textArea);
+      }
     } catch (error) {
+      console.error('Error al copiar link:', error);
       toast.error('Error al copiar', {
         description: 'No se pudo copiar el enlace'
       });

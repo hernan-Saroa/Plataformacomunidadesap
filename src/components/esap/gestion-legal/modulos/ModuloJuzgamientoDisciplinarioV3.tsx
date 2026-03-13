@@ -280,13 +280,18 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const fetchProcesos = async () => {
     try {
       const data = await legalService.getJuzgamientoProcesos();
-      const mappedData = data.map((p: any) => ({
+      const mappedData = (Array.isArray(data) ? data : []).map((p: any) => ({
         ...p,
-        fechaHechos: new Date(), // Mock/Default
-        fechaUltimaActuacion: new Date(),
-        fechaActualizacion: new Date(),
-        diasTotales: 90, // Default constant
-        disciplinado: p.investigado, // Map backend 'investigado' to frontend 'disciplinado'
+        fechaHechos: p.fechaHechos ? new Date(p.fechaHechos) : new Date(),
+        fechaUltimaActuacion: p.fechaUltimaActuacion ? new Date(p.fechaUltimaActuacion) : new Date(),
+        fechaActualizacion: p.fechaActualizacion ? new Date(p.fechaActualizacion) : new Date(),
+        diasTotales: p.diasTotales || 90,
+        diasRestantes: p.diasRestantes ?? p.calculo?.diasRestantes ?? 0,
+        etapa: p.etapa || 'E1_AVOCAMIENTO',
+        investigado: p.investigado || p.nombreInvestigado || 'N/A',
+        disciplinado: p.investigado || p.disciplinado || 'N/A',
+        tipoFalta: p.tipoFalta || 'Sin clasificar',
+        cargo: p.cargo || '',
         ultimaActuacion: p.actuaciones && p.actuaciones.length > 0 ? p.actuaciones[0].descripcion : 'Inicio del proceso',
         documentosAdjuntos: p.documentos ? p.documentos.length : 0,
       }));

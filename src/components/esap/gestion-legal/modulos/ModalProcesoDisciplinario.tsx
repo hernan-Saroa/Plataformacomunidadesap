@@ -262,7 +262,8 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
       const regex = /\/adjuntos\/([^/]+)/;
       const match = archivoUrl.match(regex);
       if (match) {
-        const adjuntoId = match[1];
+        let adjuntoId = match[1];
+        if (adjuntoId.endsWith('/download')) adjuntoId = adjuntoId.replace('/download', '');
         // En gateway port 3000 NO lleva /legal sino /api/v1 directo
         const adjuntoPrefix = API_MODE === 'direct' ? '' : '/api/v1';
         return `${baseUrl}${adjuntoPrefix}/correos/adjuntos/${adjuntoId}/download`;

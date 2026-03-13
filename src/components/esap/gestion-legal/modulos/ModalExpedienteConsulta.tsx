@@ -39,6 +39,7 @@ import { ModalAgregarNota } from './ModalAgregarNota';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 interface ModalExpedienteConsultaProps {
   isOpen: boolean;
@@ -55,6 +56,10 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
   // Hook de confirmación personalizado
   const { confirm, ConfirmationComponent } = useConfirmation();
+
+  // Estado para visor de documentos inline
+  const [visorAbierto, setVisorAbierto] = useState(false);
+  const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string } | null>(null);
 
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
@@ -508,10 +513,12 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
     // ✨ FIXED: Rutas de adjuntos de correos/oficios (usar /api/v1 para que gateway rutee correctamente)
     if (url.includes('/correos/adjuntos/')) {
-      const regex = /\/adjuntos\/([^/]+)\//;
+      const regex = /\/adjuntos\/([^/]+)/;
       const match = url.match(regex);
       if (match) {
-        const adjuntoId = match[1];
+        let adjuntoId = match[1];
+        if (adjuntoId.endsWith('/download')) adjuntoId = adjuntoId.replace('/download', '');
+
         const adjuntoPrefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
         return `${baseUrl}${adjuntoPrefix}/correos/adjuntos/${adjuntoId}/download`;
       }
@@ -548,8 +555,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       return;
     }
     const fullUrl = getFullUrl(url);
-    window.open(fullUrl, '_blank');
-    toast.success('Documento abierto en nueva pestaña', { description: doc.nombre });
+    // Abrir en el visor inline en lugar de una nueva pestaña
+    setDocParaVisor({ url: fullUrl, nombre: doc.nombre || doc.archivoNombreOriginal || 'Documento', asunto: doc.tipoDocumento || '' });
+    setVisorAbierto(true);
   };
 
   /**
@@ -1634,6 +1642,17 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           if (onUpdate) onUpdate();
         }}
       />
+
+      {/* VISOR INLINE DE DOCUMENTOS */}
+      {docParaVisor && (
+        <VisorDocumentoModal
+          isOpen={visorAbierto}
+          onClose={() => { setVisorAbierto(false); setDocParaVisor(null); }}
+          archivo={docParaVisor.url}
+          numero={docParaVisor.nombre}
+          asunto={docParaVisor.asunto}
+        />
+      )}
     </>
   );
 }

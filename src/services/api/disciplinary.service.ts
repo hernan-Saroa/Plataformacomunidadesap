@@ -1096,7 +1096,15 @@ class DisciplinaryService {
         console.log('[DEBUG] Token available:', !!token);
         console.log('[DEBUG] Token prefix:', token?.substring(0, 20));
 
-        return apiClient.post<any>(`${SERVICE_PREFIX}/compartir-expediente/${procesoId}`, data);
+        // Obtener la URL base del frontend para generar enlaces correctos
+        // Esto asegura que la URL funcione en todos los ambientes (local, dev, qa, pre, prod)
+        const frontendBaseUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
+        console.log('[DEBUG] Frontend base URL:', frontendBaseUrl);
+
+        return apiClient.post<any>(`${SERVICE_PREFIX}/compartir-expediente/${procesoId}`, {
+            ...data,
+            frontendBaseUrl
+        });
     }
 
     /**

@@ -127,6 +127,11 @@ interface IntegracionContextType {
   
   navegarAFormulacion: boolean;
   setNavegarAFormulacion: (navegar: boolean) => void;
+
+  // Ir a ver plan existente (sin abrir modal de crear)
+  auditoriaIdParaVerPlan: string | null;
+  navegarAVerPlan: (auditoriaId: string) => void;
+  limpiarVerPlan: () => void;
 }
 
 // ============ CONTEXT ============
@@ -141,6 +146,7 @@ export function IntegracionAuditoriasPlanesProvider({ children }: { children: Re
   const [auditoriasConHallazgos, setAuditoriasConHallazgos] = useState<AuditoriaParaPlan[]>([]);
   const [planesCreados, setPlanesCreados] = useState<PlanMejoramientoCreado[]>([]);
   const [navegarAFormulacion, setNavegarAFormulacion] = useState(false);
+  const [auditoriaIdParaVerPlan, setAuditoriaIdParaVerPlan] = useState<string | null>(null);
   
   // NUEVO: Estados para Planeación → Auditorías
   const [auditoriasProgramadas, setAuditoriasProgramadas] = useState<AuditoriaProgramada[]>([]);
@@ -157,6 +163,14 @@ export function IntegracionAuditoriasPlanesProvider({ children }: { children: Re
   const limpiarSeleccion = () => {
     setAuditoriaSeleccionada(null);
     setNavegarAFormulacion(false);
+  };
+
+  const navegarAVerPlan = (auditoriaId: string) => {
+    setAuditoriaIdParaVerPlan(auditoriaId);
+  };
+
+  const limpiarVerPlan = () => {
+    setAuditoriaIdParaVerPlan(null);
   };
 
   const agregarAuditoriaConHallazgos = (auditoria: AuditoriaParaPlan) => {
@@ -223,7 +237,10 @@ export function IntegracionAuditoriasPlanesProvider({ children }: { children: Re
         crearPlan,
         navegarAFormulacion,
         setNavegarAFormulacion,
-        
+        auditoriaIdParaVerPlan,
+        navegarAVerPlan,
+        limpiarVerPlan,
+
         // NUEVO: Planeación → Auditorías
         auditoriasProgramadas,
         agregarAuditoriasProgramadas,

@@ -70,6 +70,8 @@ interface ComunicacionUnificada {
   };
   // Threading
   isReplied?: boolean;
+  parentEmailId?: string;
+  categoria?: string;
   // NLP entities
   procesoIdSugerido?: string;
   implicadoSugerido?: string;
@@ -460,11 +462,14 @@ export function ModuloCentroComunicacionesJuridicasV3() {
 
   // Función para mapear correos de API a formato UI
   const mapCorreoToUI = (correo: CorreoJuridico): ComunicacionUnificada => {
-    // Sent emails: map direccion='ENVIADO' to tipo='ENVIADO'
     const isSent = correo.direccion === 'ENVIADO';
+    // Distinguir respuestas/reenvíos de correos enviados nuevos
+    const isReplyOrForward = isSent && (correo.categoria === 'RESPUESTA' || correo.categoria === 'REENVIO' || !!correo.parentEmailId);
+    // Solo mapear como ENVIADO los correos nuevos, no las respuestas/reenvíos
+    const tipoFinal = isSent && !isReplyOrForward ? 'ENVIADO' : (correo.tipo as TipoComunicacion);
     return {
       id: correo.id,
-      tipo: isSent ? 'ENVIADO' : (correo.tipo as TipoComunicacion),
+      tipo: tipoFinal,
       asunto: correo.asunto,
       descripcion: correo.cuerpoTexto || '',
       remitente: correo.remitenteNombre || correo.remitenteEmail,
@@ -482,6 +487,8 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       } : undefined,
       // Threading
       isReplied: correo.isReplied,
+      parentEmailId: correo.parentEmailId || undefined,
+      categoria: correo.categoria || undefined,
       // NLP entities
       procesoIdSugerido: correo.procesoIdSugerido || undefined,
       implicadoSugerido: correo.implicadoSugerido || undefined,
@@ -634,9 +641,9 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       );
     }
 
-    // Ordenar: no leídas primero, luego por fecha
+    // Ordenar por fecha (más recientes primero). No se reordena por estado de lectura
+    // para evitar que un correo "desaparezca" de la vista al marcarlo como leído.
     return resultado.sort((a, b) => {
-      if (a.leida !== b.leida) return a.leida ? 1 : -1;
       return b.fechaRadicacion.getTime() - a.fechaRadicacion.getTime();
     });
   }, [comunicaciones, tabActiva, busqueda]);
@@ -772,8 +779,9 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     }
   };
 
-  const handleMarcarLeidasSeleccionadas = () => {
+  const handleMarcarLeidasSeleccionadas = async () => {
     console.log('🔵 Marcando como leídas:', Array.from(seleccionadas));
+    // Optimistic update
     setComunicaciones(prevComs =>
       prevComs.map(com =>
         seleccionadas.has(com.id)
@@ -784,11 +792,21 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     toast.success(`${seleccionadas.size} comunicaciones marcadas como leídas`, {
       icon: <CheckCircle className="w-4 h-4" />
     });
+    const ids = Array.from(seleccionadas);
     setSeleccionadas(new Set());
+    // Persist to backend (non-blocking)
+    for (const id of ids) {
+      try {
+        await correosJuridicosService.markAsRead(id);
+      } catch (error) {
+        console.error('Error marcando como leída en API:', id, error);
+      }
+    }
   };
 
-  const handleArchivarSeleccionadas = () => {
+  const handleArchivarSeleccionadas = async () => {
     console.log('📦 Archivando:', Array.from(seleccionadas));
+    // Optimistic update
     setComunicaciones(prevComs =>
       prevComs.map(com =>
         seleccionadas.has(com.id)
@@ -805,7 +823,16 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     toast.success(`${seleccionadas.size} comunicaciones archivadas correctamente`, {
       icon: <Archive className="w-4 h-4" />
     });
+    const ids = Array.from(seleccionadas);
     setSeleccionadas(new Set());
+    // Persist to backend (non-blocking)
+    for (const id of ids) {
+      try {
+        await correosJuridicosService.archive(id);
+      } catch (error) {
+        console.error('Error archivando en API:', id, error);
+      }
+    }
   };
 
   const addBtnsPermission = () => {
@@ -1211,6 +1238,16 @@ export function ModuloCentroComunicacionesJuridicasV3() {
           console.log('Nueva comunicación enviada:', data);
           toast.success('Comunicación registrada exitosamente');
           setModalNuevaComunicacionOpen(false);
+          // Si fue una respuesta, marcar optimisticamente isReplied en el correo original
+          if (data.isReply && data.originalCorreoId) {
+            setComunicaciones(prev =>
+              prev.map(com =>
+                com.id === data.originalCorreoId
+                  ? { ...com, isReplied: true }
+                  : com
+              )
+            );
+          }
           // Refrescar la lista inmediatamente para mostrar el correo enviado
           await loadCorreosFromAPI();
         }}

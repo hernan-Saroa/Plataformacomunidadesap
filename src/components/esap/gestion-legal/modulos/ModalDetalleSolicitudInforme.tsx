@@ -3,7 +3,7 @@
  * ✅ DISEÑO LIMPIO ESAP 2025 - MIGRADO
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
@@ -11,11 +11,13 @@ import { Textarea } from '../../../ui/textarea';
 import {
   FileText, Calendar, User, Building, Clock, X, AlertCircle,
   CheckCircle, Target, Edit, Send, Download, Upload, MessageSquare,
-  Paperclip, AlertTriangle
+  Paperclip, AlertTriangle, Archive, Trash2
 } from 'lucide-react';
 import { SolicitudInforme, EtapaSolicitudInforme } from '../core/types';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { legalService } from '../../../../services/api/legal.service';
+import { getServiceUrl } from '../../../../config/environment';
 
 interface ModalDetalleSolicitudInformeProps {
   isOpen: boolean;
@@ -23,6 +25,8 @@ interface ModalDetalleSolicitudInformeProps {
   solicitud: SolicitudInforme | null;
   onCambiarEtapa: (id: string, nuevaEtapa: EtapaSolicitudInforme) => void;
   onAgregarComentario: (id: string, comentario: string) => void;
+  onArchivar?: (id: string) => void;
+  onEliminar?: (id: string) => void;
 }
 
 export function ModalDetalleSolicitudInforme({
@@ -30,13 +34,37 @@ export function ModalDetalleSolicitudInforme({
   onClose,
   solicitud,
   onCambiarEtapa,
-  onAgregarComentario
+  onAgregarComentario,
+  onArchivar,
+  onEliminar
 }: ModalDetalleSolicitudInformeProps) {
   const [comentarioNuevo, setComentarioNuevo] = useState('');
   const [mostrarCambioEtapa, setMostrarCambioEtapa] = useState(false);
-  const [archivosSubidos, setArchivosSubidos] = useState<Array<{ nombre: string; tipo: string; fechaCarga: Date; tamaño: string }>>([]);
+  const [archivosSubidos, setArchivosSubidos] = useState<Array<{ nombre: string; tipo: string; fechaCarga: Date; tamaño: string, url?: string }>>([]);
   const [subiendoArchivo, setSubiendoArchivo] = useState(false);
   const [mostrarModalRecordatorio, setMostrarModalRecordatorio] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && solicitud) {
+      const backendId = solicitud.metadata?.uuid || solicitud.id;
+      fetchDocs(backendId);
+    }
+  }, [isOpen, solicitud]);
+
+  const fetchDocs = async (id: string) => {
+    try {
+      const docs = await legalService.getDocumentosTermino(id);
+      setArchivosSubidos(docs.map((d: any) => ({
+        nombre: d.nombre,
+        tipo: d.tipo,
+        fechaCarga: new Date(d.fecha),
+        tamaño: d.tamaño || '',
+        url: d.url
+      })));
+    } catch (error) {
+      console.error('Error fetching docs', error);
+    }
+  };
 
   if (!solicitud) return null;
 
@@ -114,30 +142,19 @@ export function ModalDetalleSolicitudInforme({
     setSubiendoArchivo(true);
 
     try {
-      // Simulación de carga al servidor
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const backendId = solicitud.metadata?.uuid || solicitud.id;
+      await legalService.cargarDocumentoTermino(backendId, file);
 
-      const tipoArchivo = file.type.includes('pdf') ? 'PDF' : 
-                          file.type.includes('word') ? 'Word' : 
-                          file.type.includes('image') ? 'Imagen' : 'Documento';
-      
+      await fetchDocs(backendId);
+
       const tamaño = (file.size / 1024).toFixed(2) + ' KB';
-
-      const nuevoArchivo = {
-        nombre: file.name,
-        tipo: tipoArchivo,
-        fechaCarga: new Date(),
-        tamaño: tamaño
-      };
-
-      setArchivosSubidos([...archivosSubidos, nuevoArchivo]);
-
       toast.success('✅ Archivo cargado exitosamente', {
         description: `${file.name} (${tamaño})`,
         duration: 4000
       });
 
     } catch (error) {
+      console.error(error);
       toast.error('❌ Error al cargar el archivo', {
         description: 'Por favor intente nuevamente'
       });
@@ -151,82 +168,32 @@ export function ModalDetalleSolicitudInforme({
    * ✅ FUNCIONALIDAD REAL: EXPORTAR A PDF
    * Genera un documento PDF con la información de la solicitud
    */
-  const handleExportar = () => {
+  const handleExportar = async () => {
     toast.loading('Generando PDF...', { duration: 1500 });
 
-    setTimeout(() => {
-      const contenidoPDF = `
-═══════════════════════════════════════════════════════════════
-    ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP
-                 SOLICITUD DE INFORME
-═══════════════════════════════════════════════════════════════
-
-INFORMACIÓN GENERAL
-═══════════════════════════════════════════════════════════════
-ID Solicitud:         ${solicitud.id}
-Radicado Externo:     ${solicitud.radicadoExterno}
-Tipo de Informe:      ${solicitud.tipoInforme}
-Etapa:                ${etapasConfig[solicitud.etapa]?.label || solicitud.etapa}
-
-ENTE SOLICITANTE
-═══════════════════════════════════════════════════════════════
-${solicitud.enteSolicitante}
-
-RESPONSABLE ESAP
-═══════════════════════════════════════════════════════════════
-${solicitud.responsable}
-
-PLAZOS Y VENCIMIENTOS
-═══════════════════════════════════════════════════════════════
-Fecha de Solicitud:   ${solicitud.fechaSolicitud.toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-Fecha Límite:         ${solicitud.fechaVencimiento.toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-Días Restantes:       ${diasRestantes} días
-Estado Semáforo:      ${semaforoTexto}
-Término Legal:        ${solicitud.diasTotales} días hábiles
-
-ASUNTO
-═══════════════════════════════════════════════════════════════
-${solicitud.asunto}
-
-${solicitud.descripcion ? `DESCRIPCIÓN DETALLADA
-═══════════════════════════════════════════════════════════════
-${solicitud.descripcion}` : ''}
-
-${solicitud.datosRequeridos && solicitud.datosRequeridos.length > 0 ? `DATOS/INFORMACIÓN REQUERIDA
-═══════════════════════════════════════════════════════════════
-${solicitud.datosRequeridos.map((dato, i) => `${i + 1}. ${dato}`).join('\n')}` : ''}
-
-${solicitud.moduloOrigen && solicitud.moduloOrigen !== 'TERMINOS_INFORMES' ? `INTEGRACIÓN TRANSVERSAL
-═══════════════════════════════════════════════════════════════
-Módulo de Origen:     ${solicitud.moduloOrigen?.replace(/_/g, ' ')}
-${solicitud.tipoTermino ? `Tipo de Término:      ${solicitud.tipoTermino}` : ''}
-${solicitud.expedienteRelacionado ? `Expediente:           ${solicitud.expedienteRelacionado}` : ''}
-${solicitud.baseNormativa ? `Base Normativa:       ${solicitud.baseNormativa}` : ''}
-${solicitud.consecuenciaIncumplimiento ? `Consecuencia:         ${solicitud.consecuenciaIncumplimiento}` : ''}
-${solicitud.esImprorrogable ? 'ADVERTENCIA: Este término es IMPRORROGABLE' : ''}` : ''}
-
-═══════════════════════════════════════════════════════════════
-Documento generado el: ${new Date().toLocaleDateString('es-CO')} a las ${new Date().toLocaleTimeString('es-CO')}
-Sistema SIGL - Gestión Legal ESAP
-═══════════════════════════════════════════════════════════════
-      `;
-
-      // Crear blob y descargar
-      const blob = new Blob([contenidoPDF], { type: 'text/plain;charset=utf-8' });
-      const url = window.URL.createObjectURL(blob);
+    try {
+      const backendId = solicitud.metadata?.uuid || solicitud.id;
+      const pdfBlob = await legalService.exportarTerminoPdf(backendId);
+      
+      const url = window.URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `Solicitud_${solicitud.id}_${new Date().getTime()}.txt`;
+      link.download = `Solicitud_${solicitud.id}_${new Date().getTime()}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
       toast.success('✅ Documento exportado exitosamente', {
-        description: `Solicitud_${solicitud.id}.txt`,
+        description: `Solicitud_${solicitud.id}.pdf`,
         duration: 4000
       });
-    }, 1500);
+    } catch (error) {
+      console.error('Error al exportar PDF:', error);
+      toast.error('❌ Error al generar el PDF', {
+        description: 'Por favor, inténtelo de nuevo más tarde'
+      });
+    }
   };
 
   /**
@@ -612,55 +579,47 @@ Sistema SIGL - Gestión Legal ESAP
                 </div>
               </div>
               
-              {/* Mostrar documentos originales de la solicitud */}
-              {solicitud.documentos && solicitud.documentos.length > 0 && (
-                <div className="space-y-2">
-                  {solicitud.documentos.map((doc, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <div className="flex items-center gap-3">
-                        <Paperclip className="w-4 h-4 text-gray-600" />
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">{doc.nombre}</p>
-                          <p className="text-xs text-gray-500">
-                            {doc.tipo} • Subido el {doc.fechaCarga.toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="sm">
-                        <Download className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Mostrar archivos recién subidos */}
+              {/* Mostrar documentos cargados */}
               {archivosSubidos.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-bold text-blue-600">📎 Archivos Nuevos ({archivosSubidos.length})</p>
+                <div className="space-y-2 mt-4">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Archivos ({archivosSubidos.length})</p>
                   {archivosSubidos.map((archivo, idx) => (
-                    <div key={`nuevo-${idx}`} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border-2 border-blue-200">
+                    <div key={`doc-${idx}`} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all">
                       <div className="flex items-center gap-3">
-                        <Paperclip className="w-4 h-4 text-blue-600" />
+                        <div className="p-2 bg-blue-50 text-blue-600 rounded">
+                          <Paperclip className="w-4 h-4" />
+                        </div>
                         <div>
-                          <p className="text-sm font-semibold text-blue-900">{archivo.nombre}</p>
-                          <p className="text-xs text-blue-600">
-                            {archivo.tipo} • {archivo.tamaño} • Recién subido
+                          <p className="text-sm font-semibold text-gray-900">{archivo.nombre}</p>
+                          <p className="text-xs text-gray-500">
+                            {archivo.tipo} {archivo.tamaño && `• ${archivo.tamaño}`} • {archivo.fechaCarga.toLocaleDateString()}
                           </p>
                         </div>
                       </div>
-                      <CheckCircle className="w-5 h-5 text-blue-600" />
+                      {archivo.url && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          className="text-blue-600 hover:bg-blue-50"
+                          onClick={() => {
+                            const baseUrl = getServiceUrl('legal');
+                            window.open(`${baseUrl}/${archivo.url}`, '_blank');
+                          }}
+                        >
+                          <Download className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
 
               {/* Mensaje cuando no hay documentos */}
-              {(!solicitud.documentos || solicitud.documentos.length === 0) && archivosSubidos.length === 0 && (
-                <div className="p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-center">
-                  <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">No hay documentos adjuntos aún</p>
-                  <p className="text-xs text-gray-400 mt-1">Haz clic en "Cargar Archivo" para adjuntar documentos</p>
+              {archivosSubidos.length === 0 && (
+                <div className="p-5 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-center mt-4">
+                  <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-gray-600">No hay documentos adjuntos aún</p>
+                  <p className="text-xs text-gray-500 mt-1">Sube archivos PDF, Word o imágenes usando el botón superior.</p>
                 </div>
               )}
             </div>
@@ -711,13 +670,35 @@ Sistema SIGL - Gestión Legal ESAP
 
         {/* Footer con acciones */}
         <div className="flex-shrink-0 border-t bg-gray-50 px-6 py-4 flex items-center justify-between gap-3">
-          <Button
-            variant="outline"
-            onClick={onClose}
-          >
-            <X className="w-4 h-4 mr-2" />
-            Cerrar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={onClose}
+            >
+              <X className="w-4 h-4 mr-2" />
+              Cerrar
+            </Button>
+            {onArchivar && (
+              <Button
+                variant="outline"
+                className="text-emerald-700 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
+                onClick={() => onArchivar(solicitud.id)}
+              >
+                <Archive className="w-4 h-4 mr-2" />
+                Archivar
+              </Button>
+            )}
+            {onEliminar && (
+              <Button
+                variant="outline"
+                className="text-red-700 border-red-200 hover:bg-red-50 hover:border-red-300"
+                onClick={() => onEliminar(solicitud.id)}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Eliminar
+              </Button>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"

@@ -616,6 +616,28 @@ export class LegalService {
         return apiClient.get(`${SERVICE_PREFIX}/terminos/${id}`);
     }
 
+    async updateTermino(id: string, data: any): Promise<any> {
+        return apiClient.patch(`${SERVICE_PREFIX}/terminos/${id}`, data);
+    }
+
+    async exportarTerminoPdf(id: string): Promise<Blob> {
+        return apiClient.getBlob(`${SERVICE_PREFIX}/terminos/${id}/exportar/pdf`);
+    }
+
+    async getDocumentosTermino(id: string): Promise<any[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/terminos/${id}/documentos`);
+    }
+
+    async cargarDocumentoTermino(id: string, file: File): Promise<any> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.post(`${SERVICE_PREFIX}/terminos/${id}/upload-documento`, formData);
+    }
+
+    async eliminarTermino(id: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/terminos/${id}`);
+    }
+
 
     // --- TAREAS DE EXPEDIENTE ---
 

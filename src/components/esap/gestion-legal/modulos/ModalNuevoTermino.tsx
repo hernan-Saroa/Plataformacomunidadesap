@@ -76,7 +76,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                 } else if (formData.origenModulo === 'DEFENSA_JUDICIAL') {
                     const raw = await legalService.getExpedientes({ estado: 'ACTIVO' });
                     data = Array.isArray(raw) ? raw : [];
-                } else if (formData.origenModulo === 'ASESORIA_JURIDICA') {
+                } else if (formData.origenModulo === 'ASESORIA') {
                     data = await legalService.getConsultasJuridicas();
                 } else if (formData.origenModulo === 'ORGANOS_CONTROL') {
                     data = await legalService.getRequerimientosOC();
@@ -130,7 +130,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent hideCloseButton className="w-[95vw] max-w-[600px] !max-h-[85vh] flex flex-col p-0">
+            <DialogContent hideCloseButton className="w-[95vw] max-w-[600px] max-h-[90vh] md:max-h-[85vh] flex flex-col p-0 overflow-hidden">
                 <DialogTitle className="sr-only">Nueva Solicitud / Término</DialogTitle>
                 <DialogDescription className="sr-only">Formulario para crear un nuevo término o solicitud de informe</DialogDescription>
 
@@ -275,18 +275,20 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                         </Select>
                     </div>
 
-                    {/* Radicado */}
-                    <div className="space-y-2">
-                        <Label className="text-sm font-bold text-gray-700">
-                            Vinculación (Radicado - Opcional)
-                        </Label>
-                        <Input
-                            placeholder="Ej: EXP-2025-001"
-                            value={formData.numeroRadicado}
-                            onChange={(e) => setFormData({ ...formData, numeroRadicado: e.target.value })}
-                            className="border-2 border-gray-300 focus:border-blue-500"
-                        />
-                    </div>
+                    {/* Radicado Manual */}
+                    {formData.origenModulo === 'MANUAL' && (
+                        <div className="space-y-2">
+                            <Label className="text-sm font-bold text-gray-700">
+                                Vinculación (Radicado - Opcional)
+                            </Label>
+                            <Input
+                                placeholder="Ej: EXP-2025-001"
+                                value={formData.numeroRadicado}
+                                onChange={(e) => setFormData({ ...formData, numeroRadicado: e.target.value })}
+                                className="border-2 border-gray-300 focus:border-blue-500"
+                            />
+                        </div>
+                    )}
 
                     {/* Observaciones */}
                     <div className="space-y-2">
@@ -303,7 +305,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                 </form>
 
                 {/* Footer */}
-                <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-2">
+                <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex flex-col-reverse sm:flex-row justify-end gap-3">
                     <button
                         type="button"
                         onClick={() => onOpenChange(false)}
