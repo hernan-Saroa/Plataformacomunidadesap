@@ -219,6 +219,7 @@ export interface DescargaCertificado {
 type ApiRequestOptions = {
   skipAuth?: boolean;
   skipErrorToast?: boolean;
+  retries?: number;
 };
 
 export interface GraduadoArchivo {
@@ -572,6 +573,13 @@ const graduadosService = {
     reenviar: async (id: string): Promise<{ mensaje: string; email: string }> => {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/certificates/${id}/reenviar`,
+        undefined,
+        {
+          // Evita reintentos automáticos para no disparar múltiples correos
+          // cuando el gateway responde 4xx sin detalle en algunos entornos.
+          retries: 0,
+          skipErrorToast: true,
+        }
       );
       return response;
     },
