@@ -107,7 +107,7 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData 
 
       let isSuccess = false;
 
-      // Llamar API real según si es Forward o Send
+      // Llamar API real según si es Forward, Reply o Send
       if (formData.isForward && formData.originalCorreoId) {
         // Para Reenviar
         const result = await correosJuridicosService.forwardEmail(
@@ -116,8 +116,16 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData 
           formData.cuerpo.trim()
         );
         isSuccess = result?.success !== false;
+      } else if (formData.isReply && formData.originalCorreoId) {
+        // Para Responder (usa endpoint de reply que marca isReplied en el original)
+        const result = await correosJuridicosService.replyEmail(
+          formData.originalCorreoId,
+          formData.cuerpo.trim(),
+          attachmentsBase64.length > 0 ? attachmentsBase64 : undefined
+        );
+        isSuccess = result?.success !== false;
       } else {
-        // Para Nuevo o Responder (Responder actualmente manda un Send normal pero debería usar reply, por simplicidad usamos send si no se especifica)
+        // Para Nuevo correo
         const result = await correosJuridicosService.sendEmail({
           to: formData.para.trim(),
           subject: formData.asunto?.trim() || 'Sin Asunto',
