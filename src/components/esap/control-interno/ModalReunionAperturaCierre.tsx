@@ -93,6 +93,7 @@ function FormReunionBase({
   revisadoPor,
   setRevisadoPor,
   observaciones,
+  mostrarCamposDetalle,
   children
 }: {
   tipo: 'apertura' | 'cierre';
@@ -108,6 +109,7 @@ function FormReunionBase({
   revisadoPor: string;
   setRevisadoPor: (v: string) => void;
   observaciones?: string;
+  mostrarCamposDetalle: boolean;
   children: React.ReactNode;
 }) {
   const tituloActa = tipo === 'apertura' ? 'ACTA DE APERTURA' : 'ACTA DE CIERRE';
@@ -116,60 +118,64 @@ function FormReunionBase({
   return (
     <form onSubmit={onSubmit} className="space-y-2">
       {children}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-0.5">Elaborado por</label>
-          <select
-            value={elaboradoPor}
-            onChange={(e) => setElaboradoPor(e.target.value)}
-            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Seleccione</option>
-            {personas.map((p) => (
-              <option key={p.id} value={p.id}>{p.nombre}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-0.5">Revisado por</label>
-          <select
-            value={revisadoPor}
-            onChange={(e) => setRevisadoPor(e.target.value)}
-            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Seleccione</option>
-            {personas.map((p) => (
-              <option key={p.id} value={p.id}>{p.nombre}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-700 mb-0.5">Observaciones / acuerdos</label>
-        <textarea
-          name="observaciones"
-          defaultValue={observaciones ?? ''}
-          rows={3}
-          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[60px]"
-          placeholder="Compromisos, acuerdos..."
-        />
-      </div>
-      <div className="border-t pt-2">
-        <label className="block text-xs font-medium text-gray-700 mb-0.5">
-          <FileText className="w-3 h-3 inline mr-1" />
-          {tituloActa} – SELECCIONAR PLANTILLA DESDE BIBLIOTECA
-        </label>
-        <select
-          value={actaBibliotecaId}
-          onChange={(e) => setActaBibliotecaId(e.target.value)}
-          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Ninguno</option>
-          {plantillas.map((d: any) => (
-            <option key={d.id} value={d.id}>{d.nombre || d.nombreArchivoOriginal || d.id}</option>
-          ))}
-        </select>
-      </div>
+      {mostrarCamposDetalle && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-0.5">Elaborado por</label>
+              <select
+                value={elaboradoPor}
+                onChange={(e) => setElaboradoPor(e.target.value)}
+                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Seleccione</option>
+                {personas.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-0.5">Revisado por</label>
+              <select
+                value={revisadoPor}
+                onChange={(e) => setRevisadoPor(e.target.value)}
+                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Seleccione</option>
+                {personas.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-0.5">Observaciones / acuerdos</label>
+            <textarea
+              name="observaciones"
+              defaultValue={observaciones ?? ''}
+              rows={3}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[60px]"
+              placeholder="Compromisos, acuerdos..."
+            />
+          </div>
+          <div className="border-t pt-2">
+            <label className="block text-xs font-medium text-gray-700 mb-0.5">
+              <FileText className="w-3 h-3 inline mr-1" />
+              {tituloActa} – SELECCIONAR PLANTILLA DESDE BIBLIOTECA
+            </label>
+            <select
+              value={actaBibliotecaId}
+              onChange={(e) => setActaBibliotecaId(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Ninguno</option>
+              {plantillas.map((d: any) => (
+                <option key={d.id} value={d.id}>{d.nombre || d.nombreArchivoOriginal || d.id}</option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
       <div className="flex gap-2 pt-2">
         <Button type="button" variant="outline" size="sm" onClick={onClose} className="flex-1 text-xs">
           Cerrar
@@ -242,10 +248,15 @@ export function ModalReunionApertura({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const esVirtual = modalidad === 'virtual';
     const form = e.target as HTMLFormElement;
     const obs = (form.elements.namedItem('observaciones') as HTMLTextAreaElement)?.value || '';
-    if (!fecha || !hora || !participantes || !temasTratados) {
-      toast.error('Complete Fecha, Hora, Participantes y Temas tratados');
+    if (!fecha || !hora) {
+      toast.error('Complete Fecha y Hora');
+      return;
+    }
+    if (!esVirtual && (!participantes || !temasTratados)) {
+      toast.error('Complete Participantes y Temas tratados');
       return;
     }
     setGuardando(true);
@@ -255,12 +266,12 @@ export function ModalReunionApertura({
         hora,
         modalidad,
         lugar,
-        participantes,
-        temasTratados,
-        elaboradoPor,
-        revisadoPor,
-        observaciones: obs,
-        actaBibliotecaId: actaBibliotecaId || undefined,
+        participantes: esVirtual ? '' : participantes,
+        temasTratados: esVirtual ? '' : temasTratados,
+        elaboradoPor: esVirtual ? '' : elaboradoPor,
+        revisadoPor: esVirtual ? '' : revisadoPor,
+        observaciones: esVirtual ? '' : obs,
+        actaBibliotecaId: esVirtual ? undefined : (actaBibliotecaId || undefined),
       };
       if (onGuardar) {
         await onGuardar(datos);
@@ -280,9 +291,8 @@ export function ModalReunionApertura({
   return (
     <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
       <DialogContent
-          size="xs"
-          className="overflow-y-auto p-4 [&]:!w-[420px] [&]:!max-w-[420px] [&]:!min-h-[85vh]"
-          style={{ width: 420, maxWidth: 420, minHeight: '85vh' }}
+          className="!block overflow-y-auto p-6"
+          style={{ width: 620, maxWidth: 620 }}
         >
         <DialogHeader className="pb-2">
           <DialogTitle className="flex items-center gap-1.5 text-base">
@@ -304,6 +314,7 @@ export function ModalReunionApertura({
           revisadoPor={revisadoPor}
           setRevisadoPor={setRevisadoPor}
           observaciones={observaciones}
+          mostrarCamposDetalle={modalidad === 'presencial'}
         >
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -331,22 +342,33 @@ export function ModalReunionApertura({
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-0.5">Lugar</label>
-            <input type="text" value={lugar} onChange={(e) => setLugar(e.target.value)} placeholder="Ej: Sala 203"
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
+            <label className="block text-xs font-medium text-gray-700 mb-0.5">
+              {modalidad === 'virtual' ? 'Link de reunión' : 'Lugar'}
+            </label>
+            <input
+              type={modalidad === 'virtual' ? 'url' : 'text'}
+              value={lugar}
+              onChange={(e) => setLugar(e.target.value)}
+              placeholder={modalidad === 'virtual' ? 'https://teams.microsoft.com/...' : 'Ej: Sala 203'}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+            />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-0.5">Participantes *</label>
-            <textarea value={participantes} onChange={(e) => setParticipantes(e.target.value)} rows={3} required
-              placeholder="Ej: Fernando Ávila, Lucía Torres..."
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[70px]" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-0.5">Temas tratados *</label>
-            <textarea value={temasTratados} onChange={(e) => setTemasTratados(e.target.value)} rows={4} required
-              placeholder="Presentación equipo, alcance, cronograma..."
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[90px]" />
-          </div>
+          {modalidad === 'presencial' && (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-0.5">Participantes *</label>
+                <textarea value={participantes} onChange={(e) => setParticipantes(e.target.value)} rows={3} required
+                  placeholder="Ej: Fernando Ávila, Lucía Torres..."
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[70px]" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-0.5">Temas tratados *</label>
+                <textarea value={temasTratados} onChange={(e) => setTemasTratados(e.target.value)} rows={4} required
+                  placeholder="Presentación equipo, alcance, cronograma..."
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[90px]" />
+              </div>
+            </>
+          )}
         </FormReunionBase>
       </DialogContent>
     </Dialog>
@@ -412,10 +434,15 @@ export function ModalReunionCierre({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const esVirtual = modalidad === 'virtual';
     const form = e.target as HTMLFormElement;
     const obs = (form.elements.namedItem('observaciones') as HTMLTextAreaElement)?.value || '';
-    if (!fecha || !hora || !participantes || !temasTratados) {
-      toast.error('Complete Fecha, Hora, Participantes y Temas tratados');
+    if (!fecha || !hora) {
+      toast.error('Complete Fecha y Hora');
+      return;
+    }
+    if (!esVirtual && (!participantes || !temasTratados)) {
+      toast.error('Complete Participantes y Temas tratados');
       return;
     }
     setGuardando(true);
@@ -425,12 +452,12 @@ export function ModalReunionCierre({
         hora,
         modalidad,
         lugar,
-        participantes,
-        temasTratados,
-        elaboradoPor,
-        revisadoPor,
-        observaciones: obs,
-        actaBibliotecaId: actaBibliotecaId || undefined,
+        participantes: esVirtual ? '' : participantes,
+        temasTratados: esVirtual ? '' : temasTratados,
+        elaboradoPor: esVirtual ? '' : elaboradoPor,
+        revisadoPor: esVirtual ? '' : revisadoPor,
+        observaciones: esVirtual ? '' : obs,
+        actaBibliotecaId: esVirtual ? undefined : (actaBibliotecaId || undefined),
       };
       if (onGuardar) {
         await onGuardar(datos);
@@ -450,9 +477,8 @@ export function ModalReunionCierre({
   return (
     <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
       <DialogContent
-          size="xs"
-          className="overflow-y-auto p-4 [&]:!w-[420px] [&]:!max-w-[420px] [&]:!min-h-[85vh]"
-          style={{ width: 420, maxWidth: 420, minHeight: '85vh' }}
+          className="!block overflow-y-auto p-6"
+          style={{ width: 620, maxWidth: 620 }}
         >
         <DialogHeader className="pb-2">
           <DialogTitle className="flex items-center gap-1.5 text-base">
@@ -474,6 +500,7 @@ export function ModalReunionCierre({
           revisadoPor={revisadoPor}
           setRevisadoPor={setRevisadoPor}
           observaciones={observaciones}
+          mostrarCamposDetalle={modalidad === 'presencial'}
         >
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -501,22 +528,33 @@ export function ModalReunionCierre({
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-0.5">Lugar</label>
-            <input type="text" value={lugar} onChange={(e) => setLugar(e.target.value)} placeholder="Ej: Sala 203"
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
+            <label className="block text-xs font-medium text-gray-700 mb-0.5">
+              {modalidad === 'virtual' ? 'Link de reunión' : 'Lugar'}
+            </label>
+            <input
+              type={modalidad === 'virtual' ? 'url' : 'text'}
+              value={lugar}
+              onChange={(e) => setLugar(e.target.value)}
+              placeholder={modalidad === 'virtual' ? 'https://teams.microsoft.com/...' : 'Ej: Sala 203'}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+            />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-0.5">Participantes *</label>
-            <textarea value={participantes} onChange={(e) => setParticipantes(e.target.value)} rows={3} required
-              placeholder="Ej: Auditor Líder, responsable del área..."
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[70px]" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-0.5">Temas tratados *</label>
-            <textarea value={temasTratados} onChange={(e) => setTemasTratados(e.target.value)} rows={4} required
-              placeholder="Hallazgos, evidencias, acuerdos..."
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[90px]" />
-          </div>
+          {modalidad === 'presencial' && (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-0.5">Participantes *</label>
+                <textarea value={participantes} onChange={(e) => setParticipantes(e.target.value)} rows={3} required
+                  placeholder="Ej: Auditor Líder, responsable del área..."
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[70px]" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-0.5">Temas tratados *</label>
+                <textarea value={temasTratados} onChange={(e) => setTemasTratados(e.target.value)} rows={4} required
+                  placeholder="Hallazgos, evidencias, acuerdos..."
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[90px]" />
+              </div>
+            </>
+          )}
         </FormReunionBase>
       </DialogContent>
     </Dialog>
