@@ -1823,7 +1823,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
     if (!file) return;
     setArchivoError(null);
 
-    // Tipos MIME permitidos para evidencias: HTML, PDF, Word, Excel, Imágenes, Videos
+    // Tipos MIME permitidos para evidencias: HTML, PDF, Word, Excel, Imágenes, Videos, Audio
     const tiposPermitidosEvidencia = [
       'application/pdf',
       'application/msword',
@@ -1836,22 +1836,37 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
       'image/jpg',
       'image/gif',
       'image/webp',
+      'image/heic',
       'video/mp4',
       'video/webm',
       'video/quicktime',
       'video/x-msvideo',
+      'audio/mpeg',
+      'audio/mp3',
+      'audio/wav',
     ];
+
+    // Extensiones PROHIBIDAS - nunca se permiten
+    const extensionesProhibidas = ['.zip', '.exe', '.bat', '.cmd', '.ps1', '.sh', '.bash', '.vbs', '.js', '.jar', '.rar', '.7z', '.tar', '.gz'];
+    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+    
+    // Verificar si la extensión está prohibida
+    if (extensionesProhibidas.includes(extension)) {
+      setArchivoError(`Tipo de archivo no permitido. Las extensiones prohibidas incluyen: .zip, .exe, .bat, .rar, etc.`);
+      setArchivo(null);
+      e.target.value = '';
+      return;
+    }
 
     // Validar tipo MIME
     const mimeValido = tiposPermitidosEvidencia.includes(file.type);
     
-    // Validar extensión como respaldo
-    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
-    const extensionesValidas = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov', '.avi'];
+    // Validar extensión como respaldo - INCLUYE .heic y .mp3
+    const extensionesValidas = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.mp4', '.webm', '.mov', '.avi', '.mp3', '.wav'];
     const extensionValida = extensionesValidas.includes(extension);
 
     if (!mimeValido && !extensionValida) {
-      setArchivoError('Tipo de archivo no permitido para evidencias. Solo se permiten: PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP), Videos (MP4, WebM, MOV, AVI)');
+      setArchivoError('Tipo de archivo no permitido para evidencias. Solo se permiten: PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP, HEIC), Videos (MP4, WebM, MOV, AVI), Audio (MP3, WAV)');
       setArchivo(null);
       e.target.value = '';
       return;
@@ -2137,7 +2152,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
               <input
                 type="file"
                 id="file-upload-evidencias"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.html,.jpg,.jpeg,.png,.gif,.webp,.mp4,.webm,.mov,.avi"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.html,.jpg,.jpeg,.png,.gif,.webp,.heic,.mp4,.webm,.mov,.avi,.mp3,.wav"
                 onChange={handleSeleccionArchivo}
                 className="hidden"
               />

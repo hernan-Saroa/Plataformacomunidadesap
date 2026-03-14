@@ -79,11 +79,20 @@ export class FilesController {
   }
 
   /**
+   * Extensiones PROHIBIDAS para TODOS los tipos de documentos
+   * Estas extensiones nunca serán permitidas por seguridad
+   */
+  private static getForbiddenExtensions(): RegExp {
+    // Prohibir: ejecutables, comprimidos, scripts, etc.
+    return /\.(zip|exe|bat|cmd|ps1|sh|bash|vbs|js|jar|rar|7z|tar|gz|bz2|iso|img|dmg)$/i;
+  }
+
+  /**
    * Obtiene los tipos MIME permitidos según el tipo de documento
    */
   private static getAllowedMimeTypes(tipoDocumento: string): string[] {
     const tiposPermitidos: Record<string, string[]> = {
-      // Evidencias: HTML, PDF, Word, Excel, Imágenes, Videos
+      // Evidencias: HTML, PDF, Word, Excel, Imágenes, Videos, Audio
       'EVIDENCIA': [
         'application/pdf',
         'application/msword',
@@ -96,10 +105,14 @@ export class FilesController {
         'image/jpg',
         'image/gif',
         'image/webp',
+        'image/heic',
         'video/mp4',
         'video/webm',
         'video/quicktime',
         'video/x-msvideo',
+        'audio/mpeg',
+        'audio/mp3',
+        'audio/wav',
       ],
       // Auto: Solo PDF
       'AUTO': [
@@ -127,7 +140,8 @@ export class FilesController {
    */
   private static getAllowedExtensions(tipoDocumento: string): RegExp {
     const extensiones: Record<string, RegExp> = {
-      'EVIDENCIA': /\.(pdf|doc|docx|xls|xlsx|html|jpg|jpeg|png|gif|webp|mp4|webm|mov|avi)$/i,
+      // Evidencias: PDF, Word, Excel, HTML, Imágenes, Videos, Audio - INCLUYE .heic y .mp3
+      'EVIDENCIA': /\.(pdf|doc|docx|xls|xlsx|html|jpg|jpeg|png|gif|webp|heic|mp4|webm|mov|avi|mp3|wav)$/i,
       'AUTO': /\.(pdf)$/i,
       'OFICIO': /\.(pdf)$/i,
       'default': /\.(pdf|doc|docx|xls|xlsx)$/i,
@@ -141,7 +155,7 @@ export class FilesController {
    */
   private static getAllowedExtensionsLabel(tipoDocumento: string): string {
     const extensiones: Record<string, string> = {
-      'EVIDENCIA': 'PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP), Videos (MP4, WebM, MOV, AVI)',
+      'EVIDENCIA': 'PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP, HEIC), Videos (MP4, WebM, MOV, AVI), Audio (MP3, WAV)',
       'AUTO': 'Solo PDF',
       'OFICIO': 'Solo PDF',
       'default': 'PDF, Word, Excel',
