@@ -5467,6 +5467,9 @@ export function DashboardKanbanOperativo({
           <ModalDetallesProceso
             proceso={itemSeleccionado as Proceso}
             onClose={() => { setModalActivo(null); setItemSeleccionado(null); }}
+            onReabrir={() => {
+              setModalActivo('ver-detalles');
+            }}
             onGestionAutos={() => setModalActivo('gestion-autos')}
             onGestionEvidencias={() => setModalActivo('gestion-evidencias')}
             onGestionOficios={() => setModalActivo('gestion-oficios')}
