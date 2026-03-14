@@ -259,20 +259,11 @@ export function ModalGestionDocumentos({
     }
   };
 
-  // Helper para detectar si un archivo es previsuable en el navegador
-  const isPrevisuable = (doc: DocumentoCargado): boolean => {
-    const nombre = doc.nombre?.toLowerCase() || '';
-    // Word files cannot be previewed, only downloaded
-    if (nombre.endsWith('.doc') || nombre.endsWith('.docx')) {
-      return false;
-    }
-    // PDF and images can be previewed
-    return doc.tipo === 'PDF' || doc.tipo === 'Imagen';
-  };
 
-  const handleDescargar = (doc: DocumentoCargado) => {
+
+  const handleDescargar = async (doc: DocumentoCargado) => {
     if (!doc.url) return;
-    toast.info('Abriendo documento...', {
+    toast.info('Descargando documento...', {
       description: doc.nombre,
       icon: <Download className="w-4 h-4" />
     });
@@ -285,10 +276,24 @@ export function ModalGestionDocumentos({
       else if (doc.url.includes('files/')) filename = doc.url.split('files/').pop()!;
 
       const fullUrl = `${baseUrl}${prefix}/files/${filename}`;
-      window.open(fullUrl, '_blank');
+
+      // Fethcing data to force download
+      const response = await fetch(fullUrl);
+      if (!response.ok) throw new Error('Network response was not ok.');
+      const blob = await response.blob();
+      const donwloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = donwloadUrl;
+      link.setAttribute('download', doc.nombre || filename); // Default to origin filename
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(donwloadUrl);
+      
+      toast.success('Descarga iniciada');
     } catch (e) {
       console.error(e);
-      toast.error('Error al abrir documento');
+      toast.error('Error al descargar documento');
     }
   };
 
@@ -334,7 +339,7 @@ export function ModalGestionDocumentos({
             <div>
               <h2 className="text-lg font-bold text-gray-900">{tituloContexto}</h2>
               <p className="text-sm text-gray-600">
-                {nombreRequerimiento || requerimientoId} • {documentosCargados.length} documentos • {archivosSeleccionados.length} pendientes de cargar
+                {nombreRequerimiento || requerimientoId} • {documentosCargados.length} documentos
               </p>
             </div>
           </div>
@@ -351,136 +356,7 @@ export function ModalGestionDocumentos({
         {/* Contenido */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
 
-          {/* ZONA DE SELECCIÓN Y CARGA */}
-          <div className="border-2 border-blue-300 rounded-lg p-6 bg-blue-50">
-            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <Upload className="w-5 h-5 text-blue-600" />
-              Cargar Nuevo Documento
-            </h3>
 
-            {/* Input de archivo oculto */}
-            <input
-              ref={inputFileRef}
-              type="file"
-              multiple
-              // accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" // Opcional
-              onChange={handleArchivosCambiados}
-              className="hidden"
-            />
-
-
-            {/* Botón de selección */}
-            <div className="border-2 border-dashed border-blue-300 rounded-lg p-6 bg-white hover:bg-blue-50 transition-colors">
-              <div className="text-center">
-                <Upload className="w-12 h-12 text-blue-400 mx-auto mb-3" />
-                <h4 className="font-bold text-gray-900 mb-2">Selecciona archivos para cargar</h4>
-                <p className="text-sm text-gray-600 mb-4">
-                  Arrastra archivos aquí o haz clic en el botón
-                </p>
-                {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DOC_UPLOAD) && (
-                  <Button
-                    onClick={handleSeleccionarArchivo}
-                    style={{ background: '#003DA5' }}
-                    className="text-white font-bold"
-                  >
-                    <FolderOpen className="w-4 h-4 mr-2" />
-                    📂 Seleccionar Archivo
-                  </Button>
-                )}
-                <p className="text-xs text-gray-500 mt-3">
-                  Tamaño máximo: 50 MB por archivo • Formatos: PDF, Word, Excel, Imágenes (JPG, PNG)
-                </p>
-              </div>
-            </div>
-
-            {/* Lista de archivos seleccionados */}
-            {archivosSeleccionados.length > 0 && (
-              <div className="mt-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-gray-900 flex items-center gap-2">
-                    <FileCheck className="w-4 h-4 text-blue-600" />
-                    Archivos Seleccionados ({archivosSeleccionados.length})
-                  </h4>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setArchivosSeleccionados([])}
-                    className="text-red-600 hover:bg-red-50"
-                  >
-                    <X className="w-3 h-3 mr-1" />
-                    Limpiar todos
-                  </Button>
-                </div>
-
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {archivosSeleccionados.map((archivoSel, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between p-3 bg-white rounded-lg border border-blue-200"
-                    >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        {getIconoTipo(getTipoArchivo(archivoSel.archivo.type))}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-gray-900 truncate">
-                            {archivoSel.archivo.name}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {formatearTamano(archivoSel.archivo.size)}
-                          </p>
-                        </div>
-                        <Select
-                          value={archivoSel.categoria}
-                          onValueChange={(value: any) => handleCambiarCategoria(index, value)}
-                        >
-                          <SelectTrigger className="w-[140px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="z-[100000]">
-                            <SelectItem value="Requerimiento">Requerimiento</SelectItem>
-                            <SelectItem value="Respuesta">Respuesta</SelectItem>
-                            <SelectItem value="Soporte">Soporte</SelectItem>
-                            <SelectItem value="Interno">Interno</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEliminarSeleccionado(index)}
-                          className="text-red-600 hover:bg-red-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Barra de progreso durante carga */}
-                {cargando && (
-                  <div className="mt-3 space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-semibold text-blue-600">Cargando documentos...</span>
-                      <span className="text-gray-600">{Math.round(progresoCarga)}%</span>
-                    </div>
-                    <Progress value={progresoCarga} className="h-2" />
-                  </div>
-                )}
-
-                {/* Botón de carga */}
-                {!cargando && (
-                  <Button
-                    onClick={handleCargarDocumentos}
-                    className="w-full mt-3 font-bold"
-                    style={{ background: '#10B981' }}
-                    disabled={archivosSeleccionados.length === 0}
-                  >
-                    <Upload className="w-4 h-4 mr-2" />
-                    🚀 Cargar Documentos ({archivosSeleccionados.length})
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
 
           {/* FILTROS Y BÚSQUEDA */}
           <div className="flex items-center gap-3 flex-wrap">
@@ -577,20 +453,18 @@ export function ModalGestionDocumentos({
                       </div>
                     </div>
                     <div className="flex items-center gap-2 ml-3">
-                      {isPrevisuable(doc) && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDescargar(doc)}
-                          title="Ver Documento"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDescargar(doc)}
+                        title="Descargar Documento"
+                      >
+                        <Download className="w-4 h-4" />
+                      </Button>
                       {/* <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDescargar(doc.nombre)}
+                        onClick={() => handleDescargarTodos()}
                       >
                         <Download className="w-4 h-4" />
                       </Button> */}
@@ -654,16 +528,7 @@ export function ModalGestionDocumentos({
               <Download className="w-4 h-4 mr-2" />
               Descargar Todos
             </Button>
-            {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DOC_UPLOAD) && (
-              <Button
-                onClick={handleSeleccionarArchivo}
-                style={{ background: '#003DA5' }}
-                className="text-white"
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Agregar Más Documentos
-              </Button>
-            )}
+
           </div>
         </div>
       </DialogContent>

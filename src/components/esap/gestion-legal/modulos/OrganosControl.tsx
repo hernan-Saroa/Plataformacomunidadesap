@@ -739,16 +739,6 @@ function TarjetaRequerimiento({
 
             <div className="grid grid-cols-2 gap-1">
               <Button
-                onClick={() => onDocumentos(req)}
-                size="sm"
-                variant="outline"
-                className="text-[11px] px-1 justify-center"
-              >
-                <FileCheck className="w-3 h-3 mr-0.5" />
-                Docs
-              </Button>
-
-              <Button
                 onClick={() => onRespuesta(req)}
                 size="sm"
                 variant="outline"
@@ -756,6 +746,16 @@ function TarjetaRequerimiento({
               >
                 <Send className="w-3 h-3 mr-0.5" />
                 Respuesta
+              </Button>
+
+              <Button
+                onClick={() => onDocumentos(req)}
+                size="sm"
+                variant="outline"
+                className="text-[11px] px-1 justify-center"
+              >
+                <FileCheck className="w-3 h-3 mr-0.5" />
+                Docs
               </Button>
             </div>
 
@@ -955,18 +955,18 @@ function VistaLista({
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => onDocumentos(req)}
-                        title="Documentos"
-                      >
-                        <FileCheck className="w-4 h-4 text-gray-600" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
                         onClick={() => onRespuesta(req)}
                         title="Responder"
                       >
                         <Send className="w-4 h-4 text-blue-600" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onDocumentos(req)}
+                        title="Documentos"
+                      >
+                        <FileCheck className="w-4 h-4 text-gray-600" />
                       </Button>
                       <Button
                         size="sm"

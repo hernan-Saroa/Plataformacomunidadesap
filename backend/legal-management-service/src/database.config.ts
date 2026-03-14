@@ -67,6 +67,9 @@ import { SystemConfiguration } from './entities/system-configuration.entity';
 // Oficios Enviados
 import { OficioEnviado } from './entities/oficio-enviado.entity';
 
+// Plantillas de Documentos
+import { PlantillaDocumento } from './entities/plantilla-documento.entity';
+
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
 
@@ -108,7 +111,9 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // System Configurations
         SystemConfiguration,
         // Oficios Enviados
-        OficioEnviado
+        OficioEnviado,
+        // Plantillas de Documentos
+        PlantillaDocumento
     ],
     synchronize: false, // ⚠️ Reverted to false to avoid conflicts
     logging: ['error'], // Solo mostrar errores, no queries
