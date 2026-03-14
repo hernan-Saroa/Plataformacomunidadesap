@@ -41,16 +41,9 @@ export function TabNotasExpediente({ notas, onAgregarNota }: TabNotasExpedienteP
         <Card className="p-8 text-center border-2 border-dashed border-gray-300">
           <Bookmark className="w-16 h-16 mx-auto mb-4 text-gray-300" />
           <h4 className="font-bold text-lg text-gray-600 mb-2">Sin notas internas</h4>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="text-sm text-gray-500">
             Agrega la primera nota interna a este expediente
           </p>
-          <Button
-            onClick={onAgregarNota}
-            className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Agregar Nota
-          </Button>
         </Card>
       ) : (
         <div className="space-y-3">

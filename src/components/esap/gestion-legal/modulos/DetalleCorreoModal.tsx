@@ -26,6 +26,8 @@ export function DetalleCorreoModal({ isOpen, onClose, notificacion, onVerAdjunto
     const [searchLoading, setSearchLoading] = useState(false);
     const [vinculando, setVinculando] = useState(false);
     const [showVinculador, setShowVinculador] = useState(false);
+    const [fullBodyHtml, setFullBodyHtml] = useState<string | null>(null);
+    const [loadingBody, setLoadingBody] = useState(false);
 
     // Reset state when modal closes or correo changes
     useEffect(() => {
@@ -35,8 +37,24 @@ export function DetalleCorreoModal({ isOpen, onClose, notificacion, onVerAdjunto
             setProcesos([]);
             setProcesoSeleccionado(null);
             setShowVinculador(false);
+            setFullBodyHtml(null);
         }
     }, [isOpen]);
+
+    // Lazy-load full HTML body (with images) when modal opens
+    useEffect(() => {
+        if (isOpen && notificacion?.id) {
+            setLoadingBody(true);
+            correosJuridicosService.getCorreo(notificacion.id)
+                .then((full: any) => {
+                    if (full?.cuerpoHtml) {
+                        setFullBodyHtml(full.cuerpoHtml);
+                    }
+                })
+                .catch((err: any) => console.warn('Could not load full body:', err))
+                .finally(() => setLoadingBody(false));
+        }
+    }, [isOpen, notificacion?.id]);
 
     // Pre-select suggested module if available
     useEffect(() => {
@@ -214,12 +232,21 @@ export function DetalleCorreoModal({ isOpen, onClose, notificacion, onVerAdjunto
                         </div>
 
                         <div className="prose prose-sm max-w-none">
-                            <div
-                                className="min-h-[150px] max-h-[300px] overflow-y-auto p-4 bg-gray-50 rounded-lg border border-gray-200 text-gray-800 text-sm shadow-inner"
-                                dangerouslySetInnerHTML={data.contenido.includes('<') ? { __html: data.contenido } : undefined}
-                            >
-                                {!data.contenido.includes('<') ? data.contenido : undefined}
-                            </div>
+                            {loadingBody ? (
+                                <div className="min-h-[150px] max-h-[300px] flex items-center justify-center p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                    <Loader2 className="w-5 h-5 animate-spin text-gray-400 mr-2" />
+                                    <span className="text-sm text-gray-500">Cargando contenido...</span>
+                                </div>
+                            ) : (fullBodyHtml || (data.contenido && data.contenido.includes('<'))) ? (
+                                <div
+                                    className="min-h-[150px] max-h-[400px] overflow-y-auto p-4 bg-white rounded-lg border border-gray-200 text-gray-800 text-sm shadow-inner [&_img]:max-w-full [&_img]:h-auto"
+                                    dangerouslySetInnerHTML={{ __html: fullBodyHtml || data.contenido }}
+                                />
+                            ) : (
+                                <div className="min-h-[150px] max-h-[300px] overflow-y-auto p-4 bg-gray-50 rounded-lg border border-gray-200 text-gray-800 text-sm shadow-inner whitespace-pre-wrap">
+                                    {data.contenido || 'Sin contenido disponible'}
+                                </div>
+                            )}
                         </div>
                     </div>
 

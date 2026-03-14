@@ -61,10 +61,8 @@ const buildEvidenciaFileUrl = (archivoUrl: string, forDownload: boolean = false,
   }
 
   // Si es una ruta de archivo del backend (/files/filename.pdf)
-  // El backend tiene el endpoint /files/:filename en files.controller.ts - NO usa /api/v1/
+  // El backend tiene el endpoint /files/:filename en files.controller.ts
   if (archivoUrl.startsWith('/files/')) {
-    // El backend devuelve /files/... directamente, necesitamos pasarlo al gateway
-    // que mapea /{service}/files/* -> forwardStatic
     const filename = archivoUrl.replace(/^\/files\//, '');
     
     if (API_MODE === 'direct') {
@@ -77,15 +75,22 @@ const buildEvidenciaFileUrl = (archivoUrl: string, forDownload: boolean = false,
   }
 
   // Si es una ruta de archivo antigua (files/filename.pdf sin slash inicial), procesarla para backward compatibility
-  const filename = archivoUrl.replace(/^files\//, '');
-  const endpoint = forDownload ? `files/download/${filename}` : `files/${filename}`;
-  const queryParams = forDownload && originalName ? `?name=${encodeURIComponent(originalName)}` : '';
-
-  if (API_MODE === 'direct') {
-    return `${MICROSERVICE_URLS['control-disciplinario']}/${endpoint}${queryParams}`;
+  if (archivoUrl.startsWith('files/')) {
+    const filename = archivoUrl.replace(/^files\//, '');
+    
+    if (API_MODE === 'direct') {
+      return `${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`;
+    }
+    return buildApiUrl('control-disciplinario', `/files/${filename}`);
   }
-  // No agregar /api/v1/ ya que el endpoint real es /files/:filename
-  return buildApiUrl('control-disciplinario', `/${endpoint}${queryParams}`);
+
+  // Si es una ruta relativa simple (nombre de archivo), asume que es un archivo en /files/
+  // Agregar el prefijo /files/
+  const filename = archivoUrl.includes('/') ? archivoUrl.split('/').pop() : archivoUrl;
+  if (API_MODE === 'direct') {
+    return `${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`;
+  }
+  return buildApiUrl('control-disciplinario', `/files/${filename}`);
 };
 
 // Verificar si un archivo puede visualizarse en el navegador
@@ -103,11 +108,12 @@ const getOfficeViewerUrl = (fileUrl: string): string => {
 
 const buildDownloadUrl = (procId: string, documentId: string, view: boolean) => {
   const suffix = view ? '?view=true' : '';
-  const basePath = `/disciplinary-processes/${procId}/documents/${documentId}/download${suffix}`;
+  const basePath = `/api/v1/disciplinary-processes/${procId}/documents/${documentId}/download${suffix}`;
   if (API_MODE === 'direct') {
     return `${MICROSERVICE_URLS['control-disciplinario']}${basePath}`;
   }
-  return buildApiUrl('control-disciplinario', `/api/v1${basePath}`);
+  // En modo gateway, construir URL completa
+  return buildApiUrl('control-disciplinario', basePath);
 };
 
 const descargarArchivo = async (url: string, nombre: string) => {

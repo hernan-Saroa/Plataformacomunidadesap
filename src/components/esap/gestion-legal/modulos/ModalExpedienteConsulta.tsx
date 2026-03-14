@@ -33,11 +33,13 @@ import { Textarea } from '../../../ui/textarea';
 
 import type { ConsultaJuridica } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { ModalNuevaConsulta } from './ModalNuevaConsulta';
 import { ModalCompartir } from './ModalCompartir';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 interface ModalExpedienteConsultaProps {
   isOpen: boolean;
@@ -55,6 +57,10 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   // Hook de confirmación personalizado
   const { confirm, ConfirmationComponent } = useConfirmation();
 
+  // Estado para visor de documentos inline
+  const [visorAbierto, setVisorAbierto] = useState(false);
+  const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string } | null>(null);
+
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
   const [tabActivo, setTabActivo] = useState('general');
@@ -64,6 +70,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
   const [showArchivarModal, setShowArchivarModal] = useState(false);
   const [motivoArchivo, setMotivoArchivo] = useState('');
+  const [showEditarModal, setShowEditarModal] = useState(false);
 
 
   // Estados para documentos
@@ -506,10 +513,12 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
     // ✨ FIXED: Rutas de adjuntos de correos/oficios (usar /api/v1 para que gateway rutee correctamente)
     if (url.includes('/correos/adjuntos/')) {
-      const regex = /\/adjuntos\/([^/]+)\//;
+      const regex = /\/adjuntos\/([^/]+)/;
       const match = url.match(regex);
       if (match) {
-        const adjuntoId = match[1];
+        let adjuntoId = match[1];
+        if (adjuntoId.endsWith('/download')) adjuntoId = adjuntoId.replace('/download', '');
+
         const adjuntoPrefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
         return `${baseUrl}${adjuntoPrefix}/correos/adjuntos/${adjuntoId}/download`;
       }
@@ -546,8 +555,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       return;
     }
     const fullUrl = getFullUrl(url);
-    window.open(fullUrl, '_blank');
-    toast.success('Documento abierto en nueva pestaña', { description: doc.nombre });
+    // Abrir en el visor inline en lugar de una nueva pestaña
+    setDocParaVisor({ url: fullUrl, nombre: doc.nombre || doc.archivoNombreOriginal || 'Documento', asunto: doc.tipoDocumento || '' });
+    setVisorAbierto(true);
   };
 
   /**
@@ -566,7 +576,18 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       const baseUrl = getServiceUrl('legal');
       const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/consultas-juridicas/${consulta.uuid}/documentos/download-zip`;
-      const response = await fetch(url);
+
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
 
       if (!response.ok) {
         throw new Error('Error al descargar los documentos');
@@ -762,6 +783,17 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
             titulo={`Consulta ${consulta.id}`}
             subtitulo={consulta.temaJuridico}
             badgePrincipal={`${semaforo.icon} ${semaforo.label}`}
+            actions={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowEditarModal(true)}
+                className="flex items-center gap-1.5 text-blue-700 border-blue-300 hover:bg-blue-50"
+              >
+                <Edit className="w-3.5 h-3.5" />
+                Editar
+              </Button>
+            }
             badges={
               <>
                 <span className="inline-flex items-center rounded-md px-2 py-0.5 bg-blue-100 text-blue-700 border-blue-300 font-semibold text-xs border gap-1">
@@ -974,12 +1006,24 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                           <p className="text-xs text-gray-600">Funcionario</p>
                           <p className="text-sm font-bold text-gray-900">{consulta.funcionarioSolicitante}</p>
                         </div>
+                        {(consulta as any).cargoSolicitante && (
+                          <div>
+                            <p className="text-xs text-gray-600">Cargo</p>
+                            <p className="text-sm font-bold text-gray-900">{(consulta as any).cargoSolicitante}</p>
+                          </div>
+                        )}
                         <div className="pt-2 border-t border-gray-200">
                           <p className="text-xs text-gray-600 mb-2">Contacto</p>
                           <div className="flex items-center gap-2 text-sm text-gray-700">
                             <Mail className="w-4 h-4" />
                             <span>{consulta.emailSolicitante || 'No especificado'}</span>
                           </div>
+                          {(consulta as any).telefonoSolicitante && (
+                            <div className="flex items-center gap-2 text-sm text-gray-700 mt-1">
+                              <Phone className="w-4 h-4" />
+                              <span>{(consulta as any).telefonoSolicitante}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </Card>
@@ -1034,6 +1078,21 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                       </p>
                     </div>
                   </Card>
+
+                  {/* Antecedentes (si existen) */}
+                  {(consulta as any).antecedentes && (
+                    <Card className="p-4 bg-gray-50 border-gray-200">
+                      <div className="flex items-center gap-3 mb-4">
+                        <BookOpen className="w-5 h-5 text-gray-600" />
+                        <h3 className="font-bold text-gray-900">Antecedentes</h3>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg border border-gray-200">
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                          {(consulta as any).antecedentes}
+                        </p>
+                      </div>
+                    </Card>
+                  )}
 
                   {/* Respuesta (si existe) */}
                   {consulta.respuesta && (
@@ -1562,7 +1621,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
         </DialogContent>
       </Dialog>
       {/* MODALES SECUNDARIOS */}
-      {/* 
+      {/*
       {modalCompartirAbierto && (
         <ModalCompartir
           isOpen={modalCompartirAbierto}
@@ -1571,6 +1630,29 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
         />
       )}
       */}
+
+      {/* MODAL EDITAR CONSULTA */}
+      <ModalNuevaConsulta
+        isOpen={showEditarModal}
+        onClose={() => setShowEditarModal(false)}
+        modoEdicion={true}
+        consultaInicial={consulta}
+        onSuccess={() => {
+          setShowEditarModal(false);
+          if (onUpdate) onUpdate();
+        }}
+      />
+
+      {/* VISOR INLINE DE DOCUMENTOS */}
+      {docParaVisor && (
+        <VisorDocumentoModal
+          isOpen={visorAbierto}
+          onClose={() => { setVisorAbierto(false); setDocParaVisor(null); }}
+          archivo={docParaVisor.url}
+          numero={docParaVisor.nombre}
+          asunto={docParaVisor.asunto}
+        />
+      )}
     </>
   );
 }

@@ -316,6 +316,9 @@ export class LegalService {
         tipoActuacion: string;
         descripcion: string;
         fechaActuacion: string;
+        responsable?: string;
+        estado?: string;
+        observaciones?: string;
         file?: File;
     }): Promise<Actuacion> {
         if (data.file) {
@@ -324,6 +327,9 @@ export class LegalService {
             formData.append('tipoActuacion', data.tipoActuacion);
             formData.append('descripcion', data.descripcion);
             formData.append('fechaActuacion', data.fechaActuacion); // Backend espera string ISO o similar
+            if (data.responsable) formData.append('responsable', data.responsable);
+            if (data.estado) formData.append('estado', data.estado);
+            if (data.observaciones) formData.append('observaciones', data.observaciones);
             return apiClient.upload<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, formData);
         }
         return apiClient.post<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, data);
@@ -610,6 +616,28 @@ export class LegalService {
         return apiClient.get(`${SERVICE_PREFIX}/terminos/${id}`);
     }
 
+    async updateTermino(id: string, data: any): Promise<any> {
+        return apiClient.patch(`${SERVICE_PREFIX}/terminos/${id}`, data);
+    }
+
+    async exportarTerminoPdf(id: string): Promise<Blob> {
+        return apiClient.getBlob(`${SERVICE_PREFIX}/terminos/${id}/exportar/pdf`);
+    }
+
+    async getDocumentosTermino(id: string): Promise<any[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/terminos/${id}/documentos`);
+    }
+
+    async cargarDocumentoTermino(id: string, file: File): Promise<any> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.post(`${SERVICE_PREFIX}/terminos/${id}/upload-documento`, formData);
+    }
+
+    async eliminarTermino(id: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/terminos/${id}`);
+    }
+
 
     // --- TAREAS DE EXPEDIENTE ---
 
@@ -770,6 +798,26 @@ export class LegalService {
 
     async eliminarPlanMejoramiento(id: string): Promise<void> {
         return apiClient.delete(`${SERVICE_PREFIX}/planes-mejoramiento/${id}`);
+    }
+
+    async getDocumentosPlan(id: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/documentos`);
+    }
+
+    async uploadDocumentoPlan(id: string, formData: FormData): Promise<any> {
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/documentos`, formData);
+    }
+
+    getPlanFileViewUrl(filename: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/files/${filename}`;
+    }
+
+    getPlanFileDownloadUrl(filename: string, originalName: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/files/download/${filename}?name=${encodeURIComponent(originalName)}`;
     }
 
     // ==================== JUZGAMIENTO DISCIPLINARIO ====================
@@ -1514,6 +1562,12 @@ export class ProcesosCoactivosService {
         return `${baseUrl}${prefix}/procesos-coactivos/${procesoId}/download-zip`;
     }
 
+    getExportPdfUrl(procesoId: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        return `${baseUrl}${prefix}/procesos-coactivos/${procesoId}/export-pdf`;
+    }
+
     async registrarPago(procesoId: string, data: any): Promise<PagoCoactivo> {
         return apiClient.post<PagoCoactivo>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/pagos`, data);
     }
@@ -1539,8 +1593,10 @@ export class ProcesosCoactivosService {
             url = `${baseUrl}${SERVICE_PREFIX}/procesos-coactivos/pagos/soporte/${filename}`;
         }
 
-        // Fetch to get blob
-        const response = await fetch(url);
+        const token = localStorage.getItem('esap_auth_token');
+        const response = await fetch(url, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         if (!response.ok) throw new Error('Error descargando soporte');
 
         const blob = await response.blob();

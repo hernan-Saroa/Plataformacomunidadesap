@@ -683,9 +683,11 @@ class DisciplinaryService {
     }
 
     // --- ARCHIVOS ---
-    async uploadFile(file: File): Promise<{ url: string; filename: string }> {
+    async uploadFile(file: File, tipo: string = 'default'): Promise<{ url: string; filename: string }> {
         const formData = new FormData();
         formData.append('file', file);
+        // Enviar el tipo de documento para que el backend valide los formatos permitidos
+        formData.append('tipo', tipo);
         return apiClient.upload<{ url: string; filename: string }>(`${SERVICE_PREFIX}/files/upload`, formData);
     }
 
@@ -1094,7 +1096,15 @@ class DisciplinaryService {
         console.log('[DEBUG] Token available:', !!token);
         console.log('[DEBUG] Token prefix:', token?.substring(0, 20));
 
-        return apiClient.post<any>(`${SERVICE_PREFIX}/compartir-expediente/${procesoId}`, data);
+        // Obtener la URL base del frontend para generar enlaces correctos
+        // Esto asegura que la URL funcione en todos los ambientes (local, dev, qa, pre, prod)
+        const frontendBaseUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
+        console.log('[DEBUG] Frontend base URL:', frontendBaseUrl);
+
+        return apiClient.post<any>(`${SERVICE_PREFIX}/compartir-expediente/${procesoId}`, {
+            ...data,
+            frontendBaseUrl
+        });
     }
 
     /**

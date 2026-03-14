@@ -8,7 +8,7 @@ import { motion } from 'motion/react';
 import {
   Calendar, Search, Filter, FileText, AlertTriangle, Clock, CheckCircle,
   List, Calendar as CalendarIcon, TrendingUp, Link, Plus, Eye,
-  ChevronLeft, ChevronRight, CalendarDays
+  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2
 } from 'lucide-react';
 import { CardSIGL } from '../design-system/CardSIGL';
 import { ButtonSIGL } from '../design-system/ButtonSIGL';
@@ -16,6 +16,7 @@ import { BadgeSIGL } from '../design-system/BadgeSIGL';
 import { Input } from '../../../ui/input';
 import { Button } from '../../../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { SolicitudInforme, EtapaSolicitudInforme } from '../core/types';
 import { solicitudesConsolidadas, estadisticasTerminosInformes } from '../data/datosSolicitudesInformes';
 import { ModalDetalleSolicitudInforme } from './ModalDetalleSolicitudInforme';
@@ -24,7 +25,7 @@ import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalNuevoTermino } from './ModalNuevoTermino';
 import { ModalDetalleTermino } from './ModalDetalleTermino';
@@ -59,6 +60,10 @@ export function ModuloTerminosInformesV3() {
   const [modalDetalleOpen, setModalDetalleOpen] = useState(false);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudInforme | null>(null);
 
+  // Estados para Modal de Eliminar
+  const [modalEliminarOpen, setModalEliminarOpen] = useState(false);
+  const [terminoAEliminar, setTerminoAEliminar] = useState<{ id: string, permanente: boolean } | null>(null);
+
   const [loading, setLoading] = useState(true);
 
   // NOTA: Las notificaciones de términos urgentes/críticos se manejan
@@ -69,178 +74,57 @@ export function ModuloTerminosInformesV3() {
     setModalDetalleOpen(true);
   };
 
-  // ✅ Estado para items archivados/eliminados
-  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
-    {
-      id: 'SI-2024-999',
-      codigo: 'SI-2024-999',
-      nombre: 'Informe Gestión Jurídica Vigencia 2024 - Contraloría General de la República',
-      tipo: 'Solicitud de Informe',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-12-15T16:30:00'),
-      usuarioArchivo: 'Dra. Ana María Rodríguez',
-      motivoArchivo: 'Informe entregado exitosamente a la Contraloría. Oficio de recibido CGR-REC-2024-5678. Término cumplido dentro del plazo legal',
-      metadatos: {
-        'Tipo Informe': 'Gestión Jurídica Anual',
-        'Solicitante': 'Contraloría General de la República',
-        'Radicado': 'CGR-REQ-2024-1234',
-        'Responsable': 'Dra. Ana María Rodríguez',
-        'Fecha Solicitud': '10/11/2024',
-        'Fecha Entrega': '15/12/2024',
-        'Término': '35 días',
-        'Cumplimiento': 'Dentro del término legal'
-      }
-    },
-    {
-      id: 'SI-2024-888',
-      codigo: 'SI-2024-888',
-      nombre: 'Respuesta Derecho de Petición sobre contratos 2023-2024 - Ciudadano Juan Pérez',
-      tipo: 'Solicitud de Informe',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-11-20T14:15:00'),
-      usuarioArchivo: 'Dr. Carlos Méndez',
-      motivoArchivo: 'Derecho de petición respondido dentro del término legal de 15 días. Notificación enviada por correo certificado y correo electrónico',
-      metadatos: {
-        'Tipo Informe': 'Derecho de Petición',
-        'Solicitante': 'Juan Pérez González',
-        'Radicado': 'DP-2024-0456',
-        'Responsable': 'Dr. Carlos Méndez',
-        'Fecha Solicitud': '10/11/2024',
-        'Fecha Respuesta': '20/11/2024',
-        'Término Legal': '15 días hábiles',
-        'Estado': 'Respondido en término'
-      }
-    },
-    {
-      id: 'SI-2024-777',
-      codigo: 'SI-2024-777',
-      nombre: 'Informe Procesos Disciplinarios Trimestre III 2024 - Procuraduría General',
-      tipo: 'Solicitud de Informe',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-10-28T10:45:00'),
-      usuarioArchivo: 'Dr. Jorge Silva',
-      motivoArchivo: 'Informe trimestral entregado a Procuraduría. Oficio PGN-REC-2024-3456. Incluye estadísticas y estado de 12 procesos disciplinarios activos',
-      metadatos: {
-        'Tipo Informe': 'Trimestral Procesos Disciplinarios',
-        'Solicitante': 'Procuraduría General de la Nación',
-        'Radicado': 'PGN-REQ-2024-0789',
-        'Responsable': 'Dr. Jorge Silva',
-        'Período': 'Julio - Septiembre 2024',
-        'Fecha Entrega': '28/10/2024',
-        'Total Procesos': '12',
-        'Estado': 'Entregado'
-      }
-    },
-    {
-      id: 'SI-2024-666',
-      codigo: 'SI-2024-666',
-      nombre: 'Concepto Jurídico sobre licitación pública obra civil - Dirección Administrativa',
-      tipo: 'Solicitud de Informe',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-09-15T15:20:00'),
-      usuarioArchivo: 'Dra. Patricia Ruiz',
-      motivoArchivo: 'Concepto jurídico emitido y aprobado por el Director Administrativo. Proceso licitatorio ajustado conforme a las recomendaciones jurídicas',
-      metadatos: {
-        'Tipo Informe': 'Concepto Jurídico',
-        'Solicitante': 'Dirección Administrativa y Financiera',
-        'Radicado Interno': 'CJ-2024-045',
-        'Responsable': 'Dra. Patricia Ruiz',
-        'Tema': 'Licitación Pública - Obra Civil',
-        'Fecha Concepto': '15/09/2024',
-        'Recomendación': 'Favorable con ajustes',
-        'Estado': 'Implementado'
-      }
-    },
-    {
-      id: 'SI-2023-555',
-      codigo: 'SI-2023-555',
-      nombre: 'Informe Estado Procesos Judiciales 2023 - Consejo Superior ESAP',
-      tipo: 'Solicitud de Informe',
-      estado: 'ELIMINADO',
-      fechaArchivado: new Date('2024-08-10T11:30:00'),
-      usuarioArchivo: 'Admin Sistema',
-      motivoArchivo: 'Informe duplicado. El informe oficial fue radicado bajo código SI-2023-556. Error en el proceso de radicación inicial',
-      metadatos: {
-        'Tipo Informe': 'Estado Procesos Judiciales',
-        'Motivo Eliminación': 'Registro duplicado',
-        'Informe Oficial': 'SI-2023-556',
-        'Fecha Detección': '10/08/2024'
-      }
-    },
-    {
-      id: 'SI-2024-444',
-      codigo: 'SI-2024-444',
-      nombre: 'Respuesta Tutela radicada por docente sobre evaluación docente - Juzgado Laboral',
-      tipo: 'Solicitud de Informe',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-07-22T09:00:00'),
-      usuarioArchivo: 'Dr. Luis Gómez',
-      motivoArchivo: 'Respuesta a tutela entregada dentro del término de 2 días. Juzgado 5° Laboral de Bogotá. Fallo favorable a la ESAP',
-      metadatos: {
-        'Tipo Informe': 'Respuesta Tutela',
-        'Solicitante': 'Juzgado 5° Laboral del Circuito de Bogotá',
-        'Radicado Judicial': 'T-2024-0123',
-        'Responsable': 'Dr. Luis Gómez',
-        'Fecha Notificación': '20/07/2024',
-        'Fecha Respuesta': '22/07/2024',
-        'Término': '2 días hábiles',
-        'Fallo': 'Favorable a ESAP'
-      }
-    },
-    {
-      id: 'SI-2024-333',
-      codigo: 'SI-2024-333',
-      nombre: 'Certificado de antecedentes disciplinarios para licitación - Empresa ABC S.A.S.',
-      tipo: 'Solicitud de Informe',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-06-18T13:45:00'),
-      usuarioArchivo: 'Dra. Carolina Pérez',
-      motivoArchivo: 'Certificado expedido y enviado al solicitante por correo electrónico. Término de 5 días hábiles cumplido',
-      metadatos: {
-        'Tipo Informe': 'Certificado Antecedentes Disciplinarios',
-        'Solicitante': 'Empresa ABC S.A.S.',
-        'Radicado': 'CERT-2024-089',
-        'Responsable': 'Dra. Carolina Pérez',
-        'Fecha Solicitud': '13/06/2024',
-        'Fecha Expedición': '18/06/2024',
-        'Resultado': 'Sin antecedentes',
-        'Medio Notificación': 'Correo electrónico'
-      }
-    },
-    {
-      id: 'SI-2024-222',
-      codigo: 'SI-2024-222',
-      nombre: 'Informe Cumplimiento Normativa Contratación - Auditoría Externa',
-      tipo: 'Solicitud de Informe',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-05-25T16:10:00'),
-      usuarioArchivo: 'Dr. Roberto Vargas',
-      motivoArchivo: 'Informe de cumplimiento entregado a Auditoría Externa. Evaluación favorable sin hallazgos críticos. Proceso de auditoría cerrado',
-      metadatos: {
-        'Tipo Informe': 'Cumplimiento Normativa Contratación',
-        'Solicitante': 'Revisoría Fiscal - Auditoría Externa',
-        'Radicado': 'AE-2024-012',
-        'Responsable': 'Dr. Roberto Vargas',
-        'Período Evaluado': 'Enero - Abril 2024',
-        'Fecha Entrega': '25/05/2024',
-        'Resultado': 'Favorable sin hallazgos',
-        'Estado Auditoría': 'Cerrada'
-      }
-    }
-  ]);
+  // ✅ Estado para items archivados/eliminados derivados de las solicitudes reales
+  const itemsArchivados = useMemo(() => {
+    return solicitudes
+      .filter(s => s.etapa === 'CUMPLIDO')
+      .map(s => ({
+        id: s.id,
+        codigo: s.id,
+        nombre: s.asunto || 'Sin título',
+        tipo: s.tipoInforme || 'Término',
+        estado: 'ARCHIVADO',
+        fechaArchivado: s.fechaVencimiento ? new Date(s.fechaVencimiento) : new Date(),
+        usuarioArchivo: s.responsable || 'Sistema',
+        motivoArchivo: s.descripcion || 'Término cumplido y archivado.',
+        metadatos: {
+          'Módulo': s.moduloOrigen || 'N/A',
+          'Responsable': s.responsable,
+        }
+      }));
+  }, [solicitudes]);
 
   // ✅ Función para restaurar una solicitud archivada
   const handleRestaurar = async (itemId: string) => {
-    console.log('Restaurando solicitud de informe:', itemId);
-    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
-    toast.success('Solicitud restaurada exitosamente');
+    try {
+      const backendId = solicitudes.find(s => s.id === itemId)?.metadata?.uuid || itemId;
+      await legalService.updateTermino(backendId, { estado: 'PENDIENTE', closedAt: null });
+      toast.success('Término restaurado exitosamente');
+      fetchData();
+    } catch (e) {
+      toast.error('Error al restaurar término');
+    }
   };
 
-  // ✅ Función para eliminar permanentemente una solicitud
+  // ✅ Función para eliminar permanentemente una solicitud desde "Archivados"
   const handleEliminarPermanente = async (itemId: string) => {
-    console.log('Eliminando permanentemente solicitud:', itemId);
-    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
-    toast.success('Solicitud eliminada permanentemente');
+    setTerminoAEliminar({ id: itemId, permanente: true });
+    setModalEliminarOpen(true);
+  };
+
+  const ejecutarEliminacion = async () => {
+    if (!terminoAEliminar) return;
+    try {
+      const { id, permanente } = terminoAEliminar;
+      const backendId = solicitudes.find(s => s.id === id)?.metadata?.uuid || id;
+      await legalService.eliminarTermino(backendId);
+      toast.success(permanente ? 'Término eliminado permanentemente' : 'Término eliminado');
+      setModalDetalleOpen(false);
+      setModalEliminarOpen(false);
+      fetchData();
+    } catch (e) {
+      toast.error('Error al eliminar término');
+    }
   };
 
 
@@ -267,7 +151,8 @@ export function ModuloTerminosInformesV3() {
         enteSolicitante: t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema',
         radicadoExterno: t.numeroRadicado || 'N/A',
         asunto: t.nombreActuacion,
-        descripcion: t.observaciones || '', // Now contains Facts
+        descripcion: t.observaciones ? t.observaciones.split('\n').filter((l: string) => !l.startsWith('[ARCHIVO_ADJUNTO]')).join('\n').trim() : '', 
+
         responsable: t.responsableNombre || t.responsableId || 'Sin asignar',
         fechaSolicitud: new Date(t.fechaBase),
         fechaVencimiento: new Date(t.fechaVencimiento),
@@ -351,13 +236,60 @@ export function ModuloTerminosInformesV3() {
     });
   };
 
-  const handleAgregarComentario = (id: string, comentario: string) => {
-    console.log('💬 Comentario agregado a:', id, '→', comentario);
-    // En una app real, esto actualizaría el timeline de la solicitud
+  const handleAgregarComentario = async (id: string, comentario: string) => {
+    try {
+      const solicitud = solicitudes.find(s => s.id === id);
+      if (!solicitud) return;
+
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      const userName = user?.nombre || 'Usuario';
+      
+      const newCommentText = `[${new Date().toLocaleDateString('es-CO')} ${new Date().toLocaleTimeString('es-CO')}] ${userName}:\n${comentario}`;
+      const updatedDescripcion = solicitud.descripcion 
+        ? `${solicitud.descripcion}\n\n---\n${newCommentText}`
+        : newCommentText;
+
+      const backendId = solicitud.metadata?.uuid || solicitud.id;
+
+      // Actualización optimista inmediata en UI
+      setSolicitudes(prev => prev.map(sol => sol.id === id ? { ...sol, descripcion: updatedDescripcion } : sol));
+      if (solicitudSeleccionada?.id === id) {
+        setSolicitudSeleccionada(prev => prev ? { ...prev, descripcion: updatedDescripcion } : null);
+      }
+
+      // IMPORTANTE: Se envía como "nuevoComentario" para que el backend lo concatene de forma segura sin borrar metadatos [ARCHIVO_ADJUNTO]
+      await legalService.updateTermino(backendId, { nuevoComentario: newCommentText });
+      toast.success('Comentario guardado correctamente');
+    } catch (error) {
+      console.error('Error guardando comentario:', error);
+      toast.error('Error al guardar el comentario. Intente nuevamente.');
+      // Revertir en caso de error
+      fetchData();
+    }
+  };
+
+  const handleArchivar = async (id: string) => {
+    try {
+      const solicitud = solicitudes.find(s => s.id === id);
+      if (!solicitud) return;
+      const backendId = solicitud.metadata?.uuid || solicitud.id;
+      await legalService.updateTermino(backendId, { estado: 'CUMPLIDO', closedAt: new Date() });
+      toast.success('El término ha sido archivado (CUMPLIDO)');
+      setModalDetalleOpen(false);
+      fetchData();
+    } catch (e) {
+      toast.error('Error al archivar el término');
+    }
+  };
+
+  const handleEliminar = async (id: string) => {
+    setTerminoAEliminar({ id: id, permanente: false });
+    setModalEliminarOpen(true);
   };
 
   const solicitudesFiltradas = useMemo(() => {
-    let resultado = [...solicitudes];
+    let resultado = [...solicitudes].filter(s => s.etapa !== 'CUMPLIDO' && s.etapa !== 'ELIMINADO');
 
     if (busqueda) {
       resultado = resultado.filter(s =>
@@ -387,7 +319,7 @@ export function ModuloTerminosInformesV3() {
 
     // Always sort by urgency (less days remaining first)
     return resultado.sort((a, b) => a.diasRestantes - b.diasRestantes);
-  }, [solicitudes, busqueda, filtroSemaforo, solicitudes, filtroEtapa, filtroModuloOrigen]);
+  }, [solicitudes, busqueda, filtroSemaforo, filtroEtapa, filtroModuloOrigen]);
 
   const solicitudesCriticas = solicitudesFiltradas.filter(s => s.diasRestantes <= 2).length;
   const solicitudesUrgentes = solicitudesFiltradas.filter(s => s.diasRestantes > 2 && s.diasRestantes <= 5).length;
@@ -513,9 +445,9 @@ export function ModuloTerminosInformesV3() {
       />
 
       {/* Contenido principal */}
-      {vistaActual === 'timeline' && <VistaTimeline solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} />}
+      {vistaActual === 'timeline' && <VistaTimeline solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onVerDocumentos={handleOpenDocumentos} onArchivar={handleArchivar} onEliminar={handleEliminar} />}
       {vistaActual === 'calendario' && <VistaCalendario solicitudes={solicitudesFiltradas} mesActual={mesActual} setMesActual={setMesActual} onVerDetalle={handleVerDetalle} />}
-      {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} />}
+      {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onVerDocumentos={handleOpenDocumentos} onArchivar={handleArchivar} onEliminar={handleEliminar} />}
       {vistaActual === 'archivados' && (
         <VistaArchivados
           items={itemsArchivados}
@@ -549,7 +481,49 @@ export function ModuloTerminosInformesV3() {
         solicitud={solicitudSeleccionada}
         onCambiarEtapa={handleCambiarEtapa}
         onAgregarComentario={handleAgregarComentario}
+        onArchivar={handleArchivar}
+        onEliminar={handleEliminar}
       />
+
+      {/* Modal Confirmar Eliminar */}
+      {modalEliminarOpen && (
+        <Dialog open={modalEliminarOpen} onOpenChange={() => setModalEliminarOpen(false)}>
+          <DialogContent hideCloseButton className="max-w-md">
+            <DialogTitle className="sr-only">Confirmar Eliminación</DialogTitle>
+            <DialogDescription className="sr-only">
+              ¿Está seguro que desea eliminar este término?
+            </DialogDescription>
+            
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-4 bg-red-50 rounded-lg border-2 border-red-200">
+                <Trash2 className="w-8 h-8 text-red-600" />
+                <div>
+                  <h3 className="font-bold text-gray-900">Eliminar Término</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Confirma que desea eliminar este término? Esta acción no se puede deshacer.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setModalEliminarOpen(false)}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={ejecutarEliminacion}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Sí, Eliminar
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
@@ -558,12 +532,14 @@ interface VistaTimelineProps {
   solicitudes: SolicitudInforme[];
   onVerDetalle: (s: SolicitudInforme) => void;
   onVerDocumentos: (s: SolicitudInforme) => void;
+  onArchivar: (id: string) => void;
+  onEliminar: (id: string) => void;
 }
 
-function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos }: VistaTimelineProps) {
+function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos, onArchivar, onEliminar }: VistaTimelineProps) {
   // Ordenar por fecha límite
   const solicitudesOrdenadas = [...solicitudes].sort((a, b) =>
-    new Date(a.fechaLimite).getTime() - new Date(b.fechaLimite).getTime()
+    new Date(a.fechaVencimiento).getTime() - new Date(b.fechaVencimiento).getTime()
   );
 
   return (
@@ -641,7 +617,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos }: VistaTime
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => onVerDetalle(solicitud)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95"
@@ -657,7 +633,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos }: VistaTime
                     Ver Detalle
                   </button>
                   <button
-                    onClick={() => toast.info('Documentos', { description: solicitud.id })}
+                    onClick={() => onVerDocumentos(solicitud)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95"
                     style={{
                       background: '#FFFFFF',
@@ -677,6 +653,21 @@ function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos }: VistaTime
                   >
                     <FileText className="w-3.5 h-3.5" />
                     Documentos
+                  </button>
+                  <button
+                    onClick={() => onArchivar(solicitud.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95 bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100"
+                    title="Archivar (marcar como Cumplido)"
+                  >
+                    <Archive className="w-3.5 h-3.5" />
+                    Archivar
+                  </button>
+                  <button
+                    onClick={() => onEliminar(solicitud.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95 bg-red-50 text-red-600 border border-red-300 hover:bg-red-100"
+                    title="Eliminar término"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -724,10 +715,10 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
           {nombreMes}
         </h3>
         <div className="flex items-center gap-2">
-          <ButtonSIGL onClick={mesAnterior} size="sm" variant="outline">
+          <ButtonSIGL onClick={mesAnterior} size="sm" variant="secondary">
             <ChevronLeft className="w-4 h-4" />
           </ButtonSIGL>
-          <ButtonSIGL onClick={mesSiguiente} size="sm" variant="outline">
+          <ButtonSIGL onClick={mesSiguiente} size="sm" variant="secondary">
             <ChevronRight className="w-4 h-4" />
           </ButtonSIGL>
         </div>
@@ -748,8 +739,10 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
         {/* Días del mes */}
         {dias.map(dia => {
           const fecha = new Date(mesActual.getFullYear(), mesActual.getMonth(), dia);
-          const solicitudesDia = solicitudes.filter(s => {
+          const solicitudesDia = (solicitudes || []).filter(s => {
+            if (!s.fechaVencimiento) return false;
             const fechaVencimiento = new Date(s.fechaVencimiento);
+            if (isNaN(fechaVencimiento.getTime())) return false;
             return fechaVencimiento.getDate() === dia &&
               fechaVencimiento.getMonth() === mesActual.getMonth() &&
               fechaVencimiento.getFullYear() === mesActual.getFullYear();
@@ -767,9 +760,9 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
               <div className="font-semibold text-gray-700 mb-1">{dia}</div>
               {solicitudesDia.length > 0 && (
                 <div className="space-y-0.5 cursor-pointer">
-                  {solicitudesDia.slice(0, 2).map(s => (
+                  {solicitudesDia.slice(0, 2).map((s, idx) => (
                     <div
-                      key={`cal-${s.metadata?.uuid || s.id}-${index}`}
+                      key={`cal-${s.metadata?.uuid || s.id}-${idx}`}
                       className="text-[9px] px-1 py-0.5 rounded truncate"
                       style={{
                         backgroundColor: s.diasRestantes <= 2 ? '#DC2626' : s.diasRestantes <= 5 ? '#F59E0B' : '#10B981',
@@ -799,9 +792,11 @@ interface VistaListaProps {
   solicitudes: SolicitudInforme[];
   onVerDocumentos: (s: SolicitudInforme) => void;
   onVerDetalle: (solicitud: SolicitudInforme) => void;
+  onArchivar: (id: string) => void;
+  onEliminar: (id: string) => void;
 }
 
-function VistaLista({ solicitudes, onVerDetalle, onVerDocumentos }: VistaListaProps) {
+function VistaLista({ solicitudes, onVerDetalle, onVerDocumentos, onArchivar, onEliminar }: VistaListaProps) {
   return (
     <CardSIGL className="bg-white border border-gray-200">
       <div className="overflow-x-auto">
@@ -841,28 +836,48 @@ function VistaLista({ solicitudes, onVerDetalle, onVerDocumentos }: VistaListaPr
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{solicitud.etapa}</td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => onVerDetalle(solicitud)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95"
-                      style={{
-                        background: '#003DA5',
-                        color: '#FFFFFF',
-                        border: 'none'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = '#2962FF'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = '#003DA5'}
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      Ver
-                    </button>
-                    <Button
-                      onClick={() => onVerDocumentos(solicitud)}
-                      size="sm"
-                      variant="outline"
-                      title="Ver Documentos"
-                    >
-                      <FileText className="w-3 h-3" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => onVerDetalle(solicitud)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95"
+                        style={{
+                          background: '#003DA5',
+                          color: '#FFFFFF',
+                          border: 'none'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#2962FF'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = '#003DA5'}
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        Ver
+                      </button>
+                      <Button
+                        onClick={() => onVerDocumentos(solicitud)}
+                        size="sm"
+                        variant="outline"
+                        title="Ver Documentos"
+                      >
+                        <FileText className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        onClick={() => onArchivar(solicitud.id)}
+                        size="sm"
+                        variant="outline"
+                        title="Archivar (Cumplido)"
+                        className="text-amber-600 border-amber-300 hover:bg-amber-50"
+                      >
+                        <Archive className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        onClick={() => onEliminar(solicitud.id)}
+                        size="sm"
+                        variant="outline"
+                        title="Eliminar"
+                        className="text-red-600 border-red-300 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               );

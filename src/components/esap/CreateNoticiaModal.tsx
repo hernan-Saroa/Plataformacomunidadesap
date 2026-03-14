@@ -27,6 +27,7 @@ interface Apoderado {
   cedula: string;
   correo: string;
   celular: string;
+  direccion?: string; // ✅ NUEVO: Dirección del apoderado (opcional)
 }
 
 interface Denunciante {
@@ -149,7 +150,6 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   const [formData, setFormData] = useState({
     origen: origenInicial,
     fechaQueja: (noticiaToEdit as any)?.fechaQueja || noticiaToEdit?.fechaRecepcion || new Date().toISOString().split('T')[0],
-    usarFechaActual: !noticiaToEdit,
     fechaHechos: noticiaToEdit?.fechaHechos || '',
     territorial: noticiaToEdit?.territorial || '',
     denunciado: {
@@ -277,7 +277,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     nombre: '',
     cedula: '',
     correo: '',
-    celular: ''
+    celular: '',
+    direccion: '' // ✅ NUEVO: Dirección del apoderado
   });
 
   const [mostrarApoderadoDenunciante, setMostrarApoderadoDenunciante] = useState(false);
@@ -285,7 +286,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     nombre: '',
     cedula: '',
     correo: '',
-    celular: ''
+    celular: '',
+    direccion: '' // ✅ NUEVO: Dirección del apoderado
   });
 
   // ✅ NUEVO: Estado para campos "Por determinar"
@@ -430,7 +432,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       nombre: '',
       cedula: '',
       correo: '',
-      celular: ''
+      celular: '',
+      direccion: '' // ✅ NUEVO: Limpiar dirección
     });
 
     toast.success('Denunciante agregado');
@@ -470,7 +473,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       nombre: '',
       cedula: '',
       correo: '',
-      celular: ''
+      celular: '',
+      direccion: '' // ✅ NUEVO: Limpiar dirección
     });
 
     toast.success('Denunciado agregado');
@@ -717,47 +721,17 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Fecha de la Queja *
+                  Fecha *
                 </label>
-                <div className="space-y-3">
-                  <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50"
-                    style={{ borderColor: formData.usarFechaActual ? '#003DA5' : '#D1D5DB' }}
-                  >
-                    <input
-                      type="radio"
-                      checked={formData.usarFechaActual}
-                      onChange={() => {
-                        handleChange('usarFechaActual', true);
-                        handleChange('fechaQueja', new Date().toISOString().split('T')[0]);
-                      }}
-                    />
-                    <div>
-                      <p className="font-medium text-gray-900">Fecha actual (automática)</p>
-                      <p className="text-xs text-gray-500">El sistema registrará la fecha de hoy</p>
-                    </div>
-                  </label>
-
-                  <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50"
-                    style={{ borderColor: !formData.usarFechaActual ? '#003DA5' : '#D1D5DB' }}
-                  >
-                    <input
-                      type="radio"
-                      checked={!formData.usarFechaActual}
-                      onChange={() => handleChange('usarFechaActual', false)}
-                    />
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900 mb-2">Fecha específica</p>
-                      {!formData.usarFechaActual && (
-                        <input
-                          type="date"
-                          value={formData.fechaQueja}
-                          onChange={(e) => handleChange('fechaQueja', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      )}
-                    </div>
-                  </label>
-                </div>
+                <input
+                  type="date"
+                  value={formData.fechaQueja}
+                  onChange={(e) => handleChange('fechaQueja', e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Fecha de la queja o notificación
+                </p>
               </div>
 
               <div>
@@ -911,7 +885,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                               ? 'La acción disciplinaria ha perdido vigencia. Han transcurrido más de 5 años desde la ocurrencia de los hechos.'
                               : verificarProximoVencimiento(formData.fechaHechos)
                               ? 'Menos de 6 meses para el vencimiento. Se recomienda priorizar esta noticia.'
-                              : 'Según la Ley 734 de 2002, la acción disciplinaria caduca a los 5 años desde la ocurrencia de los hechos.'
+                              : 'Según la ley 1952 de 2019 del Código general disciplinario, la acción disciplinaria caduca a los 5 años desde la ocurrencia de los hechos.'
                             }
                           </p>
                         </div>
@@ -921,10 +895,10 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     {/* Información Legal */}
                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
                       <p className="text-xs text-gray-700 font-medium mb-1">
-                        📖 Marco Legal - Ley 734 de 2002 (Código Disciplinario Único)
+                        📖 Marco Legal - ley 1952 de 2019 (Código General Disciplinario)
                       </p>
                       <p className="text-xs text-gray-600">
-                        <strong>Artículo 30:</strong> "La acción disciplinaria caducará si transcurridos cinco (5) años desde la ocurrencia de la falta, no se ha proferido auto de apertura de investigación disciplinaria."
+                        <strong>Artículo 33. Caducidad y prescripción de la acción disciplinaria:</strong> "La acción disciplinaria caducará si transcurridos cinco (5) años desde la ocurrencia de la falta, no se ha proferido auto de apertura de investigación disciplinaria."
                       </p>
                     </div>
                   </div>
@@ -1162,6 +1136,20 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
+                      {/* ✅ NUEVO: Campo de Dirección del Apoderado */}
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          <MapPin className="w-3 h-3 inline mr-1" />
+                          Dirección
+                        </label>
+                        <input
+                          type="text"
+                          value={apoderadoDenunciado.direccion || ''}
+                          onChange={(e) => setApoderadoDenunciado({ ...apoderadoDenunciado, direccion: e.target.value })}
+                          placeholder="Dirección de residencia u oficina"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1246,6 +1234,9 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                                   <p><span className="font-semibold">Cédula:</span> {denunciado.apoderado.cedula}</p>
                                   <p><span className="font-semibold">Celular:</span> {denunciado.apoderado.celular}</p>
                                   <p><span className="font-semibold">Correo:</span> {denunciado.apoderado.correo}</p>
+                                  {denunciado.apoderado.direccion && (
+                                    <p className="col-span-2"><span className="font-semibold">Dirección:</span> {denunciado.apoderado.direccion}</p>
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -1910,6 +1901,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                           Apoderado: <span className="font-semibold">{denunciado.apoderado!.nombre}</span> • 
                           CC: {denunciado.apoderado!.cedula} • 
                           Tel: {denunciado.apoderado!.celular}
+                          {denunciado.apoderado!.direccion && <> • Dir: {denunciado.apoderado!.direccion}</>}
                         </p>
                       </div>
                     ))}
@@ -1922,6 +1914,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                           Apoderado: <span className="font-semibold">{denunciante.apoderado!.nombre}</span> • 
                           CC: {denunciante.apoderado!.cedula} • 
                           Tel: {denunciante.apoderado!.celular}
+                          {denunciante.apoderado!.direccion && <> • Dir: {denunciante.apoderado!.direccion}</>}
                         </p>
                       </div>
                     ))}

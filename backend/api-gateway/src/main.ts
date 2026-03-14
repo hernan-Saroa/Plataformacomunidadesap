@@ -6,9 +6,9 @@ import { json, urlencoded } from 'express';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Increase body size limit for file uploads (base64 encoded files can be large)
-  app.use(json({ limit: '50mb' }));
-  app.use(urlencoded({ extended: true, limit: '50mb' }));
+  // Increase body size limit for file uploads (up to 250MB)
+  app.use(json({ limit: '250mb' }));
+  app.use(urlencoded({ extended: true, limit: '250mb' }));
 
   // app.set('trust proxy', true);
 

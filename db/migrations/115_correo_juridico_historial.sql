@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS legal_management.correo_juridico_historial (
 
     CONSTRAINT fk_correo_historial_correo
         FOREIGN KEY (correo_juridico_id)
-        REFERENCES legal_management.correo_juridico(id)
+        REFERENCES legal_management.correos_juridicos(id)
         ON DELETE CASCADE
 );
 

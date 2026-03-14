@@ -1207,6 +1207,40 @@ function ModalDetalleProceso({
   isOpen: boolean;
   onClose: () => void;
 }) {
+  const [exportandoPdf, setExportandoPdf] = useState(false);
+
+  const handleExportarPdf = async () => {
+    setExportandoPdf(true);
+    try {
+      const token = localStorage.getItem('esap_auth_token');
+      const url = procesosCoactivosService.getExportPdfUrl(proceso.id);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (!response.ok) throw new Error('Error al generar el PDF');
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `Proceso_Coactivo_${proceso.radicado}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      toast.success('PDF generado exitosamente');
+    } catch (error) {
+      console.error('Error exportando PDF:', error);
+      toast.error('Error al generar el PDF');
+    } finally {
+      setExportandoPdf(false);
+    }
+  };
+
   const configs = {
     PERSUASIVA: { label: 'Persuasiva', color: 'bg-amber-100 text-amber-700' },
     COACTIVA: { label: 'Coactiva', color: 'bg-indigo-100 text-indigo-700' },
@@ -1364,15 +1398,16 @@ function ModalDetalleProceso({
             Cerrar
           </button>
           <button
-            onClick={() => toast.info('Función en desarrollo')}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+            onClick={handleExportarPdf}
+            disabled={exportandoPdf}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
             style={{
               background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
               boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
             }}
           >
             <Download className="w-4 h-4" />
-            Exportar PDF
+            {exportandoPdf ? 'Generando...' : 'Exportar PDF'}
           </button>
         </div>
       </div>

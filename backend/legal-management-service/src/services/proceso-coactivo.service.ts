@@ -570,6 +570,116 @@ export class ProcesoCoactivoService {
         proceso.documentosAdjuntos = count;
         await this.procesoCoactivoRepository.save(proceso);
     }
+    // ============ EXPORTAR PDF ============
+
+    async generatePdf(procesoId: string): Promise<Buffer> {
+        const proceso = await this.findOne(procesoId);
+        const adjuntos = await this.getAdjuntos(procesoId);
+        const PDFDocument = require('pdfkit');
+
+        return new Promise<Buffer>((resolve, reject) => {
+            const doc = new PDFDocument({ margin: 50, size: 'A4' });
+            const buffers: any[] = [];
+
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', reject);
+
+            // ── Encabezado ──────────────────────────────────────
+            doc.fontSize(18).font('Helvetica-Bold')
+                .text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP', { align: 'center' });
+            doc.fontSize(14).font('Helvetica-Bold')
+                .text('GESTIÓN LEGAL - COBRO COACTIVO', { align: 'center' });
+            doc.moveDown(0.5);
+            doc.fontSize(16).font('Helvetica-Bold')
+                .text('FICHA TÉCNICA DEL PROCESO COACTIVO', { align: 'center' });
+            doc.moveDown(0.5);
+
+            // Línea separadora
+            doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#003DA5').lineWidth(2).stroke();
+            doc.moveDown(0.5);
+
+            // ── Información del proceso ──────────────────────────
+            doc.fontSize(12).font('Helvetica-Bold').text('DATOS DEL PROCESO');
+            doc.moveDown(0.3);
+            doc.fontSize(10).font('Helvetica');
+            doc.text(`Radicado:`, { continued: true }).font('Helvetica-Bold').text(`  ${proceso.radicado}`);
+            doc.font('Helvetica').text(`Fecha de Creación:`, { continued: true }).font('Helvetica-Bold')
+                .text(`  ${new Date(proceso.fechaCreacion).toLocaleDateString('es-CO')}`);
+            doc.font('Helvetica').text(`Estado Actual:`, { continued: true }).font('Helvetica-Bold')
+                .text(`  ${proceso.estado}`);
+            doc.font('Helvetica').text(`Responsable:`, { continued: true }).font('Helvetica-Bold')
+                .text(`  ${proceso.responsable || 'Sin asignar'}`);
+            doc.moveDown(0.8);
+
+            // ── Información del deudor ───────────────────────────
+            doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#CCCCCC').lineWidth(0.5).stroke();
+            doc.moveDown(0.3);
+            doc.fontSize(12).font('Helvetica-Bold').text('INFORMACIÓN DEL DEUDOR');
+            doc.moveDown(0.3);
+            doc.fontSize(10).font('Helvetica');
+            doc.text(`Nombre / Razón Social:`, { continued: true }).font('Helvetica-Bold').text(`  ${proceso.deudor.nombre}`);
+            doc.font('Helvetica').text(`Identificación:`, { continued: true }).font('Helvetica-Bold')
+                .text(`  ${proceso.deudor.identificacion}`);
+            doc.font('Helvetica').text(`Correo Electrónico:`, { continued: true }).font('Helvetica-Bold')
+                .text(`  ${proceso.deudor.email || 'N/A'}`);
+            doc.font('Helvetica').text(`Teléfono:`, { continued: true }).font('Helvetica-Bold')
+                .text(`  ${proceso.deudor.telefono || 'N/A'}`);
+            doc.font('Helvetica').text(`Dirección:`, { continued: true }).font('Helvetica-Bold')
+                .text(`  ${proceso.deudor.direccion || 'N/A'}`);
+            doc.moveDown(0.8);
+
+            // ── Información de la obligación ─────────────────────
+            doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#CCCCCC').lineWidth(0.5).stroke();
+            doc.moveDown(0.3);
+            doc.fontSize(12).font('Helvetica-Bold').text('INFORMACIÓN DE LA OBLIGACIÓN');
+            doc.moveDown(0.3);
+            doc.fontSize(10).font('Helvetica');
+            doc.text(`Concepto:`, { continued: true }).font('Helvetica-Bold').text(`  ${proceso.obligacion.concepto}`);
+            doc.font('Helvetica').text(`Valor Capital:`, { continued: true }).font('Helvetica-Bold')
+                .text(`  $${Number(proceso.obligacion.valor).toLocaleString('es-CO')}`);
+            doc.font('Helvetica').text(`Fecha de Vencimiento:`, { continued: true }).font('Helvetica-Bold')
+                .text(`  ${new Date(proceso.obligacion.fechaVencimiento).toLocaleDateString('es-CO')}`);
+            doc.moveDown(0.8);
+
+            // ── Observaciones ────────────────────────────────────
+            if (proceso.observaciones) {
+                doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#CCCCCC').lineWidth(0.5).stroke();
+                doc.moveDown(0.3);
+                doc.fontSize(12).font('Helvetica-Bold').text('OBSERVACIONES');
+                doc.moveDown(0.3);
+                doc.fontSize(10).font('Helvetica').text(proceso.observaciones, { align: 'justify' });
+                doc.moveDown(0.8);
+            }
+
+            // ── Documentos adjuntos ──────────────────────────────
+            doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#CCCCCC').lineWidth(0.5).stroke();
+            doc.moveDown(0.3);
+            doc.fontSize(12).font('Helvetica-Bold').text('DOCUMENTOS ADJUNTOS');
+            doc.moveDown(0.3);
+            if (adjuntos.length === 0) {
+                doc.fontSize(10).font('Helvetica').text('No hay documentos adjuntos registrados.');
+            } else {
+                adjuntos.forEach((adj: any, index: number) => {
+                    doc.fontSize(10).font('Helvetica')
+                        .text(`${index + 1}. ${adj.nombreOriginal}  (${(adj.tamano / 1024).toFixed(1)} KB)`);
+                });
+            }
+            doc.moveDown(1);
+
+            // ── Pie de página ────────────────────────────────────
+            doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#003DA5').lineWidth(1).stroke();
+            doc.moveDown(0.4);
+            doc.fontSize(8).font('Helvetica').fillColor('#666666')
+                .text(
+                    `Documento generado el ${new Date().toLocaleString('es-CO')} — Sistema de Gestión Legal ESAP`,
+                    { align: 'center' }
+                );
+
+            doc.end();
+        });
+    }
+
     // ============ DESCARGA ZIP (PDF + ADJUNTOS) ============
 
     async downloadZip(procesoId: string): Promise<any> {

@@ -9,6 +9,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner@2.0.3';
 import { ModalHeaderClean } from './ModalHeaderClean';
 
+import { authService } from '../../../../services/api/authService';
+
 interface Comentario {
   id: string;
   usuario: string;
@@ -37,7 +39,7 @@ export function ModalComentarRequerimiento({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Mock de comentarios existentes (REDUCIDOS)
-  const [comentariosExistentes] = useState<Comentario[]>([
+  const [comentariosExistentes, setComentariosExistentes] = useState<Comentario[]>([
     {
       id: '1',
       usuario: 'Usuario Ejemplo',
@@ -84,25 +86,31 @@ export function ModalComentarRequerimiento({
     setIsSubmitting(true);
 
     try {
-      // Simular envío
+      // Simular request al backend
       await new Promise(resolve => setTimeout(resolve, 1200));
 
-      // En producción:
-      // await agregarComentarioRequerimiento({
-      //   requerimientoId,
-      //   comentario,
-      //   tipo: tipoComentario,
-      //   archivos: archivosAdjuntos
-      // });
+      const currentUser = authService.getCurrentUser();
+      const userName = currentUser?.nombres ? `${currentUser.nombres} ${currentUser.apellidos || ''}`.trim() : 'Usuario Sistema';
+
+      const nuevoComentario: Comentario = {
+        id: Date.now().toString(),
+        usuario: userName,
+        fecha: new Date(),
+        contenido: comentario,
+        tipo: tipoComentario,
+        archivos: archivosAdjuntos.map(f => ({ nombre: f.name, size: f.size }))
+      };
+
+      setComentariosExistentes([nuevoComentario, ...comentariosExistentes]);
 
       toast.success('Comentario Agregado', {
         description: `Comentario ${tipoComentario} registrado exitosamente en el requerimiento ${requerimientoId}`,
       });
 
-      // Limpiar formulario
+      // Limpiar formulario y cerrar (o mantener abierto para seguir viendo)
       setComentario('');
       setArchivosAdjuntos([]);
-      onClose();
+      // onClose(); // Opcional: Cerrar después de comentar
     } catch (error) {
       toast.error('Error al Guardar', {
         description: 'No se pudo agregar el comentario. Intente nuevamente.',

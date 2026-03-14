@@ -64,4 +64,24 @@ export class GatewayController {
   ) {
     return this.gatewayService.forwardStatic(service, req, res);
   }
+
+  // Proxy para rutas de autos disciplinarios (/disciplinary-autos/*)
+  @All('disciplinary-autos/*')
+  async proxyDisciplinaryAutos(
+    @Param('service') service: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    return this.gatewayService.forwardStatic(service, req, res);
+  }
+
+  // Proxy para rutas de oficios disciplinarios (/disciplinary-oficios/*)
+  @All('disciplinary-oficios/*')
+  async proxyDisciplinaryOficios(
+    @Param('service') service: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    return this.gatewayService.forwardStatic(service, req, res);
+  }
 }

@@ -18,7 +18,7 @@ import {
   X,
   Upload,
   Trash2,
-  HelpCircle
+  Target
 } from 'lucide-react';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
@@ -29,6 +29,7 @@ import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { InputSIGL, TextareaSIGL } from '../gestion-legal/design-system/InputSIGL';
 import { toast } from 'sonner@2.0.3';
 import controlInternoService from '../../../services/api/controlInternoService';
+import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
 
 // ====================================
 // TIPOS Y DATOS
@@ -99,15 +100,6 @@ interface InformeFinal {
   generado: boolean;
 }
 
-interface InformeEjecutivo {
-  fecha: string;
-  resumenEjecutivo: string;
-  aspectosPositivos: string[];
-  oportunidadesMejora: string[];
-  conclusiones: string;
-  generado: boolean;
-}
-
 // ====================================
 // COMPONENTE PRINCIPAL
 // ====================================
@@ -160,13 +152,73 @@ export const ComunicacionAuditoriaModule: React.FC<{
   const [informeFinal, setInformeFinal] = useState<InformeFinal>({
     fecha: '', controversiasResueltas: 0, hallazgosAjustados: 0, plazosPlanMejora: '30', observacionesFinales: '', generado: false,
   });
-  const [informeEjecutivo, setInformeEjecutivo] = useState<InformeEjecutivo>({
-    fecha: '', resumenEjecutivo: '', aspectosPositivos: [], oportunidadesMejora: [], conclusiones: '', generado: false,
-  });
+  const [planCreado, setPlanCreado] = useState<boolean>(false);
+  const [planEstadisticas, setPlanEstadisticas] = useState<{
+    totalAcciones: number;
+    accionesCompletadas: number;
+    porcentajeAvance: number;
+  } | null>(null);
   const [modalControversia, setModalControversia] = useState(false);
   const [modalControversiaHallazgoId, setModalControversiaHallazgoId] = useState<string | null>(null);
   const [modalDecisionHallazgoId, setModalDecisionHallazgoId] = useState<string | null>(null);
   const [modalPreview, setModalPreview] = useState<{ tipo: string; abierto: boolean }>({ tipo: '', abierto: false });
+
+  const { agregarAuditoriaConHallazgos, seleccionarAuditoria, navegarAVerPlan } = useIntegracionAuditoriaPlanes();
+
+  const handleCrearPlanMejoramiento = useCallback(async () => {
+    if (hallazgos.length === 0) {
+      toast.error('No hay hallazgos para crear el plan de mejoramiento');
+      return;
+    }
+    const hallazgosParaPlan: HallazgoAuditoria[] = hallazgos
+      .filter(h => h.estado !== 'retirado')
+      .map(h => ({
+        id: h.id,
+        titulo: h.titulo || h.descripcion?.substring(0, 80) || 'Sin título',
+        gravedad: ((h.gravedad || 'MODERADO') === 'CRITICO' ? 'GRAVE' : (h.gravedad || 'MODERADO')) as 'LEVE' | 'MODERADO' | 'GRAVE',
+        descripcion: h.descripcion || '',
+        causas: h.causas || [],
+        efectos: h.efectos || [],
+        recomendaciones: h.recomendaciones || []
+      }));
+    const fechaFinRaw = auditoria.fechaFin || new Date().toISOString().split('T')[0];
+    let fechaFin: string;
+    if (fechaFinRaw.includes('/')) {
+      const [d, m, a] = fechaFinRaw.split('/');
+      fechaFin = `${a}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    } else {
+      fechaFin = fechaFinRaw.split('T')[0];
+    }
+    const fechaLimiteObj = new Date(fechaFin);
+    if (!isNaN(fechaLimiteObj.getTime())) fechaLimiteObj.setDate(fechaLimiteObj.getDate() + 30);
+    const fechaLimiteStr = !isNaN(fechaLimiteObj.getTime())
+      ? fechaLimiteObj.toISOString().split('T')[0]
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const auditoriaParaPlan: AuditoriaParaPlan = {
+      id,
+      codigo: auditoria.codigo || 'AUD',
+      nombre: auditoria.nombre || auditoria.proceso || 'Auditoría',
+      areaResponsable: (auditoria as any).areaResponsable || (auditoria as any).areaObjetivo || auditoria.proceso || 'N/A',
+      responsable: typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria.auditorLider as any)?.nombre || 'N/A',
+      cargo: typeof auditoria.auditorLider === 'object' && (auditoria.auditorLider as any)?.cargo ? (auditoria.auditorLider as any).cargo : '',
+      fechaFinalizacion: fechaFin,
+      estadoPlan: 'SIN_PLAN',
+      fechaLimitePlan: fechaLimiteStr,
+      plazoFormulacion: 30,
+      hallazgos: hallazgosParaPlan
+    };
+    agregarAuditoriaConHallazgos(auditoriaParaPlan);
+    seleccionarAuditoria(auditoriaParaPlan);
+    toast.success('Ir a crear Plan de Mejoramiento', {
+      description: `${hallazgosParaPlan.length} hallazgos vinculados. Complete las acciones correctivas para cada uno.`,
+      duration: 5000
+    });
+  }, [id, auditoria, hallazgos, agregarAuditoriaConHallazgos, seleccionarAuditoria]);
+
+  const handleIrAVerPlan = useCallback(() => {
+    // Plan ya existe: navegar a ver plan sin abrir modal de crear
+    navegarAVerPlan(id);
+  }, [id, navegarAVerPlan]);
 
   const cargarDatos = useCallback(async () => {
     if (!useAPI) return;
@@ -217,7 +269,45 @@ export const ComunicacionAuditoriaModule: React.FC<{
         generado: estadoData?.informePreliminarGenerado ?? false,
       }));
       setInformeFinal(prev => ({ ...prev, generado: estadoData?.informeFinalGenerado ?? false }));
-      setInformeEjecutivo(prev => ({ ...prev, generado: estadoData?.informeEjecutivoGenerado ?? false }));
+      try {
+        const planes = await controlInternoService.getPlanesMejoramiento();
+        const planesDeEstaAuditoria = Array.isArray(planes)
+          ? planes.filter((p: any) =>
+              (p.auditoriaId || p.auditoria_id || p.auditoria?.id || p.hallazgo?.auditoriaId || p.hallazgo?.auditoriaEntity?.id) === id
+            )
+          : [];
+        setPlanCreado(planesDeEstaAuditoria.length > 0);
+        if (planesDeEstaAuditoria.length > 0) {
+          let totalAcciones = 0;
+          let accionesCompletadas = 0;
+          const esCompletada = (estado: string) => {
+            const e = String(estado || '').toLowerCase();
+            return e === 'completada' || e === 'implementada' || e === 'completado' || e === 'implementado';
+          };
+          for (const plan of planesDeEstaAuditoria) {
+            const acciones = plan.acciones || [];
+            if (acciones.length > 0) {
+              totalAcciones += acciones.length;
+              accionesCompletadas += acciones.filter((a: any) => esCompletada(a.estado)).length;
+            } else {
+              // Fallback: usar totalAcciones/accionesCompletadas del plan si el listado no incluye acciones
+              const t = plan.totalAcciones ?? plan.total_acciones ?? 0;
+              const c = plan.accionesCompletadas ?? plan.acciones_completadas ?? 0;
+              totalAcciones += t;
+              accionesCompletadas += c;
+            }
+          }
+          const porcentajeAvance = totalAcciones > 0
+            ? Math.round((accionesCompletadas / totalAcciones) * 100)
+            : 0;
+          setPlanEstadisticas({ totalAcciones, accionesCompletadas, porcentajeAvance });
+        } else {
+          setPlanEstadisticas(null);
+        }
+      } catch {
+        setPlanCreado(false);
+        setPlanEstadisticas(null);
+      }
       if (audData) {
         setAuditoria(prev => ({
           ...prev,
@@ -237,21 +327,26 @@ export const ComunicacionAuditoriaModule: React.FC<{
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
+  const planCompleto = useMemo(() => {
+    if (!planCreado || !planEstadisticas) return false;
+    return planEstadisticas.totalAcciones >= 1 && planEstadisticas.accionesCompletadas >= 1;
+  }, [planCreado, planEstadisticas]);
+
   const progreso = useMemo(() => {
     let c = 0;
     if (estadoComunicacion?.informePreliminarGenerado) c++;
     if (!estadoComunicacion?.hayControversiasPendientes) c++;
     if (informeFinal.generado) c++;
-    if (informeEjecutivo.generado) c++;
+    if (planCompleto) c++;
     return Math.round((c / 4) * 100);
-  }, [estadoComunicacion, informeFinal.generado, informeEjecutivo.generado]);
+  }, [estadoComunicacion, informeFinal.generado, planCompleto]);
 
   const puedeAvanzar = useMemo(() => {
     return (estadoComunicacion?.informePreliminarGenerado ?? false) &&
            !estadoComunicacion?.hayControversiasPendientes &&
            informeFinal.generado &&
-           informeEjecutivo.generado;
-  }, [estadoComunicacion, informeFinal.generado, informeEjecutivo.generado]);
+           planCompleto;
+  }, [estadoComunicacion, informeFinal.generado, planCompleto]);
 
   const handleGenerarInformePreliminar = async () => {
     if (useAPI) {
@@ -360,30 +455,6 @@ export const ComunicacionAuditoriaModule: React.FC<{
     }
   };
 
-  const handleGenerarInformeEjecutivo = async () => {
-    if (!informeEjecutivo.resumenEjecutivo.trim() || !informeEjecutivo.conclusiones.trim()) {
-      toast.error('Debe completar resumen ejecutivo y conclusiones');
-      return;
-    }
-    if (informeEjecutivo.aspectosPositivos.length === 0 || informeEjecutivo.oportunidadesMejora.length === 0) {
-      toast.error('Debe agregar al menos un aspecto positivo y una oportunidad de mejora');
-      return;
-    }
-    if (useAPI) {
-      try {
-        await controlInternoService.generarInformeEjecutivo(id);
-        setInformeEjecutivo(prev => ({ ...prev, fecha: new Date().toISOString(), generado: true }));
-        await cargarDatos();
-        toast.success('Informe Ejecutivo generado exitosamente');
-      } catch (err: any) {
-        toast.error(err?.message || 'Error al generar');
-      }
-    } else {
-      setInformeEjecutivo(prev => ({ ...prev, fecha: new Date().toISOString(), generado: true }));
-      toast.success('Informe Ejecutivo generado exitosamente');
-    }
-  };
-
   const handleFinalizarComunicacion = async () => {
     if (!puedeAvanzar) {
       toast.error('Debe completar todas las secciones antes de finalizar');
@@ -467,26 +538,6 @@ export const ComunicacionAuditoriaModule: React.FC<{
         </motion.div>
         )}
 
-        {/* CÓMO FUNCIONA - solo en modo embebido */}
-        {embedded && (
-          <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4">
-            <div className="flex items-start gap-2">
-              <HelpCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-green-900">
-                <p className="font-semibold mb-2">Flujo y botones</p>
-                <ol className="list-decimal list-inside space-y-2 text-green-800 text-sm">
-                  <li><strong>Informe Preliminar</strong> → Clic en &quot;Generar Informe Preliminar y Notificar al Área&quot;. Los hallazgos pasan a Notificado (10 días hábiles).</li>
-                  <li><strong>Gestión Hallazgos</strong> → Por cada hallazgo: botón &quot;Aceptar hallazgo&quot; o &quot;Presentar controversia&quot; (área auditada).</li>
-                  <li><strong>Si hay controversia</strong> → Botón &quot;Decisión del auditor&quot; para resolver (ratificado/modificado/retirado).</li>
-                  <li><strong>Informe Final</strong> → Cuando no queden controversias pendientes, genere el Informe Final.</li>
-                  <li><strong>Plan de Mejoramiento</strong> → Se formula en la fase de <em>Seguimiento</em>, después de finalizar esta Comunicación. El área auditada tiene X días para presentarlo.</li>
-                  <li><strong>Finalizar</strong> → &quot;Finalizar y Pasar a Seguimiento&quot; cuando todo esté completo.</li>
-                </ol>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* NAVEGACIÓN DE SECCIONES - estilo expediente cuando embedded */}
         <div className={embedded ? 'bg-white border-2 border-green-200 rounded-lg p-4' : 'bg-white rounded-xl shadow-lg p-4'}>
           <div className="flex items-center gap-2 overflow-x-auto">
@@ -494,28 +545,42 @@ export const ComunicacionAuditoriaModule: React.FC<{
               { id: 1, nombre: 'Informe Preliminar', icono: FileText, completado: informePreliminar.generado },
               { id: 2, nombre: 'Gestión Hallazgos', icono: MessageSquare, completado: !estadoComunicacion?.hayControversiasPendientes },
               { id: 3, nombre: 'Decisión / Informe Final', icono: FileCheck, completado: informeFinal.generado },
-              { id: 4, nombre: 'Plan Mejoramiento', icono: TrendingUp, completado: informeEjecutivo.generado }
-            ].map((seccion, index) => (
-              <React.Fragment key={seccion.id}>
-                <button
-                  onClick={() => setSeccionActual(seccion.id)}
-                  className={`flex items-center gap-2 px-4 py-3 rounded-lg transition-all flex-1 min-w-[200px] ${
-                    seccionActual === seccion.id
-                      ? embedded
-                        ? 'bg-green-600 text-white'
-                        : 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg'
-                      : seccion.completado
-                      ? 'bg-green-50 text-green-700 hover:bg-green-100'
-                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  <seccion.icono className="w-5 h-5" />
-                  <span className="font-medium">{seccion.nombre}</span>
-                  {seccion.completado && <CheckCircle2 className="w-4 h-4 ml-auto" />}
-                </button>
-                {index < 3 && <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
-              </React.Fragment>
-            ))}
+              { id: 4, nombre: 'Plan de Mejoramiento', icono: TrendingUp, completado: planCompleto }
+            ].map((seccion, index) => {
+              const seccion1Completa = informePreliminar.generado;
+              const seccion2Completa = !estadoComunicacion?.hayControversiasPendientes;
+              const seccion3Completa = informeFinal.generado;
+              const puedeAcceder =
+                seccion.id === 1 ||
+                (seccion.id === 2 && seccion1Completa) ||
+                (seccion.id === 3 && seccion1Completa && seccion2Completa) ||
+                (seccion.id === 4 && seccion1Completa && seccion2Completa && seccion3Completa);
+              return (
+                <React.Fragment key={seccion.id}>
+                  <button
+                    onClick={() => puedeAcceder && setSeccionActual(seccion.id)}
+                    disabled={!puedeAcceder}
+                    title={!puedeAcceder ? 'Complete la sección anterior primero' : undefined}
+                    className={`flex items-center gap-2 px-4 py-3 rounded-lg transition-all flex-1 min-w-[200px] ${
+                      !puedeAcceder
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : seccionActual === seccion.id
+                        ? embedded
+                          ? 'bg-green-600 text-white'
+                          : 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg'
+                        : seccion.completado
+                        ? 'bg-green-50 text-green-700 hover:bg-green-100'
+                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <seccion.icono className="w-5 h-5" />
+                    <span className="font-medium">{seccion.nombre}</span>
+                    {seccion.completado && <CheckCircle2 className="w-4 h-4 ml-auto" />}
+                  </button>
+                  {index < 3 && <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
+                </React.Fragment>
+              );
+            })}
           </div>
         </div>
 
@@ -568,12 +633,14 @@ export const ComunicacionAuditoriaModule: React.FC<{
             )}
 
             {seccionActual === 4 && (
-              <SeccionInformeEjecutivo
+              <SeccionPlanMejoramiento
                 auditoria={auditoria}
-                informe={informeEjecutivo}
-                setInforme={setInformeEjecutivo}
-                onGenerar={handleGenerarInformeEjecutivo}
-                onPreview={() => setModalPreview({ tipo: 'ejecutivo', abierto: true })}
+                planCreado={planCreado}
+                planEstadisticas={planEstadisticas}
+                planCompleto={planCompleto}
+                onCrearPlanMejoramiento={handleCrearPlanMejoramiento}
+                hallazgosCount={hallazgos.filter(h => h.estado !== 'retirado').length}
+                onIrAPlan={handleIrAVerPlan}
               />
             )}
           </motion.div>
@@ -591,8 +658,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
               <h3 className="font-semibold text-gray-900 mb-1">¿Listo para finalizar la comunicación?</h3>
               <p className="text-sm text-gray-600">
                 {puedeAvanzar 
-                  ? 'Todas las secciones completadas. Puede avanzar a Seguimiento.'
-                  : 'Complete: Informe Preliminar, Gestión Hallazgos, Informe Final y Informe Ejecutivo para poder finalizar.'}
+                  ? 'Todas las secciones completadas. Puede avanzar a Seguimiento (el plan de mejoramiento ya fue creado con las acciones correctivas).'
+                  : 'Complete: Informe Preliminar, Gestión Hallazgos, Informe Final y Plan de Mejoramiento (con acciones correctivas para cada hallazgo) para poder finalizar.'}
               </p>
             </div>
             <Button
@@ -632,8 +699,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
             auditoria={auditoria}
             informe={
               modalPreview.tipo === 'preliminar' ? informePreliminar :
-              modalPreview.tipo === 'final' ? informeFinal :
-              informeEjecutivo
+              informeFinal
             }
             onClose={() => setModalPreview({ tipo: '', abierto: false })}
           />
@@ -1340,236 +1406,74 @@ const SeccionInformeFinal: React.FC<{
 };
 
 // ====================================
-// SECCIÓN 4: INFORME EJECUTIVO
+// SECCIÓN 4: PLAN DE MEJORAMIENTO
 // ====================================
+// Las acciones correctivas se definen en el Plan de Mejoramiento (módulo Planes),
+// no en el Informe Ejecutivo. Esta sección solo permite crear el plan con los
+// hallazgos de la auditoría para luego formular las acciones correctivas allí.
 
-const SeccionInformeEjecutivo: React.FC<{
+const SeccionPlanMejoramiento: React.FC<{
   auditoria: Auditoria;
-  informe: InformeEjecutivo;
-  setInforme: React.Dispatch<React.SetStateAction<InformeEjecutivo>>;
-  onGenerar: () => void;
-  onPreview: () => void;
-}> = ({ informe, setInforme, onGenerar, onPreview }) => {
-  const [nuevoPositivo, setNuevoPositivo] = useState('');
-  const [nuevaMejora, setNuevaMejora] = useState('');
-
+  planCreado: boolean;
+  planEstadisticas: { totalAcciones: number; accionesCompletadas: number; porcentajeAvance: number } | null;
+  planCompleto: boolean;
+  onCrearPlanMejoramiento: () => void;
+  hallazgosCount: number;
+  onIrAPlan: () => void;
+}> = ({ planCreado, planEstadisticas, planCompleto, onCrearPlanMejoramiento, hallazgosCount, onIrAPlan }) => {
   return (
     <div className="space-y-6">
-      {/* Banner: Plan Mejoramiento / Informe Ejecutivo ya terminado */}
-      {informe.generado && (
-        <div className="p-4 bg-green-50 border-2 border-green-300 rounded-lg flex items-center gap-3">
-          <CheckCircle2 className="w-8 h-8 text-green-600 flex-shrink-0" />
-          <div>
-            <p className="font-bold text-green-900 text-lg">Informe Ejecutivo ya terminado</p>
-            <p className="text-sm text-green-700">Listo para finalizar la comunicación y pasar a Seguimiento.</p>
+      {planCreado ? (
+        <div className={`p-6 rounded-lg flex items-center gap-4 border-2 ${planCompleto ? 'bg-green-50 border-green-300' : 'bg-amber-50 border-amber-300'}`}>
+          <div className="relative w-20 h-20 flex-shrink-0 flex items-center justify-center rounded-full bg-white border-2 border-gray-200">
+            <span className={`text-xl font-bold ${planCompleto ? 'text-green-600' : 'text-amber-600'}`}>
+              {planEstadisticas?.porcentajeAvance ?? 0}%
+            </span>
+          </div>
+          <div className="flex-1">
+            <p className={`font-bold text-lg ${planCompleto ? 'text-green-900' : 'text-amber-900'}`}>
+              Plan de Mejoramiento creado
+            </p>
+            <p className="text-sm text-gray-700 mt-1">
+              {planEstadisticas
+                ? `${planEstadisticas.accionesCompletadas}/${planEstadisticas.totalAcciones} acciones completadas. `
+                : ''}
+              {planCompleto
+                ? 'El plan cumple los requisitos. Puede finalizar la comunicación y pasar a Seguimiento.'
+                : 'Complete al menos una acción correctiva en el módulo de Planes de Mejoramiento para poder finalizar.'}
+            </p>
+            <Button variant="outline" size="sm" onClick={onIrAPlan} className="mt-3">
+              <ChevronRight className="w-4 h-4 mr-2" />
+              Ir a ver plan
+            </Button>
           </div>
         </div>
+      ) : (
+        <CardSIGL>
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <Target className="w-5 h-5 text-amber-600" />
+              Crear Plan de Mejoramiento
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Con los hallazgos de esta auditoría debe crear un Plan de Mejoramiento. Las <strong>acciones correctivas</strong> para cada hallazgo se formularán en el módulo de Planes, no en el Informe Ejecutivo.
+            </p>
+            {hallazgosCount > 0 ? (
+              <Button
+                onClick={onCrearPlanMejoramiento}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-medium"
+              >
+                <Target className="w-4 h-4 mr-2" />
+                Crear Plan de Mejoramiento ({hallazgosCount} hallazgos)
+              </Button>
+            ) : (
+              <p className="text-amber-700 text-sm">
+                No hay hallazgos vinculados a esta auditoría. Gestione los hallazgos en la sección anterior.
+              </p>
+            )}
+          </div>
+        </CardSIGL>
       )}
-
-      {/* Resumen Ejecutivo */}
-      <CardSIGL>
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-purple-600" />
-            Resumen Ejecutivo
-          </h3>
-          <TextareaSIGL
-            value={informe.resumenEjecutivo}
-            onChange={(val) => setInforme(prev => ({ ...prev, resumenEjecutivo: val }))}
-            placeholder="Escriba un resumen ejecutivo de máximo 500 palabras dirigido a la alta dirección..."
-            rows={6}
-            disabled={informe.generado}
-          />
-          <p className="text-xs text-gray-500 mt-2">
-            {informe.resumenEjecutivo.length} caracteres • Recomendado: 300-500 palabras
-          </p>
-        </div>
-      </CardSIGL>
-
-      {/* Aspectos Positivos */}
-      <CardSIGL>
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-green-600" />
-            Aspectos Positivos Identificados
-          </h3>
-
-          {!informe.generado && (
-            <div className="flex gap-2 mb-4">
-              <InputSIGL
-                value={nuevoPositivo}
-                onChange={(e) => setNuevoPositivo(e.target.value)}
-                placeholder="Agregar aspecto positivo..."
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' && nuevoPositivo.trim()) {
-                    setInforme(prev => ({
-                      ...prev,
-                      aspectosPositivos: [...prev.aspectosPositivos, nuevoPositivo.trim()]
-                    }));
-                    setNuevoPositivo('');
-                  }
-                }}
-              />
-              <ButtonSIGL
-                variant="success"
-                onClick={() => {
-                  if (nuevoPositivo.trim()) {
-                    setInforme(prev => ({
-                      ...prev,
-                      aspectosPositivos: [...prev.aspectosPositivos, nuevoPositivo.trim()]
-                    }));
-                    setNuevoPositivo('');
-                  }
-                }}
-              >
-                Agregar
-              </ButtonSIGL>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            {informe.aspectosPositivos.map((aspecto, index) => (
-              <div key={index} className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                <span className="flex-1 text-gray-900">{aspecto}</span>
-                {!informe.generado && (
-                  <button
-                    onClick={() => setInforme(prev => ({
-                      ...prev,
-                      aspectosPositivos: prev.aspectosPositivos.filter((_, i) => i !== index)
-                    }))}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {informe.aspectosPositivos.length === 0 && (
-            <p className="text-sm text-gray-500 text-center py-4">
-              No hay aspectos positivos agregados. Agregue al menos uno.
-            </p>
-          )}
-        </div>
-      </CardSIGL>
-
-      {/* Oportunidades de Mejora */}
-      <CardSIGL>
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-blue-600" />
-            Oportunidades de Mejora
-          </h3>
-
-          {!informe.generado && (
-            <div className="flex gap-2 mb-4">
-              <InputSIGL
-                value={nuevaMejora}
-                onChange={(e) => setNuevaMejora(e.target.value)}
-                placeholder="Agregar oportunidad de mejora..."
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' && nuevaMejora.trim()) {
-                    setInforme(prev => ({
-                      ...prev,
-                      oportunidadesMejora: [...prev.oportunidadesMejora, nuevaMejora.trim()]
-                    }));
-                    setNuevaMejora('');
-                  }
-                }}
-              />
-              <ButtonSIGL
-                variant="primary"
-                onClick={() => {
-                  if (nuevaMejora.trim()) {
-                    setInforme(prev => ({
-                      ...prev,
-                      oportunidadesMejora: [...prev.oportunidadesMejora, nuevaMejora.trim()]
-                    }));
-                    setNuevaMejora('');
-                  }
-                }}
-              >
-                Agregar
-              </ButtonSIGL>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            {informe.oportunidadesMejora.map((oportunidad, index) => (
-              <div key={index} className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <TrendingUp className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <span className="flex-1 text-gray-900">{oportunidad}</span>
-                {!informe.generado && (
-                  <button
-                    onClick={() => setInforme(prev => ({
-                      ...prev,
-                      oportunidadesMejora: prev.oportunidadesMejora.filter((_, i) => i !== index)
-                    }))}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {informe.oportunidadesMejora.length === 0 && (
-            <p className="text-sm text-gray-500 text-center py-4">
-              No hay oportunidades de mejora agregadas. Agregue al menos una.
-            </p>
-          )}
-        </div>
-      </CardSIGL>
-
-      {/* Conclusiones */}
-      <CardSIGL>
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Conclusiones Generales</h3>
-          <TextareaSIGL
-            value={informe.conclusiones}
-            onChange={(val) => setInforme(prev => ({ ...prev, conclusiones: val }))}
-            placeholder="Escriba las conclusiones generales de la auditoría..."
-            rows={5}
-            disabled={informe.generado}
-          />
-
-          {informe.generado && (
-            <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
-              <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
-              <div>
-                <p className="font-medium text-green-900">Informe Ejecutivo Generado</p>
-                <p className="text-sm text-green-700">Fecha: {new Date(informe.fecha).toLocaleDateString()}</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </CardSIGL>
-
-      {/* Acciones */}
-      <div className="flex flex-wrap gap-3 justify-end">
-        <Button variant="outline" size="sm" onClick={onPreview} disabled={!informe.generado} className="font-medium">
-          <Eye className="w-4 h-4 mr-2" />
-          Vista Previa
-        </Button>
-        <Button variant="outline" size="sm" disabled={!informe.generado} className="font-medium">
-          <Download className="w-4 h-4 mr-2" />
-          Descargar PDF
-        </Button>
-        {!informe.generado && (
-          <Button
-            size="sm"
-            onClick={onGenerar}
-            disabled={!informe.resumenEjecutivo?.trim() || !informe.conclusiones?.trim() || informe.aspectosPositivos?.length === 0 || informe.oportunidadesMejora?.length === 0}
-            className="font-medium bg-green-600 hover:bg-green-700 text-white"
-          >
-            <TrendingUp className="w-4 h-4 mr-2" />
-            Generar Informe Ejecutivo
-          </Button>
-        )}
-      </div>
     </div>
   );
 };
@@ -1934,29 +1838,6 @@ const ModalPreviewInforme: React.FC<{
           </>
         )}
 
-        {tipo === 'ejecutivo' && (
-          <>
-            <h4 className="text-lg font-bold text-gray-900 mb-3">Resumen Ejecutivo</h4>
-            <p className="text-gray-700 whitespace-pre-wrap mb-6">{informe.resumenEjecutivo}</p>
-
-            <h4 className="text-lg font-bold text-gray-900 mb-3">Aspectos Positivos</h4>
-            <ul className="list-disc list-inside text-gray-700 mb-6 space-y-1">
-              {informe.aspectosPositivos.map((aspecto: string, i: number) => (
-                <li key={i}>{aspecto}</li>
-              ))}
-            </ul>
-
-            <h4 className="text-lg font-bold text-gray-900 mb-3">Oportunidades de Mejora</h4>
-            <ul className="list-disc list-inside text-gray-700 mb-6 space-y-1">
-              {informe.oportunidadesMejora.map((oportunidad: string, i: number) => (
-                <li key={i}>{oportunidad}</li>
-              ))}
-            </ul>
-
-            <h4 className="text-lg font-bold text-gray-900 mb-3">Conclusiones</h4>
-            <p className="text-gray-700 whitespace-pre-wrap">{informe.conclusiones}</p>
-          </>
-        )}
       </div>
 
       <div className="flex justify-end gap-3 mt-6 pt-4 border-t">

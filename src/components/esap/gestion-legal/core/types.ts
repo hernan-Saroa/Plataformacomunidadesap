@@ -264,6 +264,9 @@ export interface ConsultaJuridica {
   solicitante: string;
   funcionarioSolicitante: string;
   emailSolicitante?: string;
+  cargoSolicitante?: string;
+  telefonoSolicitante?: string;
+  antecedentes?: string;
 
   // Consulta
   consulta: string; // Pregunta o solicitud

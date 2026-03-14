@@ -66,7 +66,7 @@ interface Indicador {
   ultimaActualizacion: Date;
 }
 
-type VistaModulo = 'dashboard' | 'lista' | 'timeline' | 'matriz';
+type VistaModulo = 'dashboard' | 'lista' | 'timeline' | 'matriz' | 'archivados';
 
 // ==================== HELPERS MAPPING ====================
 const mapEjeFromBackend = (eje: string) => {
@@ -319,9 +319,32 @@ export function ModuloPlanAccionV4() {
   const handleRestaurar = async (itemId: string) => {
     try {
       await legalService.restaurarPeiIndicador(itemId);
+      // Quitar de archivados inmediatamente
       setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
       toast.success('Indicador restaurado exitosamente');
-      fetchData();
+      // Recargar activos en background sin spinner
+      legalService.getPeiDashboard().then((res: any) => {
+        const backendIndicadores = Array.isArray(res.indicadores) ? res.indicadores : [];
+        setIndicadores(backendIndicadores.map((ind: any) => ({
+          id: ind.id.toString(),
+          codigo: ind.id.toString(),
+          nombre: ind.nombre,
+          descripcion: ind.descripcion || '',
+          ejeEstrategico: mapEjeFromBackend(ind.ejeEstrategico),
+          responsable: ind.responsableNombre || 'Sin Asignar',
+          meta: Number(ind.metaObjetivo) || 0,
+          valorActual: Number(ind.valorActual) || 0,
+          avance: Number(ind.avanceActual) || 0,
+          fechaInicio: new Date(ind.fechaInicio),
+          fechaFin: new Date(ind.fechaFin),
+          estado: mapEstadoFromBackend(ind.estado, ind.avanceActual, new Date(ind.fechaFin)),
+          prioridad: ind.prioridad || 'MEDIA',
+          periodicidad: ind.frecuenciaMedicion || 'MENSUAL',
+          tipoIndicador: ind.tipoIndicador || 'GESTION',
+          unidadMedida: ind.unidadMedida || '%',
+          ultimaActualizacion: new Date(),
+        })));
+      }).catch(() => {});
     } catch (error) {
       console.error('Error restoring indicator:', error);
       toast.error('Error al restaurar el indicador');
@@ -343,8 +366,23 @@ export function ModuloPlanAccionV4() {
   const handleArchivar = async (indicador: Indicador) => {
     try {
       await legalService.archivarPeiIndicador(indicador.id);
+      // Actualización instantánea: quitar de activos y añadir a archivados
+      setIndicadores(prev => prev.filter(ind => ind.id !== indicador.id));
+      setItemsArchivados(prev => [{
+        id: indicador.id,
+        codigo: indicador.codigo,
+        nombre: indicador.nombre,
+        tipo: 'Indicador Plan de Acción',
+        estado: 'ARCHIVADO' as EstadoArchivado,
+        fechaArchivado: new Date(),
+        usuarioArchivo: 'Usuario',
+        motivoArchivo: 'Archivado por usuario',
+        metadatos: {
+          'Eje': indicador.ejeEstrategico,
+          'Responsable': indicador.responsable,
+        },
+      }, ...prev]);
       toast.success('Indicador archivado exitosamente');
-      fetchData(); // Refresh list
     } catch (error) {
       console.error('Error archiving indicator:', error);
       toast.error('Error al archivar el indicador');
@@ -576,7 +614,8 @@ export function ModuloPlanAccionV4() {
             { label: 'Dashboard', icon: '📊', value: 'dashboard' },
             { label: 'Lista', icon: '📋', value: 'lista' },
             { label: 'Timeline', icon: '📅', value: 'timeline' },
-            { label: 'Matriz', icon: '⊞', value: 'matriz' }
+            { label: 'Matriz', icon: '⊞', value: 'matriz' },
+            { label: 'Archivados', icon: '📦', value: 'archivados' }
           ]
         }}
         buttons={addBtnsPermission()}
@@ -732,6 +771,15 @@ export function ModuloPlanAccionV4() {
           )}
           {tipoVista === 'timeline' && <VistaTimeline indicadores={indicadoresFiltrados} />}
           {tipoVista === 'matriz' && <VistaMatriz indicadores={indicadores} />}
+          {tipoVista === 'archivados' && (
+            <VistaArchivados
+              items={itemsArchivados}
+              moduloNombre="Plan de Acción"
+              onRestaurar={handleRestaurar}
+              onEliminarPermanente={handleEliminarPermanente}
+              onVolver={() => setTipoVista('lista')}
+            />
+          )}
         </>
       )}
 
@@ -771,14 +819,13 @@ export function ModuloPlanAccionV4() {
         indicador={indicadorSeleccionado}
         onEditar={() => handleEditarIndicador(indicadorSeleccionado!)}
         onCargarAvance={() => handleCargarAvance(indicadorSeleccionado!)}
+        onArchivar={() => {
+          if (indicadorSeleccionado) handleArchivar(indicadorSeleccionado);
+          setModalDetalleOpen(false);
+          setIndicadorSeleccionado(null);
+        }}
       />
 
-      {/* VISTA ARCHIVADOS */}
-      <VistaArchivados
-        items={itemsArchivados}
-        onRestaurar={handleRestaurar}
-        onEliminarPermanente={handleEliminarPermanente}
-      />
     </div>
   );
 }

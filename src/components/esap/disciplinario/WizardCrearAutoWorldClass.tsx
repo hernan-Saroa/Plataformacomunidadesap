@@ -20,11 +20,15 @@ import {
   X, ChevronRight, ChevronLeft, Check, Scale, FileText, Download,
   Upload, AlertCircle, CheckCircle, Info, File, Calendar, User,
   Paperclip, Eye, Search, Clock, Sparkles, Send, AlertTriangle,
-  FileCheck, Zap, Shield, Star
+  FileCheck, Zap, Shield, Star, ExternalLink
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { Card } from '../../ui/card';
+import { Badge } from '../../ui/badge';
+import { Button } from '../../ui/button';
 import { ETAPAS_PROCESO, type EtapaProcesoId, type TipoAuto, type PlantillaArchivo } from './configuracion/SeccionPlantillasAutosUnificada';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { API_MODE, MICROSERVICE_URLS, buildApiUrl } from '../../../config/environment';
 
 // ==================== DATOS MOCK ====================
 const TIPOS_AUTOS_MOCK: TipoAuto[] = [
@@ -114,6 +118,7 @@ interface AutoGenerado {
   profesional: string;
   observaciones: string;
   archivoAdjunto?: { nombre: string; tamano: string };
+  documentUrl?: string;
 }
 
 interface WizardCrearAutoWorldClassProps {
@@ -155,6 +160,9 @@ export function WizardCrearAutoWorldClass({
   const [autosGenerados, setAutosGenerados] = useState<AutoGenerado[]>([]);
   const [cargandoAutos, setCargandoAutos] = useState(false);
 
+  // Estado para el visor de documento PDF
+  const [visorDocumento, setVisorDocumento] = useState<{ show: boolean; documento: AutoGenerado | null }>({ show: false, documento: null });
+
   // Estados de Tipos de Auto desde el backend
   const [loadingTiposAuto, setLoadingTiposAuto] = useState(false);
   const [tiposAuto, setTiposAuto] = useState<TipoAuto[]>(TIPOS_AUTOS_MOCK);
@@ -178,6 +186,8 @@ export function WizardCrearAutoWorldClass({
         profesional: auto.process?.abogadoAsignadoNombre || '',
         observaciones: auto.comentarios || '',
         archivoAdjunto: auto.documentName ? { nombre: auto.documentName, tamano: auto.documentSize ? `${(auto.documentSize / 1024).toFixed(0)} KB` : '' } : undefined,
+        // URL del documento para visualizar
+        documentUrl: auto.documentUrl || '',
       }));
       setAutosGenerados(mapped);
     } catch (error) {
@@ -403,7 +413,8 @@ export function WizardCrearAutoWorldClass({
       let documentUrl: string | undefined;
       if (archivoAdjunto) {
         toast.info('Subiendo archivo...', { duration: 2000 });
-        const uploadResult = await disciplinaryService.uploadFile(archivoAdjunto);
+        // Enviar tipo 'AUTO' para que el backend valide que solo sean PDF
+        const uploadResult = await disciplinaryService.uploadFile(archivoAdjunto, 'AUTO');
         documentUrl = uploadResult.url || uploadResult.filename;
         console.log('✅ Archivo subido, documentUrl:', documentUrl);
       }
@@ -528,7 +539,7 @@ export function WizardCrearAutoWorldClass({
                     </p>
                     <div className="w-1 h-1 rounded-full bg-blue-300" />
                     <p className="text-sm text-blue-100 font-medium hidden sm:block">
-                      {proceso.denunciado.nombre}
+                      {proceso.denunciado?.nombre || 'Cargando...'}
                     </p>
                   </div>
                 </div>
@@ -721,7 +732,7 @@ export function WizardCrearAutoWorldClass({
                             </div>
                             <div className="bg-white/60 rounded-lg px-3 py-2 backdrop-blur-sm sm:col-span-1 col-span-1">
                               <span className="text-blue-700 font-semibold">Investigado:</span>
-                              <span className="ml-1.5 text-blue-900 font-bold">{proceso.denunciado.nombre}</span>
+                              <span className="ml-1.5 text-blue-900 font-bold">{proceso.denunciado?.nombre || 'Cargando...'}</span>
                             </div>
                           </div>
                         </div>
@@ -1111,7 +1122,7 @@ export function WizardCrearAutoWorldClass({
                             {subiendo ? 'Cargando archivo...' : 'Arrastra o haz clic para subir'}
                           </p>
                           <p className="text-sm text-gray-600 mb-4">
-                            Formatos soportados: .doc, .docx, .pdf
+                            Formatos soportados: .pdf
                           </p>
                           {subiendo && (
                             <div className="w-48 h-1.5 mx-auto bg-gray-200 rounded-full overflow-hidden">
@@ -1176,10 +1187,13 @@ export function WizardCrearAutoWorldClass({
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".pdf"
+                        accept=".pdf,application/pdf"
                         onChange={handleFileChange}
                         className="hidden"
                       />
+                      <p className="text-xs text-gray-500 mt-2">
+                        ⚠️ Solo se permiten archivos PDF para Autos legales
+                      </p>
                     </div>
                   </motion.div>
                 )}
@@ -1358,7 +1372,7 @@ export function WizardCrearAutoWorldClass({
                     return (
                       <div
                         key={auto.id}
-                        className="bg-white border-2 rounded-xl p-4 hover:shadow-md transition-all cursor-pointer"
+                        className="bg-white border-2 rounded-xl p-4 hover:shadow-md transition-all"
                         style={{ borderColor: colors.border + '80' }}
                       >
                         <div className="flex items-center justify-between">
@@ -1371,7 +1385,43 @@ export function WizardCrearAutoWorldClass({
                               <p className="text-xs text-gray-500">{auto.tipo?.replace(/_/g, ' ')}</p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2">
+                            {/* Botón Ver PDF */}
+                            {auto.documentUrl && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setVisorDocumento({ show: true, documento: auto });
+                                }}
+                                className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                                title="Ver documento"
+                                style={{ color: '#003DA5' }}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                            )}
+                            {/* Botón Descargar */}
+                            {auto.documentUrl && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // Construir URL de descarga
+                                  const downloadUrl = auto.documentUrl?.startsWith('http') 
+                                    ? auto.documentUrl 
+                                    : buildApiUrl('control-disciplinario', `/api/v1${auto.documentUrl}`);
+                                  
+                                  window.open(downloadUrl, '_blank');
+                                  toast.success('Abriendo documento', {
+                                    description: auto.archivoAdjunto?.nombre || 'Documento'
+                                  });
+                                }}
+                                className="p-2 rounded-lg hover:bg-green-50 transition-colors"
+                                title="Descargar documento"
+                                style={{ color: '#059669' }}
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
+                            )}
                             <span className="text-xs text-gray-500">{auto.fecha}</span>
                             <span
                               className="px-3 py-1 rounded-full text-xs font-bold"
@@ -1451,6 +1501,109 @@ export function WizardCrearAutoWorldClass({
           </div>
         )}
       </motion.div>
+
+      {/* Modal Visor de Documento PDF */}
+      <AnimatePresence>
+        {visorDocumento.show && visorDocumento.documento && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 flex items-start justify-center pt-10 sm:pt-16 z-[160] p-4"
+            onClick={() => setVisorDocumento({ show: false, documento: null })}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col"
+            >
+              {/* Header */}
+              <div className="p-5 border-b bg-gradient-to-r from-blue-50 to-purple-50 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-black" style={{ color: '#003DA5' }}>
+                    Visor de Auto
+                  </h3>
+                  <p className="text-sm text-gray-600">{visorDocumento.documento.numero}</p>
+                </div>
+                <button
+                  onClick={() => setVisorDocumento({ show: false, documento: null })}
+                  className="p-2 hover:bg-white/60 rounded-lg"
+                >
+                  <X className="w-5 h-5 text-gray-600" />
+                </button>
+              </div>
+
+              {/* Contenido */}
+              <div className="flex-1 overflow-hidden">
+                {/* Información del documento */}
+                <div className="p-4 bg-gray-50 border-b">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <p className="text-gray-600">Tipo:</p>
+                      <p className="font-bold text-gray-900">{visorDocumento.documento.tipo}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Fecha:</p>
+                      <p className="font-bold text-gray-900">{visorDocumento.documento.fecha}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Estado:</p>
+                      <p className="font-bold text-gray-900">{visorDocumento.documento.estado}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Visor PDF */}
+                <div className="h-[60vh] bg-gray-100">
+                  {visorDocumento.documento.documentUrl ? (
+                    <iframe
+                      src={visorDocumento.documento.documentUrl.startsWith('http') 
+                        ? visorDocumento.documento.documentUrl 
+                        : buildApiUrl('control-disciplinario', `/api/v1${visorDocumento.documento.documentUrl}`)}
+                      title={visorDocumento.documento.numero}
+                      className="w-full h-full"
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <FileText className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                        <p className="text-gray-500">Documento no disponible</p>
+                        <p className="text-xs text-gray-400 mt-1">El archivo no ha sido cargado</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
+                <Button
+                  onClick={() => setVisorDocumento({ show: false, documento: null })}
+                  variant="outline"
+                >
+                  Cerrar
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (!visorDocumento.documento?.documentUrl) return;
+                    const url = visorDocumento.documento.documentUrl.startsWith('http')
+                      ? visorDocumento.documento.documentUrl
+                      : buildApiUrl('control-disciplinario', `/api/v1${visorDocumento.documento.documentUrl}`);
+                    window.open(url, '_blank');
+                  }}
+                  disabled={!visorDocumento.documento?.documentUrl}
+                  style={{ background: '#003DA5', color: '#FFFFFF' }}
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Abrir en nueva pestaña
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
