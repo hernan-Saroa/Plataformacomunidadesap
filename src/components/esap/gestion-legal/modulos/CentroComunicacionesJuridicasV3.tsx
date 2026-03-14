@@ -35,6 +35,7 @@ import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalNuevaComunicacion, NuevaComunicacionData } from './ModalNuevaComunicacion';
+import { ModalResponderCorreo, CorreoOriginalData } from './ModalResponderCorreo';
 import { ModalExpedienteComunicacion } from './ModalExpedienteComunicacion';
 import { DetalleCorreoModal } from './DetalleCorreoModal';
 import { correosJuridicosService, CorreoJuridico } from '../../../../services/api/legal.service';
@@ -446,6 +447,10 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   // Estado para reply pre-populate
   const [replyData, setReplyData] = useState<{ to: string; subject: string; body: string } | null>(null);
 
+  // Estado para el nuevo modal de responder
+  const [modalResponderOpen, setModalResponderOpen] = useState(false);
+  const [correoParaResponder, setCorreoParaResponder] = useState<CorreoOriginalData | null>(null);
+
   // Estados para carga de datos desde API
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -609,19 +614,20 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     // Filtrar por tab
     switch (tabActiva) {
       case 'judiciales':
-        resultado = resultado.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA');
+        resultado = resultado.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO');
         break;
       case 'correos':
-        resultado = resultado.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA');
+        resultado = resultado.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO');
         break;
       case 'oficios':
-        resultado = resultado.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA');
+        resultado = resultado.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO');
         break;
       case 'enviados':
-        resultado = resultado.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA');
+        resultado = resultado.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO');
         break;
       case 'respuestas':
-        resultado = resultado.filter(c => c.isReplied && c.estado !== 'ARCHIVADA');
+        // Mostrar los correos enviados como respuesta (categoria RESPUESTA), no los originales
+        resultado = resultado.filter(c => c.categoria === 'RESPUESTA' && c.estado !== 'ARCHIVADA');
         break;
       case 'urgentes':
         resultado = resultado.filter(c => c.urgente && c.estado !== 'ARCHIVADA');
@@ -674,7 +680,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     correos: comunicaciones.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA').length,
     oficios: comunicaciones.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA').length,
     enviados: comunicaciones.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA').length,
-    respuestas: comunicaciones.filter(c => c.isReplied && c.estado !== 'ARCHIVADA').length,
+    respuestas: comunicaciones.filter(c => c.categoria === 'RESPUESTA' && c.estado !== 'ARCHIVADA').length,
     urgentes: totalUrgentes,
     archivadas: totalArchivadas
   };
@@ -882,35 +888,16 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   };
 
   const handleDirectReply = (com: ComunicacionUnificada) => {
-    const formattedDate = com.fechaRadicacion.toLocaleDateString('es-CO', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    setCorreoParaResponder({
+      id: com.id,
+      remitenteEmail: com.remitenteEmail || com.remitente,
+      remitenteNombre: com.remitente,
+      asunto: com.asunto,
+      fechaRecepcion: com.fechaRadicacion,
+      cuerpoTexto: com.descripcion,
+      cuerpoHtml: com.cuerpoHtml,
     });
-
-    const replySubject = com.asunto.startsWith('RE:') ? com.asunto : `RE: ${com.asunto}`;
-    const originalBody = `
-<br/><br/>
-<hr style="border: none; border-top: 1px solid #ccc; margin: 20px 0;"/>
-<p style="color: #666; font-size: 12px;">
-    <strong>De:</strong> ${com.remitente}<br/>
-    <strong>Fecha:</strong> ${formattedDate}<br/>
-    <strong>Asunto:</strong> ${com.asunto}
-</p>
-<blockquote style="border-left: 3px solid #ccc; padding-left: 12px; margin: 12px 0; color: #555;">
-    ${com.descripcion}
-</blockquote>`;
-
-    setReplyData({
-      to: com.remitenteEmail || com.remitente,
-      subject: replySubject,
-      body: originalBody,
-      isReply: true,
-      originalCorreoId: com.id
-    } as any);
-    setModalNuevaComunicacionOpen(true);
+    setModalResponderOpen(true);
   };
 
   const handleDirectForward = (com: ComunicacionUnificada) => {
@@ -1253,6 +1240,26 @@ export function ModuloCentroComunicacionesJuridicasV3() {
         }}
       />
 
+      {/* Modal Responder Correo */}
+      <ModalResponderCorreo
+        isOpen={modalResponderOpen}
+        onClose={() => { setModalResponderOpen(false); setCorreoParaResponder(null); }}
+        correoOriginal={correoParaResponder}
+        onSuccess={async () => {
+          // Marcar optimisticamente isReplied en el correo original
+          if (correoParaResponder) {
+            setComunicaciones(prev =>
+              prev.map(com =>
+                com.id === correoParaResponder.id
+                  ? { ...com, isReplied: true }
+                  : com
+              )
+            );
+          }
+          await loadCorreosFromAPI();
+        }}
+      />
+
       {/* Modal Expediente Comunicación */}
 
       {comunicacionParaExpediente && (
@@ -1273,11 +1280,19 @@ export function ModuloCentroComunicacionesJuridicasV3() {
           onClose={() => { setDetalleModalOpen(false); setCorreoParaDetalle(null); }}
           notificacion={correoParaDetalle}
           onReply={(correoId, destinatario, asunto, cuerpoOriginal) => {
-            // Close detail modal and open compose modal with reply data
             setDetalleModalOpen(false);
+            const original = correoParaDetalle;
             setCorreoParaDetalle(null);
-            setReplyData({ to: destinatario, subject: asunto, body: cuerpoOriginal });
-            setModalNuevaComunicacionOpen(true);
+            setCorreoParaResponder({
+              id: correoId,
+              remitenteEmail: destinatario,
+              remitenteNombre: original?.remitente || destinatario,
+              asunto: original?.asunto || asunto,
+              fechaRecepcion: original?.fechaRadicacion || new Date(),
+              cuerpoTexto: original?.descripcion,
+              cuerpoHtml: original?.cuerpoHtml,
+            });
+            setModalResponderOpen(true);
           }}
           onForward={async (correoId, asunto, cuerpoOriginal) => {
             // Reutilizamos el modal de nueva comunicación para que el usuario escriba a quién se lo reenvía

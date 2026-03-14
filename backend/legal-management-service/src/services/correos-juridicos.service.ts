@@ -74,10 +74,16 @@ export class CorreosJuridicosService {
      * Obtiene el historial de acciones de un correo jurídico
      */
     async getHistorial(correoJuridicoId: string): Promise<CorreoJuridicoHistorial[]> {
-        return this.historialRepo.find({
-            where: { correoJuridicoId },
-            order: { fechaCreacion: 'DESC' }
-        });
+        try {
+            return await this.historialRepo
+                .createQueryBuilder('h')
+                .where('h.correoJuridicoId = :correoJuridicoId', { correoJuridicoId })
+                .orderBy('h.fechaCreacion', 'DESC')
+                .getMany();
+        } catch (error) {
+            this.logger.error(`Error fetching historial for correo ${correoJuridicoId}:`, error);
+            return [];
+        }
     }
 
     /**
@@ -528,8 +534,9 @@ export class CorreosJuridicosService {
         const original = await this.correoRepo.findOne({ where: { id: correoId } });
         if (!original) throw new NotFoundException('Correo original no encontrado');
 
-        // Send reply via Graph API
-        const sent = await this.graphService.replyToEmail(original.graphMessageId, body, attachments);
+        // Send reply via Graph API (sendMail — only requires Mail.Send permission)
+        const replySubject = original.asunto.startsWith('RE:') ? original.asunto : `RE: ${original.asunto}`;
+        const sent = await this.graphService.replyToEmail(original.graphMessageId, body, attachments, original.remitenteEmail, replySubject);
         if (!sent) return { success: false };
 
         // Save reply record in DB

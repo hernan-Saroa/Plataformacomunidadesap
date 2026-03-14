@@ -119,6 +119,25 @@ export class PlanesMejoramientoService {
         };
     }
 
+    async getDocumentos(planId: string): Promise<PlanEvidencia[]> {
+        return this.evidenciaRepo.find({
+            where: { planId },
+            order: { createdAt: 'DESC' }
+        });
+    }
+
+    async uploadDocumento(planId: string, file: Express.Multer.File, titulo: string, uploadedBy?: string): Promise<PlanEvidencia> {
+        await this.findOne(planId); // Verify exists
+        const evidencia = this.evidenciaRepo.create({
+            planId,
+            titulo: titulo || file.originalname,
+            urlArchivo: file.filename,
+            tipoArchivo: file.mimetype,
+            uploadedBy: uploadedBy || 'Sistema'
+        });
+        return this.evidenciaRepo.save(evidencia);
+    }
+
     async addEvidencia(planId: string, data: Partial<PlanEvidencia>) {
         await this.findOne(planId); // Verify exists
         const evidencia = this.evidenciaRepo.create({ ...data, planId });

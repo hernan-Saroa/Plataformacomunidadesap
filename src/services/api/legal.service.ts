@@ -800,6 +800,26 @@ export class LegalService {
         return apiClient.delete(`${SERVICE_PREFIX}/planes-mejoramiento/${id}`);
     }
 
+    async getDocumentosPlan(id: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/documentos`);
+    }
+
+    async uploadDocumentoPlan(id: string, formData: FormData): Promise<any> {
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/documentos`, formData);
+    }
+
+    getPlanFileViewUrl(filename: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/files/${filename}`;
+    }
+
+    getPlanFileDownloadUrl(filename: string, originalName: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/files/download/${filename}?name=${encodeURIComponent(originalName)}`;
+    }
+
     // ==================== JUZGAMIENTO DISCIPLINARIO ====================
     async createJuzgamientoProceso(data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento`, data);

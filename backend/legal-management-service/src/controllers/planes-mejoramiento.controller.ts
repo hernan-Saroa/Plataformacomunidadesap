@@ -1,4 +1,7 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, NotFoundException, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 import { PlanesMejoramientoService } from '../services/planes-mejoramiento.service';
 
 @Controller('planes-mejoramiento')
@@ -28,6 +31,30 @@ export class PlanesMejoramientoController {
     @Get(':id')
     findOne(@Param('id') id: string) {
         return this.planesService.findOne(id);
+    }
+
+    @Get(':id/documentos')
+    getDocumentos(@Param('id') id: string) {
+        return this.planesService.getDocumentos(id);
+    }
+
+    @Post(':id/documentos')
+    @UseInterceptors(FileInterceptor('file', {
+        storage: diskStorage({
+            destination: './uploads',
+            filename: (req, file, cb) => {
+                const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
+                cb(null, `${randomName}${extname(file.originalname)}`);
+            }
+        })
+    }))
+    async uploadDocumento(
+        @Param('id') id: string,
+        @Body() body: any,
+        @UploadedFile() file: Express.Multer.File
+    ) {
+        if (!file) throw new BadRequestException('El archivo es obligatorio');
+        return this.planesService.uploadDocumento(id, file, body.titulo, body.uploadedBy);
     }
 
     @Post(':id/evidencias')
