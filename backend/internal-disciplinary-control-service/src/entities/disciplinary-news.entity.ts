@@ -24,6 +24,14 @@ export enum NewsStatus {
   ARCHIVADA = 'ARCHIVADA',
 }
 
+// export interface Apoderado {
+//   nombre?: string;
+//   cedula?: string;
+//   email?: string;
+//   telefono?: string;
+//   direccion?: string;
+// }
+
 export interface PersonInfo {
   nombre: string;
   cedula?: string;
@@ -33,6 +41,8 @@ export interface PersonInfo {
   direccion?: string;
   dependencia?: string;
   entidad?: string;
+  // ✅ NUEVO: Campo opcional para almacenar información del apoderado
+  // apoderado?: Apoderado;
 }
 
 @Entity('disciplinary_news')

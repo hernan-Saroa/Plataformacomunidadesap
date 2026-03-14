@@ -1117,7 +1117,17 @@ export function GestionNoticias() {
         telefono: denuncianteData.telefono || '',
         direccion: denuncianteData.direccion || '',
         entidad: denuncianteData.entidad || denuncianteData.dependencia || '',
-        dependencia: denuncianteData.dependencia || ''
+        dependencia: denuncianteData.dependencia || '',
+        // ✅ NUEVO: Incluir apoderado del denunciante
+        ...(denuncianteData.apoderado && denuncianteData.apoderado.nombre ? {
+          apoderado: {
+            nombre: denuncianteData.apoderado.nombre || '',
+            cedula: denuncianteData.apoderado.cedula || '',
+            email: denuncianteData.apoderado.correo || '',
+            telefono: denuncianteData.apoderado.celular || '',
+            direccion: denuncianteData.apoderado.direccion || ''
+          }
+        } : {})
       };
 
       // Map Disciplinable(s)
@@ -1131,7 +1141,17 @@ export function GestionNoticias() {
         cedula: mainDisciplinableData.identificacion || mainDisciplinableData.cedula || '',
         identificacion: mainDisciplinableData.identificacion || mainDisciplinableData.cedula || '',
         cargo: mainDisciplinableData.cargo || 'N/A',
-        dependencia: mainDisciplinableData.dependencia || 'Sin Dependencia'
+        dependencia: mainDisciplinableData.dependencia || 'Sin Dependencia',
+        // ✅ NUEVO: Incluir apoderado del disciplinable (denunciado)
+        ...(mainDisciplinableData.apoderado && mainDisciplinableData.apoderado.nombre ? {
+          apoderado: {
+            nombre: mainDisciplinableData.apoderado.nombre || '',
+            cedula: mainDisciplinableData.apoderado.cedula || '',
+            email: mainDisciplinableData.apoderado.correo || '',
+            telefono: mainDisciplinableData.apoderado.celular || '',
+            direccion: mainDisciplinableData.apoderado.direccion || ''
+          }
+        } : {})
       };
 
       const createDto: CreateNewsDto = {
