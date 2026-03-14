@@ -356,7 +356,8 @@ export function ExpedientesElectronicosWorldClass() {
   const [showModalHojaControl, setShowModalHojaControl] = useState(false);
   const [documentoHojaControl, setDocumentoHojaControl] = useState<Documento | null>(null);
   const [tipoDocumentoSeleccionado, setTipoDocumentoSeleccionado] = useState<string>('');
-  const [vistaActual, setVistaActual] = useState<'cronologica' | 'carpetas'>('cronologica');
+  // const [vistaActual, setVistaActual] = useState<'cronologica' | 'carpetas'>('cronologica');
+  const [vistaActual, setVistaActual] = useState<'cronologica'>('cronologica');
   const [ordenCronologico, setOrdenCronologico] = useState<'desc' | 'asc'>('desc');
   const [filtroTipoDoc, setFiltroTipoDoc] = useState<string>('todos');
   const [expedientesExpandidos, setExpedientesExpandidos] = useState<Set<string>>(new Set());
@@ -1171,7 +1172,7 @@ export function ExpedientesElectronicosWorldClass() {
               Cronológica
               {vistaActual === 'cronologica' && <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">PRINCIPAL</span>}
             </button>
-            <button
+            {/* <button
               onClick={() => setVistaActual('carpetas')}
               className={`px-3 py-1.5 rounded text-xs font-bold transition flex items-center gap-1.5 ${
                 vistaActual === 'carpetas' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600'
@@ -1180,7 +1181,7 @@ export function ExpedientesElectronicosWorldClass() {
               <Folders className="w-3.5 h-3.5" />
               Carpetas
               {vistaActual === 'carpetas' && <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-bold">AUXILIAR</span>}
-            </button>
+            </button> */}
           </div>
           {vistaActual === 'cronologica' && (
             <button
