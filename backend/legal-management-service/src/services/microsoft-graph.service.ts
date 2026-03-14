@@ -390,6 +390,8 @@ export class MicrosoftGraphService {
         contentType: string;
         size: number;
         contentBytes?: string;
+        contentId?: string;  // Needed to resolve CID inline images
+        isInline?: boolean;
     }>> {
         try {
             const client = this.getClient();
@@ -407,6 +409,8 @@ export class MicrosoftGraphService {
                 contentType: att.contentType,
                 size: att.size,
                 contentBytes: att.contentBytes, // Base64 encoded
+                contentId: att.contentId || null,  // Preserve for CID inline image resolution
+                isInline: att.isInline ?? false,
             }));
         } catch (error) {
             this.logger.error(`Error fetching attachments for message ${messageId}:`, error);
@@ -445,13 +449,15 @@ export class MicrosoftGraphService {
     }
 
     /**
-     * Reply to an email using Graph API
-     * Uses createReply to maintain threading headers (In-Reply-To, References)
+     * Reply to an email via sendMail (requires only Mail.Send permission).
+     * The body already contains the quoted original assembled by the frontend.
      */
     async replyToEmail(
         messageId: string,
         body: string,
-        attachments?: { name: string; contentBytes: string; contentType: string }[]
+        attachments?: { name: string; contentBytes: string; contentType: string }[],
+        to?: string,
+        subject?: string,
     ): Promise<boolean> {
         // MOCK FOR DEV
         if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
@@ -459,54 +465,40 @@ export class MicrosoftGraphService {
             return true;
         }
 
+        if (!to || !subject) {
+            this.logger.error('replyToEmail: to and subject are required');
+            throw new Error('to and subject are required to send a reply');
+        }
+
         try {
             const client = this.getClient();
 
-            const htmlBody = `
-                <div style="font-family: Arial, sans-serif; font-size: 14px;">
-                    ${body.replace(/\n/g, '<br/>')}
-                </div>
-            `;
+            const graphAttachments = attachments?.map(att => ({
+                '@odata.type': '#microsoft.graph.fileAttachment',
+                name: att.name,
+                contentBytes: att.contentBytes,
+                contentType: att.contentType,
+            })) || [];
 
-            // Step 1: Create a draft reply (this preserves threading headers)
-            const draftReply = await client
-                .api(`/users/${this.emailAccount}/messages/${messageId}/createReply`)
-                .post({});
-
-            const draftId = draftReply.id;
-
-            // Step 2: Update the draft with our reply body
-            const updatePayload: any = {
-                body: {
-                    contentType: 'HTML',
-                    content: htmlBody,
+            const message: any = {
+                message: {
+                    subject,
+                    body: {
+                        contentType: 'HTML',
+                        content: body,
+                    },
+                    toRecipients: [{ emailAddress: { address: to } }],
+                    from: { emailAddress: { address: this.emailAccount } },
+                    ...(graphAttachments.length > 0 && { attachments: graphAttachments }),
                 },
+                saveToSentItems: true,
             };
 
             await client
-                .api(`/users/${this.emailAccount}/messages/${draftId}`)
-                .patch(updatePayload);
+                .api(`/users/${this.emailAccount}/sendMail`)
+                .post(message);
 
-            // Step 3: Add attachments to draft if any
-            if (attachments?.length) {
-                for (const att of attachments) {
-                    await client
-                        .api(`/users/${this.emailAccount}/messages/${draftId}/attachments`)
-                        .post({
-                            '@odata.type': '#microsoft.graph.fileAttachment',
-                            name: att.name,
-                            contentBytes: att.contentBytes,
-                            contentType: att.contentType,
-                        });
-                }
-            }
-
-            // Step 4: Send the draft
-            await client
-                .api(`/users/${this.emailAccount}/messages/${draftId}/send`)
-                .post({});
-
-            this.logger.log(`Reply sent for message ${messageId}`);
+            this.logger.log(`Reply sent to ${to} for original message ${messageId}`);
             return true;
         } catch (error) {
             this.logger.error(`Error replying to message ${messageId}:`, error);

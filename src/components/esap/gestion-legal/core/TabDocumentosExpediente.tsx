@@ -3,15 +3,15 @@
  * ✅ 8 categorías con iconos/colores diferenciados
  * ✅ Filtros pill con conteo dinámico
  * ✅ Buscador integrado
- * ✅ Modal de subida unificado
- * ✅ Integración con Biblioteca de Plantillas (Configuraciones SIGL)
+ * ✅ Plantillas cargadas desde el módulo de Configuraciones (API real)
+ * ✅ Subir al Expediente — solo PDFs
  * ✅ Usado por ModalExpediente.tsx y ModalProcesoDisciplinario.tsx
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  FolderOpen, Upload, Search, Download, Eye, X, FileText,
-  Filter, Tag, User, File, BookOpen, Library, ArrowRight, Clock, Hash, Users
+  FolderOpen, Download, Eye, X, FileText,
+  Filter, User, File, BookOpen, Library, ArrowRight, Loader2, Search
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -20,11 +20,53 @@ import { Card } from '../../../ui/card';
 import { ModalHeaderClean } from '../modulos/ModalHeaderClean';
 import {
   CATEGORIAS_DOCUMENTOS,
-  SUGERENCIAS_TIPO_DOCUMENTO,
-  PLANTILLAS_BIBLIOTECA,
   type DocumentoExpediente,
-  type PlantillaDocumental
 } from './expedienteShared';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
+
+// ─── API helpers ──────────────────────────────────────────────────────────────
+
+function getLegalApiBase(): string {
+  if (API_MODE === 'direct') return getServiceUrl('legal');
+  return `${getServiceUrl('legal')}/legal/api/v1`;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+// ─── Tipo plantilla de la API ─────────────────────────────────────────────────
+
+interface PlantillaApi {
+  id: string;
+  nombre: string;
+  categoria: string;
+  nombreOriginal: string;
+  mimeType: string;
+  tamano: number;
+  subidoPor?: string;
+  createdAt: string;
+}
+
+// Categorías de plantillas (coinciden con el módulo de Configuraciones)
+const CAT_PLANTILLAS = [
+  { id: 'todos',                label: 'Todos',             color: '#003DA5' },
+  { id: 'actas',                label: 'Actas',             color: '#7C3AED' },
+  { id: 'evidencias',           label: 'Evidencias',        color: '#059669' },
+  { id: 'oficios',              label: 'Oficios',           color: '#D97706' },
+  { id: 'pruebas',              label: 'Pruebas',           color: '#0891B2' },
+  { id: 'comunicaciones',       label: 'Comunicaciones',    color: '#4F46E5' },
+  { id: 'notificaciones',       label: 'Notificaciones',    color: '#EA580C' },
+  { id: 'documentos-generales', label: 'Docs. Generales',   color: '#6B7280' },
+];
+
+function getCatPlantilla(id: string) {
+  return CAT_PLANTILLAS.find(c => c.id === id) ?? { label: id, color: '#6B7280' };
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface TabDocumentosExpedienteProps {
   expedienteId: string;
@@ -37,9 +79,10 @@ interface TabDocumentosExpedienteProps {
   onViewDocument?: (doc: DocumentoExpediente) => void;
   onDownloadDocument?: (doc: DocumentoExpediente) => void;
   onDownloadAll?: () => Promise<void> | void;
-  /** Contexto del módulo para filtrar plantillas relevantes */
   moduloContexto?: 'defensa-judicial' | 'juzgamiento';
 }
+
+// ─── Componente principal ─────────────────────────────────────────────────────
 
 export function TabDocumentosExpediente({
   expedienteId,
@@ -56,17 +99,38 @@ export function TabDocumentosExpediente({
 }: TabDocumentosExpedienteProps) {
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('todos');
-  const [modalSubirDocumento, setModalSubirDocumento] = useState(false);
-  const [nuevaCategoria, setNuevaCategoria] = useState('documentos');
-  const [nuevoTipoDocumento, setNuevoTipoDocumento] = useState('');
 
-  // ✅ Estado para modal de Biblioteca de Plantillas
+  // Plantillas desde API
+  const [plantillas, setPlantillas] = useState<PlantillaApi[]>([]);
+  const [cargandoPlantillas, setCargandoPlantillas] = useState(false);
   const [modalPlantillas, setModalPlantillas] = useState(false);
   const [busquedaPlantilla, setBusquedaPlantilla] = useState('');
   const [filtroPlantillaCategoria, setFiltroPlantillaCategoria] = useState('todos');
-  const [plantillaDetalle, setPlantillaDetalle] = useState<PlantillaDocumental | null>(null);
+  const [plantillaDetalle, setPlantillaDetalle] = useState<PlantillaApi | null>(null);
+  const [subiendoAlExpediente, setSubiendoAlExpediente] = useState(false);
 
-  // ==================== FILTRADO DOCUMENTOS ====================
+  useEffect(() => {
+    if (modalPlantillas && plantillas.length === 0) {
+      cargarPlantillas();
+    }
+  }, [modalPlantillas]);
+
+  async function cargarPlantillas() {
+    setCargandoPlantillas(true);
+    try {
+      const base = getLegalApiBase();
+      const res = await fetch(`${base}/plantillas`);
+      if (!res.ok) throw new Error();
+      const data: PlantillaApi[] = await res.json();
+      setPlantillas(data);
+    } catch {
+      toast.error('No se pudieron cargar las plantillas');
+    } finally {
+      setCargandoPlantillas(false);
+    }
+  }
+
+  // ── Filtrado documentos ────────────────────────────────────────────────────
 
   const documentosFiltrados = documentos.filter((doc) => {
     const matchBusqueda = !busquedaDocs ||
@@ -81,48 +145,35 @@ export function TabDocumentosExpediente({
     return documentos.filter((d) => d.categoria === catId).length;
   };
 
-  // ==================== FILTRADO PLANTILLAS ====================
+  // ── Filtrado plantillas ────────────────────────────────────────────────────
 
-  const plantillasFiltradas = PLANTILLAS_BIBLIOTECA.filter((p) => {
-    const matchModulo = p.modulo === moduloContexto || p.modulo === 'ambos';
+  const plantillasFiltradas = plantillas.filter((p) => {
     const matchCategoria = filtroPlantillaCategoria === 'todos' || p.categoria === filtroPlantillaCategoria;
     const matchBusqueda = !busquedaPlantilla ||
       p.nombre.toLowerCase().includes(busquedaPlantilla.toLowerCase()) ||
-      p.descripcion.toLowerCase().includes(busquedaPlantilla.toLowerCase());
-    return matchModulo && matchCategoria && matchBusqueda && p.activa;
+      p.nombreOriginal.toLowerCase().includes(busquedaPlantilla.toLowerCase());
+    return matchCategoria && matchBusqueda;
   });
 
-  const conteoPlantillaCategoria = (catId: string) => {
-    const base = PLANTILLAS_BIBLIOTECA.filter(p =>
-      (p.modulo === moduloContexto || p.modulo === 'ambos') && p.activa
-    );
-    if (catId === 'todos') return base.length;
-    return base.filter(p => p.categoria === catId).length;
+  const conteoPorCatPlantilla = (catId: string) => {
+    if (catId === 'todos') return plantillas.length;
+    return plantillas.filter(p => p.categoria === catId).length;
   };
 
-  // ==================== HANDLERS DOCUMENTOS ====================
+  // ── Handlers documentos ───────────────────────────────────────────────────
 
   const handleVerDocumento = (doc: DocumentoExpediente) => {
-    if (onViewDocument) {
-      onViewDocument(doc);
-      return;
-    }
+    if (onViewDocument) { onViewDocument(doc); return; }
     toast.info('Abriendo visor de documento', { description: doc.nombre });
   };
 
   const handleDescargarDocumento = (doc: DocumentoExpediente) => {
-    if (onDownloadDocument) {
-      onDownloadDocument(doc);
-      return;
-    }
+    if (onDownloadDocument) { onDownloadDocument(doc); return; }
     toast.success('Descarga iniciada', { description: `${doc.nombre} (${doc.tamaño})` });
   };
 
   const handleDescargarTodos = () => {
-    if (onDownloadAll) {
-      onDownloadAll();
-      return;
-    }
+    if (onDownloadAll) { onDownloadAll(); return; }
     toast.success('Descargando expediente completo', {
       description: `Preparando archivo ZIP con ${documentos.length} archivos`,
       duration: 4000
@@ -135,119 +186,85 @@ export function TabDocumentosExpediente({
     }, 3000);
   };
 
-  const ejecutarSubidaDocumento = () => {
-    if (!nuevoTipoDocumento.trim()) {
-      toast.error('Tipo de documento requerido', {
-        description: 'Debe indicar el tipo de documento a cargar'
-      });
-      return;
-    }
+  // ── Handlers plantillas ───────────────────────────────────────────────────
 
+  const handleDescargarPlantilla = async (plantilla: PlantillaApi) => {
+    try {
+      const base = getLegalApiBase();
+      const res = await fetch(`${base}/plantillas/${plantilla.id}/download`);
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = plantilla.nombreOriginal;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Plantilla descargada', { description: plantilla.nombre });
+    } catch {
+      toast.error('No se pudo descargar la plantilla');
+    }
+  };
+
+  const handleSubirAlExpediente = (plantilla: PlantillaApi) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx,.xls,.zip,.rar,.7z,.pptx,.ppt,.csv,.txt,.rtf';
+    input.accept = '.pdf,application/pdf';
 
-    input.onchange = (e: any) => {
-      const file = e.target?.files?.[0];
-      if (file) {
+    input.onchange = async (e: any) => {
+      const file: File | undefined = e.target?.files?.[0];
+      if (!file) return;
+
+      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+        toast.error('Solo se permiten archivos PDF');
+        return;
+      }
+
+      setSubiendoAlExpediente(true);
+      try {
         if (onUploadDocument) {
-          Promise.resolve(onUploadDocument(file, nuevaCategoria, nuevoTipoDocumento))
-            .then(() => {
-              setModalSubirDocumento(false);
-              setNuevoTipoDocumento('');
-              setNuevaCategoria('documentos');
-              onHasChanges?.();
-            })
-            .catch(() => {
-              // Error ya manejado en componente padre
-            });
-          return;
-        }
-
-        toast.loading('Subiendo documento...', {
-          id: 'subir-documento-exp',
-          duration: 2000
-        });
-
-        setTimeout(() => {
-          const categoriaInfo = CATEGORIAS_DOCUMENTOS.find(c => c.id === nuevaCategoria);
+          await Promise.resolve(onUploadDocument(file, plantilla.categoria, plantilla.nombre));
+        } else {
           const nuevoDoc: DocumentoExpediente = {
             id: Date.now(),
             nombre: file.name,
-            tamaño: file.size >= 1024 * 1024
-              ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-              : `${(file.size / 1024).toFixed(0)} KB`,
+            tamaño: formatBytes(file.size),
             fecha: new Date().toLocaleDateString('es-CO'),
-            tipo: nuevoTipoDocumento,
+            tipo: plantilla.nombre,
             firmante: profesionalAsignado || 'Oficina Jurídica',
-            categoria: nuevaCategoria
+            categoria: plantilla.categoria,
           };
-
           setDocumentos(prev => [nuevoDoc, ...prev]);
-          setModalSubirDocumento(false);
-          setNuevoTipoDocumento('');
-          setNuevaCategoria('documentos');
-          onHasChanges?.();
-
-          toast.success('Documento subido exitosamente', {
-            id: 'subir-documento-exp',
-            description: `${file.name} → ${categoriaInfo?.nombre || 'Documentos'} • ${nuevoTipoDocumento}`,
-            duration: 4000
-          });
-        }, 2000);
+        }
+        setModalPlantillas(false);
+        setPlantillaDetalle(null);
+        onHasChanges?.();
+        toast.success('Documento subido al expediente', { description: file.name });
+      } catch {
+        // Error ya manejado por el padre
+      } finally {
+        setSubiendoAlExpediente(false);
       }
     };
 
     input.click();
   };
 
-  // ==================== HANDLERS PLANTILLAS ====================
-
-  const handleDescargarPlantilla = (plantilla: PlantillaDocumental) => {
-    toast.loading(`Descargando plantilla...`, { id: `dl-plantilla-${plantilla.id}`, duration: 2000 });
-
-    setTimeout(() => {
-      toast.success('Plantilla descargada', {
-        id: `dl-plantilla-${plantilla.id}`,
-        description: `${plantilla.nombre}.${plantilla.formato.toLowerCase()} (${plantilla.tamaño})`,
-        duration: 4000
-      });
-      // Segundo toast con instrucción
-      setTimeout(() => {
-        toast.info('Siguiente paso', {
-          description: 'Complete la plantilla y cargue el documento diligenciado con "Subir Documento"',
-          duration: 6000
-        });
-      }, 500);
-    }, 1500);
-  };
-
-  const handleUsarPlantillaYSubir = (plantilla: PlantillaDocumental) => {
-    // Pre-llenar el modal de subida con datos de la plantilla
-    const catInfo = CATEGORIAS_DOCUMENTOS.find(c => c.id === plantilla.categoria);
-    setNuevaCategoria(plantilla.categoria);
-    setNuevoTipoDocumento(plantilla.nombre);
-    setPlantillaDetalle(null);
+  const cerrarModalPlantillas = () => {
     setModalPlantillas(false);
-    setModalSubirDocumento(true);
-
-    toast.info('Plantilla seleccionada', {
-      description: `Suba el documento basado en: ${plantilla.nombre} → ${catInfo?.nombre || 'Documentos'}`,
-      duration: 5000
-    });
+    setPlantillaDetalle(null);
+    setBusquedaPlantilla('');
+    setFiltroPlantillaCategoria('todos');
   };
 
-  // ==================== RENDER ====================
+  // ── Render ────────────────────────────────────────────────────────────────
 
   const moduloLabel = moduloContexto === 'defensa-judicial' ? 'Defensa Judicial' : 'Juzgamiento Disciplinario';
-  const totalPlantillasDisponibles = PLANTILLAS_BIBLIOTECA.filter(p =>
-    (p.modulo === moduloContexto || p.modulo === 'ambos') && p.activa
-  ).length;
 
   return (
     <>
       <div className="space-y-3">
-        {/* Header con búsqueda y botones */}
+        {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
             <h3 className="font-black text-lg flex items-center gap-2" style={{ color: '#003DA5' }}>
@@ -267,18 +284,6 @@ export function TabDocumentosExpediente({
             >
               <Library className="w-4 h-4 mr-1.5" />
               Plantillas
-              <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-white/25">
-                {totalPlantillasDisponibles}
-              </span>
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => setModalSubirDocumento(true)}
-              className="font-semibold"
-              style={{ background: '#003DA5', color: '#FFFFFF' }}
-            >
-              <Upload className="w-4 h-4 mr-1.5" />
-              Subir Documento
             </Button>
             <Button
               size="sm"
@@ -293,7 +298,7 @@ export function TabDocumentosExpediente({
           </div>
         </div>
 
-        {/* Barra de búsqueda */}
+        {/* Búsqueda */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -304,16 +309,13 @@ export function TabDocumentosExpediente({
             className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
           {busquedaDocs && (
-            <button
-              onClick={() => setBusquedaDocs('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
+            <button onClick={() => setBusquedaDocs('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
 
-        {/* Filtros por categoría */}
+        {/* Filtros categoría */}
         <div className="flex flex-wrap gap-2">
           {CATEGORIAS_DOCUMENTOS.map((cat) => {
             const count = conteoCategoria(cat.id);
@@ -323,16 +325,14 @@ export function TabDocumentosExpediente({
               <button
                 key={cat.id}
                 onClick={() => setFiltroDocTipo(cat.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border-2 ${isActive
-                  ? 'text-white shadow-md'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                  }`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border-2 ${
+                  isActive ? 'text-white shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                }`}
                 style={isActive ? { background: cat.color, borderColor: cat.color } : {}}
               >
                 <IconComponent className="w-3.5 h-3.5" />
                 {cat.nombre}
-                <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${isActive ? 'bg-white/25' : 'bg-gray-100'
-                  }`}>
+                <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${isActive ? 'bg-white/25' : 'bg-gray-100'}`}>
                   {count}
                 </span>
               </button>
@@ -340,7 +340,7 @@ export function TabDocumentosExpediente({
           })}
         </div>
 
-        {/* Lista de documentos */}
+        {/* Lista documentos */}
         {documentosFiltrados.length === 0 ? (
           <Card className="p-8 text-center border-2 border-dashed border-gray-300">
             <FolderOpen className="w-16 h-16 mx-auto mb-4 text-gray-300" />
@@ -350,14 +350,10 @@ export function TabDocumentosExpediente({
             <p className="text-sm text-gray-500 mb-4">
               {busquedaDocs
                 ? `No se encontraron resultados para "${busquedaDocs}"`
-                : 'Sube el primer documento a esta categoría'}
+                : 'Sube documentos usando las plantillas disponibles'}
             </p>
             {(busquedaDocs || filtroDocTipo !== 'todos') && (
-              <Button
-                variant="outline"
-                onClick={() => { setBusquedaDocs(''); setFiltroDocTipo('todos'); }}
-                className="font-semibold"
-              >
+              <Button variant="outline" onClick={() => { setBusquedaDocs(''); setFiltroDocTipo('todos'); }} className="font-semibold">
                 <X className="w-4 h-4 mr-1" />
                 Limpiar filtros
               </Button>
@@ -371,35 +367,20 @@ export function TabDocumentosExpediente({
               return (
                 <Card key={doc.id} className="p-3 hover:shadow-md transition-all border border-gray-200 hover:border-blue-200">
                   <div className="flex items-center gap-3">
-                    {/* Icono de categoría */}
-                    <div
-                      className="p-2.5 rounded-lg flex-shrink-0"
-                      style={{ background: `${catInfo?.color || '#6B7280'}12` }}
-                    >
+                    <div className="p-2.5 rounded-lg flex-shrink-0" style={{ background: `${catInfo?.color || '#6B7280'}12` }}>
                       <CatIcon className="w-5 h-5" style={{ color: catInfo?.color || '#6B7280' }} />
                     </div>
-
-                    {/* Info del documento */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <h4 className="font-bold text-sm truncate">{doc.nombre}</h4>
-                      </div>
+                      <h4 className="font-bold text-sm truncate">{doc.nombre}</h4>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span
-                          className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white"
-                          style={{ background: catInfo?.color || '#6B7280' }}
-                        >
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: catInfo?.color || '#6B7280' }}>
                           {catInfo?.nombre || 'General'}
                         </span>
                         {doc.etapa && (
-                          <span
-                            className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white"
-                            style={{ background: '#0D9488' }}
-                          >
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: '#0D9488' }}>
                             {doc.etapa}
                           </span>
                         )}
-                        {/* tipo ya se muestra en el badge de etapa */}
                         <span className="text-xs text-gray-500">{doc.tamaño}</span>
                         <span className="text-xs text-gray-400">•</span>
                         <span className="text-xs text-gray-500">{doc.fecha}</span>
@@ -414,25 +395,11 @@ export function TabDocumentosExpediente({
                         )}
                       </div>
                     </div>
-
-                    {/* Acciones */}
                     <div className="flex gap-1 flex-shrink-0">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50"
-                        onClick={() => handleVerDocumento(doc)}
-                        title="Ver documento"
-                      >
+                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50" onClick={() => handleVerDocumento(doc)} title="Ver documento">
                         <Eye className="w-4 h-4" />
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 w-8 p-0 text-orange-600 hover:bg-orange-50"
-                        onClick={() => handleDescargarDocumento(doc)}
-                        title="Descargar documento"
-                      >
+                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-orange-600 hover:bg-orange-50" onClick={() => handleDescargarDocumento(doc)} title="Descargar documento">
                         <Download className="w-4 h-4" />
                       </Button>
                     </div>
@@ -443,7 +410,7 @@ export function TabDocumentosExpediente({
           </div>
         )}
 
-        {/* Resumen por categoría */}
+        {/* Resumen categorías */}
         <Card className="p-4 bg-gray-50 border-2 border-gray-200 mt-2">
           <h4 className="font-bold text-sm text-gray-700 mb-3 flex items-center gap-2">
             <Filter className="w-4 h-4" />
@@ -470,7 +437,7 @@ export function TabDocumentosExpediente({
           </div>
         </Card>
 
-        {/* ✅ Banner de Plantillas Disponibles */}
+        {/* Banner plantillas */}
         <Card
           className="p-3 border-2 cursor-pointer hover:shadow-md transition-all"
           style={{ borderColor: '#2962FF30', background: 'linear-gradient(135deg, #2962FF08 0%, #003DA510 100%)' }}
@@ -485,7 +452,7 @@ export function TabDocumentosExpediente({
                 Biblioteca de Plantillas — {moduloLabel}
               </h4>
               <p className="text-xs text-gray-500">
-                {totalPlantillasDisponibles} plantillas disponibles • Descargue, complete y cargue al expediente
+                Plantillas configuradas por el administrador • Descargue y suba el PDF diligenciado al expediente
               </p>
             </div>
             <ArrowRight className="w-5 h-5 flex-shrink-0" style={{ color: '#2962FF' }} />
@@ -493,155 +460,26 @@ export function TabDocumentosExpediente({
         </Card>
       </div>
 
-      {/* ==================== MODAL: SUBIR DOCUMENTO ==================== */}
-      {modalSubirDocumento && (
-        <Dialog open={modalSubirDocumento} onOpenChange={setModalSubirDocumento}>
-          <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl !max-h-[82vh] flex flex-col p-0">
-            <DialogTitle className="sr-only">Subir Documento</DialogTitle>
-            <DialogDescription className="sr-only">
-              Formulario para subir un nuevo documento al expediente {expedienteId}
-            </DialogDescription>
-
-            <ModalHeaderClean
-              titulo="Subir Documento"
-              subtitulo={`Expediente ${expedienteId} • Seleccione categoría y tipo`}
-              icono={Upload}
-              colorIcono="blue"
-              onClose={() => setModalSubirDocumento(false)}
-            />
-
-            <div className="p-6 space-y-5">
-              {/* Categoría del documento */}
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-3">
-                  <Tag className="w-4 h-4 inline mr-1.5" />
-                  Categoría del Documento *
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {CATEGORIAS_DOCUMENTOS.filter(c => c.id !== 'todos').map((cat) => {
-                    const isSelected = nuevaCategoria === cat.id;
-                    const CatIcon = cat.icono;
-                    return (
-                      <button
-                        key={cat.id}
-                        onClick={() => setNuevaCategoria(cat.id)}
-                        className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 transition-all text-center ${isSelected
-                          ? 'shadow-md text-white'
-                          : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                          }`}
-                        style={isSelected ? { background: cat.color, borderColor: cat.color } : {}}
-                      >
-                        <CatIcon className="w-5 h-5" />
-                        <span className="text-xs font-bold">{cat.nombre}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Tipo de documento */}
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  <FileText className="w-4 h-4 inline mr-1.5" />
-                  Tipo de Documento *
-                </label>
-                <input
-                  type="text"
-                  value={nuevoTipoDocumento}
-                  onChange={(e) => setNuevoTipoDocumento(e.target.value)}
-                  placeholder="Ej: Demanda, Acta de Audiencia, Oficio de Citación..."
-                  className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                {/* Sugerencias según categoría */}
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {(SUGERENCIAS_TIPO_DOCUMENTO[nuevaCategoria] || []).map((sug) => (
-                    <button
-                      key={sug}
-                      onClick={() => setNuevoTipoDocumento(sug)}
-                      className="px-2 py-1 text-[11px] font-semibold bg-gray-100 text-gray-600 rounded-md border border-gray-200 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition-all"
-                    >
-                      {sug}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Info de la categoría seleccionada */}
-              {(() => {
-                const catInfo = CATEGORIAS_DOCUMENTOS.find(c => c.id === nuevaCategoria);
-                if (!catInfo) return null;
-                const CatIcon = catInfo.icono;
-                return (
-                  <Card className="p-3 border-2" style={{ borderColor: `${catInfo.color}40`, background: `${catInfo.color}08` }}>
-                    <div className="flex items-center gap-2">
-                      <CatIcon className="w-5 h-5" style={{ color: catInfo.color }} />
-                      <div>
-                        <p className="text-sm font-bold" style={{ color: catInfo.color }}>
-                          Se archivará en: {catInfo.nombre}
-                        </p>
-                        <p className="text-xs text-gray-600">
-                          Formatos aceptados: PDF, DOC, DOCX, JPG, PNG, XLS, XLSX, ZIP, RAR, PPTX, CSV, TXT
-                        </p>
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })()}
-            </div>
-
-            <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setModalSubirDocumento(false);
-                  setNuevoTipoDocumento('');
-                  setNuevaCategoria('documentos');
-                }}
-                className="font-semibold"
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={ejecutarSubidaDocumento}
-                className="font-semibold"
-                style={{ background: '#003DA5', color: '#FFFFFF' }}
-                disabled={!nuevoTipoDocumento.trim()}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Seleccionar Archivo
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* ==================== MODAL: BIBLIOTECA DE PLANTILLAS ==================== */}
+      {/* ── MODAL PLANTILLAS ───────────────────────────────────────────────────── */}
       {modalPlantillas && (
-        <Dialog open={modalPlantillas} onOpenChange={setModalPlantillas}>
-          <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl !max-h-[82vh] flex flex-col p-0" style={{ '--modal-h-sm': '85vh' } as React.CSSProperties}>
+        <Dialog open={modalPlantillas} onOpenChange={cerrarModalPlantillas}>
+          <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl !max-h-[82vh] flex flex-col p-0">
             <DialogTitle className="sr-only">Biblioteca de Plantillas</DialogTitle>
-            <DialogDescription className="sr-only">
-              Plantillas documentales disponibles para {moduloLabel}
-            </DialogDescription>
+            <DialogDescription className="sr-only">Plantillas documentales disponibles para {moduloLabel}</DialogDescription>
 
             <ModalHeaderClean
               titulo="Biblioteca de Plantillas"
-              subtitulo={`${moduloLabel} • ${totalPlantillasDisponibles} plantillas disponibles • Expediente ${expedienteId}`}
+              subtitulo={`${moduloLabel} • Expediente ${expedienteId}`}
               icono={Library}
               colorIcono="blue"
-              onClose={() => {
-                setModalPlantillas(false);
-                setPlantillaDetalle(null);
-                setBusquedaPlantilla('');
-                setFiltroPlantillaCategoria('todos');
-              }}
+              onClose={cerrarModalPlantillas}
             />
 
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {/* Detalle de plantilla seleccionada */}
+
+              {/* ── Vista detalle de una plantilla ── */}
               {plantillaDetalle ? (
                 <div className="space-y-4">
-                  {/* Botón volver */}
                   <button
                     onClick={() => setPlantillaDetalle(null)}
                     className="flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors"
@@ -650,9 +488,8 @@ export function TabDocumentosExpediente({
                     Volver al listado
                   </button>
 
-                  {/* Card detalle */}
                   <Card className="p-0 border-2 border-blue-200 overflow-hidden">
-                    {/* Header con gradiente */}
+                    {/* Header azul */}
                     <div className="p-5" style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}>
                       <div className="flex items-start gap-4">
                         <div className="p-3 bg-white/15 rounded-xl">
@@ -660,131 +497,88 @@ export function TabDocumentosExpediente({
                         </div>
                         <div className="flex-1 text-white">
                           <h3 className="font-black text-lg">{plantillaDetalle.nombre}</h3>
-                          <p className="text-sm text-blue-100 mt-1">{plantillaDetalle.descripcion}</p>
+                          <p className="text-sm text-blue-100 mt-1">{plantillaDetalle.nombreOriginal}</p>
                           <div className="flex items-center gap-3 mt-3 flex-wrap">
-                            {(() => {
-                              const catInfo = CATEGORIAS_DOCUMENTOS.find(c => c.id === plantillaDetalle.categoria);
-                              return catInfo ? (
-                                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-white/20 text-white">
-                                  {catInfo.nombre}
-                                </span>
-                              ) : null;
-                            })()}
                             <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-white/20 text-white">
-                              {plantillaDetalle.modulo === 'ambos' ? 'Ambos Módulos' :
-                                plantillaDetalle.modulo === 'defensa-judicial' ? 'Defensa Judicial' : 'Juzgamiento'}
-                            </span>
-                            <span className="text-xs text-blue-200">
-                              v{plantillaDetalle.version} • {plantillaDetalle.formato}
+                              {getCatPlantilla(plantillaDetalle.categoria).label}
                             </span>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Métricas */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-5">
-                      <div className="text-center p-3 bg-gray-50 rounded-lg">
-                        <FileText className="w-5 h-5 mx-auto mb-1 text-blue-600" />
-                        <p className="font-black text-lg" style={{ color: '#003DA5' }}>{plantillaDetalle.formato}</p>
-                        <p className="text-[10px] text-gray-500">Formato</p>
-                      </div>
-                      <div className="text-center p-3 bg-gray-50 rounded-lg">
-                        <Hash className="w-5 h-5 mx-auto mb-1 text-purple-600" />
-                        <p className="font-black text-lg text-purple-700">v{plantillaDetalle.version}</p>
-                        <p className="text-[10px] text-gray-500">Versión</p>
-                      </div>
-                      <div className="text-center p-3 bg-gray-50 rounded-lg">
-                        <Download className="w-5 h-5 mx-auto mb-1 text-emerald-600" />
-                        <p className="font-black text-lg text-emerald-700">{plantillaDetalle.descargas}</p>
-                        <p className="text-[10px] text-gray-500">Descargas</p>
-                      </div>
-                      <div className="text-center p-3 bg-gray-50 rounded-lg">
-                        <Clock className="w-5 h-5 mx-auto mb-1 text-amber-600" />
-                        <p className="font-black text-sm text-amber-700">{plantillaDetalle.fechaActualizacion}</p>
-                        <p className="text-[10px] text-gray-500">Actualizada</p>
-                      </div>
-                    </div>
-
-                    {/* Info adicional */}
-                    <div className="px-5 pb-4 space-y-3">
-                      <div className="flex items-center gap-2 text-sm">
-                        <Users className="w-4 h-4 text-gray-400" />
-                        <span className="text-gray-500">Autor:</span>
-                        <span className="font-semibold text-gray-800">{plantillaDetalle.autor}</span>
-                      </div>
+                    {/* Info básica */}
+                    <div className="px-5 py-4 space-y-3">
                       <div className="flex items-center gap-2 text-sm">
                         <File className="w-4 h-4 text-gray-400" />
                         <span className="text-gray-500">Tamaño:</span>
-                        <span className="font-semibold text-gray-800">{plantillaDetalle.tamaño}</span>
+                        <span className="font-semibold text-gray-800">{formatBytes(plantillaDetalle.tamano)}</span>
                       </div>
+                      {plantillaDetalle.subidoPor && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <User className="w-4 h-4 text-gray-400" />
+                          <span className="text-gray-500">Subida por:</span>
+                          <span className="font-semibold text-gray-800">{plantillaDetalle.subidoPor}</span>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Instrucciones de uso */}
+                    {/* Instrucciones */}
                     <div className="mx-5 mb-5 p-4 rounded-lg border-2 border-blue-100" style={{ background: '#2962FF08' }}>
-                      <h4 className="font-bold text-sm mb-2" style={{ color: '#003DA5' }}>
-                        Instrucciones de Uso
-                      </h4>
+                      <h4 className="font-bold text-sm mb-2" style={{ color: '#003DA5' }}>Instrucciones de Uso</h4>
                       <ol className="space-y-1.5 text-xs text-gray-600">
-                        <li className="flex items-start gap-2">
-                          <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-white" style={{ background: '#2962FF' }}>1</span>
-                          <span>Descargue la plantilla haciendo clic en <strong>"Descargar Plantilla"</strong></span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-white" style={{ background: '#2962FF' }}>2</span>
-                          <span>Complete los campos requeridos en el documento descargado</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-white" style={{ background: '#2962FF' }}>3</span>
-                          <span>Cargue el documento diligenciado con <strong>"Subir al Expediente"</strong> — se clasificará automáticamente en la categoría correcta</span>
-                        </li>
+                        {[
+                          'Descargue la plantilla Word haciendo clic en "Descargar Plantilla"',
+                          'Complete los campos requeridos y exporte el documento a PDF',
+                          'Cargue el PDF diligenciado con "Subir al Expediente"',
+                        ].map((step, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-white" style={{ background: '#2962FF' }}>
+                              {i + 1}
+                            </span>
+                            <span dangerouslySetInnerHTML={{ __html: step.replace(/"([^"]+)"/g, '<strong>"$1"</strong>') }} />
+                          </li>
+                        ))}
                       </ol>
                     </div>
                   </Card>
                 </div>
+
               ) : (
+                /* ── Lista de plantillas ── */
                 <>
-                  {/* Barra de búsqueda plantillas */}
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       type="text"
                       value={busquedaPlantilla}
                       onChange={(e) => setBusquedaPlantilla(e.target.value)}
-                      placeholder="Buscar plantilla por nombre o descripción..."
+                      placeholder="Buscar plantilla por nombre..."
                       className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                     {busquedaPlantilla && (
-                      <button
-                        onClick={() => setBusquedaPlantilla('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
+                      <button onClick={() => setBusquedaPlantilla('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                         <X className="w-4 h-4" />
                       </button>
                     )}
                   </div>
 
-                  {/* Filtros categoría plantillas */}
+                  {/* Filtros categoría */}
                   <div className="flex flex-wrap gap-2">
-                    {CATEGORIAS_DOCUMENTOS.map((cat) => {
-                      const count = conteoPlantillaCategoria(cat.id);
+                    {CAT_PLANTILLAS.filter(cat => cat.id === 'todos' || conteoPorCatPlantilla(cat.id) > 0).map((cat) => {
+                      const count = conteoPorCatPlantilla(cat.id);
                       const isActive = filtroPlantillaCategoria === cat.id;
-                      const IconComponent = cat.icono;
-                      if (cat.id !== 'todos' && count === 0) return null;
                       return (
                         <button
                           key={cat.id}
                           onClick={() => setFiltroPlantillaCategoria(cat.id)}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border-2 ${isActive
-                            ? 'text-white shadow-md'
-                            : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                            }`}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border-2 ${
+                            isActive ? 'text-white shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                          }`}
                           style={isActive ? { background: cat.color, borderColor: cat.color } : {}}
                         >
-                          <IconComponent className="w-3.5 h-3.5" />
-                          {cat.nombre}
-                          <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${isActive ? 'bg-white/25' : 'bg-gray-100'
-                            }`}>
+                          {cat.label}
+                          <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${isActive ? 'bg-white/25' : 'bg-gray-100'}`}>
                             {count}
                           </span>
                         </button>
@@ -792,24 +586,25 @@ export function TabDocumentosExpediente({
                     })}
                   </div>
 
-                  {/* Conteo */}
-                  <p className="text-xs text-gray-500 font-semibold">
-                    {plantillasFiltradas.length} plantilla{plantillasFiltradas.length !== 1 ? 's' : ''} encontrada{plantillasFiltradas.length !== 1 ? 's' : ''}
-                  </p>
-
-                  {/* Lista de plantillas */}
-                  {plantillasFiltradas.length === 0 ? (
+                  {cargandoPlantillas ? (
+                    <div className="flex items-center justify-center py-12 gap-3 text-gray-500">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span className="text-sm">Cargando plantillas...</span>
+                    </div>
+                  ) : plantillasFiltradas.length === 0 ? (
                     <Card className="p-8 text-center border-2 border-dashed border-gray-300">
                       <Library className="w-16 h-16 mx-auto mb-4 text-gray-300" />
                       <h4 className="font-bold text-lg text-gray-600 mb-2">Sin plantillas</h4>
                       <p className="text-sm text-gray-500">
-                        No hay plantillas que coincidan con los filtros actuales
+                        {plantillas.length === 0
+                          ? 'Aún no hay plantillas configuradas. Agréguelas desde Configuraciones → Plantillas.'
+                          : 'No hay plantillas que coincidan con los filtros actuales'}
                       </p>
                     </Card>
                   ) : (
                     <div className="space-y-2">
                       {plantillasFiltradas.map((plantilla) => {
-                        const catInfo = CATEGORIAS_DOCUMENTOS.find(c => c.id === plantilla.categoria);
+                        const cat = getCatPlantilla(plantilla.categoria);
                         return (
                           <Card
                             key={plantilla.id}
@@ -817,48 +612,46 @@ export function TabDocumentosExpediente({
                             onClick={() => setPlantillaDetalle(plantilla)}
                           >
                             <div className="flex items-center gap-3">
-                              {/* Icono formato */}
                               <div className="p-2.5 rounded-lg flex-shrink-0 bg-blue-50">
                                 <FileText className="w-5 h-5 text-blue-700" />
                               </div>
 
-                              {/* Info */}
                               <div className="flex-1 min-w-0">
                                 <h4 className="font-bold text-sm truncate">{plantilla.nombre}</h4>
-                                <p className="text-xs text-gray-500 truncate mt-0.5">{plantilla.descripcion}</p>
-                                <div className="flex items-center gap-2 flex-wrap mt-1.5">
-                                  <span
-                                    className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white"
-                                    style={{ background: catInfo?.color || '#6B7280' }}
-                                  >
-                                    {catInfo?.nombre || 'General'}
+                                <div className="flex items-center gap-2 flex-wrap mt-1">
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: cat.color }}>
+                                    {cat.label}
                                   </span>
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">
-                                    {plantilla.modulo === 'ambos' ? 'Ambos Módulos' :
-                                      plantilla.modulo === 'defensa-judicial' ? 'Defensa Judicial' : 'Juzgamiento'}
-                                  </span>
-                                  <span className="text-[10px] text-gray-400">
-                                    {plantilla.formato} • {plantilla.tamaño} • v{plantilla.version}
-                                  </span>
-                                  <span className="text-[10px] text-gray-400">
-                                    • {plantilla.descargas} descargas
-                                  </span>
+                                  <span className="text-[10px] text-gray-400">{formatBytes(plantilla.tamano)}</span>
                                 </div>
                               </div>
 
-                              {/* Botón descargar rápido */}
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-9 w-9 p-0 text-blue-600 hover:bg-blue-50 flex-shrink-0"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDescargarPlantilla(plantilla);
-                                }}
-                                title="Descargar plantilla"
-                              >
-                                <Download className="w-4.5 h-4.5" />
-                              </Button>
+                              {/* Acciones rápidas */}
+                              <div className="flex gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50"
+                                  title="Descargar plantilla Word"
+                                  onClick={() => handleDescargarPlantilla(plantilla)}
+                                >
+                                  <Download className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 px-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 gap-1"
+                                  title="Subir PDF diligenciado al expediente"
+                                  onClick={() => handleSubirAlExpediente(plantilla)}
+                                  disabled={subiendoAlExpediente}
+                                >
+                                  {subiendoAlExpediente
+                                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    : <BookOpen className="w-3.5 h-3.5" />
+                                  }
+                                  Subir
+                                </Button>
+                              </div>
                             </div>
                           </Card>
                         );
@@ -869,24 +662,14 @@ export function TabDocumentosExpediente({
               )}
             </div>
 
-            {/* Footer del modal */}
+            {/* Footer */}
             <div className="sticky bottom-0 bg-white border-t px-5 py-3.5 flex items-center justify-between gap-3">
               <p className="text-xs text-gray-500">
                 <Library className="w-3.5 h-3.5 inline mr-1" />
-                Plantillas gestionadas desde <span className="font-semibold" style={{ color: '#003DA5' }}>Configuraciones SIGL</span>
+                Gestionadas desde <span className="font-semibold" style={{ color: '#003DA5' }}>Configuraciones → Plantillas</span>
               </p>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setModalPlantillas(false);
-                    setPlantillaDetalle(null);
-                    setBusquedaPlantilla('');
-                    setFiltroPlantillaCategoria('todos');
-                  }}
-                  className="font-semibold"
-                >
+                <Button variant="outline" size="sm" onClick={cerrarModalPlantillas} className="font-semibold">
                   Cerrar
                 </Button>
                 {plantillaDetalle && (
@@ -903,11 +686,15 @@ export function TabDocumentosExpediente({
                     </Button>
                     <Button
                       size="sm"
-                      onClick={() => handleUsarPlantillaYSubir(plantillaDetalle)}
+                      onClick={() => handleSubirAlExpediente(plantillaDetalle)}
                       className="font-semibold"
                       style={{ background: '#003DA5', color: '#FFFFFF' }}
+                      disabled={subiendoAlExpediente}
                     >
-                      <Upload className="w-4 h-4 mr-1.5" />
+                      {subiendoAlExpediente
+                        ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                        : <BookOpen className="w-4 h-4 mr-1.5" />
+                      }
                       Subir al Expediente
                     </Button>
                   </>

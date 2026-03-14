@@ -51,8 +51,8 @@ import {
   EnteControlPM
 } from '../config/ConfiguracionesSIGLContext';
 
-// ✅ Importar componente de configuración de plantillas
-import { ConfiguracionPlantillasOficios } from '../configuracion/ConfiguracionPlantillasOficios';
+// ✅ Importar componente de plantillas
+import { PlantillasDocumentos } from '../configuracion/PlantillasDocumentos';
 import { ConfiguracionTasasReferencia } from '../configuracion/ConfiguracionTasasReferencia';
 
 // ============ COMPONENTE PRINCIPAL ============
@@ -905,7 +905,7 @@ export function ConfiguracionesSIGL() {
               >
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4" />
-                  <span className="text-xs sm:text-sm">Plantillas de Oficios</span>
+                  <span className="text-xs sm:text-sm">Plantillas</span>
                 </div>
                 <div className="flex items-center gap-2 mt-1 ml-6">
                   <span className="text-xs text-gray-500">
@@ -1662,7 +1662,7 @@ export function ConfiguracionesSIGL() {
           )}
 
           {moduloActivo === 'plantillas-oficios' && (
-            <ConfiguracionPlantillasOficios />
+            <PlantillasDocumentos />
           )}
 
           {/* Panel de módulos Kanban (YA EXISTE) */}

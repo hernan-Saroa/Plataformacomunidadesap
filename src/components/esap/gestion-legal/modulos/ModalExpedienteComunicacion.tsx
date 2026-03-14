@@ -130,6 +130,24 @@ export function ModalExpedienteComunicacion({
   const [historial, setHistorial] = useState<any[]>([]);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
 
+  // Cuerpo HTML completo del correo (con imágenes inline resueltas)
+  const [fullBodyHtml, setFullBodyHtml] = useState<string | null>(null);
+  const [loadingBody, setLoadingBody] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && comunicacion?.id) {
+      setLoadingBody(true);
+      correosJuridicosService.getCorreo(comunicacion.id)
+        .then((full: any) => {
+          if (full?.cuerpoHtml) setFullBodyHtml(full.cuerpoHtml);
+        })
+        .catch(() => {})
+        .finally(() => setLoadingBody(false));
+    } else {
+      setFullBodyHtml(null);
+    }
+  }, [isOpen, comunicacion?.id]);
+
   // Cargar adjuntos reales desde la API
   useEffect(() => {
     const loadAdjuntos = async () => {
@@ -473,10 +491,22 @@ export function ModalExpedienteComunicacion({
                         <p className="font-bold text-gray-900">{comunicacion.asunto}</p>
                       </div>
                       <div className="bg-white p-4 rounded-lg border border-blue-200">
-                        <p className="text-xs text-gray-600 mb-2">Descripción</p>
-                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                          {comunicacion.descripcion}
-                        </p>
+                        <p className="text-xs text-gray-600 mb-2">Contenido</p>
+                        {loadingBody ? (
+                          <div className="flex items-center gap-2 py-4 text-gray-400">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span className="text-sm">Cargando contenido...</span>
+                          </div>
+                        ) : fullBodyHtml ? (
+                          <div
+                            className="text-sm text-gray-800 overflow-auto max-h-[400px] [&_img]:max-w-full [&_img]:h-auto"
+                            dangerouslySetInnerHTML={{ __html: fullBodyHtml }}
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                            {comunicacion.descripcion}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </Card>

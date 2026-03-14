@@ -45,6 +45,7 @@ import { SystemConfiguration } from './entities/system-configuration.entity';
 import { TipoRequerimientoOC } from './entities/tipo-requerimiento-oc.entity';
 import { OficioEnviado } from './entities/oficio-enviado.entity';
 import { TasaReferencia } from './entities/tasa-referencia.entity';
+import { PlantillaDocumento } from './entities/plantilla-documento.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
@@ -73,6 +74,7 @@ import { ProcesoCoactivoController } from './controllers/proceso-coactivo.contro
 import { ConfigurationsController } from './controllers/configurations.controller';
 import { OficiosController } from './controllers/oficios.controller';
 import { TasaReferenciaController } from './controllers/tasa-referencia.controller';
+import { PlantillasController } from './controllers/plantillas.controller';
 
 // Services
 import { ExpedienteService } from './services/expediente.service';
@@ -106,6 +108,7 @@ import { AlertasVencimientoService } from './services/alertas-vencimiento.servic
 import { SmartClassificationService } from './services/smart-classification.service';
 import { OficiosService } from './services/oficios.service';
 import { TasaReferenciaService } from './services/tasa-referencia.service';
+import { PlantillasService } from './services/plantillas.service';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -168,7 +171,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // Oficios Enviados
       OficioEnviado,
       // Tasas de Referencia
-      TasaReferencia
+      TasaReferencia,
+      // Plantillas de Documentos
+      PlantillaDocumento
     ]),
     PeiModule,
     PlanesMejoramientoModule
@@ -205,7 +210,8 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     ConfigurationsController,
     // Oficios
     OficiosController,
-    TasaReferenciaController
+    TasaReferenciaController,
+    PlantillasController
   ],
   providers: [
     AppService,
@@ -242,7 +248,8 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     AlertasVencimientoService,
     // Oficios
     OficiosService,
-    TasaReferenciaService
+    TasaReferenciaService,
+    PlantillasService
   ],
 })
 export class AppModule { }
