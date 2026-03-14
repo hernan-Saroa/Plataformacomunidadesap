@@ -15,6 +15,8 @@ services:
         # Ejemplo: /auth/api/v1/users
         VITE_API_URL: "http://135.237.81.133/services"
         VITE_ONLYOFFICE_URL: "http://135.237.81.133:9000"
+        VITE_MICROSOFT_TENANT_ID: ${VITE_MICROSOFT_TENANT_ID}
+        VITE_MICROSOFT_CLIENT_ID: ${VITE_MICROSOFT_CLIENT_ID}
     container_name: superapp-frontend-qa
     ports:
       - "80:80"
