@@ -18,7 +18,9 @@ import {
   X,
   Upload,
   Trash2,
-  Target
+  Target,
+  ClipboardCheck,
+  BookOpen
 } from 'lucide-react';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
@@ -127,11 +129,15 @@ const AUDITORIA_MOCK: Auditoria = {
 export const ComunicacionAuditoriaModule: React.FC<{
   auditoriaId?: string;
   auditoriaInfo?: { codigo?: string; nombre?: string };
+  /** Estado actual de la auditoría (Comunicación | Seguimiento) para mostrar secciones 5 y 6 de Cierre */
+  estadoAuditoria?: string;
+  /** true = solo mostrar contenido de Seguimiento (Verificación + Informe de Cierre), usado en tab Seguimiento del expediente */
+  soloSeguimiento?: boolean;
   /** true = modo embebido dentro del expediente (sin header grande, sin fondo pantalla completa) */
   embedded?: boolean;
   /** Callback cuando se finaliza la comunicación y pasa a Seguimiento */
   onComunicacionCompletada?: () => void;
-}> = ({ auditoriaId, auditoriaInfo, embedded = false, onComunicacionCompletada }) => {
+}> = ({ auditoriaId, auditoriaInfo, estadoAuditoria: estadoAuditoriaProp, soloSeguimiento = false, embedded = false, onComunicacionCompletada }) => {
   const id = auditoriaId || 'aud-001';
   const useAPI = isValidUUID(id);
 
@@ -162,6 +168,18 @@ export const ComunicacionAuditoriaModule: React.FC<{
   const [modalControversiaHallazgoId, setModalControversiaHallazgoId] = useState<string | null>(null);
   const [modalDecisionHallazgoId, setModalDecisionHallazgoId] = useState<string | null>(null);
   const [modalPreview, setModalPreview] = useState<{ tipo: string; abierto: boolean }>({ tipo: '', abierto: false });
+  /** Tras "Finalizar y Pasar a Seguimiento" se mantiene el mismo modal y se muestran secciones 5 y 6 */
+  const [pasamosASeguimiento, setPasamosASeguimiento] = useState(false);
+  /** Planes/acciones para verificación OCI (Sección 5). Se recargan al registrar verificación. */
+  const [planesParaVerificacion, setPlanesParaVerificacion] = useState<any[]>([]);
+  const [loadingVerificacion, setLoadingVerificacion] = useState(false);
+  /** Informe de cierre (Sección 6) */
+  const [resumenCierre, setResumenCierre] = useState<any>(null);
+  const [leccionesAprendidas, setLeccionesAprendidas] = useState('');
+  const [recomendacionesFuturas, setRecomendacionesFuturas] = useState('');
+  const [loadingInformeCierre, setLoadingInformeCierre] = useState(false);
+  const [informeCierreAprobado, setInformeCierreAprobado] = useState(false);
+  const enSeguimiento = soloSeguimiento || pasamosASeguimiento || (estadoAuditoriaProp && String(estadoAuditoriaProp).toLowerCase().includes('seguimiento'));
 
   const { agregarAuditoriaConHallazgos, seleccionarAuditoria, navegarAVerPlan } = useIntegracionAuditoriaPlanes();
 
@@ -327,6 +345,45 @@ export const ComunicacionAuditoriaModule: React.FC<{
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
+  const cargarPlanesParaVerificacion = useCallback(async () => {
+    if (!useAPI || !enSeguimiento) return;
+    setLoadingVerificacion(true);
+    try {
+      const planes = await controlInternoService.getPlanesMejoramientoByAuditoria(id);
+      setPlanesParaVerificacion(Array.isArray(planes) ? planes : []);
+    } catch {
+      setPlanesParaVerificacion([]);
+    } finally {
+      setLoadingVerificacion(false);
+    }
+  }, [id, useAPI, enSeguimiento]);
+
+  const cargarResumenCierre = useCallback(async () => {
+    if (!useAPI || !enSeguimiento) return;
+    try {
+      const res = await controlInternoService.getResumenEjecutivoCierre(id);
+      setResumenCierre(res);
+      setLeccionesAprendidas(res?.leccionesAprendidas ?? '');
+      setRecomendacionesFuturas(res?.recomendacionesFuturasAuditorias ?? '');
+      setInformeCierreAprobado(!!res?.informeCierreAprobado);
+    } catch {
+      setResumenCierre(null);
+    }
+  }, [id, useAPI, enSeguimiento]);
+
+  useEffect(() => {
+    if (enSeguimiento && seccionActual === 5) cargarPlanesParaVerificacion();
+  }, [enSeguimiento, seccionActual, cargarPlanesParaVerificacion]);
+
+  useEffect(() => {
+    if (enSeguimiento && seccionActual === 6) cargarResumenCierre();
+  }, [enSeguimiento, seccionActual, cargarResumenCierre]);
+
+  // Si soloSeguimiento (tab Seguimiento del expediente), mostrar sección 5 por defecto
+  useEffect(() => {
+    if (soloSeguimiento && seccionActual < 5) setSeccionActual(5);
+  }, [soloSeguimiento]);
+
   const planCompleto = useMemo(() => {
     if (!planCreado || !planEstadisticas) return false;
     return planEstadisticas.totalAcciones >= 1 && planEstadisticas.accionesCompletadas >= 1;
@@ -347,6 +404,19 @@ export const ComunicacionAuditoriaModule: React.FC<{
            informeFinal.generado &&
            planCompleto;
   }, [estadoComunicacion, informeFinal.generado, planCompleto]);
+
+  const todasAccionesVerificadas = useMemo(() => {
+    let total = 0;
+    let verificadas = 0;
+    for (const plan of planesParaVerificacion) {
+      const acciones = plan.acciones || [];
+      total += acciones.length;
+      verificadas += acciones.filter(
+        (a: any) => a.estadoVerificacionOci && !['', 'sin_verificar'].includes(String(a.estadoVerificacionOci)),
+      ).length;
+    }
+    return total === 0 || total === verificadas;
+  }, [planesParaVerificacion]);
 
   const handleGenerarInformePreliminar = async () => {
     if (useAPI) {
@@ -464,13 +534,19 @@ export const ComunicacionAuditoriaModule: React.FC<{
     if (useAPI) {
       try {
         await controlInternoService.updateEstadoKanbanAuditoria(id, 'Seguimiento');
-        toast.success('Fase de Comunicación completada. Auditoría pasa a Seguimiento.');
+        toast.success('Fase de Comunicación completada. Continúe con Verificación de Cumplimiento e Informe de Cierre.');
+        setPasamosASeguimiento(true);
+        setTabPrincipal('seguimiento');
+        setSeccionActual(5);
         onComunicacionCompletada?.();
       } catch (err: any) {
         toast.error(err?.message || 'Error al finalizar la comunicación');
       }
     } else {
-      toast.success('Fase de Comunicación completada. Auditoría pasa a Seguimiento.');
+      toast.success('Fase de Comunicación completada. Continúe con Verificación e Informe de Cierre.');
+      setPasamosASeguimiento(true);
+      setTabPrincipal('seguimiento');
+      setSeccionActual(5);
       onComunicacionCompletada?.();
     }
   };
@@ -538,49 +614,73 @@ export const ComunicacionAuditoriaModule: React.FC<{
         </motion.div>
         )}
 
-        {/* NAVEGACIÓN DE SECCIONES - estilo expediente cuando embedded */}
+        {/* NAVEGACIÓN DE SECCIONES: Comunicación (1-4) o Seguimiento (5-6). Solo el tab Seguimiento del expediente muestra 5-6 (soloSeguimiento). */}
         <div className={embedded ? 'bg-white border-2 border-green-200 rounded-lg p-4' : 'bg-white rounded-xl shadow-lg p-4'}>
           <div className="flex items-center gap-2 overflow-x-auto">
-            {[
-              { id: 1, nombre: 'Informe Preliminar', icono: FileText, completado: informePreliminar.generado },
-              { id: 2, nombre: 'Gestión Hallazgos', icono: MessageSquare, completado: !estadoComunicacion?.hayControversiasPendientes },
-              { id: 3, nombre: 'Decisión / Informe Final', icono: FileCheck, completado: informeFinal.generado },
-              { id: 4, nombre: 'Plan de Mejoramiento', icono: TrendingUp, completado: planCompleto }
-            ].map((seccion, index) => {
-              const seccion1Completa = informePreliminar.generado;
-              const seccion2Completa = !estadoComunicacion?.hayControversiasPendientes;
-              const seccion3Completa = informeFinal.generado;
-              const puedeAcceder =
-                seccion.id === 1 ||
-                (seccion.id === 2 && seccion1Completa) ||
-                (seccion.id === 3 && seccion1Completa && seccion2Completa) ||
-                (seccion.id === 4 && seccion1Completa && seccion2Completa && seccion3Completa);
-              return (
-                <React.Fragment key={seccion.id}>
-                  <button
-                    onClick={() => puedeAcceder && setSeccionActual(seccion.id)}
-                    disabled={!puedeAcceder}
-                    title={!puedeAcceder ? 'Complete la sección anterior primero' : undefined}
-                    className={`flex items-center gap-2 px-4 py-3 rounded-lg transition-all flex-1 min-w-[200px] ${
-                      !puedeAcceder
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : seccionActual === seccion.id
-                        ? embedded
-                          ? 'bg-green-600 text-white'
-                          : 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg'
-                        : seccion.completado
-                        ? 'bg-green-50 text-green-700 hover:bg-green-100'
-                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    <seccion.icono className="w-5 h-5" />
-                    <span className="font-medium">{seccion.nombre}</span>
-                    {seccion.completado && <CheckCircle2 className="w-4 h-4 ml-auto" />}
-                  </button>
-                  {index < 3 && <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
-                </React.Fragment>
-              );
-            })}
+            {soloSeguimiento ? (
+              // Strip Seguimiento: Verificación | Informe de Cierre
+              [
+                { id: 5, nombre: 'Verificación Cumplimiento', icono: ClipboardCheck, completado: todasAccionesVerificadas },
+                { id: 6, nombre: 'Informe de Cierre', icono: BookOpen, completado: informeCierreAprobado },
+              ].map((seccion, index) => {
+                const puedeAcceder = seccion.id === 5 || (seccion.id === 6 && todasAccionesVerificadas);
+                return (
+                  <React.Fragment key={seccion.id}>
+                    <button
+                      onClick={() => puedeAcceder && setSeccionActual(seccion.id)}
+                      disabled={!puedeAcceder}
+                      title={!puedeAcceder ? 'Complete la verificación de cumplimiento primero' : undefined}
+                      className={`flex items-center gap-2 px-4 py-3 rounded-lg transition-all flex-1 min-w-[200px] ${
+                        !puedeAcceder ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : seccionActual === seccion.id ? (embedded ? 'bg-green-600 text-white' : 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-lg')
+                          : seccion.completado ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      <seccion.icono className="w-5 h-5" />
+                      <span className="font-medium">{seccion.nombre}</span>
+                      {seccion.completado && <CheckCircle2 className="w-4 h-4 ml-auto" />}
+                    </button>
+                    {index < 1 && <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
+                  </React.Fragment>
+                );
+              })
+            ) : (
+              // Strip Comunicación: 1, 2, 3, 4
+              [
+                { id: 1, nombre: 'Informe Preliminar', icono: FileText, completado: informePreliminar.generado },
+                { id: 2, nombre: 'Gestión Hallazgos', icono: MessageSquare, completado: !estadoComunicacion?.hayControversiasPendientes },
+                { id: 3, nombre: 'Decisión / Informe Final', icono: FileCheck, completado: informeFinal.generado },
+                { id: 4, nombre: 'Plan de Mejoramiento', icono: TrendingUp, completado: planCompleto },
+              ].map((seccion, index) => {
+                const seccion1Completa = informePreliminar.generado;
+                const seccion2Completa = !estadoComunicacion?.hayControversiasPendientes;
+                const seccion3Completa = informeFinal.generado;
+                const puedeAcceder =
+                  seccion.id === 1 ||
+                  (seccion.id === 2 && seccion1Completa) ||
+                  (seccion.id === 3 && seccion1Completa && seccion2Completa) ||
+                  (seccion.id === 4 && seccion1Completa && seccion2Completa && seccion3Completa);
+                return (
+                  <React.Fragment key={seccion.id}>
+                    <button
+                      onClick={() => puedeAcceder && setSeccionActual(seccion.id)}
+                      disabled={!puedeAcceder}
+                      title={!puedeAcceder ? 'Complete la sección anterior primero' : undefined}
+                      className={`flex items-center gap-2 px-4 py-3 rounded-lg transition-all flex-1 min-w-[180px] ${
+                        !puedeAcceder ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : seccionActual === seccion.id ? (embedded ? 'bg-green-600 text-white' : 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg')
+                          : seccion.completado ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      <seccion.icono className="w-5 h-5" />
+                      <span className="font-medium">{seccion.nombre}</span>
+                      {seccion.completado && <CheckCircle2 className="w-4 h-4 ml-auto" />}
+                    </button>
+                    {index < 3 && <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
+                  </React.Fragment>
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -643,11 +743,70 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 onIrAPlan={handleIrAVerPlan}
               />
             )}
+
+            {seccionActual === 5 && soloSeguimiento && (
+              <SeccionVerificacionCumplimiento
+                auditoriaId={id}
+                planes={planesParaVerificacion}
+                loading={loadingVerificacion}
+                onRefrescar={cargarPlanesParaVerificacion}
+                useAPI={useAPI}
+                embedded={embedded}
+              />
+            )}
+
+            {seccionActual === 6 && soloSeguimiento && (
+              <SeccionInformeCierre
+                auditoriaId={id}
+                resumen={resumenCierre}
+                leccionesAprendidas={leccionesAprendidas}
+                recomendacionesFuturas={recomendacionesFuturas}
+                informeCierreAprobado={informeCierreAprobado}
+                loading={loadingInformeCierre}
+                onLeccionesChange={setLeccionesAprendidas}
+                onRecomendacionesChange={setRecomendacionesFuturas}
+                onGuardarBorrador={async () => {
+                  if (!useAPI) return;
+                  setLoadingInformeCierre(true);
+                  try {
+                    await controlInternoService.updateInformeCierre(id, {
+                      leccionesAprendidas,
+                      recomendacionesFuturasAuditorias: recomendacionesFuturas,
+                    });
+                    toast.success('Borrador guardado');
+                    cargarResumenCierre();
+                  } catch (err: any) {
+                    toast.error(err?.message || 'Error al guardar');
+                  } finally {
+                    setLoadingInformeCierre(false);
+                  }
+                }}
+                onAprobar={async () => {
+                  if (!useAPI) return;
+                  setLoadingInformeCierre(true);
+                  try {
+                    await controlInternoService.aprobarInformeCierre(id);
+                    toast.success('Informe de cierre aprobado. Auditoría finalizada.');
+                    setInformeCierreAprobado(true);
+                    cargarResumenCierre();
+                    onComunicacionCompletada?.();
+                  } catch (err: any) {
+                    toast.error(err?.message || 'Error al aprobar');
+                  } finally {
+                    setLoadingInformeCierre(false);
+                  }
+                }}
+                puedeAprobar={todasAccionesVerificadas}
+                useAPI={useAPI}
+                embedded={embedded}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
         </div>
 
-        {/* BOTÓN FINALIZAR */}
+        {/* BOTÓN FINALIZAR - solo cuando aún no está en Seguimiento y no es vista solo Seguimiento */}
+        {!enSeguimiento && !soloSeguimiento && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -673,6 +832,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
             </Button>
           </div>
         </motion.div>
+        )}
 
         {/* MODAL PRESENTAR CONTROVERSIA (por hallazgo) */}
         {modalControversiaHallazgoId && (
@@ -1473,6 +1633,291 @@ const SeccionPlanMejoramiento: React.FC<{
             )}
           </div>
         </CardSIGL>
+      )}
+    </div>
+  );
+};
+
+// ====================================
+// SECCIÓN 5: VERIFICACIÓN DE CUMPLIMIENTO DEL PLAN DE MEJORAMIENTO (Cierre)
+// ====================================
+
+const SeccionVerificacionCumplimiento: React.FC<{
+  auditoriaId: string;
+  planes: any[];
+  loading: boolean;
+  onRefrescar: () => void;
+  useAPI: boolean;
+  embedded?: boolean;
+}> = ({ auditoriaId, planes, loading, onRefrescar, useAPI, embedded }) => {
+  const [registrandoId, setRegistrandoId] = useState<string | null>(null);
+  const [evidencia, setEvidencia] = useState<Record<string, string>>({});
+  const [observacion, setObservacion] = useState<Record<string, string>>({});
+  const [estadoSeleccionado, setEstadoSeleccionado] = useState<Record<string, 'cumplida' | 'parcial' | 'incumplida'>>({});
+
+  const todasLasAcciones = useMemo(() => {
+    const out: { planId: string; planCodigo: string; accion: any }[] = [];
+    for (const plan of planes) {
+      for (const accion of plan.acciones || []) {
+        out.push({ planId: plan.id, planCodigo: plan.codigo || plan.id, accion });
+      }
+    }
+    return out;
+  }, [planes]);
+
+  const conteo = useMemo(() => {
+    let sinVerificar = 0;
+    let cumplida = 0;
+    let parcial = 0;
+    let incumplida = 0;
+    for (const { accion } of todasLasAcciones) {
+      const e = (accion.estadoVerificacionOci || '').toLowerCase();
+      if (!e || e === 'sin_verificar') sinVerificar++;
+      else if (e === 'cumplida') cumplida++;
+      else if (e === 'parcial') parcial++;
+      else if (e === 'incumplida') incumplida++;
+    }
+    return { sinVerificar, cumplida, parcial, incumplida };
+  }, [todasLasAcciones]);
+
+  const handleRegistrar = async (planId: string, accionId: string) => {
+    const estado = estadoSeleccionado[accionId];
+    const ev = evidencia[accionId]?.trim();
+    if (!estado || !ev) {
+      toast.error('Seleccione el resultado de verificación y describa la evidencia verificada.');
+      return;
+    }
+    setRegistrandoId(accionId);
+    try {
+      await controlInternoService.registrarVerificacionOci(planId, accionId, {
+        estadoVerificacionOci: estado,
+        evidenciaVerificada: ev,
+        observacionOci: observacion[accionId]?.trim() || undefined,
+      });
+      toast.success('Verificación registrada. No podrá modificarse.');
+      setEvidencia(prev => ({ ...prev, [accionId]: '' }));
+      setObservacion(prev => ({ ...prev, [accionId]: '' }));
+      setEstadoSeleccionado(prev => ({ ...prev, [accionId]: undefined! }));
+      onRefrescar();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al registrar verificación');
+    } finally {
+      setRegistrandoId(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-gray-500">
+        Cargando planes y acciones…
+      </div>
+    );
+  }
+
+  if (todasLasAcciones.length === 0) {
+    return (
+      <div className={`p-6 rounded-lg border-2 border-amber-200 bg-amber-50 ${embedded ? 'text-sm' : ''}`}>
+        <p className="font-medium text-amber-900">No hay planes de mejoramiento vinculados a esta auditoría.</p>
+        <p className="text-amber-700 mt-1">Cree el plan en la sección Plan de Mejoramiento y formule las acciones correctivas.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className={`flex flex-wrap items-center gap-4 p-4 rounded-lg border-2 border-blue-200 bg-blue-50 ${embedded ? 'text-sm' : ''}`}>
+        <span className="font-semibold text-blue-900">Cumplimiento:</span>
+        <span>Sin verificar: <strong>{conteo.sinVerificar}</strong></span>
+        <span>Cumplida: <strong className="text-green-700">{conteo.cumplida}</strong></span>
+        <span>Parcial: <strong className="text-amber-700">{conteo.parcial}</strong></span>
+        <span>Incumplida: <strong className="text-red-700">{conteo.incumplida}</strong></span>
+        <Button variant="outline" size="sm" onClick={onRefrescar} className="ml-auto">Actualizar</Button>
+      </div>
+
+      <div className="space-y-4">
+        {todasLasAcciones.map(({ planId, planCodigo, accion }) => {
+          const id = accion.id;
+          const yaVerificada = accion.estadoVerificacionOci && !['', 'sin_verificar'].includes(String(accion.estadoVerificacionOci));
+          const fechaFin = accion.fechaFin ? (typeof accion.fechaFin === 'string' ? accion.fechaFin.split('T')[0] : accion.fechaFin) : '—';
+          return (
+            <CardSIGL key={id}>
+              <div className="p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+                  <div>
+                    <p className="font-medium text-gray-900">{accion.descripcion?.substring(0, 120)}{(accion.descripcion?.length || 0) > 120 ? '…' : ''}</p>
+                    <p className="text-sm text-gray-500">Responsable: {accion.responsable} · Fecha límite: {fechaFin} · Plan: {planCodigo}</p>
+                  </div>
+                  {yaVerificada && (
+                    <BadgeSIGL className={accion.estadoVerificacionOci === 'cumplida' ? 'bg-green-100 text-green-800' : accion.estadoVerificacionOci === 'parcial' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}>
+                      Verificada: {String(accion.estadoVerificacionOci)}
+                    </BadgeSIGL>
+                  )}
+                </div>
+                {!yaVerificada && useAPI && (
+                  <>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {(['cumplida', 'parcial', 'incumplida'] as const).map(est => (
+                        <Button
+                          key={est}
+                          size="sm"
+                          variant={estadoSeleccionado[id] === est ? 'default' : 'outline'}
+                          className={estadoSeleccionado[id] === est ? (est === 'cumplida' ? 'bg-green-600' : est === 'parcial' ? 'bg-amber-600' : 'bg-red-600') : ''}
+                          onClick={() => setEstadoSeleccionado(prev => ({ ...prev, [id]: est }))}
+                        >
+                          {est === 'cumplida' ? 'Cumplida' : est === 'parcial' ? 'Parcial' : 'Incumplida'}
+                        </Button>
+                      ))}
+                    </div>
+                    <TextareaSIGL
+                      placeholder="Evidencia verificada (obligatorio) *"
+                      value={evidencia[id] || ''}
+                      onChange={(e) => setEvidencia(prev => ({ ...prev, [id]: e.target.value }))}
+                      rows={2}
+                      className="mb-2"
+                    />
+                    <InputSIGL
+                      placeholder="Observación OCI (opcional)"
+                      value={observacion[id] || ''}
+                      onChange={(e) => setObservacion(prev => ({ ...prev, [id]: e.target.value }))}
+                      className="mb-2"
+                    />
+                    <Button
+                      size="sm"
+                      disabled={!estadoSeleccionado[id] || !evidencia[id]?.trim() || registrandoId === id}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      onClick={() => handleRegistrar(planId, id)}
+                    >
+                      {registrandoId === id ? 'Guardando…' : 'Registrar verificación'}
+                    </Button>
+                  </>
+                )}
+              </div>
+            </CardSIGL>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ====================================
+// SECCIÓN 6: INFORME DE CIERRE DE AUDITORÍA
+// ====================================
+
+const SeccionInformeCierre: React.FC<{
+  auditoriaId: string;
+  resumen: any;
+  leccionesAprendidas: string;
+  recomendacionesFuturas: string;
+  informeCierreAprobado: boolean;
+  loading: boolean;
+  onLeccionesChange: (v: string) => void;
+  onRecomendacionesChange: (v: string) => void;
+  onGuardarBorrador: () => Promise<void>;
+  onAprobar: () => Promise<void>;
+  puedeAprobar: boolean;
+  useAPI: boolean;
+  embedded?: boolean;
+}> = ({
+  resumen,
+  leccionesAprendidas,
+  recomendacionesFuturas,
+  informeCierreAprobado,
+  loading,
+  onLeccionesChange,
+  onRecomendacionesChange,
+  onGuardarBorrador,
+  onAprobar,
+  puedeAprobar,
+  useAPI,
+  embedded,
+}) => {
+  const [guardando, setGuardando] = useState(false);
+  const [aprobando, setAprobando] = useState(false);
+
+  const handleGuardar = async () => {
+    setGuardando(true);
+    try {
+      await onGuardarBorrador();
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const handleAprobar = async () => {
+    if (!leccionesAprendidas.trim() || !recomendacionesFuturas.trim()) {
+      toast.error('Lecciones aprendidas y Recomendaciones son obligatorios para aprobar el informe de cierre.');
+      return;
+    }
+    setAprobando(true);
+    try {
+      await onAprobar();
+    } finally {
+      setAprobando(false);
+    }
+  };
+
+  if (loading && !resumen) {
+    return <div className="flex items-center justify-center py-12 text-gray-500">Cargando resumen…</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {resumen && (
+        <div className={`p-4 rounded-lg border-2 border-gray-200 bg-gray-50 ${embedded ? 'text-sm' : ''}`}>
+          <h4 className="font-semibold text-gray-900 mb-2">Resumen ejecutivo</h4>
+          <p><strong>Código:</strong> {resumen.codigo} · <strong>Nombre:</strong> {resumen.nombre}</p>
+          <p><strong>Período:</strong> {resumen.fechaInicio} – {resumen.fechaFin} · <strong>Hallazgos:</strong> {resumen.totalHallazgos ?? 0}</p>
+        </div>
+      )}
+
+      {informeCierreAprobado ? (
+        <div className="p-6 rounded-lg border-2 border-green-300 bg-green-50">
+          <CheckCircle2 className="w-10 h-10 text-green-600 mb-2" />
+          <p className="font-bold text-green-900">Informe de cierre aprobado. Auditoría cerrada.</p>
+          <p className="text-sm text-green-700 mt-1">El expediente queda cerrado e inmutable.</p>
+        </div>
+      ) : (
+        <>
+          <div>
+            <label className="block font-medium text-gray-700 mb-1">Lecciones aprendidas (obligatorio)</label>
+            <TextareaSIGL
+              placeholder="Describa las lecciones aprendidas de esta auditoría..."
+              value={leccionesAprendidas}
+              onChange={(e) => onLeccionesChange(e.target.value)}
+              rows={4}
+            />
+          </div>
+          <div>
+            <label className="block font-medium text-gray-700 mb-1">Recomendaciones para futuras auditorías (obligatorio)</label>
+            <TextareaSIGL
+              placeholder="Recomendaciones para mejorar futuras auditorías..."
+              value={recomendacionesFuturas}
+              onChange={(e) => onRecomendacionesChange(e.target.value)}
+              rows={4}
+            />
+          </div>
+          <div className="p-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 text-sm">
+            Al aprobar el informe de cierre, la auditoría pasará a estado Finalizada y el expediente quedará inmutable.
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {useAPI && (
+              <>
+                <Button size="sm" variant="outline" disabled={guardando} onClick={handleGuardar}>
+                  {guardando ? 'Guardando…' : 'Guardar borrador'}
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  disabled={!puedeAprobar || !leccionesAprendidas.trim() || !recomendacionesFuturas.trim() || aprobando}
+                  onClick={handleAprobar}
+                >
+                  {aprobando ? 'Aprobando…' : 'Aprobar Informe de Cierre — Jefe OCI'}
+                </Button>
+              </>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

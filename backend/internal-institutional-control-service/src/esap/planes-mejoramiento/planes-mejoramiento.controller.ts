@@ -6,9 +6,11 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Put,
   Query,
+  Req,
   NotFoundException,
   UseInterceptors,
   UploadedFile,
@@ -32,6 +34,7 @@ import { RegistrarAvanceDto } from './dto/registrar-avance.dto';
 import { CreateRegistroSeguimientoDto } from './dto/create-registro-seguimiento.dto';
 import { CreateEventoTimelineDto } from './dto/create-evento-timeline.dto';
 import { RechazarPlanDto } from './dto/rechazar-plan.dto';
+import { RegistrarVerificacionOciDto } from './dto/registrar-verificacion-oci.dto';
 
 // Tipo para el archivo subido
 interface MulterFile {
@@ -62,6 +65,17 @@ export class PlanesMejoramientoController {
     @Query('area') area?: string,
   ) {
     return this.planesMejoramientoService.findAll({ estado, area });
+  }
+
+  /**
+   * GET /planes-mejoramiento/auditoria/:auditoriaId
+   * Obtiene los planes de una auditoría para verificación OCI (Cierre - Sección 1)
+   */
+  @Get('auditoria/:auditoriaId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
+  findByAuditoriaId(@Param('auditoriaId') auditoriaId: string) {
+    return this.planesMejoramientoService.findByAuditoriaId(auditoriaId);
   }
 
   /**
@@ -224,6 +238,23 @@ export class PlanesMejoramientoController {
     @Body() updateDto: UpdateAccionDto,
   ) {
     return this.planesMejoramientoService.updateAccion(planId, accionId, updateDto);
+  }
+
+  /**
+   * PATCH /planes-mejoramiento/:planId/acciones/:accionId/verificacion-oci
+   * Registra la verificación OCI de una acción (Cierre - Sección 1). Inmutable tras registrar.
+   */
+  @Patch(':planId/acciones/:accionId/verificacion-oci')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_EDIT)
+  registrarVerificacionOci(
+    @Param('planId') planId: string,
+    @Param('accionId') accionId: string,
+    @Body() dto: RegistrarVerificacionOciDto,
+    @Req() req?: any,
+  ) {
+    const userId = req?.user?.sub ? Number(req.user.sub) : undefined;
+    return this.planesMejoramientoService.registrarVerificacionOci(planId, accionId, dto, userId);
   }
 
   /**

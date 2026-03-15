@@ -1127,6 +1127,48 @@ class ControlInternoService {
   }
 
   /**
+   * Obtiene los planes de mejoramiento de una auditoría (para verificación OCI / Cierre)
+   */
+  async getPlanesMejoramientoByAuditoria(auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/planes-mejoramiento/auditoria/${auditoriaId}`);
+  }
+
+  /**
+   * Registra la verificación OCI de una acción (Cierre - Sección 1). Inmutable tras registrar.
+   */
+  async registrarVerificacionOci(
+    planId: string,
+    accionId: string,
+    dto: { estadoVerificacionOci: 'cumplida' | 'parcial' | 'incumplida'; evidenciaVerificada: string; observacionOci?: string },
+  ): Promise<any> {
+    return client.patch<any>(`/planes-mejoramiento/${planId}/acciones/${accionId}/verificacion-oci`, dto);
+  }
+
+  /**
+   * Resumen ejecutivo para el Informe de Cierre
+   */
+  async getResumenEjecutivoCierre(auditoriaId: string): Promise<any> {
+    return client.get<any>(`/auditorias/${auditoriaId}/resumen-ejecutivo-cierre`);
+  }
+
+  /**
+   * Guarda borrador del Informe de Cierre (lecciones y recomendaciones)
+   */
+  async updateInformeCierre(
+    auditoriaId: string,
+    dto: { leccionesAprendidas?: string; recomendacionesFuturasAuditorias?: string },
+  ): Promise<any> {
+    return client.patch<any>(`/auditorias/${auditoriaId}/informe-cierre`, dto);
+  }
+
+  /**
+   * Aprueba el Informe de Cierre (Jefe OCI). Auditoría pasa a Finalizada.
+   */
+  async aprobarInformeCierre(auditoriaId: string, body?: { aprobadoPor?: string; aprobadoPorId?: number }): Promise<any> {
+    return client.post<any>(`/auditorias/${auditoriaId}/aprobar-informe-cierre`, body || {});
+  }
+
+  /**
    * Crea un nuevo plan de mejoramiento
    */
   async createPlanMejoramiento(data: any): Promise<any> {
@@ -1436,6 +1478,14 @@ class ControlInternoService {
    */
   async getDocumentosByEtapa(auditoriaId: string, etapa: string): Promise<any[]> {
     return client.get<any[]>(`/documentos/auditoria/${auditoriaId}/etapa/${etapa}`);
+  }
+
+  /**
+   * Plantillas de biblioteca requeridas para una auditoría en una etapa (solo aplicables a esa auditoría).
+   * Usar para validar cantidad de documentos a subir en planeación.
+   */
+  async getPlantillasRequeridas(etapa: string, auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/documentos/plantillas-requeridas?etapa=${encodeURIComponent(etapa)}&auditoriaId=${encodeURIComponent(auditoriaId)}`);
   }
 
   /**

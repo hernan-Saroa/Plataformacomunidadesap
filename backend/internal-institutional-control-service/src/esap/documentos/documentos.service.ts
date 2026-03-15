@@ -116,6 +116,24 @@ export class DocumentosService {
   }
 
   /**
+   * Obtiene las plantillas de biblioteca requeridas para una auditoría en una etapa.
+   * Solo cuenta plantillas aplicables: auditoriaId null y (visibleAuditoriaId null o = auditoriaId).
+   * Así se evita exigir documentos por plantillas asociadas a otra auditoría u otro tipo.
+   */
+  async findPlantillasRequeridasPorEtapa(etapa: string, auditoriaId: string): Promise<Documento[]> {
+    return this.documentoRepository
+      .createQueryBuilder('documento')
+      .where('documento.auditoriaId IS NULL')
+      .andWhere('documento.etapa = :etapa', { etapa })
+      .andWhere(
+        '(documento.visibleAuditoriaId IS NULL OR documento.visibleAuditoriaId = :auditoriaId)',
+        { auditoriaId },
+      )
+      .orderBy('documento.nombre', 'ASC')
+      .getMany();
+  }
+
+  /**
    * Obtiene un documento por ID
    */
   async findOne(id: string): Promise<Documento> {

@@ -258,6 +258,51 @@ export class PlanesMejoramientoService {
   }
 
   /**
+   * Obtiene todos los planes de mejoramiento vinculados a una auditoría (para verificación OCI / cierre)
+   */
+  async findByAuditoriaId(auditoriaId: string): Promise<PlanMejoramiento[]> {
+    const plans = await this.planRepository.find({
+      where: { auditoriaId },
+      relations: ['acciones', 'hallazgo', 'auditoria'],
+      order: { createdAt: 'DESC' },
+    });
+    return plans.map((plan) => this.serializePlanMejoramiento(plan) as any);
+  }
+
+  /**
+   * Registra la verificación OCI de una acción (inmutable una vez registrada)
+   */
+  async registrarVerificacionOci(
+    planId: string,
+    accionId: string,
+    dto: { estadoVerificacionOci: string; evidenciaVerificada: string; observacionOci?: string },
+    verificadaPorId?: number,
+  ): Promise<AccionCorrectiva> {
+    await this.findOne(planId);
+    const accion = await this.accionRepository.findOne({
+      where: { id: accionId, planId },
+    });
+    if (!accion) {
+      throw new NotFoundException(`Acción con ID ${accionId} no encontrada en el plan`);
+    }
+    const estadoActual = accion.estadoVerificacionOci ?? 'sin_verificar';
+    if (estadoActual !== 'sin_verificar' && estadoActual !== null && estadoActual !== '') {
+      throw new BadRequestException('La verificación OCI ya fue registrada para esta acción y no puede modificarse');
+    }
+    accion.estadoVerificacionOci = dto.estadoVerificacionOci;
+    accion.evidenciaVerificada = dto.evidenciaVerificada;
+    accion.observacionOci = dto.observacionOci ?? null;
+    accion.fechaVerificacionOci = new Date();
+    accion.verificadaPorId = verificadaPorId ?? null;
+    const saved = await this.accionRepository.save(accion);
+    return {
+      ...saved,
+      fechaInicio: this.serializeDate(saved.fechaInicio),
+      fechaFin: this.serializeDate(saved.fechaFin),
+    } as any;
+  }
+
+  /**
    * Obtiene un plan por hallazgo
    */
   async findByHallazgo(hallazgoIdOrCodigo: string): Promise<PlanMejoramiento | null> {
