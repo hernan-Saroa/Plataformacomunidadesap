@@ -435,20 +435,44 @@ export class ApiClient {
 
     // Parse response
     let data: ApiResponse<T> | ApiError;
+    let rawText = '';
 
     try {
-      const text = await response.text();
-      try {
-        data = JSON.parse(text);
-      } catch {
-        // If parsing fails, use text as error message or empty object
-        if (!response.ok) {
-          throw new Error(text || 'Error en la petición (sin detalles)');
-        }
-        data = {} as any; // For 200 OK with empty body
-      }
+      rawText = await response.text();
     } catch (error: any) {
-      throw new Error(error.message || 'Error al leer respuesta del servidor');
+      const readError: any = new Error(
+        error?.message || 'Error al leer respuesta del servidor'
+      );
+      readError.status = response.status;
+      readError.response = { status: response.status };
+      throw readError;
+    }
+
+    if (!rawText) {
+      if (response.ok) {
+        data = {} as any; // For 200 OK with empty body
+      } else {
+        const emptyError: any = new Error('Error en la petición (sin detalles)');
+        emptyError.status = response.status;
+        emptyError.response = { status: response.status, data: null };
+        throw emptyError;
+      }
+    } else {
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        if (response.ok) {
+          data = {} as any;
+        } else {
+          const plainTextError: any = new Error(rawText);
+          plainTextError.status = response.status;
+          plainTextError.response = {
+            status: response.status,
+            data: { message: rawText },
+          };
+          throw plainTextError;
+        }
+      }
     }
 
     // Success
