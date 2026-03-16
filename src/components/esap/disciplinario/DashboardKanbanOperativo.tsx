@@ -3388,10 +3388,10 @@ export function DashboardKanbanOperativo({
   };
 
   const handleConfirmarDevolucion = (datos: {
-    motivo: string; motivoLabel: string; areaDestino: string;
+    motivo: string; motivoLabel: string;
     observaciones: string; numeroDevolucion: string;
   }) => {
-    // Actualizar estado de la noticia a 'devuelta' en lugar de eliminarla
+    // Actualizar estado de la noticia a 'devuelta' — permanece visible en el Kanban
     setItems(prev => prev.map(item => {
       if (item.id === itemSeleccionado.id && item.tipo === 'noticia') {
         return {
@@ -3402,7 +3402,7 @@ export function DashboardKanbanOperativo({
             {
               fecha: new Date().toISOString(),
               accion: 'Devolucion',
-              detalle: `${datos.numeroDevolucion} — Motivo: ${datos.motivoLabel}. Destino: ${datos.areaDestino}. ${datos.observaciones}`,
+              detalle: `${datos.numeroDevolucion} — Motivo: ${datos.motivoLabel}. ${datos.observaciones}`,
               usuario: 'Usuario Actual',
             }
           ],
@@ -3410,16 +3410,12 @@ export function DashboardKanbanOperativo({
       }
       return item;
     }));
-    // Remover del Kanban (la noticia devuelta sale del flujo activo)
-    setTimeout(() => {
-      setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
-    }, 100);
-    // ✅ Persistir devolución en el backend
+    // ✅ Persistir devolución en el backend — notifica al radicador
     disciplinaryService.returnNews(itemSeleccionado.id, datos.observaciones).catch(err =>
       console.error('[DashboardKanban] Error al devolver noticia en backend:', err)
     );
     toast.success('Noticia Devuelta Exitosamente', {
-      description: `${itemSeleccionado.numero} → ${datos.numeroDevolucion}\nMotivo: ${datos.motivoLabel}\nDestino: ${datos.areaDestino}`,
+      description: `${itemSeleccionado.numero} → ${datos.numeroDevolucion}\nMotivo: ${datos.motivoLabel}`,
     });
     setModalActivo(null);
     setItemSeleccionado(null);

@@ -5,7 +5,7 @@
  */
 
 import { useState } from 'react';
-import { ArrowLeft, AlertTriangle, FileText, Building2, MessageSquare, Info } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, FileText, MessageSquare, Info } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import {
   WorldClassModal, WCLabel, WCSelect, WCTextarea, WCResumenBloque,
@@ -28,7 +28,6 @@ interface Props {
   onConfirm: (datos: {
     motivo: string;
     motivoLabel: string;
-    areaDestino: string;
     observaciones: string;
     numeroDevolucion: string;
   }) => void;
@@ -44,33 +43,19 @@ const MOTIVOS_DEVOLUCION = [
   { value: 'otro',              label: 'Otro motivo',                                       requiereArea: false },
 ];
 
-const AREAS_DESTINO = [
-  'Secretaria General',
-  'Oficina de Correspondencia',
-  'Dependencia de origen',
-  'Ventanilla Unica',
-  'Oficina Juridica',
-  'Despacho del Director',
-  'Otra (especificar en observaciones)',
-];
 
 export function ModalDevolverNoticia({ noticia, onClose, onConfirm }: Props) {
   const [motivo, setMotivo] = useState('');
-  const [areaDestino, setAreaDestino] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [enviando, setEnviando] = useState(false);
 
   const motivoSeleccionado = MOTIVOS_DEVOLUCION.find(m => m.value === motivo);
-  const necesitaArea = motivoSeleccionado?.requiereArea || false;
 
-  const esValido = motivo
-    && observaciones.trim().length >= 10
-    && (!necesitaArea || areaDestino);
+  const esValido = motivo && observaciones.trim().length >= 10;
 
   const handleDevolver = () => {
     if (!motivo) { toast.error('Validacion', { description: 'Selecciona el motivo de devolucion' }); return; }
     if (observaciones.trim().length < 10) { toast.error('Validacion', { description: 'Las observaciones deben tener al menos 10 caracteres' }); return; }
-    if (necesitaArea && !areaDestino) { toast.error('Validacion', { description: 'Selecciona el area de destino' }); return; }
 
     setEnviando(true);
 
@@ -84,7 +69,6 @@ export function ModalDevolverNoticia({ noticia, onClose, onConfirm }: Props) {
       onConfirm({
         motivo,
         motivoLabel: motivoSeleccionado?.label || motivo,
-        areaDestino: areaDestino || 'N/A',
         observaciones: observaciones.trim(),
         numeroDevolucion,
       });
@@ -134,7 +118,7 @@ export function ModalDevolverNoticia({ noticia, onClose, onConfirm }: Props) {
           <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-600" />
           <div>
             <p className="font-bold text-blue-800 mb-0.5">Devolucion de noticia</p>
-            <p>La noticia sera devuelta a la dependencia de origen o al area indicada. Se generara un numero de devolucion y se registrara en la bitacora de trazabilidad.</p>
+            <p>La noticia sera devuelta al radicador para que corrija o complete la informacion segun las observaciones indicadas. Se generara un numero de devolucion y se notificara al radicador.</p>
           </div>
         </div>
       </WCInfoBox>
@@ -149,19 +133,6 @@ export function ModalDevolverNoticia({ noticia, onClose, onConfirm }: Props) {
           ))}
         </WCSelect>
       </div>
-
-      {/* Area destino - solo si aplica */}
-      {(necesitaArea || motivo) && (
-        <div>
-          <WCLabel required={necesitaArea}>Area de destino</WCLabel>
-          <WCSelect value={areaDestino} onChange={e => setAreaDestino(e.target.value)}>
-            <option value="">Selecciona el area de destino...</option>
-            {AREAS_DESTINO.map(a => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </WCSelect>
-        </div>
-      )}
 
       {/* Observaciones */}
       <div>
