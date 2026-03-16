@@ -10,7 +10,7 @@ import {
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { getServiceUrl, API_MODE } from '../../../../config/environment';
+import { apiClient } from '../../../../services/api/apiClient';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -50,13 +50,7 @@ const WORD_ACCEPT = '.doc,.docx,application/msword,application/vnd.openxmlformat
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getLegalApiBase(): string {
-  if (API_MODE === 'direct') {
-    return getServiceUrl('legal');
-  }
-  const gateway = getServiceUrl('legal');
-  return `${gateway}/legal/api/v1`;
-}
+const LEGAL_API = '/legal/api/v1';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -122,10 +116,7 @@ export function PlantillasDocumentos() {
   async function cargarPlantillas(categoria: Categoria) {
     setCargando(prev => ({ ...prev, [categoria]: true }));
     try {
-      const base = getLegalApiBase();
-      const res = await fetch(`${base}/plantillas?categoria=${categoria}`);
-      if (!res.ok) throw new Error('Error al cargar plantillas');
-      const data: PlantillaItem[] = await res.json();
+      const data: PlantillaItem[] = await apiClient.get(`${LEGAL_API}/plantillas`, { categoria });
       setPlantillas(prev => ({ ...prev, [categoria]: data }));
     } catch {
       toast.error('No se pudieron cargar las plantillas');
@@ -157,16 +148,7 @@ export function PlantillasDocumentos() {
       formData.append('categoria', categoriaActiva);
       formData.append('nombre', file.name);
 
-      const base = getLegalApiBase();
-      const res = await fetch(`${base}/plantillas`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || 'Error al subir la plantilla');
-      }
+      await apiClient.upload(`${LEGAL_API}/plantillas`, formData);
 
       toast.success('Plantilla subida correctamente');
       await cargarPlantillas(categoriaActiva);
@@ -181,9 +163,7 @@ export function PlantillasDocumentos() {
   async function handleDelete(plantilla: PlantillaItem) {
     if (!confirm(`¿Eliminar la plantilla "${plantilla.nombre}"?`)) return;
     try {
-      const base = getLegalApiBase();
-      const res = await fetch(`${base}/plantillas/${plantilla.id}`, { method: 'DELETE' });
-      if (!res.ok && res.status !== 204) throw new Error('Error al eliminar');
+      await apiClient.delete(`${LEGAL_API}/plantillas/${plantilla.id}`);
       toast.success('Plantilla eliminada');
       setPlantillas(prev => ({
         ...prev,
@@ -196,10 +176,7 @@ export function PlantillasDocumentos() {
 
   async function handleDownload(plantilla: PlantillaItem) {
     try {
-      const base = getLegalApiBase();
-      const res = await fetch(`${base}/plantillas/${plantilla.id}/download`);
-      if (!res.ok) throw new Error('Error al descargar');
-      const blob = await res.blob();
+      const blob = await apiClient.getBlob(`${LEGAL_API}/plantillas/${plantilla.id}/download`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
