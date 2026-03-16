@@ -1027,32 +1027,7 @@ export function ModalDetallesProceso({
   const ec              = etapaColor(proceso.etapaActual);
   const barColor        = proceso.semaforo === 'verde' ? '#10B981' : proceso.semaforo === 'amarillo' ? '#F59E0B' : '#EF4444';
 
-<<<<<<< Updated upstream
-  // ═══ Datos de archivos desde el backend (sin datos mock) ═══
-  // Los archivos reales vienen del proceso.documentos
-  const archivosReales: Archivo[] = (proceso.documentos || []).map((doc: any, index: number) => ({
-    id: doc.id || `archivo-${index}`,
-    nombre: doc.nombre || doc.titulo || 'Documento sin nombre',
-    tipo: doc.tipo?.toLowerCase() || 'evidencia',
-    fecha: doc.fecha || doc.fechaSubida || new Date().toISOString().split('T')[0],
-    firmante: doc.firmante || doc.responsable || 'Sin firmante',
-    estado: doc.estado || 'pendiente',
-    tamaño: doc.tamaño || doc.tamano || '0 KB',
-    extension: doc.extension?.toLowerCase() || 'pdf',
-    version: doc.version || 1,
-    observacionesDevolucion: doc.observacionesDevolucion,
-    fechaEnvioRevision: doc.fechaEnvioRevision,
-    etapaProceso: doc.etapaProceso || proceso.etapaActual,
-  }));
-
-  const TODOS_ARCHIVOS = [...archivosReales, ...archivosSubidos];
-
-  // Debug: verificar datos reales
-  console.log('[DEBUG] Archivos reales del proceso:', archivosReales);
-  console.log('[DEBUG] Total archivos:', TODOS_ARCHIVOS.length);
-=======
   const TODOS_ARCHIVOS = [...archivosBackend, ...archivosSubidos];
->>>>>>> Stashed changes
 
   // Extraer etapas únicas de los archivos para el filtro
   const etapasUnicas = Array.from(new Set(TODOS_ARCHIVOS.map(a => a.etapaProceso).filter(Boolean))) as string[];
