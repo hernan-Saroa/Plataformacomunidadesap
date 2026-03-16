@@ -17,7 +17,7 @@ import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
 import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
-import { getServiceUrl } from '../../../../config/environment';
+import { apiClient } from '../../../../services/api/apiClient';
 
 type Jurisdiccion = 'CONTENCIOSO' | 'ORDINARIA' | 'LABORAL' | 'CONSTITUCIONAL';
 
@@ -349,18 +349,7 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
       }
 
 
-      const baseUrl = getServiceUrl('legal');
-      const response = await fetch(`${baseUrl}/legal/expedientes`, {
-        method: 'POST',
-        // No Content-Type header needed for FormData, browser sets it with boundary
-        body: formDataToSend,
-      });
-
-      if (!response.ok) {
-        throw new Error('Error en la petición al servidor');
-      }
-
-      const data = await response.json();
+      const data = await apiClient.upload('/legal/api/v1/expedientes', formDataToSend);
 
       toast.success(
         `✓ Expediente creado exitosamente`,
