@@ -12,7 +12,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LayoutDashboard, CheckCircle, Archive, Clock, Users, Settings, Scale } from 'lucide-react';
 import { ModuleLayout, type MenuItem } from '../shared/ModuleLayout';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 // ✅ Importar todos los módulos especializados
 import { GestionProfesionalesWorldClass } from './GestionProfesionalesWorldClass'; // ✅ RF007 WORLD CLASS - Diseño actualizado
@@ -105,6 +105,40 @@ export function ControlDisciplinarioFull() {
   const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
   const [borradores, setBorradores] = useState<BorradorPendiente[]>(BORRADORES_INICIALES);
   const [revisionLog, setRevisionLog] = useState<ResultadoRevision[]>([]);
+  
+  // ✅ NUEVO: Estado para solicitudes de reasignación
+  const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([
+    {
+      id: 'r1',
+      procesoNumero: 'P-120-2025',
+      procesoId: 'proc-1',
+      etapaActual: 'Indagación Preliminar',
+      profesionalActual: { nombre: 'Juan Carlos Pérez', id: 'prof-1' },
+      profesionalNuevo: { nombre: 'María Torres', id: 'prof-2', cargaActual: '3', cargo: 'Profesional Universitario', especialidad: 'Derecho Disciplinario' },
+      solicitadoPor: 'Juan Carlos Pérez',
+      fechaSolicitud: '2025-01-10T14:30:00',
+      justificacion: 'Conflicto de interés por relación personal con el denunciado',
+      prioridad: 'normal' as const,
+      denunciado: 'Juan Pérez Gómez',
+      estado: 'pendiente' as const,
+    },
+    {
+      id: 'r2',
+      procesoNumero: 'P-089-2024',
+      procesoId: 'proc-2',
+      etapaActual: 'Valoración',
+      profesionalActual: { nombre: 'María Torres', id: 'prof-2' },
+      profesionalNuevo: { nombre: 'Carlos López', id: 'prof-3', cargaActual: '2', cargo: 'Profesional Especializado', especialidad: 'Derecho Penal' },
+      solicitadoPor: 'María Torres',
+      fechaSolicitud: '2025-01-09T10:00:00',
+      justificacion: 'Exceso de carga laboral actual (8 procesos activos)',
+      prioridad: 'urgente' as const,
+      denunciado: 'María González Castro',
+      estado: 'aprobada' as const,
+      fechaResolucion: '2025-01-10T09:00:00',
+      observacionesJefe: 'Aprobada por overload de trabajo',
+    }
+  ]);
 
   const hasPermissionBySection: Record<Section, boolean> = {
     dashboard: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_MANAGE),
@@ -237,6 +271,42 @@ export function ControlDisciplinarioFull() {
     });
   }, [borradores]);
 
+  // ✅ NUEVO: Handler para aprobar reasignación
+  const handleAprobarReasignacion = useCallback((solicitudId: string, observaciones: string) => {
+    setSolicitudesReasignacion(prev => prev.map(s =>
+      s.id === solicitudId
+        ? {
+            ...s,
+            estado: 'aprobada' as const,
+            fechaResolucion: new Date().toISOString(),
+            observacionesJefe: observaciones,
+          }
+        : s
+    ));
+    toast.success('Reasignación aprobada', {
+      description: 'El proceso ha sido reasignado al nuevo profesional',
+      duration: 5000,
+    });
+  }, []);
+
+  // ✅ NUEVO: Handler para rechazar reasignación
+  const handleRechazarReasignacion = useCallback((solicitudId: string, motivoRechazo: string) => {
+    setSolicitudesReasignacion(prev => prev.map(s =>
+      s.id === solicitudId
+        ? {
+            ...s,
+            estado: 'rechazada' as const,
+            fechaResolucion: new Date().toISOString(),
+            motivoRechazo,
+          }
+        : s
+    ));
+    toast.warning('Reasignación rechazada', {
+      description: 'La solicitud de reasignación ha sido rechazada',
+      duration: 5000,
+    });
+  }, []);
+
   return (
     <ModuleLayout
       moduleName="CONTROL INTERNO DISCIPLINARIO"
@@ -252,7 +322,6 @@ export function ControlDisciplinarioFull() {
           handleLimpiarFiltroProfesional();
         }
       }}
-      breadcrumb={['Backoffice', 'Control Interno Disciplinario', getTitleForSection()]}
     >
       {/* Contenido Principal */}
       {currentSection === 'dashboard' && (
@@ -267,8 +336,11 @@ export function ControlDisciplinarioFull() {
       {currentSection === 'aprobacion' && (
         <RevisionAprobacionJefe
           borradores={borradores}
+          solicitudesReasignacion={solicitudesReasignacion}
           onAprobar={handleAprobarBorrador}
           onDevolver={handleDevolverBorrador}
+          onAprobarReasignacion={handleAprobarReasignacion}
+          onRechazarReasignacion={handleRechazarReasignacion}
         />
       )}
       {currentSection === 'expediente' && <ExpedientesElectronicosWorldClass />}

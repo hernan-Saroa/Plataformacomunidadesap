@@ -77,7 +77,7 @@ export class ProfessionalController {
 
         // 2. Filtrar solo usuarios que tengan los roles permitidos (Dinámico - Opción A)
         // Definir los roles válidos para disciplinario
-        const validRoles = ['auditor', 'jefe_control_interno', 'profesional especializado', 'profesional universitario', 'operador disciplinario', 'sustanciador', 'admin', 'super_admin'];
+        const validRoles = ['auditor', 'jefe_control_interno', 'profesional especializado', 'profesional universitario', 'operador disciplinario', 'sustanciador', 'admin', 'super_admin', 'profesional de control interno disciplinario'];
         const assignableUsers = usersFromAuth.filter(u => {
             if (!u.user || !u.user.is_active) return false;
             const userRoles = u.user.roles || [];

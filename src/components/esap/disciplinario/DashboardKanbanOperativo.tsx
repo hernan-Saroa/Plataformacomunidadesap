@@ -5347,6 +5347,17 @@ export function DashboardKanbanOperativo({
             <ModalSolicitarReasignacion
               key="modal-solicitar-reasignacion"
               proceso={itemSeleccionado}
+              profesionales={profesionalesList.map((p: any) => ({
+                id: p.id,
+                nombreCompleto: p.nombre,
+                nombre: p.nombre,
+                cargo: 'Profesional de Control Interno Disciplinario',
+                estado: 'activo',
+                capacidadMaxima: 15,
+                procesosAsignados: 0,
+                territorial: '',
+                tipoContrato: 'Planta'
+              }))}
               onClose={() => {
                 setModalActivo(null);
                 setItemSeleccionado(null);
