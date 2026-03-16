@@ -4,7 +4,7 @@
  * DISEÑO WORLD-CLASS - Estilo corporativo ESAP consistente con Expedientes Electrónicos
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Calendar, Clock, Bell, AlertCircle, CheckCircle, Settings,
@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { FlujoTerminosAlertas } from './FlujoTerminosAlertas';
+import disciplinaryService, { DisciplinaryProcess } from '../../../services/api/disciplinary.service';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -240,6 +241,10 @@ export function GestionTerminosAlertas() {
   const [showFlujoModal, setShowFlujoModal] = useState(false);
   const [terminoSeleccionado, setTerminoSeleccionado] = useState<Termino | null>(null);
   const [showModalDetalle, setShowModalDetalle] = useState(false);
+  const [procesos, setProcesos] = useState<DisciplinaryProcess[]>([]);
+  const [procesoSeleccionado, setProcesoSeleccionado] = useState<DisciplinaryProcess | null>(null);
+  const [cargandoProcesos, setCargandoProcesos] = useState(false);
+  const [procesoTerminoId, setProcesoTerminoId] = useState<string>('');
   
   // Formulario para nuevo término
   const [nuevoTermino, setNuevoTermino] = useState({
@@ -260,7 +265,80 @@ export function GestionTerminosAlertas() {
     territorio: ''
   });
 
-  // Filtrado de términos
+  // Cargar procesos al abrir el modal de nuevo término
+  useEffect(() => {
+    if (showModalNuevoTermino) {
+      const cargarProcesos = async () => {
+        setCargandoProcesos(true);
+        try {
+          const procesosData = await disciplinaryService.getAllProcesos();
+          setProcesos(procesosData);
+        } catch (error) {
+          console.error('Error al cargar procesos:', error);
+          toast.error('Error al cargar los procesos');
+        } finally {
+          setCargandoProcesos(false);
+        }
+      };
+      cargarProcesos();
+    }
+  }, [showModalNuevoTermino]);
+
+  // Función para manejar la selección de un proceso
+  const handleProcesoChange = (procesoId: string) => {
+    setProcesoTerminoId(procesoId);
+    const proceso = procesos.find(p => p.id === procesoId);
+    if (proceso) {
+      setProcesoSeleccionado(proceso);
+      // Cargar automáticamente los datos del proceso
+      // Usamos abogadoAsignadoNombre que es la propiedad disponible en el tipo
+      setNuevoTermino({
+        ...nuevoTermino,
+        numeroProceso: proceso.radicadoProceso || '',
+        proceso: proceso.news?.disciplinable?.nombre || '',
+        responsable: proceso.abogadoAsignadoNombre || '',
+        emailResponsable: '', // El email no está disponible en el tipo base
+      });
+    } else {
+      setProcesoSeleccionado(null);
+    }
+  };
+
+  // Función para limpiar el formulario
+  const limpiarFormulario = () => {
+    setNuevoTermino({
+      proceso: '',
+      numeroProceso: '',
+      actuacion: '',
+      responsable: '',
+      emailResponsable: '',
+      fechaInicio: '',
+      diasHabiles: 10
+    });
+    setProcesoSeleccionado(null);
+    setProcesoTerminoId('');
+  };
+
+  // Función para crear término
+  const handleCrearTermino = () => {
+    // Validar que se haya seleccionado un proceso
+    if (!procesoTerminoId) {
+      toast.error('Debe seleccionar un proceso');
+      return;
+    }
+    
+    // Validar campos requeridos
+    if (!nuevoTermino.actuacion || !nuevoTermino.fechaInicio || !nuevoTermino.diasHabiles) {
+      toast.error('Debe completar todos los campos requeridos');
+      return;
+    }
+
+    // Aquí se integraría con el backend para crear el término
+    // Por ahora solo limpiamos el formulario y cerramos el modal
+    toast.success('Término creado exitosamente');
+    setShowModalNuevoTermino(false);
+    limpiarFormulario();
+  };
   const terminosFiltrados = terminos.filter(t => {
     const matchesSearch = 
       t.proceso.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1221,29 +1299,56 @@ export function GestionTerminosAlertas() {
               </div>
 
               <div className="p-6 space-y-4">
+                {/* Selector de Proceso */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Seleccionar Proceso *
+                  </label>
+                  {cargandoProcesos ? (
+                    <div className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500">
+                    Cargando procesos...
+                    </div>
+                  ) : (
+                    <select
+                      value={procesoTerminoId}
+                      onChange={(e) => handleProcesoChange(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Seleccione un proceso</option>
+                      {procesos.map((proceso) => (
+                        <option key={proceso.id} value={proceso.id}>
+                          {proceso.radicadoProceso} - {proceso.news?.disciplinable?.nombre || 'Sin nombre'}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Número de Proceso *
+                      Número de Proceso
                     </label>
                     <input
                       type="text"
                       placeholder="P-XXX-2025"
                       value={nuevoTermino.numeroProceso}
                       onChange={(e) => setNuevoTermino({...nuevoTermino, numeroProceso: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                      readOnly
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Denunciado *
+                      Denunciado
                     </label>
                     <input
                       type="text"
                       placeholder="Nombre completo"
                       value={nuevoTermino.proceso}
                       onChange={(e) => setNuevoTermino({...nuevoTermino, proceso: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                      readOnly
                     />
                   </div>
                 </div>
@@ -1321,16 +1426,16 @@ export function GestionTerminosAlertas() {
 
                 <div className="flex gap-3 justify-end pt-4">
                   <button
-                    onClick={() => setShowModalNuevoTermino(false)}
+                    onClick={() => {
+                      setShowModalNuevoTermino(false);
+                      limpiarFormulario();
+                    }}
                     className="px-6 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all font-bold"
                   >
                     Cancelar
                   </button>
                   <button
-                    onClick={() => {
-                      toast.success('Término creado exitosamente');
-                      setShowModalNuevoTermino(false);
-                    }}
+                    onClick={handleCrearTermino}
                     className="px-6 py-2.5 rounded-lg text-white font-bold hover:shadow-lg transition-all"
                     style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
                   >
