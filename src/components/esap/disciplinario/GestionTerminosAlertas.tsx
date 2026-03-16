@@ -230,7 +230,8 @@ const ALERTAS_MOCK: Alerta[] = [
 // ============================================================================
 
 export function GestionTerminosAlertas() {
-  const [terminos, setTerminos] = useState<Termino[]>(TERMINOS_MOCK);
+  const [terminos, setTerminos] = useState<Termino[]>([]);
+  const [cargandoTerminos, setCargandoTerminos] = useState(false);
   const [diasFestivos, setDiasFestivos] = useState<DiaFestivo[]>(DIAS_FESTIVOS_MOCK);
   // const [vistaActual, setVistaActual] = useState<'terminos' | 'calendario' | 'reglas' | 'historial'>('terminos');
   const [vistaActual, setVistaActual] = useState<'terminos' | 'calendario' | 'historial'>('terminos');
@@ -245,6 +246,8 @@ export function GestionTerminosAlertas() {
   const [procesoSeleccionado, setProcesoSeleccionado] = useState<DisciplinaryProcess | null>(null);
   const [cargandoProcesos, setCargandoProcesos] = useState(false);
   const [procesoTerminoId, setProcesoTerminoId] = useState<string>('');
+  const [profesionales, setProfesionales] = useState<any[]>([]);
+  const [responsableId, setResponsableId] = useState<string>('');
   
   // Formulario para nuevo término
   const [nuevoTermino, setNuevoTermino] = useState({
@@ -265,22 +268,42 @@ export function GestionTerminosAlertas() {
     territorio: ''
   });
 
-  // Cargar procesos al abrir el modal de nuevo término
+  // Cargar términos desde el backend al montar
+  useEffect(() => {
+    const cargarTerminos = async () => {
+      setCargandoTerminos(true);
+      try {
+        const resp = await disciplinaryService.getTerminos({ limit: 200 });
+        setTerminos(resp.terminos || []);
+      } catch (error) {
+        console.error('Error al cargar términos:', error);
+      } finally {
+        setCargandoTerminos(false);
+      }
+    };
+    cargarTerminos();
+  }, []);
+
+  // Cargar procesos y profesionales al abrir el modal de nuevo término
   useEffect(() => {
     if (showModalNuevoTermino) {
-      const cargarProcesos = async () => {
+      const cargarDatos = async () => {
         setCargandoProcesos(true);
         try {
-          const procesosData = await disciplinaryService.getAllProcesos();
+          const [procesosData, profesionalesData] = await Promise.all([
+            disciplinaryService.getAllProcesos(),
+            disciplinaryService.getProfesionales(),
+          ]);
           setProcesos(procesosData);
+          setProfesionales(profesionalesData);
         } catch (error) {
-          console.error('Error al cargar procesos:', error);
-          toast.error('Error al cargar los procesos');
+          console.error('Error al cargar datos:', error);
+          toast.error('Error al cargar los datos');
         } finally {
           setCargandoProcesos(false);
         }
       };
-      cargarProcesos();
+      cargarDatos();
     }
   }, [showModalNuevoTermino]);
 
@@ -317,27 +340,40 @@ export function GestionTerminosAlertas() {
     });
     setProcesoSeleccionado(null);
     setProcesoTerminoId('');
+    setResponsableId('');
   };
 
   // Función para crear término
-  const handleCrearTermino = () => {
-    // Validar que se haya seleccionado un proceso
+  const handleCrearTermino = async () => {
     if (!procesoTerminoId) {
       toast.error('Debe seleccionar un proceso');
       return;
     }
-    
-    // Validar campos requeridos
+    if (!responsableId) {
+      toast.error('Debe seleccionar un responsable');
+      return;
+    }
     if (!nuevoTermino.actuacion || !nuevoTermino.fechaInicio || !nuevoTermino.diasHabiles) {
       toast.error('Debe completar todos los campos requeridos');
       return;
     }
 
-    // Aquí se integraría con el backend para crear el término
-    // Por ahora solo limpiamos el formulario y cerramos el modal
-    toast.success('Término creado exitosamente');
-    setShowModalNuevoTermino(false);
-    limpiarFormulario();
+    try {
+      const terminoCreado = await disciplinaryService.createTermino({
+        procesoId: procesoTerminoId,
+        actuacion: nuevoTermino.actuacion,
+        responsableId,
+        fechaInicio: nuevoTermino.fechaInicio,
+        diasHabiles: nuevoTermino.diasHabiles,
+      });
+      setTerminos(prev => [terminoCreado, ...prev]);
+      toast.success('Término creado exitosamente');
+      setShowModalNuevoTermino(false);
+      limpiarFormulario();
+    } catch (error: any) {
+      console.error('Error al crear término:', error);
+      toast.error('Error al crear el término', { description: error?.message || 'Intente de nuevo' });
+    }
   };
   const terminosFiltrados = terminos.filter(t => {
     const matchesSearch = 
@@ -359,13 +395,17 @@ export function GestionTerminosAlertas() {
     cumplidos: terminos.filter(t => t.estado === 'cumplido').length
   };
 
-  const handleMarcarCompleto = (id: string) => {
-    setTerminos(terminos.map(t => 
-      t.id === id ? { ...t, estado: 'cumplido' as const } : t
-    ));
-    toast.success('Término marcado como cumplido', {
-      description: 'El término se ha actualizado correctamente'
-    });
+  const handleMarcarCompleto = async (id: string) => {
+    try {
+      const terminoActualizado = await disciplinaryService.marcarTerminoCumplido(id, {
+        fechaCumplimiento: new Date().toISOString().split('T')[0],
+      });
+      setTerminos(prev => prev.map(t => t.id === id ? { ...t, ...terminoActualizado, estado: 'cumplido' as const } : t));
+      toast.success('Término marcado como cumplido', { description: 'El término se ha actualizado correctamente' });
+    } catch (error) {
+      console.error('Error al marcar cumplido:', error);
+      toast.error('Error al actualizar el término');
+    }
   };
 
   const handleRecalcular = () => {
@@ -1235,31 +1275,29 @@ export function GestionTerminosAlertas() {
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Responsable *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Nombre del responsable"
-                      value={nuevoTermino.responsable}
-                      onChange={(e) => setNuevoTermino({...nuevoTermino, responsable: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Email Responsable *
-                    </label>
-                    <input
-                      type="email"
-                      placeholder="email@esap.edu.co"
-                      value={nuevoTermino.emailResponsable}
-                      onChange={(e) => setNuevoTermino({...nuevoTermino, emailResponsable: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Responsable *
+                  </label>
+                  <select
+                    value={responsableId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setResponsableId(id);
+                      const prof = profesionales.find(p => p.id === id);
+                      if (prof) {
+                        setNuevoTermino(prev => ({ ...prev, responsable: prof.nombreCompleto || prof.nombre || '', emailResponsable: prof.email || '' }));
+                      }
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Seleccione un responsable</option>
+                    {profesionales.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombreCompleto || p.nombre} {p.email ? `— ${p.email}` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
