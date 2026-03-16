@@ -22,6 +22,7 @@ import { extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { AuditoriasService } from './auditorias.service';
 import { HallazgosService } from '../hallazgos/hallazgos.service';
+import { PlanesMejoramientoService } from '../planes-mejoramiento/planes-mejoramiento.service';
 import { CreateAuditoriaDto } from './dto/create-auditoria.dto';
 import { UpdateAuditoriaDto } from './dto/update-auditoria.dto';
 import { CreateNotaDto } from './dto/create-nota.dto';
@@ -44,6 +45,7 @@ export class AuditoriasController {
   constructor(
     private readonly auditoriasService: AuditoriasService,
     private readonly hallazgosService: HallazgosService,
+    private readonly planesMejoramientoService: PlanesMejoramientoService,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -331,6 +333,65 @@ export class AuditoriasController {
   @Permissions(CIP.AUDITORIA_VIEW)
   getNotasByAuditoria(@Param('id') id: string) {
     return this.auditoriasService.getNotasByAuditoria(id);
+  }
+
+  /**
+   * GET /auditorias/:id/resumen-ejecutivo-cierre
+   * Resumen para el Informe de Cierre (Sección 2)
+   */
+  @Get(':id/resumen-ejecutivo-cierre')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  getResumenEjecutivoCierre(@Param('id') id: string) {
+    return this.auditoriasService.getResumenEjecutivoCierre(id);
+  }
+
+  /**
+   * PATCH /auditorias/:id/informe-cierre
+   * Guarda borrador de lecciones aprendidas y recomendaciones
+   */
+  @Patch(':id/informe-cierre')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
+  updateInformeCierre(
+    @Param('id') id: string,
+    @Body() body: { leccionesAprendidas?: string; recomendacionesFuturasAuditorias?: string },
+  ) {
+    return this.auditoriasService.updateInformeCierre(id, body);
+  }
+
+  /**
+   * POST /auditorias/:id/aprobar-informe-cierre
+   * Aprueba el Informe de Cierre (Jefe OCI). Valida que todas las acciones estén verificadas.
+   */
+  @Post(':id/aprobar-informe-cierre')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_APPROVE)
+  @HttpCode(HttpStatus.OK)
+  async aprobarInformeCierre(
+    @Param('id') id: string,
+    @Body() body: { aprobadoPor?: string; aprobadoPorId?: number },
+    @Req() req: any,
+  ) {
+    const planes = await this.planesMejoramientoService.findByAuditoriaId(id);
+    let totalAcciones = 0;
+    let verificadas = 0;
+    for (const plan of planes) {
+      const acciones = plan.acciones || [];
+      totalAcciones += acciones.length;
+      verificadas += acciones.filter(
+        (a: any) =>
+          a.estadoVerificacionOci && !['', 'sin_verificar'].includes(String(a.estadoVerificacionOci)),
+      ).length;
+    }
+    if (totalAcciones > 0 && verificadas < totalAcciones) {
+      throw new BadRequestException(
+        `Debe verificar todas las acciones del plan de mejoramiento antes de aprobar el informe de cierre (${verificadas}/${totalAcciones} verificadas).`,
+      );
+    }
+    const aprobadoPor = body.aprobadoPor || this.extractUserFromToken(req)?.username || 'Jefe OCI';
+    const aprobadoPorId = body.aprobadoPorId ?? this.extractUserFromToken(req)?.userId;
+    return this.auditoriasService.aprobarInformeCierre(id, aprobadoPor, aprobadoPorId);
   }
 
   /**

@@ -73,6 +73,23 @@ export class DocumentosController {
   }
 
   /**
+   * GET /documentos/plantillas-requeridas?etapa=planeacion&auditoriaId=xxx
+   * Plantillas de biblioteca aplicables a esta auditoría en la etapa (para validar cantidad a subir).
+   */
+  @Get('plantillas-requeridas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_VIEW)
+  getPlantillasRequeridas(
+    @Query('etapa') etapa: string,
+    @Query('auditoriaId') auditoriaId: string,
+  ) {
+    if (!etapa || !auditoriaId) {
+      throw new BadRequestException('etapa y auditoriaId son requeridos');
+    }
+    return this.documentosService.findPlantillasRequeridasPorEtapa(etapa, auditoriaId);
+  }
+
+  /**
    * GET /documentos/auditoria/:auditoriaId
    * Obtiene todos los documentos de una auditoría
    * (Debe ir ANTES de :id para que no capture "auditoria" como id)

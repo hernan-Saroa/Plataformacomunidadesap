@@ -309,6 +309,25 @@ export class Auditoria {
   @Column({ name: 'observaciones_cierre', type: 'text', nullable: true })
   observacionesCierre?: string;
 
+  /** Informe de cierre (Sección 2): lecciones y recomendaciones */
+  @Column({ name: 'lecciones_aprendidas', type: 'text', nullable: true })
+  leccionesAprendidas?: string | null;
+
+  @Column({ name: 'recomendaciones_futuras_auditorias', type: 'text', nullable: true })
+  recomendacionesFuturasAuditorias?: string | null;
+
+  @Column({ name: 'informe_cierre_aprobado', type: 'boolean', default: false })
+  informeCierreAprobado: boolean;
+
+  @Column({ name: 'informe_cierre_aprobado_por', type: 'varchar', length: 255, nullable: true })
+  informeCierreAprobadoPor?: string | null;
+
+  @Column({ name: 'informe_cierre_aprobado_por_id', type: 'bigint', nullable: true })
+  informeCierreAprobadoPorId?: number | null;
+
+  @Column({ name: 'informe_cierre_aprobado_at', type: 'timestamp', nullable: true })
+  informeCierreAprobadoAt?: Date | null;
+
   // Relaciones
   @OneToMany(() => ObjetivoAuditoria, (objetivo) => objetivo.auditoria)
   objetivos: ObjetivoAuditoria[];

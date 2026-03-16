@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
   TrendingUp, FileCheck, AlertCircle, BookOpen, Download, FileText,
-  Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, FileSpreadsheet
+  Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, FileSpreadsheet, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ModalGestionAdjuntos } from './ModalGestionAdjuntosActividades';
@@ -2159,8 +2159,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-shrink-0">
-            {/* Selector de Plan Anual - Comentado temporalmente para pruebas */}
-            {/* {planesDisponibles.length > 1 && onCambiarPlan && (
+            {planesDisponibles.length > 1 && onCambiarPlan && (
               <select
                 value={plan.id}
                 onChange={(e) => onCambiarPlan(e.target.value)}
@@ -2172,7 +2171,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
                   </option>
                 ))}
               </select>
-            )} */}
+            )}
 
             <span className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold border-2 text-sm ${plan.estado === 'VIGENTE' ? 'bg-green-100 text-green-700 border-green-300' : plan.estado === 'APROBADO' ? 'bg-blue-100 text-blue-700 border-blue-300' : plan.estado === 'EN_REVISION' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-gray-100 text-gray-700 border-gray-300'}`}>
               {plan.estado === 'BORRADOR' ? 'Borrador' : plan.estado === 'EN_REVISION' ? 'En revisión' : plan.estado === 'APROBADO' ? 'Aprobado' : plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado'}
@@ -2495,22 +2494,40 @@ function SeccionGestionYSeguimiento({
     cargando: true
   });
 
-  // Cargar datos de cumplimiento de auditorías al montar el componente
+  // Vigencia con fallback (plan puede tener vigencia o año)
+  const vigenciaPlan = plan.vigencia ?? (plan as { año?: number }).año ?? new Date().getFullYear();
+
+  // Cargar datos de cumplimiento de auditorías al montar y al refrescar
+  const cargarCumplimiento = async () => {
+    setCumplimientoAuditorias(prev => ({ ...prev, cargando: true }));
+    try {
+      const resultado = await controlInternoService.getCumplimientoAuditorias(vigenciaPlan);
+      setCumplimientoAuditorias({
+        ...resultado,
+        cargando: false
+      });
+    } catch (error) {
+      console.error('[AUDITORÍAS] Error cargando cumplimiento:', error);
+      setCumplimientoAuditorias(prev => ({
+        ...prev,
+        totalProgramadas: 0,
+        totalFinalizadas: 0,
+        porcentajeCumplimiento: 0,
+        desglosePorTipo: {},
+        cargando: false
+      }));
+    }
+  };
+
   useEffect(() => {
-    const cargarCumplimiento = async () => {
-      try {
-        const resultado = await controlInternoService.getCumplimientoAuditorias(plan.vigencia);
-        setCumplimientoAuditorias({
-          ...resultado,
-          cargando: false
-        });
-      } catch (error) {
-        console.error('[AUDITORÍAS] Error cargando cumplimiento:', error);
-        setCumplimientoAuditorias(prev => ({ ...prev, cargando: false }));
-      }
-    };
     cargarCumplimiento();
-  }, [plan.vigencia]);
+  }, [vigenciaPlan]);
+
+  // Refrescar cumplimiento y recargar plan (para sincronizar actividades con tipo_calculo=auditorias)
+  const handleRefrescarCumplimiento = async () => {
+    await cargarCumplimiento();
+    onRefetchPlan?.();
+  };
 
   // ✅ NUEVO: Función para toggle del colapso de un rol específico
   const toggleRolColapsado = (numeroRol: number) => {
@@ -3152,12 +3169,14 @@ function SeccionGestionYSeguimiento({
 
       {/* Lista de roles y actividades con seguimiento */}
       {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => {
-        const totalActividades = rol.actividades.length;
-        const asignadas = rol.actividades.filter(a => a.responsable !== null).length;
-        const completadas = rol.actividades.filter(a => a.estado === 'COMPLETADA').length;
-        const enProgreso = rol.actividades.filter(a => a.estado === 'EN_EJECUCION').length;
+        // Solo contar actividades activas (activo !== false) para estadísticas
+        const actividadesActivas = rol.actividades.filter(a => a.activo !== false);
+        const totalActividades = actividadesActivas.length;
+        const asignadas = actividadesActivas.filter(a => a.responsable !== null).length;
+        const completadas = actividadesActivas.filter(a => a.estado === 'COMPLETADA').length;
+        const enProgreso = actividadesActivas.filter(a => a.estado === 'EN_EJECUCION').length;
         const avance = totalActividades > 0 
-          ? Math.round(rol.actividades.reduce((s, a) => s + a.porcentajeAvance, 0) / totalActividades) 
+          ? Math.round(actividadesActivas.reduce((s, a) => s + (a.porcentajeAvance || 0), 0) / totalActividades) 
           : 0;
         const estaColapsado = rolesColapsados[rol.numero] || false;
         
@@ -3256,30 +3275,49 @@ function SeccionGestionYSeguimiento({
                     {/* ════════════════════════════════════════════════════════════════
                         NUEVO: SECCIÓN ESPECIAL ROL 4 - CUMPLIMIENTO PROGRAMA AUDITORÍAS
                         ════════════════════════════════════════════════════════════════ */}
-                    {rol.numero === 4 && !cumplimientoAuditorias.cargando && (
+                    {rol.numero === 4 && (
                       <div className="mt-4 p-4 bg-gradient-to-r from-[#F0F6FF] to-[#E6F0FF] rounded-xl border-2 border-[#003DA5]/30">
-                        <div className="flex items-center gap-2 mb-3">
-                          <div className="w-8 h-8 rounded-lg bg-[#003DA5] flex items-center justify-center">
-                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                            </svg>
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-[#003DA5] flex items-center justify-center">
+                              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                              </svg>
+                            </div>
+                            <div>
+                              <h4 className="font-bold text-[#003DA5]">📊 Cumplimiento Programa de Auditorías</h4>
+                              <p className="text-xs text-[#002B75]">Cálculo automático basado en auditorías finalizadas vs programadas (vigencia {vigenciaPlan})</p>
+                            </div>
                           </div>
-                          <div>
-                            <h4 className="font-bold text-[#003DA5]">📊 Cumplimiento Programa de Auditorías</h4>
-                            <p className="text-xs text-[#002B75]">Cálculo automático basado en auditorías finalizadas vs programadas</p>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={handleRefrescarCumplimiento}
+                            disabled={cumplimientoAuditorias.cargando}
+                            className="px-3 py-1.5 bg-white border border-[#003DA5]/30 rounded-lg text-sm font-medium text-[#003DA5] hover:bg-[#F0F6FF] disabled:opacity-50 flex items-center gap-2"
+                          >
+                            {cumplimientoAuditorias.cargando ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="w-4 h-4" />
+                            )}
+                            Actualizar
+                          </button>
                         </div>
                         
                         {/* Métricas principales */}
                         <div className="grid grid-cols-3 gap-3 mb-3">
                           <div className="bg-white rounded-lg p-3 text-center border border-[#003DA5]/20 shadow-sm">
                             <p className="text-xs text-gray-600 mb-1">Programadas</p>
-                            <p className="text-3xl font-bold text-[#003DA5]">{cumplimientoAuditorias.totalProgramadas}</p>
+                            <p className="text-3xl font-bold text-[#003DA5]">
+                              {cumplimientoAuditorias.cargando ? '...' : cumplimientoAuditorias.totalProgramadas}
+                            </p>
                             <p className="text-[10px] text-gray-500">auditorías totales</p>
                           </div>
                           <div className="bg-white rounded-lg p-3 text-center border border-[#C89F3C]/30 shadow-sm">
                             <p className="text-xs text-gray-600 mb-1">Finalizadas</p>
-                            <p className="text-3xl font-bold text-[#C89F3C]">{cumplimientoAuditorias.totalFinalizadas}</p>
+                            <p className="text-3xl font-bold text-[#C89F3C]">
+                              {cumplimientoAuditorias.cargando ? '...' : cumplimientoAuditorias.totalFinalizadas}
+                            </p>
                             <p className="text-[10px] text-gray-500">completadas</p>
                           </div>
                           <div className="bg-white rounded-lg p-3 text-center border border-[#003DA5]/20 shadow-sm">
@@ -3287,7 +3325,9 @@ function SeccionGestionYSeguimiento({
                             <p className={`text-3xl font-bold ${
                               cumplimientoAuditorias.porcentajeCumplimiento >= 80 ? 'text-green-700' : 
                               cumplimientoAuditorias.porcentajeCumplimiento >= 50 ? 'text-[#C89F3C]' : 'text-red-600'
-                            }`}>{cumplimientoAuditorias.porcentajeCumplimiento}%</p>
+                            }`}>
+                              {cumplimientoAuditorias.cargando ? '...' : `${cumplimientoAuditorias.porcentajeCumplimiento}%`}
+                            </p>
                             <p className="text-[10px] text-gray-500">del programa</p>
                           </div>
                         </div>

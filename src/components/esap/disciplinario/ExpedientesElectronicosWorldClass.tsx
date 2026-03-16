@@ -9,8 +9,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  FolderOpen, Search, Download, Upload, ChevronRight, ChevronDown, FileText, 
-  Eye, EyeOff, Calendar, User, AlertCircle,
+  FolderOpen, Search, Download, Upload, ChevronRight, ChevronDown, FileText,
+  Eye, EyeOff, Calendar, User, AlertCircle, Trash2,
   FileCheck, FileWarning, Scale, Gavel, AlertTriangle, Shield,
   MessageSquare, Bell, X, Clock, Folders,
   ArrowUp, ArrowDown, History, Info,
@@ -22,6 +22,7 @@ import * as XLSX from 'xlsx';
 import { ModalCompartirExpediente } from './ModalCompartirExpediente';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { buildApiUrl, API_MODE } from '../../../config/environment';
 import { toast } from 'sonner';
 
 // ============ INTERFACES ============
@@ -371,6 +372,8 @@ export function ExpedientesElectronicosWorldClass() {
   const [documentoParaVer, setDocumentoParaVer] = useState<Documento | null>(null);
   const [documentoUrl, setDocumentoUrl] = useState<string | null>(null);
   const [cargandoDocumento, setCargandoDocumento] = useState(false);
+  const [documentoParaEliminar, setDocumentoParaEliminar] = useState<Documento | null>(null);
+  const [eliminandoDocumento, setEliminandoDocumento] = useState(false);
 
   // ✅ Función para cargar datos del backend
   const cargarDatos = useCallback(async () => {
@@ -1053,14 +1056,13 @@ export function ExpedientesElectronicosWorldClass() {
     setShowModalVisor(true);
     
     try {
-      // Construir la URL del documento
-      const baseUrl = 'http://localhost:3001/api/v1';
-      const downloadUrl = `${baseUrl}/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download`;
+      // Construir la URL del documento usando buildApiUrl (respeta gateway/direct)
+      const restPath = `/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download`;
+      const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
       const token = localStorage.getItem('esap_access_token');
-      const fullUrl = token ? `${downloadUrl}?token=${token}` : downloadUrl;
-      
+
       // Cargar el documento como blob para crear una URL local
-      const response = await fetch(fullUrl, {
+      const response = await fetch(downloadUrl, {
         method: 'GET',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
@@ -1088,14 +1090,13 @@ export function ExpedientesElectronicosWorldClass() {
   const descargarDocumento = async (doc: Documento) => {
     try {
       toast.loading('Descargando documento...', { id: 'download' });
-      
-      // Construir la URL del documento
-      const baseUrl = 'http://localhost:3001/api/v1';
-      const downloadUrl = `${baseUrl}/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download`;
+
+      // Construir la URL del documento usando buildApiUrl (respeta gateway/direct)
+      const restPath = `/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download`;
+      const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
       const token = localStorage.getItem('esap_access_token');
-      const fullUrl = token ? `${downloadUrl}?token=${token}` : downloadUrl;
-      
-      const response = await fetch(fullUrl, {
+
+      const response = await fetch(downloadUrl, {
         method: 'GET',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
@@ -1124,6 +1125,21 @@ export function ExpedientesElectronicosWorldClass() {
         id: 'download',
         description: error.message || 'No se pudo descargar el documento'
       });
+    }
+  };
+
+  const confirmarEliminarDocumento = async () => {
+    if (!documentoParaEliminar) return;
+    setEliminandoDocumento(true);
+    try {
+      await disciplinaryService.deleteDocumento(documentoParaEliminar.expedienteId, documentoParaEliminar.id);
+      setDocumentos(prev => prev.filter(d => d.id !== documentoParaEliminar.id));
+      toast.success('Documento eliminado', { description: documentoParaEliminar.descripcionPrincipal });
+    } catch (error: any) {
+      toast.error('Error al eliminar', { description: error.message || 'No se pudo eliminar el documento' });
+    } finally {
+      setEliminandoDocumento(false);
+      setDocumentoParaEliminar(null);
     }
   };
 
@@ -1461,12 +1477,19 @@ export function ExpedientesElectronicosWorldClass() {
                                         <Eye className="w-3.5 h-3.5" style={{ color: getFileTypeColor(doc.archivoAcceso) }} />
                                       )}
                                     </button>
-                                    <button 
+                                    <button
                                       onClick={() => descargarDocumento(doc)}
-                                      className="p-1.5 rounded-md hover:bg-gray-100" 
+                                      className="p-1.5 rounded-md hover:bg-gray-100"
                                       title="Descargar documento"
                                     >
                                       <Download className="w-3.5 h-3.5 text-gray-600" />
+                                    </button>
+                                    <button
+                                      onClick={() => setDocumentoParaEliminar(doc)}
+                                      className="p-1.5 rounded-md hover:bg-red-50 transition"
+                                      title="Eliminar documento"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
                                     </button>
                                   </div>
                                 </div>
@@ -1844,6 +1867,43 @@ export function ExpedientesElectronicosWorldClass() {
               </div>
             </div>
           </motion.div>
+        </div>
+      )}
+
+      {/* Modal confirmación eliminación de documento */}
+      {documentoParaEliminar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Eliminar documento</h3>
+                <p className="text-xs text-gray-500">Esta acción no se puede deshacer</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-700 mb-6">
+              ¿Está seguro que desea eliminar <strong>{documentoParaEliminar.descripcionPrincipal}</strong>?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDocumentoParaEliminar(null)}
+                disabled={eliminandoDocumento}
+                className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarEliminarDocumento}
+                disabled={eliminandoDocumento}
+                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition disabled:opacity-50 flex items-center gap-2"
+              >
+                {eliminandoDocumento ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Eliminar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

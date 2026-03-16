@@ -1172,6 +1172,7 @@ class DisciplinaryService {
             justificacion,
         });
     }
+
 }
 
 const disciplinaryService = new DisciplinaryService();
