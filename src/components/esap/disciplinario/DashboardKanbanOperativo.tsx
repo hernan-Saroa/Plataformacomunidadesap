@@ -55,7 +55,7 @@ import { ModalDetallesNoticia } from './ModalDetallesNoticia'; // ✅ Modal Worl
 import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProcess as ApiProceso } from '../../../services/api/disciplinary.service';
 import { entidadesRemisionService, EntidadRemision } from '../../../services/api/entidadesRemisionService';
 // ✅ IMPORTAR SERVICIOS DE SUPABASE PARA PERSISTENCIA LOCAL (solo uso interno, datos principales vienen del backend)
-import { noticiasService, procesosService } from '../../../services/api/esapDataService';
+import { noticiasService } from '../../../services/api/esapDataService';
 import {
   KanbanButtonPrimary,
   KanbanButtonSecondary,
@@ -3236,58 +3236,6 @@ export function DashboardKanbanOperativo({
       return;
     }
 
-    const noticiaLeg = itemSeleccionado as Noticia;
-
-    // ✅ Obtener la siguiente etapa después de Recepción (basado en configuración dinámica)
-    const siguienteEtapa = etapasConfig.length > 0
-      ? etapasConfig
-        .sort((a, b) => (a.orden || 0) - (b.orden || 0))
-        .find(e => (e.orden || 0) > 1)?.etapa || 'Valoración'
-      : 'Valoración';
-
-    const nuevoProceso: Proceso = {
-      id: `p${Date.now()}`,
-      numeroProceso: `PD-2025-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
-      noticiaOrigen: noticiaLeg.numero,
-      denunciante: noticiaLeg.denunciante,
-      denunciado: noticiaLeg.denunciado,
-      cedula: '00000000',
-      etapaActual: siguienteEtapa as any, // ✅ Cambiar a siguiente etapa (Valoración)
-      estadoActual: 'En Gestión',
-      profesionalAsignado: profesionalSeleccionado,
-      semaforo: 'verde',
-      diasRestantes: 30,
-      porcentajeTiempo: 0,
-      borradores: [],
-      documentos: [],
-      pendienteAprobacion: false,
-      ultimaActuacion: 'Noticia convertida',
-      fechaCreacion: new Date().toISOString().split('T')[0],
-      tipo: 'proceso',
-      hechos: noticiaLeg.hechos,
-      cargo: noticiaLeg.cargo,
-      dependencia: noticiaLeg.dependencia,
-      territorial: noticiaLeg.territorial,
-      fechaHechos: noticiaLeg.fechaHechos,
-      conductaSeleccionada: noticiaLeg.conductaSeleccionada,
-      conductaPersonalizada: noticiaLeg.conductaPersonalizada,
-      denunciados: noticiaLeg.denunciados,
-      denunciantes: noticiaLeg.denunciantes,
-      hechosSeparados: noticiaLeg.hechosSeparados,
-      archivosAdjuntos: noticiaLeg.archivosAdjuntos,
-      origenNoticia: noticiaLeg.origen,
-      fechaRecepcionNoticia: noticiaLeg.fechaRecepcion,
-      prioridadNoticia: noticiaLeg.prioridad,
-    };
-
-    setItems(prev => [
-      ...prev.filter(i => i.id !== itemSeleccionado.id),
-      nuevoProceso
-    ]);
-
-    toast.success('Proceso Creado', {
-      description: `${nuevoProceso.numeroProceso} → ${profesionalSeleccionado}`
-    });
     if (!itemSeleccionado) return;
 
     // ✅ NUEVO: Verificar si la noticia ya tiene proceso asociado (prevención adicional)
@@ -3295,6 +3243,8 @@ export function DashboardKanbanOperativo({
       toast.error('Esta noticia ya tiene un proceso asociado');
       return;
     }
+
+    const noticiaLeg = itemSeleccionado as Noticia;
 
     // ✅ NUEVO: Obtener el nombre del profesional seleccionado (disponible en todo el ámbito)
     const profesionalObj = profesionalesList.find((p: any) => p.id === profesionalSeleccionado);
@@ -3464,9 +3414,9 @@ export function DashboardKanbanOperativo({
     setTimeout(() => {
       setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
     }, 100);
-    // ✅ Persistir devolución en Supabase
-    noticiasService.update(itemSeleccionado.id, { estado: 'devuelta' }).catch(err =>
-      console.error('[DashboardKanban] Error al devolver noticia en Supabase:', err)
+    // ✅ Persistir devolución en el backend
+    disciplinaryService.returnNews(itemSeleccionado.id, datos.observaciones).catch(err =>
+      console.error('[DashboardKanban] Error al devolver noticia en backend:', err)
     );
     toast.success('Noticia Devuelta Exitosamente', {
       description: `${itemSeleccionado.numero} → ${datos.numeroDevolucion}\nMotivo: ${datos.motivoLabel}\nDestino: ${datos.areaDestino}`,
@@ -3567,16 +3517,10 @@ export function DashboardKanbanOperativo({
     setTimeout(() => {
       setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
     }, 100);
-    // ✅ Persistir en Supabase: actualizar estado a archivada
-    if (itemSeleccionado.tipo === 'noticia') {
-      noticiasService.update(itemSeleccionado.id, { ...itemArchivado }).catch(err =>
-        console.error('[DashboardKanban] Error al archivar noticia en Supabase:', err)
-      );
-    } else {
-      procesosService.update(itemSeleccionado.id, { ...itemArchivado }).catch(err =>
-        console.error('[DashboardKanban] Error al archivar proceso en Supabase:', err)
-      );
-    }
+    // ✅ Persistir archivo en el backend
+    disciplinaryService.archiveNews(itemSeleccionado.id, 'Archivado por el operador disciplinario').catch(err =>
+      console.error('[DashboardKanban] Error al archivar en backend:', err)
+    );
     toast.success('Noticia Archivada Exitosamente', {
       description: `${itemSeleccionado.numero || itemSeleccionado.numeroProceso} — La noticia ha sido archivada. Puedes consultarla en la pestaña "Archivados".`,
     });

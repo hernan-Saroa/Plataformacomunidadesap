@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -689,6 +690,7 @@ export function ModalDetallesProceso({
   const [cargasActivas, setCargasActivas] = useState<CargaActiva[]>([]);
   const [mostrarAlertaCierre, setMostrarAlertaCierre] = useState(false);
   const [archivosSubidos, setArchivosSubidos] = useState<Archivo[]>([]);
+  const [archivosBackend, setArchivosBackend] = useState<Archivo[]>([]);
   const [dragging, setDragging] = useState(false);
   const [autoEnviarRevision, setAutoEnviarRevision] = useState<Archivo | null>(null);
   const [autoRecargar, setAutoRecargar] = useState<Archivo | null>(null);
@@ -732,6 +734,41 @@ export function ModalDetallesProceso({
       }));
     } catch { /* quota excedida — ignorar */ }
   }, [filtro, filtroEtapa, vistaAgrupada, filtroEtapaAct, vistaAgrupadaAct, filtroEtapaTar, vistaAgrupadaTar, filtroEtapaNota, vistaAgrupadaNota, tabActiva, STORAGE_KEY]);
+
+  // ═══ Cargar documentos del expediente desde el backend ═══
+  useEffect(() => {
+    if (!proceso?.id) return;
+    disciplinaryService.getDocumentosExpediente(proceso.id)
+      .then(res => {
+        const mapped: Archivo[] = (res.documentos || []).map((doc: any) => {
+          const ext = (doc.archivoNombre || doc.nombre || '').split('.').pop()?.toLowerCase() || 'pdf';
+          const tipoValido = (['auto', 'evidencia', 'oficio', 'acta'] as const).includes(doc.tipo)
+            ? doc.tipo as 'auto' | 'evidencia' | 'oficio' | 'acta'
+            : 'evidencia';
+          const estadoAuto = doc.metadatos?.estado;
+          const estado: Archivo['estado'] = estadoAuto === 'FIRMADO' || estadoAuto === 'NOTIFICADO' || estadoAuto === 'APROBADO'
+            ? 'aprobado'
+            : estadoAuto === 'EN_REVISION' ? 'en_revision'
+            : estadoAuto === 'DEVUELTO' ? 'devuelto'
+            : estadoAuto === 'BORRADOR' ? 'borrador'
+            : 'aprobado';
+          return {
+            id: doc.id,
+            nombre: doc.nombre,
+            tipo: tipoValido,
+            fecha: doc.fechaCarga ? doc.fechaCarga.split('T')[0] : '',
+            firmante: doc.usuarioCarga || 'Sistema',
+            estado,
+            tamaño: doc.tamaño || '0 KB',
+            extension: ext as any,
+            version: doc.version || 1,
+            etapaProceso: doc.etapa,
+          };
+        });
+        setArchivosBackend(mapped);
+      })
+      .catch(err => console.error('[ModalDetallesProceso] Error cargando documentos:', err));
+  }, [proceso?.id]);
 
   // ═══ Navegación rápida desde Scorecard ═══
   const navigateToTab = useCallback((tab: Tab, etapa: string) => {
@@ -990,6 +1027,7 @@ export function ModalDetallesProceso({
   const ec              = etapaColor(proceso.etapaActual);
   const barColor        = proceso.semaforo === 'verde' ? '#10B981' : proceso.semaforo === 'amarillo' ? '#F59E0B' : '#EF4444';
 
+<<<<<<< Updated upstream
   // ═══ Datos de archivos desde el backend (sin datos mock) ═══
   // Los archivos reales vienen del proceso.documentos
   const archivosReales: Archivo[] = (proceso.documentos || []).map((doc: any, index: number) => ({
@@ -1012,6 +1050,9 @@ export function ModalDetallesProceso({
   // Debug: verificar datos reales
   console.log('[DEBUG] Archivos reales del proceso:', archivosReales);
   console.log('[DEBUG] Total archivos:', TODOS_ARCHIVOS.length);
+=======
+  const TODOS_ARCHIVOS = [...archivosBackend, ...archivosSubidos];
+>>>>>>> Stashed changes
 
   // Extraer etapas únicas de los archivos para el filtro
   const etapasUnicas = Array.from(new Set(TODOS_ARCHIVOS.map(a => a.etapaProceso).filter(Boolean))) as string[];
