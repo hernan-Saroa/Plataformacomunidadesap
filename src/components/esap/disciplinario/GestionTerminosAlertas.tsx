@@ -369,55 +369,19 @@ export function GestionTerminosAlertas() {
   };
 
   const handleRecalcular = () => {
-    // Función para calcular días hábiles entre dos fechas
-    const calcularDiasHabiles = (fechaInicio: string, diasHabiles: number): { fechaVencimiento: string, diasRestantes: number } => {
+    // Función para calcular días calendario entre dos fechas (sin excluir fines de semana ni festivos)
+    const calcularDiasCalendario = (fechaInicio: string, diasCalendario: number): { fechaVencimiento: string, diasRestantes: number } => {
       const inicio = new Date(fechaInicio);
       const hoy = new Date();
-      let diasContados = 0;
-      let fechaActual = new Date(inicio);
-      
-      // Calcular fecha de vencimiento
-      while (diasContados < diasHabiles) {
-        fechaActual.setDate(fechaActual.getDate() + 1);
-        const diaSemana = fechaActual.getDay();
-        const fechaStr = fechaActual.toISOString().split('T')[0];
-        
-        // Solo contar si no es fin de semana ni festivo
-        const esFestivo = diasFestivos.some(f => f.fecha === fechaStr);
-        if (diaSemana !== 0 && diaSemana !== 6 && !esFestivo) {
-          diasContados++;
-        }
-      }
-      
+      const fechaActual = new Date(inicio);
+
+      // Calcular fecha de vencimiento sumando días calendario directamente
+      fechaActual.setDate(fechaActual.getDate() + diasCalendario);
+
       // Calcular días restantes desde hoy
-      let diasRestantesCalc = 0;
-      let fechaTemporal = new Date(hoy);
-      
-      if (fechaActual > hoy) {
-        while (fechaTemporal < fechaActual) {
-          fechaTemporal.setDate(fechaTemporal.getDate() + 1);
-          const diaSemana = fechaTemporal.getDay();
-          const fechaStr = fechaTemporal.toISOString().split('T')[0];
-          const esFestivo = diasFestivos.some(f => f.fecha === fechaStr);
-          
-          if (diaSemana !== 0 && diaSemana !== 6 && !esFestivo) {
-            diasRestantesCalc++;
-          }
-        }
-      } else {
-        // Si la fecha ya pasó, contar días negativos
-        while (fechaTemporal > fechaActual) {
-          const diaSemana = fechaTemporal.getDay();
-          const fechaStr = fechaTemporal.toISOString().split('T')[0];
-          const esFestivo = diasFestivos.some(f => f.fecha === fechaStr);
-          
-          if (diaSemana !== 0 && diaSemana !== 6 && !esFestivo) {
-            diasRestantesCalc--;
-          }
-          fechaTemporal.setDate(fechaTemporal.getDate() - 1);
-        }
-      }
-      
+      const diffMs = fechaActual.getTime() - hoy.getTime();
+      const diasRestantesCalc = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
       return {
         fechaVencimiento: fechaActual.toISOString().split('T')[0],
         diasRestantes: diasRestantesCalc
@@ -430,7 +394,7 @@ export function GestionTerminosAlertas() {
         return termino; // No recalcular términos cumplidos
       }
       
-      const { fechaVencimiento, diasRestantes } = calcularDiasHabiles(termino.fechaInicio, termino.diasHabiles);
+      const { fechaVencimiento, diasRestantes } = calcularDiasCalendario(termino.fechaInicio, termino.diasHabiles);
       
       // Determinar nuevo estado
       let nuevoEstado: 'pendiente' | 'proximo_vencer' | 'vencido' | 'cumplido' = 'pendiente';
@@ -451,7 +415,7 @@ export function GestionTerminosAlertas() {
     setTerminos(terminosActualizados);
     
     toast.success('Términos recalculados exitosamente', {
-      description: `${terminosActualizados.length} términos actualizados con ${diasFestivos.length} festivos`
+      description: `${terminosActualizados.length} términos actualizados en días calendario`
     });
   };
 
@@ -660,7 +624,7 @@ export function GestionTerminosAlertas() {
                 Cálculo Automático de Términos Procesales
               </p>
               <p className="text-xs sm:text-sm">
-                El sistema calcula automáticamente días hábiles excluyendo sábados, domingos y festivos configurados. 
+                El sistema calcula automáticamente los términos en días calendario.
                 Las alertas se envían automáticamente según las reglas configuradas.
               </p>
             </div>
@@ -674,8 +638,6 @@ export function GestionTerminosAlertas() {
           <div className="flex items-center gap-2 flex-wrap">
             {[
               { id: 'terminos', label: 'Términos', icon: <Clock className="w-4 h-4" />, count: terminos.length },
-              { id: 'calendario', label: 'Festivos', icon: <Calendar className="w-4 h-4" />, count: diasFestivos.length },
-              // { id: 'reglas', label: 'Reglas', icon: <Settings className="w-4 h-4" />, count: REGLAS_ALERTA_MOCK.length },
               { id: 'historial', label: 'Historial', icon: <Bell className="w-4 h-4" />, count: ALERTAS_MOCK.length }
             ].map((vista) => (
               <button
@@ -712,16 +674,6 @@ export function GestionTerminosAlertas() {
               >
                 <Plus className="w-4 h-4" />
                 <span className="hidden sm:inline">Nuevo Término</span>
-              </button>
-            )}
-            {vistaActual === 'calendario' && (
-              <button
-                onClick={() => setShowModalFestivo(true)}
-                className="px-3 py-2 rounded-lg text-white font-bold hover:shadow-lg transition-all text-xs sm:text-sm flex items-center gap-2"
-                style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
-              >
-                <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">Agregar Festivo</span>
               </button>
             )}
           </div>
@@ -962,94 +914,6 @@ export function GestionTerminosAlertas() {
             </div>
           )}
 
-          {/* VISTA: CALENDARIO FESTIVOS */}
-          {vistaActual === 'calendario' && (
-            <div className="space-y-4">
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
-                          Fecha
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
-                          Descripción
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
-                          Tipo
-                        </th>
-                        <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase">
-                          Acciones
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {diasFestivos.map((festivo) => (
-                        <tr key={festivo.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <Calendar className="w-4 h-4" style={{ color: '#003DA5' }} />
-                              <span className="text-sm font-bold text-gray-900">{festivo.fecha}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <p className="text-sm text-gray-900">{festivo.descripcion}</p>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border"
-                              style={{
-                                backgroundColor: festivo.tipo === 'nacional' ? '#DBEAFE' : festivo.tipo === 'regional' ? '#FEF3C7' : '#E0E7FF',
-                                color: festivo.tipo === 'nacional' ? '#1E40AF' : festivo.tipo === 'regional' ? '#92400E' : '#3730A3',
-                                borderColor: festivo.tipo === 'nacional' ? '#1E40AF' : festivo.tipo === 'regional' ? '#92400E' : '#3730A3'
-                              }}
-                            >
-                              {festivo.tipo === 'nacional' ? '🇨🇴 Nacional' : festivo.tipo === 'regional' ? '📍 Regional' : '🏢 Institucional'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => {
-                                  setNuevoFestivo({
-                                    fecha: festivo.fecha,
-                                    descripcion: festivo.descripcion,
-                                    tipo: festivo.tipo,
-                                    territorio: festivo.territorio || ''
-                                  });
-                                  setShowModalFestivo(true);
-                                  toast.info('Editar festivo', {
-                                    description: 'Funcionalidad en desarrollo'
-                                  });
-                                }}
-                                className="p-2 rounded-lg hover:bg-gray-100 border border-gray-300"
-                              >
-                                <Edit2 className="w-4 h-4 text-gray-600" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (confirm(`¿Está seguro de eliminar el festivo "${festivo.descripcion}"?`)) {
-                                    setDiasFestivos(diasFestivos.filter(f => f.id !== festivo.id));
-                                    toast.success('Festivo eliminado', {
-                                      description: `${festivo.descripcion} ha sido eliminado del calendario`
-                                    });
-                                  }
-                                }}
-                                className="p-2 rounded-lg hover:bg-red-50 border border-red-300"
-                              >
-                                <Trash2 className="w-4 h-4 text-red-600" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* VISTA: REGLAS DE ALERTA NO FUNCIONAL */}
           {vistaActual === 'reglas' && (
@@ -1448,104 +1312,6 @@ export function GestionTerminosAlertas() {
         )}
       </AnimatePresence>
 
-      {/* Modal Nuevo Festivo */}
-      <AnimatePresence>
-        {showModalFestivo && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[200] p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setShowModalFestivo(false);
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="w-full max-w-lg bg-white rounded-2xl shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="p-6 text-white rounded-t-2xl" style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Calendar className="w-6 h-6" />
-                    <h2 className="text-xl font-bold">Agregar Día Festivo</h2>
-                  </div>
-                  <button
-                    onClick={() => setShowModalFestivo(false)}
-                    className="p-2 rounded-lg hover:bg-white/20 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Fecha *
-                  </label>
-                  <input
-                    type="date"
-                    value={nuevoFestivo.fecha}
-                    onChange={(e) => setNuevoFestivo({...nuevoFestivo, fecha: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Descripción *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej: Día de la Independencia"
-                    value={nuevoFestivo.descripcion}
-                    onChange={(e) => setNuevoFestivo({...nuevoFestivo, descripcion: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Tipo *
-                  </label>
-                  <select
-                    value={nuevoFestivo.tipo}
-                    onChange={(e) => setNuevoFestivo({...nuevoFestivo, tipo: e.target.value as any})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="nacional">🇨🇴 Nacional</option>
-                    <option value="regional">📍 Regional</option>
-                    <option value="institucional">🏢 Institucional</option>
-                  </select>
-                </div>
-
-                <div className="flex gap-3 justify-end pt-4">
-                  <button
-                    onClick={() => setShowModalFestivo(false)}
-                    className="px-6 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all font-bold"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={() => {
-                      toast.success('Día festivo agregado');
-                      setShowModalFestivo(false);
-                    }}
-                    className="px-6 py-2.5 rounded-lg text-white font-bold hover:shadow-lg transition-all"
-                    style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
-                  >
-                    Agregar
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Modal Detalle */}
       <AnimatePresence>

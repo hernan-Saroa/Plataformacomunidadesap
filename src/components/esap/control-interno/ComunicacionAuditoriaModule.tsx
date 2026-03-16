@@ -701,6 +701,34 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 setInforme={setInformePreliminar}
                 onGenerar={handleGenerarInformePreliminar}
                 onPreview={() => setModalPreview({ tipo: 'preliminar', abierto: true })}
+                onDescargarPDF={async () => {
+                  if (!informePreliminar.generado) return;
+                  const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+                  const hallazgosParaPDF = (auditoria.hallazgos || []).map((h) => ({
+                    codigo: h.codigo,
+                    titulo: h.titulo,
+                    gravedad: h.gravedad,
+                    descripcion: h.descripcion || '',
+                    criterioIncumplido: h.criterioIncumplido,
+                    causas: h.causas,
+                    efectos: h.efectos,
+                    recomendaciones: h.recomendaciones,
+                  }));
+                  await exportarPDFInformeAuditoria(
+                    'preliminar',
+                    {
+                      codigo: auditoria.codigo,
+                      nombre: auditoria.nombre,
+                      proceso: auditoria.proceso,
+                      auditorLider:
+                        typeof auditoria.auditorLider === 'string'
+                          ? auditoria.auditorLider
+                          : (auditoria as any).auditorLider?.nombre || 'No asignado',
+                    },
+                    informePreliminar,
+                    hallazgosParaPDF
+                  );
+                }}
                 loading={loading}
                 puedeGenerar={!informePreliminar.generado}
                 embedded={embedded}
@@ -879,10 +907,11 @@ const SeccionInformePreliminar: React.FC<{
   setInforme: React.Dispatch<React.SetStateAction<InformePreliminar>>;
   onGenerar: () => void;
   onPreview: () => void;
+  onDescargarPDF?: () => void;
   loading?: boolean;
   puedeGenerar?: boolean;
   embedded?: boolean;
-}> = ({ auditoria, informe, setInforme, onGenerar, onPreview, loading, puedeGenerar = true, embedded = false }) => {
+}> = ({ auditoria, informe, setInforme, onGenerar, onPreview, onDescargarPDF, loading, puedeGenerar = true, embedded = false }) => {
   return (
     <div className="space-y-4">
       {/* Banner: Informe ya terminado */}
@@ -1016,7 +1045,13 @@ const SeccionInformePreliminar: React.FC<{
           <Eye className="w-4 h-4 mr-2" />
           Vista Previa
         </Button>
-        <Button variant="outline" size="sm" disabled={!informe.generado} className="font-medium">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!informe.generado}
+          onClick={onDescargarPDF}
+          className="font-medium"
+        >
           <Download className="w-4 h-4 mr-2" />
           Descargar PDF
         </Button>
@@ -1545,7 +1580,43 @@ const SeccionInformeFinal: React.FC<{
           <Eye className="w-4 h-4 mr-2" />
           Vista Previa
         </Button>
-        <Button variant="outline" size="sm" disabled={!informe.generado} className="font-medium">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!informe.generado}
+          className="font-medium"
+          onClick={async () => {
+            if (!informe.generado) return;
+            const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+            const hallazgosParaPDF = (hallazgos || []).map((h) => ({
+              codigo: h.codigo,
+              titulo: h.titulo,
+              gravedad: h.gravedad,
+              descripcion: h.descripcion || '',
+              criterioIncumplido: h.criterioIncumplido,
+              causas: h.causas,
+              efectos: h.efectos,
+              recomendaciones: h.recomendaciones,
+              estadoFinal: h.estado,
+              decisionAuditor: h.decisionAuditor,
+              fundamentacionTecnica: (h as any).fundamentacionTecnica,
+            }));
+            await exportarPDFInformeAuditoria(
+              'final',
+              {
+                codigo: auditoria.codigo,
+                nombre: auditoria.nombre,
+                proceso: auditoria.proceso,
+                auditorLider:
+                  typeof auditoria.auditorLider === 'string'
+                    ? auditoria.auditorLider
+                    : (auditoria as any).auditorLider?.nombre || 'No asignado',
+              },
+              informe,
+              hallazgosParaPDF
+            );
+          }}
+        >
           <Download className="w-4 h-4 mr-2" />
           Descargar PDF
         </Button>
@@ -1771,7 +1842,7 @@ const SeccionVerificacionCumplimiento: React.FC<{
                     <TextareaSIGL
                       placeholder="Evidencia verificada (obligatorio) *"
                       value={evidencia[id] || ''}
-                      onChange={(e) => setEvidencia(prev => ({ ...prev, [id]: e.target.value }))}
+                      onChange={(value) => setEvidencia(prev => ({ ...prev, [id]: value }))}
                       rows={2}
                       className="mb-2"
                     />
@@ -2202,6 +2273,36 @@ const ModalPreviewInforme: React.FC<{
   onClose: () => void;
 }> = ({ tipo, auditoria, informe, onClose }) => {
   const titulo = tipo === 'preliminar' ? 'Informe Preliminar' : tipo === 'final' ? 'Informe Final' : 'Informe Ejecutivo';
+  const handleDescargarPDF = async () => {
+    const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+    const hallazgosParaPDF =
+      tipo === 'preliminar' && auditoria.hallazgos?.length
+        ? auditoria.hallazgos.map((h: Hallazgo) => ({
+            codigo: h.codigo,
+            titulo: h.titulo,
+            gravedad: h.gravedad,
+            descripcion: h.descripcion || '',
+            criterioIncumplido: h.criterioIncumplido,
+            causas: h.causas,
+            efectos: h.efectos,
+            recomendaciones: h.recomendaciones,
+          }))
+        : undefined;
+    await exportarPDFInformeAuditoria(
+      tipo === 'preliminar' ? 'preliminar' : 'final',
+      {
+        codigo: auditoria.codigo,
+        nombre: auditoria.nombre,
+        proceso: auditoria.proceso,
+        auditorLider:
+          typeof auditoria.auditorLider === 'string'
+            ? auditoria.auditorLider
+            : (auditoria as any).auditorLider?.nombre || 'No asignado',
+      },
+      informe,
+      hallazgosParaPDF
+    );
+  };
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" size="lg">
@@ -2287,7 +2388,7 @@ const ModalPreviewInforme: React.FC<{
 
       <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
         <Button variant="outline" size="sm" onClick={onClose}>Cerrar</Button>
-        <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+        <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={handleDescargarPDF}>
           <Download className="w-4 h-4 mr-2" />
           Descargar PDF
         </Button>
