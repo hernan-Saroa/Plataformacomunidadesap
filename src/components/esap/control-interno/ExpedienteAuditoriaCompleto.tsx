@@ -30,7 +30,7 @@ import {
   Building2, User, Award, ClipboardCheck, MessageSquare,
   Sparkles, Info, ChevronRight, ChevronDown, Edit2, Trash2,
   Upload, Archive, ExternalLink, Filter, Search, Tag,
-  BarChart3, PieChart, LineChart, CheckSquare, Paperclip
+  BarChart3, PieChart, LineChart, CheckSquare, Paperclip, BookOpen
 } from 'lucide-react';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
@@ -53,7 +53,7 @@ import { PlaneacionAuditoriaModule } from './PlaneacionAuditoriaModule';
 import { ModalCargarDocumento } from './ModalCargarDocumento';
 import { ActividadesIntegradas } from './ActividadesAuditoriaIntegradas';
 import { ComunicacionAuditoriaModule } from './ComunicacionAuditoriaModule';
-import { SeccionDocumentosPlaneacion } from './SeccionDocumentosPlaneacion';
+import { SeccionDocumentosPorEtapa } from './SeccionDocumentosPorEtapa';
 import { SeccionHallazgosExpediente } from './SeccionHallazgosExpediente';
 import { ModalReunionApertura, ModalReunionCierre } from './ModalReunionAperturaCierre';
 import { SeccionTareasExpediente } from './SeccionTareasExpediente';
@@ -68,7 +68,7 @@ import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/envi
 type EstadoAuditoria = 'planeacion' | 'ejecucion' | 'comunicacion' | 'seguimiento' | 'finalizada';
 type TipoAuditoria = 'Sede' | 'Territorial' | 'Especial';
 type NivelRiesgo = 'Alto' | 'Medio' | 'Bajo';
-type TabActiva = 'general' | 'planeacion' | 'ejecucion' | 'comunicacion' | 'documentacion' | 'historial';
+type TabActiva = 'general' | 'planeacion' | 'ejecucion' | 'comunicacion' | 'seguimiento' | 'documentacion' | 'historial';
 
 interface Auditoria {
   id: string;
@@ -270,6 +270,7 @@ const pestanas = [
   { id: 'planeacion' as TabActiva, label: 'Planeación', icon: FileSearch },
   { id: 'ejecucion' as TabActiva, label: 'Ejecución', icon: ClipboardCheck },
   { id: 'comunicacion' as TabActiva, label: 'Comunicación', icon: FileText },
+  { id: 'seguimiento' as TabActiva, label: 'Seguimiento', icon: BookOpen },
   { id: 'documentacion' as TabActiva, label: 'Documentación', icon: FolderOpen },
   { id: 'historial' as TabActiva, label: 'Historial', icon: History }
 ];
@@ -725,16 +726,20 @@ export function ExpedienteAuditoriaCompleto({
     if (estadoLower === 'planeación' || estadoLower === 'planeacion') return 'planeacion';
     if (estadoLower === 'ejecución' || estadoLower === 'ejecucion') return 'ejecucion';
     if (estadoLower === 'comunicación' || estadoLower === 'comunicacion') return 'comunicacion';
-    if (estadoLower === 'seguimiento') return 'documentacion';
+    if (estadoLower === 'seguimiento') return 'seguimiento';
     if (estadoLower === 'finalizada') return 'historial';
     return 'general';
   };
   
   const [activeTab, setActiveTab] = useState<TabActiva>(getTabAutomatico());
   const [filtroDocumentos, setFiltroDocumentos] = useState<string>('todos');
+  const wasOpenRef = useRef(false);
 
+  // Solo aplicar tab automático al ABRIR el modal; no sobrescribir cuando el usuario ya eligió una pestaña
   useEffect(() => {
-    if (isOpen) {
+    const justOpened = isOpen && !wasOpenRef.current;
+    wasOpenRef.current = isOpen;
+    if (justOpened && isOpen) {
       const tab = tabInicial && tabInicial !== 'general' ? (tabInicial as TabActiva) : getTabAutomatico();
       setActiveTab(tab);
     }
@@ -1225,6 +1230,15 @@ export function ExpedienteAuditoriaCompleto({
               }}
                 />
               )}
+              {activeTab === 'seguimiento' && (
+                <TabSeguimiento
+                  auditoria={auditoria}
+                  onComunicacionCompletada={() => {
+                    setRecargarTrigger(t => t + 1);
+                    onComunicacionCompletadaProp?.();
+                  }}
+                />
+              )}
               {activeTab === 'documentacion' && (
                 <TabDocumentacion
                   documentos={documentosFiltrados}
@@ -1549,7 +1563,7 @@ function TabPlaneacion({ auditoria }: TabFaseProps) {
       <div className="bg-white border-2 border-purple-200 rounded-lg p-4">
         <SeccionListasChequeoExpediente auditoriaId={auditoria.id} etapaActual="Planeación" />
       </div>
-      <SeccionDocumentosPlaneacion auditoriaId={auditoria.id} />
+      <SeccionDocumentosPorEtapa auditoriaId={auditoria.id} etapa="planeacion" />
     </div>
   );
 }
@@ -1674,6 +1688,9 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist }: Ta
         <SeccionTareasExpediente auditoriaId={auditoria.id} />
       </div>
 
+      {/* DOCUMENTOS DE EJECUCIÓN (al final) */}
+      <SeccionDocumentosPorEtapa auditoriaId={auditoria.id} etapa="ejecucion" />
+
       <ModalReunionApertura
         isOpen={modalAperturaOpen}
         onClose={() => setModalAperturaOpen(false)}
@@ -1714,6 +1731,36 @@ function TabComunicacion({ auditoria, onComunicacionCompletada }: TabFaseProps) 
         <ComunicacionAuditoriaModule
           auditoriaId={auditoria.id}
           auditoriaInfo={{ codigo: auditoria.codigo, nombre: auditoria.nombre }}
+          estadoAuditoria={auditoria.estado}
+          embedded
+          onComunicacionCompletada={onComunicacionCompletada}
+        />
+      </div>
+      {/* DOCUMENTOS DE COMUNICACIÓN (al final) */}
+      <SeccionDocumentosPorEtapa auditoriaId={auditoria.id} etapa="comunicacion" />
+    </div>
+  );
+}
+
+// Tab Seguimiento: Verificación de Cumplimiento + Informe de Cierre (mismo nivel que Comunicación)
+function TabSeguimiento({ auditoria, onComunicacionCompletada }: TabFaseProps) {
+  return (
+    <div className="space-y-4">
+      <Card className="p-3 border-l-4 border-l-indigo-600 bg-indigo-50">
+        <div className="flex items-center gap-2">
+          <BookOpen className="w-5 h-5 text-indigo-600" />
+          <div>
+            <p className="text-sm font-bold text-indigo-900">Seguimiento y Cierre</p>
+            <p className="text-xs text-indigo-700">Verificación de cumplimiento del plan e informe de cierre</p>
+          </div>
+        </div>
+      </Card>
+      <div className="bg-white border-2 border-indigo-200 rounded-lg p-4">
+        <ComunicacionAuditoriaModule
+          auditoriaId={auditoria.id}
+          auditoriaInfo={{ codigo: auditoria.codigo, nombre: auditoria.nombre }}
+          estadoAuditoria="Seguimiento"
+          soloSeguimiento
           embedded
           onComunicacionCompletada={onComunicacionCompletada}
         />

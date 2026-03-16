@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -120,6 +121,7 @@ interface Archivo {
 interface ModalDetallesProcesoProps {
   proceso: Proceso;
   onClose: () => void;
+  onReabrir?: () => void; // Callback para reopen el modal después de confirmar envío a revisión
   onGestionAutos: () => void;
   onGestionEvidencias: () => void;
   onGestionOficios: () => void;
@@ -551,7 +553,7 @@ function ModalConfirmarEnvioRevision({
   return createPortal(
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
-      className="fixed inset-0 z-[250] flex items-center justify-center"
+      className="fixed inset-0 z-[500] flex items-center justify-center"
       style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
       onClick={(e) => e.target === e.currentTarget && onCancelar()}>
       <motion.div
@@ -666,7 +668,7 @@ function ModalConfirmarEnvioRevision({
 // ─── Componente Principal ─────────────────────────────────────────────────────
 
 export function ModalDetallesProceso({
-  proceso, onClose,
+  proceso, onClose, onReabrir,
   onGestionAutos, onGestionEvidencias, onGestionOficios, onGestionActas,
   onHistorial, onExpediente,
   onEnviarARevision, onNavigateToRevision,
@@ -688,6 +690,7 @@ export function ModalDetallesProceso({
   const [cargasActivas, setCargasActivas] = useState<CargaActiva[]>([]);
   const [mostrarAlertaCierre, setMostrarAlertaCierre] = useState(false);
   const [archivosSubidos, setArchivosSubidos] = useState<Archivo[]>([]);
+  const [archivosBackend, setArchivosBackend] = useState<Archivo[]>([]);
   const [dragging, setDragging] = useState(false);
   const [autoEnviarRevision, setAutoEnviarRevision] = useState<Archivo | null>(null);
   const [autoRecargar, setAutoRecargar] = useState<Archivo | null>(null);
@@ -731,6 +734,41 @@ export function ModalDetallesProceso({
       }));
     } catch { /* quota excedida — ignorar */ }
   }, [filtro, filtroEtapa, vistaAgrupada, filtroEtapaAct, vistaAgrupadaAct, filtroEtapaTar, vistaAgrupadaTar, filtroEtapaNota, vistaAgrupadaNota, tabActiva, STORAGE_KEY]);
+
+  // ═══ Cargar documentos del expediente desde el backend ═══
+  useEffect(() => {
+    if (!proceso?.id) return;
+    disciplinaryService.getDocumentosExpediente(proceso.id)
+      .then(res => {
+        const mapped: Archivo[] = (res.documentos || []).map((doc: any) => {
+          const ext = (doc.archivoNombre || doc.nombre || '').split('.').pop()?.toLowerCase() || 'pdf';
+          const tipoValido = (['auto', 'evidencia', 'oficio', 'acta'] as const).includes(doc.tipo)
+            ? doc.tipo as 'auto' | 'evidencia' | 'oficio' | 'acta'
+            : 'evidencia';
+          const estadoAuto = doc.metadatos?.estado;
+          const estado: Archivo['estado'] = estadoAuto === 'FIRMADO' || estadoAuto === 'NOTIFICADO' || estadoAuto === 'APROBADO'
+            ? 'aprobado'
+            : estadoAuto === 'EN_REVISION' ? 'en_revision'
+            : estadoAuto === 'DEVUELTO' ? 'devuelto'
+            : estadoAuto === 'BORRADOR' ? 'borrador'
+            : 'aprobado';
+          return {
+            id: doc.id,
+            nombre: doc.nombre,
+            tipo: tipoValido,
+            fecha: doc.fechaCarga ? doc.fechaCarga.split('T')[0] : '',
+            firmante: doc.usuarioCarga || 'Sistema',
+            estado,
+            tamaño: doc.tamaño || '0 KB',
+            extension: ext as any,
+            version: doc.version || 1,
+            etapaProceso: doc.etapa,
+          };
+        });
+        setArchivosBackend(mapped);
+      })
+      .catch(err => console.error('[ModalDetallesProceso] Error cargando documentos:', err));
+  }, [proceso?.id]);
 
   // ═══ Navegación rápida desde Scorecard ═══
   const navigateToTab = useCallback((tab: Tab, etapa: string) => {
@@ -989,17 +1027,7 @@ export function ModalDetallesProceso({
   const ec              = etapaColor(proceso.etapaActual);
   const barColor        = proceso.semaforo === 'verde' ? '#10B981' : proceso.semaforo === 'amarillo' ? '#F59E0B' : '#EF4444';
 
-  const ARCHIVOS_MOCK: Archivo[] = [
-    { id: 'f1', nombre: `Auto apertura indagación — ${proceso.numeroProceso}`, tipo: 'auto',      fecha: '2026-02-10', firmante: 'Dr. Andrés Moreno', estado: 'aprobado', tamaño: '124 KB', extension: 'pdf', version: 2, etapaProceso: 'Indagación' },
-    { id: 'f1b', nombre: `Auto de citación a versión libre — ${proceso.numeroProceso}`, tipo: 'auto', fecha: '2026-02-18', firmante: 'Dr. Andrés Moreno', estado: 'en_revision', tamaño: '98 KB', extension: 'pdf', version: 1, fechaEnvioRevision: '2026-02-18', etapaProceso: 'Indagación' },
-    { id: 'f1c', nombre: `Auto de práctica de pruebas — ${proceso.numeroProceso}`, tipo: 'auto', fecha: '2026-02-20', firmante: 'Dr. Andrés Moreno', estado: 'devuelto', tamaño: '112 KB', extension: 'pdf', version: 1, observacionesDevolucion: 'Falta referencia normativa en el artículo segundo. Corregir y reenviar.', etapaProceso: 'Investigación' },
-    { id: 'f1d', nombre: `Auto inhibitorio parcial — ${proceso.numeroProceso}`, tipo: 'auto', fecha: '2026-02-22', firmante: 'Dr. Andrés Moreno', estado: 'borrador', tamaño: '76 KB', extension: 'pdf', version: 1, etapaProceso: 'Valoración' },
-    { id: 'f2', nombre: 'Evidencia fotográfica uso vehículo',                  tipo: 'evidencia', fecha: '2026-02-08', firmante: 'Dra. Laura Gómez',  estado: 'aprobado', tamaño: '2.1 MB', extension: 'jpg', etapaProceso: 'Valoración' },
-    { id: 'f3', nombre: 'Oficio citación a versión libre',                     tipo: 'oficio',    fecha: '2026-02-05', firmante: 'Dr. Andrés Moreno', estado: 'borrador', tamaño: '88 KB',  extension: 'pdf', etapaProceso: 'Indagación' },
-    { id: 'f4', nombre: 'Acta diligencia inicial',                             tipo: 'acta',      fecha: '2026-01-30', firmante: 'Secretaría OCID',   estado: 'aprobado', tamaño: '156 KB', extension: 'pdf', etapaProceso: 'Recepción' },
-  ];
-
-  const TODOS_ARCHIVOS = [...ARCHIVOS_MOCK, ...archivosSubidos];
+  const TODOS_ARCHIVOS = [...archivosBackend, ...archivosSubidos];
 
   // Extraer etapas únicas de los archivos para el filtro
   const etapasUnicas = Array.from(new Set(TODOS_ARCHIVOS.map(a => a.etapaProceso).filter(Boolean))) as string[];
@@ -1263,9 +1291,16 @@ export function ModalDetallesProceso({
   };
 
   // ═══ Enviar Auto a Revisión y Aprobación ═══
+  // Estado para rastrear si debemos reopen el modal después de cerrar el de confirmación
+  const [debeReabrir, setDebeReabrir] = useState(false);
+
   const handleEnviarARevision = useCallback((archivo: Archivo) => {
+    console.log('[DEBUG] handleEnviarARevision llamado con archivo:', archivo);
+    // Primero mostrar el modal de confirmación SIN cerrar el modal principal
+    // Esto evita que el componente se desmonte antes de mostrar la confirmación
     setAutoEnviarRevision(archivo);
     setObservacionesEnvio('');
+    console.log('[DEBUG] autoEnviarRevision establecido, valor actual:', archivo);
   }, []);
 
   const confirmarEnvioRevision = useCallback(() => {
@@ -1277,11 +1312,11 @@ export function ModalDetallesProceso({
     const actualizarArchivo = (prev: Archivo[]) =>
       prev.map(a => a.id === id ? { ...a, estado: 'en_revision' as const, fechaEnvioRevision: ahora } : a);
 
-    // Verificar si el archivo está en mock o subidos
-    const enMock = ARCHIVOS_MOCK.find(a => a.id === id);
-    if (enMock) {
-      enMock.estado = 'en_revision';
-      enMock.fechaEnvioRevision = ahora;
+    // Verificar si el archivo está en archivos reales o subidos
+    const enReal = archivosReales.find(a => a.id === id);
+    if (enReal) {
+      enReal.estado = 'en_revision';
+      enReal.fechaEnvioRevision = ahora;
     } else {
       setArchivosSubidos(actualizarArchivo);
     }
@@ -1391,10 +1426,10 @@ export function ModalDetallesProceso({
 
   const handleAutoAprobado = useCallback((archivoId: string, comentarios: string) => {
     // Actualizar estado a aprobado
-    const enMock = ARCHIVOS_MOCK.find(a => a.id === archivoId);
-    if (enMock) {
-      enMock.estado = 'aprobado';
-      enMock.version = (enMock.version || 1) + 1;
+    const enReal = archivosReales.find(a => a.id === archivoId);
+    if (enReal) {
+      enReal.estado = 'aprobado';
+      enReal.version = (enReal.version || 1) + 1;
     } else {
       setArchivosSubidos(prev => prev.map(a =>
         a.id === archivoId ? { ...a, estado: 'aprobado' as const, version: (a.version || 1) + 1 } : a
@@ -1408,10 +1443,10 @@ export function ModalDetallesProceso({
   }, []);
 
   const handleAutoDevuelto = useCallback((archivoId: string, motivo: string, comentarios: string) => {
-    const enMock = ARCHIVOS_MOCK.find(a => a.id === archivoId);
-    if (enMock) {
-      enMock.estado = 'devuelto';
-      enMock.observacionesDevolucion = `${motivo}: ${comentarios}`;
+    const enReal = archivosReales.find(a => a.id === archivoId);
+    if (enReal) {
+      enReal.estado = 'devuelto';
+      enReal.observacionesDevolucion = `${motivo}: ${comentarios}`;
     } else {
       setArchivosSubidos(prev => prev.map(a =>
         a.id === archivoId ? { ...a, estado: 'devuelto' as const, observacionesDevolucion: `${motivo}: ${comentarios}` } : a
@@ -1441,13 +1476,13 @@ export function ModalDetallesProceso({
     const nuevaVersion = (autoRecargar.version || 1) + 1;
 
     // Actualizar el archivo existente con nueva versión
-    const enMock = ARCHIVOS_MOCK.find(a => a.id === id);
-    if (enMock) {
-      enMock.estado = 'borrador';
-      enMock.version = nuevaVersion;
-      enMock.fecha = new Date().toISOString().split('T')[0];
-      enMock.tamaño = formatBytes(nuevoArchivo.size);
-      enMock.observacionesDevolucion = undefined;
+    const enReal = archivosReales.find(a => a.id === id);
+    if (enReal) {
+      enReal.estado = 'borrador';
+      enReal.version = nuevaVersion;
+      enReal.fecha = new Date().toISOString().split('T')[0];
+      enReal.tamaño = formatBytes(nuevoArchivo.size);
+      enReal.observacionesDevolucion = undefined;
     } else {
       setArchivosSubidos(prev => prev.map(a =>
         a.id === id ? {
@@ -3095,17 +3130,37 @@ export function ModalDetallesProceso({
         )}
       </AnimatePresence>
 
-      {/* ═══ Sub-modal: Confirmar envío a Revisión y Aprobación (z-[250]) ═══ */}
+      {/* ═══ Sub-modal: Confirmar envío a Revisión y Aprobación (z-[600]) ═══ */}
       <AnimatePresence>
         {autoEnviarRevision && (
-          <ModalConfirmarEnvioRevision
-            archivo={autoEnviarRevision}
-            proceso={proceso}
-            observaciones={observacionesEnvio}
-            onObservacionesChange={setObservacionesEnvio}
-            onConfirmar={confirmarEnvioRevision}
-            onCancelar={() => setAutoEnviarRevision(null)}
-          />
+          createPortal(
+            <ModalConfirmarEnvioRevision
+              archivo={autoEnviarRevision}
+              proceso={{
+                numeroProceso: proceso.numeroProceso,
+                etapaActual: proceso.etapaActual,
+                profesionalAsignado: typeof proceso.profesionalAsignado === 'object' && proceso.profesionalAsignado
+                  ? { nombre: (proceso.profesionalAsignado as any)?.nombre || '' }
+                  : typeof proceso.profesionalAsignado === 'string'
+                    ? { nombre: proceso.profesionalAsignado }
+                    : undefined
+              }}
+              observaciones={observacionesEnvio}
+              onObservacionesChange={setObservacionesEnvio}
+              onConfirmar={() => {
+                confirmarEnvioRevision();
+                // Cerrar el modal principal después de confirmar
+                onClose();
+              }}
+              onCancelar={() => {
+                setAutoEnviarRevision(null);
+                setObservacionesEnvio('');
+                // Cerrar el modal principal cuando se cancela
+                onClose();
+              }}
+            />,
+            document.body
+          )
         )}
       </AnimatePresence>
 

@@ -1316,6 +1316,105 @@ export class AuditoriasService {
   }
 
   /**
+   * Resumen ejecutivo para el Informe de Cierre (Sección 2 - auto-compilado)
+   */
+  async getResumenEjecutivoCierre(id: string): Promise<any> {
+    const auditoria = await this.auditoriaRepository.findOne({
+      where: { id },
+      relations: ['objetivos', 'equipoAuditores'],
+    });
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    }
+    const fechaInicio = auditoria.fechaInicio instanceof Date
+      ? auditoria.fechaInicio.toISOString().split('T')[0]
+      : String(auditoria.fechaInicio).split('T')[0];
+    const fechaFin = auditoria.fechaFin instanceof Date
+      ? auditoria.fechaFin.toISOString().split('T')[0]
+      : String(auditoria.fechaFin).split('T')[0];
+    return {
+      codigo: auditoria.codigo,
+      nombre: auditoria.nombre,
+      procesoAuditado: auditoria.nombre,
+      fechaInicio,
+      fechaFin,
+      auditorLider: auditoria.auditorLiderId,
+      totalHallazgos: auditoria.hallazgos ?? 0,
+      observacionesCierre: auditoria.observacionesCierre,
+      leccionesAprendidas: auditoria.leccionesAprendidas,
+      recomendacionesFuturasAuditorias: auditoria.recomendacionesFuturasAuditorias,
+      informeCierreAprobado: auditoria.informeCierreAprobado,
+    };
+  }
+
+  /**
+   * Actualiza borrador del Informe de Cierre (lecciones y recomendaciones)
+   */
+  async updateInformeCierre(
+    id: string,
+    dto: { leccionesAprendidas?: string; recomendacionesFuturasAuditorias?: string },
+  ): Promise<Auditoria> {
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    }
+    if (auditoria.informeCierreAprobado) {
+      throw new BadRequestException('El informe de cierre ya fue aprobado y no puede modificarse');
+    }
+    if (dto.leccionesAprendidas !== undefined) auditoria.leccionesAprendidas = dto.leccionesAprendidas;
+    if (dto.recomendacionesFuturasAuditorias !== undefined) auditoria.recomendacionesFuturasAuditorias = dto.recomendacionesFuturasAuditorias;
+    const saved = await this.auditoriaRepository.save(auditoria);
+    return this.serializeAuditoria(saved) as any;
+  }
+
+  /**
+   * Aprueba el Informe de Cierre (Jefe OCI). Pasa la auditoría a Finalizada.
+   * Debe llamarse solo cuando todas las acciones estén verificadas (validación en controller).
+   */
+  async aprobarInformeCierre(
+    id: string,
+    aprobadoPor: string,
+    aprobadoPorId?: number,
+  ): Promise<Auditoria> {
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    }
+    if (auditoria.informeCierreAprobado) {
+      throw new BadRequestException('El informe de cierre ya fue aprobado');
+    }
+    if (auditoria.estadoKanban === EstadoKanban.FINALIZADA) {
+      throw new BadRequestException('La auditoría ya está finalizada');
+    }
+    const estadoAnterior = auditoria.estadoKanban;
+    auditoria.informeCierreAprobado = true;
+    auditoria.informeCierreAprobadoPor = aprobadoPor;
+    auditoria.informeCierreAprobadoPorId = aprobadoPorId ?? null;
+    auditoria.informeCierreAprobadoAt = new Date();
+    auditoria.estadoKanban = EstadoKanban.FINALIZADA;
+    auditoria.fase = FaseAuditoria.COMPLETADA;
+    auditoria.progreso = 100;
+    if (!auditoria.fechaFinalizacion) auditoria.fechaFinalizacion = new Date();
+    if (!auditoria.finalizadaPor) auditoria.finalizadaPor = aprobadoPor;
+    if (auditoria.finalizadaPorId == null && aprobadoPorId != null) auditoria.finalizadaPorId = aprobadoPorId;
+    const saved = await this.auditoriaRepository.save(auditoria);
+
+    const historial = new HistorialAuditoria();
+    historial.auditoriaId = id;
+    historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
+    historial.fecha = new Date();
+    historial.hora = new Date().toTimeString().slice(0, 5);
+    historial.usuarioId = aprobadoPorId || 1;
+    historial.accion = 'Aprobación Informe de Cierre';
+    historial.descripcion = `Informe de cierre aprobado por Jefe OCI. Auditoría ${auditoria.codigo} cerrada.`;
+    historial.estadoAnterior = estadoAnterior;
+    historial.estadoNuevo = EstadoKanban.FINALIZADA;
+    await this.historialRepository.save(historial);
+
+    return this.serializeAuditoria(saved) as any;
+  }
+
+  /**
    * Incrementa el contador de hallazgos
    */
   async incrementarHallazgos(id: string): Promise<Auditoria> {

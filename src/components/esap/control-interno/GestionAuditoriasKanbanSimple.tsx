@@ -2412,6 +2412,35 @@ export function GestionAuditoriasKanbanSimple() {
     // Si hay error, el toast lo muestra el hook y el modal permanece abierto
   };
 
+  // Helper: valida documentos de una etapa antes de avanzar (plantillas aplicables a esta auditoría).
+  // Si no hay plantillas definidas para la etapa (auditoriaId null), no se exige ningún documento.
+  const validarDocumentosEtapa = async (
+    auditoriaId: string,
+    etapa: string,
+    etiquetaEtapa: string,
+    estadoDestino: string,
+  ): Promise<boolean> => {
+    try {
+      const [plantillasAplicables, docs] = await Promise.all([
+        controlInternoService.getPlantillasRequeridas(etapa, auditoriaId).catch(() => []),
+        controlInternoService.getDocumentosByEtapa(auditoriaId, etapa),
+      ]);
+      const requeridos = (plantillasAplicables || []).length;
+      const total = (docs || []).filter((d: any) => d.auditoriaId === auditoriaId).length;
+      if (requeridos > 0 && total < requeridos) {
+        toast.error('Documentos incompletos', {
+          description: `Debe subir ${requeridos} documento(s) en ${etiquetaEtapa} (uno por cada plantilla) para avanzar a ${estadoDestino}. Tiene ${total}.`,
+          duration: 5000,
+        });
+        return false;
+      }
+      return true;
+    } catch {
+      toast.error('No se pudo validar los documentos');
+      return false;
+    }
+  };
+
   const handleDrop = async (item: Auditoria, nuevoEstado: EstadoAuditoria) => {
     if (item.estado === nuevoEstado) return;
 
@@ -2424,28 +2453,17 @@ export function GestionAuditoriasKanbanSimple() {
 
     const estadoAnterior = item.estado;
 
-    // ============ VALIDACIÓN DOCUMENTOS PLANEACIÓN (BLOQUEA AL ARRASTRAR) ============
+    // ============ VALIDACIÓN DOCUMENTOS POR ETAPA (BLOQUEA AL ARRASTRAR) ============
     if (estadoAnterior === 'Planeación' && nuevoEstado === 'Ejecución') {
-      try {
-        const [todos, docs] = await Promise.all([
-          controlInternoService.getDocumentos({ etapa: 'planeacion' }),
-          controlInternoService.getDocumentosByEtapa(item.id, 'planeacion'),
-        ]);
-        const plantillas = (todos || []).filter((d: any) => !d.auditoriaId);
-        const requeridos = Math.max(plantillas.length, 1);
-        const total = (docs || []).filter((d: any) => d.auditoriaId === item.id).length;
-        if (total < requeridos) {
-          toast.error('Documentos incompletos', {
-            description: `Debe subir ${requeridos} documento(s) en Planeación antes de avanzar a Ejecución. Tiene ${total}.`,
-            duration: 5000,
-          });
-          return;
-        }
-      } catch {
-        toast.error('No se pudo validar los documentos');
-        return;
-      }
+      if (!(await validarDocumentosEtapa(item.id, 'planeacion', 'Planeación', 'Ejecución'))) return;
     }
+    if (estadoAnterior === 'Ejecución' && nuevoEstado === 'Comunicación') {
+      if (!(await validarDocumentosEtapa(item.id, 'ejecucion', 'Ejecución', 'Comunicación'))) return;
+    }
+    if (estadoAnterior === 'Comunicación' && nuevoEstado === 'Seguimiento') {
+      if (!(await validarDocumentosEtapa(item.id, 'comunicacion', 'Comunicación', 'Seguimiento'))) return;
+    }
+
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
     
     // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============
@@ -2547,28 +2565,15 @@ export function GestionAuditoriasKanbanSimple() {
 
     const estadoAnterior = auditoriaActual.estado;
 
-    // ============ VALIDACIÓN DOCUMENTOS PLANEACIÓN (BLOQUEA) ============
-    // Requeridos = cantidad de plantillas en biblioteca (una subida por plantilla)
+    // ============ VALIDACIÓN DOCUMENTOS POR ETAPA (BLOQUEA) ============
     if (estadoAnterior === 'Planeación' && nuevoEstado === 'Ejecución') {
-      try {
-        const [todos, docs] = await Promise.all([
-          controlInternoService.getDocumentos({ etapa: 'planeacion' }),
-          controlInternoService.getDocumentosByEtapa(auditoriaId, 'planeacion'),
-        ]);
-        const plantillas = (todos || []).filter((d: any) => !d.auditoriaId);
-        const requeridos = Math.max(plantillas.length, 1);
-        const total = (docs || []).filter((d: any) => d.auditoriaId === auditoriaId).length;
-        if (total < requeridos) {
-          toast.error('Documentos incompletos', {
-            description: `Debe subir ${requeridos} documento(s) en Planeación (uno por cada plantilla) para avanzar a Ejecución. Tiene ${total}.`,
-            duration: 5000,
-          });
-          return;
-        }
-      } catch {
-        toast.error('No se pudo validar los documentos');
-        return;
-      }
+      if (!(await validarDocumentosEtapa(auditoriaId, 'planeacion', 'Planeación', 'Ejecución'))) return;
+    }
+    if (estadoAnterior === 'Ejecución' && nuevoEstado === 'Comunicación') {
+      if (!(await validarDocumentosEtapa(auditoriaId, 'ejecucion', 'Ejecución', 'Comunicación'))) return;
+    }
+    if (estadoAnterior === 'Comunicación' && nuevoEstado === 'Seguimiento') {
+      if (!(await validarDocumentosEtapa(auditoriaId, 'comunicacion', 'Comunicación', 'Seguimiento'))) return;
     }
 
     // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============

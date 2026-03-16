@@ -15,6 +15,7 @@ import { Documento } from '../documentos/entities/documento.entity';
 import { HallazgosModule } from '../hallazgos/hallazgos.module';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { ConfiguracionesModule } from '../configuraciones/configuraciones.module';
+import { PlanesMejoramientoModule } from '../planes-mejoramiento/planes-mejoramiento.module';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { AuthModule } from '../../auth/auth.module';
 import { TemplatesController } from './templates.controller';
@@ -36,6 +37,7 @@ import { TemplatesController } from './templates.controller';
     HallazgosModule,
     NotificacionesModule,
     ConfiguracionesModule, // Para obtener profesionales OCIG
+    PlanesMejoramientoModule, // Para validar acciones en aprobar informe cierre
     AuthModule, // Para tener acceso a JwtService
   ],
   controllers: [AuditoriasController, TemplatesController],

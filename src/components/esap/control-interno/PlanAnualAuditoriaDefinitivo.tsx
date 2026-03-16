@@ -1307,11 +1307,11 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               return '';
             };
 
-            // Mapear estado del backend al frontend (en-progreso → EN_EJECUCION, retrasada → PENDIENTE)
-            const estadoBackend = (act.estado || 'pendiente').toLowerCase();
+            // Mapear estado del backend al frontend (en-progreso/en_progreso → EN_EJECUCION, retrasada → EN_EJECUCION)
+            const estadoBackend = (act.estado || 'pendiente').toLowerCase().replace(/_/g, '-');
             const estadoFront: EstadoActividad =
               estadoBackend === 'completada' ? 'COMPLETADA' :
-              estadoBackend === 'en-progreso' ? 'EN_EJECUCION' : 'PENDIENTE';
+              estadoBackend === 'en-progreso' || estadoBackend === 'retrasada' ? 'EN_EJECUCION' : 'PENDIENTE';
 
             // Obtener configuración de evidencias del backend y transformar al formato del frontend
             const configBackend = actExtendido.configuracion_evidencias || actExtendido.configuracionEvidencias;

@@ -43,6 +43,28 @@ export class FilesController {
         // Obtener el tipo de documento del body
         const tipoDocumento = (req.body?.tipo as string)?.toUpperCase() || 'default';
         
+        // Verificar extensiones prohibidas PRIMERO (seguridad)
+        const forbiddenPattern = FilesController.getForbiddenExtensions();
+        if (forbiddenPattern.test(file.originalname)) {
+          cb(new HttpException(
+            `Tipo de archivo no permitido. Las extensiones prohibidas incluyen: zip, exe, bat, cmd, ps1, sh, bash, vbs, js, jar, rar, 7z, tar, gz, bz2, iso, img, dmg`,
+            HttpStatus.BAD_REQUEST
+          ), false);
+          return;
+        }
+        
+        // Validar tamaño para evidencias (hasta 10GB)
+        if (tipoDocumento === 'EVIDENCIA') {
+          const maxSizeEvidencia = 10 * 1024 * 1024 * 1024; // 10GB
+          if (file.size > maxSizeEvidencia) {
+            cb(new HttpException(
+              `El archivo excede el tamaño máximo permitido para evidencias (10 GB)`,
+              HttpStatus.BAD_REQUEST
+            ), false);
+            return;
+          }
+        }
+        
         // Usar métodos estáticos para la validación
         const allowedMimeTypes = FilesController.getAllowedMimeTypes(tipoDocumento);
         const allowedExts = FilesController.getAllowedExtensions(tipoDocumento);
@@ -62,7 +84,8 @@ export class FilesController {
   uploadFile(
     @UploadedFile(new ParseFilePipe({
       validators: [
-        new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }),
+        // Por defecto 50MB para autos/oficios. Las evidencias se validan en fileFilter.
+        new MaxFileSizeValidator({ maxSize: 50 * 1024 * 1024 }),
       ],
     })) file: Express.Multer.File,
     @Body() body: { tipo?: string },
@@ -162,6 +185,26 @@ export class FilesController {
     };
 
     return extensiones[tipoDocumento] ?? extensiones['default'];
+  }
+
+  /**
+   * Obtiene el tamaño máximo de archivo según el tipo de documento
+   * Evidencias: 10 GB (para videos grandes)
+   * Autos/Oficios: 50 MB (solo PDFs)
+   */
+  private static getMaxFileSize(tipoDocumento: string): number {
+    const tamanoMaximo: Record<string, number> = {
+      // Evidencias: hasta 10 GB (10 * 1024 * 1024 * 1024 bytes)
+      'EVIDENCIA': 10 * 1024 * 1024 * 1024,
+      // Autos: 50 MB
+      'AUTO': 50 * 1024 * 1024,
+      // Oficios: 50 MB
+      'OFICIO': 50 * 1024 * 1024,
+      // Default: 50 MB
+      'default': 50 * 1024 * 1024,
+    };
+
+    return tamanoMaximo[tipoDocumento] ?? tamanoMaximo['default'];
   }
 
   @Get(':filename')
