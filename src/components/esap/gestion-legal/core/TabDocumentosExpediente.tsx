@@ -22,14 +22,9 @@ import {
   CATEGORIAS_DOCUMENTOS,
   type DocumentoExpediente,
 } from './expedienteShared';
-import { getServiceUrl, API_MODE } from '../../../../config/environment';
+import { apiClient } from '../../../../services/api/apiClient';
 
-// ─── API helpers ──────────────────────────────────────────────────────────────
-
-function getLegalApiBase(): string {
-  if (API_MODE === 'direct') return getServiceUrl('legal');
-  return `${getServiceUrl('legal')}/legal/api/v1`;
-}
+const LEGAL_API = '/legal/api/v1';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -118,10 +113,7 @@ export function TabDocumentosExpediente({
   async function cargarPlantillas() {
     setCargandoPlantillas(true);
     try {
-      const base = getLegalApiBase();
-      const res = await fetch(`${base}/plantillas`);
-      if (!res.ok) throw new Error();
-      const data: PlantillaApi[] = await res.json();
+      const data: PlantillaApi[] = await apiClient.get(`${LEGAL_API}/plantillas`);
       setPlantillas(data);
     } catch {
       toast.error('No se pudieron cargar las plantillas');
@@ -190,10 +182,7 @@ export function TabDocumentosExpediente({
 
   const handleDescargarPlantilla = async (plantilla: PlantillaApi) => {
     try {
-      const base = getLegalApiBase();
-      const res = await fetch(`${base}/plantillas/${plantilla.id}/download`);
-      if (!res.ok) throw new Error();
-      const blob = await res.blob();
+      const blob = await apiClient.getBlob(`${LEGAL_API}/plantillas/${plantilla.id}/download`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
