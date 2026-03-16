@@ -51,7 +51,9 @@ const buildEvidenciaFileUrl = (archivoUrl: string, forDownload: boolean = false,
     
     // Construir la URL completa usando buildApiUrl con la ruta relativa
     if (API_MODE === 'direct') {
-      const result = `${MICROSERVICE_URLS['control-disciplinario']}${path}`;
+      // En direct mode el backend no tiene prefijo /api/v1
+      const directPath = path.replace(/^\/api\/v\d+/, '');
+      const result = `${MICROSERVICE_URLS['control-disciplinario']}${directPath}`;
       console.log('buildEvidenciaFileUrl (direct):', result);
       return result;
     }
@@ -108,12 +110,12 @@ const getOfficeViewerUrl = (fileUrl: string): string => {
 
 const buildDownloadUrl = (procId: string, documentId: string, view: boolean) => {
   const suffix = view ? '?view=true' : '';
-  const basePath = `/api/v1/disciplinary-processes/${procId}/documents/${documentId}/download${suffix}`;
+  const restPath = `/disciplinary-processes/${procId}/documents/${documentId}/download${suffix}`;
   if (API_MODE === 'direct') {
-    return `${MICROSERVICE_URLS['control-disciplinario']}${basePath}`;
+    return `${MICROSERVICE_URLS['control-disciplinario']}${restPath}`;
   }
-  // En modo gateway, construir URL completa
-  return buildApiUrl('control-disciplinario', basePath);
+  // En modo gateway, construir URL completa con prefijo /api/v1
+  return buildApiUrl('control-disciplinario', `/api/v1${restPath}`);
 };
 
 const descargarArchivo = async (url: string, nombre: string) => {
@@ -2095,9 +2097,22 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                           return;
                         }
 
-                        // Para todos los demás formatos: usar la URL del backend
+                        // Para todos los demás formatos: fetch con token y abrir blob en nueva pestaña
                         const viewUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, true, evidencia.archivoNombre);
-                        window.open(viewUrl, '_blank');
+                        const token = localStorage.getItem('esap_access_token');
+                        const headers: HeadersInit = {};
+                        if (token) headers['Authorization'] = `Bearer ${token}`;
+                        fetch(viewUrl, { method: 'GET', headers, credentials: 'include' })
+                          .then(res => {
+                            if (!res.ok) throw new Error('No autorizado');
+                            return res.blob();
+                          })
+                          .then(blob => {
+                            const objectUrl = URL.createObjectURL(blob);
+                            const win = window.open(objectUrl, '_blank');
+                            if (win) setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+                          })
+                          .catch(() => toast.error('No se pudo abrir el archivo'));
                       }}
                       title="Ver documento"
                       style={{ borderColor: '#003DA5', color: '#003DA5' }}
