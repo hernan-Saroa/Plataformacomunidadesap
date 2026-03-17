@@ -23,6 +23,7 @@ import { AlertaEnviada } from './entities/alerta-enviada.entity';
 import { EntidadRemision } from './entities/entidad-remision.entity';
 import { DisciplinaryProcessActuacion } from './entities/disciplinary-process-actuacion.entity';
 import { DisciplinaryProcessTask } from './entities/disciplinary-process-task.entity';
+import { DisciplinaryProcessNote } from './entities/disciplinary-process-note.entity';
 
 // Controllers
 import { NewsController } from './controllers/news.controller';
@@ -37,6 +38,7 @@ import { AlertasController } from './controllers/alertas.controller';
 import { JobsController } from './controllers/jobs.controller';
 import { DisciplinaryProcessActuacionesController } from './controllers/disciplinary-process-actuaciones.controller';
 import { DisciplinaryProcessTasksController } from './controllers/disciplinary-process-tasks.controller';
+import { DisciplinaryProcessNotesController } from './controllers/disciplinary-process-notes.controller';
 
 // Services
 import { NewsService } from './services/news.service';
@@ -84,6 +86,7 @@ import { EntidadRemisionController } from './controllers/entidad-remision.contro
 import { EntidadRemisionService } from './services/entidad-remision.service';
 import { DisciplinaryProcessActuacionesService } from './services/disciplinary-process-actuaciones.service';
 import { DisciplinaryProcessTasksService } from './services/disciplinary-process-tasks.service';
+import { DisciplinaryProcessNotesService } from './services/disciplinary-process-notes.service';
 
 @Module({
   imports: [
@@ -119,6 +122,7 @@ import { DisciplinaryProcessTasksService } from './services/disciplinary-process
       EntidadRemision,
       DisciplinaryProcessActuacion,
       DisciplinaryProcessTask,
+      DisciplinaryProcessNote,
     ]),
   ],
   controllers: [
@@ -137,6 +141,7 @@ import { DisciplinaryProcessTasksService } from './services/disciplinary-process
     JobsController,
     DisciplinaryProcessActuacionesController,
     DisciplinaryProcessTasksController,
+    DisciplinaryProcessNotesController,
     DisciplinaryExportController,
     AutosConfigurationController,
     OficiosConfigurationController,
@@ -169,6 +174,7 @@ import { DisciplinaryProcessTasksService } from './services/disciplinary-process
     EntidadRemisionService,
     DisciplinaryProcessActuacionesService,
     DisciplinaryProcessTasksService,
+    DisciplinaryProcessNotesService,
   ],
 })
 export class AppModule { }

@@ -92,6 +92,7 @@ export interface DisciplinaryProcess {
     tasksCount?: number;
     completedTasksCount?: number;
     pendingTasksCount?: number;
+    notesCount?: number;
 }
 
 export interface ProcessStatistics {
@@ -146,6 +147,20 @@ export interface CreateDisciplinaryProcessTaskDto {
     responsableNombre?: string;
     fechaVencimiento: string;
     observaciones?: string;
+}
+
+export interface DisciplinaryProcessNote {
+    id: string;
+    processId: string;
+    texto: string;
+    etapa?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CreateDisciplinaryProcessNoteDto {
+    texto: string;
+    etapa?: string;
 }
 
 export interface LegalAuto {
@@ -505,6 +520,28 @@ class DisciplinaryService {
         return apiClient.patch<DisciplinaryProcessTask>(
             `${SERVICE_PREFIX}/disciplinary-processes/${processId}/tasks/${taskId}/status`,
             { completada }
+        );
+    }
+
+    async getNotasProceso(processId: string): Promise<DisciplinaryProcessNote[]> {
+        return apiClient.get<DisciplinaryProcessNote[]>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/notes`
+        );
+    }
+
+    async createNotaProceso(
+        processId: string,
+        data: CreateDisciplinaryProcessNoteDto
+    ): Promise<DisciplinaryProcessNote> {
+        return apiClient.post<DisciplinaryProcessNote>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/notes`,
+            data
+        );
+    }
+
+    async deleteNotaProceso(processId: string, noteId: string): Promise<void> {
+        return apiClient.delete<void>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/notes/${noteId}`
         );
     }
 

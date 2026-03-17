@@ -16,7 +16,7 @@ import {
   Eye, Image, FileArchive, ZoomIn,
   MapPin, Building2, Phone, Paperclip, Gavel, FileWarning, Users,
   Loader2, XCircle, HardDrive, Shield,
-  Send, RotateCcw, RefreshCw,
+  Send, RotateCcw, RefreshCw, Trash2,
   Layers, BarChart3, Filter, FileDown, List,
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
@@ -24,8 +24,10 @@ import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
 import {
   disciplinaryService,
   type CreateDisciplinaryProcessActuacionDto,
+  type CreateDisciplinaryProcessNoteDto,
   type CreateDisciplinaryProcessTaskDto,
   type DisciplinaryProcessActuacion,
+  type DisciplinaryProcessNote,
   type DisciplinaryProcessTask,
 } from '../../../services/api/disciplinary.service';
 
@@ -92,6 +94,7 @@ interface Proceso {
   tasksCount?: number;
   completedTasksCount?: number;
   pendingTasksCount?: number;
+  notesCount?: number;
   // ═══ Campos heredados de la Noticia disciplinaria ═══
   territorial?: string;
   fechaHechos?: string;
@@ -135,6 +138,15 @@ interface TaskItem {
   vencimiento: string;
   fechaCompletada?: string | null;
   observaciones?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface NoteItem {
+  id: string;
+  texto: string;
+  fecha: string;
+  etapa: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -748,6 +760,17 @@ function mapTaskFromApi(task: DisciplinaryProcessTask): TaskItem {
   };
 }
 
+function mapNoteFromApi(note: DisciplinaryProcessNote): NoteItem {
+  return {
+    id: note.id,
+    texto: note.texto,
+    fecha: note.createdAt,
+    etapa: normalizarEtapaActuacion(note.etapa),
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt,
+  };
+}
+
 function normalizarFechaInput(fecha: string): string {
   if (!fecha) return new Date().toISOString().split('T')[0];
   return fecha.includes('T') ? fecha.split('T')[0] : fecha;
@@ -758,7 +781,7 @@ const ETAPA_ACTUACION_LABELS: Record<string, string> = {
   EVALUACION: 'Valoración',
   VALORACION: 'Valoración',
   INDAGACION: 'Indagación',
-  INDAGACION_PREVIA: 'Indagación',
+  INDAGACION_PREVIA: 'Indagación previa',
   INVESTIGACION: 'Investigación',
   JUZGAMIENTO: 'Juzgamiento',
   FALLO: 'Fallo',
@@ -1602,7 +1625,12 @@ export function ModalDetallesProceso({
   const [filtroEtapaNota, setFiltroEtapaNota] = useState<string>('TODAS');
   const [vistaAgrupadaNota, setVistaAgrupadaNota] = useState(false);
   const [notaTexto, setNotaTexto] = useState('');
-  const [notas,     setNotas]     = useState<{ id: string; texto: string; fecha: string; etapa: string }[]>([]);
+  const [notas, setNotas] = useState<NoteItem[]>([]);
+  const [notasLoading, setNotasLoading] = useState(false);
+  const [notasError, setNotasError] = useState<string | null>(null);
+  const [creandoNota, setCreandoNota] = useState(false);
+  const [notaPendienteEliminarId, setNotaPendienteEliminarId] = useState<string | null>(null);
+  const [eliminandoNotaId, setEliminandoNotaId] = useState<string | null>(null);
   const [previewArchivo, setPreviewArchivo] = useState<Archivo | null>(null);
   const [cargasActivas, setCargasActivas] = useState<CargaActiva[]>([]);
   const [mostrarAlertaCierre, setMostrarAlertaCierre] = useState(false);
@@ -1761,6 +1789,36 @@ export function ModalDetallesProceso({
       .finally(() => {
         if (!cancelled) {
           setTareasLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [proceso?.id]);
+
+  useEffect(() => {
+    if (!proceso?.id) return;
+
+    let cancelled = false;
+    setNotasLoading(true);
+    setNotasError(null);
+
+    disciplinaryService.getNotasProceso(proceso.id)
+      .then((data) => {
+        if (cancelled) return;
+        const mapped = (data || []).map(mapNoteFromApi);
+        setNotas(mapped);
+      })
+      .catch((error: any) => {
+        if (cancelled) return;
+        console.error('[ModalDetallesProceso] Error cargando notas:', error);
+        setNotas([]);
+        setNotasError(error?.message || 'No fue posible cargar las notas');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setNotasLoading(false);
         }
       });
 
@@ -2203,20 +2261,33 @@ export function ModalDetallesProceso({
   }, {});
 
   // ═══ Notas: etapas, filtrado y agrupación ═══
-  const etapasNotas = Array.from(new Set(notas.map(n => n.etapa).filter(Boolean)));
+  const filtroEtapaNotaNormalizado = filtroEtapaNota === 'TODAS' ? 'TODAS' : normalizarEtapaActuacion(filtroEtapaNota);
+  const notasNormalizadas: NoteItem[] = notas.map((nota) => ({
+    ...nota,
+    etapa: normalizarEtapaActuacion(nota.etapa),
+  }));
+  const etapasNotas = Array.from(new Set(notasNormalizadas.map((n) => n.etapa).filter(Boolean)));
   const etapasNotasOrdenadas = etapasNotas.sort((a, b) => {
     const ia = ORDEN_ETAPAS.indexOf(a); const ib = ORDEN_ETAPAS.indexOf(b);
     return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
   });
-  const notasFiltradas = notas.filter(n =>
-    (filtroEtapaNota === 'TODAS' || n.etapa === filtroEtapaNota) &&
+  const notasTienenVariasEtapas = etapasNotasOrdenadas.length > 1;
+  const notasFiltradas = notasNormalizadas.filter(n =>
+    (filtroEtapaNotaNormalizado === 'TODAS' || n.etapa === filtroEtapaNotaNormalizado) &&
     (!bgActivo || n.texto.toLowerCase().includes(bg) || n.etapa.toLowerCase().includes(bg))
   );
-  const notasAgrupadas = etapasNotasOrdenadas.reduce<Record<string, typeof notas>>((acc, etapa) => {
+  const notasAgrupadas = etapasNotasOrdenadas.reduce<Record<string, NoteItem[]>>((acc, etapa) => {
     const items = notasFiltradas.filter(n => n.etapa === etapa);
     if (items.length > 0) acc[etapa] = items;
     return acc;
   }, {});
+
+  useEffect(() => {
+    if (!notasTienenVariasEtapas) {
+      if (filtroEtapaNota !== 'TODAS') setFiltroEtapaNota('TODAS');
+      if (vistaAgrupadaNota) setVistaAgrupadaNota(false);
+    }
+  }, [filtroEtapaNota, notasTienenVariasEtapas, vistaAgrupadaNota]);
 
   // ═══ Exportar resumen a CSV ═══
   const exportarResumenCSV = useCallback(() => {
@@ -2312,7 +2383,7 @@ export function ModalDetallesProceso({
     lines.push('═══ NOTAS INTERNAS ═══');
     lines.push(['Fecha', 'Etapa', 'Contenido'].join(sep));
     notas.forEach(n => {
-      lines.push([n.fecha, n.etapa || '-', `"${n.texto.replace(/"/g, '""')}"`].join(sep));
+      lines.push([formatFechaActuacion(n.fecha, true), n.etapa || '-', `"${n.texto.replace(/"/g, '""')}"`].join(sep));
     });
     lines.push(`Total Notas: ${notas.length}`);
     lines.push('');
@@ -2397,12 +2468,58 @@ export function ModalDetallesProceso({
     recepcion:    { color: '#F59E0B', label: 'Recepción'    },
   };
 
-  const guardarNota = () => {
-    if (!notaTexto.trim()) return;
-    setNotas(prev => [{ id: Date.now().toString(), texto: notaTexto, fecha: new Date().toLocaleDateString('es-CO'), etapa: proceso.etapaActual }, ...prev]);
-    setNotaTexto('');
-    toast.success('Nota guardada');
-  };
+  const guardarNota = useCallback(async () => {
+    if (!notaTexto.trim() || !proceso?.id) return;
+
+    const payload: CreateDisciplinaryProcessNoteDto = {
+      texto: notaTexto.trim(),
+      etapa: proceso.etapaActual,
+    };
+
+    try {
+      setCreandoNota(true);
+      const created = await disciplinaryService.createNotaProceso(proceso.id, payload);
+      const mapped = mapNoteFromApi(created);
+      let nextNotes: NoteItem[] = [];
+
+      setNotas((prev) => {
+        nextNotes = [mapped, ...prev].sort((a, b) => `${b.createdAt || b.fecha}${b.id}`.localeCompare(`${a.createdAt || a.fecha}${a.id}`));
+        return nextNotes;
+      });
+
+      setNotasError(null);
+      setNotaTexto('');
+      setTabActiva('notas');
+      toast.success('Nota guardada');
+    } catch (error: any) {
+      console.error('[ModalDetallesProceso] Error guardando nota:', error);
+      toast.error(error?.message || 'No fue posible guardar la nota');
+    } finally {
+      setCreandoNota(false);
+    }
+  }, [notaTexto, proceso?.etapaActual, proceso?.id, onActualizarProceso]);
+
+  const handleEliminarNota = useCallback(async (nota: NoteItem) => {
+    if (!proceso?.id) return;
+
+    try {
+      setEliminandoNotaId(nota.id);
+      await disciplinaryService.deleteNotaProceso(proceso.id, nota.id);
+
+      let nextNotes: NoteItem[] = [];
+      setNotas((prev) => {
+        nextNotes = prev.filter((item) => item.id !== nota.id);
+        return nextNotes;
+      });
+      setNotaPendienteEliminarId((current) => current === nota.id ? null : current);
+      toast.success('Nota eliminada');
+    } catch (error: any) {
+      console.error('[ModalDetallesProceso] Error eliminando nota:', error);
+      toast.error(error?.message || 'No fue posible eliminar la nota');
+    } finally {
+      setEliminandoNotaId(null);
+    }
+  }, [proceso?.id]);
 
   // ═══ Enviar Auto a Revisión y Aprobación ═══
   // Estado para rastrear si debemos reopen el modal después de cerrar el de confirmación
@@ -3586,7 +3703,7 @@ export function ModalDetallesProceso({
                         </p>
                         <span className="px-2 py-0.5 text-[9px] font-bold rounded inline-flex items-center gap-1 mt-0.5"
                           style={{ backgroundColor: ec.bg, color: ec.text, border: `1px solid ${ec.text}22` }}>
-                          <Zap className="w-2.5 h-2.5" />Se marcará como: {proceso.etapaActual}
+                          <Zap className="w-2.5 h-2.5" />Se marcara como: {proceso.etapaActual}
                         </span>
                       </div>
                     </div>
@@ -4253,23 +4370,104 @@ export function ModalDetallesProceso({
                 {/* ── NOTAS ── */}
                 {tabActiva === 'notas' && (() => {
                   // Helper render fila nota
-                  const renderNotaFila = (nota: typeof notas[0], ocultarEtapa = false) => {
-                    const epc = etapaColor(nota.etapa);
+                  const renderNotaFila = (nota: NoteItem, ocultarEtapa = false) => {
+                    const etapaHumana = normalizarEtapaActuacion(nota.etapa);
+                    const epc = etapaColor(etapaHumana);
+                    const fechaVisible = formatFechaActuacion(nota.fecha, true);
+                    const confirmandoEliminacion = notaPendienteEliminarId === nota.id;
                     return (
-                      <div key={nota.id} className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl">
-                        <p className="text-xs text-gray-800 leading-relaxed">{nota.texto}</p>
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <p className="text-[10px] text-gray-400 flex items-center gap-0.5">
-                            <Calendar className="w-2.5 h-2.5" />{nota.fecha}
-                          </p>
+                      <motion.div
+                        key={nota.id}
+                        layout
+                        initial={{ opacity: 0, y: 8, scale: 0.985 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.985 }}
+                        transition={{ duration: 0.18, ease: 'easeOut' }}
+                        className="relative overflow-hidden rounded-[26px] border border-slate-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] shadow-[0_14px_34px_rgba(15,23,42,0.06)]"
+                      >
+                        <div className="absolute inset-y-0 left-0 w-1.5 rounded-l-[26px]" style={{ background: 'linear-gradient(180deg, #93C5FD 0%, #2563EB 100%)' }} />
+                        <div className="px-4 py-3.5 pl-5">
+                        <div className="flex items-start gap-3">
+                          <div className="w-9 h-9 rounded-2xl border border-blue-100 bg-[linear-gradient(180deg,#EFF6FF_0%,#DBEAFE_100%)] flex items-center justify-center shadow-sm flex-shrink-0">
+                            <MessageSquare className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <div className="flex-1 min-w-0 pt-0.5">
+                            <p className="text-[12px] font-semibold text-slate-800 leading-6 break-words">{nota.texto}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setNotaPendienteEliminarId((current) => current === nota.id ? null : nota.id)}
+                            disabled={eliminandoNotaId === nota.id}
+                            className="flex items-center justify-center w-9 h-9 rounded-2xl border border-red-200/80 text-red-500 bg-white hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 shadow-sm"
+                            title="Eliminar nota"
+                          >
+                            {eliminandoNotaId === nota.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                        <div className="mt-3 flex items-center gap-2 flex-wrap pl-12">
+                          <span className="px-2.5 py-1 text-[10px] font-semibold rounded-full inline-flex items-center gap-1 bg-slate-50 text-slate-500 border border-slate-200">
+                            <Calendar className="w-3 h-3" />{fechaVisible}
+                          </span>
                           {!ocultarEtapa && (
-                            <span className="px-1.5 py-0.5 text-[8px] font-bold rounded inline-flex items-center gap-0.5"
+                            <span className="px-2.5 py-1 text-[10px] font-bold rounded-full inline-flex items-center gap-1"
                               style={{ backgroundColor: epc.bg, color: epc.text, border: `1px solid ${epc.text}22` }}>
-                              <Zap className="w-2.5 h-2.5" />{nota.etapa}
+                              <Zap className="w-3 h-3" />{etapaHumana}
                             </span>
                           )}
                         </div>
-                      </div>
+                        <AnimatePresence initial={false}>
+                          {confirmandoEliminacion && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0, y: -4 }}
+                              animate={{ opacity: 1, height: 'auto', y: 0 }}
+                              exit={{ opacity: 0, height: 0, y: -4 }}
+                              transition={{ duration: 0.16, ease: 'easeOut' }}
+                              className="overflow-hidden"
+                            >
+                              <div className="mt-3 rounded-2xl border border-red-200 bg-[linear-gradient(180deg,rgba(254,242,242,0.96),rgba(255,255,255,0.98))] px-3 py-2.5 shadow-[0_10px_24px_rgba(220,38,38,0.08)]">
+                                <div className="flex items-start gap-2.5">
+                                  <div className="w-7 h-7 rounded-xl bg-red-100 border border-red-200 flex items-center justify-center flex-shrink-0">
+                                    <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[11px] font-black text-red-700">Eliminar nota</p>
+                                    <p className="text-[11px] text-slate-600 mt-0.5">Esta accion quitara la nota del historial interno del proceso.</p>
+                                  </div>
+                                </div>
+                                <div className="mt-3 flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setNotaPendienteEliminarId(null)}
+                                    disabled={eliminandoNotaId === nota.id}
+                                    className="px-3 py-1.5 text-[11px] font-bold rounded-xl border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 transition-all disabled:opacity-50"
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEliminarNota(nota)}
+                                    disabled={eliminandoNotaId === nota.id}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-xl text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                    style={{ background: 'linear-gradient(135deg, #DC2626 0%, #EF4444 100%)' }}
+                                  >
+                                    {eliminandoNotaId === nota.id ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    )}
+                                    Eliminar
+                                  </button>
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                        </div>
+                      </motion.div>
                     );
                   };
 
@@ -4288,40 +4486,57 @@ export function ModalDetallesProceso({
                     </div>
 
                     {/* Composición de nota */}
-                    <div className="border border-dashed border-blue-200 rounded-xl p-3 bg-blue-50/30">
-                      <textarea value={notaTexto} onChange={e => setNotaTexto(e.target.value)} rows={3}
-                        placeholder={`Nota interna para ${proceso.numeroProceso}...`}
-                        className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 resize-none" />
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="px-2 py-0.5 text-[9px] font-bold rounded inline-flex items-center gap-1"
-                          style={{ backgroundColor: etapaColor(proceso.etapaActual).bg, color: etapaColor(proceso.etapaActual).text, border: `1px solid ${etapaColor(proceso.etapaActual).text}22` }}>
-                          <Zap className="w-2.5 h-2.5" />Se marcará: {proceso.etapaActual}
-                        </span>
-                        <button onClick={guardarNota} disabled={!notaTexto.trim()}
-                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg text-white disabled:opacity-40"
-                          style={{ background: '#003DA5' }}>
-                          <Plus className="w-3 h-3" />Guardar Nota
+                    <motion.div
+                      layout
+                      className="rounded-[28px] border border-blue-100 bg-[linear-gradient(180deg,rgba(248,250,255,0.98),rgba(255,255,255,0.98))] p-4 md:p-5 shadow-[0_18px_40px_rgba(0,61,165,0.07)]"
+                    >
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="w-11 h-11 rounded-2xl border border-blue-100 bg-[linear-gradient(180deg,#EFF6FF_0%,#DBEAFE_100%)] flex items-center justify-center shadow-sm flex-shrink-0">
+                          <FileEdit className="w-4.5 h-4.5 text-blue-600" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-black text-slate-800">Nueva nota interna</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Registra un apunte rapido del proceso para dejar trazabilidad.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="rounded-[24px] border border-slate-200 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_8px_24px_rgba(15,23,42,0.05)]">
+                        <textarea value={notaTexto} onChange={e => setNotaTexto(e.target.value)} rows={4}
+                          placeholder={`Escribe una nota interna para ${proceso.numeroProceso}...`}
+                          className="w-full px-4 py-3.5 text-[13px] text-slate-700 bg-transparent border-0 rounded-[24px] focus:outline-none focus:ring-0 resize-none placeholder:text-slate-400" />
+                      </div>
+                      <div className="flex items-center justify-between mt-3.5 gap-2 flex-wrap">
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-[11px] text-slate-500 font-medium">
+                          <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
+                          Visible solo dentro del expediente
+                        </div>
+                        <button onClick={guardarNota} disabled={!notaTexto.trim() || creandoNota}
+                          className="inline-flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-[1.01] shadow-[0_14px_30px_rgba(37,99,235,0.28)]"
+                          style={{ background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)' }}>
+                          {creandoNota ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                          {creandoNota ? 'Guardando...' : 'Guardar Nota'}
                         </button>
                       </div>
-                    </div>
+                    </motion.div>
 
                     {/* Filtro por etapa (solo si hay notas) */}
-                    {notas.length > 0 && (
+                    {notas.length > 0 && notasTienenVariasEtapas && (
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <Filter className="w-3 h-3 text-gray-400" />
                         <button onClick={() => setFiltroEtapaNota('TODAS')}
                           className="px-2 py-0.5 text-[10px] font-bold rounded-lg border transition-all"
                           style={{
-                            backgroundColor: filtroEtapaNota === 'TODAS' ? '#003DA5' : '#F9FAFB',
-                            color: filtroEtapaNota === 'TODAS' ? '#FFFFFF' : '#6B7280',
-                            borderColor: filtroEtapaNota === 'TODAS' ? '#003DA5' : '#E5E7EB',
+                            backgroundColor: filtroEtapaNotaNormalizado === 'TODAS' ? '#003DA5' : '#F9FAFB',
+                            color: filtroEtapaNotaNormalizado === 'TODAS' ? '#FFFFFF' : '#6B7280',
+                            borderColor: filtroEtapaNotaNormalizado === 'TODAS' ? '#003DA5' : '#E5E7EB',
                           }}>
                           Todas ({notas.length})
                         </button>
                         {etapasNotasOrdenadas.map(etapa => {
                           const epc = etapaColor(etapa);
-                          const count = notas.filter(n => n.etapa === etapa).length;
-                          const activo = filtroEtapaNota === etapa;
+                          const count = notasNormalizadas.filter(n => n.etapa === etapa).length;
+                          const activo = filtroEtapaNotaNormalizado === etapa;
                           return (
                             <button key={etapa} onClick={() => setFiltroEtapaNota(activo ? 'TODAS' : etapa)}
                               className="px-2 py-0.5 text-[10px] font-bold rounded-lg border transition-all inline-flex items-center gap-0.5"
@@ -4351,46 +4566,71 @@ export function ModalDetallesProceso({
                     )}
 
                     {/* Listado de notas */}
-                    {notas.length === 0 ? (
-                      <div className="flex flex-col items-center py-8 text-gray-400">
-                        <MessageSquare className="w-8 h-8 mb-2 text-gray-300" />
-                        <p className="text-xs text-gray-500 font-medium">Sin notas aún</p>
-                      </div>
-                    ) : notasFiltradas.length === 0 ? (
-                      <div className="flex flex-col items-center py-6 text-gray-400">
-                        <MessageSquare className="w-7 h-7 text-gray-300 mb-1.5" />
-                        <p className="text-xs text-gray-500 font-medium">Sin notas en esta etapa</p>
-                        <button onClick={() => setFiltroEtapaNota('TODAS')} className="mt-1.5 text-[11px] font-bold underline" style={{ color: '#003DA5' }}>Limpiar filtro</button>
-                      </div>
-                    ) : vistaAgrupadaNota ? (
-                      /* Vista agrupada */
-                      <div className="space-y-3">
-                        {Object.entries(notasAgrupadas).map(([etapa, grupoNotas]) => {
-                          const epc = etapaColor(etapa);
-                          return (
-                            <div key={etapa} className="rounded-xl border overflow-hidden" style={{ borderColor: `${epc.text}33` }}>
-                              <div className="flex items-center gap-2 px-3 py-1.5" style={{ backgroundColor: epc.bg }}>
-                                <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ backgroundColor: epc.text }}>
-                                  <Zap className="w-2.5 h-2.5 text-white" />
+                    <div
+                      className="min-h-[220px] max-h-[340px] overflow-y-auto pr-1"
+                      style={{ scrollbarGutter: 'stable' as any }}
+                    >
+                      {notasLoading ? (
+                        <div className="h-[220px] flex flex-col items-center justify-center text-gray-400">
+                          <Loader2 className="w-8 h-8 mb-2 text-blue-400 animate-spin" />
+                          <p className="text-xs text-gray-500 font-medium">Cargando notas...</p>
+                        </div>
+                      ) : notasError ? (
+                        <div className="h-[220px] flex flex-col items-center justify-center text-gray-400">
+                          <AlertCircle className="w-8 h-8 mb-2 text-red-400" />
+                          <p className="text-xs text-red-500 font-medium text-center">{notasError}</p>
+                        </div>
+                      ) : notas.length === 0 ? (
+                        <div className="h-[220px] flex flex-col items-center justify-center text-gray-400">
+                          <MessageSquare className="w-8 h-8 mb-2 text-gray-300" />
+                          <p className="text-xs text-gray-500 font-medium">Sin notas aun</p>
+                        </div>
+                      ) : notasFiltradas.length === 0 ? (
+                        <div className="h-[220px] flex flex-col items-center justify-center text-gray-400">
+                          <MessageSquare className="w-7 h-7 text-gray-300 mb-1.5" />
+                          <p className="text-xs text-gray-500 font-medium">Sin notas en esta etapa</p>
+                          <button onClick={() => setFiltroEtapaNota('TODAS')} className="mt-1.5 text-[11px] font-bold underline" style={{ color: '#003DA5' }}>Limpiar filtro</button>
+                        </div>
+                      ) : vistaAgrupadaNota && notasTienenVariasEtapas ? (
+                        <div className="space-y-3">
+                          {Object.entries(notasAgrupadas).map(([etapa, grupoNotas]) => {
+                            const epc = etapaColor(etapa);
+                            return (
+                              <motion.div
+                                key={etapa}
+                                layout
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -6 }}
+                                className="rounded-2xl border overflow-hidden shadow-sm"
+                                style={{ borderColor: `${epc.text}33` }}
+                              >
+                                <div className="flex items-center gap-2 px-3 py-1.5" style={{ backgroundColor: epc.bg }}>
+                                  <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ backgroundColor: epc.text }}>
+                                    <Zap className="w-2.5 h-2.5 text-white" />
+                                  </div>
+                                  <p className="text-[11px] font-black flex-1" style={{ color: epc.text }}>{etapa}</p>
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: epc.text }}>
+                                    {grupoNotas.length}
+                                  </span>
                                 </div>
-                                <p className="text-[11px] font-black flex-1" style={{ color: epc.text }}>{etapa}</p>
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: epc.text }}>
-                                  {grupoNotas.length}
-                                </span>
-                              </div>
-                              <div className="p-1.5 space-y-1.5 bg-white">
-                                {grupoNotas.map(nota => renderNotaFila(nota, true))}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      /* Vista lista plana */
-                      <div className="space-y-2">
-                        {notasFiltradas.map(nota => renderNotaFila(nota, false))}
-                      </div>
-                    )}
+                                <div className="p-2 space-y-2 bg-white">
+                                  <AnimatePresence initial={false}>
+                                    {grupoNotas.map(nota => renderNotaFila(nota, true))}
+                                  </AnimatePresence>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <AnimatePresence initial={false}>
+                            {notasFiltradas.map(nota => renderNotaFila(nota, !notasTienenVariasEtapas))}
+                          </AnimatePresence>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   );
                 })()}
@@ -4553,6 +4793,9 @@ export function ModalDetallesProceso({
     document.body
   );
 }
+
+
+
 
 
 
