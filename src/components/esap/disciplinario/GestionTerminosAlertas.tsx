@@ -230,7 +230,8 @@ const ALERTAS_MOCK: Alerta[] = [
 // ============================================================================
 
 export function GestionTerminosAlertas() {
-  const [terminos, setTerminos] = useState<Termino[]>(TERMINOS_MOCK);
+  const [terminos, setTerminos] = useState<Termino[]>([]);
+  const [cargandoTerminos, setCargandoTerminos] = useState(false);
   const [diasFestivos, setDiasFestivos] = useState<DiaFestivo[]>(DIAS_FESTIVOS_MOCK);
   // const [vistaActual, setVistaActual] = useState<'terminos' | 'calendario' | 'reglas' | 'historial'>('terminos');
   const [vistaActual, setVistaActual] = useState<'terminos' | 'calendario' | 'historial'>('terminos');
@@ -245,6 +246,8 @@ export function GestionTerminosAlertas() {
   const [procesoSeleccionado, setProcesoSeleccionado] = useState<DisciplinaryProcess | null>(null);
   const [cargandoProcesos, setCargandoProcesos] = useState(false);
   const [procesoTerminoId, setProcesoTerminoId] = useState<string>('');
+  const [profesionales, setProfesionales] = useState<any[]>([]);
+  const [responsableId, setResponsableId] = useState<string>('');
   
   // Formulario para nuevo término
   const [nuevoTermino, setNuevoTermino] = useState({
@@ -265,22 +268,42 @@ export function GestionTerminosAlertas() {
     territorio: ''
   });
 
-  // Cargar procesos al abrir el modal de nuevo término
+  // Cargar términos desde el backend al montar
+  useEffect(() => {
+    const cargarTerminos = async () => {
+      setCargandoTerminos(true);
+      try {
+        const resp = await disciplinaryService.getTerminos({ limit: 200 });
+        setTerminos(resp.terminos || []);
+      } catch (error) {
+        console.error('Error al cargar términos:', error);
+      } finally {
+        setCargandoTerminos(false);
+      }
+    };
+    cargarTerminos();
+  }, []);
+
+  // Cargar procesos y profesionales al abrir el modal de nuevo término
   useEffect(() => {
     if (showModalNuevoTermino) {
-      const cargarProcesos = async () => {
+      const cargarDatos = async () => {
         setCargandoProcesos(true);
         try {
-          const procesosData = await disciplinaryService.getAllProcesos();
+          const [procesosData, profesionalesData] = await Promise.all([
+            disciplinaryService.getAllProcesos(),
+            disciplinaryService.getProfesionales(),
+          ]);
           setProcesos(procesosData);
+          setProfesionales(profesionalesData);
         } catch (error) {
-          console.error('Error al cargar procesos:', error);
-          toast.error('Error al cargar los procesos');
+          console.error('Error al cargar datos:', error);
+          toast.error('Error al cargar los datos');
         } finally {
           setCargandoProcesos(false);
         }
       };
-      cargarProcesos();
+      cargarDatos();
     }
   }, [showModalNuevoTermino]);
 
@@ -317,27 +340,40 @@ export function GestionTerminosAlertas() {
     });
     setProcesoSeleccionado(null);
     setProcesoTerminoId('');
+    setResponsableId('');
   };
 
   // Función para crear término
-  const handleCrearTermino = () => {
-    // Validar que se haya seleccionado un proceso
+  const handleCrearTermino = async () => {
     if (!procesoTerminoId) {
       toast.error('Debe seleccionar un proceso');
       return;
     }
-    
-    // Validar campos requeridos
+    if (!responsableId) {
+      toast.error('Debe seleccionar un responsable');
+      return;
+    }
     if (!nuevoTermino.actuacion || !nuevoTermino.fechaInicio || !nuevoTermino.diasHabiles) {
       toast.error('Debe completar todos los campos requeridos');
       return;
     }
 
-    // Aquí se integraría con el backend para crear el término
-    // Por ahora solo limpiamos el formulario y cerramos el modal
-    toast.success('Término creado exitosamente');
-    setShowModalNuevoTermino(false);
-    limpiarFormulario();
+    try {
+      const terminoCreado = await disciplinaryService.createTermino({
+        procesoId: procesoTerminoId,
+        actuacion: nuevoTermino.actuacion,
+        responsableId,
+        fechaInicio: nuevoTermino.fechaInicio,
+        diasHabiles: nuevoTermino.diasHabiles,
+      });
+      setTerminos(prev => [terminoCreado, ...prev]);
+      toast.success('Término creado exitosamente');
+      setShowModalNuevoTermino(false);
+      limpiarFormulario();
+    } catch (error: any) {
+      console.error('Error al crear término:', error);
+      toast.error('Error al crear el término', { description: error?.message || 'Intente de nuevo' });
+    }
   };
   const terminosFiltrados = terminos.filter(t => {
     const matchesSearch = 
@@ -359,65 +395,33 @@ export function GestionTerminosAlertas() {
     cumplidos: terminos.filter(t => t.estado === 'cumplido').length
   };
 
-  const handleMarcarCompleto = (id: string) => {
-    setTerminos(terminos.map(t => 
-      t.id === id ? { ...t, estado: 'cumplido' as const } : t
-    ));
-    toast.success('Término marcado como cumplido', {
-      description: 'El término se ha actualizado correctamente'
-    });
+  const handleMarcarCompleto = async (id: string) => {
+    try {
+      const terminoActualizado = await disciplinaryService.marcarTerminoCumplido(id, {
+        fechaCumplimiento: new Date().toISOString().split('T')[0],
+      });
+      setTerminos(prev => prev.map(t => t.id === id ? { ...t, ...terminoActualizado, estado: 'cumplido' as const } : t));
+      toast.success('Término marcado como cumplido', { description: 'El término se ha actualizado correctamente' });
+    } catch (error) {
+      console.error('Error al marcar cumplido:', error);
+      toast.error('Error al actualizar el término');
+    }
   };
 
   const handleRecalcular = () => {
-    // Función para calcular días hábiles entre dos fechas
-    const calcularDiasHabiles = (fechaInicio: string, diasHabiles: number): { fechaVencimiento: string, diasRestantes: number } => {
+    // Función para calcular días calendario entre dos fechas (sin excluir fines de semana ni festivos)
+    const calcularDiasCalendario = (fechaInicio: string, diasCalendario: number): { fechaVencimiento: string, diasRestantes: number } => {
       const inicio = new Date(fechaInicio);
       const hoy = new Date();
-      let diasContados = 0;
-      let fechaActual = new Date(inicio);
-      
-      // Calcular fecha de vencimiento
-      while (diasContados < diasHabiles) {
-        fechaActual.setDate(fechaActual.getDate() + 1);
-        const diaSemana = fechaActual.getDay();
-        const fechaStr = fechaActual.toISOString().split('T')[0];
-        
-        // Solo contar si no es fin de semana ni festivo
-        const esFestivo = diasFestivos.some(f => f.fecha === fechaStr);
-        if (diaSemana !== 0 && diaSemana !== 6 && !esFestivo) {
-          diasContados++;
-        }
-      }
-      
+      const fechaActual = new Date(inicio);
+
+      // Calcular fecha de vencimiento sumando días calendario directamente
+      fechaActual.setDate(fechaActual.getDate() + diasCalendario);
+
       // Calcular días restantes desde hoy
-      let diasRestantesCalc = 0;
-      let fechaTemporal = new Date(hoy);
-      
-      if (fechaActual > hoy) {
-        while (fechaTemporal < fechaActual) {
-          fechaTemporal.setDate(fechaTemporal.getDate() + 1);
-          const diaSemana = fechaTemporal.getDay();
-          const fechaStr = fechaTemporal.toISOString().split('T')[0];
-          const esFestivo = diasFestivos.some(f => f.fecha === fechaStr);
-          
-          if (diaSemana !== 0 && diaSemana !== 6 && !esFestivo) {
-            diasRestantesCalc++;
-          }
-        }
-      } else {
-        // Si la fecha ya pasó, contar días negativos
-        while (fechaTemporal > fechaActual) {
-          const diaSemana = fechaTemporal.getDay();
-          const fechaStr = fechaTemporal.toISOString().split('T')[0];
-          const esFestivo = diasFestivos.some(f => f.fecha === fechaStr);
-          
-          if (diaSemana !== 0 && diaSemana !== 6 && !esFestivo) {
-            diasRestantesCalc--;
-          }
-          fechaTemporal.setDate(fechaTemporal.getDate() - 1);
-        }
-      }
-      
+      const diffMs = fechaActual.getTime() - hoy.getTime();
+      const diasRestantesCalc = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
       return {
         fechaVencimiento: fechaActual.toISOString().split('T')[0],
         diasRestantes: diasRestantesCalc
@@ -430,7 +434,7 @@ export function GestionTerminosAlertas() {
         return termino; // No recalcular términos cumplidos
       }
       
-      const { fechaVencimiento, diasRestantes } = calcularDiasHabiles(termino.fechaInicio, termino.diasHabiles);
+      const { fechaVencimiento, diasRestantes } = calcularDiasCalendario(termino.fechaInicio, termino.diasHabiles);
       
       // Determinar nuevo estado
       let nuevoEstado: 'pendiente' | 'proximo_vencer' | 'vencido' | 'cumplido' = 'pendiente';
@@ -451,7 +455,7 @@ export function GestionTerminosAlertas() {
     setTerminos(terminosActualizados);
     
     toast.success('Términos recalculados exitosamente', {
-      description: `${terminosActualizados.length} términos actualizados con ${diasFestivos.length} festivos`
+      description: `${terminosActualizados.length} términos actualizados en días calendario`
     });
   };
 
@@ -660,7 +664,7 @@ export function GestionTerminosAlertas() {
                 Cálculo Automático de Términos Procesales
               </p>
               <p className="text-xs sm:text-sm">
-                El sistema calcula automáticamente días hábiles excluyendo sábados, domingos y festivos configurados. 
+                El sistema calcula automáticamente los términos en días calendario.
                 Las alertas se envían automáticamente según las reglas configuradas.
               </p>
             </div>
@@ -674,8 +678,6 @@ export function GestionTerminosAlertas() {
           <div className="flex items-center gap-2 flex-wrap">
             {[
               { id: 'terminos', label: 'Términos', icon: <Clock className="w-4 h-4" />, count: terminos.length },
-              { id: 'calendario', label: 'Festivos', icon: <Calendar className="w-4 h-4" />, count: diasFestivos.length },
-              // { id: 'reglas', label: 'Reglas', icon: <Settings className="w-4 h-4" />, count: REGLAS_ALERTA_MOCK.length },
               { id: 'historial', label: 'Historial', icon: <Bell className="w-4 h-4" />, count: ALERTAS_MOCK.length }
             ].map((vista) => (
               <button
@@ -712,16 +714,6 @@ export function GestionTerminosAlertas() {
               >
                 <Plus className="w-4 h-4" />
                 <span className="hidden sm:inline">Nuevo Término</span>
-              </button>
-            )}
-            {vistaActual === 'calendario' && (
-              <button
-                onClick={() => setShowModalFestivo(true)}
-                className="px-3 py-2 rounded-lg text-white font-bold hover:shadow-lg transition-all text-xs sm:text-sm flex items-center gap-2"
-                style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
-              >
-                <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">Agregar Festivo</span>
               </button>
             )}
           </div>
@@ -962,94 +954,6 @@ export function GestionTerminosAlertas() {
             </div>
           )}
 
-          {/* VISTA: CALENDARIO FESTIVOS */}
-          {vistaActual === 'calendario' && (
-            <div className="space-y-4">
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
-                          Fecha
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
-                          Descripción
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
-                          Tipo
-                        </th>
-                        <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase">
-                          Acciones
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {diasFestivos.map((festivo) => (
-                        <tr key={festivo.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <Calendar className="w-4 h-4" style={{ color: '#003DA5' }} />
-                              <span className="text-sm font-bold text-gray-900">{festivo.fecha}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <p className="text-sm text-gray-900">{festivo.descripcion}</p>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border"
-                              style={{
-                                backgroundColor: festivo.tipo === 'nacional' ? '#DBEAFE' : festivo.tipo === 'regional' ? '#FEF3C7' : '#E0E7FF',
-                                color: festivo.tipo === 'nacional' ? '#1E40AF' : festivo.tipo === 'regional' ? '#92400E' : '#3730A3',
-                                borderColor: festivo.tipo === 'nacional' ? '#1E40AF' : festivo.tipo === 'regional' ? '#92400E' : '#3730A3'
-                              }}
-                            >
-                              {festivo.tipo === 'nacional' ? '🇨🇴 Nacional' : festivo.tipo === 'regional' ? '📍 Regional' : '🏢 Institucional'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => {
-                                  setNuevoFestivo({
-                                    fecha: festivo.fecha,
-                                    descripcion: festivo.descripcion,
-                                    tipo: festivo.tipo,
-                                    territorio: festivo.territorio || ''
-                                  });
-                                  setShowModalFestivo(true);
-                                  toast.info('Editar festivo', {
-                                    description: 'Funcionalidad en desarrollo'
-                                  });
-                                }}
-                                className="p-2 rounded-lg hover:bg-gray-100 border border-gray-300"
-                              >
-                                <Edit2 className="w-4 h-4 text-gray-600" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (confirm(`¿Está seguro de eliminar el festivo "${festivo.descripcion}"?`)) {
-                                    setDiasFestivos(diasFestivos.filter(f => f.id !== festivo.id));
-                                    toast.success('Festivo eliminado', {
-                                      description: `${festivo.descripcion} ha sido eliminado del calendario`
-                                    });
-                                  }
-                                }}
-                                className="p-2 rounded-lg hover:bg-red-50 border border-red-300"
-                              >
-                                <Trash2 className="w-4 h-4 text-red-600" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* VISTA: REGLAS DE ALERTA NO FUNCIONAL */}
           {vistaActual === 'reglas' && (
@@ -1371,31 +1275,29 @@ export function GestionTerminosAlertas() {
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Responsable *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Nombre del responsable"
-                      value={nuevoTermino.responsable}
-                      onChange={(e) => setNuevoTermino({...nuevoTermino, responsable: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Email Responsable *
-                    </label>
-                    <input
-                      type="email"
-                      placeholder="email@esap.edu.co"
-                      value={nuevoTermino.emailResponsable}
-                      onChange={(e) => setNuevoTermino({...nuevoTermino, emailResponsable: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Responsable *
+                  </label>
+                  <select
+                    value={responsableId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setResponsableId(id);
+                      const prof = profesionales.find(p => p.id === id);
+                      if (prof) {
+                        setNuevoTermino(prev => ({ ...prev, responsable: prof.nombreCompleto || prof.nombre || '', emailResponsable: prof.email || '' }));
+                      }
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Seleccione un responsable</option>
+                    {profesionales.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombreCompleto || p.nombre} {p.email ? `— ${p.email}` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -1448,104 +1350,6 @@ export function GestionTerminosAlertas() {
         )}
       </AnimatePresence>
 
-      {/* Modal Nuevo Festivo */}
-      <AnimatePresence>
-        {showModalFestivo && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[200] p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setShowModalFestivo(false);
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="w-full max-w-lg bg-white rounded-2xl shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="p-6 text-white rounded-t-2xl" style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Calendar className="w-6 h-6" />
-                    <h2 className="text-xl font-bold">Agregar Día Festivo</h2>
-                  </div>
-                  <button
-                    onClick={() => setShowModalFestivo(false)}
-                    className="p-2 rounded-lg hover:bg-white/20 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Fecha *
-                  </label>
-                  <input
-                    type="date"
-                    value={nuevoFestivo.fecha}
-                    onChange={(e) => setNuevoFestivo({...nuevoFestivo, fecha: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Descripción *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej: Día de la Independencia"
-                    value={nuevoFestivo.descripcion}
-                    onChange={(e) => setNuevoFestivo({...nuevoFestivo, descripcion: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Tipo *
-                  </label>
-                  <select
-                    value={nuevoFestivo.tipo}
-                    onChange={(e) => setNuevoFestivo({...nuevoFestivo, tipo: e.target.value as any})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="nacional">🇨🇴 Nacional</option>
-                    <option value="regional">📍 Regional</option>
-                    <option value="institucional">🏢 Institucional</option>
-                  </select>
-                </div>
-
-                <div className="flex gap-3 justify-end pt-4">
-                  <button
-                    onClick={() => setShowModalFestivo(false)}
-                    className="px-6 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all font-bold"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={() => {
-                      toast.success('Día festivo agregado');
-                      setShowModalFestivo(false);
-                    }}
-                    className="px-6 py-2.5 rounded-lg text-white font-bold hover:shadow-lg transition-all"
-                    style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
-                  >
-                    Agregar
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Modal Detalle */}
       <AnimatePresence>

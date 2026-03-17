@@ -5,7 +5,7 @@
 
 import { useState, useMemo } from 'react';
 import { UserCheck, Users, Search, Check, AlertTriangle, CheckCircle, AlertCircle, MapPin } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import {
   WorldClassModal, WCLabel, WCTextarea, WCBotonPrimario, WCBotonSecundario,
   WCBadgeSemaforo, WCBarraCarga, WCAvatar, WCBadgeContrato, WCLeyendaSemaforo,
@@ -25,12 +25,24 @@ interface Profesional {
   procesosAsignados: number; capacidadMaxima: number;
   procesosVencidos: number; procesosEnRiesgo: number; procesosAlDia: number;
   estado: 'activo' | 'inactivo' | 'vacaciones';
-  tipoContrato: 'Planta' | 'Contratista';
+  tipoContrato: 'Planta' | 'Contratista' | 'OPS';
   territorial: string;
 }
 
 interface ModalSolicitarReasignacionProps {
   proceso: Proceso;
+  profesionales?: {
+    id: string;
+    nombreCompleto: string;
+    nombre?: string;
+    email?: string;
+    cargo: string;
+    estado?: string;
+    capacidadMaxima?: number;
+    procesosAsignados?: number;
+    territorial?: string;
+    tipoContrato?: string;
+  }[];
   onClose: () => void;
   onSolicitar: (profesionalId: string, profesionalNombre: string, justificacion: string, prioridad: 'urgente' | 'normal') => void;
 }
@@ -47,7 +59,26 @@ const PROFESIONALES: Profesional[] = [
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-export function ModalSolicitarReasignacion({ proceso, onClose, onSolicitar }: ModalSolicitarReasignacionProps) {
+export function ModalSolicitarReasignacion({ proceso, profesionales = [], onClose, onSolicitar }: ModalSolicitarReasignacionProps) {
+  // Convertir profesionales del backend al formato esperado por el componente
+  const profesionalesFormateados = profesionales.map(p => ({
+    id: p.id,
+    nombre: p.nombreCompleto || p.nombre || '',
+    cargo: p.cargo || 'Profesional',
+    especialidad: p.cargo || 'Derecho Disciplinario', // Usar cargo como especialidad
+    procesosAsignados: p.procesosAsignados || 0,
+    capacidadMaxima: p.capacidadMaxima || 10,
+    procesosVencidos: 0, // No viene del backend
+    procesosEnRiesgo: 0, // No viene del backend
+    procesosAlDia: p.procesosAsignados || 0, // No viene del backend
+    estado: (p.estado || 'ACTIVO').toLowerCase() === 'activo' ? 'activo' : 'inactivo',
+    tipoContrato: (p.tipoContrato === 'Planta' || p.tipoContrato === 'Contratista' || p.tipoContrato === 'OPS') ? p.tipoContrato : 'Planta' as const,
+    territorial: p.territorial || 'Sede Central'
+  }));
+
+  // Usar profesionales del backend si existen, si no usar mock
+  const profesionalesAMostrar = profesionalesFormateados.length > 0 ? profesionalesFormateados : PROFESIONALES;
+
   const [seleccionado, setSeleccionado] = useState('');
   const [justificacion, setJustificacion] = useState('');
   const [prioridad, setPrioridad]       = useState<'urgente' | 'normal'>('normal');
@@ -55,18 +86,18 @@ export function ModalSolicitarReasignacion({ proceso, onClose, onSolicitar }: Mo
 
   const lista = useMemo(() => {
     const t = busqueda.toLowerCase();
-    const r = PROFESIONALES
+    const r = profesionalesAMostrar
       .filter(p => p.estado === 'activo')
       .filter(p => p.id !== proceso.profesionalAsignadoId)
-      .filter(p => !t || p.nombre.toLowerCase().includes(t) || p.especialidad.toLowerCase().includes(t));
+      .filter(p => !t || p.nombre.toLowerCase().includes(t) || (p.especialidad && p.especialidad.toLowerCase().includes(t)));
     return [...r].sort((a, b) => {
       const ord = { verde: 0, amarillo: 1, rojo: 2, gris: 3 };
       return ord[wcSemaforo(a.procesosAsignados, a.capacidadMaxima, a.estado)] -
              ord[wcSemaforo(b.procesosAsignados, b.capacidadMaxima, b.estado)];
     });
-  }, [busqueda, proceso.profesionalAsignadoId]);
+  }, [busqueda, proceso.profesionalAsignadoId, profesionalesAMostrar]);
 
-  const prof = PROFESIONALES.find(p => p.id === seleccionado);
+  const prof = profesionalesAMostrar.find(p => p.id === seleccionado);
   const nombreProfesionalActual =
     typeof proceso.profesionalAsignado === 'string'
       ? proceso.profesionalAsignado
@@ -93,7 +124,7 @@ export function ModalSolicitarReasignacion({ proceso, onClose, onSolicitar }: Mo
   return (
     <WorldClassModal
       titulo="Solicitar Reasignación"
-      subtitulo={`${proceso.numeroProceso} · ${proceso.denunciado.nombre}`}
+      subtitulo={`${proceso.numeroProceso} · ${proceso.denunciado?.nombre || 'Sin denunciado'}`}
       icono={<UserCheck className="w-5 h-5 text-white" />}
       pie={pie}
       onCerrar={onClose}
@@ -178,7 +209,7 @@ export function ModalSolicitarReasignacion({ proceso, onClose, onSolicitar }: Mo
                   </div>
                   <p className="text-xs text-gray-500">{p.cargo} · {p.especialidad}</p>
                   <div className="flex items-center gap-2 mt-1">
-                    <WCBadgeContrato tipo={p.tipoContrato} />
+                    <WCBadgeContrato tipo={p.tipoContrato as 'Planta' | 'Contratista' | 'OPS'} />
                     <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
                       <MapPin className="w-3 h-3" />{p.territorial.replace('Territorial ', '').replace('Dirección ', 'Dir. ')}
                     </span>

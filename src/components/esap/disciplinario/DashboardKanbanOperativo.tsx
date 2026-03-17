@@ -2388,6 +2388,39 @@ export function DashboardKanbanOperativo({
   const [busquedaGlobal, setBusquedaGlobal] = useState('');
   const [showBusquedaGlobal, setShowBusquedaGlobal] = useState(false);
   const busquedaInputRef = useRef<HTMLInputElement>(null);
+  const kanbanScrollRef = useRef<HTMLDivElement>(null);
+  const kanbanTopScrollRef = useRef<HTMLDivElement>(null);
+  const kanbanContentWidthRef = useRef<HTMLDivElement>(null);
+
+  // ✅ Sincronizar scroll horizontal entre barra superior y contenedor Kanban
+  useEffect(() => {
+    const top = kanbanTopScrollRef.current;
+    const main = kanbanScrollRef.current;
+    const content = kanbanContentWidthRef.current;
+    if (!top || !main || !content) return;
+
+    // El div interno del top scrollbar es el primer hijo
+    const topInner = top.firstElementChild as HTMLDivElement | null;
+
+    // Sync width: observamos el contenido real (width: max-content)
+    const syncWidth = () => {
+      if (topInner) topInner.style.width = `${content.offsetWidth}px`;
+    };
+    syncWidth();
+    const ro = new ResizeObserver(syncWidth);
+    ro.observe(content);
+
+    const syncFromTop = () => { main.scrollLeft = top.scrollLeft; };
+    const syncFromMain = () => { top.scrollLeft = main.scrollLeft; };
+    top.addEventListener('scroll', syncFromTop);
+    main.addEventListener('scroll', syncFromMain);
+    return () => {
+      top.removeEventListener('scroll', syncFromTop);
+      main.removeEventListener('scroll', syncFromMain);
+      ro.disconnect();
+    };
+  }); // sin deps: corre en cada render, ResizeObserver evita loops
+
   // ✅ Archivados: inician vacíos, se llenan al archivar noticias/procesos (persistido en Supabase vía update de estado)
   const [itemsArchivados, setItemsArchivados] = useState<Array<Item & { fechaArchivo: string; motivoArchivo: string }>>([]);
   const [vistaCompacta, setVistaCompacta] = useState(false);
@@ -4478,21 +4511,43 @@ export function DashboardKanbanOperativo({
           </div>
         )}
 
+        {/* ═══ Barra de scroll superior sticky — fuera del overflow-hidden para que sticky funcione ═══ */}
+        {tipoVista === 'kanban' && itemsFiltrados.length > 0 && (
+          <div
+            ref={kanbanTopScrollRef}
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 20,
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              height: '14px',
+              scrollbarWidth: 'thin',
+              scrollbarColor: '#94A3B8 #CBD5E1',
+              background: '#F1F5F9',
+              borderRadius: '4px',
+            }}
+          >
+            <div style={{ height: '1px' }} />
+          </div>
+        )}
+
         {tipoVista === 'kanban' && itemsFiltrados.length > 0 && (
           <div className="flex-1 overflow-hidden">
             {/* ═══ Contenedor Kanban estilo Trello: scroll horizontal + columnas fijas ═══ */}
             <div
+              ref={kanbanScrollRef}
               className="h-full pb-2"
               style={{
                 overflowX: 'auto',
                 overflowY: 'hidden',
                 WebkitOverflowScrolling: 'touch',
-                scrollbarWidth: 'thin',
-                scrollbarColor: '#CBD5E0 transparent',
+                scrollbarWidth: 'none',
               }}
             >
               {/* Flex container — columnas de ancho FIJO, nunca se comprimen (patrón Trello) */}
               <div
+                ref={kanbanContentWidthRef}
                 className="flex gap-4 h-full items-stretch"
                 style={{
                   width: 'max-content',
@@ -5347,6 +5402,17 @@ export function DashboardKanbanOperativo({
             <ModalSolicitarReasignacion
               key="modal-solicitar-reasignacion"
               proceso={itemSeleccionado}
+              profesionales={profesionalesList.map((p: any) => ({
+                id: p.id,
+                nombreCompleto: p.nombre,
+                nombre: p.nombre,
+                cargo: 'Profesional de Control Interno Disciplinario',
+                estado: 'activo',
+                capacidadMaxima: 15,
+                procesosAsignados: 0,
+                territorial: '',
+                tipoContrato: 'Planta'
+              }))}
               onClose={() => {
                 setModalActivo(null);
                 setItemSeleccionado(null);

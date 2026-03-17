@@ -42,17 +42,7 @@ export function ConfiguracionEntidadesRemision() {
       setEntidades(data);
     } catch (error) {
       console.error('Error al cargar entidades:', error);
-      // Si hay error, usar datos por defecto en localStorage como fallback
-      try {
-        const localData = localStorage.getItem('disciplinario-entidades-remision');
-        if (localData) {
-          setEntidades(JSON.parse(localData));
-        } else {
-          setEntidades(ENTIDADES_REMISION_DEFECTO);
-        }
-      } catch {
-        setEntidades(ENTIDADES_REMISION_DEFECTO);
-      }
+      setEntidades(ENTIDADES_REMISION_DEFECTO);
     } finally {
       setLoading(false);
     }
@@ -67,7 +57,7 @@ export function ConfiguracionEntidadesRemision() {
 
   const abrirModalEditarEntidad = (entidad: EntidadRemision) => {
     setEntidadEdicion(entidad);
-    setFormEntidad({ nombre: entidad.nombre, correo: entidad.correo });
+    setFormEntidad({ nombre: entidad.nombre ?? '', correo: entidad.correo ?? '' });
     setErroresForm({ nombre: '', correo: '' });
     setShowModal(true);
   };

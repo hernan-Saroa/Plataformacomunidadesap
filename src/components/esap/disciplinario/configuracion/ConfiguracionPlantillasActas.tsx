@@ -2,219 +2,122 @@
  * CONFIGURACIÓN DE PLANTILLAS DE ACTAS
  * Componente modular standalone para gestionar plantillas de actas
  * Control Interno Disciplinario
+ * ✅ CONECTADO AL BACKEND API - ActasConfiguration
+ * ✅ Sin datos quemados - Si no hay datos en BD, muestra estado vacío
  */
 
-import { useState } from 'react';
-import { Plus, AlertCircle, Save, RotateCcw } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { useState, useEffect, useCallback } from 'react';
+import { AlertCircle, Save, RotateCcw } from 'lucide-react';
+import { toast } from 'sonner';
+import disciplinaryService, { 
+  ActaConfiguration, 
+  CreateActaConfigurationDto, 
+  UpdateActaConfigurationDto 
+} from '../../../../services/api/disciplinary.service';
+import { useActasConfiguration } from '../../../../hooks/useActasConfiguration';
 import { SeccionPlantillasActasUnificada, type TipoActa, type PlantillaArchivo } from './SeccionPlantillasActasUnificada';
 import { ModalNuevoTipoActa } from './ModalNuevoTipoActa';
 import { ModalGestionarPlantillasActa } from './ModalGestionarPlantillasActa';
 
-// Tipos de actas por defecto
-const TIPOS_ACTAS_DEFECTO: TipoActa[] = [
-  {
-    id: 'acta-inicio-indagacion',
-    nombre: 'Acta de Inicio de Indagación Preliminar',
-    descripcion: 'Documenta el inicio formal de la indagación preliminar',
-    tipo: 'INICIO' as const,
-    plantillas: [
-      {
-        id: 'plantilla-ini-1',
-        nombre: 'Acta Inicio Indagación - Estándar',
-        nombreArchivo: 'acta_inicio_indagacion.docx',
-        descripcion: 'Formato estándar para iniciar indagación',
-        url: '/plantillas/acta_inicio_indagacion.docx',
-        tamano: 42000,
-        version: '1.0',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 1,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
-  },
-  {
-    id: 'acta-audiencia-descargos',
-    nombre: 'Acta de Audiencia de Descargos',
-    descripcion: 'Documenta la audiencia en la que el investigado presenta sus descargos al pliego de cargos',
-    tipo: 'DESCARGOS' as const,
-    plantillas: [
-      {
-        id: 'plantilla-1',
-        nombre: 'Acta Audiencia Descargos - Formato Oficial',
-        nombreArchivo: 'acta_audiencia_descargos.docx',
-        descripcion: 'Formato oficial para registrar audiencia de descargos',
-        url: '/plantillas/acta_audiencia_descargos.docx',
-        tamano: 48000,
-        version: '2.0',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      },
-      {
-        id: 'plantilla-1b',
-        nombre: 'Acta Audiencia Descargos - Con Apoderado',
-        nombreArchivo: 'acta_audiencia_descargos_apoderado.docx',
-        descripcion: 'Cuando el investigado actúa con apoderado',
-        url: '/plantillas/acta_audiencia_descargos_apoderado.docx',
-        tamano: 50000,
-        version: '1.5',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 1,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
-  },
-  {
-    id: 'acta-version-libre',
-    nombre: 'Acta de Versión Libre del Investigado',
-    descripcion: 'Registra la versión libre que rinde el investigado sobre los hechos objeto de investigación',
-    tipo: 'VERSION' as const,
-    plantillas: [
-      {
-        id: 'plantilla-2',
-        nombre: 'Acta Versión Libre - Formato Completo',
-        nombreArchivo: 'acta_version_libre.docx',
-        descripcion: 'Incluye formulación de derechos y registro detallado',
-        url: '/plantillas/acta_version_libre.docx',
-        tamano: 51000,
-        version: '1.5',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 1,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
-  },
-  {
-    id: 'acta-practica-pruebas-testimonial',
-    nombre: 'Acta de Práctica de Prueba Testimonial',
-    descripcion: 'Documenta la práctica de pruebas testimoniales solicitadas en el proceso',
-    tipo: 'PRUEBAS' as const,
-    plantillas: [
-      {
-        id: 'plantilla-3',
-        nombre: 'Acta Práctica Pruebas - Testimonial',
-        nombreArchivo: 'acta_practica_prueba_testimonial.docx',
-        descripcion: 'Para registro de declaraciones de testigos',
-        url: '/plantillas/acta_practica_prueba_testimonial.docx',
-        tamano: 46000,
-        version: '1.8',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 1,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
-  },
-  {
-    id: 'acta-practica-pruebas-documental',
-    nombre: 'Acta de Práctica de Prueba Documental',
-    descripcion: 'Documenta la inspección y valoración de documentos como prueba',
-    tipo: 'PRUEBAS' as const,
-    plantillas: [
-      {
-        id: 'plantilla-4',
-        nombre: 'Acta Práctica Pruebas - Documental',
-        nombreArchivo: 'acta_practica_prueba_documental.docx',
-        descripcion: 'Para inspección y registro de pruebas documentales',
-        url: '/plantillas/acta_practica_prueba_documental.docx',
-        tamano: 43000,
-        version: '1.3',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 2,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
-  },
-  {
-    id: 'acta-audiencia-publica',
-    nombre: 'Acta de Audiencia Pública',
-    descripcion: 'Registra el desarrollo de audiencias públicas conforme al debido proceso',
-    tipo: 'AUDIENCIA' as const,
-    plantillas: [
-      {
-        id: 'plantilla-5',
-        nombre: 'Acta Audiencia Pública - Formato General',
-        nombreArchivo: 'acta_audiencia_publica.docx',
-        descripcion: 'Para registro de audiencias públicas procesales',
-        url: '/plantillas/acta_audiencia_publica.docx',
-        tamano: 49000,
-        version: '2.1',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      },
-      {
-        id: 'plantilla-5b',
-        nombre: 'Acta Audiencia Pública - Virtual',
-        nombreArchivo: 'acta_audiencia_publica_virtual.docx',
-        descripcion: 'Para audiencias realizadas por medios virtuales',
-        url: '/plantillas/acta_audiencia_publica_virtual.docx',
-        tamano: 47000,
-        version: '1.0',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 1,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
-  },
-  {
-    id: 'acta-cierre-investigacion',
-    nombre: 'Acta de Cierre de Investigación',
-    descripcion: 'Documenta formalmente el cierre de la etapa de investigación',
-    tipo: 'CIERRE' as const,
-    plantillas: [
-      {
-        id: 'plantilla-cierre-1',
-        nombre: 'Acta Cierre Investigación - Completa',
-        nombreArchivo: 'acta_cierre_investigacion.docx',
-        descripcion: 'Cierre con análisis de pruebas recaudadas',
-        url: '/plantillas/acta_cierre_investigacion.docx',
-        tamano: 45000,
-        version: '1.0',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 1,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
+// Función para convertir ActaConfiguration del backend al formato TipoActa del frontend
+const mapBackendToFrontend = (config: ActaConfiguration): TipoActa => {
+  // Mapear el tipo del backend al tipo del frontend
+  const tipoLower = config.tipo?.toLowerCase() || '';
+  let tipo: TipoActa['tipo'] = 'INICIO';
+  
+  if (tipoLower.includes('indagacion') || tipoLower.includes('inicio')) {
+    tipo = 'INICIO';
+  } else if (tipoLower.includes('descargo')) {
+    tipo = 'DESCARGOS';
+  } else if (tipoLower.includes('version')) {
+    tipo = 'VERSION';
+  } else if (tipoLower.includes('prueba') || tipoLower.includes('testimonial')) {
+    tipo = 'PRUEBAS';
+  } else if (tipoLower.includes('audiencia')) {
+    tipo = 'AUDIENCIA';
+  } else if (tipoLower.includes('cierre')) {
+    tipo = 'CIERRE';
   }
-];
+  
+  return {
+    id: config.id,
+    nombre: config.nombre,
+    descripcion: config.descripcion || '',
+    tipo,
+    plantillas: config.nombre_plantilla ? [{
+      id: config.id,
+      nombre: config.nombre_plantilla,
+      nombreArchivo: config.nombre_plantilla,
+      descripcion: config.descripcion_plantilla || '',
+      url: config.plantilla || '',
+      tamano: 0,
+      version: config.version_plantilla || '1.0',
+      fechaCreacion: config.createdAt,
+      fechaModificacion: config.updatedAt,
+      activo: config.estado_plantilla !== 'inactivo'
+    }] : [],
+    activo: config.estado === 'activo',
+    orden: config.orden || 0,
+    fechaCreacion: config.createdAt,
+    fechaModificacion: config.updatedAt
+  };
+};
 
 export function ConfiguracionPlantillasActas() {
-  const [tiposActas, setTiposActas] = useState<TipoActa[]>(TIPOS_ACTAS_DEFECTO);
+  const [tiposActas, setTiposActas] = useState<TipoActa[]>([]);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [datosDesdeBackend, setDatosDesdeBackend] = useState(false);
   
   const [mostrarModalTipoActa, setMostrarModalTipoActa] = useState(false);
   const [tipoActaEdicion, setTipoActaEdicion] = useState<TipoActa | null>(null);
   const [tipoActaGestionando, setTipoActaGestionando] = useState<TipoActa | null>(null);
   const [mostrarModalGestionarPlantillas, setMostrarModalGestionarPlantillas] = useState(false);
+
+  // Hook para usar el API de actas configuration
+  const {
+    createConfiguration,
+    updateConfiguration,
+    deleteConfiguration,
+    toggleEstado,
+    uploadPlantilla
+  } = useActasConfiguration();
+
+  // Cargar datos del backend al iniciar
+  const cargarConfiguracion = useCallback(async () => {
+    try {
+      setLoading(true);
+      console.log('🔵 [ConfiguracionPlantillasActas] Cargando configuraciones del backend...');
+      
+      const configs = await disciplinaryService.getActasConfiguration();
+      
+      console.log('🔵 [ConfiguracionPlantillasActas] Configuraciones recibidas:', configs);
+      
+      if (configs && configs.length > 0) {
+        const tiposMapeados = configs.map(mapBackendToFrontend);
+        setTiposActas(tiposMapeados);
+        setDatosDesdeBackend(true);
+        console.log('✅ [ConfiguracionPlantillasActas] Datos cargados desde BD:', tiposMapeados.length);
+      } else {
+        console.log('⚠️ [ConfiguracionPlantillasActas] No hay datos en BD, mostrando estado vacío');
+        setTiposActas([]);
+        setDatosDesdeBackend(false);
+      }
+    } catch (error) {
+      console.error('❌ [ConfiguracionPlantillasActas] Error cargando configuración:', error);
+      setTiposActas([]);
+      setDatosDesdeBackend(false);
+      toast.error('Error al cargar configuración de actas', {
+        description: 'No se pudieron cargar los datos del servidor'
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    cargarConfiguracion();
+  }, [cargarConfiguracion]);
 
   const abrirModalNuevoTipoActa = () => {
     setTipoActaEdicion(null);
@@ -228,22 +131,68 @@ export function ConfiguracionPlantillasActas() {
 
   const guardarTipoActa = (nuevoTipo: Omit<TipoActa, 'id' | 'plantillas' | 'fechaCreacion' | 'fechaModificacion'>) => {
     if (tipoActaEdicion) {
-      setTiposActas(tiposActas.map(t => 
-        t.id === tipoActaEdicion.id 
-          ? { ...t, ...nuevoTipo, fechaModificacion: new Date().toISOString() }
-          : t
-      ));
-      toast.success('Tipo de acta actualizado correctamente');
+      if (datosDesdeBackend && tipoActaEdicion.id && !tipoActaEdicion.id.startsWith('tipo-acta-')) {
+        const updateDto: UpdateActaConfigurationDto = {
+          nombre: nuevoTipo.nombre,
+          tipo: nuevoTipo.tipo,
+          descripcion: nuevoTipo.descripcion,
+          estado: nuevoTipo.activo ? 'activo' : 'inactivo',
+          orden: nuevoTipo.orden
+        };
+        
+        updateConfiguration(tipoActaEdicion.id, updateDto)
+          .then(() => {
+            setTiposActas(tiposActas.map(t => 
+              t.id === tipoActaEdicion.id 
+                ? { ...t, ...nuevoTipo, fechaModificacion: new Date().toISOString() }
+                : t
+            ));
+            toast.success('Tipo de acta actualizado correctamente');
+          })
+          .catch((err) => {
+            console.error('Error actualizando en backend:', err);
+            toast.error('Error al actualizar en el servidor');
+          });
+      } else {
+        setTiposActas(tiposActas.map(t => 
+          t.id === tipoActaEdicion.id 
+            ? { ...t, ...nuevoTipo, fechaModificacion: new Date().toISOString() }
+            : t
+        ));
+        toast.success('Tipo de acta actualizado correctamente');
+      }
     } else {
-      const tipoCompleto: TipoActa = {
-        id: `tipo-acta-${Date.now()}`,
-        ...nuevoTipo,
-        plantillas: [],
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString()
+      const nuevoDto: CreateActaConfigurationDto = {
+        nombre: nuevoTipo.nombre,
+        tipo: nuevoTipo.tipo,
+        codigo: `ACTA-${Date.now()}`,
+        descripcion: nuevoTipo.descripcion,
+        estado: nuevoTipo.activo ? 'activo' : 'inactivo',
+        orden: nuevoTipo.orden || tiposActas.length + 1
       };
-      setTiposActas([...tiposActas, tipoCompleto]);
-      toast.success('Tipo de acta creado correctamente');
+
+      if (datosDesdeBackend) {
+        createConfiguration(nuevoDto)
+          .then((nuevo) => {
+            const tipoCompleto: TipoActa = mapBackendToFrontend(nuevo);
+            setTiposActas([...tiposActas, tipoCompleto]);
+            toast.success('Tipo de acta creado correctamente');
+          })
+          .catch((err) => {
+            console.error('Error creando en backend:', err);
+            toast.error('Error al crear en el servidor');
+          });
+      } else {
+        const tipoCompleto: TipoActa = {
+          id: `tipo-acta-${Date.now()}`,
+          ...nuevoTipo,
+          plantillas: [],
+          fechaCreacion: new Date().toISOString(),
+          fechaModificacion: new Date().toISOString()
+        };
+        setTiposActas([...tiposActas, tipoCompleto]);
+        toast.success('Tipo de acta creado correctamente');
+      }
     }
     
     setCambiosPendientes(true);
@@ -251,20 +200,36 @@ export function ConfiguracionPlantillasActas() {
     setTipoActaEdicion(null);
   };
 
-  const eliminarTipoActa = (tipoId: string) => {
+  const eliminarTipoActa = async (tipoId: string) => {
     if (window.confirm('¿Está seguro de eliminar este tipo de acta y todas sus plantillas?')) {
+      if (datosDesdeBackend && !tipoId.startsWith('tipo-acta-')) {
+        try {
+          await deleteConfiguration(tipoId);
+          toast.success('Tipo de acta eliminado correctamente');
+        } catch (err) {
+          console.error('Error eliminando en backend:', err);
+          toast.error('Error al eliminar en el servidor');
+        }
+      }
       setTiposActas(tiposActas.filter(t => t.id !== tipoId));
       setCambiosPendientes(true);
-      toast.success('Tipo de acta eliminado correctamente');
     }
   };
 
-  const toggleActivoTipoActa = (tipoId: string, activo: boolean) => {
+  const toggleActivoTipoActa = async (tipoId: string, activo: boolean) => {
+    if (datosDesdeBackend && !tipoId.startsWith('tipo-acta-')) {
+      try {
+        await toggleEstado(tipoId);
+        toast.success(activo ? 'Tipo de acta activado' : 'Tipo de acta desactivado');
+      } catch (err) {
+        console.error('Error toggling estado:', err);
+        toast.error('Error al cambiar estado');
+      }
+    }
     setTiposActas(tiposActas.map(t => 
       t.id === tipoId ? { ...t, activo } : t
     ));
     setCambiosPendientes(true);
-    toast.success(activo ? 'Tipo de acta activado' : 'Tipo de acta desactivado');
   };
 
   const abrirGestionPlantillas = (tipo: TipoActa) => {
@@ -272,35 +237,108 @@ export function ConfiguracionPlantillasActas() {
     setMostrarModalGestionarPlantillas(true);
   };
 
-  const actualizarPlantillasTipoActa = (tipoActaId: string, plantillas: PlantillaArchivo[]) => {
-    setTiposActas(tiposActas.map(t => 
-      t.id === tipoActaId 
-        ? { ...t, plantillas, fechaModificacion: new Date().toISOString() } 
-        : t
-    ));
+  const actualizarPlantillasTipoActa = async (tipoActaId: string, plantillas: PlantillaArchivo[]) => {
+    const plantilla = plantillas[0];
+    const esArchivoNuevo = plantilla?.url?.startsWith('blob:') || false;
+    
+    if (datosDesdeBackend && plantilla) {
+      if (esArchivoNuevo) {
+        try {
+          const response = await fetch(plantilla.url);
+          const blob = await response.blob();
+          const file = new globalThis.File([blob], plantilla.nombreArchivo, { 
+            type: blob.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+          });
+          
+          await uploadPlantilla(
+            tipoActaId,
+            file,
+            plantilla.nombre,
+            plantilla.descripcion,
+            plantilla.version,
+            plantilla.activo ? 'activo' : 'inactivo'
+          );
+          toast.success('Plantilla actualizada correctamente');
+        } catch (error) {
+          console.error('Error subiendo plantilla:', error);
+          toast.error('Error al subir la plantilla');
+        }
+      } else {
+        try {
+          const updateDto: UpdateActaConfigurationDto = {
+            nombre_plantilla: plantilla.nombre,
+            descripcion_plantilla: plantilla.descripcion,
+            version_plantilla: plantilla.version,
+            estado_plantilla: plantilla.activo ? 'activo' : 'inactivo'
+          };
+          
+          await updateConfiguration(tipoActaId, updateDto);
+          toast.success('Plantilla actualizada correctamente');
+        } catch (error) {
+          console.error('Error actualizando plantilla:', error);
+          toast.error('Error al actualizar la plantilla');
+        }
+      }
+    }
+    
+    try {
+      const configs = await disciplinaryService.getActasConfiguration();
+      if (configs && configs.length > 0) {
+        const tiposMapeados = configs.map(mapBackendToFrontend);
+        setTiposActas(tiposMapeados);
+      }
+    } catch (error) {
+      console.error('Error recargando configuración:', error);
+    }
+    
     setCambiosPendientes(true);
     setMostrarModalGestionarPlantillas(false);
     setTipoActaGestionando(null);
   };
 
-  const guardarConfiguraciones = () => {
+  const guardarConfiguraciones = async () => {
     try {
-      localStorage.setItem('disciplinario-tipos-actas', JSON.stringify(tiposActas));
+      const currentConfig = await disciplinaryService.getGlobalConfig();
+      const documentTemplates = {
+        ...currentConfig?.documentTemplates,
+        actas: tiposActas
+      };
+
+      const globalPayload = {
+        roleCapacities: currentConfig?.roleCapacities || {},
+        notificationSettings: currentConfig?.notificationSettings || {},
+        alertSettings: currentConfig?.alertSettings || {},
+        securitySettings: currentConfig?.securitySettings || { auditEnabled: true, digitalSignature: true, backupEnabled: true },
+        documentTemplates
+      };
+
+      await disciplinaryService.updateGlobalConfig(globalPayload);
       setCambiosPendientes(false);
-      toast.success('Configuraciones guardadas correctamente');
+      toast.success('Configuración guardada exitosamente');
     } catch (error) {
-      console.error('❌ Error al guardar:', error);
-      toast.error('Error al guardar configuraciones');
+      console.error('Error al guardar configuración:', error);
+      toast.error('Error al guardar configuración');
     }
   };
 
   const restablecerDefecto = () => {
-    if (window.confirm('¿Está seguro de restablecer a valores por defecto?')) {
-      setTiposActas(TIPOS_ACTAS_DEFECTO);
+    if (window.confirm('¿Está seguro de limpiar la configuración?')) {
+      setTiposActas([]);
       setCambiosPendientes(true);
-      toast.success('Configuraciones restablecidas');
+      toast.success('Configuración limpiada');
     }
   };
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-amber-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando configuración...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 space-y-6">

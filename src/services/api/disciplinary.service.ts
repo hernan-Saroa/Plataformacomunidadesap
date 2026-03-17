@@ -204,6 +204,57 @@ export interface UpdateOficioConfigurationDto {
     estado_plantilla?: string;
 }
 
+// ==================== CONFIGURACIÓN DE ACTAS ====================
+
+// Tipo para configuración de actas
+export interface ActaConfiguration {
+    id: string;
+    tipo: string;
+    nombre: string;
+    codigo: string;
+    descripcion: string;
+    estado: string;
+    plantilla?: string;
+    stage: string | null;
+    orden: number;
+    createdAt: string;
+    updatedAt: string;
+    // Campos de plantilla
+    nombre_plantilla?: string;
+    descripcion_plantilla?: string;
+    version_plantilla?: string;
+    estado_plantilla?: string;
+}
+
+// DTO para crear configuración de acta
+export interface CreateActaConfigurationDto {
+    tipo: string;
+    nombre: string;
+    codigo?: string;
+    descripcion?: string;
+    estado?: 'activo' | 'inactivo';
+    plantilla?: string;
+    stage?: string;
+    orden?: number;
+}
+
+// DTO para actualizar configuración de acta
+export interface UpdateActaConfigurationDto {
+    tipo?: string;
+    nombre?: string;
+    codigo?: string;
+    descripcion?: string;
+    estado?: 'activo' | 'inactivo';
+    plantilla?: string;
+    stage?: string;
+    orden?: number;
+    // Campos de plantilla
+    nombre_plantilla?: string;
+    descripcion_plantilla?: string;
+    version_plantilla?: string;
+    estado_plantilla?: string;
+}
+
 export interface CreateNewsDto {
     origen: string;
     fechaQueja?: string;
@@ -650,6 +701,20 @@ class DisciplinaryService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/versions`);
     }
 
+    // --- TÉRMINOS PROCESALES ---
+
+    async getTerminos(params?: { estado?: string; search?: string; page?: number; limit?: number }): Promise<{ terminos: any[]; stats: any }> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/terminos-procesales`, params);
+    }
+
+    async createTermino(data: { procesoId: string; actuacion: string; responsableId: string; fechaInicio: string; diasHabiles: number }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/terminos-procesales`, data);
+    }
+
+    async marcarTerminoCumplido(id: string, data: { fechaCumplimiento: string; observaciones?: string }): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/terminos-procesales/${id}/marcar-cumplido`, data);
+    }
+
     // --- PROFESIONALES ---
 
     async getProfesionales(): Promise<any[]> {
@@ -1061,6 +1126,110 @@ class DisciplinaryService {
         if (versionPlantilla) formData.append('version_plantilla', versionPlantilla);
         if (estadoPlantilla) formData.append('estado_plantilla', estadoPlantilla);
         return apiClient.upload<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/${id}/upload-files`, formData);
+    }
+
+    // ==================== CONFIGURACIÓN DE ACTAS ====================
+
+    /**
+     * Obtener todas las configuraciones de actas
+     */
+    async getActasConfiguration(): Promise<ActaConfiguration[]> {
+        return apiClient.get<ActaConfiguration[]>(`${SERVICE_PREFIX}/actas-configuration`);
+    }
+
+    /**
+     * Obtener solo las configuraciones de actas activas
+     */
+    async getActasConfigurationActive(): Promise<ActaConfiguration[]> {
+        return apiClient.get<ActaConfiguration[]>(`${SERVICE_PREFIX}/actas-configuration/active`);
+    }
+
+    /**
+     * Obtener una configuración de acta por ID
+     */
+    async getActasConfigurationById(id: string): Promise<ActaConfiguration> {
+        return apiClient.get<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}`);
+    }
+
+    /**
+     * Obtener una configuración de acta por tipo
+     */
+    async getActasConfigurationByTipo(tipo: string): Promise<ActaConfiguration> {
+        return apiClient.get<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/tipo/${tipo}`);
+    }
+
+    /**
+     * Obtener configuraciones de acta por stage
+     */
+    async getActasConfigurationByStage(stage: string): Promise<ActaConfiguration[]> {
+        return apiClient.get<ActaConfiguration[]>(`${SERVICE_PREFIX}/actas-configuration/stage/${stage}`);
+    }
+
+    /**
+     * Crear nueva configuración de acta
+     */
+    async createActaConfiguration(data: CreateActaConfigurationDto): Promise<ActaConfiguration> {
+        return apiClient.post<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration`, data);
+    }
+
+    /**
+     * Actualizar configuración de acta
+     */
+    async updateActaConfiguration(id: string, data: UpdateActaConfigurationDto): Promise<ActaConfiguration> {
+        return apiClient.put<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}`, data);
+    }
+
+    /**
+     * Eliminar configuración de acta
+     */
+    async deleteActaConfiguration(id: string): Promise<void> {
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/actas-configuration/${id}`);
+    }
+
+    /**
+     * Activar/desactivar configuración de acta
+     */
+    async toggleActaConfigurationEstado(id: string): Promise<ActaConfiguration> {
+        return apiClient.patch<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}/toggle-estado`, {});
+    }
+
+    /**
+     * Subir plantilla Word para un acta
+     */
+    async uploadActaPlantilla(
+        id: string, 
+        file: File,
+        nombrePlantilla?: string,
+        descripcionPlantilla?: string,
+        versionPlantilla?: string,
+        estadoPlantilla?: string
+    ): Promise<ActaConfiguration> {
+        const formData = new FormData();
+        formData.append('file', file);
+        // Enviar campos adicionales del plantilla
+        if (nombrePlantilla) formData.append('nombre_plantilla', nombrePlantilla);
+        if (descripcionPlantilla) formData.append('descripcion_plantilla', descripcionPlantilla);
+        if (versionPlantilla) formData.append('version_plantilla', versionPlantilla);
+        if (estadoPlantilla) formData.append('estado_plantilla', estadoPlantilla);
+        return apiClient.upload<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}/upload-files`, formData);
+    }
+
+    // ==================== GENERAR CONSECUTIVO DE ACTA DESDE BACKEND ====================
+
+    /**
+     * Genera un nuevo número de consecutivo para un acta desde el backend
+     * El backend gestiona la secuencia en la base de datos
+     */
+    async generarConsecutivoActa(): Promise<{ consecutive: string }> {
+        return apiClient.get<{ consecutive: string }>(`${SERVICE_PREFIX}/generate-acta-consecutivo`);
+    }
+
+    /**
+     * Previsualiza el próximo número de consecutivo para un acta SIN incrementarlo
+     * Útil para mostrar la nomenclatura antes de confirmar la creación
+     */
+    async previsualizarConsecutivoActa(): Promise<{ consecutive: string }> {
+        return apiClient.get<{ consecutive: string }>(`${SERVICE_PREFIX}/preview-acta-consecutivo`);
     }
 
     // ==================== COMPARTIR EXPEDIENTE ====================

@@ -24,10 +24,14 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { BadgeNomenclatura } from './components/BadgeNomenclatura';
-import { generarNomenclatura, previsualizarNomenclatura, type DocumentoNomenclatura } from './utils/nomenclaturaDocumentos';
+import { previsualizarNomenclatura, type DocumentoNomenclatura } from './utils/nomenclaturaDocumentos';
+import { useActasConfigurationActive } from '../../../hooks/useActasConfiguration';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
-// ==================== TIPOS DE ACTAS ====================
-const TIPOS_ACTAS = [
+// ==================== TIPOS DE ACTAS (Desde BD) ====================
+// Los tipos ahora vienen de la configuración paramétrica en la base de datos
+// Esta constante se usa como fallback si no hay configuraciones en la BD
+const TIPOS_ACTAS_FALLBACK = [
   {
     id: 'version-libre',
     nombre: 'Acta de Versión Libre',
@@ -74,7 +78,60 @@ const TIPOS_ACTAS = [
   }
 ];
 
+// Mapeo de iconos para los tipos de actas
+const ICONOS_ACTAS: Record<string, any> = {
+  'ACTA_AUDIENCIA': Users,
+  'ACTA_VERSION_LIBRE': MessageSquare,
+  'ACTA_DESCARGOS': FileText,
+  'ACTA_DILIGENCIA': FileCheck,
+  'audiencia': Users,
+  'version-libre': MessageSquare,
+  'descargos': FileText,
+  'diligencia': FileCheck,
+};
+
+// Colores para los tipos de actas
+const COLORES_ACTAS: Record<string, string> = {
+  'ACTA_AUDIENCIA': '#10B981',
+  'ACTA_VERSION_LIBRE': '#3B82F6',
+  'ACTA_DESCARGOS': '#F59E0B',
+  'ACTA_DILIGENCIA': '#DC2626',
+  'audiencia': '#10B981',
+  'version-libre': '#3B82F6',
+  'descargos': '#F59E0B',
+  'diligencia': '#DC2626',
+};
+
+// Función para normalizar los datos de configuración al formato del componente
+function normalizarTipoActa(config: any) {
+  const tipo = config.tipo || config.id || '';
+  
+  // Construir objeto plantilla basado en los campos de la BD
+  const plantillaObj = config.plantilla || config.nombre_plantilla ? {
+    nombreArchivo: config.nombre_plantilla || config.plantilla?.split('/').pop() || 'plantilla.docx',
+    version: config.version_plantilla || '1.0',
+    url: config.plantilla || null
+  } : null;
+  
+  return {
+    ...config,
+    id: config.id || config.tipo || Math.random().toString(36).substring(7),
+    nombre: config.nombre || config.tipo || 'Sin nombre',
+    descripcion: config.descripcion || null,
+    plantilla: plantillaObj,
+    nombre_plantilla: config.nombre_plantilla || null,
+    version_plantilla: config.version_plantilla || '1.0',
+    estado: config.estado || 'activo',
+    stage: config.stage || null,
+    orden: config.orden || 0,
+    // Agregar icon y color basados en el tipo
+    icon: ICONOS_ACTAS[tipo] || FileText,
+    color: COLORES_ACTAS[tipo] || '#6B7280',
+  };
+}
+
 // ==================== INTERFACES ====================
+// Tipo para las configuraciones de actas (usando any para compatibilidad)
 interface Persona {
   nombre: string;
   tipoIdentificacion: 'CC' | 'CE' | 'TI' | 'PA' | 'NIT';
@@ -118,18 +175,26 @@ export function WizardActasWorldClass({
   onClose,
   onActaCreada
 }: WizardActasWorldClassProps) {
+  // ✅ Hook para obtener configuraciones de actas desde la BD
+  const { configurations: configsActas, loading: loadingActas, refetch } = useActasConfigurationActive();
+  
   // Estados del Wizard
   const [paso, setPaso] = useState(1);
   const [vistaActual, setVistaActual] = useState<'wizard' | 'lista'>('wizard');
 
   // Estados del Paso 1
-  const [tipoSeleccionado, setTipoSeleccionado] = useState<typeof TIPOS_ACTAS[0] | null>(null);
+  const [tipoSeleccionado, setTipoSeleccionado] = useState<any>(null);
   const [busqueda, setBusqueda] = useState('');
   const [plantillaDescargada, setPlantillaDescargada] = useState(false);
   const [descargando, setDescargando] = useState(false);
 
   // ✅ Estados de Nomenclatura
   const [nomenclaturaGenerada, setNomenclaturaGenerada] = useState<DocumentoNomenclatura | null>(null);
+  
+  // ✅ Estados de Nomenclatura desde Backend
+  const [nomenclaturaPreview, setNomenclaturaPreview] = useState<string>('');
+  const [loadingNomenclatura, setLoadingNomenclatura] = useState(false);
+  const [creandoActa, setCreandoActa] = useState(false);
 
   // Estados del Paso 2
   const [fechaActa, setFechaActa] = useState('');
@@ -155,24 +220,51 @@ export function WizardActasWorldClass({
   }, []);
 
   // ==================== FUNCIONES ====================
-  const handleSeleccionarTipo = (tipo: typeof TIPOS_ACTAS[0]) => {
+  const handleSeleccionarTipo = (tipo: any) => {
     setTipoSeleccionado(tipo);
     setPlantillaDescargada(false);
+    // ✅ Cargar preview de nomenclatura desde el backend
+    cargarNomenclaturaPreview();
+  };
+
+  // ✅ Función para obtener preview de nomenclatura desde backend
+  const cargarNomenclaturaPreview = async () => {
+    setLoadingNomenclatura(true);
+    try {
+      const result = await disciplinaryService.previsualizarConsecutivoActa();
+      setNomenclaturaPreview(result.consecutive);
+    } catch (error) {
+      console.error('Error al cargar preview de nomenclatura:', error);
+      // Fallback a la función local
+      setNomenclaturaPreview(previsualizarNomenclatura('ACTA'));
+    } finally {
+      setLoadingNomenclatura(false);
+    }
   };
 
   const handleDescargarPlantilla = async () => {
-    if (!tipoSeleccionado?.plantilla) return;
-
-    setDescargando(true);
-    await new Promise(resolve => setTimeout(resolve, 800));
+    // Si hay una plantilla en la configuración de la BD, usarla
+    const plantillaUrl = tipoSeleccionado?.plantilla;
+    const nombreArchivo = tipoSeleccionado?.nombre_plantilla || tipoSeleccionado?.nombre || 'acta_generica.docx';
     
-    toast.success('Plantilla descargada correctamente', {
-      description: tipoSeleccionado.plantilla.nombreArchivo,
-      duration: 3000,
-    });
+    if (plantillaUrl) {
+      setDescargando(true);
+      try {
+        // Descargar desde la URL configurada
+        window.open(plantillaUrl, '_blank');
+      } catch (error) {
+        console.error('Error descargando plantilla:', error);
+      }
+      setDescargando(false);
+    } else {
+      // Fallback: mostrar mensaje de que no hay plantilla configurada
+      toast.warning('No hay plantilla configurada para este tipo de acta', {
+        description: 'Configure una plantilla en la sección de configuración',
+        duration: 3000,
+      });
+    }
     
     setPlantillaDescargada(true);
-    setDescargando(false);
   };
 
   const handleSiguiente = () => {
@@ -237,33 +329,37 @@ export function WizardActasWorldClass({
     }
   };
 
-  const handleCrearActa = () => {
-    // ✅ Generar nomenclatura única para el acta
-    const nomenclatura = generarNomenclatura(
-      'ACTA',
-      proceso.numeroProceso,
-      proceso.numeroProceso
-    );
-    setNomenclaturaGenerada(nomenclatura);
+  const handleCrearActa = async () => {
+    setCreandoActa(true);
+    try {
+      // ✅ Generar nomenclatura única desde el backend
+      const result = await disciplinaryService.generarConsecutivoActa();
+      const nomenclatura = result.consecutive;
 
-    toast.success('Acta creada exitosamente', {
-      description: `${nomenclatura.nomenclatura} - ${tipoSeleccionado?.nombre}`,
-      duration: 4000,
-    });
-    
-    if (onActaCreada) {
-      onActaCreada({
-        tipo: tipoSeleccionado?.nombre,
-        nomenclatura: nomenclatura.nomenclatura, // ✅ Incluir nomenclatura
-        fecha: fechaActa,
-        lugar: lugarDiligencia,
-        participantes,
-        observaciones,
-        archivo: archivoAdjunto?.name
+      toast.success('Acta creada exitosamente', {
+        description: `${nomenclatura} - ${tipoSeleccionado?.nombre}`,
+        duration: 4000,
       });
+      
+      if (onActaCreada) {
+        onActaCreada({
+          tipo: tipoSeleccionado?.nombre,
+          nomenclatura: nomenclatura, // ✅ Incluir nomenclatura del backend
+          fecha: fechaActa,
+          lugar: lugarDiligencia,
+          participantes,
+          observaciones,
+          archivo: archivoAdjunto?.name
+        });
+      }
+      
+      onClose();
+    } catch (error) {
+      console.error('Error al crear acta:', error);
+      toast.error('Error al crear el acta. Por favor intente de nuevo.');
+    } finally {
+      setCreandoActa(false);
     }
-    
-    onClose();
   };
 
   const resetearWizard = () => {
@@ -301,10 +397,21 @@ export function WizardActasWorldClass({
     setParticipantes(nuevosParticipantes);
   };
 
-  const tiposFiltrados = TIPOS_ACTAS.filter(tipo =>
-    tipo.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-    tipo.descripcion.toLowerCase().includes(busqueda.toLowerCase())
-  );
+  // Convertir las configuraciones de la BD al formato esperado por el componente
+  const configsActivas = (configsActas || [])
+    .filter(c => c.estado === 'activo')
+    .map(config => normalizarTipoActa(config));
+  
+  // Si hay configuraciones en la BD, usarlas; si no, usar el fallback
+  const tiposActas = configsActivas.length > 0 ? configsActivas : TIPOS_ACTAS_FALLBACK;
+  
+  // Filtrar por búsqueda
+  const tiposFiltrados = tiposActas.filter((tipo: any) => {
+    const nombre = tipo.nombre || tipo.tipo || '';
+    const descripcion = tipo.descripcion || '';
+    return nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
+           descripcion.toLowerCase().includes(busqueda.toLowerCase());
+  });
 
   // ==================== RENDER ====================
   return (
@@ -759,7 +866,59 @@ export function WizardActasWorldClass({
                                         </div>
                                       </div>
                                       <BadgeNomenclatura 
-                                        nomenclatura={previsualizarNomenclatura('ACTA')}
+                                        nomenclatura={loadingNomenclatura ? 'Cargando...' : (nomenclaturaPreview || previsualizarNomenclatura('ACTA'))}
+                                        tipo="ACTA"
+                                        size="sm"
+                                        showIcon={true}
+                                        showCopy={false}
+                                      />
+                                    </div>
+                                  </motion.div>
+                                </motion.div>
+                              )}
+
+                              {/* Mensaje cuando NO hay plantilla */}
+                              {seleccionado && !tipo.plantilla && (
+                                <motion.div
+                                  initial={{ opacity: 0, height: 0 }}
+                                  animate={{ opacity: 1, height: 'auto' }}
+                                  exit={{ opacity: 0, height: 0 }}
+                                  transition={{ duration: 0.3 }}
+                                  className="border-t-2 border-purple-100 bg-gradient-to-r from-purple-50/50 to-violet-50/50 p-4"
+                                >
+                                  <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="p-3 bg-amber-50 border border-amber-200 rounded-lg"
+                                  >
+                                    <p className="text-xs font-semibold text-amber-800 flex items-center gap-2">
+                                      <AlertCircle className="w-4 h-4" />
+                                      Esta acta no tiene plantilla configurada. Puede crear el acta sin plantilla o contactar al administrador.
+                                    </p>
+                                  </motion.div>
+
+                                  {/* Vista Previa de Nomenclatura cuando NO hay plantilla */}
+                                  <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="mt-3 p-3 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-xl"
+                                  >
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className="p-1.5 rounded-lg bg-amber-100">
+                                          <Tag className="w-4 h-4 text-amber-700" />
+                                        </div>
+                                        <div>
+                                          <p className="text-xs font-bold text-gray-900 mb-0.5">
+                                            Nomenclatura Asignada:
+                                          </p>
+                                          <p className="text-xs text-gray-600">
+                                            Se generará automáticamente al crear el acta
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <BadgeNomenclatura 
+                                        nomenclatura={loadingNomenclatura ? 'Cargando...' : (nomenclaturaPreview || previsualizarNomenclatura('ACTA'))}
                                         tipo="ACTA"
                                         size="sm"
                                         showIcon={true}
@@ -1174,7 +1333,7 @@ export function WizardActasWorldClass({
                               </p>
                             </div>
                             <BadgeNomenclatura 
-                              nomenclatura={previsualizarNomenclatura('ACTA')}
+                              nomenclatura={loadingNomenclatura ? 'Cargando...' : (nomenclaturaPreview || previsualizarNomenclatura('ACTA'))}
                               tipo="ACTA"
                               size="md"
                               showIcon={true}
@@ -1271,11 +1430,21 @@ export function WizardActasWorldClass({
                 ) : (
                   <button
                     onClick={handleCrearActa}
+                    disabled={creandoActa}
                     className="flex-1 sm:flex-none px-6 py-3 rounded-xl font-bold text-sm text-white transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
                     style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)' }}
                   >
-                    <CheckCircle className="w-4 h-4" />
-                    <span>Crear Acta</span>
+                    {creandoActa ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Creando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-4 h-4" />
+                        <span>Crear Acta</span>
+                      </>
+                    )}
                   </button>
                 )}
               </div>

@@ -356,13 +356,13 @@ export class CertificatesService {
         this.resolveEmploymentStatus(request.hiring_date, request.request_date, request.status) === 'ACTIVO',
     );
 
-    // Prioridad 2 dentro de activos: tipo "E" (encargo).
-    const activeWithEncargo = activeRequests.filter(
-      (request) => this.normalizeEncargoType(request.observations) === 'E',
+    // Prioridad 2 dentro de activos: contrato base (no encargo).
+    const activeWithoutEncargo = activeRequests.filter(
+      (request) => this.normalizeEncargoType(request.observations) !== 'E',
     );
 
-    if (activeWithEncargo.length) {
-      return activeWithEncargo[0];
+    if (activeWithoutEncargo.length) {
+      return activeWithoutEncargo[0];
     }
 
     if (activeRequests.length) {
@@ -371,6 +371,59 @@ export class CertificatesService {
 
     // Fallback: mantener comportamiento previo tomando el registro mas reciente.
     return requests[0];
+  }
+
+  private selectSalarySourceForCertificate(
+    selectedRequest: CertificateRequest | null,
+    requests: CertificateRequest[],
+  ): CertificateRequest | null {
+    if (!selectedRequest || !requests.length) {
+      return null;
+    }
+
+    const selectedIsActive =
+      this.resolveEmploymentStatus(
+        selectedRequest.hiring_date,
+        selectedRequest.request_date,
+        selectedRequest.status,
+      ) === 'ACTIVO';
+    const selectedIsEncargo = this.normalizeEncargoType(selectedRequest.observations) === 'E';
+
+    // Solo aplicar salario de encargo cuando el contrato principal es activo y no encargo.
+    if (!selectedIsActive || selectedIsEncargo) {
+      return null;
+    }
+
+    const activeEncargo = requests.filter((request) => {
+      if (request.id === selectedRequest.id) {
+        return false;
+      }
+      const isActive =
+        this.resolveEmploymentStatus(request.hiring_date, request.request_date, request.status) === 'ACTIVO';
+      const isEncargo = this.normalizeEncargoType(request.observations) === 'E';
+      return isActive && isEncargo;
+    });
+
+    if (!activeEncargo.length) {
+      return null;
+    }
+
+    return activeEncargo[0];
+  }
+
+  private mergeRequestWithSalarySource(
+    selectedRequest: CertificateRequest,
+    salarySource: CertificateRequest | null,
+  ): CertificateRequest {
+    if (!salarySource || salarySource.id === selectedRequest.id) {
+      return selectedRequest;
+    }
+
+    return {
+      ...selectedRequest,
+      monthly_salary: salarySource.monthly_salary,
+      salary_text: salarySource.salary_text ?? selectedRequest.salary_text,
+    };
   }
 
   private async ensureTemplateSnapshotForCertificate(certificate: Certificate): Promise<Certificate> {
@@ -1212,7 +1265,19 @@ export class CertificatesService {
       includeTechnicalBonus?: boolean;
     } = {},
   ) {
-    const request = await this.findSolicitudById(solicitudId);
+    const requestById = await this.findSolicitudById(solicitudId);
+    const relatedRequests = await this.requestRepo
+      .createQueryBuilder('request')
+      .where('request.id_number = :documento', { documento: requestById.id_number })
+      .orderBy('COALESCE(request.hiring_date, request.request_date, request.created_at)', 'DESC')
+      .addOrderBy('request.request_date', 'DESC')
+      .addOrderBy('request.created_at', 'DESC')
+      .getMany();
+
+    const preferredRequest =
+      this.selectPreferredRequestForCertificate(relatedRequests) || requestById;
+    const salarySource = this.selectSalarySourceForCertificate(preferredRequest, relatedRequests);
+    const request = this.mergeRequestWithSalarySource(preferredRequest, salarySource);
     const signer = await this.signerRepo.findOne({
       where: { is_primary: true, is_active: true },
     });
@@ -1953,14 +2018,17 @@ export class CertificatesService {
       .addOrderBy('request.created_at', 'DESC')
       .getMany();
 
-    const solicitud = this.selectPreferredRequestForCertificate(solicitudes);
+    const solicitudBase = this.selectPreferredRequestForCertificate(solicitudes);
 
-    if (!solicitud) {
+    if (!solicitudBase) {
       return {
         existe: false,
         mensaje: 'No se encontro ningun registro con este documento',
       };
     }
+
+    const salarySource = this.selectSalarySourceForCertificate(solicitudBase, solicitudes);
+    const solicitud = this.mergeRequestWithSalarySource(solicitudBase, salarySource);
 
     const technicalBonus = await this.resolveTechnicalBonusForRequest(solicitud);
     const solicitudResponse = {

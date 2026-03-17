@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  FileText, Search, CheckCircle, Calendar, Filter, Clock, AlertTriangle, Shield, Eye, X as XIcon
+  FileText, Search, CheckCircle, Calendar, Filter, Clock, AlertTriangle, Shield, Eye, X as XIcon, ArrowRight, UserCheck
 } from 'lucide-react';
 import { Badge } from '../../ui/badge';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
@@ -37,18 +37,57 @@ const PRIORIDAD_CONFIG: Record<string, { label: string; bg: string; text: string
 
 // ==================== PROPS ====================
 
+interface SolicitudReasignacion {
+  id: string;
+  procesoNumero: string;
+  procesoId: string;
+  etapaActual: string;
+  profesionalActual: {
+    nombre: string;
+    id: string;
+  };
+  profesionalNuevo: {
+    nombre: string;
+    id: string;
+    cargo: string;
+    especialidad: string;
+    cargaActual: string;
+  };
+  solicitadoPor: string;
+  fechaSolicitud: string;
+  justificacion: string;
+  prioridad: 'urgente' | 'normal';
+  denunciado: string;
+  estado: 'pendiente' | 'aprobada' | 'rechazada';
+  fechaResolucion?: string;
+  observacionesJefe?: string;
+  motivoRechazo?: string;
+}
+
 interface RevisionAprobacionJefeProps {
   borradores: BorradorPendiente[];
+  solicitudesReasignacion?: SolicitudReasignacion[];
   onAprobar: (borradorId: string, comentarios: string) => void;
   onDevolver: (borradorId: string, motivo: string, comentarios: string, archivos: File[]) => void;
+  onAprobarReasignacion?: (solicitudId: string, observaciones: string) => void;
+  onRechazarReasignacion?: (solicitudId: string, motivoRechazo: string) => void;
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
 
-export function RevisionAprobacionJefe({ borradores, onAprobar, onDevolver }: RevisionAprobacionJefeProps) {
+export function RevisionAprobacionJefe({ 
+  borradores, 
+  solicitudesReasignacion = [], 
+  onAprobar, 
+  onDevolver,
+  onAprobarReasignacion,
+  onRechazarReasignacion
+}: RevisionAprobacionJefeProps) {
   const [borradorSeleccionado, setBorradorSeleccionado] = useState<BorradorPendiente | null>(null);
+  const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudReasignacion | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'todos' | 'pendiente_revision' | 'en_revision' | 'aprobado' | 'devuelto'>('todos');
+  const [filtroTipo, setFiltroTipo] = useState<'todos' | 'autos' | 'reasignaciones'>('todos');
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
   const [mostrarFiltroFecha, setMostrarFiltroFecha] = useState(false);
@@ -58,6 +97,11 @@ export function RevisionAprobacionJefe({ borradores, onAprobar, onDevolver }: Re
   const aprobados = borradores.filter(b => b.estado === 'aprobado').length;
   const devueltos = borradores.filter(b => b.estado === 'devuelto').length;
   const activos = pendientes + enRevision;
+
+  // ✅ NUEVO: Estadísticas de reasignaciones
+  const reasignacionesPendientes = solicitudesReasignacion.filter(s => s.estado === 'pendiente').length;
+  const reasignacionesAprobadas = solicitudesReasignacion.filter(s => s.estado === 'aprobada').length;
+  const reasignacionesRechazadas = solicitudesReasignacion.filter(s => s.estado === 'rechazada').length;
 
   const borradorsFiltrados = borradores.filter(b => {
     const matchesSearch = searchQuery === '' || 
@@ -86,11 +130,52 @@ export function RevisionAprobacionJefe({ borradores, onAprobar, onDevolver }: Re
     return matchesSearch && matchesEstado && matchesFecha;
   });
 
+  // ✅ NUEVO: Filtrar reasignaciones
+  const reasignacionesFiltradas = solicitudesReasignacion.filter(s => {
+    const matchesSearch = searchQuery === '' || 
+      s.procesoNumero.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.denunciado.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.profesionalActual.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.profesionalNuevo.nombre.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    // Filtro por estado solo para reasignaciones
+    let matchesEstado = true;
+    if (filtroTipo === 'reasignaciones') {
+      matchesEstado = filtroEstado === 'todos' || 
+        (filtroEstado === 'pendiente_revision' && s.estado === 'pendiente') ||
+        (filtroEstado === 'aprobado' && s.estado === 'aprobada') ||
+        (filtroEstado === 'devuelto' && s.estado === 'rechazada');
+    }
+
+    // Filtro por fecha
+    let matchesFecha = true;
+    if (fechaDesde || fechaHasta) {
+      const fechaSol = new Date(s.fechaSolicitud);
+      fechaSol.setHours(0, 0, 0, 0);
+      if (fechaDesde) {
+        const desde = new Date(fechaDesde + 'T00:00:00');
+        if (fechaSol < desde) matchesFecha = false;
+      }
+      if (fechaHasta) {
+        const hasta = new Date(fechaHasta + 'T23:59:59');
+        if (fechaSol > hasta) matchesFecha = false;
+      }
+    }
+    
+    return matchesSearch && matchesEstado && matchesFecha;
+  });
+
   // Ordenar: pendientes primero, luego en_revision, luego devueltos, luego aprobados
   const orden: Record<string, number> = { pendiente_revision: 0, en_revision: 1, devuelto: 2, aprobado: 3 };
   const borradoresOrdenados = [...borradorsFiltrados].sort((a, b) => 
     (orden[a.estado] ?? 4) - (orden[b.estado] ?? 4)
   );
+
+  // ✅ NUEVO: Ordenar reasignaciones - pendientes primero
+  const reasignacionesOrdenadas = [...reasignacionesFiltradas].sort((a, b) => {
+    const ordenReasignacion: Record<string, number> = { pendiente: 0, aprobada: 1, rechazada: 2 };
+    return (ordenReasignacion[a.estado] ?? 3) - (ordenReasignacion[b.estado] ?? 3);
+  });
 
   const handleAprobar = (comentarios: string) => {
     if (borradorSeleccionado) {
@@ -142,23 +227,75 @@ export function RevisionAprobacionJefe({ borradores, onAprobar, onDevolver }: Re
 
           {/* Stats rápidas */}
           <div className="flex items-center gap-2">
-            <div className="px-3 py-1.5 rounded-lg border" style={{ background: '#FEF3C7', borderColor: '#FCD34D' }}>
-              <p className="text-[10px] text-gray-600 font-medium">Pendientes</p>
-              <p className="text-lg font-black text-amber-700">{pendientes}</p>
+            {/* ✅ NUEVO: Tabs para cambiar entre Autos y Reasignaciones */}
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100">
+              <button
+                onClick={() => setFiltroTipo('autos')}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                  filtroTipo === 'autos' 
+                    ? 'bg-white shadow-sm text-[#003DA5]' 
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Autos ({borradores.length})
+              </button>
+              <button
+                onClick={() => setFiltroTipo('reasignaciones')}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  filtroTipo === 'reasignaciones' 
+                    ? 'bg-white shadow-sm text-[#003DA5]' 
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Reasignaciones ({solicitudesReasignacion.length})
+                {reasignacionesPendientes > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-500 text-white">
+                    {reasignacionesPendientes}
+                  </span>
+                )}
+              </button>
             </div>
-            <div className="px-3 py-1.5 rounded-lg border" style={{ background: '#DBEAFE', borderColor: '#93C5FD' }}>
-              <p className="text-[10px] text-gray-600 font-medium">En Revisión</p>
-              <p className="text-lg font-black" style={{ color: '#003DA5' }}>{enRevision}</p>
-            </div>
-            <div className="px-3 py-1.5 rounded-lg border" style={{ background: '#D1FAE5', borderColor: '#6EE7B7' }}>
-              <p className="text-[10px] text-gray-600 font-medium">Aprobados</p>
-              <p className="text-lg font-black text-green-700">{aprobados}</p>
-            </div>
-            {devueltos > 0 && (
-              <div className="px-3 py-1.5 rounded-lg border" style={{ background: '#FEE2E2', borderColor: '#FCA5A5' }}>
-                <p className="text-[10px] text-gray-600 font-medium">Devueltos</p>
-                <p className="text-lg font-black text-red-700">{devueltos}</p>
-              </div>
+            
+            {filtroTipo === 'autos' && (
+              <>
+                <div className="px-3 py-1.5 rounded-lg border" style={{ background: '#FEF3C7', borderColor: '#FCD34D' }}>
+                  <p className="text-[10px] text-gray-600 font-medium">Pendientes</p>
+                  <p className="text-lg font-black text-amber-700">{pendientes}</p>
+                </div>
+                <div className="px-3 py-1.5 rounded-lg border" style={{ background: '#DBEAFE', borderColor: '#93C5FD' }}>
+                  <p className="text-[10px] text-gray-600 font-medium">En Revisión</p>
+                  <p className="text-lg font-black" style={{ color: '#003DA5' }}>{enRevision}</p>
+                </div>
+                <div className="px-3 py-1.5 rounded-lg border" style={{ background: '#D1FAE5', borderColor: '#6EE7B7' }}>
+                  <p className="text-[10px] text-gray-600 font-medium">Aprobados</p>
+                  <p className="text-lg font-black text-green-700">{aprobados}</p>
+                </div>
+                {devueltos > 0 && (
+                  <div className="px-3 py-1.5 rounded-lg border" style={{ background: '#FEE2E2', borderColor: '#FCA5A5' }}>
+                    <p className="text-[10px] text-gray-600 font-medium">Devueltos</p>
+                    <p className="text-lg font-black text-red-700">{devueltos}</p>
+                  </div>
+                )}
+              </>
+            )}
+            
+            {filtroTipo === 'reasignaciones' && (
+              <>
+                <div className="px-3 py-1.5 rounded-lg border" style={{ background: '#FEF3C7', borderColor: '#FCD34D' }}>
+                  <p className="text-[10px] text-gray-600 font-medium">Pendientes</p>
+                  <p className="text-lg font-black text-amber-700">{reasignacionesPendientes}</p>
+                </div>
+                <div className="px-3 py-1.5 rounded-lg border" style={{ background: '#D1FAE5', borderColor: '#6EE7B7' }}>
+                  <p className="text-[10px] text-gray-600 font-medium">Aprobadas</p>
+                  <p className="text-lg font-black text-green-700">{reasignacionesAprobadas}</p>
+                </div>
+                {reasignacionesRechazadas > 0 && (
+                  <div className="px-3 py-1.5 rounded-lg border" style={{ background: '#FEE2E2', borderColor: '#FCA5A5' }}>
+                    <p className="text-[10px] text-gray-600 font-medium">Rechazadas</p>
+                    <p className="text-lg font-black text-red-700">{reasignacionesRechazadas}</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -294,7 +431,8 @@ export function RevisionAprobacionJefe({ borradores, onAprobar, onDevolver }: Re
         {/* Lista de Borradores */}
         <div className="space-y-3">
           <AnimatePresence mode="popLayout">
-            {borradoresOrdenados.map((borrador) => {
+            {/* ✅ MOSTRAR AUTOS SEGÚN TAB SELECCIONADO */}
+            {(filtroTipo === 'autos' || filtroTipo === 'todos') && borradoresOrdenados.map((borrador) => {
               const initials = getInitials(borrador.profesional.nombre);
               const estadoCfg = ESTADO_CONFIG[borrador.estado] || ESTADO_CONFIG.pendiente_revision;
               const prioridadCfg = PRIORIDAD_CONFIG[borrador.prioridad] || PRIORIDAD_CONFIG.media;
@@ -387,7 +525,131 @@ export function RevisionAprobacionJefe({ borradores, onAprobar, onDevolver }: Re
             })}
           </AnimatePresence>
 
-          {borradoresOrdenados.length === 0 && (
+          {/* ✅ NUEVO: Mostrar reasignaciones cuando está seleccionado el tab */}
+          {filtroTipo === 'reasignaciones' && (
+            <AnimatePresence mode="popLayout">
+              {reasignacionesOrdenadas.map((solicitud) => {
+                const initialsActual = getInitials(solicitud.profesionalActual.nombre);
+                const initialsNuevo = getInitials(solicitud.profesionalNuevo.nombre);
+                const esActiva = solicitud.estado === 'pendiente';
+                
+                const estadoReasignacionCfg = {
+                  pendiente: { label: 'Pendiente', bg: '#FEF3C7', text: '#92400E', border: '#FCD34D', icon: <Clock className="w-3 h-3" /> },
+                  aprobada: { label: 'Aprobada', bg: '#D1FAE5', text: '#065F46', border: '#6EE7B7', icon: <CheckCircle className="w-3 h-3" /> },
+                  rechazada: { label: 'Rechazada', bg: '#FEE2E2', text: '#991B1B', border: '#FCA5A5', icon: <AlertTriangle className="w-3 h-3" /> },
+                };
+                const estadoCfg = estadoReasignacionCfg[solicitud.estado] || estadoReasignacionCfg.pendiente;
+                
+                return (
+                  <motion.div
+                    key={solicitud.id}
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96 }}
+                    transition={{ duration: 0.2 }}
+                    className={`bg-white rounded-xl border-2 px-4 py-3.5 transition-all ${
+                      esActiva ? 'hover:shadow-lg cursor-pointer hover:border-blue-300' : 'opacity-75'
+                    }`}
+                    style={{ borderColor: esActiva ? '#E5E7EB' : '#F3F4F6' }}
+                    onClick={() => esActiva && setSolicitudSeleccionada(solicitud)}
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Avatar del profesional actual */}
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0"
+                        style={{ background: '#FEE2E2', color: '#DC2626' }}
+                      >
+                        {initialsActual}
+                      </div>
+
+                      {/* Contenido */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-3 mb-1.5">
+                          <div className="min-w-0">
+                            <h3 className="text-sm font-black text-gray-900 truncate">
+                              Reasignación: {solicitud.procesoNumero}
+                            </h3>
+                            <p className="text-[11px] text-gray-500 mt-0.5">
+                              {solicitud.etapaActual} · {solicitud.denunciado}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {/* Estado */}
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border"
+                              style={{ background: estadoCfg.bg, color: estadoCfg.text, borderColor: estadoCfg.border }}
+                            >
+                              {estadoCfg.icon}
+                              {estadoCfg.label}
+                            </span>
+                            {/* Prioridad */}
+                            {solicitud.prioridad === 'urgente' && (
+                              <span
+                                className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                                style={{ background: '#FEE2E2', color: '#DC2626' }}
+                              >
+                                URGENTE
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Flujo de profesionales */}
+                        <div className="flex items-center gap-2 my-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-gray-400 font-medium">De:</span>
+                            <span className="text-xs font-bold text-gray-700">{solicitud.profesionalActual.nombre}</span>
+                          </div>
+                          <ArrowRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-gray-400 font-medium">A:</span>
+                            <div
+                              className="w-6 h-6 rounded-full flex items-center justify-center font-bold text-[8px] text-white flex-shrink-0"
+                              style={{ background: '#10B981' }}
+                            >
+                              {initialsNuevo}
+                            </div>
+                            <span className="text-xs font-bold text-green-700">{solicitud.profesionalNuevo.nombre}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                          <span className="flex items-center gap-1">
+                            <Calendar style={{ width: 11, height: 11 }} />
+                            {new Date(solicitud.fechaSolicitud).toLocaleDateString('es-CO')}
+                          </span>
+                          <span className="text-gray-400">·</span>
+                          <span className="text-gray-400">Solicitado por: {solicitud.solicitadoPor}</span>
+                        </div>
+
+                        {/* Justificación */}
+                        <div className="mt-2 p-2 rounded-lg bg-gray-50 border border-gray-100">
+                          <p className="text-[10px] text-gray-500 font-medium mb-0.5">Justificación:</p>
+                          <p className="text-xs text-gray-700 line-clamp-2">{solicitud.justificacion}</p>
+                        </div>
+
+                        {/* Observaciones de rechazo si rechazada */}
+                        {solicitud.estado === 'rechazada' && solicitud.motivoRechazo && (
+                          <div className="mt-2 p-2 rounded-lg border" style={{ background: '#FEF2F2', borderColor: '#FECACA' }}>
+                            <div className="flex items-start gap-1.5">
+                              <AlertTriangle style={{ width: 12, height: 12, color: '#DC2626', marginTop: 1, flexShrink: 0 }} />
+                              <p className="text-[10px] text-red-800 leading-relaxed">
+                                <strong>Motivo de rechazo:</strong> {solicitud.motivoRechazo}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          )}
+
+          {borradoresOrdenados.length === 0 && filtroTipo === 'autos' && (
             <div className="text-center py-12">
               <FileText className="w-12 h-12 mx-auto mb-3" style={{ color: '#9CA3AF' }} />
               <p className="text-sm font-bold mb-1 text-gray-500">No se encontraron borradores</p>
@@ -395,6 +657,19 @@ export function RevisionAprobacionJefe({ borradores, onAprobar, onDevolver }: Re
                 {searchQuery || filtroEstado !== 'todos' || hayFiltroFechaActivo
                   ? 'Intenta cambiar los filtros de búsqueda'
                   : 'Cuando un profesional envíe un auto a revisión, aparecerá aquí'}
+              </p>
+            </div>
+          )}
+
+          {/* ✅ NUEVO: Empty state para reasignaciones */}
+          {reasignacionesOrdenadas.length === 0 && filtroTipo === 'reasignaciones' && (
+            <div className="text-center py-12">
+              <UserCheck className="w-12 h-12 mx-auto mb-3" style={{ color: '#9CA3AF' }} />
+              <p className="text-sm font-bold mb-1 text-gray-500">No se encontraron solicitudes</p>
+              <p className="text-xs text-gray-400">
+                {searchQuery || hayFiltroFechaActivo
+                  ? 'Intenta cambiar los filtros de búsqueda'
+                  : 'Cuando un profesional solicite una reasignación, aparecerá aquí'}
               </p>
             </div>
           )}
@@ -415,6 +690,129 @@ export function RevisionAprobacionJefe({ borradores, onAprobar, onDevolver }: Re
           />
         )}
       </AnimatePresence>
+
+      {/* ✅ NUEVO: Modal para aprobar/rechazar reasignaciones */}
+      {solicitudSeleccionada && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-800">
+                {solicitudSeleccionada.estado === 'pendiente' 
+                  ? 'Revisar Solicitud de Reasignación' 
+                  : `Solicitud ${solicitudSeleccionada.estado === 'aprobada' ? 'Aprobada' : 'Rechazada'}`}
+              </h3>
+              <button onClick={() => setSolicitudSeleccionada(null)} className="text-gray-500 hover:text-gray-700">
+                <XIcon className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-4 space-y-4">
+              {/* Información de la solicitud */}
+              <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-500">Proceso</p>
+                    <p className="text-sm font-medium">{solicitudSeleccionada.procesoNumero}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Prioridad</p>
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                      solicitudSeleccionada.prioridad === 'urgente' 
+                        ? 'bg-red-100 text-red-800' 
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {solicitudSeleccionada.prioridad === 'urgente' ? 'Urgente' : 'Normal'}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-500">Profesional Actual</p>
+                    <p className="text-sm font-medium">{solicitudSeleccionada.profesionalActual?.nombre}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Profesional Solicitado</p>
+                    <p className="text-sm font-medium text-green-600">{solicitudSeleccionada.profesionalNuevo?.nombre}</p>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-500">Etapa Actual</p>
+                    <p className="text-sm font-medium">{solicitudSeleccionada.etapaActual}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Denunciado</p>
+                    <p className="text-sm font-medium">{solicitudSeleccionada.denunciado}</p>
+                  </div>
+                </div>
+                
+                <div>
+                  <p className="text-xs text-gray-500">Fecha de Solicitud</p>
+                  <p className="text-sm font-medium">{new Date(solicitudSeleccionada.fechaSolicitud).toLocaleString('es-CO')}</p>
+                </div>
+                
+                <div>
+                  <p className="text-xs text-gray-500">Solicitado por</p>
+                  <p className="text-sm font-medium">{solicitudSeleccionada.solicitadoPor}</p>
+                </div>
+                
+                <div>
+                  <p className="text-xs text-gray-500">Justificación</p>
+                  <p className="text-sm text-gray-700 bg-white p-2 rounded border">{solicitudSeleccionada.justificacion}</p>
+                </div>
+              </div>
+              
+              {/* Solo mostrar botones de acción si está pendiente */}
+              {solicitudSeleccionada.estado === 'pendiente' && (
+                <div className="flex gap-3 pt-4 border-t">
+                  <button
+                    onClick={() => {
+                      onAprobarReasignacion?.(solicitudSeleccionada.id, '');
+                      setSolicitudSeleccionada(null);
+                    }}
+                    className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Aprobar Reasignación
+                  </button>
+                  <button
+                    onClick={() => {
+                      onRechazarReasignacion?.(solicitudSeleccionada.id, 'Rechazado por el jefe');
+                      setSolicitudSeleccionada(null);
+                    }}
+                    className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <XIcon className="w-4 h-4" />
+                    Rechazar Reasignación
+                  </button>
+                </div>
+              )}
+              
+              {/* Mostrar estado si ya fue procesada */}
+              {solicitudSeleccionada.estado !== 'pendiente' && (
+                <div className={`p-4 rounded-lg text-center ${
+                  solicitudSeleccionada.estado === 'aprobada' 
+                    ? 'bg-green-100 text-green-800' 
+                    : 'bg-red-100 text-red-800'
+                }`}>
+                  <p className="font-medium">
+                    {solicitudSeleccionada.estado === 'aprobada' 
+                      ? '✓ Solicitud aprobada' 
+                      : '✗ Solicitud rechazada'}
+                  </p>
+                  {solicitudSeleccionada.fechaResolucion && (
+                    <p className="text-sm mt-1">
+                      {new Date(solicitudSeleccionada.fechaResolucion).toLocaleString('es-CO')}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

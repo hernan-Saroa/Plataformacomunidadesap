@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { HttpModule } from '@nestjs/axios';
 
@@ -58,11 +60,14 @@ import { SystemConfiguration } from './entities/system-configuration.entity';
 import { PlantillaAuto } from './entities/plantilla-auto.entity';
 import { AutoConfiguration } from './entities/auto-configuration.entity';
 import { OficioConfiguration } from './entities/oficio-configuration.entity';
+import { ActaConfiguration } from './entities/acta-configuration.entity';
 import { ConfigurationController } from './controllers/configuration.controller';
 import { AutosConfigurationController } from './controllers/autos-configuration.controller';
 import { OficiosConfigurationController } from './controllers/oficio-configuration.controller';
+import { ActasConfigurationController } from './controllers/acta-configuration.controller';
 import { AutosConfigurationService } from './services/autos-configuration.service';
 import { OficiosConfigurationService } from './services/oficio-configuration.service';
+import { ActasConfigurationService } from './services/acta-configuration.service';
 
 import { FilesController } from './controllers/files.controller';
 
@@ -76,6 +81,13 @@ import { EntidadRemisionService } from './services/entidad-remision.service';
 
 @Module({
   imports: [
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'uploads'),
+      serveRoot: '/uploads',
+      serveStaticOptions: {
+        index: false,
+      },
+    }),
     HttpModule,
     AuthModule,
     TypeOrmModule.forRoot(databaseConfig),
@@ -96,6 +108,7 @@ import { EntidadRemisionService } from './services/entidad-remision.service';
       AlertaEnviada,
       AutoConfiguration,
       OficioConfiguration,
+      ActaConfiguration,
       ExpedienteCompartido,
       EntidadRemision,
     ]),
@@ -117,6 +130,7 @@ import { EntidadRemisionService } from './services/entidad-remision.service';
     DisciplinaryExportController,
     AutosConfigurationController,
     OficiosConfigurationController,
+    ActasConfigurationController,
     CompartirExpedienteController,
     EntidadRemisionController,
   ],
@@ -140,6 +154,7 @@ import { EntidadRemisionService } from './services/entidad-remision.service';
     PdfModifierService,
     AutosConfigurationService,
     OficiosConfigurationService,
+    ActasConfigurationService,
     CompartirExpedienteService,
     EntidadRemisionService,
   ],
