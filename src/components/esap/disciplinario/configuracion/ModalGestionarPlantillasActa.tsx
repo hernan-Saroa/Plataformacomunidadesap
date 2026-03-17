@@ -1,10 +1,11 @@
 /**
  * MODAL GESTIONAR PLANTILLAS ACTA
  * Modal para agregar/eliminar plantillas de un tipo de acta
+ * ✅ Permite subir archivos .docx al backend
  */
 
-import { useState } from 'react';
-import { X, Save, Plus, Trash2, Upload } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { X, Save, Plus, Trash2, Upload, FileText, Download, CheckCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner@2.0.3';
 import type { TipoActa, PlantillaArchivo } from './SeccionPlantillasActasUnificada';
@@ -17,15 +18,17 @@ interface ModalGestionarPlantillasActaProps {
 
 export function ModalGestionarPlantillasActa({ tipoActa, onGuardar, onCerrar }: ModalGestionarPlantillasActaProps) {
   const [plantillas, setPlantillas] = useState<PlantillaArchivo[]>(tipoActa.plantillas || []);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [subiendoArchivo, setSubiendoArchivo] = useState<string | null>(null);
 
   const agregarPlantilla = () => {
     const nuevaPlantilla: PlantillaArchivo = {
       id: `plantilla-${Date.now()}`,
       nombre: 'Nueva Plantilla',
-      nombreArchivo: 'plantilla.docx',
+      nombreArchivo: '',
       descripcion: '',
-      url: '/plantillas/nueva_plantilla.docx',
-      tamano: 40000,
+      url: '',
+      tamano: 0,
       version: '1.0',
       fechaCreacion: new Date().toISOString(),
       fechaModificacion: new Date().toISOString(),
@@ -44,8 +47,75 @@ export function ModalGestionarPlantillasActa({ tipoActa, onGuardar, onCerrar }: 
     ));
   };
 
+  // Manejar selección de archivo
+  const handleFileSelect = (plantillaId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validar que sea un archivo Word
+    const allowedExtensions = ['.docx', '.doc', '.dotx'];
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    
+    if (!allowedExtensions.includes(ext)) {
+      toast.error('Tipo de archivo no permitido', {
+        description: 'Solo se permiten archivos Word (.docx, .doc, .dotx)'
+      });
+      return;
+    }
+
+    // Validar tamaño (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Archivo demasiado grande', {
+        description: 'El archivo no puede superar los 10MB'
+      });
+      return;
+    }
+
+    // Crear URL temporal para el archivo (se usará para subir al backend)
+    const blobUrl = URL.createObjectURL(file);
+    
+    // Actualizar la plantilla con el archivo
+    setPlantillas(plantillas.map(p => 
+      p.id === plantillaId ? { 
+        ...p, 
+        nombreArchivo: file.name,
+        url: blobUrl, // URL temporal para subir después
+        tamano: file.size,
+        fechaModificacion: new Date().toISOString() 
+      } : p
+    ));
+
+    toast.success('Archivo seleccionado correctamente', {
+      description: file.name
+    });
+
+    // Limpiar el input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Verificar si una plantilla tiene un archivo nuevo (blob URL) que necesita subirse
+  const isNewFile = (plantilla: PlantillaArchivo): boolean => {
+    return plantilla.url?.startsWith('blob:') || false;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validar que cada plantilla con archivo tenga nombre
+    const plantillasConArchivo = plantillas.filter(p => p.url && !isNewFile(p));
+    const plantillasSinArchivo = plantillas.filter(p => !p.url);
+    
+    if (plantillas.length > 0) {
+      // Validar que tengan nombre
+      const sinNombre = plantillas.some(p => !p.nombre || p.nombre.trim() === '');
+      if (sinNombre) {
+        toast.error('Todas las plantillas deben tener un nombre');
+        return;
+      }
+    }
+    
     onGuardar(plantillas);
     toast.success('Plantillas actualizadas correctamente');
   };
@@ -105,33 +175,102 @@ export function ModalGestionarPlantillasActa({ tipoActa, onGuardar, onCerrar }: 
 
                     <div className="space-y-3">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-1">Nombre</label>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">Nombre de la Plantilla</label>
                         <input
                           type="text"
                           value={plantilla.nombre}
                           onChange={(e) => actualizarPlantilla(plantilla.id, 'nombre', e.target.value)}
+                          placeholder="Ej: Acta de Version Libre"
                           className="w-full px-3 py-2 text-sm border rounded-lg"
                         />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1">Archivo</label>
-                          <input
-                            type="text"
-                            value={plantilla.nombreArchivo}
-                            onChange={(e) => actualizarPlantilla(plantilla.id, 'nombreArchivo', e.target.value)}
-                            className="w-full px-3 py-2 text-sm border rounded-lg"
-                          />
+                      {/* Sección de Upload de Archivo */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">Archivo Word (.docx)</label>
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          accept=".docx,.doc,.dotx"
+                          onChange={(e) => handleFileSelect(plantilla.id, e)}
+                          className="hidden"
+                          id={`file-input-${plantilla.id}`}
+                        />
+                        <div className="flex items-center gap-2">
+                          <label
+                            htmlFor={`file-input-${plantilla.id}`}
+                            className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed rounded-lg cursor-pointer transition-all text-sm font-medium ${
+                              plantilla.url 
+                                ? 'border-green-300 bg-green-50 text-green-700 hover:border-green-400 hover:bg-green-100'
+                                : 'border-gray-300 text-gray-600 hover:border-amber-400 hover:bg-amber-50'
+                            }`}
+                          >
+                            {plantilla.url ? (
+                              <>
+                                <CheckCircle className="w-4 h-4 text-green-600" />
+                                <span className="truncate">{plantilla.nombreArchivo || 'Archivo cargado'}</span>
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="w-4 h-4" />
+                                <span>Seleccionar archivo</span>
+                              </>
+                            )}
+                          </label>
+                          {plantilla.url && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                actualizarPlantilla(plantilla.id, 'url', '');
+                                actualizarPlantilla(plantilla.id, 'nombreArchivo', '');
+                                actualizarPlantilla(plantilla.id, 'tamano', 0);
+                              }}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                              title="Eliminar archivo"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
+                        {plantilla.url && plantilla.tamano > 0 && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Tamaño: {(plantilla.tamano / 1024).toFixed(2)} KB
+                          </p>
+                        )}
+                        {isNewFile(plantilla) && (
+                          <p className="text-xs text-amber-600 mt-1 font-medium">
+                            ⚠️ Archivo nuevo - Se subirá al guardar
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
                         <div>
                           <label className="block text-xs font-semibold text-gray-700 mb-1">Versión</label>
                           <input
                             type="text"
                             value={plantilla.version}
                             onChange={(e) => actualizarPlantilla(plantilla.id, 'version', e.target.value)}
+                            placeholder="1.0"
                             className="w-full px-3 py-2 text-sm border rounded-lg"
                           />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1">Estado</label>
+                          <div className="flex items-center gap-2 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => actualizarPlantilla(plantilla.id, 'activo', !plantilla.activo)}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                plantilla.activo ? 'bg-green-500' : 'bg-gray-300'
+                              }`}
+                            >
+                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                plantilla.activo ? 'translate-x-6' : 'translate-x-1'
+                              }`} />
+                            </button>
+                            <span className="text-xs text-gray-700">{plantilla.activo ? 'Activa' : 'Inactiva'}</span>
+                          </div>
                         </div>
                       </div>
 
@@ -141,23 +280,9 @@ export function ModalGestionarPlantillasActa({ tipoActa, onGuardar, onCerrar }: 
                           value={plantilla.descripcion}
                           onChange={(e) => actualizarPlantilla(plantilla.id, 'descripcion', e.target.value)}
                           rows={2}
+                          placeholder="Descripción de la plantilla..."
                           className="w-full px-3 py-2 text-sm border rounded-lg"
                         />
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => actualizarPlantilla(plantilla.id, 'activo', !plantilla.activo)}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                            plantilla.activo ? 'bg-green-500' : 'bg-gray-300'
-                          }`}
-                        >
-                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            plantilla.activo ? 'translate-x-6' : 'translate-x-1'
-                          }`} />
-                        </button>
-                        <span className="text-xs text-gray-700">{plantilla.activo ? 'Activa' : 'Inactiva'}</span>
                       </div>
                     </div>
                   </div>

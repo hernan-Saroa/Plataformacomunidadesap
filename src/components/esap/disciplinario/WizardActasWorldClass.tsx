@@ -26,7 +26,7 @@ import { toast } from 'sonner@2.0.3';
 import { BadgeNomenclatura } from './components/BadgeNomenclatura';
 import { previsualizarNomenclatura, type DocumentoNomenclatura } from './utils/nomenclaturaDocumentos';
 import { useActasConfigurationActive } from '../../../hooks/useActasConfiguration';
-import disciplinaryService from '../../../services/api/disciplinary.service';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
 // ==================== TIPOS DE ACTAS (Desde BD) ====================
 // Los tipos ahora vienen de la configuración paramétrica en la base de datos
@@ -105,12 +105,20 @@ const COLORES_ACTAS: Record<string, string> = {
 // Función para normalizar los datos de configuración al formato del componente
 function normalizarTipoActa(config: any) {
   const tipo = config.tipo || config.id || '';
+  
+  // Construir objeto plantilla basado en los campos de la BD
+  const plantillaObj = config.plantilla || config.nombre_plantilla ? {
+    nombreArchivo: config.nombre_plantilla || config.plantilla?.split('/').pop() || 'plantilla.docx',
+    version: config.version_plantilla || '1.0',
+    url: config.plantilla || null
+  } : null;
+  
   return {
     ...config,
     id: config.id || config.tipo || Math.random().toString(36).substring(7),
     nombre: config.nombre || config.tipo || 'Sin nombre',
     descripcion: config.descripcion || null,
-    plantilla: config.plantilla || null,
+    plantilla: plantillaObj,
     nombre_plantilla: config.nombre_plantilla || null,
     version_plantilla: config.version_plantilla || '1.0',
     estado: config.estado || 'activo',
@@ -390,10 +398,12 @@ export function WizardActasWorldClass({
   };
 
   // Convertir las configuraciones de la BD al formato esperado por el componente
-  const configsActivas = configsActas.filter(c => c.estado === 'activo');
+  const configsActivas = (configsActas || [])
+    .filter(c => c.estado === 'activo')
+    .map(config => normalizarTipoActa(config));
   
   // Si hay configuraciones en la BD, usarlas; si no, usar el fallback
-  const tiposActas = configsActivas.length > 0 ? configsActas : TIPOS_ACTAS_FALLBACK;
+  const tiposActas = configsActivas.length > 0 ? configsActivas : TIPOS_ACTAS_FALLBACK;
   
   // Filtrar por búsqueda
   const tiposFiltrados = tiposActas.filter((tipo: any) => {
@@ -836,6 +846,58 @@ export function WizardActasWorldClass({
                                   )}
 
                                   {/* ✅ NUEVO: Vista Previa de Nomenclatura */}
+                                  <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="mt-3 p-3 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-xl"
+                                  >
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className="p-1.5 rounded-lg bg-amber-100">
+                                          <Tag className="w-4 h-4 text-amber-700" />
+                                        </div>
+                                        <div>
+                                          <p className="text-xs font-bold text-gray-900 mb-0.5">
+                                            Nomenclatura Asignada:
+                                          </p>
+                                          <p className="text-xs text-gray-600">
+                                            Se generará automáticamente al crear el acta
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <BadgeNomenclatura 
+                                        nomenclatura={loadingNomenclatura ? 'Cargando...' : (nomenclaturaPreview || previsualizarNomenclatura('ACTA'))}
+                                        tipo="ACTA"
+                                        size="sm"
+                                        showIcon={true}
+                                        showCopy={false}
+                                      />
+                                    </div>
+                                  </motion.div>
+                                </motion.div>
+                              )}
+
+                              {/* Mensaje cuando NO hay plantilla */}
+                              {seleccionado && !tipo.plantilla && (
+                                <motion.div
+                                  initial={{ opacity: 0, height: 0 }}
+                                  animate={{ opacity: 1, height: 'auto' }}
+                                  exit={{ opacity: 0, height: 0 }}
+                                  transition={{ duration: 0.3 }}
+                                  className="border-t-2 border-purple-100 bg-gradient-to-r from-purple-50/50 to-violet-50/50 p-4"
+                                >
+                                  <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="p-3 bg-amber-50 border border-amber-200 rounded-lg"
+                                  >
+                                    <p className="text-xs font-semibold text-amber-800 flex items-center gap-2">
+                                      <AlertCircle className="w-4 h-4" />
+                                      Esta acta no tiene plantilla configurada. Puede crear el acta sin plantilla o contactar al administrador.
+                                    </p>
+                                  </motion.div>
+
+                                  {/* Vista Previa de Nomenclatura cuando NO hay plantilla */}
                                   <motion.div
                                     initial={{ opacity: 0, y: -10 }}
                                     animate={{ opacity: 1, y: 0 }}
