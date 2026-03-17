@@ -701,6 +701,20 @@ class DisciplinaryService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/versions`);
     }
 
+    // --- TÉRMINOS PROCESALES ---
+
+    async getTerminos(params?: { estado?: string; search?: string; page?: number; limit?: number }): Promise<{ terminos: any[]; stats: any }> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/terminos-procesales`, params);
+    }
+
+    async createTermino(data: { procesoId: string; actuacion: string; responsableId: string; fechaInicio: string; diasHabiles: number }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/terminos-procesales`, data);
+    }
+
+    async marcarTerminoCumplido(id: string, data: { fechaCumplimiento: string; observaciones?: string }): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/terminos-procesales/${id}/marcar-cumplido`, data);
+    }
+
     // --- PROFESIONALES ---
 
     async getProfesionales(): Promise<any[]> {
