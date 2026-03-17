@@ -4,9 +4,19 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ResponseInterceptor } from './common/response.interceptor';
 import { AppModule } from './app.module';
 import { SeedService } from './seed.service';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Servir archivos estáticos desde la carpeta uploads
+  const uploadsPath = join(process.cwd(), 'uploads');
+  app.useStaticAssets(uploadsPath, {
+    prefix: '/uploads/', // URL prefix para acceder a los archivos
+  });
+
+  console.log('📁 Serving static files from:', uploadsPath);
 
   // Validación global de DTOs
   app.useGlobalPipes(

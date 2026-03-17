@@ -244,16 +244,22 @@ export function WizardActasWorldClass({
 
   const handleDescargarPlantilla = async () => {
     // Si hay una plantilla en la configuración de la BD, usarla
-    const plantillaUrl = tipoSeleccionado?.plantilla;
+    // La URL puede estar en plantilla.url o directamente en plantilla (según cómo viene de la BD)
+    const plantillaUrl = tipoSeleccionado?.plantilla?.url || tipoSeleccionado?.plantilla;
     const nombreArchivo = tipoSeleccionado?.nombre_plantilla || tipoSeleccionado?.nombre || 'acta_generica.docx';
     
     if (plantillaUrl) {
       setDescargando(true);
       try {
-        // Descargar desde la URL configurada
+        console.log('Descargando plantilla desde:', plantillaUrl);
+        // Abrir en nueva pestaña para descargar
         window.open(plantillaUrl, '_blank');
       } catch (error) {
         console.error('Error descargando plantilla:', error);
+        toast.error('Error al descargar la plantilla', {
+          description: 'No se pudo descargar el archivo. Verifique que la URL sea correcta.',
+          duration: 5000,
+        });
       }
       setDescargando(false);
     } else {
