@@ -11,7 +11,7 @@ import {
   X, Scale, FileText, FolderOpen, Zap, CheckSquare, FileEdit,
   Archive, Mail, FileCheck, History, Download, Upload, Search,
   Bell, Share2, ExternalLink, AlertTriangle, User, Briefcase,
-  Calendar, Clock, ChevronRight, Plus,
+  Calendar, Clock, ChevronRight, ChevronDown, ChevronUp, Plus,
   CheckCircle, AlertCircle, ClipboardList, MessageSquare, Printer,
   Eye, Image, FileArchive, ZoomIn,
   MapPin, Building2, Phone, Paperclip, Gavel, FileWarning, Users,
@@ -21,7 +21,11 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
-import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import {
+  disciplinaryService,
+  type CreateDisciplinaryProcessActuacionDto,
+  type DisciplinaryProcessActuacion,
+} from '../../../services/api/disciplinary.service';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -103,6 +107,18 @@ interface Proceso {
 type Tab = 'general' | 'archivos' | 'actuaciones' | 'tareas' | 'notas';
 type Extension = 'pdf' | 'jpg' | 'png' | 'zip' | 'docx' | 'xlsx';
 
+interface ActuacionItem {
+  id: string;
+  fecha: string;
+  descripcion: string;
+  tipo: string;
+  responsable: string;
+  etapa: string;
+  observaciones?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 interface Archivo {
   id: string;
   nombre: string;
@@ -128,6 +144,7 @@ interface ModalDetallesProcesoProps {
   onGestionActas: () => void;
   onHistorial: () => void;
   onExpediente: () => void;
+  onActualizarProceso?: (updates: Partial<Proceso>) => void;
   /** Callback para agregar borrador a la lista compartida de Revisión y Aprobación */
   onEnviarARevision?: (borrador: BorradorPendiente) => void;
   /** Callback para navegar al módulo de Revisión y Aprobación */
@@ -136,11 +153,11 @@ interface ModalDetallesProcesoProps {
 
 // ─── Mock data ───────────────────────────────────────────────────────────────
 
-const MOCK_ACTUACIONES = [
-  { id: 'a1', fecha: '2026-02-10', descripcion: 'Apertura de indagación preliminar',        tipo: 'auto',         responsable: 'Dr. Andrés Moreno', etapa: 'Indagación'  },
-  { id: 'a2', fecha: '2026-02-05', descripcion: 'Notificación al disciplinado',              tipo: 'notificacion', responsable: 'Dr. Andrés Moreno', etapa: 'Valoración'  },
-  { id: 'a3', fecha: '2026-01-28', descripcion: 'Asignación al profesional investigador',   tipo: 'asignacion',   responsable: 'Jefe OCID',         etapa: 'Valoración'  },
-  { id: 'a4', fecha: '2026-01-15', descripcion: 'Recepción de la noticia disciplinaria',     tipo: 'recepcion',    responsable: 'Secretaría OCID',  etapa: 'Recepción'   },
+const MOCK_ACTUACIONES: ActuacionItem[] = [
+  { id: 'a1', fecha: '2026-02-10', descripcion: 'Apertura de indagaci�n preliminar', tipo: 'auto', responsable: 'Dr. Andr�s Moreno', etapa: 'Indagaci�n', observaciones: 'Se deja constancia del inicio de la actuaci�n preliminar.' },
+  { id: 'a2', fecha: '2026-02-05', descripcion: 'Notificaci�n al disciplinado', tipo: 'notificacion', responsable: 'Dr. Andr�s Moreno', etapa: 'Valoraci�n', observaciones: 'Se envi� comunicaci�n formal al disciplinado por los canales establecidos.' },
+  { id: 'a3', fecha: '2026-01-28', descripcion: 'Asignaci�n al profesional investigador', tipo: 'asignacion', responsable: 'Jefe OCID', etapa: 'Valoraci�n', observaciones: 'Asignaci�n realizada seg�n reparto interno.' },
+  { id: 'a4', fecha: '2026-01-15', descripcion: 'Recepci�n de la noticia disciplinaria', tipo: 'recepcion', responsable: 'Secretar�a OCID', etapa: 'Recepci�n', observaciones: 'Ingreso inicial del asunto en el sistema disciplinario.' },
 ];
 
 const MOCK_TAREAS = [
@@ -667,10 +684,458 @@ function ModalConfirmarEnvioRevision({
 
 // ─── Componente Principal ─────────────────────────────────────────────────────
 
+function formatFechaActuacion(fecha?: string | null, withTime = false): string {
+  if (!fecha) return 'Sin fecha';
+
+  // Evita el desfase por zona horaria cuando la fecha viene como YYYY-MM-DD.
+  const soloFecha = fecha.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const parsed = soloFecha
+    ? new Date(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]))
+    : new Date(fecha);
+
+  if (Number.isNaN(parsed.getTime())) return fecha;
+
+  return parsed.toLocaleString(
+    'es-CO',
+    withTime
+      ? { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }
+      : { year: 'numeric', month: 'short', day: '2-digit' }
+  );
+}
+
+function mapActuacionFromApi(actuacion: DisciplinaryProcessActuacion): ActuacionItem {
+  return {
+    id: actuacion.id,
+    fecha: actuacion.fechaActuacion ? actuacion.fechaActuacion.split('T')[0] : '',
+    descripcion: actuacion.descripcion,
+    tipo: (actuacion.tipo || 'actuacion').toLowerCase(),
+    responsable: actuacion.responsableNombre || 'Sin responsable',
+    etapa: normalizarEtapaActuacion(actuacion.etapa),
+    observaciones: actuacion.observaciones || '',
+    createdAt: actuacion.createdAt,
+    updatedAt: actuacion.updatedAt,
+  };
+}
+
+function normalizarFechaInput(fecha: string): string {
+  if (!fecha) return new Date().toISOString().split('T')[0];
+  return fecha.includes('T') ? fecha.split('T')[0] : fecha;
+}
+
+const ETAPA_ACTUACION_LABELS: Record<string, string> = {
+  RECEPCION: 'Recepción',
+  EVALUACION: 'Valoración',
+  VALORACION: 'Valoración',
+  INDAGACION: 'Indagación',
+  INDAGACION_PREVIA: 'Indagación',
+  INVESTIGACION: 'Investigación',
+  JUZGAMIENTO: 'Juzgamiento',
+  FALLO: 'Fallo',
+  SEGUNDA_INSTANCIA: 'Segunda instancia',
+  SIN_ETAPA: 'Sin etapa',
+};
+
+function normalizarEtapaActuacion(etapa?: string | null): string {
+  if (!etapa?.trim()) return 'Sin etapa';
+  const limpia = etapa.trim();
+  const clave = limpia
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '_')
+    .toUpperCase();
+
+  if (ETAPA_ACTUACION_LABELS[clave]) {
+    return ETAPA_ACTUACION_LABELS[clave];
+  }
+
+  if (clave === 'SIN' || clave === 'NINGUNA') {
+    return 'Sin etapa';
+  }
+
+  return limpia
+    .replace(/_/g, ' ')
+    .toLocaleLowerCase('es-CO')
+    .replace(/\b\w/g, (letra) => letra.toLocaleUpperCase('es-CO'));
+}
+
+const ACTUACION_TYPE_OPTIONS = [
+  {
+    value: 'actuacion',
+    label: 'Actuación',
+    hint: 'Registro general del proceso',
+    icon: Zap,
+    color: '#003DA5',
+    bg: '#EAF2FF',
+    border: '#B9D0FF',
+  },
+  {
+    value: 'auto',
+    label: 'Auto',
+    hint: 'Decisión o providencia',
+    icon: FileCheck,
+    color: '#7C3AED',
+    bg: '#F4EEFF',
+    border: '#D8C2FF',
+  },
+  {
+    value: 'notificacion',
+    label: 'Notificación',
+    hint: 'Comunicación formal',
+    icon: Bell,
+    color: '#0F766E',
+    bg: '#E8FFFB',
+    border: '#A7F3D0',
+  },
+  {
+    value: 'asignacion',
+    label: 'Asignación',
+    hint: 'Responsable o reparto',
+    icon: Users,
+    color: '#C2410C',
+    bg: '#FFF1E8',
+    border: '#FED7AA',
+  },
+  {
+    value: 'recepcion',
+    label: 'Recepción',
+    hint: 'Ingreso o radicación',
+    icon: Archive,
+    color: '#4F46E5',
+    bg: '#EEF2FF',
+    border: '#C7D2FE',
+  },
+] as const;
+
+function ModalNuevaActuacion({
+  open,
+  etapas,
+  etapaActual,
+  responsableInicial,
+  saving,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  etapas: string[];
+  etapaActual: string;
+  responsableInicial: string;
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (data: CreateDisciplinaryProcessActuacionDto) => Promise<void>;
+}) {
+  const etapasNormalizadas = Array.from(
+    new Set(
+      etapas
+        .map((item) => normalizarEtapaActuacion(item))
+        .filter(Boolean)
+    )
+  );
+  const etapaActualNormalizada = normalizarEtapaActuacion(etapaActual);
+  const [tipo, setTipo] = useState('actuacion');
+  const [etapa, setEtapa] = useState(etapaActualNormalizada);
+  const [descripcion, setDescripcion] = useState('');
+  const [responsableNombre, setResponsableNombre] = useState(responsableInicial);
+  const [fechaActuacion, setFechaActuacion] = useState(new Date().toISOString().split('T')[0]);
+  const [observaciones, setObservaciones] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setTipo('actuacion');
+    setEtapa(etapaActualNormalizada);
+    setDescripcion('');
+    setResponsableNombre(responsableInicial);
+    setFechaActuacion(new Date().toISOString().split('T')[0]);
+    setObservaciones('');
+  }, [open, etapaActualNormalizada, responsableInicial]);
+
+  if (!open) return null;
+
+  const tipoSeleccionado = ACTUACION_TYPE_OPTIONS.find((item) => item.value === tipo) || ACTUACION_TYPE_OPTIONS[0];
+
+  const handleSubmit = async () => {
+    if (!descripcion.trim()) {
+      toast.error('La descripcion es obligatoria');
+      return;
+    }
+
+    if (!responsableNombre.trim()) {
+      toast.error('El responsable es obligatorio');
+      return;
+    }
+
+    await onSubmit({
+      tipo,
+      etapa: normalizarEtapaActuacion(etapa),
+      descripcion,
+      responsableNombre,
+      fechaActuacion,
+      observaciones,
+    });
+  };
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{
+        zIndex: 9999,
+        backgroundColor: 'rgba(15, 23, 42, 0.68)',
+        padding: '24px',
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.98, y: 14 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.98, y: 12 }}
+        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        className="w-full bg-white rounded-[30px] shadow-2xl border border-slate-200 overflow-hidden"
+        style={{ maxWidth: 900, maxHeight: '90vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '32px' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-r from-blue-50 via-white to-slate-50"
+          style={{ borderTopLeftRadius: '32px', borderTopRightRadius: '32px' }}
+        >
+          <div
+            className="absolute inset-x-0 top-0 h-1"
+            style={{ background: 'linear-gradient(90deg, #003DA5 0%, #2962FF 55%, #8BB8FF 100%)' }}
+          />
+          <div className="flex items-start gap-4 px-6 py-6 md:px-7">
+            <div
+              className="w-12 h-12 rounded-[20px] flex items-center justify-center shadow-sm flex-shrink-0"
+              style={{ backgroundColor: '#EAF2FF', border: '1px solid #B9D0FF', borderRadius: '999px' }}
+            >
+              <tipoSeleccionado.icon className="w-5 h-5" style={{ color: tipoSeleccionado.color }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-black text-slate-900">Nueva actuación</h3>
+                <span
+                  className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em]"
+                  style={{ color: tipoSeleccionado.color, backgroundColor: tipoSeleccionado.bg, border: `1px solid ${tipoSeleccionado.border}`, borderRadius: '999px' }}
+                >
+                  {tipoSeleccionado.label}
+                </span>
+              </div>
+              <p className="text-sm text-slate-500 mt-1">
+                Registra una actuación persistente del proceso y actualiza su historial dinámico.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span
+                  className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold"
+                  style={{ color: '#003DA5', backgroundColor: '#EAF2FF', border: '1px solid #B9D0FF', borderRadius: '999px' }}
+                >
+                  <Zap className="w-3 h-3" />
+                  Etapa actual: {etapaActualNormalizada}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500" style={{ borderRadius: '999px' }}>
+                  <Calendar className="w-3 h-3" />
+                  Fecha sugerida: {fechaActuacion}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-11 h-11 rounded-[20px] border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50"
+              style={{ borderRadius: '999px' }}
+              disabled={saving}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="px-6 py-6 md:px-7 overflow-y-auto space-y-6" style={{ maxHeight: 'calc(90vh - 184px)' }}>
+          <div className="rounded-[26px] border border-blue-100 bg-gradient-to-r from-blue-50/90 to-slate-50 p-5" style={{ borderRadius: '28px' }}>
+            <div className="flex items-start gap-3">
+              <div
+                className="w-10 h-10 rounded-[18px] flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: tipoSeleccionado.bg, border: `1px solid ${tipoSeleccionado.border}`, borderRadius: '999px' }}
+              >
+                <tipoSeleccionado.icon className="w-4 h-4" style={{ color: tipoSeleccionado.color }} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Contexto del registro</p>
+                <p className="mt-1 text-sm font-semibold text-slate-800">
+                  La actuación quedará asociada al proceso y se reflejará en la tarjeta del kanban.
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Usa un tipo claro, una descripción concreta y la etapa procesal correcta.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Tipo de actuación</span>
+              <span className="text-[11px] font-semibold text-slate-400">Selecciona la categoría que mejor describa el registro</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2.5">
+              {ACTUACION_TYPE_OPTIONS.map((option) => {
+                const activo = tipo === option.value;
+                const Icon = option.icon;
+                return (
+                  <motion.button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setTipo(option.value)}
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.985 }}
+                    transition={{ duration: 0.15 }}
+                    className="rounded-[24px] border px-3.5 py-3.5 text-left transition-all"
+                    style={{
+                      backgroundColor: activo ? option.bg : '#FFFFFF',
+                      borderColor: activo ? option.border : '#E2E8F0',
+                      boxShadow: activo ? `0 0 0 1px ${option.border}, 0 10px 24px ${option.color}14` : 'none',
+                      borderRadius: '24px',
+                    }}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div
+                        className="mt-0.5 w-9 h-9 rounded-[14px] flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: activo ? '#FFFFFF' : option.bg, border: `1px solid ${option.border}`, borderRadius: '14px' }}
+                      >
+                        <Icon className="w-4 h-4" style={{ color: option.color }} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-black" style={{ color: activo ? option.color : '#0F172A' }}>{option.label}</p>
+                        <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">{option.hint}</p>
+                      </div>
+                    </div>
+                  </motion.button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4">
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Etapa del proceso</span>
+              <div className="relative">
+                <select
+                  value={etapa}
+                  onChange={(e) => setEtapa(normalizarEtapaActuacion(e.target.value))}
+                  className="w-full appearance-none rounded-[22px] border border-slate-200 bg-white px-4 py-3.5 pr-10 text-sm font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                  style={{ borderRadius: '22px' }}
+                >
+                  {etapasNormalizadas.map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+                <ChevronRight className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-slate-400" />
+              </div>
+            </label>
+
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Fecha de la actuación</span>
+              <input
+                type="date"
+                value={fechaActuacion}
+                onChange={(e) => setFechaActuacion(normalizarFechaInput(e.target.value))}
+                className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                style={{ borderRadius: '22px' }}
+              />
+            </label>
+          </div>
+
+          <label className="space-y-1.5 block">
+            <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Descripción</span>
+            <textarea
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              rows={5}
+              placeholder="Describe la actuación realizada, el motivo y el resultado esperado."
+              className="w-full rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800 outline-none resize-y transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+              style={{ borderRadius: '24px' }}
+            />
+            <p className="text-[11px] text-slate-400">Este texto alimenta el historial y la última actuación visible del proceso.</p>
+          </label>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Responsable</span>
+              <input
+                value={responsableNombre}
+                onChange={(e) => setResponsableNombre(e.target.value)}
+                className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                style={{ borderRadius: '22px' }}
+                placeholder="Nombre del profesional o responsable"
+              />
+              <p className="text-[11px] text-slate-400">Se usará como responsable visible en la línea de tiempo.</p>
+            </label>
+
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5" style={{ borderRadius: '24px' }}>
+              <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Resumen del registro</p>
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500">Tipo</span>
+                  <span className="font-bold" style={{ color: tipoSeleccionado.color }}>{tipoSeleccionado.label}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500">Etapa</span>
+                  <span className="font-bold text-slate-800">{etapa}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500">Fecha</span>
+                  <span className="font-bold text-slate-800">{fechaActuacion}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <label className="space-y-1.5 block">
+            <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Observaciones</span>
+            <textarea
+              value={observaciones}
+              onChange={(e) => setObservaciones(e.target.value)}
+              rows={3}
+              placeholder="Campo opcional para dejar contexto adicional del registro."
+              className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800 outline-none resize-y transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+              style={{ borderRadius: '24px' }}
+            />
+          </label>
+        </div>
+
+        <div
+          className="flex items-center justify-end gap-2 px-6 py-5 md:px-7 border-t border-slate-200 bg-slate-50"
+          style={{ borderBottomLeftRadius: '32px', borderBottomRightRadius: '32px' }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-5 py-2.5 rounded-[20px] border border-slate-300 text-sm font-semibold text-slate-600 hover:bg-white disabled:opacity-60"
+            style={{ borderRadius: '999px' }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={saving}
+            className="px-5 py-2.5 rounded-[20px] text-sm font-bold text-white inline-flex items-center gap-2 disabled:opacity-70"
+            style={{ background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)', borderRadius: '999px' }}
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            Guardar actuación
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>,
+    document.body
+  );
+}
+
 export function ModalDetallesProceso({
   proceso, onClose, onReabrir,
   onGestionAutos, onGestionEvidencias, onGestionOficios, onGestionActas,
-  onHistorial, onExpediente,
+  onHistorial, onExpediente, onActualizarProceso,
   onEnviarARevision, onNavigateToRevision,
 }: ModalDetallesProcesoProps) {
   const [tabActiva, setTabActiva] = useState<Tab>('general');
@@ -691,6 +1156,12 @@ export function ModalDetallesProceso({
   const [mostrarAlertaCierre, setMostrarAlertaCierre] = useState(false);
   const [archivosSubidos, setArchivosSubidos] = useState<Archivo[]>([]);
   const [archivosBackend, setArchivosBackend] = useState<Archivo[]>([]);
+  const [actuaciones, setActuaciones] = useState<ActuacionItem[]>([]);
+  const [actuacionesLoading, setActuacionesLoading] = useState(false);
+  const [actuacionesError, setActuacionesError] = useState<string | null>(null);
+  const [actuacionExpandidaId, setActuacionExpandidaId] = useState<string | null>(null);
+  const [mostrarModalNuevaActuacion, setMostrarModalNuevaActuacion] = useState(false);
+  const [creandoActuacion, setCreandoActuacion] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [autoEnviarRevision, setAutoEnviarRevision] = useState<Archivo | null>(null);
   const [autoRecargar, setAutoRecargar] = useState<Archivo | null>(null);
@@ -770,6 +1241,43 @@ export function ModalDetallesProceso({
       .catch(err => console.error('[ModalDetallesProceso] Error cargando documentos:', err));
   }, [proceso?.id]);
 
+  useEffect(() => {
+    if (!proceso?.id) return;
+
+    let cancelled = false;
+    setActuacionesLoading(true);
+    setActuacionesError(null);
+
+    disciplinaryService.getActuacionesProceso(proceso.id)
+      .then((data) => {
+        if (cancelled) return;
+        const mapped = (data || []).map(mapActuacionFromApi);
+        setActuaciones(mapped);
+        setActuacionExpandidaId(mapped[0]?.id || null);
+
+        const ultima = mapped[0]?.descripcion || 'Sin actuaciones registradas';
+        onActualizarProceso?.({
+          ultimaActuacion: ultima,
+        });
+      })
+      .catch((error: any) => {
+        if (cancelled) return;
+        console.error('[ModalDetallesProceso] Error cargando actuaciones:', error);
+        setActuaciones([]);
+        setActuacionExpandidaId(null);
+        setActuacionesError(error?.message || 'No fue posible cargar las actuaciones');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setActuacionesLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [proceso?.id]);
+
   // ═══ Navegación rápida desde Scorecard ═══
   const navigateToTab = useCallback((tab: Tab, etapa: string) => {
     setTabActiva(tab);
@@ -778,6 +1286,36 @@ export function ModalDetallesProceso({
     if (tab === 'tareas')      { setFiltroEtapaTar(etapa);  setVistaAgrupadaTar(false); }
     if (tab === 'notas')       { setFiltroEtapaNota(etapa); setVistaAgrupadaNota(false); }
   }, []);
+
+  const handleCrearActuacion = useCallback(async (data: CreateDisciplinaryProcessActuacionDto) => {
+    if (!proceso?.id) return;
+
+    try {
+      setCreandoActuacion(true);
+      const created = await disciplinaryService.createActuacionProceso(proceso.id, data);
+      const mapped = mapActuacionFromApi(created);
+      let nextActuaciones: ActuacionItem[] = [];
+
+      setActuaciones((prev) => {
+        nextActuaciones = [mapped, ...prev].sort((a, b) => `${b.fecha} ${b.id}`.localeCompare(`${a.fecha} ${a.id}`));
+        return nextActuaciones;
+      });
+
+      setActuacionesError(null);
+      setActuacionExpandidaId(mapped.id);
+      setMostrarModalNuevaActuacion(false);
+      setTabActiva('actuaciones');
+      onActualizarProceso?.({
+        ultimaActuacion: nextActuaciones[0]?.descripcion || mapped.descripcion,
+      });
+      toast.success('Actuacion creada correctamente');
+    } catch (error: any) {
+      console.error('[ModalDetallesProceso] Error creando actuacion:', error);
+      toast.error(error?.message || 'No fue posible crear la actuacion');
+    } finally {
+      setCreandoActuacion(false);
+    }
+  }, [proceso?.id, onActualizarProceso]);
 
   // ═══ Protección beforeunload ═══
   useEffect(() => {
@@ -1028,6 +1566,7 @@ export function ModalDetallesProceso({
   const barColor        = proceso.semaforo === 'verde' ? '#10B981' : proceso.semaforo === 'amarillo' ? '#F59E0B' : '#EF4444';
 
   const TODOS_ARCHIVOS = [...archivosBackend, ...archivosSubidos];
+  const ultimaActuacionActual = actuaciones[0]?.descripcion || proceso.ultimaActuacion;
 
   // Extraer etapas únicas de los archivos para el filtro
   const etapasUnicas = Array.from(new Set(TODOS_ARCHIVOS.map(a => a.etapaProceso).filter(Boolean))) as string[];
@@ -1058,16 +1597,16 @@ export function ModalDetallesProceso({
   if (sinEtapa.length > 0) archivosAgrupados['Sin etapa'] = sinEtapa;
 
   // ═══ Actuaciones: etapas, filtrado y agrupación ═══
-  const etapasActuaciones = Array.from(new Set(MOCK_ACTUACIONES.map(a => a.etapa).filter(Boolean)));
+  const etapasActuaciones = Array.from(new Set(actuaciones.map(a => a.etapa).filter(Boolean)));
   const etapasActOrdenadas = etapasActuaciones.sort((a, b) => {
     const ia = ORDEN_ETAPAS.indexOf(a); const ib = ORDEN_ETAPAS.indexOf(b);
     return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
   });
-  const actuacionesFiltradas = MOCK_ACTUACIONES.filter(a =>
+  const actuacionesFiltradas = actuaciones.filter(a =>
     (filtroEtapaAct === 'TODAS' || a.etapa === filtroEtapaAct) &&
     (!bgActivo || a.descripcion.toLowerCase().includes(bg) || a.responsable.toLowerCase().includes(bg) || a.tipo.toLowerCase().includes(bg) || a.etapa.toLowerCase().includes(bg))
   );
-  const actuacionesAgrupadas = etapasActOrdenadas.reduce<Record<string, typeof MOCK_ACTUACIONES>>((acc, etapa) => {
+  const actuacionesAgrupadas = etapasActOrdenadas.reduce<Record<string, (typeof actuaciones)>>((acc, etapa) => {
     const items = actuacionesFiltradas.filter(a => a.etapa === etapa);
     if (items.length > 0) acc[etapa] = items;
     return acc;
@@ -1180,10 +1719,10 @@ export function ModalDetallesProceso({
     // ── Sección 2: Actuaciones
     lines.push('═══ ACTUACIONES ═══');
     lines.push(['Fecha', 'Descripción', 'Tipo', 'Responsable', 'Etapa'].join(sep));
-    MOCK_ACTUACIONES.forEach(a => {
+    actuaciones.forEach(a => {
       lines.push([a.fecha, a.descripcion, a.tipo, a.responsable, a.etapa || '-'].join(sep));
     });
-    lines.push(`Total Actuaciones: ${MOCK_ACTUACIONES.length}`);
+    lines.push(`Total Actuaciones: ${actuaciones.length}`);
     lines.push('');
 
     // ── Sección 3: Tareas
@@ -1218,7 +1757,7 @@ export function ModalDetallesProceso({
     lines.push(['Etapa', 'Archivos', 'Actuaciones', 'Tareas', 'Notas'].join(sep));
     ORDEN_ETAPAS.forEach(etapa => {
       const nArch = TODOS_ARCHIVOS.filter(a => a.etapaProceso === etapa).length;
-      const nAct  = MOCK_ACTUACIONES.filter(a => a.etapa === etapa).length;
+      const nAct  = actuaciones.filter(a => a.etapa === etapa).length;
       const nTar  = MOCK_TAREAS.filter(t => t.etapa === etapa).length;
       const nNot  = notas.filter(n => n.etapa === etapa).length;
       if (nArch + nAct + nTar + nNot > 0) {
@@ -1235,14 +1774,14 @@ export function ModalDetallesProceso({
     link.click();
     URL.revokeObjectURL(url);
     toast.success('Expediente completo exportado', {
-      description: `${TODOS_ARCHIVOS.length} archivos · ${MOCK_ACTUACIONES.length} actuaciones · ${MOCK_TAREAS.length} tareas · ${notas.length} notas`,
+      description: `${TODOS_ARCHIVOS.length} archivos · ${actuaciones.length} actuaciones · ${MOCK_TAREAS.length} tareas · ${notas.length} notas`,
       duration: 5000,
     });
   }, [TODOS_ARCHIVOS, notas, proceso]);
 
   // Conteos globales para búsqueda
   const bgArchivos = bgActivo ? archivosFiltrados.length : TODOS_ARCHIVOS.length + cargasEnCursoCount;
-  const bgActuaciones = bgActivo ? actuacionesFiltradas.length : MOCK_ACTUACIONES.length;
+  const bgActuaciones = bgActivo ? actuacionesFiltradas.length : actuaciones.length;
   const bgTareas = bgActivo ? tareasFiltradas.length : MOCK_TAREAS.length;
   const bgNotas = bgActivo ? notasFiltradas.length : notas.length;
 
@@ -1277,6 +1816,7 @@ export function ModalDetallesProceso({
   };
 
   const TIPO_ACT: Record<string, { color: string; label: string }> = {
+    actuacion:    { color: '#2563EB', label: 'Actuacion'    },
     auto:         { color: '#7C3AED', label: 'Auto'         },
     notificacion: { color: '#0891B2', label: 'Notificación' },
     asignacion:   { color: '#10B981', label: 'Asignación'   },
@@ -1972,7 +2512,7 @@ export function ModalDetallesProceso({
                           <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Última Actuación</span>
                         </div>
                         <p className="text-xs text-gray-700 leading-relaxed">
-                          {proceso.ultimaActuacion || <span className="text-gray-400 italic">Sin registros</span>}
+                          {ultimaActuacionActual || <span className="text-gray-400 italic">Sin registros</span>}
                         </p>
                       </div>
                     </div>
@@ -2117,7 +2657,7 @@ export function ModalDetallesProceso({
                             const epc = etapaColor(etapa);
                             const nDocs = TODOS_ARCHIVOS.filter(a => a.etapaProceso === etapa).length;
                             const nAprobados = TODOS_ARCHIVOS.filter(a => a.etapaProceso === etapa && a.estado === 'aprobado').length;
-                            const nAct = MOCK_ACTUACIONES.filter(a => a.etapa === etapa).length;
+                            const nAct = actuaciones.filter(a => a.etapa === etapa).length;
                             const nTar = MOCK_TAREAS.filter(t => t.etapa === etapa).length;
                             const nTarDone = MOCK_TAREAS.filter(t => t.etapa === etapa && t.completada).length;
                             const nNot = notas.filter(n => n.etapa === etapa).length;
@@ -2163,7 +2703,7 @@ export function ModalDetallesProceso({
                           <div className="grid grid-cols-5 text-[10px] bg-gray-100 border-t border-gray-300">
                             <div className="px-2 py-1.5 col-span-1 font-black text-gray-700">TOTAL</div>
                             <div className="px-2 py-1.5 text-center font-black text-gray-900">{TODOS_ARCHIVOS.length}</div>
-                            <div className="px-2 py-1.5 text-center font-black text-gray-900">{MOCK_ACTUACIONES.length}</div>
+                            <div className="px-2 py-1.5 text-center font-black text-gray-900">{actuaciones.length}</div>
                             <div className="px-2 py-1.5 text-center font-black text-gray-900">{MOCK_TAREAS.length}</div>
                             <div className="px-2 py-1.5 text-center font-black text-gray-900">{notas.length}</div>
                           </div>
@@ -2626,9 +3166,14 @@ export function ModalDetallesProceso({
 
                 {/* ── ACTUACIONES ── */}
                 {tabActiva === 'actuaciones' && (() => {
-                  // Helper render fila actuación
-                  const renderActFila = (act: typeof MOCK_ACTUACIONES[0], idx: number, total: number, ocultarEtapa = false) => {
+                  // Helper render fila actuacion
+                  const renderActFila = (act: ActuacionItem, idx: number, total: number, ocultarEtapa = false) => {
                     const at = TIPO_ACT[act.tipo] || { color: '#6B7280', label: act.tipo };
+                    const expandida = actuacionExpandidaId === act.id;
+                    const fechaVisible = formatFechaActuacion(act.fecha);
+                    const fechaRegistro = act.createdAt ? formatFechaActuacion(act.createdAt, true) : null;
+                    const tieneObservaciones = !!act.observaciones?.trim();
+
                     return (
                       <div key={act.id} className="flex gap-2.5">
                         <div className="flex flex-col items-center flex-shrink-0">
@@ -2636,27 +3181,115 @@ export function ModalDetallesProceso({
                           {idx < total - 1 && <div className="w-px flex-1 bg-gray-200 my-1" />}
                         </div>
                         <div className="flex-1 pb-3">
-                          <div className="bg-white border border-gray-100 rounded-xl p-2.5 hover:border-blue-200 transition-colors">
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <p className="text-xs font-semibold text-gray-900 leading-tight">{act.descripcion}</p>
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                {!ocultarEtapa && act.etapa && (() => {
-                                  const epc = etapaColor(act.etapa);
-                                  return (
-                                    <span className="px-1.5 py-0.5 text-[8px] font-bold rounded inline-flex items-center gap-0.5"
-                                      style={{ backgroundColor: epc.bg, color: epc.text, border: `1px solid ${epc.text}22` }}>
-                                      <Zap className="w-2.5 h-2.5" />{act.etapa}
+                          <motion.div
+                            layout
+                            className="overflow-hidden rounded-2xl border border-gray-200 bg-white transition-all"
+                            style={{ boxShadow: expandida ? `0 0 0 1px ${at.color}22, 0 12px 30px rgba(15, 23, 42, 0.08)` : 'none' }}
+                          >
+                            <motion.button
+                              layout="position"
+                              type="button"
+                              onClick={() => setActuacionExpandidaId(expandida ? null : act.id)}
+                              className="w-full px-3 py-3 text-left hover:bg-gray-50/80 transition-colors"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                                    {!ocultarEtapa && act.etapa && (() => {
+                                      const epc = etapaColor(act.etapa);
+                                      return (
+                                        <span
+                                          className="px-2 py-0.5 text-[9px] font-bold rounded-full inline-flex items-center gap-1"
+                                          style={{ backgroundColor: epc.bg, color: epc.text, border: `1px solid ${epc.text}22` }}
+                                        >
+                                          <Zap className="w-2.5 h-2.5" />{act.etapa}
+                                        </span>
+                                      );
+                                    })()}
+                                    <span className="px-2 py-0.5 text-[9px] font-bold rounded-full text-white" style={{ backgroundColor: at.color }}>
+                                      {at.label}
                                     </span>
-                                  );
-                                })()}
-                                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full text-white" style={{ backgroundColor: at.color }}>{at.label}</span>
+                                  </div>
+                                  <p className="text-sm font-semibold text-gray-900 leading-snug">{act.descripcion}</p>
+                                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{fechaVisible}</span>
+                                    <span className="flex items-center gap-1"><User className="w-3 h-3" />{act.responsable}</span>
+                                    {tieneObservaciones && (
+                                      <span className="text-[10px] font-bold" style={{ color: at.color }}>
+                                        Con observaciones
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 pl-2 flex-shrink-0">
+                                  <span className="hidden sm:inline text-[10px] font-bold text-gray-400">
+                                    {expandida ? 'Ocultar detalle' : 'Ver detalle'}
+                                  </span>
+                                  <div className="w-8 h-8 rounded-xl border border-gray-200 bg-white flex items-center justify-center text-gray-500">
+                                    {expandida ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                            <div className="flex items-center gap-3 text-[10px] text-gray-500">
-                              <span className="flex items-center gap-1"><Calendar className="w-2.5 h-2.5" />{act.fecha}</span>
-                              <span className="flex items-center gap-1"><User className="w-2.5 h-2.5" />{act.responsable}</span>
-                            </div>
-                          </div>
+                            </motion.button>
+
+                            <AnimatePresence initial={false}>
+                              {expandida && (
+                                <motion.div
+                                  key={`actuacion-detalle-${act.id}`}
+                                  initial={{ opacity: 0, height: 0, y: -6 }}
+                                  animate={{ opacity: 1, height: 'auto', y: 0 }}
+                                  exit={{ opacity: 0, height: 0, y: -4 }}
+                                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                                  className="overflow-hidden border-t border-gray-100 bg-gradient-to-b from-white to-slate-50"
+                                >
+                                  <div className="px-3 pb-3 pt-2.5">
+                                <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-3">
+                                  <div className="space-y-3">
+                                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Descripcion completa</p>
+                                      <p className="mt-1.5 text-sm leading-relaxed text-slate-700">{act.descripcion}</p>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Observaciones</p>
+                                      <p className={`mt-1.5 text-sm leading-relaxed ${tieneObservaciones ? 'text-slate-700' : 'text-slate-400 italic'}`}>
+                                        {tieneObservaciones ? act.observaciones : 'No se registraron observaciones adicionales para esta actuacion.'}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Datos del registro</p>
+                                    <div className="mt-2.5 space-y-2.5 text-sm">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-slate-500">Tipo</span>
+                                        <span className="font-bold" style={{ color: at.color }}>{at.label}</span>
+                                      </div>
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-slate-500">Etapa</span>
+                                        <span className="font-bold text-slate-800">{act.etapa || 'Sin etapa'}</span>
+                                      </div>
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-slate-500">Fecha actuacion</span>
+                                        <span className="font-bold text-slate-800 text-right">{fechaVisible}</span>
+                                      </div>
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-slate-500">Responsable</span>
+                                        <span className="font-bold text-slate-800 text-right">{act.responsable}</span>
+                                      </div>
+                                      {fechaRegistro && (
+                                        <div className="flex items-start justify-between gap-3 border-t border-slate-200 pt-2.5">
+                                          <span className="text-slate-500">Registrada en sistema</span>
+                                          <span className="font-bold text-slate-800 text-right">{fechaRegistro}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </motion.div>
                         </div>
                       </div>
                     );
@@ -2668,7 +3301,7 @@ export function ModalDetallesProceso({
                       <span className="text-xs font-black text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
                         <Zap className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />Historial
                       </span>
-                      <button onClick={() => toast.info('Nueva actuación')}
+                      <button onClick={() => setMostrarModalNuevaActuacion(true)}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white"
                         style={{ background: '#003DA5' }}>
                         <Plus className="w-3 h-3" />Nueva
@@ -2685,11 +3318,11 @@ export function ModalDetallesProceso({
                           color: filtroEtapaAct === 'TODAS' ? '#FFFFFF' : '#6B7280',
                           borderColor: filtroEtapaAct === 'TODAS' ? '#003DA5' : '#E5E7EB',
                         }}>
-                        Todas ({MOCK_ACTUACIONES.length})
+                        Todas ({actuaciones.length})
                       </button>
                       {etapasActOrdenadas.map(etapa => {
                         const epc = etapaColor(etapa);
-                        const count = MOCK_ACTUACIONES.filter(a => a.etapa === etapa).length;
+                        const count = actuaciones.filter(a => a.etapa === etapa).length;
                         const activo = filtroEtapaAct === etapa;
                         return (
                           <button key={etapa} onClick={() => setFiltroEtapaAct(activo ? 'TODAS' : etapa)}
@@ -2718,14 +3351,28 @@ export function ModalDetallesProceso({
 
                     {/* Contador */}
                     <p className="text-[10px] font-bold mb-1" style={{ color: '#003DA5' }}>
-                      {actuacionesFiltradas.length} de {MOCK_ACTUACIONES.length} actuaciones
+                      {actuacionesFiltradas.length} de {actuaciones.length} actuaciones
                       {filtroEtapaAct !== 'TODAS' && <span className="text-gray-500 font-semibold ml-1">(filtrado: {filtroEtapaAct})</span>}
                     </p>
 
-                    {actuacionesFiltradas.length === 0 ? (
+                    {actuacionesLoading ? (
+                      <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-500">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Cargando actuaciones...
+                      </div>
+                    ) : actuacionesError ? (
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-xs text-red-700">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4" />
+                          <span className="font-semibold">{actuacionesError}</span>
+                        </div>
+                      </div>
+                    ) : actuacionesFiltradas.length === 0 ? (
                       <div className="flex flex-col items-center py-8 text-gray-400">
                         <Zap className="w-8 h-8 text-gray-300 mb-2" />
-                        <p className="text-xs text-gray-500 font-medium">Sin actuaciones en esta etapa</p>
+                        <p className="text-xs text-gray-500 font-medium">
+                          {actuaciones.length === 0 ? 'Aun no hay actuaciones registradas' : 'Sin actuaciones en esta etapa'}
+                        </p>
                         <button onClick={() => setFiltroEtapaAct('TODAS')} className="mt-1.5 text-[11px] font-bold underline" style={{ color: '#003DA5' }}>Limpiar filtro</button>
                       </div>
                     ) : vistaAgrupadaAct ? (
@@ -3066,7 +3713,7 @@ export function ModalDetallesProceso({
               Expediente{' '}
               <span className="font-black" style={{ color: '#2962FF' }}>{proceso.numeroProceso}</span>
               {' · '}<span style={{ color: '#2962FF' }}>{TODOS_ARCHIVOS.length} docs</span>
-              {' · '}<span style={{ color: '#7C3AED' }}>{MOCK_ACTUACIONES.length} actuaciones</span>
+              {' · '}<span style={{ color: '#7C3AED' }}>{actuaciones.length} actuaciones</span>
               {' · '}<span style={{ color: '#D97706' }}>{MOCK_TAREAS.length} tareas</span>
             </p>
 
@@ -3175,6 +3822,20 @@ export function ModalDetallesProceso({
             mostrarBotonDevolver={true}
             tituloModal="Revisión y Aprobación de Auto"
             descripcionModal="Revisar documento antes de aprobar o devolver al profesional"
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {mostrarModalNuevaActuacion && (
+          <ModalNuevaActuacion
+            open={mostrarModalNuevaActuacion}
+            etapas={Array.from(new Set([...ORDEN_ETAPAS, proceso.etapaActual, ...etapasActOrdenadas, 'Sin etapa']))}
+            etapaActual={proceso.etapaActual}
+            responsableInicial={getNombre(proceso.profesionalAsignado)}
+            saving={creandoActuacion}
+            onClose={() => setMostrarModalNuevaActuacion(false)}
+            onSubmit={handleCrearActuacion}
           />
         )}
       </AnimatePresence>

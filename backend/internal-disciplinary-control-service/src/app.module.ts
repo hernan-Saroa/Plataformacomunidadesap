@@ -21,6 +21,7 @@ import { DiaFestivo } from './entities/dia-festivo.entity';
 import { ReglaAlerta } from './entities/regla-alerta.entity';
 import { AlertaEnviada } from './entities/alerta-enviada.entity';
 import { EntidadRemision } from './entities/entidad-remision.entity';
+import { DisciplinaryProcessActuacion } from './entities/disciplinary-process-actuacion.entity';
 
 // Controllers
 import { NewsController } from './controllers/news.controller';
@@ -33,6 +34,7 @@ import { DiasFestivosController } from './controllers/dias-festivos.controller';
 import { ReglasAlertaController } from './controllers/reglas-alerta.controller';
 import { AlertasController } from './controllers/alertas.controller';
 import { JobsController } from './controllers/jobs.controller';
+import { DisciplinaryProcessActuacionesController } from './controllers/disciplinary-process-actuaciones.controller';
 
 // Services
 import { NewsService } from './services/news.service';
@@ -78,6 +80,7 @@ import { CompartirExpedienteService } from './services/compartir-expediente.serv
 import { ExpedienteCompartido } from './entities/expediente-compartido.entity';
 import { EntidadRemisionController } from './controllers/entidad-remision.controller';
 import { EntidadRemisionService } from './services/entidad-remision.service';
+import { DisciplinaryProcessActuacionesService } from './services/disciplinary-process-actuaciones.service';
 
 @Module({
   imports: [
@@ -111,6 +114,7 @@ import { EntidadRemisionService } from './services/entidad-remision.service';
       ActaConfiguration,
       ExpedienteCompartido,
       EntidadRemision,
+      DisciplinaryProcessActuacion,
     ]),
   ],
   controllers: [
@@ -127,6 +131,7 @@ import { EntidadRemisionService } from './services/entidad-remision.service';
     ReglasAlertaController,
     AlertasController,
     JobsController,
+    DisciplinaryProcessActuacionesController,
     DisciplinaryExportController,
     AutosConfigurationController,
     OficiosConfigurationController,
@@ -157,6 +162,7 @@ import { EntidadRemisionService } from './services/entidad-remision.service';
     ActasConfigurationService,
     CompartirExpedienteService,
     EntidadRemisionService,
+    DisciplinaryProcessActuacionesService,
   ],
 })
 export class AppModule { }

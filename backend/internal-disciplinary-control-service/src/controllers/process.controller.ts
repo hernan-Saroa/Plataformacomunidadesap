@@ -780,16 +780,33 @@ export class ProcessController {
       throw new HttpException('Archivo no encontrado en el servidor', HttpStatus.NOT_FOUND);
     }
 
-    // Si es para visualización, enviar con content-type adecuado
+    // Obtener el nombre original del archivo para la cabecera Content-Disposition
+    const nombreArchivo = documento.filename || documento.nombreDocumento || 'documento';
+
+    // Si es para visualización, enviar con content-type adecuado y disposition inline
     if (view === 'true') {
       const mimeType = documento.fileType || 'application/octet-stream';
-      res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', `inline; filename="${documento.filename}"`);
+      
+      // Codificar el nombre del archivo para UTF-8 (RFC 5987)
+      const encodedFilename = encodeURIComponent(nombreArchivo);
+      const filenameStar = `filename*=UTF-8''${encodedFilename}`;
+
+      res.setHeader('Content-Type', `${mimeType}; charset=utf-8`);
+      res.setHeader('Content-Disposition', `inline; filename="${nombreArchivo}"; ${filenameStar}`);
+      
       const fileStream = fs.createReadStream(rutaCompleta);
       fileStream.pipe(res);
     } else {
-      // Descarga normal
-      res.download(rutaCompleta, documento.filename);
+      // Descarga normal con cabecera Content-Disposition attachment
+      // Codificar el nombre del archivo para UTF-8 (RFC 5987)
+      const encodedFilename = encodeURIComponent(nombreArchivo);
+      const filenameStar = `filename*=UTF-8''${encodedFilename}`;
+
+      res.setHeader('Content-Type', 'application/octet-stream; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"; ${filenameStar}`);
+      
+      const fileStream = fs.createReadStream(rutaCompleta);
+      fileStream.pipe(res);
     }
   }
 

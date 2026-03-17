@@ -2333,7 +2333,7 @@ export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = [])
     borradores: proceso.draftsCount !== undefined ? Array(proceso.draftsCount).fill({}) : [],
     documentos: proceso.documentsCount !== undefined ? Array(proceso.documentsCount).fill({}) : [],
     pendienteAprobacion: false,
-    ultimaActuacion: 'Actualizado desde backend',
+    ultimaActuacion: proceso.ultimaActuacion || 'Sin actuaciones registradas',
     fechaCreacion: fechaCreacion.toISOString().split('T')[0],
     tipo: 'proceso',
     hechos: proceso.news?.hechos,
@@ -2825,7 +2825,7 @@ export function DashboardKanbanOperativo({
       borradores: proceso.draftsCount !== undefined ? Array(proceso.draftsCount).fill({}) : [],
       documentos: proceso.documentsCount !== undefined ? Array(proceso.documentsCount).fill({}) : [],
       pendienteAprobacion: false,
-      ultimaActuacion: 'Actualizado desde backend',
+      ultimaActuacion: proceso.ultimaActuacion || 'Sin actuaciones registradas',
       fechaCreacion: fechaCreacion.toISOString().split('T')[0],
       tipo: 'proceso' as const,
       hechos: proceso.news?.hechos,
@@ -5484,6 +5484,15 @@ export function DashboardKanbanOperativo({
             onExpediente={() => {
               setModalActivo(null);
               handleVerExpediente(itemSeleccionado as Proceso);
+            }}
+            onActualizarProceso={(updates) => {
+              const procesoId = (itemSeleccionado as Proceso).id;
+              setItemSeleccionado((prev: any) => prev ? { ...prev, ...updates } : prev);
+              setItems((prev) => prev.map((item) =>
+                item.tipo === 'proceso' && item.id === procesoId
+                  ? ({ ...item, ...updates } as Item)
+                  : item
+              ));
             }}
             onEnviarARevision={onEnviarARevision}
             onNavigateToRevision={onNavigateToRevision ? () => {
