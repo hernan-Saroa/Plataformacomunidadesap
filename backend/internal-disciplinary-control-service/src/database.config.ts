@@ -54,6 +54,7 @@ import { ActaConfiguration } from './entities/acta-configuration.entity';
 import { ExpedienteCompartido } from './entities/expediente-compartido.entity';
 import { EntidadRemision } from './entities/entidad-remision.entity';
 import { DisciplinaryProcessActuacion } from './entities/disciplinary-process-actuacion.entity';
+import { DisciplinaryProcessTask } from './entities/disciplinary-process-task.entity';
 
 export const databaseConfig: TypeOrmModuleOptions = {
   type: 'postgres',
@@ -84,6 +85,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
     ExpedienteCompartido,
     EntidadRemision,
     DisciplinaryProcessActuacion,
+    DisciplinaryProcessTask,
   ],
   synchronize: false,
   logging: false,
