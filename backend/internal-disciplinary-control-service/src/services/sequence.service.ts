@@ -61,4 +61,56 @@ export class SequenceService {
     const paddedNumber = String(sequence.currentValue).padStart(3, '0');
     return `P-${paddedNumber}-${year}`;
   }
+
+  /**
+   * Genera un consecutivo único para Actas Disciplinarias
+   * Formato: ACT-{consecutivo}-{YYYY}
+   */
+  async generateActaConsecutivo(): Promise<string> {
+    const year = new Date().getFullYear();
+    const sequenceName = `DISCIPLINARY_ACTA_${year}`;
+
+    let sequence = await this.sequenceRepository.findOne({
+      where: { name: sequenceName },
+    });
+
+    if (!sequence) {
+      sequence = this.sequenceRepository.create({
+        name: sequenceName,
+        currentValue: 0,
+      });
+    }
+
+    sequence.currentValue++;
+    await this.sequenceRepository.save(sequence);
+
+    const paddedNumber = String(sequence.currentValue).padStart(3, '0');
+    return `ACT-${paddedNumber}-${year}`;
+  }
+
+  /**
+   * Obtiene el próximo consecutivo para Actas Disciplinarias SIN incrementarlo
+   * Formato: ACT-{consecutivo}-{YYYY}
+   * Útil para previsualización antes de crear el documento
+   */
+  async getPreviewActaConsecutivo(): Promise<string> {
+    const year = new Date().getFullYear();
+    const sequenceName = `DISCIPLINARY_ACTA_${year}`;
+
+    let sequence = await this.sequenceRepository.findOne({
+      where: { name: sequenceName },
+    });
+
+    if (!sequence) {
+      sequence = this.sequenceRepository.create({
+        name: sequenceName,
+        currentValue: 0,
+      });
+    }
+
+    // Solo retornamos el siguiente valor sin guardar
+    const nextValue = sequence.currentValue + 1;
+    const paddedNumber = String(nextValue).padStart(3, '0');
+    return `ACT-${paddedNumber}-${year}`;
+  }
 }
