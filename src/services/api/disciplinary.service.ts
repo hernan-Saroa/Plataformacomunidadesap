@@ -86,12 +86,37 @@ export interface DisciplinaryProcess {
     draftsCount?: number;
     documentsCount?: number;
     timePercentage?: number;
+    actuacionesCount?: number;
+    ultimaActuacion?: string | null;
+    ultimaActuacionFecha?: string | null;
 }
 
 export interface ProcessStatistics {
     draftsCount: number;
     documentsCount: number;
     timePercentage: number;
+}
+
+export interface DisciplinaryProcessActuacion {
+    id: string;
+    processId: string;
+    tipo: string;
+    etapa?: string | null;
+    descripcion: string;
+    responsableNombre: string;
+    fechaActuacion: string;
+    observaciones?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CreateDisciplinaryProcessActuacionDto {
+    tipo: string;
+    etapa?: string;
+    descripcion: string;
+    responsableNombre: string;
+    fechaActuacion: string;
+    observaciones?: string;
 }
 
 export interface LegalAuto {
@@ -409,6 +434,22 @@ class DisciplinaryService {
 
     async getMisProcesos(abogadoId: string): Promise<DisciplinaryProcess[]> {
         return apiClient.get<DisciplinaryProcess[]>(`${SERVICE_PREFIX}/disciplinary-processes/my-processes`, { abogadoId });
+    }
+
+    async getActuacionesProceso(processId: string): Promise<DisciplinaryProcessActuacion[]> {
+        return apiClient.get<DisciplinaryProcessActuacion[]>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/actuaciones`
+        );
+    }
+
+    async createActuacionProceso(
+        processId: string,
+        data: CreateDisciplinaryProcessActuacionDto
+    ): Promise<DisciplinaryProcessActuacion> {
+        return apiClient.post<DisciplinaryProcessActuacion>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/actuaciones`,
+            data
+        );
     }
 
     async asignarProceso(data: AssignProcessDto): Promise<DisciplinaryProcess> {
