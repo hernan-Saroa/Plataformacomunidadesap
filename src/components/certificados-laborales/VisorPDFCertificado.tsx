@@ -15,7 +15,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { certificadosService } from '../../services/api/certificados.service';
 import { buildServiceAssetUrl, getPublicBaseUrl } from '../../config/environment';
-import { formatCargoDisplay } from '../../utils/cargoFormatter';
+import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 import { QRCodeCanvas } from 'qrcode.react';
 
 interface VisorPDFCertificadoProps {
@@ -154,7 +154,7 @@ export function VisorPDFCertificado({
   ) =>
     formatCargoDisplay({
       cargoSource: careerCategory,
-      codCargo,
+      codCargo: selectPreferredCargoCode(codCargo),
       codGrade,
       observations,
       templateType,
@@ -338,11 +338,14 @@ export function VisorPDFCertificado({
     const grupoVariableResolved = shouldHideGrupo ? '' : grupoVariable;
     const cargoVariable = construirCargoVariable(
       requestData?.career_category || (certificado as any)?.career_category || certificado.empleado.cargo || '',
-      requestData?.cod_cargo ||
-        (certificado as any)?.cod_cargo ||
-        (certificado as any)?.codCargo ||
-        (certificado.empleado as any)?.cod_cargo ||
+      selectPreferredCargoCode(
+        requestData?.cod_cargo,
+        requestData?.codCargo,
+        (certificado as any)?.cod_cargo,
+        (certificado as any)?.codCargo,
+        (certificado.empleado as any)?.cod_cargo,
         (certificado.empleado as any)?.codCargo,
+      ),
       requestData?.cod_grade ||
         (certificado as any)?.cod_grade ||
         (certificado as any)?.codGrade ||

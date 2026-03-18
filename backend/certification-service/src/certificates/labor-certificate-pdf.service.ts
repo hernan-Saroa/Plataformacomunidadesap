@@ -193,6 +193,34 @@ export class LaborCertificatePdfService {
     return digits || raw.replace(/\s+/g, '');
   }
 
+  private selectPreferredCodeValue(
+    ...values: Array<string | number | null | undefined>
+  ): string {
+    const normalized = values
+      .map((value) => this.normalizeCodeValue(value))
+      .filter(Boolean);
+
+    if (!normalized.length) {
+      return '';
+    }
+
+    return normalized.sort((left, right) => {
+      if (left.length !== right.length) {
+        return right.length - left.length;
+      }
+      const leftHasLeadingZero = left.startsWith('0') ? 1 : 0;
+      const rightHasLeadingZero = right.startsWith('0') ? 1 : 0;
+      return rightHasLeadingZero - leftHasLeadingZero;
+    })[0];
+  }
+
+  private truncateCargoCode(value: string): string {
+    if (!value || value.length <= 4 || this.isZeroValue(value)) {
+      return value;
+    }
+    return value.slice(0, 4);
+  }
+
   private normalizeSpaces(value?: string | null): string {
     return String(value || '')
       .replace(/\s+/g, ' ')
@@ -273,7 +301,9 @@ export class LaborCertificatePdfService {
       inferredGrade = compactAdminMatch[3];
       baseText = this.normalizeSpaces(compactAdminMatch[1]);
     } else {
-      const trailingCodeMatch = baseText.match(/^(.*?)(?:\s+)?(\d{4})$/);
+      const trailingCodeMatch = baseText.match(
+        /^(.*?)(?:\s+)?(?:c[oó]digo\s+)?(\d{4,5})$/i,
+      );
       if (trailingCodeMatch && /[A-Za-z\u00C0-\u00FF]/.test(trailingCodeMatch[1] || '')) {
         inferredCode = trailingCodeMatch[2];
         baseText = this.normalizeSpaces(trailingCodeMatch[1]);
@@ -307,7 +337,10 @@ export class LaborCertificatePdfService {
       codCargoRaw.length > codGradeRaw.length &&
       codCargoRaw.endsWith(codGradeRaw)
     ) {
-      const cargoSoloCodigo = codCargoRaw.slice(0, -codGradeRaw.length);
+      const cargoSoloCodigo =
+        codCargoRaw.length >= 4
+          ? codCargoRaw.slice(0, 4)
+          : codCargoRaw.slice(0, -codGradeRaw.length);
       if (cargoSoloCodigo.length >= 3) {
         codCargoRaw = cargoSoloCodigo;
       }
@@ -316,12 +349,14 @@ export class LaborCertificatePdfService {
     if (
       resolvedTemplate !== 'docente' &&
       !codGradeRaw &&
-      /^\d{6}$/.test(codCargoRaw) &&
+      /^\d{5,6}$/.test(codCargoRaw) &&
       /[A-Za-z\u00C0-\u00FF]/.test(baseText || careerRaw)
     ) {
       codGradeRaw = codCargoRaw.slice(-2);
-      codCargoRaw = codCargoRaw.slice(0, -2);
+      codCargoRaw = codCargoRaw.slice(0, 4);
     }
+
+    codCargoRaw = this.truncateCargoCode(codCargoRaw);
 
     const baseFinal =
       baseText ||
@@ -444,14 +479,18 @@ export class LaborCertificatePdfService {
       certificate.career_category ||
       certificate.position_category ||
       '';
-    const codCargoSource =
-      requestData?.cod_cargo ||
-      (certificate as Certificate & { cod_cargo?: string }).cod_cargo ||
-      '';
-    const codGradeSource =
-      requestData?.cod_grade ||
-      (certificate as Certificate & { cod_grade?: string }).cod_grade ||
-      '';
+    const codCargoSource = this.selectPreferredCodeValue(
+      requestData?.cod_cargo,
+      requestData?.['codCargo'],
+      (certificate as Certificate & { cod_cargo?: string }).cod_cargo,
+      (certificate as Certificate & { codCargo?: string }).codCargo,
+    );
+    const codGradeSource = this.selectPreferredCodeValue(
+      requestData?.cod_grade,
+      requestData?.['codGrade'],
+      (certificate as Certificate & { cod_grade?: string }).cod_grade,
+      (certificate as Certificate & { codGrade?: string }).codGrade,
+    );
     const cargoVariable =
       this.buildCargoVariable(cargoTexto, codCargoSource, codGradeSource, {
         templateType,

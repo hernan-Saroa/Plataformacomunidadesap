@@ -23,7 +23,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card } from '../ui/card';
 import { copyToClipboard } from '../../utils/clipboard';
-import { formatCargoDisplay } from '../../utils/cargoFormatter';
+import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 
 interface CertificadoDetalleModalProps {
   certificado: any;
@@ -55,11 +55,14 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
       certificado?.empleado?.cargo ||
       certificado?.position_category ||
       certificado?.positionCategory,
-    codCargo:
-      certificado?.cod_cargo ||
-      certificado?.codCargo ||
-      certificado?.empleado?.cod_cargo ||
+    codCargo: selectPreferredCargoCode(
+      certificado?.request?.cod_cargo,
+      certificado?.request?.codCargo,
+      certificado?.cod_cargo,
+      certificado?.codCargo,
+      certificado?.empleado?.cod_cargo,
       certificado?.empleado?.codCargo,
+    ),
     codGrade:
       certificado?.cod_grade ||
       certificado?.codGrade ||
