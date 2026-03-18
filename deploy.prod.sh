@@ -51,6 +51,9 @@ usage() {
     echo "  down      - Detener todos los servicios"
     echo "  restart   - Reiniciar todos los servicios"
     echo "  rebuild   - Reconstruir y reiniciar todos los servicios"
+    echo "  rebuild-frontend - Reconstruir y reiniciar solo frontend"
+    echo "  rebuild-service <servicio> - Reconstruir y reiniciar solo un servicio"
+    echo "  rebuild-select - Seleccionar interactivamente un servicio para rebuild"
     echo "  logs      - Ver logs de todos los servicios"
     echo "  status    - Ver estado de los servicios"
     echo "  clean     - Limpiar contenedores e imágenes no usados (NO borra volúmenes)"
@@ -112,6 +115,53 @@ cmd_rebuild() {
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
     echo -e "${GREEN}Servicios PROD reconstruidos y reiniciados${NC}"
+}
+
+# Comando: rebuild-frontend (rápido)
+cmd_rebuild_frontend() {
+    echo -e "${YELLOW}Reconstruyendo solo frontend PROD...${NC}"
+    docker compose -f docker-compose.prod.yml --env-file .env.prod build frontend
+    docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --no-deps frontend
+    echo -e "${GREEN}Frontend PROD reconstruido y reiniciado${NC}"
+}
+
+# Comando: rebuild-service (rápido para un microservicio)
+cmd_rebuild_service() {
+    local service="$1"
+    if [ -z "$service" ]; then
+        echo -e "${RED}Error: Debes indicar el nombre del servicio${NC}"
+        echo -e "${YELLOW}Ejemplo: $0 rebuild-service auth-service${NC}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}Reconstruyendo servicio PROD: ${service}${NC}"
+    docker compose -f docker-compose.prod.yml --env-file .env.prod build "$service"
+    docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --no-deps "$service"
+    echo -e "${GREEN}Servicio PROD ${service} reconstruido y reiniciado${NC}"
+}
+
+# Comando: rebuild-select (selección interactiva de servicio)
+cmd_rebuild_select() {
+    echo -e "${YELLOW}Cargando servicios PROD disponibles...${NC}"
+    mapfile -t services < <(docker compose -f docker-compose.prod.yml --env-file .env.prod config --services)
+
+    if [ ${#services[@]} -eq 0 ]; then
+        echo -e "${RED}No se encontraron servicios en docker-compose.prod.yml${NC}"
+        exit 1
+    fi
+
+    echo ""
+    echo -e "${GREEN}Selecciona un servicio PROD para rebuild:${NC}"
+    PS3="Ingresa el número (o Ctrl+C para cancelar): "
+    select selected in "${services[@]}"; do
+        if [ -n "$selected" ]; then
+            echo -e "${YELLOW}Servicio seleccionado: ${selected}${NC}"
+            cmd_rebuild_service "$selected"
+            break
+        else
+            echo -e "${RED}Opción inválida. Intenta de nuevo.${NC}"
+        fi
+    done
 }
 
 # Comando: logs
@@ -281,6 +331,15 @@ case "$1" in
         ;;
     rebuild)
         cmd_rebuild
+        ;;
+    rebuild-frontend)
+        cmd_rebuild_frontend
+        ;;
+    rebuild-service)
+        cmd_rebuild_service "$2"
+        ;;
+    rebuild-select)
+        cmd_rebuild_select
         ;;
     logs)
         cmd_logs
