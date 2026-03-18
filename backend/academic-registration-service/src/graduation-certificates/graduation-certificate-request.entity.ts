@@ -53,8 +53,8 @@ export class GraduationCertificateRequest {
   @Column({ name: 'program_name', length: 255 })
   programName: string;
 
-  @Column({ name: 'graduation_date', type: 'date' })
-  graduationDate: Date;
+  @Column({ name: 'graduation_date', type: 'date', nullable: true })
+  graduationDate: Date | null;
 
   // Información del solicitante
   @Column({ name: 'requester_name', length: 255, nullable: true })
