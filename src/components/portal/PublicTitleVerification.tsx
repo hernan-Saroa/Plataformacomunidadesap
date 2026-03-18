@@ -1450,40 +1450,12 @@ export function PublicTitleVerification({
                                   CC {suggestion.idNumber} |{" "}
                                   {suggestion.programName}
                                 </p>
-                                <p className="text-xs text-gray-600">
-                                  Título: {suggestion.degreeTitle}
-                                </p>
-                                <p className="text-xs text-gray-600">
-                                  Fecha de grado:{" "}
-                                  {formatInputDate(
-                                    suggestion.graduationDate ||
-                                      graduateDocumentIssueDate,
-                                  )}
-                                </p>
-                                {suggestion.seccionalName && (
-                                  <p className="text-xs text-gray-500">
-                                    Seccional: {suggestion.seccionalName}
-                                  </p>
-                                )}
                               </div>
                               <div className="text-right space-y-1">
                                 {comparedTokens > 0 && (
                                   <p className="text-[11px] font-semibold text-blue-700">
                                     Nombre: {suggestion.matchedTokens}/
                                     {comparedTokens} palabras en orden
-                                  </p>
-                                )}
-                                {graduateDocumentIssueDate && (
-                                  <p
-                                    className={`text-[11px] font-semibold ${
-                                      suggestion.exactGraduationDateMatch
-                                        ? "text-emerald-700"
-                                        : "text-amber-700"
-                                    }`}
-                                  >
-                                    {suggestion.exactGraduationDateMatch
-                                      ? "Fecha de grado coincide"
-                                      : "Verifica la fecha de grado"}
                                   </p>
                                 )}
                                 {isSelected && (
