@@ -10,7 +10,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, Edit2, Trash2, Download, Upload, X, FileText, AlertCircle, 
   Info, HelpCircle, CheckCircle, Archive, Scale, FileCheck, Gavel,
-  File, Folder, Eye, Clock, ChevronLeft, ChevronRight
+  File, Folder, Eye, Clock, ChevronLeft, ChevronRight, ChevronDown,
+  Files
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { disciplinaryService } from '../../../../services/api/disciplinary.service';
@@ -156,6 +157,7 @@ export function SeccionPlantillasAutosUnificada({
 }: SeccionPlantillasAutosUnificadaProps) {
   const [filtroEtapa, setFiltroEtapa] = useState<string | 'todas'>('todas');
   const [mostrarGuia, setMostrarGuia] = useState(false);
+  const [tipoExpandido, setTipoExpandido] = useState<string | null>(null);
   const [vistaDetalles, setVistaDetalles] = useState<TipoAuto | null>(null);
   const [paginaActual, setPaginaActual] = useState(1);
   const ITEMS_POR_PAGINA = 10;
@@ -207,23 +209,27 @@ export function SeccionPlantillasAutosUnificada({
     }
   };
 
+  const toggleExpandirTipo = (tipoId: string) => {
+    setTipoExpandido(tipoExpandido === tipoId ? null : tipoId);
+  };
+
   return (
     <>
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         {/* Header */}
-        <div className="border-b border-gray-200 px-5 py-4">
+        <div className="border-b border-gray-200 px-4 lg:px-5 py-3 lg:py-4">
           <div className="flex items-start justify-between flex-col lg:flex-row gap-3">
             <div className="flex-1 w-full lg:w-auto">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center" 
+              <div className="flex items-center gap-2 lg:gap-2.5">
+                <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-lg flex items-center justify-center" 
                      style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}>
-                  <FileText className="w-5 h-5 text-white" />
+                  <FileText className="w-4 h-4 lg:w-5 lg:h-5 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-lg font-bold text-gray-900">
-                    Tipos de Autos y Plantillas
+                  <h2 className="text-base lg:text-lg font-bold text-gray-900">
+                    Autos y Plantillas
                   </h2>
-                  <p className="text-sm text-gray-600 mt-0.5">
+                  <p className="text-xs lg:text-sm text-gray-600 mt-0.5 line-clamp-1">
                     Configura los tipos de autos con su plantilla Word/PDF
                   </p>
                 </div>
@@ -233,46 +239,48 @@ export function SeccionPlantillasAutosUnificada({
             <div className="flex items-center gap-2 w-full lg:w-auto">
               <button
                 onClick={() => setMostrarGuia(true)}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-semibold text-sm border-2 border-blue-200 text-blue-700 hover:bg-blue-50 transition-all flex-1 lg:flex-initial"
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-semibold text-xs lg:text-sm border-2 border-blue-200 text-blue-700 hover:bg-blue-50 transition-all flex-1 lg:flex-initial"
               >
-                <HelpCircle className="w-4 h-4" />
-                <span>Ver Guía</span>
+                <HelpCircle className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                <span className="hidden sm:inline">Ver Guía</span>
+                <span className="sm:hidden">Guía</span>
               </button>
               
               <button
                 onClick={onAgregarTipo}
-                className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-1 lg:flex-initial"
+                className="flex items-center justify-center gap-1.5 px-3 lg:px-4 py-2 rounded-lg font-semibold text-xs lg:text-sm text-white transition-all hover:shadow-lg flex-1 lg:flex-initial"
                 style={{ 
                   background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                   boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                 }}
               >
-                <Plus className="w-4 h-4" />
-                Nuevo Tipo de Auto
+                <Plus className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                <span className="hidden sm:inline">Nuevo Tipo de Auto</span>
+                <span className="sm:hidden">Nuevo</span>
               </button>
             </div>
           </div>
 
           {/* Mensaje informativo */}
-          <div className="mt-4 bg-blue-50 border-l-4 border-blue-500 p-3 rounded">
+          <div className="mt-3 lg:mt-4 bg-blue-50 border-l-4 border-blue-500 p-2.5 lg:p-3 rounded">
             <div className="flex items-start gap-2">
               <Info className="w-4 h-4 text-blue-700 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-blue-900">
-                <p className="font-semibold mb-1">¿Cómo funciona?</p>
-                <ol className="list-decimal list-inside space-y-0.5 text-xs">
-                  <li><strong>Crear tipo:</strong> Define el tipo de auto (ej: "Auto de Apertura de Investigación")</li>
+              <div className="text-xs lg:text-sm text-blue-900">
+                <p className="font-semibold mb-1">Sistema de gestión de autos</p>
+                <ul className="list-disc list-inside space-y-0.5 text-xs">
+                  <li><strong>Crear tipos:</strong> Define el tipo de auto (ej: "Auto de Apertura de Investigación")</li>
                   <li><strong>Subir plantilla:</strong> Cada tipo tiene UNA plantilla Word/PDF asociada</li>
-                  <li><strong>Usar en procesos:</strong> Descarga, diligencia en PC, y sube el archivo completado</li>
-                </ol>
+                  <li><strong>Expandir/Contraer:</strong> Haz clic para ver la plantilla del tipo</li>
+                </ul>
               </div>
             </div>
           </div>
 
           {/* Filtros por Etapa */}
-          <div className="mt-4 flex flex-wrap gap-1.5">
+          <div className="mt-3 lg:mt-4 flex flex-wrap gap-1.5">
             <button
               onClick={() => setFiltroEtapa('todas')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+              className={`px-2.5 lg:px-3 py-1.5 rounded-lg text-xs lg:text-sm font-semibold transition-all ${
                 filtroEtapa === 'todas'
                   ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-md'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -294,7 +302,7 @@ export function SeccionPlantillasAutosUnificada({
                   <button
                     key={key}
                     onClick={() => setFiltroEtapa(key)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
+                    className={`px-2.5 lg:px-3 py-1.5 rounded-lg text-xs lg:text-sm font-semibold transition-all flex items-center gap-1 lg:gap-1.5 ${
                       filtroEtapa === key
                         ? 'text-white shadow-md'
                         : 'bg-white border-2 hover:shadow-sm'
@@ -305,8 +313,10 @@ export function SeccionPlantillasAutosUnificada({
                       color: filtroEtapa !== key ? etapa.color : undefined
                     }}
                   >
-                    <Icon className="w-3.5 h-3.5" />
-                    {etapa.nombre} ({count})
+                    <Icon className="w-3 h-3 lg:w-3.5 lg:h-3.5" />
+                    <span className="hidden sm:inline">{etapa.nombre}</span>
+                    <span className="sm:hidden">{etapa.nombre.split(' ')[0]}</span>
+                    ({count})
                   </button>
                 );
               })}
@@ -314,7 +324,7 @@ export function SeccionPlantillasAutosUnificada({
         </div>
 
         {/* Lista de Tipos de Autos */}
-        <div className="p-5">
+        <div className="p-3 lg:p-5">
           {tiposFiltrados.length === 0 ? (
             <div className="text-center py-12">
               <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
@@ -346,14 +356,29 @@ export function SeccionPlantillasAutosUnificada({
                   if (!etapa) return null;
                   
                   const Icon = etapa.icon;
+                  const plantillasActivas = tipo.plantilla ? 1 : 0;
+                  const expandido = tipoExpandido === tipo.id;
                   
                   return (
                     <div 
                       key={tipo.id}
-                      className="border-2 border-gray-200 rounded-lg overflow-hidden hover:border-blue-300 transition-all bg-white"
+                      className="border-2 border-gray-200 rounded-lg overflow-hidden hover:border-blue-300 transition-all bg-gradient-to-br from-blue-50/30 to-white"
                     >
+                      {/* Header del Tipo de Auto */}
                       <div className="p-4">
                         <div className="flex items-start gap-3">
+                          {/* Botón Expandir/Contraer */}
+                          <button
+                            onClick={() => toggleExpandirTipo(tipo.id)}
+                            className="p-2 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0 mt-0.5"
+                          >
+                            {expandido ? (
+                              <ChevronDown className="w-5 h-5 text-gray-600" />
+                            ) : (
+                              <ChevronRight className="w-5 h-5 text-gray-600" />
+                            )}
+                          </button>
+
                           {/* Icono de Etapa */}
                           <div 
                             className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -378,47 +403,17 @@ export function SeccionPlantillasAutosUnificada({
                                   </span>
                                   <span>•</span>
                                   <span className={`px-2 py-0.5 rounded font-semibold ${
-                                    tipo.plantilla 
-                                      ? 'bg-green-100 text-green-700' 
+                                    plantillasActivas > 0 
+                                      ? 'bg-blue-100 text-blue-700' 
                                       : 'bg-gray-100 text-gray-600'
                                   }`}>
-                                    <File className="w-3 h-3 inline mr-1" />
-                                    {tipo.plantilla ? 'Plantilla configurada' : 'Sin plantilla'}
+                                    <Files className="w-3 h-3 inline mr-1" />
+                                    {plantillasActivas} plantilla{plantillasActivas !== 1 ? 's' : ''}
                                   </span>
                                 </div>
                                 <p className="text-xs text-gray-600 line-clamp-2">
                                   {tipo.descripcion}
                                 </p>
-
-                                {/* Mostrar Plantilla si existe */}
-                                {tipo.plantilla && (
-                                  <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-2.5">
-                                    <div className="flex items-start gap-2">
-                                      <File className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-0.5">
-                                          <p className="text-sm font-semibold text-gray-900 truncate">
-                                            {tipo.plantilla.nombre}
-                                          </p>
-                                          <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded">
-                                            v{tipo.plantilla.version}
-                                          </span>
-                                        </div>
-                                        <p className="text-xs text-gray-600 truncate">
-                                          {tipo.plantilla.nombreArchivo}
-                                        </p>
-                                      </div>
-                                      <button
-                                        onClick={() => handleDescargarPlantilla(tipo.plantilla!)}
-                                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-semibold text-xs text-white transition-all hover:shadow-lg flex-shrink-0"
-                                        style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}
-                                      >
-                                        <Download className="w-3.5 h-3.5" />
-                                        Descargar
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
                               </div>
 
                               {/* Toggle Activo */}
@@ -447,8 +442,8 @@ export function SeccionPlantillasAutosUnificada({
                                     : 'bg-yellow-50 border-yellow-300 text-yellow-700 hover:bg-yellow-100'
                                 }`}
                               >
-                                <Upload className="w-3.5 h-3.5" />
-                                {tipo.plantilla ? 'Cambiar Plantilla' : 'Subir Plantilla'}
+                                <Folder className="w-3.5 h-3.5" />
+                                {tipo.plantilla ? 'Gestionar Plantilla' : 'Subir Plantilla'}
                               </button>
                               <button
                                 onClick={() => onEditarTipo(tipo)}
@@ -479,6 +474,75 @@ export function SeccionPlantillasAutosUnificada({
                           </div>
                         </div>
                       </div>
+
+                      {/* Plantillas Expandidas */}
+                      <AnimatePresence>
+                        {expandido && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="border-t-2 border-gray-200 bg-gray-50 overflow-hidden"
+                          >
+                            <div className="p-4">
+                              {tipo.plantilla ? (
+                                <div className="space-y-2">
+                                  <h4 className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1.5">
+                                    <Files className="w-4 h-4" />
+                                    PLANTILLA CONFIGURADA
+                                  </h4>
+                                  <div 
+                                    key={tipo.plantilla.id} 
+                                    className="bg-white border border-gray-200 rounded-lg p-3 hover:border-blue-300 transition-all"
+                                  >
+                                    <div className="flex items-start gap-3">
+                                      <File className="w-7 h-7 text-blue-600 flex-shrink-0 mt-0.5" />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                                          <p className="text-sm font-semibold text-gray-900 truncate">
+                                            {tipo.plantilla.nombre}
+                                          </p>
+                                          <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded">
+                                            v{tipo.plantilla.version}
+                                          </span>
+                                        </div>
+                                        <p className="text-xs text-gray-600 mb-1 line-clamp-2">
+                                          {tipo.plantilla.descripcion}
+                                        </p>
+                                        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                                          <span className="font-medium truncate">{tipo.plantilla.nombreArchivo}</span>
+                                        </div>
+                                      </div>
+                                      <button
+                                        onClick={() => handleDescargarPlantilla(tipo.plantilla!)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs text-white transition-all hover:shadow-lg flex-shrink-0"
+                                        style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}
+                                      >
+                                        <Download className="w-3.5 h-3.5" />
+                                        Descargar
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-center py-6">
+                                  <Files className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                                  <p className="text-sm text-gray-600 mb-2">
+                                    No hay plantilla configurada
+                                  </p>
+                                  <button
+                                    onClick={() => onGestionarPlantilla(tipo)}
+                                    className="text-sm text-blue-600 hover:text-blue-700 font-semibold"
+                                  >
+                                    Subir primera plantilla
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   );
                 })}
