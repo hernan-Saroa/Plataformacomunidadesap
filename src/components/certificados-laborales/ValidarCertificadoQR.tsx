@@ -24,7 +24,7 @@ import { Badge } from '../ui/badge';
 import { QRScannerModal } from './QRScannerModal';
 import { certificadosService } from '../../services/api/certificados.service';
 import { ESAPLogo } from '../assets/ESAPLogo';
-import { formatCargoDisplay } from '../../utils/cargoFormatter';
+import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 
 interface ValidacionResult {
   isValid: boolean;
@@ -140,11 +140,12 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
           response?.position_category ||
           response?.positionCategory ||
           response?.cargo,
-        codCargo:
-          response?.cod_cargo ||
-          response?.codCargo ||
-          response?.request?.cod_cargo ||
+        codCargo: selectPreferredCargoCode(
+          response?.request?.cod_cargo,
           response?.request?.codCargo,
+          response?.cod_cargo,
+          response?.codCargo,
+        ),
         codGrade:
           response?.cod_grade ||
           response?.codGrade ||

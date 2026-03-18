@@ -26,7 +26,7 @@ import { ModalCodigoQR } from './ModalCodigoQR';
 import { HistorialVerificacionesQR } from './HistorialVerificacionesQR';
 import { getPublicBaseUrl } from '../../config/environment';
 import { certificadosService } from '../../services/api/certificados.service';
-import { formatCargoDisplay } from '../../utils/cargoFormatter';
+import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 
 interface CertificadoDetallePanelProps {
   certificado: {
@@ -125,7 +125,14 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     certificado.empleado.cargo_calculado ||
     formatCargoDisplay({
       cargoSource: certificado.empleado.cargo,
-      codCargo: certificado.cod_cargo,
+      codCargo: selectPreferredCargoCode(
+        certificado.request?.cod_cargo,
+        certificado.request?.codCargo,
+        certificado.cod_cargo,
+        (certificado as any)?.codCargo,
+        (certificado.empleado as any)?.cod_cargo,
+        (certificado.empleado as any)?.codCargo,
+      ),
       codGrade: certificado.cod_grade,
       observations: certificado.request?.observations || certificado.observations,
       templateType: certificado.templateType,
