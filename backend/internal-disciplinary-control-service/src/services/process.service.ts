@@ -22,6 +22,8 @@ import { DisciplinaryNews, NewsStatus } from '../entities/disciplinary-news.enti
 import { Evidence } from '../entities/evidence.entity';
 import { DisciplinaryProfessional } from '../entities/disciplinary-professional.entity';
 import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-actuacion.entity';
+import { DisciplinaryProcessTask } from '../entities/disciplinary-process-task.entity';
+import { DisciplinaryProcessNote } from '../entities/disciplinary-process-note.entity';
 
 @Injectable()
 export class ProcessService {
@@ -36,6 +38,10 @@ export class ProcessService {
     private newsRepository: Repository<DisciplinaryNews>,
     @InjectRepository(DisciplinaryProcessActuacion)
     private actuacionesRepository: Repository<DisciplinaryProcessActuacion>,
+    @InjectRepository(DisciplinaryProcessTask)
+    private tasksRepository: Repository<DisciplinaryProcessTask>,
+    @InjectRepository(DisciplinaryProcessNote)
+    private notesRepository: Repository<DisciplinaryProcessNote>,
     private sequenceService: SequenceService,
     private terminosService: TerminosCalculatorService,
     private newsService: NewsService,
@@ -79,6 +85,85 @@ export class ProcessService {
       }
 
       actual.actuacionesCount += 1;
+    });
+
+    return resumen;
+  }
+
+  private async buildTasksResumen(processIds: string[]): Promise<Map<string, {
+    tasksCount: number;
+    completedTasksCount: number;
+    pendingTasksCount: number;
+  }>> {
+    const resumen = new Map<string, {
+      tasksCount: number;
+      completedTasksCount: number;
+      pendingTasksCount: number;
+    }>();
+
+    if (processIds.length === 0) {
+      return resumen;
+    }
+
+    const tasks = await this.tasksRepository.find({
+      where: { processId: In(processIds) },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+
+    tasks.forEach((task) => {
+      const actual = resumen.get(task.processId);
+
+      if (!actual) {
+        resumen.set(task.processId, {
+          tasksCount: 1,
+          completedTasksCount: task.completada ? 1 : 0,
+          pendingTasksCount: task.completada ? 0 : 1,
+        });
+        return;
+      }
+
+      actual.tasksCount += 1;
+      if (task.completada) {
+        actual.completedTasksCount += 1;
+      } else {
+        actual.pendingTasksCount += 1;
+      }
+    });
+
+    return resumen;
+  }
+
+  private async buildNotesResumen(processIds: string[]): Promise<Map<string, {
+    notesCount: number;
+  }>> {
+    const resumen = new Map<string, {
+      notesCount: number;
+    }>();
+
+    if (processIds.length === 0) {
+      return resumen;
+    }
+
+    const notes = await this.notesRepository.find({
+      where: { processId: In(processIds) },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+
+    notes.forEach((note) => {
+      const actual = resumen.get(note.processId);
+
+      if (!actual) {
+        resumen.set(note.processId, {
+          notesCount: 1,
+        });
+        return;
+      }
+
+      actual.notesCount += 1;
     });
 
     return resumen;
@@ -304,9 +389,17 @@ export class ProcessService {
       const actuacionesResumen = await this.buildActuacionesResumen(
         processes.map((process) => process.id),
       );
+      const tasksResumen = await this.buildTasksResumen(
+        processes.map((process) => process.id),
+      );
+      const notesResumen = await this.buildNotesResumen(
+        processes.map((process) => process.id),
+      );
 
       return processes.map(p => {
         const actuaciones = actuacionesResumen.get(p.id);
+        const tasks = tasksResumen.get(p.id);
+        const notes = notesResumen.get(p.id);
         // Calcular estadísticas dinámicas
         const draftsCount = p.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
         const documentsCount = p.evidence?.length || 0;
@@ -357,6 +450,10 @@ export class ProcessService {
           actuacionesCount: actuaciones?.actuacionesCount || 0,
           ultimaActuacion: actuaciones?.ultimaActuacion || null,
           ultimaActuacionFecha: actuaciones?.ultimaActuacionFecha || null,
+          tasksCount: tasks?.tasksCount || 0,
+          completedTasksCount: tasks?.completedTasksCount || 0,
+          pendingTasksCount: tasks?.pendingTasksCount || 0,
+          notesCount: notes?.notesCount || 0,
           timePercentage: Math.round(timePercentage * 100) / 100
         };
       });
@@ -423,6 +520,8 @@ export class ProcessService {
     }
 
     const actuaciones = (await this.buildActuacionesResumen([proceso.id])).get(proceso.id);
+    const tasks = (await this.buildTasksResumen([proceso.id])).get(proceso.id);
+    const notes = (await this.buildNotesResumen([proceso.id])).get(proceso.id);
 
     // Calcular estadísticas dinámicas
     const draftsCount = proceso.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
@@ -464,6 +563,10 @@ export class ProcessService {
       actuacionesCount: actuaciones?.actuacionesCount || 0,
       ultimaActuacion: actuaciones?.ultimaActuacion || null,
       ultimaActuacionFecha: actuaciones?.ultimaActuacionFecha || null,
+      tasksCount: tasks?.tasksCount || 0,
+      completedTasksCount: tasks?.completedTasksCount || 0,
+      pendingTasksCount: tasks?.pendingTasksCount || 0,
+      notesCount: notes?.notesCount || 0,
       timePercentage: Math.round(timePercentage * 100) / 100
     };
   }
@@ -482,9 +585,17 @@ export class ProcessService {
     const actuacionesResumen = await this.buildActuacionesResumen(
       processes.map((process) => process.id),
     );
+    const tasksResumen = await this.buildTasksResumen(
+      processes.map((process) => process.id),
+    );
+    const notesResumen = await this.buildNotesResumen(
+      processes.map((process) => process.id),
+    );
 
     return processes.map(p => {
       const actuaciones = actuacionesResumen.get(p.id);
+      const tasks = tasksResumen.get(p.id);
+      const notes = notesResumen.get(p.id);
       const draftsCount = p.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
       const documentsCount = p.evidence?.length || 0;
 
@@ -523,6 +634,10 @@ export class ProcessService {
         actuacionesCount: actuaciones?.actuacionesCount || 0,
         ultimaActuacion: actuaciones?.ultimaActuacion || null,
         ultimaActuacionFecha: actuaciones?.ultimaActuacionFecha || null,
+        tasksCount: tasks?.tasksCount || 0,
+        completedTasksCount: tasks?.completedTasksCount || 0,
+        pendingTasksCount: tasks?.pendingTasksCount || 0,
+        notesCount: notes?.notesCount || 0,
         timePercentage: Math.round(timePercentage * 100) / 100
       };
     });
@@ -662,6 +777,8 @@ export class ProcessService {
     }
 
     const actuaciones = (await this.buildActuacionesResumen([proceso.id])).get(proceso.id);
+    const tasks = (await this.buildTasksResumen([proceso.id])).get(proceso.id);
+    const notes = (await this.buildNotesResumen([proceso.id])).get(proceso.id);
 
     return {
       ...proceso,
@@ -669,6 +786,10 @@ export class ProcessService {
       actuacionesCount: actuaciones?.actuacionesCount || 0,
       ultimaActuacion: actuaciones?.ultimaActuacion || null,
       ultimaActuacionFecha: actuaciones?.ultimaActuacionFecha || null,
+      tasksCount: tasks?.tasksCount || 0,
+      completedTasksCount: tasks?.completedTasksCount || 0,
+      pendingTasksCount: tasks?.pendingTasksCount || 0,
+      notesCount: notes?.notesCount || 0,
     } as any;
   }
 
