@@ -54,6 +54,7 @@ usage() {
     echo "  logs      - Ver logs de todos los servicios"
     echo "  status    - Ver estado de los servicios"
     echo "  clean     - Limpiar contenedores e imágenes no usados (NO borra volúmenes)"
+    echo "  clean-safe - Limpieza segura Docker (preserva volúmenes de BD QA)"
     echo "  db-backup  - Crear backup de la base de datos"
     echo "  db-migrate - Ejecutar migraciones de base de datos"
     echo "  db-reset   - PELIGROSO: Eliminar volumen de DB y reiniciar (requiere confirmación)"
@@ -129,6 +130,35 @@ cmd_clean() {
     echo -e "${YELLOW}Limpiando recursos Docker no utilizados...${NC}"
     docker system prune -f
     echo -e "${GREEN}Limpieza completada${NC}"
+}
+
+# Comando: clean-safe (preserva datos de DB QA)
+cmd_clean_safe() {
+    echo -e "${YELLOW}Limpieza segura Docker QA (sin borrar volúmenes de BD)...${NC}"
+    echo -e "${YELLOW}Estado antes de limpiar:${NC}"
+    docker system df
+
+    docker container prune -f
+    docker image prune -f
+    docker builder prune -f --filter "until=168h"
+    docker network prune -f
+
+    # Eliminar solo volúmenes huérfanos, excepto los protegidos de BD QA
+    while IFS= read -r v; do
+        [ -z "$v" ] && continue
+        case "$v" in
+            esap-pgdata-qa|codigosuperappesap_pgdata-qa)
+                echo -e "${YELLOW}Volumen protegido (omitido): $v${NC}"
+                ;;
+            *)
+                docker volume rm "$v" >/dev/null 2>&1 || true
+                ;;
+        esac
+    done < <(docker volume ls -qf dangling=true)
+
+    echo -e "${GREEN}Limpieza segura QA completada${NC}"
+    echo -e "${YELLOW}Estado después de limpiar:${NC}"
+    docker system df
 }
 
 # Comando: db-backup
@@ -260,6 +290,9 @@ case "$1" in
         ;;
     clean)
         cmd_clean
+        ;;
+    clean-safe)
+        cmd_clean_safe
         ;;
     db-backup)
         cmd_db_backup
