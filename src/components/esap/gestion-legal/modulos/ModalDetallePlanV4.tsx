@@ -33,7 +33,10 @@ function getFileViewUrl(filename: string): string {
 function getFileDownloadUrl(filename: string, originalName: string): string {
     const baseUrl = getServiceUrl('legal');
     const prefix = API_MODE === 'direct' ? '' : '/legal';
-    return `${baseUrl}${prefix}/files/download/${filename}?name=${encodeURIComponent(originalName)}`;
+    // Preserve the original file extension in the download name
+    const ext = filename.includes('.') ? filename.substring(filename.lastIndexOf('.')) : '';
+    const nameWithExt = originalName.match(/\.[a-zA-Z0-9]+$/) ? originalName : `${originalName}${ext}`;
+    return `${baseUrl}${prefix}/files/download/${filename}?name=${encodeURIComponent(nameWithExt)}`;
 }
 
 function getFileIcon(mimeType: string): string {
