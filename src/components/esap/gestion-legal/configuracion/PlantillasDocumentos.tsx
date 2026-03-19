@@ -6,7 +6,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   FileText, Upload, Trash2, Download, AlertCircle, Loader2,
-  BookOpen, Search, ShieldAlert, MessageSquare, Bell, FolderOpen, FileCheck,
+  BookOpen, Stamp,
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,12 +16,8 @@ import { apiClient } from '../../../../services/api/apiClient';
 
 type Categoria =
   | 'actas'
-  | 'evidencias'
-  | 'oficios'
-  | 'pruebas'
-  | 'comunicaciones'
-  | 'notificaciones'
-  | 'documentos-generales';
+  | 'autos'
+  | 'oficios';
 
 interface PlantillaItem {
   id: string;
@@ -37,13 +33,9 @@ interface PlantillaItem {
 // ─── Configuración de categorías ──────────────────────────────────────────────
 
 const CATEGORIAS: { key: Categoria; label: string; icon: React.ReactNode; color: string }[] = [
-  { key: 'actas',              label: 'Actas',               icon: <BookOpen className="w-4 h-4" />,       color: '#7C3AED' },
-  { key: 'evidencias',         label: 'Evidencias',          icon: <Search className="w-4 h-4" />,         color: '#059669' },
-  { key: 'oficios',            label: 'Oficios',             icon: <FileText className="w-4 h-4" />,       color: '#003DA5' },
-  { key: 'pruebas',            label: 'Pruebas',             icon: <FileCheck className="w-4 h-4" />,      color: '#D97706' },
-  { key: 'comunicaciones',     label: 'Comunicaciones',      icon: <MessageSquare className="w-4 h-4" />,  color: '#0891B2' },
-  { key: 'notificaciones',     label: 'Notificaciones',      icon: <Bell className="w-4 h-4" />,           color: '#DC2626' },
-  { key: 'documentos-generales', label: 'Documentos Generales', icon: <FolderOpen className="w-4 h-4" />, color: '#6B7280' },
+  { key: 'actas',   label: 'Actas',    icon: <BookOpen className="w-4 h-4" />, color: '#7C3AED' },
+  { key: 'autos',   label: 'Autos',    icon: <Stamp className="w-4 h-4" />,    color: '#DC2626' },
+  { key: 'oficios', label: 'Oficios',  icon: <FileText className="w-4 h-4" />, color: '#003DA5' },
 ];
 
 const WORD_ACCEPT = '.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -69,8 +61,7 @@ function formatDate(iso: string): string {
 export function PlantillasDocumentos() {
   const [categoriaActiva, setCategoriaActiva] = useState<Categoria>('actas');
   const [plantillas, setPlantillas] = useState<Record<Categoria, PlantillaItem[]>>({
-    actas: [], evidencias: [], oficios: [], pruebas: [],
-    comunicaciones: [], notificaciones: [], 'documentos-generales': []
+    actas: [], autos: [], oficios: []
   });
   const [cargando, setCargando] = useState<Partial<Record<Categoria, boolean>>>({});
   const [subiendo, setSubiendo] = useState(false);
@@ -135,8 +126,8 @@ export function PlantillasDocumentos() {
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('El archivo no puede superar 10 MB');
+    if (file.size > 250 * 1024 * 1024) {
+      toast.error('El archivo no puede superar 250 MB');
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -297,7 +288,7 @@ export function PlantillasDocumentos() {
                     Subir plantilla de{' '}
                     <span style={{ color: catConfig.color }}>{catConfig.label}</span>
                   </p>
-                  <p className="text-xs text-gray-500">Formato Word (.doc, .docx) • Máximo 10 MB</p>
+                  <p className="text-xs text-gray-500">Formato Word (.doc, .docx) • Máximo 250 MB</p>
                 </>
               )}
             </div>
@@ -389,7 +380,7 @@ export function PlantillasDocumentos() {
           <div className="text-xs text-amber-800 space-y-1">
             <p className="font-bold text-amber-900">Sobre las plantillas</p>
             <p>Las plantillas se guardan en la base de datos y están disponibles en todos los entornos (desarrollo, pruebas, producción).</p>
-            <p>Solo se aceptan archivos Word (.doc, .docx). Cada plantilla queda asociada a su categoría (Actas, Oficios, Evidencias, etc.).</p>
+            <p>Solo se aceptan archivos Word (.doc, .docx). Cada plantilla queda asociada a su categoría (Actas, Autos u Oficios).</p>
           </div>
         </div>
       </div>

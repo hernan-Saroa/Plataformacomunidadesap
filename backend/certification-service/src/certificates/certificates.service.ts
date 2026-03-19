@@ -272,6 +272,86 @@ export class CertificatesService {
     return this.resolveTemplateTypeFromText(raw);
   }
 
+  private normalizePersistedCodeValue(
+    value?: string | number | null,
+    relatedGrade?: string | number | null,
+  ): string | undefined {
+    if (value === undefined) return undefined;
+    if (value === null) return undefined;
+
+    const raw = String(value).trim();
+    if (!raw) return '';
+
+    const digits = raw.replace(/\D+/g, '');
+    if (!digits) return raw;
+
+    if (typeof value === 'number') {
+      const gradeDigits = String(relatedGrade ?? '').replace(/\D+/g, '');
+      const compactTargetLength = 4 + gradeDigits.length;
+      if (
+        gradeDigits &&
+        digits.endsWith(gradeDigits) &&
+        digits.length < compactTargetLength
+      ) {
+        return digits.padStart(compactTargetLength, '0');
+      }
+    }
+
+    return digits;
+  }
+
+  private selectPreferredNormalizedCodeValue(
+    ...pairs: Array<{
+      value?: string | number | null;
+      relatedGrade?: string | number | null;
+    }>
+  ): string | undefined {
+    const normalized = pairs
+      .map(({ value, relatedGrade }) => this.normalizePersistedCodeValue(value, relatedGrade) || '')
+      .filter(Boolean);
+
+    if (!normalized.length) {
+      return undefined;
+    }
+
+    return normalized.sort((left, right) => {
+      if (left.length !== right.length) {
+        return right.length - left.length;
+      }
+      const leftHasLeadingZero = left.startsWith('0') ? 1 : 0;
+      const rightHasLeadingZero = right.startsWith('0') ? 1 : 0;
+      return rightHasLeadingZero - leftHasLeadingZero;
+    })[0];
+  }
+
+  private selectCompatibleRequestsForCodeSelection(
+    selectedRequest: CertificateRequest,
+    requests: CertificateRequest[],
+  ): CertificateRequest[] {
+    const selectedCareer = this.normalizeTemplateText(selectedRequest.career_category || '');
+    const selectedPosition = this.normalizeTemplateText(selectedRequest.position_category || '');
+    const selectedGrade = this.normalizePersistedCodeValue(selectedRequest.cod_grade);
+
+    const compatible = requests.filter((request) => {
+      if (request.id === selectedRequest.id) {
+        return true;
+      }
+
+      const sameCareer =
+        !!selectedCareer &&
+        this.normalizeTemplateText(request.career_category || '') === selectedCareer;
+      const samePosition =
+        !!selectedPosition &&
+        this.normalizeTemplateText(request.position_category || '') === selectedPosition;
+      const requestGrade = this.normalizePersistedCodeValue(request.cod_grade);
+      const sameGrade = !selectedGrade || !requestGrade || requestGrade === selectedGrade;
+
+      return sameCareer && samePosition && sameGrade;
+    });
+
+    return compatible.length ? compatible : [selectedRequest];
+  }
+
   private normalizeDateOnly(value?: Date | string | null): Date | null {
     if (!value) return null;
     const date = value instanceof Date ? value : new Date(value);
@@ -414,16 +494,137 @@ export class CertificatesService {
   private mergeRequestWithSalarySource(
     selectedRequest: CertificateRequest,
     salarySource: CertificateRequest | null,
+    relatedRequests: CertificateRequest[] = [selectedRequest],
   ): CertificateRequest {
-    if (!salarySource || salarySource.id === selectedRequest.id) {
-      return selectedRequest;
-    }
+    const mergedBase =
+      !salarySource || salarySource.id === selectedRequest.id
+        ? selectedRequest
+        : {
+            ...selectedRequest,
+            monthly_salary: salarySource.monthly_salary,
+            salary_text: salarySource.salary_text ?? selectedRequest.salary_text,
+          };
+
+    const compatibleRequests = this.selectCompatibleRequestsForCodeSelection(
+      mergedBase,
+      relatedRequests,
+    );
+    const preferredCodGrade = this.selectPreferredNormalizedCodeValue(
+      ...compatibleRequests.map((request) => ({
+        value: request.cod_grade,
+      })),
+    );
+    const preferredCodCargo = this.selectPreferredNormalizedCodeValue(
+      ...compatibleRequests.map((request) => ({
+        value: request.cod_cargo,
+        relatedGrade: request.cod_grade || preferredCodGrade,
+      })),
+    );
 
     return {
-      ...selectedRequest,
-      monthly_salary: salarySource.monthly_salary,
-      salary_text: salarySource.salary_text ?? selectedRequest.salary_text,
+      ...mergedBase,
+      cod_cargo: preferredCodCargo ?? mergedBase.cod_cargo,
+      cod_grade: preferredCodGrade ?? mergedBase.cod_grade,
     };
+  }
+
+  private applyRequestContextToCertificate(
+    certificate: Certificate,
+    requests: CertificateRequest[],
+  ): Certificate {
+    if (!requests.length) {
+      return certificate;
+    }
+
+    const cert = certificate as Certificate & { request?: CertificateRequest | null };
+    const baseRequest =
+      cert.request ||
+      requests.find((request) => request.id === certificate.request_id) ||
+      this.selectPreferredRequestForCertificate(requests);
+
+    if (!baseRequest) {
+      return certificate;
+    }
+
+    const salarySource = this.selectSalarySourceForCertificate(baseRequest, requests);
+    const requestContext = this.mergeRequestWithSalarySource(baseRequest, salarySource, requests);
+
+    cert.request = cert.request
+      ? ({ ...cert.request, ...requestContext } as CertificateRequest)
+      : requestContext;
+
+    if (requestContext.cod_cargo) {
+      cert.cod_cargo = requestContext.cod_cargo;
+    }
+    if (requestContext.cod_grade) {
+      cert.cod_grade = requestContext.cod_grade;
+    }
+
+    return cert;
+  }
+
+  private async hydrateCertificatesRequestContext(certificates: Certificate[]): Promise<void> {
+    if (!certificates.length) {
+      return;
+    }
+
+    const idNumbers = Array.from(
+      new Set(
+        certificates
+          .map((certificate) =>
+            this.sanitizeIdNumber(
+              (certificate as Certificate & { request?: { id_number?: string } }).request?.id_number ||
+                certificate.id_number,
+            ),
+          )
+          .filter(Boolean),
+      ),
+    );
+
+    if (!idNumbers.length) {
+      return;
+    }
+
+    const requests = await this.requestRepo
+      .createQueryBuilder('request')
+      .where(
+        `REPLACE(REPLACE(REPLACE(request.id_number, '.', ''), '-', ''), ' ', '') IN (:...idNumbers)`,
+        { idNumbers },
+      )
+      .orderBy('COALESCE(request.hiring_date, request.request_date, request.created_at)', 'DESC')
+      .addOrderBy('request.request_date', 'DESC')
+      .addOrderBy('request.created_at', 'DESC')
+      .getMany();
+
+    if (!requests.length) {
+      return;
+    }
+
+    const requestsByIdNumber = new Map<string, CertificateRequest[]>();
+    for (const request of requests) {
+      const idNumber = this.sanitizeIdNumber(request.id_number);
+      if (!idNumber) {
+        continue;
+      }
+      const bucket = requestsByIdNumber.get(idNumber);
+      if (bucket) {
+        bucket.push(request);
+      } else {
+        requestsByIdNumber.set(idNumber, [request]);
+      }
+    }
+
+    for (const certificate of certificates) {
+      const idNumber = this.sanitizeIdNumber(
+        (certificate as Certificate & { request?: { id_number?: string } }).request?.id_number ||
+          certificate.id_number,
+      );
+      if (!idNumber) {
+        continue;
+      }
+      const relatedRequests = requestsByIdNumber.get(idNumber) || [];
+      this.applyRequestContextToCertificate(certificate, relatedRequests);
+    }
   }
 
   private async ensureTemplateSnapshotForCertificate(certificate: Certificate): Promise<Certificate> {
@@ -654,6 +855,7 @@ export class CertificatesService {
       throw new NotFoundException(`Certificado con ID ${id} no encontrado`);
     }
 
+    await this.hydrateCertificatesRequestContext([certificate]);
     await this.ensureTemplateSnapshotForCertificate(certificate);
 
     const result = await this.enviarCertificadoLaboralPorEmail(certificate, options);
@@ -710,15 +912,24 @@ export class CertificatesService {
     }
 
     const status = this.resolveStatusForPersistence(data.status, data.hiring_date, data.request_date);
-    const request = this.requestRepo.create({
+    const requestPayload: Partial<CertificateRequest> = {
       ...data,
+      cod_cargo: this.normalizePersistedCodeValue(data.cod_cargo, data.cod_grade),
+      cod_grade: this.normalizePersistedCodeValue(data.cod_grade),
       status,
-    });
+    };
+    const request = this.requestRepo.create(requestPayload);
     return await this.requestRepo.save(request);
   }
 
   async updateSolicitud(id: string, data: Partial<CertificateRequest>) {
     const patch: Partial<CertificateRequest> = { ...data };
+    if ('cod_cargo' in data) {
+      patch.cod_cargo = this.normalizePersistedCodeValue(data.cod_cargo, data.cod_grade);
+    }
+    if ('cod_grade' in data) {
+      patch.cod_grade = this.normalizePersistedCodeValue(data.cod_grade);
+    }
     if ('status' in data) {
       const existing = await this.requestRepo.findOne({ where: { id } });
       const hiringDate = data.hiring_date ?? existing?.hiring_date ?? null;
@@ -1082,6 +1293,7 @@ export class CertificatesService {
       order: { issue_date: 'DESC' },
     });
 
+    await this.hydrateCertificatesRequestContext(certificates);
     await this.ensureTemplateSnapshots(certificates);
 
     // Agregar el conteo de validaciones para cada certificado
@@ -1185,6 +1397,7 @@ export class CertificatesService {
 
     const [certificates, total] = await qb.skip(skip).take(safeLimit).getManyAndCount();
 
+    await this.hydrateCertificatesRequestContext(certificates);
     await this.ensureTemplateSnapshots(certificates);
 
     const certificatesWithCount = await Promise.all(
@@ -1237,6 +1450,7 @@ export class CertificatesService {
     if (!certificate) {
       throw new NotFoundException(`Certificado con ID ${id} no encontrado`);
     }
+    await this.hydrateCertificatesRequestContext([certificate]);
     await this.ensureTemplateSnapshotForCertificate(certificate);
     return certificate;
   }
@@ -1255,6 +1469,7 @@ export class CertificatesService {
     if (!certificate) {
       throw new NotFoundException(`Certificado con codigo ${codigoTrim} no encontrado`);
     }
+    await this.hydrateCertificatesRequestContext([certificate]);
     return certificate;
   }
 
@@ -1277,7 +1492,11 @@ export class CertificatesService {
     const preferredRequest =
       this.selectPreferredRequestForCertificate(relatedRequests) || requestById;
     const salarySource = this.selectSalarySourceForCertificate(preferredRequest, relatedRequests);
-    const request = this.mergeRequestWithSalarySource(preferredRequest, salarySource);
+    const request = this.mergeRequestWithSalarySource(
+      preferredRequest,
+      salarySource,
+      relatedRequests,
+    );
     const signer = await this.signerRepo.findOne({
       where: { is_primary: true, is_active: true },
     });
@@ -2028,7 +2247,11 @@ export class CertificatesService {
     }
 
     const salarySource = this.selectSalarySourceForCertificate(solicitudBase, solicitudes);
-    const solicitud = this.mergeRequestWithSalarySource(solicitudBase, salarySource);
+    const solicitud = this.mergeRequestWithSalarySource(
+      solicitudBase,
+      salarySource,
+      solicitudes,
+    );
 
     const technicalBonus = await this.resolveTechnicalBonusForRequest(solicitud);
     const solicitudResponse = {

@@ -37,7 +37,7 @@ import { ModalHistorialCertificados } from './ModalHistorialCertificados';
 import { PrimaTecnicaModal } from './PrimaTecnicaModal';
 import React from 'react';
 import { certificadosService } from '../../services/api/certificados.service';
-import { formatCargoDisplay } from '../../utils/cargoFormatter';
+import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 
 // Tipo de certificado laboral - Solo autoservicio
 interface CertificadoLaboral {
@@ -192,7 +192,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       resolverTemplateType(`${cert.position_category || ''} ${cert.career_category || ''}`);
     const cargoVariable = formatCargoDisplay({
       cargoSource: cert.request?.career_category || cert.career_category || cert.position_category || '',
-      codCargo: cert.request?.cod_cargo || cert.cod_cargo || cert.codCargo,
+      codCargo: selectPreferredCargoCode(
+        cert.request?.cod_cargo,
+        cert.request?.codCargo,
+        cert.cod_cargo,
+        cert.codCargo,
+      ),
       codGrade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
       observations: cert.request?.observations || cert.observations,
       templateType: templateTypeNormalizado,

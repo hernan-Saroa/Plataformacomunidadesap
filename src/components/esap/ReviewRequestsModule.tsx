@@ -512,8 +512,7 @@ export function ReviewRequestsModule() {
       id: request.id,
       requestNumber: request.requestNumber,
       graduateDocumentNumber: request.idNumber,
-      graduateDocumentIssueDate:
-        request.idIssueDate || request.graduationDate || request.requestDate,
+      graduateDocumentIssueDate: request.idIssueDate || '',
       graduationDate: toDateInputValue(request.graduationDate) || undefined,
       graduateLastName: request.graduateLastName,
       graduateEmail: request.graduateEmail,
@@ -818,7 +817,7 @@ export function ReviewRequestsModule() {
     try {
       const detail = await graduadosService.solicitudes.obtenerPorId(request.id);
       const graduationDate = toDateInputValue(
-        detail.graduationDate || request.graduationDate || request.graduateDocumentIssueDate
+        detail.graduationDate || request.graduationDate
       );
       const detailData = detail as SolicitudCertificadoGraduado & {
         campus?: string;
@@ -1672,9 +1671,7 @@ export function ReviewRequestsModule() {
                                 <div>
                                   <p className="text-xs text-gray-600">Fecha de Grado</p>
                                   <p className="font-semibold text-gray-900">
-                                    {formatDateOnly(
-                                      request.graduationDate || request.graduateDocumentIssueDate
-                                    )}
+                                    {formatDateOnly(request.graduationDate)}
                                   </p>
                                 </div>
                               </div>

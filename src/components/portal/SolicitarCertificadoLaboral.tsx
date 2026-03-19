@@ -26,7 +26,7 @@ import { VisorPDFCertificado } from '../certificados-laborales/VisorPDFCertifica
 import { QRCodeCanvas } from 'qrcode.react';
 import { getPublicBaseUrl } from '../../config/environment';
 import { useIsMobile } from '../ui/use-mobile';
-import { formatCargoDisplay } from '../../utils/cargoFormatter';
+import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 // import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import { PublicNavbar } from './PublicNavbar';
 // import { LOGO_ESAP_BLUE_SVG } from '../assets/TempAssets';
@@ -319,7 +319,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
   ) =>
     formatCargoDisplay({
       cargoSource: cargoFuente,
-      codCargo,
+      codCargo: selectPreferredCargoCode(codCargo),
       codGrade,
       observations,
       templateType,
