@@ -90,6 +90,11 @@ export class AuthService {
     const payload = {
       sub: user.id_user,
       username: user.username,
+      email: user.person?.email || undefined,
+      name:
+        user.person?.full_name ||
+        [user.person?.first_name, user.person?.last_name].filter(Boolean).join(' ') ||
+        user.username,
       roles: rolesCodes,
       rolesIds: rolesIds,
     };
