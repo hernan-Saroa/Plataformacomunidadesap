@@ -128,6 +128,34 @@ export class NewsService {
   }
 
   /**
+   * Obtiene las noticias asociadas a los procesos de un profesional específico
+   * Este método filtra las noticias que tienen procesos asignados al profesional
+   */
+  async findByProfessionalId(professionalId: string): Promise<DisciplinaryNews[]> {
+    // Primero obtener los procesos del profesional
+    const procesos = await this.processRepository.find({
+      where: { abogadoAsignadoId: professionalId },
+      relations: ['news'],
+    });
+
+    // Extraer las noticias únicas de los procesos
+    const newsIds = new Set<string>();
+    const noticias: DisciplinaryNews[] = [];
+
+    for (const proceso of procesos) {
+      if (proceso.news && !newsIds.has(proceso.news.id)) {
+        newsIds.add(proceso.news.id);
+        noticias.push(proceso.news);
+      }
+    }
+
+    // Ordenar por fecha de recepción descendente
+    return noticias.sort((a, b) => 
+      new Date(b.fechaRecepcion).getTime() - new Date(a.fechaRecepcion).getTime()
+    );
+  }
+
+  /**
    * Actualiza los datos de una noticia (edición por Profesional)
    * Registra los cambios en el historial de auditoría
    */
