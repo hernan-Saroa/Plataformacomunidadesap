@@ -32,6 +32,30 @@ type ValidationGeoContext = {
   geoTimezone?: string;
 };
 
+type OrderedTokenMatchMetrics = {
+  matchedCount: number;
+  exactMatches: number;
+  fuzzyMatches: number;
+};
+
+type GraduateSuggestion = {
+  graduateId: string;
+  fullName: string;
+  idNumber: string;
+  programName: string;
+  degreeTitle: string;
+  graduationDate: string | null;
+  campus?: string;
+  seccionalName?: string;
+  score: number;
+  matchedTokens: number;
+  exactTokenMatches: number;
+  fuzzyTokenMatches: number;
+  totalGraduateTokens: number;
+  totalProvidedTokens: number;
+  exactGraduationDateMatch: boolean;
+};
+
 @Injectable()
 export class GraduationCertificatesService {
   constructor(
@@ -85,10 +109,10 @@ export class GraduationCertificatesService {
       ? this.normalizeDateString(graduationDate)
       : null;
     if (idIssueDate && !issueDate) {
-      throw new BadRequestException('Fecha de expedici?n inv?lida');
+      throw new BadRequestException('Fecha de expedición inválida');
     }
     if (graduationDate && !gradDate) {
-      throw new BadRequestException('Fecha de graduaci?n inv?lida');
+      throw new BadRequestException('Fecha de graduación inválida');
     }
 
     const where: any = {
@@ -115,7 +139,7 @@ export class GraduationCertificatesService {
     if (!graduate) {
       return {
         existe: false,
-        mensaje: 'No se encontr? un graduado con esos datos',
+        mensaje: 'No se encontró un graduado con esos datos',
       };
     }
 
@@ -200,6 +224,48 @@ export class GraduationCertificatesService {
   }
 
   /**
+   * AUTOSERVICIO: Buscar coincidencias por cédula y similitud de nombre
+   */
+  async buscarCoincidenciasGraduado(
+    idNumber: string,
+    graduationDate?: string,
+    lastName?: string,
+  ) {
+    const gradDate = graduationDate
+      ? this.normalizeDateString(graduationDate)
+      : null;
+
+    if (graduationDate && !gradDate) {
+      throw new BadRequestException('Fecha de graduación inválida');
+    }
+
+    const graduates = await this.findActiveGraduatesByIdNumber(idNumber);
+    if (!graduates.length) {
+      return {
+        hasMatches: false,
+        totalMatches: 0,
+        suggestions: [],
+        message:
+          'No encontramos graduados activos con ese número de documento.',
+      };
+    }
+
+    const suggestions = this.buildGraduateSuggestions(
+      graduates,
+      lastName,
+      gradDate,
+    ).slice(0, 3);
+
+    return {
+      hasMatches: suggestions.length > 0,
+      totalMatches: graduates.length,
+      suggestions,
+      message:
+        'Selecciona la persona correcta para continuar con la generación del certificado.',
+    };
+  }
+
+  /**
    * AUTOSERVICIO: Procesar la solicitud enviada desde la landing
    */
   async solicitarCertificadoLanding(
@@ -227,35 +293,67 @@ export class GraduationCertificatesService {
     );
 
     if (dto.idIssueDate && !issueDate) {
-      throw new BadRequestException('Fecha de expedici?n inv?lida');
+      throw new BadRequestException('Fecha de expedición inválida');
     }
     if (dto.graduationDate && !gradDate) {
-      throw new BadRequestException('Fecha de graduaci?n inv?lida');
+      throw new BadRequestException('Fecha de graduación inválida');
     }
 
     this.logger.debug(
       `Solicitud landing: idNumber=${dto.idNumber?.trim()} idIssueDate=${dto.idIssueDate || 'N/A'} normalizada=${issueDate || 'N/A'}`,
     );
 
-    const where: any = {
-      status: 'ACTIVE',
-    };
+    const selectedGraduateId = (dto.selectedGraduateId || '').trim();
+    let graduate: Graduate | null = null;
 
-    if (normalizedIdNumber) {
-      where.idNumber = Raw(
-        (alias) =>
-          `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
-        { idNumber: normalizedIdNumber },
+    if (selectedGraduateId) {
+      graduate = await this.graduateRepository.findOne({
+        where: {
+          id: selectedGraduateId,
+          status: 'ACTIVE',
+        },
+      });
+
+      if (!graduate) {
+        throw new BadRequestException(
+          'El graduado seleccionado no existe o ya no está disponible',
+        );
+      }
+
+      const selectedDocumentNumber = (graduate.idNumber || '').replace(
+        /\D+/g,
+        '',
       );
+      if (
+        normalizedIdNumber &&
+        selectedDocumentNumber &&
+        selectedDocumentNumber !== normalizedIdNumber
+      ) {
+        throw new BadRequestException(
+          'La selección no coincide con el número de documento ingresado',
+        );
+      }
     } else {
-      where.idNumber = dto.idNumber.trim();
-    }
+      const where: any = {
+        status: 'ACTIVE',
+      };
 
-    const graduate = await this.findGraduateMatch(where, {
-      lastNameNormalized,
-      issueDate,
-      gradDate,
-    });
+      if (normalizedIdNumber) {
+        where.idNumber = Raw(
+          (alias) =>
+            `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+          { idNumber: normalizedIdNumber },
+        );
+      } else {
+        where.idNumber = dto.idNumber.trim();
+      }
+
+      graduate = await this.findGraduateMatch(where, {
+        lastNameNormalized,
+        issueDate,
+        gradDate,
+      });
+    }
 
     if (!graduate) {
       this.logger.warn(
@@ -286,7 +384,7 @@ export class GraduationCertificatesService {
       graduationDate:
         graduate?.graduationDate ||
         this.parseDate(dto.graduationDate) ||
-        new Date(),
+        null,
       requesterName: requesterName || dto.requesterName,
       requesterEmail: requesterEmail || dto.requesterEmail,
       requesterPhone: dto.requesterPhone,
@@ -518,6 +616,13 @@ export class GraduationCertificatesService {
     frontendBaseUrl?: string,
   ) {
     const graduate = request.graduate;
+    const graduationDate = request.graduationDate;
+
+    if (!graduationDate) {
+      throw new BadRequestException(
+        'La fecha de grado es obligatoria para generar el certificado.',
+      );
+    }
 
     // Obtener firmante principal
     const signer = await this.signerRepository.findOne({
@@ -525,7 +630,7 @@ export class GraduationCertificatesService {
     });
 
     if (!signer) {
-      throw new NotFoundException('No se encontro un firmante activo');
+      throw new NotFoundException('No se encontró un firmante activo');
     }
 
     const requestExtras = request as {
@@ -537,10 +642,10 @@ export class GraduationCertificatesService {
       actaNumber?: string;
     };
 
-    // Generar numero de certificado unico
+    // Generar número de certificado único
     const certificateNumber = await this.generateCertificateNumber();
 
-    // Generar codigo de verificacion unico (QR)
+    // Generar código de verificación único (QR)
     const verificationCode = await this.generateVerificationCode();
 
     const diplomaNumber =
@@ -563,7 +668,7 @@ export class GraduationCertificatesService {
         graduate?.degreeTitle ||
         requestExtras.degreeTitle ||
         request.programName,
-      graduationDate: request.graduationDate,
+      graduationDate,
       diplomaNumber,
       actaNumber,
       campus: graduate?.campus || requestExtras.campus,
@@ -898,6 +1003,33 @@ export class GraduationCertificatesService {
       .filter(Boolean);
   }
 
+  private async findActiveGraduatesByIdNumber(
+    idNumber: string,
+  ): Promise<Graduate[]> {
+    const normalizedIdNumber = (idNumber || '').replace(/\D+/g, '');
+    const trimmedIdNumber = (idNumber || '').trim();
+
+    if (!normalizedIdNumber && !trimmedIdNumber) {
+      return [];
+    }
+
+    const where: Record<string, any> = {
+      status: 'ACTIVE',
+    };
+
+    if (normalizedIdNumber) {
+      where.idNumber = Raw(
+        (alias) =>
+          `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+        { idNumber: normalizedIdNumber },
+      );
+    } else {
+      where.idNumber = trimmedIdNumber;
+    }
+
+    return this.graduateRepository.find({ where });
+  }
+
   private splitFullName(fullName?: string): {
     firstName: string;
     lastName: string;
@@ -1036,6 +1168,236 @@ export class GraduationCertificatesService {
     return (graduate.fullName || '').trim();
   }
 
+  private buildGraduateSuggestions(
+    graduates: Graduate[],
+    providedName?: string,
+    gradDate?: string | null,
+  ): GraduateSuggestion[] {
+    const providedTokens = this.tokenizeName(providedName || '');
+
+    return graduates
+      .map((graduate) => {
+        const fullName = this.getPreferredGraduateFullName(graduate);
+        const graduateTokens = this.tokenizeName(fullName);
+        const orderedMetrics = this.getOrderedTokenMatchMetrics(
+          providedTokens,
+          graduateTokens,
+        );
+        const exactGraduationDateMatch = Boolean(
+          gradDate &&
+          this.normalizeDateString(graduate.graduationDate) === gradDate,
+        );
+        const shorterLength =
+          providedTokens.length && graduateTokens.length
+            ? Math.min(providedTokens.length, graduateTokens.length)
+            : 0;
+        const fullOrderedOverlap =
+          shorterLength > 0 && orderedMetrics.matchedCount === shorterLength;
+
+        let score = 100;
+
+        if (providedTokens.length) {
+          score += orderedMetrics.matchedCount * 20;
+          score += orderedMetrics.exactMatches * 10;
+          score += orderedMetrics.fuzzyMatches * 6;
+          if (fullOrderedOverlap) {
+            score += 20;
+          }
+        }
+
+        if (exactGraduationDateMatch) {
+          score += 15;
+        }
+
+        return {
+          graduateId: graduate.id,
+          fullName,
+          idNumber: graduate.idNumber,
+          programName: graduate.programName,
+          degreeTitle: graduate.degreeTitle,
+          graduationDate: this.normalizeDateString(graduate.graduationDate),
+          campus: graduate.campus,
+          seccionalName: graduate.seccionalName,
+          score,
+          matchedTokens: orderedMetrics.matchedCount,
+          exactTokenMatches: orderedMetrics.exactMatches,
+          fuzzyTokenMatches: orderedMetrics.fuzzyMatches,
+          totalGraduateTokens: graduateTokens.length,
+          totalProvidedTokens: providedTokens.length,
+          exactGraduationDateMatch,
+        };
+      })
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        if (
+          Number(right.exactGraduationDateMatch) !==
+          Number(left.exactGraduationDateMatch)
+        ) {
+          return (
+            Number(right.exactGraduationDateMatch) -
+            Number(left.exactGraduationDateMatch)
+          );
+        }
+        if (right.matchedTokens !== left.matchedTokens) {
+          return right.matchedTokens - left.matchedTokens;
+        }
+        if (right.exactTokenMatches !== left.exactTokenMatches) {
+          return right.exactTokenMatches - left.exactTokenMatches;
+        }
+
+        const leftGrad =
+          this.parseDate(left.graduationDate || undefined)?.getTime() || 0;
+        const rightGrad =
+          this.parseDate(right.graduationDate || undefined)?.getTime() || 0;
+
+        return rightGrad - leftGrad;
+      });
+  }
+
+  private getOrderedTokenMatchMetrics(
+    providedTokens: string[],
+    graduateTokens: string[],
+  ): OrderedTokenMatchMetrics {
+    if (!providedTokens.length || !graduateTokens.length) {
+      return {
+        matchedCount: 0,
+        exactMatches: 0,
+        fuzzyMatches: 0,
+      };
+    }
+
+    const dp: OrderedTokenMatchMetrics[][] = Array.from(
+      { length: providedTokens.length + 1 },
+      () =>
+        Array.from({ length: graduateTokens.length + 1 }, () => ({
+          matchedCount: 0,
+          exactMatches: 0,
+          fuzzyMatches: 0,
+        })),
+    );
+
+    for (
+      let providedIndex = providedTokens.length - 1;
+      providedIndex >= 0;
+      providedIndex -= 1
+    ) {
+      for (
+        let graduateIndex = graduateTokens.length - 1;
+        graduateIndex >= 0;
+        graduateIndex -= 1
+      ) {
+        let bestMatch = dp[providedIndex + 1][graduateIndex];
+        bestMatch = this.pickBetterOrderedTokenMatch(
+          bestMatch,
+          dp[providedIndex][graduateIndex + 1],
+        );
+
+        const comparison = this.compareNameTokens(
+          providedTokens[providedIndex],
+          graduateTokens[graduateIndex],
+        );
+
+        if (comparison.isMatch) {
+          const nextMatch = dp[providedIndex + 1][graduateIndex + 1];
+          bestMatch = this.pickBetterOrderedTokenMatch(bestMatch, {
+            matchedCount: nextMatch.matchedCount + 1,
+            exactMatches: nextMatch.exactMatches + (comparison.isExact ? 1 : 0),
+            fuzzyMatches: nextMatch.fuzzyMatches + (comparison.isExact ? 0 : 1),
+          });
+        }
+
+        dp[providedIndex][graduateIndex] = bestMatch;
+      }
+    }
+
+    return dp[0][0];
+  }
+
+  private pickBetterOrderedTokenMatch(
+    current: OrderedTokenMatchMetrics,
+    candidate: OrderedTokenMatchMetrics,
+  ): OrderedTokenMatchMetrics {
+    if (candidate.matchedCount !== current.matchedCount) {
+      return candidate.matchedCount > current.matchedCount
+        ? candidate
+        : current;
+    }
+    if (candidate.exactMatches !== current.exactMatches) {
+      return candidate.exactMatches > current.exactMatches
+        ? candidate
+        : current;
+    }
+    if (candidate.fuzzyMatches !== current.fuzzyMatches) {
+      return candidate.fuzzyMatches < current.fuzzyMatches
+        ? candidate
+        : current;
+    }
+
+    return current;
+  }
+
+  private compareNameTokens(
+    leftToken: string,
+    rightToken: string,
+  ): { isMatch: boolean; isExact: boolean } {
+    if (!leftToken || !rightToken) {
+      return { isMatch: false, isExact: false };
+    }
+
+    if (leftToken === rightToken) {
+      return { isMatch: true, isExact: true };
+    }
+
+    if (Math.min(leftToken.length, rightToken.length) < 4) {
+      return { isMatch: false, isExact: false };
+    }
+
+    const maxLength = Math.max(leftToken.length, rightToken.length);
+    const allowedDistance = maxLength >= 8 ? 2 : 1;
+    const distance = this.calculateLevenshteinDistance(leftToken, rightToken);
+
+    if (distance <= allowedDistance) {
+      return { isMatch: true, isExact: false };
+    }
+
+    return { isMatch: false, isExact: false };
+  }
+
+  private calculateLevenshteinDistance(left: string, right: string): number {
+    if (left === right) {
+      return 0;
+    }
+
+    const rows = left.length + 1;
+    const cols = right.length + 1;
+    const matrix: number[][] = Array.from({ length: rows }, () =>
+      Array.from({ length: cols }, () => 0),
+    );
+
+    for (let row = 0; row < rows; row += 1) {
+      matrix[row][0] = row;
+    }
+
+    for (let col = 0; col < cols; col += 1) {
+      matrix[0][col] = col;
+    }
+
+    for (let row = 1; row < rows; row += 1) {
+      for (let col = 1; col < cols; col += 1) {
+        const substitutionCost = left[row - 1] === right[col - 1] ? 0 : 1;
+        matrix[row][col] = Math.min(
+          matrix[row - 1][col] + 1,
+          matrix[row][col - 1] + 1,
+          matrix[row - 1][col - 1] + substitutionCost,
+        );
+      }
+    }
+
+    return matrix[rows - 1][cols - 1];
+  }
+
   private matchesLastName(
     graduate: Graduate,
     lastNameNormalized: string,
@@ -1045,7 +1407,7 @@ export class GraduationCertificatesService {
     const providedTokens = this.tokenizeName(lastNameNormalized);
 
     // Regla de negocio solicitada: mínimo 2 palabras para validar nombre.
-    if (providedTokens.length < 2) {
+    if (!providedTokens.length) {
       return false;
     }
 
@@ -1054,34 +1416,20 @@ export class GraduationCertificatesService {
 
     for (const nameVariant of nameVariants) {
       const fullNameTokens = this.tokenizeName(nameVariant);
-      if (
-        !fullNameTokens.length ||
-        providedTokens.length > fullNameTokens.length
-      ) {
+      if (!fullNameTokens.length) {
         continue;
       }
 
-      // Debe coincidir en orden, permitiendo palabras intermedias.
-      let cursor = 0;
-      let allFound = true;
-      for (const token of providedTokens) {
-        let foundAt = -1;
-        for (let i = cursor; i < fullNameTokens.length; i += 1) {
-          if (fullNameTokens[i] === token) {
-            foundAt = i;
-            break;
-          }
-        }
+      const shorterLength = Math.min(
+        providedTokens.length,
+        fullNameTokens.length,
+      );
+      const metrics = this.getOrderedTokenMatchMetrics(
+        providedTokens,
+        fullNameTokens,
+      );
 
-        if (foundAt === -1) {
-          allFound = false;
-          break;
-        }
-
-        cursor = foundAt + 1;
-      }
-
-      if (allFound) {
+      if (shorterLength > 0 && metrics.matchedCount === shorterLength) {
         return true;
       }
     }
@@ -1213,7 +1561,7 @@ export class GraduationCertificatesService {
     );
 
     if (!email) {
-      this.logger.warn('No se pudo enviar el certificado: email vacio');
+      this.logger.warn('No se pudo enviar el certificado: email vacío');
       return;
     }
 
@@ -1228,7 +1576,7 @@ export class GraduationCertificatesService {
 
     const trimmedReviewNotes = (reviewNotes || '').trim();
     const reviewNotesText = trimmedReviewNotes
-      ? `\nNotas de revision: ${trimmedReviewNotes}`
+      ? `\nNotas de revisión: ${trimmedReviewNotes}`
       : '';
     const safeReviewNotes = trimmedReviewNotes
       .replace(/&/g, '&amp;')
@@ -1243,8 +1591,8 @@ export class GraduationCertificatesService {
     );
     const payload = {
       to: email,
-      subject: `Certificado de verificacion de titulo - ${certificate.certificateNumber}`,
-      text: `Adjunto encontraras el certificado de verificacion de titulo solicitado.\n\nCodigo de verificacion: ${certificate.verificationCode}\nURL de validacion: ${validationUrl}${reviewNotesText}`,
+      subject: `Certificado de verificación de título - ${certificate.certificateNumber}`,
+      text: `Adjunto encontrarás el certificado de verificación de título solicitado.\n\nCódigo de verificación: ${certificate.verificationCode}\nURL de validación: ${validationUrl}${reviewNotesText}`,
       html: `
         <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
           <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
@@ -1255,17 +1603,17 @@ export class GraduationCertificatesService {
             </tr>
             <tr>
               <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-                Certificado de verificacion de titulo
+                Certificado de verificación de título
               </td>
             </tr>
             <tr>
               <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-                Adjunto encontraras el certificado de verificacion de titulo solicitado.
+                Adjunto encontrarás el certificado de verificación de título solicitado.
               </td>
             </tr>
             <tr>
               <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
-                <strong>Codigo de verificacion:</strong> ${certificate.verificationCode}
+                <strong>Código de verificación:</strong> ${certificate.verificationCode}
               </td>
             </tr>
             <tr>
@@ -1277,7 +1625,7 @@ export class GraduationCertificatesService {
               trimmedReviewNotes
                 ? `<tr>
               <td style="padding: 0 24px 18px 24px; font-size: 14px; color: #4b5563;">
-                <strong>Notas de revision:</strong>
+                <strong>Notas de revisión:</strong>
                 <div style="margin-top: 6px; white-space: pre-line;">${safeReviewNotes}</div>
               </td>
             </tr>`
@@ -1333,7 +1681,7 @@ export class GraduationCertificatesService {
     const graduateEmail = (data.graduateEmail || '').trim();
     if (!graduateEmail) {
       this.logger.warn(
-        'No se pudo enviar la notificacion al graduado: email vacio',
+        'No se pudo enviar la notificación al graduado: email vacío',
       );
       return;
     }
@@ -1376,7 +1724,7 @@ export class GraduationCertificatesService {
       `Fecha y hora de la solicitud: ${formattedDate}.\n` +
       `Persona de contacto: ${contactPerson}.\n` +
       `Correo de contacto: ${contactEmail}.\n` +
-      `Numero de certificado: ${certificateNumber}.\n` +
+      `Número de certificado: ${certificateNumber}.\n` +
       'Si no reconoces esta solicitud, por favor comunicate con ESAP.';
 
     const safeGraduateName = safe(data.graduateName || 'Graduado');
@@ -1432,7 +1780,7 @@ export class GraduationCertificatesService {
           </tr>
           <tr>
             <td style="padding: 0 24px 18px 24px; font-size: 14px; color: #4b5563;">
-              <strong>Numero de certificado:</strong> ${safeCertificateNumber}
+              <strong>Número de certificado:</strong> ${safeCertificateNumber}
             </td>
           </tr>
           <tr>
@@ -2025,7 +2373,7 @@ export class GraduationCertificatesService {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        `Solicitud ${updatedRequest.requestNumber}: no se pudo enviar aviso de revision a ${updatedRequest.requesterEmail || 'sin email'} (${message})`,
+        `Solicitud ${updatedRequest.requestNumber}: no se pudo enviar aviso de revisión a ${updatedRequest.requesterEmail || 'sin email'} (${message})`,
       );
     }
 
@@ -2050,7 +2398,7 @@ export class GraduationCertificatesService {
     }
 
     const reviewNotes = (
-      payload?.reviewNotes || 'Aprobado por revision manual'
+      payload?.reviewNotes || 'Aprobado por revisión manual'
     ).trim();
 
     if (payload?.fullName) {
@@ -2159,6 +2507,7 @@ export class GraduationCertificatesService {
 
       request.graduate = graduate;
       request.graduateId = graduate.id;
+      request.graduationDate = request.graduationDate ?? graduate.graduationDate;
     } else {
       const fullName = (payload?.fullName || request.fullName || '').trim();
       const { firstName, lastName } = this.splitFullName(fullName);
@@ -2174,8 +2523,13 @@ export class GraduationCertificatesService {
         programName;
       const graduationDate =
         this.parseDate(payload?.graduationDate) ??
-        request.graduationDate ??
-        new Date();
+        request.graduationDate;
+
+      if (!graduationDate) {
+        throw new BadRequestException(
+          'La fecha de grado es obligatoria para aprobar una solicitud de revisión manual.',
+        );
+      }
       const campus =
         payload?.campus || (request as { campus?: string }).campus || undefined;
       const seccionalName =
@@ -2212,6 +2566,13 @@ export class GraduationCertificatesService {
       graduate = await this.graduateRepository.save(createdGraduate);
       request.graduate = graduate;
       request.graduateId = graduate.id;
+      request.graduationDate = graduationDate;
+    }
+
+    if (!request.graduationDate) {
+      throw new BadRequestException(
+        'La fecha de grado es obligatoria para aprobar una solicitud de revisión manual.',
+      );
     }
 
     request.isValidated = true;
@@ -2300,7 +2661,7 @@ export class GraduationCertificatesService {
     const email = (request.requesterEmail || '').trim();
     if (!email) {
       this.logger.warn(
-        `No se pudo notificar inicio de revision para solicitud ${request.requestNumber}: email vacio`,
+        `No se pudo notificar inicio de revisión para solicitud ${request.requestNumber}: email vacío`,
       );
       return;
     }
@@ -2340,12 +2701,12 @@ export class GraduationCertificatesService {
       formattedUpdateDate = updateDate.toISOString();
     }
 
-    const subject = `Actualizacion de solicitud en revision - ${requestNumber}`;
+    const subject = `Actualización de solicitud en revisión - ${requestNumber}`;
     const text =
       `Hola ${requesterName},\n` +
-      `Tu solicitud ${requestNumber} avanzo al estado En revision.\n` +
+      `Tu solicitud ${requestNumber} avanzó al estado En revisión.\n` +
       `Documento consultado: ${idNumber || 'No informado'}.\n` +
-      `Fecha de actualizacion: ${formattedUpdateDate}.\n\n` +
+      `Fecha de actualización: ${formattedUpdateDate}.\n\n` +
       `Nuestro equipo se encuentra validando la informacion. Te notificaremos el siguiente avance al mismo correo.`;
 
     const safeRequesterName = safe(requesterName);
@@ -2363,7 +2724,7 @@ export class GraduationCertificatesService {
           </tr>
           <tr>
             <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-              Actualizacion de solicitud de revision
+              Actualización de solicitud de revisión
             </td>
           </tr>
           <tr>
@@ -2378,7 +2739,7 @@ export class GraduationCertificatesService {
           </tr>
           <tr>
             <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
-              <strong>Estado actual:</strong> En revision
+              <strong>Estado actual:</strong> En revisión
             </td>
           </tr>
           <tr>
@@ -2388,7 +2749,7 @@ export class GraduationCertificatesService {
           </tr>
           <tr>
             <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
-              <strong>Fecha de actualizacion:</strong> ${safeFormattedUpdateDate}
+              <strong>Fecha de actualización:</strong> ${safeFormattedUpdateDate}
             </td>
           </tr>
           <tr>
@@ -2431,7 +2792,7 @@ export class GraduationCertificatesService {
     }
 
     this.logger.log(
-      `Notificacion de inicio de revision enviada a ${email} para solicitud ${requestNumber}`,
+      `Notificación de inicio de revisión enviada a ${email} para solicitud ${requestNumber}`,
     );
   }
 
@@ -2442,7 +2803,7 @@ export class GraduationCertificatesService {
     const email = request.requesterEmail;
     if (!email) {
       this.logger.warn(
-        `No se pudo notificar el rechazo para solicitud ${request.requestNumber}: email vacio`,
+        `No se pudo notificar el rechazo para solicitud ${request.requestNumber}: email vacío`,
       );
       return;
     }

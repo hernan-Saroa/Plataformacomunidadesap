@@ -50,6 +50,11 @@ export class LandingCertificateRequestDto {
   programName?: string;
 
   /**
+   * Graduado seleccionado por el usuario en la lista de coincidencias
+   */
+  selectedGraduateId?: string;
+
+  /**
    * Fecha de graduación en caso de que el solicitante la conozca
    */
   graduationDate?: string;
@@ -57,6 +62,4 @@ export class LandingCertificateRequestDto {
    * Apellido(s) del graduado para validaci??n adicional
    */
   lastName?: string;
-
 }
-
