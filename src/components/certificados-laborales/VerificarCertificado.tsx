@@ -20,7 +20,7 @@ import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { certificadosService } from '../../services/api/certificados.service';
-import { formatCargoDisplay } from '../../utils/cargoFormatter';
+import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 
 export function VerificarCertificado() {
   const { codigo } = useParams<{ codigo?: string }>();
@@ -187,11 +187,12 @@ export function VerificarCertificado() {
           certificado?.position_category ||
           certificado?.positionCategory ||
           certificado?.cargo,
-        codCargo:
-          certificado?.cod_cargo ||
-          certificado?.codCargo ||
-          certificado?.request?.cod_cargo ||
+        codCargo: selectPreferredCargoCode(
+          certificado?.request?.cod_cargo,
           certificado?.request?.codCargo,
+          certificado?.cod_cargo,
+          certificado?.codCargo,
+        ),
         codGrade:
           certificado?.cod_grade ||
           certificado?.codGrade ||

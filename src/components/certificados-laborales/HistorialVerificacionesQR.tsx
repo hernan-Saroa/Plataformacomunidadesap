@@ -80,6 +80,20 @@ const normalizarTexto = (value?: string | null, fallback = 'Desconocido') => {
   return text || fallback;
 };
 
+const normalizarClavePais = (value?: string | null) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z]/g, '');
+
+const esPaisColombia = (value?: string | null) => {
+  const clave = normalizarClavePais(value);
+  if (!clave) return false;
+  if (clave === 'co' || clave === 'col') return true;
+  return clave.includes('colombia');
+};
+
 const capitalizar = (value: string) => {
   if (!value) return '';
   return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
@@ -109,6 +123,11 @@ export function HistorialVerificacionesQR({
   const paisesValidos = verificaciones
     .map((v) => normalizarTexto(v.ubicacion.pais, ''))
     .filter((pais) => pais && !/desconocido|no informado/i.test(pais));
+  const paisesExtranjeros = new Set(
+    paisesValidos
+      .map((pais) => normalizarClavePais(pais))
+      .filter((pais) => pais && !esPaisColombia(pais)),
+  );
 
   const stats = {
     exitosas: verificaciones.filter((v) => v.resultado === 'exitosa').length,
@@ -117,7 +136,7 @@ export function HistorialVerificacionesQR({
     desktop: verificaciones.filter((v) => v.dispositivo.tipo === 'desktop').length,
     mobile: verificaciones.filter((v) => v.dispositivo.tipo === 'mobile').length,
     tablet: verificaciones.filter((v) => v.dispositivo.tipo === 'tablet').length,
-    paises: new Set(paisesValidos).size,
+    paises: paisesExtranjeros.size,
   };
 
   const getDispositivoIcon = (tipo: string) => {

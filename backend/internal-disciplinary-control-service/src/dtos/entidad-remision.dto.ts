@@ -12,9 +12,10 @@ export class CreateEntidadRemisionDto {
 }
 
 export class UpdateEntidadRemisionDto extends PartialType(CreateEntidadRemisionDto) {
-  @ApiProperty({ description: 'ID de la entidad', required: true })
+  @ApiProperty({ description: 'ID de la entidad', required: false })
+  @IsOptional()
   @IsUUID()
-  id: string;
+  id?: string;
 
   @ApiProperty({ description: 'Si la entidad está activa' })
   @IsOptional()

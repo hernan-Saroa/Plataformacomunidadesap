@@ -50,8 +50,12 @@ import { AlertaEnviada } from './entities/alerta-enviada.entity';
 import { PlantillaAuto } from './entities/plantilla-auto.entity';
 import { AutoConfiguration } from './entities/auto-configuration.entity';
 import { OficioConfiguration } from './entities/oficio-configuration.entity';
+import { ActaConfiguration } from './entities/acta-configuration.entity';
 import { ExpedienteCompartido } from './entities/expediente-compartido.entity';
 import { EntidadRemision } from './entities/entidad-remision.entity';
+import { DisciplinaryProcessActuacion } from './entities/disciplinary-process-actuacion.entity';
+import { DisciplinaryProcessTask } from './entities/disciplinary-process-task.entity';
+import { DisciplinaryProcessNote } from './entities/disciplinary-process-note.entity';
 
 export const databaseConfig: TypeOrmModuleOptions = {
   type: 'postgres',
@@ -78,8 +82,12 @@ export const databaseConfig: TypeOrmModuleOptions = {
     AlertaEnviada,
     AutoConfiguration,
     OficioConfiguration,
+    ActaConfiguration,
     ExpedienteCompartido,
     EntidadRemision,
+    DisciplinaryProcessActuacion,
+    DisciplinaryProcessTask,
+    DisciplinaryProcessNote,
   ],
   synchronize: false,
   logging: false,

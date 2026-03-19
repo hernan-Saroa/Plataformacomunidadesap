@@ -47,14 +47,10 @@ interface PlantillaApi {
 
 // Categorías de plantillas (coinciden con el módulo de Configuraciones)
 const CAT_PLANTILLAS = [
-  { id: 'todos',                label: 'Todos',             color: '#003DA5' },
-  { id: 'actas',                label: 'Actas',             color: '#7C3AED' },
-  { id: 'evidencias',           label: 'Evidencias',        color: '#059669' },
-  { id: 'oficios',              label: 'Oficios',           color: '#D97706' },
-  { id: 'pruebas',              label: 'Pruebas',           color: '#0891B2' },
-  { id: 'comunicaciones',       label: 'Comunicaciones',    color: '#4F46E5' },
-  { id: 'notificaciones',       label: 'Notificaciones',    color: '#EA580C' },
-  { id: 'documentos-generales', label: 'Docs. Generales',   color: '#6B7280' },
+  { id: 'todos',   label: 'Todos',   color: '#003DA5' },
+  { id: 'actas',   label: 'Actas',   color: '#7C3AED' },
+  { id: 'autos',   label: 'Autos',   color: '#DC2626' },
+  { id: 'oficios', label: 'Oficios', color: '#D97706' },
 ];
 
 function getCatPlantilla(id: string) {
@@ -76,6 +72,18 @@ interface TabDocumentosExpedienteProps {
   onDownloadAll?: () => Promise<void> | void;
   moduloContexto?: 'defensa-judicial' | 'juzgamiento';
 }
+
+// Categorías que usan el flujo de plantillas (Word → PDF diligenciado)
+const CATEGORIAS_CON_PLANTILLAS = ['actas', 'autos', 'oficios'];
+
+// Tipos de archivo permitidos para subida directa de documentos
+const TODOS_TIPOS_ACCEPT = [
+  '.pdf', '.doc', '.docx',
+  '.xls', '.xlsx',
+  '.zip', '.rar',
+  '.jpg', '.jpeg', '.png', '.gif', '.webp',
+  '.mp4', '.webm', '.mov', '.avi', '.mkv',
+].join(',');
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
@@ -114,7 +122,7 @@ export function TabDocumentosExpediente({
     setCargandoPlantillas(true);
     try {
       const data: PlantillaApi[] = await apiClient.get(`${LEGAL_API}/plantillas`);
-      setPlantillas(data);
+      setPlantillas(data.filter(p => CATEGORIAS_CON_PLANTILLAS.includes(p.categoria)));
     } catch {
       toast.error('No se pudieron cargar las plantillas');
     } finally {
@@ -246,9 +254,52 @@ export function TabDocumentosExpediente({
     setFiltroPlantillaCategoria('todos');
   };
 
+  // ── Handler subida directa de documento (para categorías sin plantillas) ──
+
+  const handleSubirDocumento = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = TODOS_TIPOS_ACCEPT;
+
+    input.onchange = async (e: any) => {
+      const file: File | undefined = e.target?.files?.[0];
+      if (!file) return;
+
+      if (file.size > 250 * 1024 * 1024) {
+        toast.error('El archivo no puede superar 250 MB');
+        return;
+      }
+
+      const catDestino = filtroDocTipo === 'todos' ? 'documentos-generales' : filtroDocTipo;
+      try {
+        if (onUploadDocument) {
+          await Promise.resolve(onUploadDocument(file, catDestino, file.name));
+        } else {
+          const nuevoDoc: DocumentoExpediente = {
+            id: Date.now(),
+            nombre: file.name,
+            tamaño: formatBytes(file.size),
+            fecha: new Date().toLocaleDateString('es-CO'),
+            tipo: file.name,
+            firmante: profesionalAsignado || 'Oficina Jurídica',
+            categoria: catDestino,
+          };
+          setDocumentos(prev => [nuevoDoc, ...prev]);
+        }
+        onHasChanges?.();
+        toast.success('Documento subido al expediente', { description: file.name });
+      } catch {
+        // Error ya manejado por el padre
+      }
+    };
+
+    input.click();
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   const moduloLabel = moduloContexto === 'defensa-judicial' ? 'Defensa Judicial' : 'Juzgamiento Disciplinario';
+  const usaPlantillas = CATEGORIAS_CON_PLANTILLAS.includes(filtroDocTipo);
 
   return (
     <>
@@ -265,15 +316,27 @@ export function TabDocumentosExpediente({
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <Button
-              size="sm"
-              onClick={() => setModalPlantillas(true)}
-              className="font-semibold"
-              style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)', color: '#FFFFFF' }}
-            >
-              <Library className="w-4 h-4 mr-1.5" />
-              Plantillas
-            </Button>
+            {usaPlantillas ? (
+              <Button
+                size="sm"
+                onClick={() => setModalPlantillas(true)}
+                className="font-semibold"
+                style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)', color: '#FFFFFF' }}
+              >
+                <Library className="w-4 h-4 mr-1.5" />
+                Plantillas
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={handleSubirDocumento}
+                className="font-semibold"
+                style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#FFFFFF' }}
+              >
+                <FolderOpen className="w-4 h-4 mr-1.5" />
+                Subir Documento
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -339,7 +402,9 @@ export function TabDocumentosExpediente({
             <p className="text-sm text-gray-500 mb-4">
               {busquedaDocs
                 ? `No se encontraron resultados para "${busquedaDocs}"`
-                : 'Sube documentos usando las plantillas disponibles'}
+                : usaPlantillas
+                  ? 'Sube documentos usando las plantillas disponibles'
+                  : 'Sube documentos con el botón "Subir Documento"'}
             </p>
             {(busquedaDocs || filtroDocTipo !== 'todos') && (
               <Button variant="outline" onClick={() => { setBusquedaDocs(''); setFiltroDocTipo('todos'); }} className="font-semibold">
@@ -426,27 +491,29 @@ export function TabDocumentosExpediente({
           </div>
         </Card>
 
-        {/* Banner plantillas */}
-        <Card
-          className="p-3 border-2 cursor-pointer hover:shadow-md transition-all"
-          style={{ borderColor: '#2962FF30', background: 'linear-gradient(135deg, #2962FF08 0%, #003DA510 100%)' }}
-          onClick={() => setModalPlantillas(true)}
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg" style={{ background: '#2962FF15' }}>
-              <Library className="w-5 h-5" style={{ color: '#2962FF' }} />
+        {/* Banner plantillas — solo para Actas, Autos y Oficios */}
+        {usaPlantillas && (
+          <Card
+            className="p-3 border-2 cursor-pointer hover:shadow-md transition-all"
+            style={{ borderColor: '#2962FF30', background: 'linear-gradient(135deg, #2962FF08 0%, #003DA510 100%)' }}
+            onClick={() => setModalPlantillas(true)}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg" style={{ background: '#2962FF15' }}>
+                <Library className="w-5 h-5" style={{ color: '#2962FF' }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="font-bold text-sm" style={{ color: '#003DA5' }}>
+                  Biblioteca de Plantillas — {moduloLabel}
+                </h4>
+                <p className="text-xs text-gray-500">
+                  Plantillas configuradas por el administrador • Descargue y suba el PDF diligenciado al expediente
+                </p>
+              </div>
+              <ArrowRight className="w-5 h-5 flex-shrink-0" style={{ color: '#2962FF' }} />
             </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="font-bold text-sm" style={{ color: '#003DA5' }}>
-                Biblioteca de Plantillas — {moduloLabel}
-              </h4>
-              <p className="text-xs text-gray-500">
-                Plantillas configuradas por el administrador • Descargue y suba el PDF diligenciado al expediente
-              </p>
-            </div>
-            <ArrowRight className="w-5 h-5 flex-shrink-0" style={{ color: '#2962FF' }} />
-          </div>
-        </Card>
+          </Card>
+        )}
       </div>
 
       {/* ── MODAL PLANTILLAS ───────────────────────────────────────────────────── */}

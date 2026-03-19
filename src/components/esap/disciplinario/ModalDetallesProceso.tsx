@@ -11,17 +11,25 @@ import {
   X, Scale, FileText, FolderOpen, Zap, CheckSquare, FileEdit,
   Archive, Mail, FileCheck, History, Download, Upload, Search,
   Bell, Share2, ExternalLink, AlertTriangle, User, Briefcase,
-  Calendar, Clock, ChevronRight, Plus,
+  Calendar, Clock, ChevronRight, ChevronDown, ChevronUp, Plus,
   CheckCircle, AlertCircle, ClipboardList, MessageSquare, Printer,
   Eye, Image, FileArchive, ZoomIn,
   MapPin, Building2, Phone, Paperclip, Gavel, FileWarning, Users,
   Loader2, XCircle, HardDrive, Shield,
-  Send, RotateCcw, RefreshCw,
+  Send, RotateCcw, RefreshCw, Trash2,
   Layers, BarChart3, Filter, FileDown, List,
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
-import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import {
+  disciplinaryService,
+  type CreateDisciplinaryProcessActuacionDto,
+  type CreateDisciplinaryProcessNoteDto,
+  type CreateDisciplinaryProcessTaskDto,
+  type DisciplinaryProcessActuacion,
+  type DisciplinaryProcessNote,
+  type DisciplinaryProcessTask,
+} from '../../../services/api/disciplinary.service';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -83,6 +91,10 @@ interface Proceso {
   cargo?: string;
   dependencia?: string;
   historialAuditoria?: any[];
+  tasksCount?: number;
+  completedTasksCount?: number;
+  pendingTasksCount?: number;
+  notesCount?: number;
   // ═══ Campos heredados de la Noticia disciplinaria ═══
   territorial?: string;
   fechaHechos?: string;
@@ -102,6 +114,42 @@ interface Proceso {
 
 type Tab = 'general' | 'archivos' | 'actuaciones' | 'tareas' | 'notas';
 type Extension = 'pdf' | 'jpg' | 'png' | 'zip' | 'docx' | 'xlsx';
+
+interface ActuacionItem {
+  id: string;
+  fecha: string;
+  descripcion: string;
+  tipo: string;
+  responsable: string;
+  etapa: string;
+  observaciones?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface TaskItem {
+  id: string;
+  titulo: string;
+  descripcion?: string;
+  prioridad: 'alta' | 'media' | 'baja';
+  completada: boolean;
+  etapa: string;
+  responsable?: string;
+  vencimiento: string;
+  fechaCompletada?: string | null;
+  observaciones?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface NoteItem {
+  id: string;
+  texto: string;
+  fecha: string;
+  etapa: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 interface Archivo {
   id: string;
@@ -128,6 +176,7 @@ interface ModalDetallesProcesoProps {
   onGestionActas: () => void;
   onHistorial: () => void;
   onExpediente: () => void;
+  onActualizarProceso?: (updates: Partial<Proceso>) => void;
   /** Callback para agregar borrador a la lista compartida de Revisión y Aprobación */
   onEnviarARevision?: (borrador: BorradorPendiente) => void;
   /** Callback para navegar al módulo de Revisión y Aprobación */
@@ -136,17 +185,11 @@ interface ModalDetallesProcesoProps {
 
 // ─── Mock data ───────────────────────────────────────────────────────────────
 
-const MOCK_ACTUACIONES = [
-  { id: 'a1', fecha: '2026-02-10', descripcion: 'Apertura de indagación preliminar',        tipo: 'auto',         responsable: 'Dr. Andrés Moreno', etapa: 'Indagación'  },
-  { id: 'a2', fecha: '2026-02-05', descripcion: 'Notificación al disciplinado',              tipo: 'notificacion', responsable: 'Dr. Andrés Moreno', etapa: 'Valoración'  },
-  { id: 'a3', fecha: '2026-01-28', descripcion: 'Asignación al profesional investigador',   tipo: 'asignacion',   responsable: 'Jefe OCID',         etapa: 'Valoración'  },
-  { id: 'a4', fecha: '2026-01-15', descripcion: 'Recepción de la noticia disciplinaria',     tipo: 'recepcion',    responsable: 'Secretaría OCID',  etapa: 'Recepción'   },
-];
-
-const MOCK_TAREAS = [
-  { id: 't1', titulo: 'Citar al disciplinado a diligencia de versión libre', vencimiento: '2026-03-01', prioridad: 'alta',  completada: false, etapa: 'Indagación'    },
-  { id: 't2', titulo: 'Recopilar pruebas documentales',                      vencimiento: '2026-03-10', prioridad: 'media', completada: true,  etapa: 'Valoración'    },
-  { id: 't3', titulo: 'Solicitar antecedentes disciplinarios',                vencimiento: '2026-02-28', prioridad: 'alta',  completada: false, etapa: 'Indagación'    },
+const MOCK_ACTUACIONES: ActuacionItem[] = [
+  { id: 'a1', fecha: '2026-02-10', descripcion: 'Apertura de indagaci�n preliminar', tipo: 'auto', responsable: 'Dr. Andr�s Moreno', etapa: 'Indagaci�n', observaciones: 'Se deja constancia del inicio de la actuaci�n preliminar.' },
+  { id: 'a2', fecha: '2026-02-05', descripcion: 'Notificaci�n al disciplinado', tipo: 'notificacion', responsable: 'Dr. Andr�s Moreno', etapa: 'Valoraci�n', observaciones: 'Se envi� comunicaci�n formal al disciplinado por los canales establecidos.' },
+  { id: 'a3', fecha: '2026-01-28', descripcion: 'Asignaci�n al profesional investigador', tipo: 'asignacion', responsable: 'Jefe OCID', etapa: 'Valoraci�n', observaciones: 'Asignaci�n realizada seg�n reparto interno.' },
+  { id: 'a4', fecha: '2026-01-15', descripcion: 'Recepci�n de la noticia disciplinaria', tipo: 'recepcion', responsable: 'Secretar�a OCID', etapa: 'Recepci�n', observaciones: 'Ingreso inicial del asunto en el sistema disciplinario.' },
 ];
 
 const HISTORIAL_ETAPAS = [
@@ -667,10 +710,907 @@ function ModalConfirmarEnvioRevision({
 
 // ─── Componente Principal ─────────────────────────────────────────────────────
 
+function formatFechaActuacion(fecha?: string | null, withTime = false): string {
+  if (!fecha) return 'Sin fecha';
+
+  // Evita el desfase por zona horaria cuando la fecha viene como YYYY-MM-DD.
+  const soloFecha = fecha.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const parsed = soloFecha
+    ? new Date(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]))
+    : new Date(fecha);
+
+  if (Number.isNaN(parsed.getTime())) return fecha;
+
+  return parsed.toLocaleString(
+    'es-CO',
+    withTime
+      ? { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }
+      : { year: 'numeric', month: 'short', day: '2-digit' }
+  );
+}
+
+function mapActuacionFromApi(actuacion: DisciplinaryProcessActuacion): ActuacionItem {
+  return {
+    id: actuacion.id,
+    fecha: actuacion.fechaActuacion ? actuacion.fechaActuacion.split('T')[0] : '',
+    descripcion: actuacion.descripcion,
+    tipo: (actuacion.tipo || 'actuacion').toLowerCase(),
+    responsable: actuacion.responsableNombre || 'Sin responsable',
+    etapa: normalizarEtapaActuacion(actuacion.etapa),
+    observaciones: actuacion.observaciones || '',
+    createdAt: actuacion.createdAt,
+    updatedAt: actuacion.updatedAt,
+  };
+}
+
+function mapTaskFromApi(task: DisciplinaryProcessTask): TaskItem {
+  return {
+    id: task.id,
+    titulo: task.titulo,
+    descripcion: task.descripcion || '',
+    prioridad: (task.prioridad || 'media').toLowerCase() as TaskItem['prioridad'],
+    completada: Boolean(task.completada),
+    etapa: normalizarEtapaActuacion(task.etapa),
+    responsable: task.responsableNombre || 'Sin responsable',
+    vencimiento: task.fechaVencimiento ? task.fechaVencimiento.split('T')[0] : '',
+    fechaCompletada: task.fechaCompletada || null,
+    observaciones: task.observaciones || '',
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+  };
+}
+
+function mapNoteFromApi(note: DisciplinaryProcessNote): NoteItem {
+  return {
+    id: note.id,
+    texto: note.texto,
+    fecha: note.createdAt,
+    etapa: normalizarEtapaActuacion(note.etapa),
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt,
+  };
+}
+
+function normalizarFechaInput(fecha: string): string {
+  if (!fecha) return new Date().toISOString().split('T')[0];
+  return fecha.includes('T') ? fecha.split('T')[0] : fecha;
+}
+
+const ETAPA_ACTUACION_LABELS: Record<string, string> = {
+  RECEPCION: 'Recepción',
+  EVALUACION: 'Valoración',
+  VALORACION: 'Valoración',
+  INDAGACION: 'Indagación',
+  INDAGACION_PREVIA: 'Indagación previa',
+  INVESTIGACION: 'Investigación',
+  JUZGAMIENTO: 'Juzgamiento',
+  FALLO: 'Fallo',
+  SEGUNDA_INSTANCIA: 'Segunda instancia',
+  SIN_ETAPA: 'Sin etapa',
+};
+
+function normalizarEtapaActuacion(etapa?: string | null): string {
+  if (!etapa?.trim()) return 'Sin etapa';
+  const limpia = etapa.trim();
+  const clave = limpia
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '_')
+    .toUpperCase();
+
+  if (ETAPA_ACTUACION_LABELS[clave]) {
+    return ETAPA_ACTUACION_LABELS[clave];
+  }
+
+  if (clave === 'SIN' || clave === 'NINGUNA') {
+    return 'Sin etapa';
+  }
+
+  return limpia
+    .replace(/_/g, ' ')
+    .toLocaleLowerCase('es-CO')
+    .replace(/\b\w/g, (letra) => letra.toLocaleUpperCase('es-CO'));
+}
+
+const ACTUACION_TYPE_OPTIONS = [
+  {
+    value: 'actuacion',
+    label: 'Actuación',
+    hint: 'Registro general del proceso',
+    icon: Zap,
+    color: '#003DA5',
+    bg: '#EAF2FF',
+    border: '#B9D0FF',
+  },
+  {
+    value: 'auto',
+    label: 'Auto',
+    hint: 'Decisión o providencia',
+    icon: FileCheck,
+    color: '#7C3AED',
+    bg: '#F4EEFF',
+    border: '#D8C2FF',
+  },
+  {
+    value: 'notificacion',
+    label: 'Notificación',
+    hint: 'Comunicación formal',
+    icon: Bell,
+    color: '#0F766E',
+    bg: '#E8FFFB',
+    border: '#A7F3D0',
+  },
+  {
+    value: 'asignacion',
+    label: 'Asignación',
+    hint: 'Responsable o reparto',
+    icon: Users,
+    color: '#C2410C',
+    bg: '#FFF1E8',
+    border: '#FED7AA',
+  },
+  {
+    value: 'recepcion',
+    label: 'Recepción',
+    hint: 'Ingreso o radicación',
+    icon: Archive,
+    color: '#4F46E5',
+    bg: '#EEF2FF',
+    border: '#C7D2FE',
+  },
+] as const;
+
+const TASK_PRIORITY_META: Record<TaskItem['prioridad'], { label: string; color: string; bg: string; border: string; icon: any; hint: string }> = {
+  alta: {
+    label: 'Alta',
+    color: '#DC2626',
+    bg: '#FEF2F2',
+    border: '#FECACA',
+    icon: AlertTriangle,
+    hint: 'Requiere atencion prioritaria',
+  },
+  media: {
+    label: 'Media',
+    color: '#D97706',
+    bg: '#FFFBEB',
+    border: '#FDE68A',
+    icon: Clock,
+    hint: 'Seguimiento operativo normal',
+  },
+  baja: {
+    label: 'Baja',
+    color: '#059669',
+    bg: '#ECFDF5',
+    border: '#A7F3D0',
+    icon: Shield,
+    hint: 'Puede resolverse sin urgencia',
+  },
+};
+
+function getTaskDueMeta(task: TaskItem): { label: string; color: string; bg: string; border: string } | null {
+  if (task.completada || !task.vencimiento) return null;
+
+  const match = task.vencimiento.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return {
+      label: 'Pendiente',
+      color: '#475569',
+      bg: '#F8FAFC',
+      border: '#CBD5E1',
+    };
+  }
+
+  const dueDate = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.round((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return {
+      label: `Vencida ${Math.abs(diffDays)}d`,
+      color: '#B91C1C',
+      bg: '#FEF2F2',
+      border: '#FECACA',
+    };
+  }
+
+  if (diffDays === 0) {
+    return {
+      label: 'Vence hoy',
+      color: '#B45309',
+      bg: '#FFFBEB',
+      border: '#FDE68A',
+    };
+  }
+
+  if (diffDays <= 3) {
+    return {
+      label: `Vence ${diffDays}d`,
+      color: '#C2410C',
+      bg: '#FFF7ED',
+      border: '#FDBA74',
+    };
+  }
+
+  return {
+    label: `En ${diffDays}d`,
+    color: '#1D4ED8',
+    bg: '#EFF6FF',
+    border: '#BFDBFE',
+  };
+}
+
+function ModalNuevaActuacion({
+  open,
+  etapas,
+  etapaActual,
+  responsableInicial,
+  saving,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  etapas: string[];
+  etapaActual: string;
+  responsableInicial: string;
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (data: CreateDisciplinaryProcessActuacionDto) => Promise<void>;
+}) {
+  const etapasNormalizadas = Array.from(
+    new Set(
+      etapas
+        .map((item) => normalizarEtapaActuacion(item))
+        .filter(Boolean)
+    )
+  );
+  const etapaActualNormalizada = normalizarEtapaActuacion(etapaActual);
+  const [tipo, setTipo] = useState('actuacion');
+  const [etapa, setEtapa] = useState(etapaActualNormalizada);
+  const [descripcion, setDescripcion] = useState('');
+  const [responsableNombre, setResponsableNombre] = useState(responsableInicial);
+  const [fechaActuacion, setFechaActuacion] = useState(new Date().toISOString().split('T')[0]);
+  const [observaciones, setObservaciones] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setTipo('actuacion');
+    setEtapa(etapaActualNormalizada);
+    setDescripcion('');
+    setResponsableNombre(responsableInicial);
+    setFechaActuacion(new Date().toISOString().split('T')[0]);
+    setObservaciones('');
+  }, [open, etapaActualNormalizada, responsableInicial]);
+
+  if (!open) return null;
+
+  const tipoSeleccionado = ACTUACION_TYPE_OPTIONS.find((item) => item.value === tipo) || ACTUACION_TYPE_OPTIONS[0];
+
+  const handleSubmit = async () => {
+    if (!descripcion.trim()) {
+      toast.error('La descripcion es obligatoria');
+      return;
+    }
+
+    if (!responsableNombre.trim()) {
+      toast.error('El responsable es obligatorio');
+      return;
+    }
+
+    await onSubmit({
+      tipo,
+      etapa: normalizarEtapaActuacion(etapa),
+      descripcion,
+      responsableNombre,
+      fechaActuacion,
+      observaciones,
+    });
+  };
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{
+        zIndex: 9999,
+        backgroundColor: 'rgba(15, 23, 42, 0.68)',
+        padding: '24px',
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.98, y: 14 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.98, y: 12 }}
+        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        className="w-full bg-white rounded-[30px] shadow-2xl border border-slate-200 overflow-hidden"
+        style={{ maxWidth: 900, maxHeight: '90vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '32px' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-r from-blue-50 via-white to-slate-50"
+          style={{ borderTopLeftRadius: '32px', borderTopRightRadius: '32px' }}
+        >
+          <div
+            className="absolute inset-x-0 top-0 h-1"
+            style={{ background: 'linear-gradient(90deg, #003DA5 0%, #2962FF 55%, #8BB8FF 100%)' }}
+          />
+          <div className="flex items-start gap-4 px-6 py-6 md:px-7">
+            <div
+              className="w-12 h-12 rounded-[20px] flex items-center justify-center shadow-sm flex-shrink-0"
+              style={{ backgroundColor: '#EAF2FF', border: '1px solid #B9D0FF', borderRadius: '999px' }}
+            >
+              <tipoSeleccionado.icon className="w-5 h-5" style={{ color: tipoSeleccionado.color }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-black text-slate-900">Nueva actuación</h3>
+                <span
+                  className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em]"
+                  style={{ color: tipoSeleccionado.color, backgroundColor: tipoSeleccionado.bg, border: `1px solid ${tipoSeleccionado.border}`, borderRadius: '999px' }}
+                >
+                  {tipoSeleccionado.label}
+                </span>
+              </div>
+              <p className="text-sm text-slate-500 mt-1">
+                Registra una actuación persistente del proceso y actualiza su historial dinámico.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span
+                  className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold"
+                  style={{ color: '#003DA5', backgroundColor: '#EAF2FF', border: '1px solid #B9D0FF', borderRadius: '999px' }}
+                >
+                  <Zap className="w-3 h-3" />
+                  Etapa actual: {etapaActualNormalizada}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500" style={{ borderRadius: '999px' }}>
+                  <Calendar className="w-3 h-3" />
+                  Fecha sugerida: {fechaActuacion}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-11 h-11 rounded-[20px] border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50"
+              style={{ borderRadius: '999px' }}
+              disabled={saving}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="px-6 py-6 md:px-7 overflow-y-auto space-y-6" style={{ maxHeight: 'calc(90vh - 184px)' }}>
+          <div className="rounded-[26px] border border-blue-100 bg-gradient-to-r from-blue-50/90 to-slate-50 p-5" style={{ borderRadius: '28px' }}>
+            <div className="flex items-start gap-3">
+              <div
+                className="w-10 h-10 rounded-[18px] flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: tipoSeleccionado.bg, border: `1px solid ${tipoSeleccionado.border}`, borderRadius: '999px' }}
+              >
+                <tipoSeleccionado.icon className="w-4 h-4" style={{ color: tipoSeleccionado.color }} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Contexto del registro</p>
+                <p className="mt-1 text-sm font-semibold text-slate-800">
+                  La actuación quedará asociada al proceso y se reflejará en la tarjeta del kanban.
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Usa un tipo claro, una descripción concreta y la etapa procesal correcta.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Tipo de actuación</span>
+              <span className="text-[11px] font-semibold text-slate-400">Selecciona la categoría que mejor describa el registro</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2.5">
+              {ACTUACION_TYPE_OPTIONS.map((option) => {
+                const activo = tipo === option.value;
+                const Icon = option.icon;
+                return (
+                  <motion.button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setTipo(option.value)}
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.985 }}
+                    transition={{ duration: 0.15 }}
+                    className="rounded-[24px] border px-3.5 py-3.5 text-left transition-all"
+                    style={{
+                      backgroundColor: activo ? option.bg : '#FFFFFF',
+                      borderColor: activo ? option.border : '#E2E8F0',
+                      boxShadow: activo ? `0 0 0 1px ${option.border}, 0 10px 24px ${option.color}14` : 'none',
+                      borderRadius: '24px',
+                    }}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div
+                        className="mt-0.5 w-9 h-9 rounded-[14px] flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: activo ? '#FFFFFF' : option.bg, border: `1px solid ${option.border}`, borderRadius: '14px' }}
+                      >
+                        <Icon className="w-4 h-4" style={{ color: option.color }} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-black" style={{ color: activo ? option.color : '#0F172A' }}>{option.label}</p>
+                        <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">{option.hint}</p>
+                      </div>
+                    </div>
+                  </motion.button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4">
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Etapa del proceso</span>
+              <div className="relative">
+                <select
+                  value={etapa}
+                  onChange={(e) => setEtapa(normalizarEtapaActuacion(e.target.value))}
+                  className="w-full appearance-none rounded-[22px] border border-slate-200 bg-white px-4 py-3.5 pr-10 text-sm font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                  style={{ borderRadius: '22px' }}
+                >
+                  {etapasNormalizadas.map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+                <ChevronRight className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-slate-400" />
+              </div>
+            </label>
+
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Fecha de la actuación</span>
+              <input
+                type="date"
+                value={fechaActuacion}
+                onChange={(e) => setFechaActuacion(normalizarFechaInput(e.target.value))}
+                className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                style={{ borderRadius: '22px' }}
+              />
+            </label>
+          </div>
+
+          <label className="space-y-1.5 block">
+            <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Descripción</span>
+            <textarea
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              rows={5}
+              placeholder="Describe la actuación realizada, el motivo y el resultado esperado."
+              className="w-full rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800 outline-none resize-y transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+              style={{ borderRadius: '24px' }}
+            />
+            <p className="text-[11px] text-slate-400">Este texto alimenta el historial y la última actuación visible del proceso.</p>
+          </label>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Responsable</span>
+              <input
+                value={responsableNombre}
+                onChange={(e) => setResponsableNombre(e.target.value)}
+                className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                style={{ borderRadius: '22px' }}
+                placeholder="Nombre del profesional o responsable"
+              />
+              <p className="text-[11px] text-slate-400">Se usará como responsable visible en la línea de tiempo.</p>
+            </label>
+
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5" style={{ borderRadius: '24px' }}>
+              <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Resumen del registro</p>
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500">Tipo</span>
+                  <span className="font-bold" style={{ color: tipoSeleccionado.color }}>{tipoSeleccionado.label}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500">Etapa</span>
+                  <span className="font-bold text-slate-800">{etapa}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500">Fecha</span>
+                  <span className="font-bold text-slate-800">{fechaActuacion}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <label className="space-y-1.5 block">
+            <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Observaciones</span>
+            <textarea
+              value={observaciones}
+              onChange={(e) => setObservaciones(e.target.value)}
+              rows={3}
+              placeholder="Campo opcional para dejar contexto adicional del registro."
+              className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800 outline-none resize-y transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+              style={{ borderRadius: '24px' }}
+            />
+          </label>
+        </div>
+
+        <div
+          className="flex items-center justify-end gap-2 px-6 py-5 md:px-7 border-t border-slate-200 bg-slate-50"
+          style={{ borderBottomLeftRadius: '32px', borderBottomRightRadius: '32px' }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-5 py-2.5 rounded-[20px] border border-slate-300 text-sm font-semibold text-slate-600 hover:bg-white disabled:opacity-60"
+            style={{ borderRadius: '999px' }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={saving}
+            className="px-5 py-2.5 rounded-[20px] text-sm font-bold text-white inline-flex items-center gap-2 disabled:opacity-70"
+            style={{ background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)', borderRadius: '999px' }}
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            Guardar actuación
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>,
+    document.body
+  );
+}
+
+function ModalNuevaTarea({
+  open,
+  etapas,
+  etapaActual,
+  responsableInicial,
+  saving,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  etapas: string[];
+  etapaActual: string;
+  responsableInicial: string;
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (data: CreateDisciplinaryProcessTaskDto) => Promise<void>;
+}) {
+  const etapasNormalizadas = Array.from(
+    new Set(
+      etapas
+        .map((item) => normalizarEtapaActuacion(item))
+        .filter(Boolean)
+    )
+  );
+  const etapaActualNormalizada = normalizarEtapaActuacion(etapaActual);
+  const [titulo, setTitulo] = useState('');
+  const [descripcion, setDescripcion] = useState('');
+  const [prioridad, setPrioridad] = useState<TaskItem['prioridad']>('media');
+  const [etapa, setEtapa] = useState(etapaActualNormalizada);
+  const [responsableNombre, setResponsableNombre] = useState(responsableInicial);
+  const [fechaVencimiento, setFechaVencimiento] = useState(new Date().toISOString().split('T')[0]);
+  const [observaciones, setObservaciones] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setTitulo('');
+    setDescripcion('');
+    setPrioridad('media');
+    setEtapa(etapaActualNormalizada);
+    setResponsableNombre(responsableInicial);
+    setFechaVencimiento(new Date().toISOString().split('T')[0]);
+    setObservaciones('');
+  }, [open, etapaActualNormalizada, responsableInicial]);
+
+  if (!open) return null;
+
+  const prioridadMeta = TASK_PRIORITY_META[prioridad];
+  const PriorityIcon = prioridadMeta.icon;
+
+  const handleSubmit = async () => {
+    if (!titulo.trim()) {
+      toast.error('El titulo de la tarea es obligatorio');
+      return;
+    }
+
+    if (!fechaVencimiento) {
+      toast.error('La fecha de vencimiento es obligatoria');
+      return;
+    }
+
+    await onSubmit({
+      titulo,
+      descripcion,
+      prioridad,
+      etapa: normalizarEtapaActuacion(etapa),
+      responsableNombre,
+      fechaVencimiento,
+      observaciones,
+    });
+  };
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{
+        zIndex: 9999,
+        backgroundColor: 'rgba(15, 23, 42, 0.68)',
+        padding: '24px',
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.98, y: 14 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.98, y: 12 }}
+        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        className="w-full bg-white rounded-[30px] shadow-2xl border border-slate-200 overflow-hidden"
+        style={{ maxWidth: 920, maxHeight: '90vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '32px' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-r from-blue-50 via-white to-slate-50"
+          style={{ borderTopLeftRadius: '32px', borderTopRightRadius: '32px' }}
+        >
+          <div
+            className="absolute inset-x-0 top-0 h-1"
+            style={{ background: 'linear-gradient(90deg, #003DA5 0%, #2962FF 55%, #8BB8FF 100%)' }}
+          />
+          <div className="flex items-start gap-4 px-6 py-6 md:px-7">
+            <div
+              className="w-12 h-12 rounded-[20px] flex items-center justify-center shadow-sm flex-shrink-0"
+              style={{ backgroundColor: '#EAF2FF', border: '1px solid #B9D0FF', borderRadius: '999px' }}
+            >
+              <ClipboardList className="w-5 h-5" style={{ color: '#003DA5' }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-black text-slate-900">Nueva tarea</h3>
+                <span
+                  className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em]"
+                  style={{ color: prioridadMeta.color, backgroundColor: prioridadMeta.bg, border: `1px solid ${prioridadMeta.border}`, borderRadius: '999px' }}
+                >
+                  Prioridad {prioridadMeta.label}
+                </span>
+              </div>
+              <p className="text-sm text-slate-500 mt-1">
+                Registra una tarea persistente del proceso y permite controlar su cumplimiento.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span
+                  className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold"
+                  style={{ color: '#003DA5', backgroundColor: '#EAF2FF', border: '1px solid #B9D0FF', borderRadius: '999px' }}
+                >
+                  <Zap className="w-3 h-3" />
+                  Etapa actual: {etapaActualNormalizada}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500" style={{ borderRadius: '999px' }}>
+                  <Calendar className="w-3 h-3" />
+                  Vence: {fechaVencimiento}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-11 h-11 rounded-[20px] border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50"
+              style={{ borderRadius: '999px' }}
+              disabled={saving}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="px-6 py-6 md:px-7 overflow-y-auto space-y-6" style={{ maxHeight: 'calc(90vh - 184px)' }}>
+          <div className="rounded-[26px] border border-blue-100 bg-gradient-to-r from-blue-50/90 to-slate-50 p-5" style={{ borderRadius: '28px' }}>
+            <div className="flex items-start gap-3">
+              <div
+                className="w-10 h-10 rounded-[18px] flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: prioridadMeta.bg, border: `1px solid ${prioridadMeta.border}`, borderRadius: '999px' }}
+              >
+                <PriorityIcon className="w-4 h-4" style={{ color: prioridadMeta.color }} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Contexto de la tarea</p>
+                <p className="mt-1 text-sm font-semibold text-slate-800">
+                  La tarea quedara vinculada al proceso y podra marcarse como completada desde esta misma pestana.
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Define un titulo claro, prioridad, fecha de vencimiento y contexto operativo suficiente.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <label className="space-y-1.5 block">
+            <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Titulo de la tarea</span>
+            <input
+              value={titulo}
+              onChange={(e) => setTitulo(e.target.value)}
+              className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+              style={{ borderRadius: '22px' }}
+              placeholder="Ej: Solicitar antecedentes disciplinarios"
+            />
+          </label>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Prioridad</span>
+              <span className="text-[11px] font-semibold text-slate-400">Selecciona el nivel de atencion requerido</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {(Object.entries(TASK_PRIORITY_META) as Array<[TaskItem['prioridad'], typeof TASK_PRIORITY_META[TaskItem['prioridad']]]>).map(([value, meta]) => {
+                const activo = prioridad === value;
+                const Icon = meta.icon;
+                return (
+                  <motion.button
+                    key={value}
+                    type="button"
+                    onClick={() => setPrioridad(value)}
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.985 }}
+                    transition={{ duration: 0.15 }}
+                    className="rounded-[24px] border px-3.5 py-3.5 text-left transition-all"
+                    style={{
+                      backgroundColor: activo ? meta.bg : '#FFFFFF',
+                      borderColor: activo ? meta.border : '#E2E8F0',
+                      boxShadow: activo ? `0 0 0 1px ${meta.border}, 0 10px 24px ${meta.color}14` : 'none',
+                      borderRadius: '24px',
+                    }}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div
+                        className="mt-0.5 w-9 h-9 rounded-[14px] flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: activo ? '#FFFFFF' : meta.bg, border: `1px solid ${meta.border}`, borderRadius: '14px' }}
+                      >
+                        <Icon className="w-4 h-4" style={{ color: meta.color }} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-black" style={{ color: activo ? meta.color : '#0F172A' }}>{meta.label}</p>
+                        <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">{meta.hint}</p>
+                      </div>
+                    </div>
+                  </motion.button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Etapa del proceso</span>
+              <div className="relative">
+                <select
+                  value={etapa}
+                  onChange={(e) => setEtapa(normalizarEtapaActuacion(e.target.value))}
+                  className="w-full appearance-none rounded-[22px] border border-slate-200 bg-white px-4 py-3.5 pr-10 text-sm font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                  style={{ borderRadius: '22px' }}
+                >
+                  {etapasNormalizadas.map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+                <ChevronRight className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-slate-400" />
+              </div>
+            </label>
+
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Fecha de vencimiento</span>
+              <input
+                type="date"
+                value={fechaVencimiento}
+                onChange={(e) => setFechaVencimiento(normalizarFechaInput(e.target.value))}
+                className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                style={{ borderRadius: '22px' }}
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <label className="space-y-1.5 block">
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Descripcion</span>
+              <textarea
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                rows={5}
+                placeholder="Explica que se debe hacer, con que criterio o soporte."
+                className="w-full rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-sm text-slate-800 outline-none resize-y transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                style={{ borderRadius: '24px' }}
+              />
+            </label>
+
+            <div className="space-y-4">
+              <label className="space-y-1.5 block">
+                <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Responsable</span>
+                <input
+                  value={responsableNombre}
+                  onChange={(e) => setResponsableNombre(e.target.value)}
+                  className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                  style={{ borderRadius: '22px' }}
+                  placeholder="Nombre del profesional responsable"
+                />
+              </label>
+
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5" style={{ borderRadius: '24px' }}>
+                <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Resumen</p>
+                <div className="mt-3 space-y-2 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-500">Prioridad</span>
+                    <span className="font-bold" style={{ color: prioridadMeta.color }}>{prioridadMeta.label}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-500">Etapa</span>
+                    <span className="font-bold text-slate-800">{etapa}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-500">Vence</span>
+                    <span className="font-bold text-slate-800">{fechaVencimiento}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <label className="space-y-1.5 block">
+            <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Observaciones</span>
+            <textarea
+              value={observaciones}
+              onChange={(e) => setObservaciones(e.target.value)}
+              rows={3}
+              placeholder="Campo opcional para dejar un contexto adicional o criterio de seguimiento."
+              className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800 outline-none resize-y transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+              style={{ borderRadius: '24px' }}
+            />
+          </label>
+        </div>
+
+        <div
+          className="flex items-center justify-end gap-2 px-6 py-5 md:px-7 border-t border-slate-200 bg-slate-50"
+          style={{ borderBottomLeftRadius: '32px', borderBottomRightRadius: '32px' }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-5 py-2.5 rounded-[20px] border border-slate-300 text-sm font-semibold text-slate-600 hover:bg-white disabled:opacity-60"
+            style={{ borderRadius: '999px' }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={saving}
+            className="px-5 py-2.5 rounded-[20px] text-sm font-bold text-white inline-flex items-center gap-2 disabled:opacity-70"
+            style={{ background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)', borderRadius: '999px' }}
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            Guardar tarea
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>,
+    document.body
+  );
+}
+
 export function ModalDetallesProceso({
   proceso, onClose, onReabrir,
   onGestionAutos, onGestionEvidencias, onGestionOficios, onGestionActas,
-  onHistorial, onExpediente,
+  onHistorial, onExpediente, onActualizarProceso,
   onEnviarARevision, onNavigateToRevision,
 }: ModalDetallesProcesoProps) {
   const [tabActiva, setTabActiva] = useState<Tab>('general');
@@ -685,12 +1625,30 @@ export function ModalDetallesProceso({
   const [filtroEtapaNota, setFiltroEtapaNota] = useState<string>('TODAS');
   const [vistaAgrupadaNota, setVistaAgrupadaNota] = useState(false);
   const [notaTexto, setNotaTexto] = useState('');
-  const [notas,     setNotas]     = useState<{ id: string; texto: string; fecha: string; etapa: string }[]>([]);
+  const [notas, setNotas] = useState<NoteItem[]>([]);
+  const [notasLoading, setNotasLoading] = useState(false);
+  const [notasError, setNotasError] = useState<string | null>(null);
+  const [creandoNota, setCreandoNota] = useState(false);
+  const [notaPendienteEliminarId, setNotaPendienteEliminarId] = useState<string | null>(null);
+  const [eliminandoNotaId, setEliminandoNotaId] = useState<string | null>(null);
   const [previewArchivo, setPreviewArchivo] = useState<Archivo | null>(null);
   const [cargasActivas, setCargasActivas] = useState<CargaActiva[]>([]);
   const [mostrarAlertaCierre, setMostrarAlertaCierre] = useState(false);
   const [archivosSubidos, setArchivosSubidos] = useState<Archivo[]>([]);
   const [archivosBackend, setArchivosBackend] = useState<Archivo[]>([]);
+  const [actuaciones, setActuaciones] = useState<ActuacionItem[]>([]);
+  const [actuacionesLoading, setActuacionesLoading] = useState(false);
+  const [actuacionesError, setActuacionesError] = useState<string | null>(null);
+  const [actuacionExpandidaId, setActuacionExpandidaId] = useState<string | null>(null);
+  const [mostrarModalNuevaActuacion, setMostrarModalNuevaActuacion] = useState(false);
+  const [creandoActuacion, setCreandoActuacion] = useState(false);
+  const [tareas, setTareas] = useState<TaskItem[]>([]);
+  const [tareasLoading, setTareasLoading] = useState(false);
+  const [tareasError, setTareasError] = useState<string | null>(null);
+  const [tareaExpandidaId, setTareaExpandidaId] = useState<string | null>(null);
+  const [mostrarModalNuevaTarea, setMostrarModalNuevaTarea] = useState(false);
+  const [creandoTarea, setCreandoTarea] = useState(false);
+  const [actualizandoTareaId, setActualizandoTareaId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [autoEnviarRevision, setAutoEnviarRevision] = useState<Archivo | null>(null);
   const [autoRecargar, setAutoRecargar] = useState<Archivo | null>(null);
@@ -770,6 +1728,105 @@ export function ModalDetallesProceso({
       .catch(err => console.error('[ModalDetallesProceso] Error cargando documentos:', err));
   }, [proceso?.id]);
 
+  useEffect(() => {
+    if (!proceso?.id) return;
+
+    let cancelled = false;
+    setActuacionesLoading(true);
+    setActuacionesError(null);
+
+    disciplinaryService.getActuacionesProceso(proceso.id)
+      .then((data) => {
+        if (cancelled) return;
+        const mapped = (data || []).map(mapActuacionFromApi);
+        setActuaciones(mapped);
+        setActuacionExpandidaId(mapped[0]?.id || null);
+
+        const ultima = mapped[0]?.descripcion || 'Sin actuaciones registradas';
+        onActualizarProceso?.({
+          ultimaActuacion: ultima,
+        });
+      })
+      .catch((error: any) => {
+        if (cancelled) return;
+        console.error('[ModalDetallesProceso] Error cargando actuaciones:', error);
+        setActuaciones([]);
+        setActuacionExpandidaId(null);
+        setActuacionesError(error?.message || 'No fue posible cargar las actuaciones');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setActuacionesLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [proceso?.id]);
+
+  useEffect(() => {
+    if (!proceso?.id) return;
+
+    let cancelled = false;
+    setTareasLoading(true);
+    setTareasError(null);
+
+    disciplinaryService.getTareasProceso(proceso.id)
+      .then((data) => {
+        if (cancelled) return;
+        const mapped = (data || []).map(mapTaskFromApi);
+        setTareas(mapped);
+        setTareaExpandidaId(mapped.find((item) => !item.completada)?.id || mapped[0]?.id || null);
+      })
+      .catch((error: any) => {
+        if (cancelled) return;
+        console.error('[ModalDetallesProceso] Error cargando tareas:', error);
+        setTareas([]);
+        setTareaExpandidaId(null);
+        setTareasError(error?.message || 'No fue posible cargar las tareas');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setTareasLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [proceso?.id]);
+
+  useEffect(() => {
+    if (!proceso?.id) return;
+
+    let cancelled = false;
+    setNotasLoading(true);
+    setNotasError(null);
+
+    disciplinaryService.getNotasProceso(proceso.id)
+      .then((data) => {
+        if (cancelled) return;
+        const mapped = (data || []).map(mapNoteFromApi);
+        setNotas(mapped);
+      })
+      .catch((error: any) => {
+        if (cancelled) return;
+        console.error('[ModalDetallesProceso] Error cargando notas:', error);
+        setNotas([]);
+        setNotasError(error?.message || 'No fue posible cargar las notas');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setNotasLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [proceso?.id]);
+
   // ═══ Navegación rápida desde Scorecard ═══
   const navigateToTab = useCallback((tab: Tab, etapa: string) => {
     setTabActiva(tab);
@@ -778,6 +1835,114 @@ export function ModalDetallesProceso({
     if (tab === 'tareas')      { setFiltroEtapaTar(etapa);  setVistaAgrupadaTar(false); }
     if (tab === 'notas')       { setFiltroEtapaNota(etapa); setVistaAgrupadaNota(false); }
   }, []);
+
+  const handleCrearActuacion = useCallback(async (data: CreateDisciplinaryProcessActuacionDto) => {
+    if (!proceso?.id) return;
+
+    try {
+      setCreandoActuacion(true);
+      const created = await disciplinaryService.createActuacionProceso(proceso.id, data);
+      const mapped = mapActuacionFromApi(created);
+      let nextActuaciones: ActuacionItem[] = [];
+
+      setActuaciones((prev) => {
+        nextActuaciones = [mapped, ...prev].sort((a, b) => `${b.fecha} ${b.id}`.localeCompare(`${a.fecha} ${a.id}`));
+        return nextActuaciones;
+      });
+
+      setActuacionesError(null);
+      setActuacionExpandidaId(mapped.id);
+      setMostrarModalNuevaActuacion(false);
+      setTabActiva('actuaciones');
+      onActualizarProceso?.({
+        ultimaActuacion: nextActuaciones[0]?.descripcion || mapped.descripcion,
+      });
+      toast.success('Actuacion creada correctamente');
+    } catch (error: any) {
+      console.error('[ModalDetallesProceso] Error creando actuacion:', error);
+      toast.error(error?.message || 'No fue posible crear la actuacion');
+    } finally {
+      setCreandoActuacion(false);
+    }
+  }, [proceso?.id, onActualizarProceso]);
+
+  const handleCrearTarea = useCallback(async (data: CreateDisciplinaryProcessTaskDto) => {
+    if (!proceso?.id) return;
+
+    try {
+      setCreandoTarea(true);
+      const created = await disciplinaryService.createTareaProceso(proceso.id, data);
+      const mapped = mapTaskFromApi(created);
+      let nextTasks: TaskItem[] = [];
+
+      setTareas((prev) => {
+        nextTasks = [mapped, ...prev].sort((a, b) => {
+          if (a.completada !== b.completada) return Number(a.completada) - Number(b.completada);
+          const diff = a.vencimiento.localeCompare(b.vencimiento);
+          if (diff !== 0) return diff;
+          return `${b.createdAt || ''}${b.id}`.localeCompare(`${a.createdAt || ''}${a.id}`);
+        });
+        return nextTasks;
+      });
+
+      setTareasError(null);
+      setTareaExpandidaId(mapped.id);
+      setMostrarModalNuevaTarea(false);
+      setTabActiva('tareas');
+      onActualizarProceso?.({
+        tasksCount: nextTasks.length,
+        completedTasksCount: nextTasks.filter((item) => item.completada).length,
+        pendingTasksCount: nextTasks.filter((item) => !item.completada).length,
+      });
+      toast.success('Tarea creada correctamente');
+    } catch (error: any) {
+      console.error('[ModalDetallesProceso] Error creando tarea:', error);
+      toast.error(error?.message || 'No fue posible crear la tarea');
+    } finally {
+      setCreandoTarea(false);
+    }
+  }, [proceso?.id, onActualizarProceso]);
+
+  const handleToggleTarea = useCallback(async (tarea: TaskItem) => {
+    if (!proceso?.id) return;
+
+    const completada = !tarea.completada;
+    setActualizandoTareaId(tarea.id);
+
+    try {
+      const updated = await disciplinaryService.updateEstadoTareaProceso(proceso.id, tarea.id, completada);
+      const mapped = mapTaskFromApi(updated);
+      let nextTasks: TaskItem[] = [];
+
+      setTareas((prev) => {
+        nextTasks = prev
+          .map((item) => item.id === tarea.id ? mapped : item)
+          .sort((a, b) => {
+            if (a.completada !== b.completada) return Number(a.completada) - Number(b.completada);
+            const diff = a.vencimiento.localeCompare(b.vencimiento);
+            if (diff !== 0) return diff;
+            return `${b.createdAt || ''}${b.id}`.localeCompare(`${a.createdAt || ''}${a.id}`);
+          });
+        return nextTasks;
+      });
+
+      if (completada) {
+        setTareaExpandidaId(mapped.id);
+      }
+
+      onActualizarProceso?.({
+        tasksCount: nextTasks.length,
+        completedTasksCount: nextTasks.filter((item) => item.completada).length,
+        pendingTasksCount: nextTasks.filter((item) => !item.completada).length,
+      });
+      toast.success(completada ? 'Tarea marcada como completada' : 'Tarea marcada como pendiente');
+    } catch (error: any) {
+      console.error('[ModalDetallesProceso] Error actualizando tarea:', error);
+      toast.error(error?.message || 'No fue posible actualizar la tarea');
+    } finally {
+      setActualizandoTareaId(null);
+    }
+  }, [proceso?.id, onActualizarProceso]);
 
   // ═══ Protección beforeunload ═══
   useEffect(() => {
@@ -1028,6 +2193,7 @@ export function ModalDetallesProceso({
   const barColor        = proceso.semaforo === 'verde' ? '#10B981' : proceso.semaforo === 'amarillo' ? '#F59E0B' : '#EF4444';
 
   const TODOS_ARCHIVOS = [...archivosBackend, ...archivosSubidos];
+  const ultimaActuacionActual = actuaciones[0]?.descripcion || proceso.ultimaActuacion;
 
   // Extraer etapas únicas de los archivos para el filtro
   const etapasUnicas = Array.from(new Set(TODOS_ARCHIVOS.map(a => a.etapaProceso).filter(Boolean))) as string[];
@@ -1058,52 +2224,70 @@ export function ModalDetallesProceso({
   if (sinEtapa.length > 0) archivosAgrupados['Sin etapa'] = sinEtapa;
 
   // ═══ Actuaciones: etapas, filtrado y agrupación ═══
-  const etapasActuaciones = Array.from(new Set(MOCK_ACTUACIONES.map(a => a.etapa).filter(Boolean)));
+  const etapasActuaciones = Array.from(new Set(actuaciones.map(a => a.etapa).filter(Boolean)));
   const etapasActOrdenadas = etapasActuaciones.sort((a, b) => {
     const ia = ORDEN_ETAPAS.indexOf(a); const ib = ORDEN_ETAPAS.indexOf(b);
     return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
   });
-  const actuacionesFiltradas = MOCK_ACTUACIONES.filter(a =>
+  const actuacionesFiltradas = actuaciones.filter(a =>
     (filtroEtapaAct === 'TODAS' || a.etapa === filtroEtapaAct) &&
     (!bgActivo || a.descripcion.toLowerCase().includes(bg) || a.responsable.toLowerCase().includes(bg) || a.tipo.toLowerCase().includes(bg) || a.etapa.toLowerCase().includes(bg))
   );
-  const actuacionesAgrupadas = etapasActOrdenadas.reduce<Record<string, typeof MOCK_ACTUACIONES>>((acc, etapa) => {
+  const actuacionesAgrupadas = etapasActOrdenadas.reduce<Record<string, (typeof actuaciones)>>((acc, etapa) => {
     const items = actuacionesFiltradas.filter(a => a.etapa === etapa);
     if (items.length > 0) acc[etapa] = items;
     return acc;
   }, {});
 
   // ═══ Tareas: etapas, filtrado y agrupación ═══
-  const etapasTareas = Array.from(new Set(MOCK_TAREAS.map(t => t.etapa).filter(Boolean)));
+  const etapasTareas = Array.from(new Set(tareas.map(t => t.etapa).filter(Boolean)));
   const etapasTarOrdenadas = etapasTareas.sort((a, b) => {
     const ia = ORDEN_ETAPAS.indexOf(a); const ib = ORDEN_ETAPAS.indexOf(b);
     return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
   });
-  const tareasFiltradas = MOCK_TAREAS.filter(t =>
+  const tareasFiltradas = tareas.filter(t =>
     (filtroEtapaTar === 'TODAS' || t.etapa === filtroEtapaTar) &&
-    (!bgActivo || t.titulo.toLowerCase().includes(bg) || t.prioridad.toLowerCase().includes(bg) || t.etapa.toLowerCase().includes(bg))
+    (!bgActivo
+      || t.titulo.toLowerCase().includes(bg)
+      || t.prioridad.toLowerCase().includes(bg)
+      || t.etapa.toLowerCase().includes(bg)
+      || (t.responsable || '').toLowerCase().includes(bg)
+      || (t.descripcion || '').toLowerCase().includes(bg))
   );
-  const tareasAgrupadas = etapasTarOrdenadas.reduce<Record<string, typeof MOCK_TAREAS>>((acc, etapa) => {
+  const tareasAgrupadas = etapasTarOrdenadas.reduce<Record<string, typeof tareas>>((acc, etapa) => {
     const items = tareasFiltradas.filter(t => t.etapa === etapa);
     if (items.length > 0) acc[etapa] = items;
     return acc;
   }, {});
 
   // ═══ Notas: etapas, filtrado y agrupación ═══
-  const etapasNotas = Array.from(new Set(notas.map(n => n.etapa).filter(Boolean)));
+  const filtroEtapaNotaNormalizado = filtroEtapaNota === 'TODAS' ? 'TODAS' : normalizarEtapaActuacion(filtroEtapaNota);
+  const notasNormalizadas: NoteItem[] = notas.map((nota) => ({
+    ...nota,
+    etapa: normalizarEtapaActuacion(nota.etapa),
+  }));
+  const etapasNotas = Array.from(new Set(notasNormalizadas.map((n) => n.etapa).filter(Boolean)));
   const etapasNotasOrdenadas = etapasNotas.sort((a, b) => {
     const ia = ORDEN_ETAPAS.indexOf(a); const ib = ORDEN_ETAPAS.indexOf(b);
     return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
   });
-  const notasFiltradas = notas.filter(n =>
-    (filtroEtapaNota === 'TODAS' || n.etapa === filtroEtapaNota) &&
+  const notasTienenVariasEtapas = etapasNotasOrdenadas.length > 1;
+  const notasFiltradas = notasNormalizadas.filter(n =>
+    (filtroEtapaNotaNormalizado === 'TODAS' || n.etapa === filtroEtapaNotaNormalizado) &&
     (!bgActivo || n.texto.toLowerCase().includes(bg) || n.etapa.toLowerCase().includes(bg))
   );
-  const notasAgrupadas = etapasNotasOrdenadas.reduce<Record<string, typeof notas>>((acc, etapa) => {
+  const notasAgrupadas = etapasNotasOrdenadas.reduce<Record<string, NoteItem[]>>((acc, etapa) => {
     const items = notasFiltradas.filter(n => n.etapa === etapa);
     if (items.length > 0) acc[etapa] = items;
     return acc;
   }, {});
+
+  useEffect(() => {
+    if (!notasTienenVariasEtapas) {
+      if (filtroEtapaNota !== 'TODAS') setFiltroEtapaNota('TODAS');
+      if (vistaAgrupadaNota) setVistaAgrupadaNota(false);
+    }
+  }, [filtroEtapaNota, notasTienenVariasEtapas, vistaAgrupadaNota]);
 
   // ═══ Exportar resumen a CSV ═══
   const exportarResumenCSV = useCallback(() => {
@@ -1180,26 +2364,26 @@ export function ModalDetallesProceso({
     // ── Sección 2: Actuaciones
     lines.push('═══ ACTUACIONES ═══');
     lines.push(['Fecha', 'Descripción', 'Tipo', 'Responsable', 'Etapa'].join(sep));
-    MOCK_ACTUACIONES.forEach(a => {
+    actuaciones.forEach(a => {
       lines.push([a.fecha, a.descripcion, a.tipo, a.responsable, a.etapa || '-'].join(sep));
     });
-    lines.push(`Total Actuaciones: ${MOCK_ACTUACIONES.length}`);
+    lines.push(`Total Actuaciones: ${actuaciones.length}`);
     lines.push('');
 
     // ── Sección 3: Tareas
     lines.push('═══ TAREAS ═══');
     lines.push(['Título', 'Vencimiento', 'Prioridad', 'Estado', 'Etapa'].join(sep));
-    MOCK_TAREAS.forEach(t => {
+    tareas.forEach(t => {
       lines.push([t.titulo, t.vencimiento, t.prioridad, t.completada ? 'Completada' : 'Pendiente', t.etapa || '-'].join(sep));
     });
-    lines.push(`Total Tareas: ${MOCK_TAREAS.length} (${MOCK_TAREAS.filter(t => t.completada).length} completadas)`);
+    lines.push(`Total Tareas: ${tareas.length} (${tareas.filter(t => t.completada).length} completadas)`);
     lines.push('');
 
     // ── Sección 4: Notas
     lines.push('═══ NOTAS INTERNAS ═══');
     lines.push(['Fecha', 'Etapa', 'Contenido'].join(sep));
     notas.forEach(n => {
-      lines.push([n.fecha, n.etapa || '-', `"${n.texto.replace(/"/g, '""')}"`].join(sep));
+      lines.push([formatFechaActuacion(n.fecha, true), n.etapa || '-', `"${n.texto.replace(/"/g, '""')}"`].join(sep));
     });
     lines.push(`Total Notas: ${notas.length}`);
     lines.push('');
@@ -1218,8 +2402,8 @@ export function ModalDetallesProceso({
     lines.push(['Etapa', 'Archivos', 'Actuaciones', 'Tareas', 'Notas'].join(sep));
     ORDEN_ETAPAS.forEach(etapa => {
       const nArch = TODOS_ARCHIVOS.filter(a => a.etapaProceso === etapa).length;
-      const nAct  = MOCK_ACTUACIONES.filter(a => a.etapa === etapa).length;
-      const nTar  = MOCK_TAREAS.filter(t => t.etapa === etapa).length;
+      const nAct  = actuaciones.filter(a => a.etapa === etapa).length;
+      const nTar  = tareas.filter(t => t.etapa === etapa).length;
       const nNot  = notas.filter(n => n.etapa === etapa).length;
       if (nArch + nAct + nTar + nNot > 0) {
         lines.push([etapa, nArch, nAct, nTar, nNot].join(sep));
@@ -1235,15 +2419,15 @@ export function ModalDetallesProceso({
     link.click();
     URL.revokeObjectURL(url);
     toast.success('Expediente completo exportado', {
-      description: `${TODOS_ARCHIVOS.length} archivos · ${MOCK_ACTUACIONES.length} actuaciones · ${MOCK_TAREAS.length} tareas · ${notas.length} notas`,
+      description: `${TODOS_ARCHIVOS.length} archivos · ${actuaciones.length} actuaciones · ${tareas.length} tareas · ${notas.length} notas`,
       duration: 5000,
     });
-  }, [TODOS_ARCHIVOS, notas, proceso]);
+  }, [TODOS_ARCHIVOS, actuaciones.length, notas, proceso, tareas]);
 
   // Conteos globales para búsqueda
   const bgArchivos = bgActivo ? archivosFiltrados.length : TODOS_ARCHIVOS.length + cargasEnCursoCount;
-  const bgActuaciones = bgActivo ? actuacionesFiltradas.length : MOCK_ACTUACIONES.length;
-  const bgTareas = bgActivo ? tareasFiltradas.length : MOCK_TAREAS.length;
+  const bgActuaciones = bgActivo ? actuacionesFiltradas.length : actuaciones.length;
+  const bgTareas = bgActivo ? tareasFiltradas.length : tareas.length;
   const bgNotas = bgActivo ? notasFiltradas.length : notas.length;
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
@@ -1277,18 +2461,65 @@ export function ModalDetallesProceso({
   };
 
   const TIPO_ACT: Record<string, { color: string; label: string }> = {
+    actuacion:    { color: '#2563EB', label: 'Actuacion'    },
     auto:         { color: '#7C3AED', label: 'Auto'         },
     notificacion: { color: '#0891B2', label: 'Notificación' },
     asignacion:   { color: '#10B981', label: 'Asignación'   },
     recepcion:    { color: '#F59E0B', label: 'Recepción'    },
   };
 
-  const guardarNota = () => {
-    if (!notaTexto.trim()) return;
-    setNotas(prev => [{ id: Date.now().toString(), texto: notaTexto, fecha: new Date().toLocaleDateString('es-CO'), etapa: proceso.etapaActual }, ...prev]);
-    setNotaTexto('');
-    toast.success('Nota guardada');
-  };
+  const guardarNota = useCallback(async () => {
+    if (!notaTexto.trim() || !proceso?.id) return;
+
+    const payload: CreateDisciplinaryProcessNoteDto = {
+      texto: notaTexto.trim(),
+      etapa: proceso.etapaActual,
+    };
+
+    try {
+      setCreandoNota(true);
+      const created = await disciplinaryService.createNotaProceso(proceso.id, payload);
+      const mapped = mapNoteFromApi(created);
+      let nextNotes: NoteItem[] = [];
+
+      setNotas((prev) => {
+        nextNotes = [mapped, ...prev].sort((a, b) => `${b.createdAt || b.fecha}${b.id}`.localeCompare(`${a.createdAt || a.fecha}${a.id}`));
+        return nextNotes;
+      });
+
+      setNotasError(null);
+      setNotaTexto('');
+      setTabActiva('notas');
+      toast.success('Nota guardada');
+    } catch (error: any) {
+      console.error('[ModalDetallesProceso] Error guardando nota:', error);
+      toast.error(error?.message || 'No fue posible guardar la nota');
+    } finally {
+      setCreandoNota(false);
+    }
+  }, [notaTexto, proceso?.etapaActual, proceso?.id, onActualizarProceso]);
+
+  const handleEliminarNota = useCallback(async (nota: NoteItem) => {
+    if (!proceso?.id) return;
+
+    try {
+      setEliminandoNotaId(nota.id);
+      await disciplinaryService.deleteNotaProceso(proceso.id, nota.id);
+
+      let nextNotes: NoteItem[] = [];
+      setNotas((prev) => {
+        nextNotes = prev.filter((item) => item.id !== nota.id);
+        return nextNotes;
+      });
+      setNotaPendienteEliminarId((current) => current === nota.id ? null : current);
+      toast.success('Nota eliminada');
+    } catch (error: any) {
+      console.error('[ModalDetallesProceso] Error eliminando nota:', error);
+      toast.error(error?.message || 'No fue posible eliminar la nota');
+    } finally {
+      setEliminandoNotaId(null);
+    }
+  }, [proceso?.id]);
 
   // ═══ Enviar Auto a Revisión y Aprobación ═══
   // Estado para rastrear si debemos reopen el modal después de cerrar el de confirmación
@@ -1972,7 +3203,7 @@ export function ModalDetallesProceso({
                           <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Última Actuación</span>
                         </div>
                         <p className="text-xs text-gray-700 leading-relaxed">
-                          {proceso.ultimaActuacion || <span className="text-gray-400 italic">Sin registros</span>}
+                          {ultimaActuacionActual || <span className="text-gray-400 italic">Sin registros</span>}
                         </p>
                       </div>
                     </div>
@@ -2117,9 +3348,9 @@ export function ModalDetallesProceso({
                             const epc = etapaColor(etapa);
                             const nDocs = TODOS_ARCHIVOS.filter(a => a.etapaProceso === etapa).length;
                             const nAprobados = TODOS_ARCHIVOS.filter(a => a.etapaProceso === etapa && a.estado === 'aprobado').length;
-                            const nAct = MOCK_ACTUACIONES.filter(a => a.etapa === etapa).length;
-                            const nTar = MOCK_TAREAS.filter(t => t.etapa === etapa).length;
-                            const nTarDone = MOCK_TAREAS.filter(t => t.etapa === etapa && t.completada).length;
+                            const nAct = actuaciones.filter(a => a.etapa === etapa).length;
+                            const nTar = tareas.filter(t => t.etapa === etapa).length;
+                            const nTarDone = tareas.filter(t => t.etapa === etapa && t.completada).length;
                             const nNot = notas.filter(n => n.etapa === etapa).length;
                             const hasData = nDocs + nAct + nTar + nNot > 0;
                             const isCurrent = etapa === proceso.etapaActual;
@@ -2163,8 +3394,8 @@ export function ModalDetallesProceso({
                           <div className="grid grid-cols-5 text-[10px] bg-gray-100 border-t border-gray-300">
                             <div className="px-2 py-1.5 col-span-1 font-black text-gray-700">TOTAL</div>
                             <div className="px-2 py-1.5 text-center font-black text-gray-900">{TODOS_ARCHIVOS.length}</div>
-                            <div className="px-2 py-1.5 text-center font-black text-gray-900">{MOCK_ACTUACIONES.length}</div>
-                            <div className="px-2 py-1.5 text-center font-black text-gray-900">{MOCK_TAREAS.length}</div>
+                            <div className="px-2 py-1.5 text-center font-black text-gray-900">{actuaciones.length}</div>
+                            <div className="px-2 py-1.5 text-center font-black text-gray-900">{tareas.length}</div>
                             <div className="px-2 py-1.5 text-center font-black text-gray-900">{notas.length}</div>
                           </div>
                         </div>
@@ -2472,7 +3703,7 @@ export function ModalDetallesProceso({
                         </p>
                         <span className="px-2 py-0.5 text-[9px] font-bold rounded inline-flex items-center gap-1 mt-0.5"
                           style={{ backgroundColor: ec.bg, color: ec.text, border: `1px solid ${ec.text}22` }}>
-                          <Zap className="w-2.5 h-2.5" />Se marcará como: {proceso.etapaActual}
+                          <Zap className="w-2.5 h-2.5" />Se marcara como: {proceso.etapaActual}
                         </span>
                       </div>
                     </div>
@@ -2626,9 +3857,14 @@ export function ModalDetallesProceso({
 
                 {/* ── ACTUACIONES ── */}
                 {tabActiva === 'actuaciones' && (() => {
-                  // Helper render fila actuación
-                  const renderActFila = (act: typeof MOCK_ACTUACIONES[0], idx: number, total: number, ocultarEtapa = false) => {
+                  // Helper render fila actuacion
+                  const renderActFila = (act: ActuacionItem, idx: number, total: number, ocultarEtapa = false) => {
                     const at = TIPO_ACT[act.tipo] || { color: '#6B7280', label: act.tipo };
+                    const expandida = actuacionExpandidaId === act.id;
+                    const fechaVisible = formatFechaActuacion(act.fecha);
+                    const fechaRegistro = act.createdAt ? formatFechaActuacion(act.createdAt, true) : null;
+                    const tieneObservaciones = !!act.observaciones?.trim();
+
                     return (
                       <div key={act.id} className="flex gap-2.5">
                         <div className="flex flex-col items-center flex-shrink-0">
@@ -2636,27 +3872,115 @@ export function ModalDetallesProceso({
                           {idx < total - 1 && <div className="w-px flex-1 bg-gray-200 my-1" />}
                         </div>
                         <div className="flex-1 pb-3">
-                          <div className="bg-white border border-gray-100 rounded-xl p-2.5 hover:border-blue-200 transition-colors">
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <p className="text-xs font-semibold text-gray-900 leading-tight">{act.descripcion}</p>
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                {!ocultarEtapa && act.etapa && (() => {
-                                  const epc = etapaColor(act.etapa);
-                                  return (
-                                    <span className="px-1.5 py-0.5 text-[8px] font-bold rounded inline-flex items-center gap-0.5"
-                                      style={{ backgroundColor: epc.bg, color: epc.text, border: `1px solid ${epc.text}22` }}>
-                                      <Zap className="w-2.5 h-2.5" />{act.etapa}
+                          <motion.div
+                            layout
+                            className="overflow-hidden rounded-2xl border border-gray-200 bg-white transition-all"
+                            style={{ boxShadow: expandida ? `0 0 0 1px ${at.color}22, 0 12px 30px rgba(15, 23, 42, 0.08)` : 'none' }}
+                          >
+                            <motion.button
+                              layout="position"
+                              type="button"
+                              onClick={() => setActuacionExpandidaId(expandida ? null : act.id)}
+                              className="w-full px-3 py-3 text-left hover:bg-gray-50/80 transition-colors"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                                    {!ocultarEtapa && act.etapa && (() => {
+                                      const epc = etapaColor(act.etapa);
+                                      return (
+                                        <span
+                                          className="px-2 py-0.5 text-[9px] font-bold rounded-full inline-flex items-center gap-1"
+                                          style={{ backgroundColor: epc.bg, color: epc.text, border: `1px solid ${epc.text}22` }}
+                                        >
+                                          <Zap className="w-2.5 h-2.5" />{act.etapa}
+                                        </span>
+                                      );
+                                    })()}
+                                    <span className="px-2 py-0.5 text-[9px] font-bold rounded-full text-white" style={{ backgroundColor: at.color }}>
+                                      {at.label}
                                     </span>
-                                  );
-                                })()}
-                                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full text-white" style={{ backgroundColor: at.color }}>{at.label}</span>
+                                  </div>
+                                  <p className="text-sm font-semibold text-gray-900 leading-snug">{act.descripcion}</p>
+                                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{fechaVisible}</span>
+                                    <span className="flex items-center gap-1"><User className="w-3 h-3" />{act.responsable}</span>
+                                    {tieneObservaciones && (
+                                      <span className="text-[10px] font-bold" style={{ color: at.color }}>
+                                        Con observaciones
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 pl-2 flex-shrink-0">
+                                  <span className="hidden sm:inline text-[10px] font-bold text-gray-400">
+                                    {expandida ? 'Ocultar detalle' : 'Ver detalle'}
+                                  </span>
+                                  <div className="w-8 h-8 rounded-xl border border-gray-200 bg-white flex items-center justify-center text-gray-500">
+                                    {expandida ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                            <div className="flex items-center gap-3 text-[10px] text-gray-500">
-                              <span className="flex items-center gap-1"><Calendar className="w-2.5 h-2.5" />{act.fecha}</span>
-                              <span className="flex items-center gap-1"><User className="w-2.5 h-2.5" />{act.responsable}</span>
-                            </div>
-                          </div>
+                            </motion.button>
+
+                            <AnimatePresence initial={false}>
+                              {expandida && (
+                                <motion.div
+                                  key={`actuacion-detalle-${act.id}`}
+                                  initial={{ opacity: 0, height: 0, y: -6 }}
+                                  animate={{ opacity: 1, height: 'auto', y: 0 }}
+                                  exit={{ opacity: 0, height: 0, y: -4 }}
+                                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                                  className="overflow-hidden border-t border-gray-100 bg-gradient-to-b from-white to-slate-50"
+                                >
+                                  <div className="px-3 pb-3 pt-2.5">
+                                <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-3">
+                                  <div className="space-y-3">
+                                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Descripcion completa</p>
+                                      <p className="mt-1.5 text-sm leading-relaxed text-slate-700">{act.descripcion}</p>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Observaciones</p>
+                                      <p className={`mt-1.5 text-sm leading-relaxed ${tieneObservaciones ? 'text-slate-700' : 'text-slate-400 italic'}`}>
+                                        {tieneObservaciones ? act.observaciones : 'No se registraron observaciones adicionales para esta actuacion.'}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Datos del registro</p>
+                                    <div className="mt-2.5 space-y-2.5 text-sm">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-slate-500">Tipo</span>
+                                        <span className="font-bold" style={{ color: at.color }}>{at.label}</span>
+                                      </div>
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-slate-500">Etapa</span>
+                                        <span className="font-bold text-slate-800">{act.etapa || 'Sin etapa'}</span>
+                                      </div>
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-slate-500">Fecha actuacion</span>
+                                        <span className="font-bold text-slate-800 text-right">{fechaVisible}</span>
+                                      </div>
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-slate-500">Responsable</span>
+                                        <span className="font-bold text-slate-800 text-right">{act.responsable}</span>
+                                      </div>
+                                      {fechaRegistro && (
+                                        <div className="flex items-start justify-between gap-3 border-t border-slate-200 pt-2.5">
+                                          <span className="text-slate-500">Registrada en sistema</span>
+                                          <span className="font-bold text-slate-800 text-right">{fechaRegistro}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </motion.div>
                         </div>
                       </div>
                     );
@@ -2668,7 +3992,7 @@ export function ModalDetallesProceso({
                       <span className="text-xs font-black text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
                         <Zap className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />Historial
                       </span>
-                      <button onClick={() => toast.info('Nueva actuación')}
+                      <button onClick={() => setMostrarModalNuevaActuacion(true)}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white"
                         style={{ background: '#003DA5' }}>
                         <Plus className="w-3 h-3" />Nueva
@@ -2685,11 +4009,11 @@ export function ModalDetallesProceso({
                           color: filtroEtapaAct === 'TODAS' ? '#FFFFFF' : '#6B7280',
                           borderColor: filtroEtapaAct === 'TODAS' ? '#003DA5' : '#E5E7EB',
                         }}>
-                        Todas ({MOCK_ACTUACIONES.length})
+                        Todas ({actuaciones.length})
                       </button>
                       {etapasActOrdenadas.map(etapa => {
                         const epc = etapaColor(etapa);
-                        const count = MOCK_ACTUACIONES.filter(a => a.etapa === etapa).length;
+                        const count = actuaciones.filter(a => a.etapa === etapa).length;
                         const activo = filtroEtapaAct === etapa;
                         return (
                           <button key={etapa} onClick={() => setFiltroEtapaAct(activo ? 'TODAS' : etapa)}
@@ -2718,14 +4042,28 @@ export function ModalDetallesProceso({
 
                     {/* Contador */}
                     <p className="text-[10px] font-bold mb-1" style={{ color: '#003DA5' }}>
-                      {actuacionesFiltradas.length} de {MOCK_ACTUACIONES.length} actuaciones
+                      {actuacionesFiltradas.length} de {actuaciones.length} actuaciones
                       {filtroEtapaAct !== 'TODAS' && <span className="text-gray-500 font-semibold ml-1">(filtrado: {filtroEtapaAct})</span>}
                     </p>
 
-                    {actuacionesFiltradas.length === 0 ? (
+                    {actuacionesLoading ? (
+                      <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-500">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Cargando actuaciones...
+                      </div>
+                    ) : actuacionesError ? (
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-xs text-red-700">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4" />
+                          <span className="font-semibold">{actuacionesError}</span>
+                        </div>
+                      </div>
+                    ) : actuacionesFiltradas.length === 0 ? (
                       <div className="flex flex-col items-center py-8 text-gray-400">
                         <Zap className="w-8 h-8 text-gray-300 mb-2" />
-                        <p className="text-xs text-gray-500 font-medium">Sin actuaciones en esta etapa</p>
+                        <p className="text-xs text-gray-500 font-medium">
+                          {actuaciones.length === 0 ? 'Aun no hay actuaciones registradas' : 'Sin actuaciones en esta etapa'}
+                        </p>
                         <button onClick={() => setFiltroEtapaAct('TODAS')} className="mt-1.5 text-[11px] font-bold underline" style={{ color: '#003DA5' }}>Limpiar filtro</button>
                       </div>
                     ) : vistaAgrupadaAct ? (
@@ -2763,34 +4101,146 @@ export function ModalDetallesProceso({
 
                 {/* ── TAREAS ── */}
                 {tabActiva === 'tareas' && (() => {
-                  // Helper render fila tarea
-                  const renderTareaFila = (tarea: typeof MOCK_TAREAS[0], ocultarEtapa = false) => {
-                    const pcolor = tarea.prioridad === 'alta' ? '#EF4444' : '#F59E0B';
+                  const renderTareaFila = (tarea: TaskItem, ocultarEtapa = false) => {
+                    const prioridadMeta = TASK_PRIORITY_META[tarea.prioridad] || TASK_PRIORITY_META.media;
+                    const PriorityIcon = prioridadMeta.icon;
+                    const dueMeta = getTaskDueMeta(tarea);
+                    const expandida = tareaExpandidaId === tarea.id;
+                    const actualizando = actualizandoTareaId === tarea.id;
+                    const fechaVencimiento = formatFechaActuacion(tarea.vencimiento);
+                    const fechaCompletada = tarea.fechaCompletada ? formatFechaActuacion(tarea.fechaCompletada, true) : null;
+                    const fechaRegistro = tarea.createdAt ? formatFechaActuacion(tarea.createdAt, true) : null;
+                    const epc = etapaColor(tarea.etapa);
+
                     return (
-                      <div key={tarea.id}
-                        className={`flex items-start gap-2.5 p-2.5 rounded-xl border transition-all ${tarea.completada ? 'bg-gray-50 border-gray-100 opacity-60' : 'bg-white border-gray-200 hover:border-blue-200'}`}>
-                        <button
-                          className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${tarea.completada ? 'border-green-500 bg-green-500' : 'border-gray-300 hover:border-green-400'}`}
-                          onClick={() => toast.success(tarea.completada ? 'Marcada pendiente' : 'Completada')}>
-                          {tarea.completada && <CheckCircle className="w-2.5 h-2.5 text-white" />}
-                        </button>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-xs font-semibold ${tarea.completada ? 'line-through text-gray-400' : 'text-gray-900'}`}>{tarea.titulo}</p>
-                          <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-500 flex-wrap">
-                            <span className="flex items-center gap-0.5"><Calendar className="w-2.5 h-2.5" />Vence: {tarea.vencimiento}</span>
-                            <span className="px-1.5 py-0.5 font-bold rounded-full text-white" style={{ backgroundColor: pcolor }}>{tarea.prioridad.toUpperCase()}</span>
-                            {!ocultarEtapa && tarea.etapa && (() => {
-                              const epc = etapaColor(tarea.etapa);
-                              return (
-                                <span className="px-1.5 py-0.5 text-[8px] font-bold rounded inline-flex items-center gap-0.5"
-                                  style={{ backgroundColor: epc.bg, color: epc.text, border: `1px solid ${epc.text}22` }}>
-                                  <Zap className="w-2.5 h-2.5" />{tarea.etapa}
-                                </span>
-                              );
-                            })()}
-                          </div>
+                      <motion.div
+                        key={tarea.id}
+                        layout
+                        className={`rounded-[22px] border transition-all overflow-hidden ${tarea.completada ? 'bg-slate-50/90 border-slate-200' : 'bg-white border-slate-200 hover:border-blue-200 hover:shadow-sm'}`}
+                        style={{ borderRadius: '22px' }}
+                      >
+                        <div className="flex items-start gap-3 p-3">
+                          <button
+                            type="button"
+                            disabled={actualizando}
+                            onClick={() => handleToggleTarea(tarea)}
+                            className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${tarea.completada ? 'border-green-500 bg-green-500' : 'border-slate-300 hover:border-green-400'} disabled:opacity-60`}
+                            title={tarea.completada ? 'Marcar como pendiente' : 'Marcar como completada'}
+                          >
+                            {actualizando ? (
+                              <Loader2 className="w-3 h-3 animate-spin text-white" />
+                            ) : tarea.completada ? (
+                              <CheckCircle className="w-3 h-3 text-white" />
+                            ) : null}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setTareaExpandidaId(expandida ? null : tarea.id)}
+                            className="flex-1 min-w-0 text-left"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className={`text-sm font-semibold ${tarea.completada ? 'line-through text-slate-400' : 'text-slate-900'}`}>{tarea.titulo}</p>
+                                <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-500 flex-wrap">
+                                  <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Vence: {fechaVencimiento}</span>
+                                  <span
+                                    className="px-2 py-0.5 font-bold rounded-full inline-flex items-center gap-1"
+                                    style={{ color: prioridadMeta.color, backgroundColor: prioridadMeta.bg, border: `1px solid ${prioridadMeta.border}` }}
+                                  >
+                                    <PriorityIcon className="w-3 h-3" />
+                                    {prioridadMeta.label}
+                                  </span>
+                                  {dueMeta && (
+                                    <span
+                                      className="px-2 py-0.5 font-bold rounded-full inline-flex items-center gap-1"
+                                      style={{ color: dueMeta.color, backgroundColor: dueMeta.bg, border: `1px solid ${dueMeta.border}` }}
+                                    >
+                                      <Clock className="w-3 h-3" />
+                                      {dueMeta.label}
+                                    </span>
+                                  )}
+                                  {!ocultarEtapa && tarea.etapa && (
+                                    <span
+                                      className="px-2 py-0.5 text-[10px] font-bold rounded-full inline-flex items-center gap-1"
+                                      style={{ backgroundColor: epc.bg, color: epc.text, border: `1px solid ${epc.text}22` }}
+                                    >
+                                      <Zap className="w-2.5 h-2.5" />
+                                      {tarea.etapa}
+                                    </span>
+                                  )}
+                                  {tarea.completada && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-green-700 bg-green-100 border border-green-200">
+                                      Completada
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {expandida ? <ChevronUp className="w-4 h-4 text-slate-400 flex-shrink-0" /> : <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />}
+                            </div>
+                          </button>
                         </div>
-                      </div>
+
+                        <AnimatePresence initial={false}>
+                          {expandida && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2, ease: 'easeOut' }}
+                              className="overflow-hidden"
+                            >
+                              <div className="px-4 pb-4 pt-1 border-t border-slate-100 bg-gradient-to-b from-white to-slate-50/80">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                  <div className="rounded-[18px] border border-slate-200 bg-white p-3">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Descripcion</p>
+                                    <p className="mt-2 text-sm text-slate-700 leading-relaxed">
+                                      {tarea.descripcion?.trim() || 'Sin descripcion adicional.'}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-[18px] border border-slate-200 bg-white p-3">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Detalle operativo</p>
+                                    <div className="mt-2 space-y-2 text-sm text-slate-700">
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span className="text-slate-500">Responsable</span>
+                                        <span className="font-semibold text-right">{tarea.responsable || 'Sin responsable'}</span>
+                                      </div>
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span className="text-slate-500">Vencimiento</span>
+                                        <span className="font-semibold text-right">{fechaVencimiento}</span>
+                                      </div>
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span className="text-slate-500">Estado</span>
+                                        <span className={`font-semibold text-right ${tarea.completada ? 'text-green-700' : 'text-amber-700'}`}>
+                                          {tarea.completada ? 'Completada' : 'Pendiente'}
+                                        </span>
+                                      </div>
+                                      {fechaCompletada && (
+                                        <div className="flex items-center justify-between gap-3">
+                                          <span className="text-slate-500">Fecha completada</span>
+                                          <span className="font-semibold text-right">{fechaCompletada}</span>
+                                        </div>
+                                      )}
+                                      {fechaRegistro && (
+                                        <div className="flex items-center justify-between gap-3">
+                                          <span className="text-slate-500">Registro</span>
+                                          <span className="font-semibold text-right">{fechaRegistro}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                {tarea.observaciones?.trim() && (
+                                  <div className="mt-3 rounded-[18px] border border-blue-100 bg-blue-50/70 p-3">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-700">Observaciones</p>
+                                    <p className="mt-1.5 text-sm text-slate-700 leading-relaxed">{tarea.observaciones}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </motion.div>
                     );
                   };
 
@@ -2800,14 +4250,13 @@ export function ModalDetallesProceso({
                       <span className="text-xs font-black text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
                         <CheckSquare className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />Tareas
                       </span>
-                      <button onClick={() => toast.info('Nueva tarea')}
+                      <button onClick={() => setMostrarModalNuevaTarea(true)}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white"
                         style={{ background: '#003DA5' }}>
                         <Plus className="w-3 h-3" />Nueva
                       </button>
                     </div>
 
-                    {/* Filtro por etapa + toggle agrupado */}
                     <div className="flex items-center gap-1.5 flex-wrap mb-2">
                       <Filter className="w-3 h-3 text-gray-400" />
                       <button onClick={() => setFiltroEtapaTar('TODAS')}
@@ -2817,11 +4266,11 @@ export function ModalDetallesProceso({
                           color: filtroEtapaTar === 'TODAS' ? '#FFFFFF' : '#6B7280',
                           borderColor: filtroEtapaTar === 'TODAS' ? '#003DA5' : '#E5E7EB',
                         }}>
-                        Todas ({MOCK_TAREAS.length})
+                        Todas ({tareas.length})
                       </button>
                       {etapasTarOrdenadas.map(etapa => {
                         const epc = etapaColor(etapa);
-                        const count = MOCK_TAREAS.filter(t => t.etapa === etapa).length;
+                        const count = tareas.filter(t => t.etapa === etapa).length;
                         const activo = filtroEtapaTar === etapa;
                         return (
                           <button key={etapa} onClick={() => setFiltroEtapaTar(activo ? 'TODAS' : etapa)}
@@ -2848,12 +4297,11 @@ export function ModalDetallesProceso({
                       </button>
                     </div>
 
-                    {/* Stats badges (basados en datos filtrados) */}
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       {[
-                        { label: 'Mostrando',   value: tareasFiltradas.length,                                cl: 'bg-blue-50 border-blue-200 text-blue-700'   },
-                        { label: 'Completadas', value: tareasFiltradas.filter(t => t.completada).length,      cl: 'bg-green-50 border-green-200 text-green-700' },
-                        { label: 'Pendientes',  value: tareasFiltradas.filter(t => !t.completada).length,     cl: 'bg-amber-50 border-amber-200 text-amber-700' },
+                        { label: 'Mostrando', value: tareasFiltradas.length, cl: 'bg-blue-50 border-blue-200 text-blue-700' },
+                        { label: 'Completadas', value: tareasFiltradas.filter(t => t.completada).length, cl: 'bg-green-50 border-green-200 text-green-700' },
+                        { label: 'Pendientes', value: tareasFiltradas.filter(t => !t.completada).length, cl: 'bg-amber-50 border-amber-200 text-amber-700' },
                       ].map(s => (
                         <span key={s.label} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold ${s.cl}`}>
                           <span className="text-sm font-black">{s.value}</span>{s.label}
@@ -2864,18 +4312,31 @@ export function ModalDetallesProceso({
                       )}
                     </div>
 
-                    {tareasFiltradas.length === 0 ? (
+                    {tareasLoading ? (
+                      <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-500">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Cargando tareas...
+                      </div>
+                    ) : tareasError ? (
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-xs text-red-700">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4" />
+                          <span className="font-semibold">{tareasError}</span>
+                        </div>
+                      </div>
+                    ) : tareasFiltradas.length === 0 ? (
                       <div className="flex flex-col items-center py-8 text-gray-400">
                         <CheckSquare className="w-8 h-8 text-gray-300 mb-2" />
-                        <p className="text-xs text-gray-500 font-medium">Sin tareas en esta etapa</p>
+                        <p className="text-xs text-gray-500 font-medium">
+                          {tareas.length === 0 ? 'Aun no hay tareas registradas' : 'Sin tareas en esta etapa'}
+                        </p>
                         <button onClick={() => setFiltroEtapaTar('TODAS')} className="mt-1.5 text-[11px] font-bold underline" style={{ color: '#003DA5' }}>Limpiar filtro</button>
                       </div>
                     ) : vistaAgrupadaTar ? (
-                      /* Vista agrupada */
                       <div className="space-y-3">
-                        {Object.entries(tareasAgrupadas).map(([etapa, tareas]) => {
+                        {Object.entries(tareasAgrupadas).map(([etapa, grupoTareas]) => {
                           const epc = etapaColor(etapa);
-                          const completadas = tareas.filter(t => t.completada).length;
+                          const completadas = grupoTareas.filter(t => t.completada).length;
                           return (
                             <div key={etapa} className="rounded-xl border overflow-hidden" style={{ borderColor: `${epc.text}33` }}>
                               <div className="flex items-center gap-2 px-3 py-1.5" style={{ backgroundColor: epc.bg }}>
@@ -2884,21 +4345,20 @@ export function ModalDetallesProceso({
                                 </div>
                                 <p className="text-[11px] font-black flex-1" style={{ color: epc.text }}>{etapa}</p>
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: epc.text }}>
-                                  {tareas.length}
+                                  {grupoTareas.length}
                                 </span>
                                 <span className="text-[9px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">
-                                  ✓ {completadas}/{tareas.length}
+                                  Completadas {completadas}/{grupoTareas.length}
                                 </span>
                               </div>
                               <div className="p-1.5 space-y-1.5 bg-white">
-                                {tareas.map(tarea => renderTareaFila(tarea, true))}
+                                {grupoTareas.map(tarea => renderTareaFila(tarea, true))}
                               </div>
                             </div>
                           );
                         })}
                       </div>
                     ) : (
-                      /* Vista lista plana */
                       <div className="space-y-2">
                         {tareasFiltradas.map(tarea => renderTareaFila(tarea, false))}
                       </div>
@@ -2910,23 +4370,104 @@ export function ModalDetallesProceso({
                 {/* ── NOTAS ── */}
                 {tabActiva === 'notas' && (() => {
                   // Helper render fila nota
-                  const renderNotaFila = (nota: typeof notas[0], ocultarEtapa = false) => {
-                    const epc = etapaColor(nota.etapa);
+                  const renderNotaFila = (nota: NoteItem, ocultarEtapa = false) => {
+                    const etapaHumana = normalizarEtapaActuacion(nota.etapa);
+                    const epc = etapaColor(etapaHumana);
+                    const fechaVisible = formatFechaActuacion(nota.fecha, true);
+                    const confirmandoEliminacion = notaPendienteEliminarId === nota.id;
                     return (
-                      <div key={nota.id} className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl">
-                        <p className="text-xs text-gray-800 leading-relaxed">{nota.texto}</p>
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <p className="text-[10px] text-gray-400 flex items-center gap-0.5">
-                            <Calendar className="w-2.5 h-2.5" />{nota.fecha}
-                          </p>
+                      <motion.div
+                        key={nota.id}
+                        layout
+                        initial={{ opacity: 0, y: 8, scale: 0.985 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.985 }}
+                        transition={{ duration: 0.18, ease: 'easeOut' }}
+                        className="relative overflow-hidden rounded-[26px] border border-slate-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] shadow-[0_14px_34px_rgba(15,23,42,0.06)]"
+                      >
+                        <div className="absolute inset-y-0 left-0 w-1.5 rounded-l-[26px]" style={{ background: 'linear-gradient(180deg, #93C5FD 0%, #2563EB 100%)' }} />
+                        <div className="px-4 py-3.5 pl-5">
+                        <div className="flex items-start gap-3">
+                          <div className="w-9 h-9 rounded-2xl border border-blue-100 bg-[linear-gradient(180deg,#EFF6FF_0%,#DBEAFE_100%)] flex items-center justify-center shadow-sm flex-shrink-0">
+                            <MessageSquare className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <div className="flex-1 min-w-0 pt-0.5">
+                            <p className="text-[12px] font-semibold text-slate-800 leading-6 break-words">{nota.texto}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setNotaPendienteEliminarId((current) => current === nota.id ? null : nota.id)}
+                            disabled={eliminandoNotaId === nota.id}
+                            className="flex items-center justify-center w-9 h-9 rounded-2xl border border-red-200/80 text-red-500 bg-white hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 shadow-sm"
+                            title="Eliminar nota"
+                          >
+                            {eliminandoNotaId === nota.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                        <div className="mt-3 flex items-center gap-2 flex-wrap pl-12">
+                          <span className="px-2.5 py-1 text-[10px] font-semibold rounded-full inline-flex items-center gap-1 bg-slate-50 text-slate-500 border border-slate-200">
+                            <Calendar className="w-3 h-3" />{fechaVisible}
+                          </span>
                           {!ocultarEtapa && (
-                            <span className="px-1.5 py-0.5 text-[8px] font-bold rounded inline-flex items-center gap-0.5"
+                            <span className="px-2.5 py-1 text-[10px] font-bold rounded-full inline-flex items-center gap-1"
                               style={{ backgroundColor: epc.bg, color: epc.text, border: `1px solid ${epc.text}22` }}>
-                              <Zap className="w-2.5 h-2.5" />{nota.etapa}
+                              <Zap className="w-3 h-3" />{etapaHumana}
                             </span>
                           )}
                         </div>
-                      </div>
+                        <AnimatePresence initial={false}>
+                          {confirmandoEliminacion && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0, y: -4 }}
+                              animate={{ opacity: 1, height: 'auto', y: 0 }}
+                              exit={{ opacity: 0, height: 0, y: -4 }}
+                              transition={{ duration: 0.16, ease: 'easeOut' }}
+                              className="overflow-hidden"
+                            >
+                              <div className="mt-3 rounded-2xl border border-red-200 bg-[linear-gradient(180deg,rgba(254,242,242,0.96),rgba(255,255,255,0.98))] px-3 py-2.5 shadow-[0_10px_24px_rgba(220,38,38,0.08)]">
+                                <div className="flex items-start gap-2.5">
+                                  <div className="w-7 h-7 rounded-xl bg-red-100 border border-red-200 flex items-center justify-center flex-shrink-0">
+                                    <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[11px] font-black text-red-700">Eliminar nota</p>
+                                    <p className="text-[11px] text-slate-600 mt-0.5">Esta accion quitara la nota del historial interno del proceso.</p>
+                                  </div>
+                                </div>
+                                <div className="mt-3 flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setNotaPendienteEliminarId(null)}
+                                    disabled={eliminandoNotaId === nota.id}
+                                    className="px-3 py-1.5 text-[11px] font-bold rounded-xl border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 transition-all disabled:opacity-50"
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEliminarNota(nota)}
+                                    disabled={eliminandoNotaId === nota.id}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-xl text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                    style={{ background: 'linear-gradient(135deg, #DC2626 0%, #EF4444 100%)' }}
+                                  >
+                                    {eliminandoNotaId === nota.id ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    )}
+                                    Eliminar
+                                  </button>
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                        </div>
+                      </motion.div>
                     );
                   };
 
@@ -2945,40 +4486,57 @@ export function ModalDetallesProceso({
                     </div>
 
                     {/* Composición de nota */}
-                    <div className="border border-dashed border-blue-200 rounded-xl p-3 bg-blue-50/30">
-                      <textarea value={notaTexto} onChange={e => setNotaTexto(e.target.value)} rows={3}
-                        placeholder={`Nota interna para ${proceso.numeroProceso}...`}
-                        className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 resize-none" />
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="px-2 py-0.5 text-[9px] font-bold rounded inline-flex items-center gap-1"
-                          style={{ backgroundColor: etapaColor(proceso.etapaActual).bg, color: etapaColor(proceso.etapaActual).text, border: `1px solid ${etapaColor(proceso.etapaActual).text}22` }}>
-                          <Zap className="w-2.5 h-2.5" />Se marcará: {proceso.etapaActual}
-                        </span>
-                        <button onClick={guardarNota} disabled={!notaTexto.trim()}
-                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg text-white disabled:opacity-40"
-                          style={{ background: '#003DA5' }}>
-                          <Plus className="w-3 h-3" />Guardar Nota
+                    <motion.div
+                      layout
+                      className="rounded-[28px] border border-blue-100 bg-[linear-gradient(180deg,rgba(248,250,255,0.98),rgba(255,255,255,0.98))] p-4 md:p-5 shadow-[0_18px_40px_rgba(0,61,165,0.07)]"
+                    >
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="w-11 h-11 rounded-2xl border border-blue-100 bg-[linear-gradient(180deg,#EFF6FF_0%,#DBEAFE_100%)] flex items-center justify-center shadow-sm flex-shrink-0">
+                          <FileEdit className="w-4.5 h-4.5 text-blue-600" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-black text-slate-800">Nueva nota interna</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Registra un apunte rapido del proceso para dejar trazabilidad.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="rounded-[24px] border border-slate-200 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_8px_24px_rgba(15,23,42,0.05)]">
+                        <textarea value={notaTexto} onChange={e => setNotaTexto(e.target.value)} rows={4}
+                          placeholder={`Escribe una nota interna para ${proceso.numeroProceso}...`}
+                          className="w-full px-4 py-3.5 text-[13px] text-slate-700 bg-transparent border-0 rounded-[24px] focus:outline-none focus:ring-0 resize-none placeholder:text-slate-400" />
+                      </div>
+                      <div className="flex items-center justify-between mt-3.5 gap-2 flex-wrap">
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-[11px] text-slate-500 font-medium">
+                          <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
+                          Visible solo dentro del expediente
+                        </div>
+                        <button onClick={guardarNota} disabled={!notaTexto.trim() || creandoNota}
+                          className="inline-flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-[1.01] shadow-[0_14px_30px_rgba(37,99,235,0.28)]"
+                          style={{ background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)' }}>
+                          {creandoNota ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                          {creandoNota ? 'Guardando...' : 'Guardar Nota'}
                         </button>
                       </div>
-                    </div>
+                    </motion.div>
 
                     {/* Filtro por etapa (solo si hay notas) */}
-                    {notas.length > 0 && (
+                    {notas.length > 0 && notasTienenVariasEtapas && (
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <Filter className="w-3 h-3 text-gray-400" />
                         <button onClick={() => setFiltroEtapaNota('TODAS')}
                           className="px-2 py-0.5 text-[10px] font-bold rounded-lg border transition-all"
                           style={{
-                            backgroundColor: filtroEtapaNota === 'TODAS' ? '#003DA5' : '#F9FAFB',
-                            color: filtroEtapaNota === 'TODAS' ? '#FFFFFF' : '#6B7280',
-                            borderColor: filtroEtapaNota === 'TODAS' ? '#003DA5' : '#E5E7EB',
+                            backgroundColor: filtroEtapaNotaNormalizado === 'TODAS' ? '#003DA5' : '#F9FAFB',
+                            color: filtroEtapaNotaNormalizado === 'TODAS' ? '#FFFFFF' : '#6B7280',
+                            borderColor: filtroEtapaNotaNormalizado === 'TODAS' ? '#003DA5' : '#E5E7EB',
                           }}>
                           Todas ({notas.length})
                         </button>
                         {etapasNotasOrdenadas.map(etapa => {
                           const epc = etapaColor(etapa);
-                          const count = notas.filter(n => n.etapa === etapa).length;
-                          const activo = filtroEtapaNota === etapa;
+                          const count = notasNormalizadas.filter(n => n.etapa === etapa).length;
+                          const activo = filtroEtapaNotaNormalizado === etapa;
                           return (
                             <button key={etapa} onClick={() => setFiltroEtapaNota(activo ? 'TODAS' : etapa)}
                               className="px-2 py-0.5 text-[10px] font-bold rounded-lg border transition-all inline-flex items-center gap-0.5"
@@ -3008,46 +4566,71 @@ export function ModalDetallesProceso({
                     )}
 
                     {/* Listado de notas */}
-                    {notas.length === 0 ? (
-                      <div className="flex flex-col items-center py-8 text-gray-400">
-                        <MessageSquare className="w-8 h-8 mb-2 text-gray-300" />
-                        <p className="text-xs text-gray-500 font-medium">Sin notas aún</p>
-                      </div>
-                    ) : notasFiltradas.length === 0 ? (
-                      <div className="flex flex-col items-center py-6 text-gray-400">
-                        <MessageSquare className="w-7 h-7 text-gray-300 mb-1.5" />
-                        <p className="text-xs text-gray-500 font-medium">Sin notas en esta etapa</p>
-                        <button onClick={() => setFiltroEtapaNota('TODAS')} className="mt-1.5 text-[11px] font-bold underline" style={{ color: '#003DA5' }}>Limpiar filtro</button>
-                      </div>
-                    ) : vistaAgrupadaNota ? (
-                      /* Vista agrupada */
-                      <div className="space-y-3">
-                        {Object.entries(notasAgrupadas).map(([etapa, grupoNotas]) => {
-                          const epc = etapaColor(etapa);
-                          return (
-                            <div key={etapa} className="rounded-xl border overflow-hidden" style={{ borderColor: `${epc.text}33` }}>
-                              <div className="flex items-center gap-2 px-3 py-1.5" style={{ backgroundColor: epc.bg }}>
-                                <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ backgroundColor: epc.text }}>
-                                  <Zap className="w-2.5 h-2.5 text-white" />
+                    <div
+                      className="min-h-[220px] max-h-[340px] overflow-y-auto pr-1"
+                      style={{ scrollbarGutter: 'stable' as any }}
+                    >
+                      {notasLoading ? (
+                        <div className="h-[220px] flex flex-col items-center justify-center text-gray-400">
+                          <Loader2 className="w-8 h-8 mb-2 text-blue-400 animate-spin" />
+                          <p className="text-xs text-gray-500 font-medium">Cargando notas...</p>
+                        </div>
+                      ) : notasError ? (
+                        <div className="h-[220px] flex flex-col items-center justify-center text-gray-400">
+                          <AlertCircle className="w-8 h-8 mb-2 text-red-400" />
+                          <p className="text-xs text-red-500 font-medium text-center">{notasError}</p>
+                        </div>
+                      ) : notas.length === 0 ? (
+                        <div className="h-[220px] flex flex-col items-center justify-center text-gray-400">
+                          <MessageSquare className="w-8 h-8 mb-2 text-gray-300" />
+                          <p className="text-xs text-gray-500 font-medium">Sin notas aun</p>
+                        </div>
+                      ) : notasFiltradas.length === 0 ? (
+                        <div className="h-[220px] flex flex-col items-center justify-center text-gray-400">
+                          <MessageSquare className="w-7 h-7 text-gray-300 mb-1.5" />
+                          <p className="text-xs text-gray-500 font-medium">Sin notas en esta etapa</p>
+                          <button onClick={() => setFiltroEtapaNota('TODAS')} className="mt-1.5 text-[11px] font-bold underline" style={{ color: '#003DA5' }}>Limpiar filtro</button>
+                        </div>
+                      ) : vistaAgrupadaNota && notasTienenVariasEtapas ? (
+                        <div className="space-y-3">
+                          {Object.entries(notasAgrupadas).map(([etapa, grupoNotas]) => {
+                            const epc = etapaColor(etapa);
+                            return (
+                              <motion.div
+                                key={etapa}
+                                layout
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -6 }}
+                                className="rounded-2xl border overflow-hidden shadow-sm"
+                                style={{ borderColor: `${epc.text}33` }}
+                              >
+                                <div className="flex items-center gap-2 px-3 py-1.5" style={{ backgroundColor: epc.bg }}>
+                                  <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ backgroundColor: epc.text }}>
+                                    <Zap className="w-2.5 h-2.5 text-white" />
+                                  </div>
+                                  <p className="text-[11px] font-black flex-1" style={{ color: epc.text }}>{etapa}</p>
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: epc.text }}>
+                                    {grupoNotas.length}
+                                  </span>
                                 </div>
-                                <p className="text-[11px] font-black flex-1" style={{ color: epc.text }}>{etapa}</p>
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: epc.text }}>
-                                  {grupoNotas.length}
-                                </span>
-                              </div>
-                              <div className="p-1.5 space-y-1.5 bg-white">
-                                {grupoNotas.map(nota => renderNotaFila(nota, true))}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      /* Vista lista plana */
-                      <div className="space-y-2">
-                        {notasFiltradas.map(nota => renderNotaFila(nota, false))}
-                      </div>
-                    )}
+                                <div className="p-2 space-y-2 bg-white">
+                                  <AnimatePresence initial={false}>
+                                    {grupoNotas.map(nota => renderNotaFila(nota, true))}
+                                  </AnimatePresence>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <AnimatePresence initial={false}>
+                            {notasFiltradas.map(nota => renderNotaFila(nota, !notasTienenVariasEtapas))}
+                          </AnimatePresence>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   );
                 })()}
@@ -3066,8 +4649,8 @@ export function ModalDetallesProceso({
               Expediente{' '}
               <span className="font-black" style={{ color: '#2962FF' }}>{proceso.numeroProceso}</span>
               {' · '}<span style={{ color: '#2962FF' }}>{TODOS_ARCHIVOS.length} docs</span>
-              {' · '}<span style={{ color: '#7C3AED' }}>{MOCK_ACTUACIONES.length} actuaciones</span>
-              {' · '}<span style={{ color: '#D97706' }}>{MOCK_TAREAS.length} tareas</span>
+              {' · '}<span style={{ color: '#7C3AED' }}>{actuaciones.length} actuaciones</span>
+              {' · '}<span style={{ color: '#D97706' }}>{tareas.length} tareas</span>
             </p>
 
             <div className="flex items-center gap-1.5">
@@ -3178,7 +4761,41 @@ export function ModalDetallesProceso({
           />
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {mostrarModalNuevaActuacion && (
+          <ModalNuevaActuacion
+            open={mostrarModalNuevaActuacion}
+            etapas={Array.from(new Set([...ORDEN_ETAPAS, proceso.etapaActual, ...etapasActOrdenadas, 'Sin etapa']))}
+            etapaActual={proceso.etapaActual}
+            responsableInicial={getNombre(proceso.profesionalAsignado)}
+            saving={creandoActuacion}
+            onClose={() => setMostrarModalNuevaActuacion(false)}
+            onSubmit={handleCrearActuacion}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {mostrarModalNuevaTarea && (
+          <ModalNuevaTarea
+            open={mostrarModalNuevaTarea}
+            etapas={Array.from(new Set([...ORDEN_ETAPAS, proceso.etapaActual, ...etapasTarOrdenadas, 'Sin etapa']))}
+            etapaActual={proceso.etapaActual}
+            responsableInicial={getNombre(proceso.profesionalAsignado)}
+            saving={creandoTarea}
+            onClose={() => setMostrarModalNuevaTarea(false)}
+            onSubmit={handleCrearTarea}
+          />
+        )}
+      </AnimatePresence>
     </>,
     document.body
   );
 }
+
+
+
+
+
+

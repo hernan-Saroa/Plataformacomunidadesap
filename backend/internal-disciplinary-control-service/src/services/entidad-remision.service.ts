@@ -52,7 +52,8 @@ export class EntidadRemisionService {
 
   async update(id: string, dto: UpdateEntidadRemisionDto): Promise<EntidadRemision> {
     const entidad = await this.findOne(id);
-    Object.assign(entidad, dto);
+    const { id: _dtoId, ...rest } = dto;
+    Object.assign(entidad, rest);
     return this.entidadRepo.save(entidad);
   }
 

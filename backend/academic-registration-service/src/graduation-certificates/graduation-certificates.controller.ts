@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { GraduationCertificatesService } from './graduation-certificates.service';
 import { LandingCertificateRequestDto } from './dto/landing-certificate-request.dto';
+import { SearchGraduateCandidatesDto } from './dto/search-graduate-candidates.dto';
 import type { ApproveRequestDto } from './dto/approve-request.dto';
 import type { UpdateCertificateDto } from './dto/update-certificate.dto';
 import type { Request, Response } from 'express';
@@ -195,6 +196,25 @@ export class GraduationCertificatesController {
     return await this.service.verificarGraduado(
       body.idNumber,
       body.idIssueDate,
+      body.graduationDate,
+      body.lastName,
+    );
+  }
+
+  /**
+   * POST /academic-registration/api/v1/certificates/autoservicio/solicitar-certificado
+   * Enviar solicitud desde landing; valida al graduado y envía el certificado si existe
+   */
+  /**
+   * POST /academic-registration/api/v1/certificates/autoservicio/buscar-coincidencias
+   * Buscar coincidencias por cédula y similitud de nombre para selección asistida
+   */
+  @Post('autoservicio/buscar-coincidencias')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async buscarCoincidencias(@Body() body: SearchGraduateCandidatesDto) {
+    return await this.service.buscarCoincidenciasGraduado(
+      body.idNumber,
       body.graduationDate,
       body.lastName,
     );
@@ -406,7 +426,7 @@ export class GraduationCertificatesController {
 
   /**
    * GET /academic-registration/api/v1/certificates/solicitudes/revision
-   * Listar solicitudes de revisi?n manual
+   * Listar solicitudes de revisión manual
    */
   @Get('solicitudes/revision')
   async listarSolicitudesRevision() {

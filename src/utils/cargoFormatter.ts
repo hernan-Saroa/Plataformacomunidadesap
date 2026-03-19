@@ -10,6 +10,16 @@ const normalizarCodigo = (value?: string | number | null): string =>
     .replace(/\D+/g, '')
     .trim();
 
+const esCodigoCero = (value: string): boolean =>
+  Boolean(value) && /^0+$/.test(value);
+
+const recortarCodigoCargo = (value: string): string => {
+  if (!value || value.length <= 4 || esCodigoCero(value)) {
+    return value;
+  }
+  return value.slice(0, 4);
+};
+
 const normalizarTextoBusqueda = (value?: string | null): string => {
   const base = String(value || '').toLowerCase();
   const normalizado = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
@@ -47,6 +57,32 @@ const agregarSufijoEncargo = (
 
 export const esCargoDocente = (value?: string | null): boolean =>
   /\bdocen\w*\b|\bdoc\b/.test(normalizarTextoBusqueda(value));
+
+export const selectPreferredCargoCode = (
+  ...values: Array<string | number | null | undefined>
+): string => {
+  const normalized = values
+    .map((value) => {
+      if (value === null || value === undefined) return '';
+      const raw = String(value).trim();
+      if (!raw) return '';
+      return normalizarCodigo(raw);
+    })
+    .filter(Boolean);
+
+  if (!normalized.length) {
+    return '';
+  }
+
+  return normalized.sort((left, right) => {
+    if (left.length !== right.length) {
+      return right.length - left.length;
+    }
+    const leftHasLeadingZero = left.startsWith('0') ? 1 : 0;
+    const rightHasLeadingZero = right.startsWith('0') ? 1 : 0;
+    return rightHasLeadingZero - leftHasLeadingZero;
+  })[0];
+};
 
 interface FormatCargoDisplayOptions {
   cargoSource?: string | null;
@@ -91,8 +127,10 @@ export const formatCargoDisplay = ({
     inferredGrade = compactAdminMatch[3];
     baseText = normalizarEspacios(compactAdminMatch[1]);
   } else {
-    // Caso docente con codigo al final: "... 9030".
-    const trailingCodeMatch = baseText.match(/^(.*?)(?:\s+)?(\d{4})$/);
+    // Caso docente/administrativo con codigo al final: "... Codigo 40640".
+    const trailingCodeMatch = baseText.match(
+      /^(.*?)(?:\s+)?(?:c[oó]digo\s+)?(\d{4,5})$/i,
+    );
     if (trailingCodeMatch && /[A-Za-z\u00C0-\u00FF]/.test(trailingCodeMatch[1] || '')) {
       inferredCode = trailingCodeMatch[2];
       baseText = normalizarEspacios(trailingCodeMatch[1]);
@@ -112,7 +150,10 @@ export const formatCargoDisplay = ({
     codCargoRaw.length > codGradeRaw.length &&
     codCargoRaw.endsWith(codGradeRaw)
   ) {
-    const cargoSoloCodigo = codCargoRaw.slice(0, -codGradeRaw.length);
+    const cargoSoloCodigo =
+      codCargoRaw.length >= 4
+        ? codCargoRaw.slice(0, 4)
+        : codCargoRaw.slice(0, -codGradeRaw.length);
     if (cargoSoloCodigo.length >= 3) {
       codCargoRaw = cargoSoloCodigo;
     }
@@ -122,12 +163,14 @@ export const formatCargoDisplay = ({
   if (
     resolvedTemplate !== 'docente' &&
     !codGradeRaw &&
-    /^\d{6}$/.test(codCargoRaw) &&
+    /^\d{5,6}$/.test(codCargoRaw) &&
     /[A-Za-z\u00C0-\u00FF]/.test(baseText || cargoRaw)
   ) {
     codGradeRaw = codCargoRaw.slice(-2);
-    codCargoRaw = codCargoRaw.slice(0, -2);
+    codCargoRaw = codCargoRaw.slice(0, 4);
   }
+
+  codCargoRaw = recortarCodigoCargo(codCargoRaw);
 
   const baseFinal =
     baseText ||

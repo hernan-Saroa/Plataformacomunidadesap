@@ -24,7 +24,7 @@ import { Card } from '../ui/card';
 import { Input } from '../ui/input';
 import { certificadosService } from '../../services/api/certificados.service';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
-import { formatCargoDisplay } from '../../utils/cargoFormatter';
+import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 
 type Paso = 'documento' | 'codigo' | 'completado';
 
@@ -161,7 +161,12 @@ export function SolicitarCertificado() {
       undefined;
     const cargoFormateado = formatCargoDisplay({
       cargoSource: cert.career_category || cert.position_category,
-      codCargo: cert.cod_cargo || cert.codCargo,
+      codCargo: selectPreferredCargoCode(
+        cert.request?.cod_cargo,
+        cert.request?.codCargo,
+        cert.cod_cargo,
+        cert.codCargo,
+      ),
       codGrade: cert.cod_grade || cert.codGrade,
       observations: cert.request?.observations || cert.observations,
       templateType,

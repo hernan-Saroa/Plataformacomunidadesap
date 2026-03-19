@@ -1097,15 +1097,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       });
     } catch (error: any) {
       console.error('Error reenviando certificado:', error);
-      const status = error?.status ?? error?.response?.status;
+      const status = Number(error?.status ?? error?.response?.status);
       const backendMessage = error?.response?.data?.message;
       const rawMessage =
         typeof error?.message === 'string' ? error.message.toLowerCase() : '';
 
       const isGatewayEmpty400 =
-        status === 400 &&
+        (status === 400 || Number.isNaN(status)) &&
         (!backendMessage || !String(backendMessage).trim()) &&
         (rawMessage.includes('sin detalles') ||
+          rawMessage.includes('error en la peticion') ||
           rawMessage.includes('error en la petición'));
 
       if (isGatewayEmpty400) {

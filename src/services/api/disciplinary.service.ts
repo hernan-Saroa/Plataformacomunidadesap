@@ -86,12 +86,81 @@ export interface DisciplinaryProcess {
     draftsCount?: number;
     documentsCount?: number;
     timePercentage?: number;
+    actuacionesCount?: number;
+    ultimaActuacion?: string | null;
+    ultimaActuacionFecha?: string | null;
+    tasksCount?: number;
+    completedTasksCount?: number;
+    pendingTasksCount?: number;
+    notesCount?: number;
 }
 
 export interface ProcessStatistics {
     draftsCount: number;
     documentsCount: number;
     timePercentage: number;
+}
+
+export interface DisciplinaryProcessActuacion {
+    id: string;
+    processId: string;
+    tipo: string;
+    etapa?: string | null;
+    descripcion: string;
+    responsableNombre: string;
+    fechaActuacion: string;
+    observaciones?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CreateDisciplinaryProcessActuacionDto {
+    tipo: string;
+    etapa?: string;
+    descripcion: string;
+    responsableNombre: string;
+    fechaActuacion: string;
+    observaciones?: string;
+}
+
+export interface DisciplinaryProcessTask {
+    id: string;
+    processId: string;
+    titulo: string;
+    descripcion?: string | null;
+    prioridad: 'alta' | 'media' | 'baja';
+    etapa?: string | null;
+    responsableNombre?: string | null;
+    fechaVencimiento: string;
+    completada: boolean;
+    fechaCompletada?: string | null;
+    observaciones?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CreateDisciplinaryProcessTaskDto {
+    titulo: string;
+    descripcion?: string;
+    prioridad: 'alta' | 'media' | 'baja';
+    etapa?: string;
+    responsableNombre?: string;
+    fechaVencimiento: string;
+    observaciones?: string;
+}
+
+export interface DisciplinaryProcessNote {
+    id: string;
+    processId: string;
+    texto: string;
+    etapa?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CreateDisciplinaryProcessNoteDto {
+    texto: string;
+    etapa?: string;
 }
 
 export interface LegalAuto {
@@ -189,6 +258,57 @@ export interface CreateOficioConfigurationDto {
 
 // DTO para actualizar configuración de oficio
 export interface UpdateOficioConfigurationDto {
+    tipo?: string;
+    nombre?: string;
+    codigo?: string;
+    descripcion?: string;
+    estado?: 'activo' | 'inactivo';
+    plantilla?: string;
+    stage?: string;
+    orden?: number;
+    // Campos de plantilla
+    nombre_plantilla?: string;
+    descripcion_plantilla?: string;
+    version_plantilla?: string;
+    estado_plantilla?: string;
+}
+
+// ==================== CONFIGURACIÓN DE ACTAS ====================
+
+// Tipo para configuración de actas
+export interface ActaConfiguration {
+    id: string;
+    tipo: string;
+    nombre: string;
+    codigo: string;
+    descripcion: string;
+    estado: string;
+    plantilla?: string;
+    stage: string | null;
+    orden: number;
+    createdAt: string;
+    updatedAt: string;
+    // Campos de plantilla
+    nombre_plantilla?: string;
+    descripcion_plantilla?: string;
+    version_plantilla?: string;
+    estado_plantilla?: string;
+}
+
+// DTO para crear configuración de acta
+export interface CreateActaConfigurationDto {
+    tipo: string;
+    nombre: string;
+    codigo?: string;
+    descripcion?: string;
+    estado?: 'activo' | 'inactivo';
+    plantilla?: string;
+    stage?: string;
+    orden?: number;
+}
+
+// DTO para actualizar configuración de acta
+export interface UpdateActaConfigurationDto {
     tipo?: string;
     nombre?: string;
     codigo?: string;
@@ -302,6 +422,13 @@ class DisciplinaryService {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news`);
     }
 
+    /**
+     * Obtiene las noticias asociadas a los procesos de un profesional específico
+     */
+    async getMisNoticias(profesionalId: string): Promise<DisciplinaryNews[]> {
+        return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news/my-news`, { profesionalId });
+    }
+
     async returnNews(id: string, observaciones: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones });
     }
@@ -358,6 +485,71 @@ class DisciplinaryService {
 
     async getMisProcesos(abogadoId: string): Promise<DisciplinaryProcess[]> {
         return apiClient.get<DisciplinaryProcess[]>(`${SERVICE_PREFIX}/disciplinary-processes/my-processes`, { abogadoId });
+    }
+
+    async getActuacionesProceso(processId: string): Promise<DisciplinaryProcessActuacion[]> {
+        return apiClient.get<DisciplinaryProcessActuacion[]>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/actuaciones`
+        );
+    }
+
+    async createActuacionProceso(
+        processId: string,
+        data: CreateDisciplinaryProcessActuacionDto
+    ): Promise<DisciplinaryProcessActuacion> {
+        return apiClient.post<DisciplinaryProcessActuacion>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/actuaciones`,
+            data
+        );
+    }
+
+    async getTareasProceso(processId: string): Promise<DisciplinaryProcessTask[]> {
+        return apiClient.get<DisciplinaryProcessTask[]>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/tasks`
+        );
+    }
+
+    async createTareaProceso(
+        processId: string,
+        data: CreateDisciplinaryProcessTaskDto
+    ): Promise<DisciplinaryProcessTask> {
+        return apiClient.post<DisciplinaryProcessTask>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/tasks`,
+            data
+        );
+    }
+
+    async updateEstadoTareaProceso(
+        processId: string,
+        taskId: string,
+        completada: boolean
+    ): Promise<DisciplinaryProcessTask> {
+        return apiClient.patch<DisciplinaryProcessTask>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/tasks/${taskId}/status`,
+            { completada }
+        );
+    }
+
+    async getNotasProceso(processId: string): Promise<DisciplinaryProcessNote[]> {
+        return apiClient.get<DisciplinaryProcessNote[]>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/notes`
+        );
+    }
+
+    async createNotaProceso(
+        processId: string,
+        data: CreateDisciplinaryProcessNoteDto
+    ): Promise<DisciplinaryProcessNote> {
+        return apiClient.post<DisciplinaryProcessNote>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/notes`,
+            data
+        );
+    }
+
+    async deleteNotaProceso(processId: string, noteId: string): Promise<void> {
+        return apiClient.delete<void>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/notes/${noteId}`
+        );
     }
 
     async asignarProceso(data: AssignProcessDto): Promise<DisciplinaryProcess> {
@@ -648,6 +840,20 @@ class DisciplinaryService {
 
     async getHistorialVersiones(id: string): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/versions`);
+    }
+
+    // --- TÉRMINOS PROCESALES ---
+
+    async getTerminos(params?: { estado?: string; search?: string; page?: number; limit?: number }): Promise<{ terminos: any[]; stats: any }> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/terminos-procesales`, params);
+    }
+
+    async createTermino(data: { procesoId: string; actuacion: string; responsableId: string; fechaInicio: string; diasHabiles: number }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/terminos-procesales`, data);
+    }
+
+    async marcarTerminoCumplido(id: string, data: { fechaCumplimiento: string; observaciones?: string }): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/terminos-procesales/${id}/marcar-cumplido`, data);
     }
 
     // --- PROFESIONALES ---
@@ -1061,6 +1267,110 @@ class DisciplinaryService {
         if (versionPlantilla) formData.append('version_plantilla', versionPlantilla);
         if (estadoPlantilla) formData.append('estado_plantilla', estadoPlantilla);
         return apiClient.upload<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/${id}/upload-files`, formData);
+    }
+
+    // ==================== CONFIGURACIÓN DE ACTAS ====================
+
+    /**
+     * Obtener todas las configuraciones de actas
+     */
+    async getActasConfiguration(): Promise<ActaConfiguration[]> {
+        return apiClient.get<ActaConfiguration[]>(`${SERVICE_PREFIX}/actas-configuration`);
+    }
+
+    /**
+     * Obtener solo las configuraciones de actas activas
+     */
+    async getActasConfigurationActive(): Promise<ActaConfiguration[]> {
+        return apiClient.get<ActaConfiguration[]>(`${SERVICE_PREFIX}/actas-configuration/active`);
+    }
+
+    /**
+     * Obtener una configuración de acta por ID
+     */
+    async getActasConfigurationById(id: string): Promise<ActaConfiguration> {
+        return apiClient.get<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}`);
+    }
+
+    /**
+     * Obtener una configuración de acta por tipo
+     */
+    async getActasConfigurationByTipo(tipo: string): Promise<ActaConfiguration> {
+        return apiClient.get<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/tipo/${tipo}`);
+    }
+
+    /**
+     * Obtener configuraciones de acta por stage
+     */
+    async getActasConfigurationByStage(stage: string): Promise<ActaConfiguration[]> {
+        return apiClient.get<ActaConfiguration[]>(`${SERVICE_PREFIX}/actas-configuration/stage/${stage}`);
+    }
+
+    /**
+     * Crear nueva configuración de acta
+     */
+    async createActaConfiguration(data: CreateActaConfigurationDto): Promise<ActaConfiguration> {
+        return apiClient.post<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration`, data);
+    }
+
+    /**
+     * Actualizar configuración de acta
+     */
+    async updateActaConfiguration(id: string, data: UpdateActaConfigurationDto): Promise<ActaConfiguration> {
+        return apiClient.put<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}`, data);
+    }
+
+    /**
+     * Eliminar configuración de acta
+     */
+    async deleteActaConfiguration(id: string): Promise<void> {
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/actas-configuration/${id}`);
+    }
+
+    /**
+     * Activar/desactivar configuración de acta
+     */
+    async toggleActaConfigurationEstado(id: string): Promise<ActaConfiguration> {
+        return apiClient.patch<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}/toggle-estado`, {});
+    }
+
+    /**
+     * Subir plantilla Word para un acta
+     */
+    async uploadActaPlantilla(
+        id: string, 
+        file: File,
+        nombrePlantilla?: string,
+        descripcionPlantilla?: string,
+        versionPlantilla?: string,
+        estadoPlantilla?: string
+    ): Promise<ActaConfiguration> {
+        const formData = new FormData();
+        formData.append('file', file);
+        // Enviar campos adicionales del plantilla
+        if (nombrePlantilla) formData.append('nombre_plantilla', nombrePlantilla);
+        if (descripcionPlantilla) formData.append('descripcion_plantilla', descripcionPlantilla);
+        if (versionPlantilla) formData.append('version_plantilla', versionPlantilla);
+        if (estadoPlantilla) formData.append('estado_plantilla', estadoPlantilla);
+        return apiClient.upload<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}/upload-files`, formData);
+    }
+
+    // ==================== GENERAR CONSECUTIVO DE ACTA DESDE BACKEND ====================
+
+    /**
+     * Genera un nuevo número de consecutivo para un acta desde el backend
+     * El backend gestiona la secuencia en la base de datos
+     */
+    async generarConsecutivoActa(): Promise<{ consecutive: string }> {
+        return apiClient.get<{ consecutive: string }>(`${SERVICE_PREFIX}/generate-acta-consecutivo`);
+    }
+
+    /**
+     * Previsualiza el próximo número de consecutivo para un acta SIN incrementarlo
+     * Útil para mostrar la nomenclatura antes de confirmar la creación
+     */
+    async previsualizarConsecutivoActa(): Promise<{ consecutive: string }> {
+        return apiClient.get<{ consecutive: string }>(`${SERVICE_PREFIX}/preview-acta-consecutivo`);
     }
 
     // ==================== COMPARTIR EXPEDIENTE ====================

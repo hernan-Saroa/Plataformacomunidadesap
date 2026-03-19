@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { HttpModule } from '@nestjs/axios';
 
@@ -19,6 +21,9 @@ import { DiaFestivo } from './entities/dia-festivo.entity';
 import { ReglaAlerta } from './entities/regla-alerta.entity';
 import { AlertaEnviada } from './entities/alerta-enviada.entity';
 import { EntidadRemision } from './entities/entidad-remision.entity';
+import { DisciplinaryProcessActuacion } from './entities/disciplinary-process-actuacion.entity';
+import { DisciplinaryProcessTask } from './entities/disciplinary-process-task.entity';
+import { DisciplinaryProcessNote } from './entities/disciplinary-process-note.entity';
 
 // Controllers
 import { NewsController } from './controllers/news.controller';
@@ -31,6 +36,9 @@ import { DiasFestivosController } from './controllers/dias-festivos.controller';
 import { ReglasAlertaController } from './controllers/reglas-alerta.controller';
 import { AlertasController } from './controllers/alertas.controller';
 import { JobsController } from './controllers/jobs.controller';
+import { DisciplinaryProcessActuacionesController } from './controllers/disciplinary-process-actuaciones.controller';
+import { DisciplinaryProcessTasksController } from './controllers/disciplinary-process-tasks.controller';
+import { DisciplinaryProcessNotesController } from './controllers/disciplinary-process-notes.controller';
 
 // Services
 import { NewsService } from './services/news.service';
@@ -58,11 +66,14 @@ import { SystemConfiguration } from './entities/system-configuration.entity';
 import { PlantillaAuto } from './entities/plantilla-auto.entity';
 import { AutoConfiguration } from './entities/auto-configuration.entity';
 import { OficioConfiguration } from './entities/oficio-configuration.entity';
+import { ActaConfiguration } from './entities/acta-configuration.entity';
 import { ConfigurationController } from './controllers/configuration.controller';
 import { AutosConfigurationController } from './controllers/autos-configuration.controller';
 import { OficiosConfigurationController } from './controllers/oficio-configuration.controller';
+import { ActasConfigurationController } from './controllers/acta-configuration.controller';
 import { AutosConfigurationService } from './services/autos-configuration.service';
 import { OficiosConfigurationService } from './services/oficio-configuration.service';
+import { ActasConfigurationService } from './services/acta-configuration.service';
 
 import { FilesController } from './controllers/files.controller';
 
@@ -73,9 +84,19 @@ import { CompartirExpedienteService } from './services/compartir-expediente.serv
 import { ExpedienteCompartido } from './entities/expediente-compartido.entity';
 import { EntidadRemisionController } from './controllers/entidad-remision.controller';
 import { EntidadRemisionService } from './services/entidad-remision.service';
+import { DisciplinaryProcessActuacionesService } from './services/disciplinary-process-actuaciones.service';
+import { DisciplinaryProcessTasksService } from './services/disciplinary-process-tasks.service';
+import { DisciplinaryProcessNotesService } from './services/disciplinary-process-notes.service';
 
 @Module({
   imports: [
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'uploads'),
+      serveRoot: '/uploads',
+      serveStaticOptions: {
+        index: false,
+      },
+    }),
     HttpModule,
     AuthModule,
     TypeOrmModule.forRoot(databaseConfig),
@@ -96,8 +117,12 @@ import { EntidadRemisionService } from './services/entidad-remision.service';
       AlertaEnviada,
       AutoConfiguration,
       OficioConfiguration,
+      ActaConfiguration,
       ExpedienteCompartido,
       EntidadRemision,
+      DisciplinaryProcessActuacion,
+      DisciplinaryProcessTask,
+      DisciplinaryProcessNote,
     ]),
   ],
   controllers: [
@@ -114,9 +139,13 @@ import { EntidadRemisionService } from './services/entidad-remision.service';
     ReglasAlertaController,
     AlertasController,
     JobsController,
+    DisciplinaryProcessActuacionesController,
+    DisciplinaryProcessTasksController,
+    DisciplinaryProcessNotesController,
     DisciplinaryExportController,
     AutosConfigurationController,
     OficiosConfigurationController,
+    ActasConfigurationController,
     CompartirExpedienteController,
     EntidadRemisionController,
   ],
@@ -140,8 +169,12 @@ import { EntidadRemisionService } from './services/entidad-remision.service';
     PdfModifierService,
     AutosConfigurationService,
     OficiosConfigurationService,
+    ActasConfigurationService,
     CompartirExpedienteService,
     EntidadRemisionService,
+    DisciplinaryProcessActuacionesService,
+    DisciplinaryProcessTasksService,
+    DisciplinaryProcessNotesService,
   ],
 })
 export class AppModule { }

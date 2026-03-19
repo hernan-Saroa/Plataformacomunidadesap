@@ -12,6 +12,7 @@ import {
   HttpStatus,
   BadRequestException,
   Put,
+  Query,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -97,6 +98,29 @@ export class NewsController {
   })
   async getPendingAssignment(): Promise<DisciplinaryNews[]> {
     return await this.newsService.findPendingAssignment();
+  }
+
+  /**
+   * H3: Listar noticias del profesional autenticado
+   * Retorna las noticias asociadas a los procesos asignados al profesional
+   */
+  @Get('my-news')
+  @ApiOperation({
+    summary: 'Mis Noticias',
+    description: 'Retorna las noticias asociadas a los procesos del profesional autenticado',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de noticias del profesional',
+    type: [DisciplinaryNews],
+  })
+  async getMyNews(
+    @Query('profesionalId') profesionalId: string,
+  ): Promise<DisciplinaryNews[]> {
+    if (!profesionalId) {
+      throw new BadRequestException('profesionalId es requerido');
+    }
+    return await this.newsService.findByProfessionalId(profesionalId);
   }
 
   /**

@@ -22,7 +22,7 @@ import { Checkbox } from '../ui/checkbox';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { certificadosService } from '../../services/api/certificados.service';
-import { formatCargoDisplay } from '../../utils/cargoFormatter';
+import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 
 interface GenerarCertificadoModalProps {
   isOpen: boolean;
@@ -320,11 +320,12 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
             cert.career_category ||
             cert.position_category ||
             '',
-          codCargo:
-            cert.request?.cod_cargo ||
-            cert.request?.codCargo ||
-            cert.cod_cargo ||
+          codCargo: selectPreferredCargoCode(
+            cert.request?.cod_cargo,
+            cert.request?.codCargo,
+            cert.cod_cargo,
             cert.codCargo,
+          ),
           codGrade:
             cert.request?.cod_grade ||
             cert.request?.codGrade ||

@@ -264,6 +264,40 @@ export function ModalNuevoProcesoDisciplinario({
           Formulario para registrar un nuevo proceso disciplinario con validación en tiempo real
         </DialogDescription>
 
+        {/* Wrapper relativo para el overlay de cancelación */}
+        <div className="relative flex flex-col flex-1 min-h-0 overflow-hidden">
+
+        {/* ✅ OVERLAY DE CONFIRMACIÓN DE CANCELACIÓN */}
+        {showCancelConfirm && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 rounded-[inherit]">
+            <div className="bg-red-50 border-2 border-red-300 rounded-xl shadow-2xl p-6 mx-4 max-w-sm w-full animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-bold text-base text-red-900">¿Desea cancelar?</p>
+                  <p className="text-sm text-red-700 mt-1">Se perderán los datos ingresados en el formulario.</p>
+                  <div className="flex gap-2 mt-4">
+                    <Button
+                      size="sm"
+                      onClick={confirmarCancelacion}
+                      className="bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      Sí, cancelar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowCancelConfirm(false)}
+                    >
+                      Continuar editando
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ==================== HEADER ==================== */}
         <ModalHeaderClean
           icono={Gavel}
@@ -282,36 +316,6 @@ export function ModalNuevoProcesoDisciplinario({
         {/* ==================== CONTENIDO CON SCROLL ==================== */}
         <div className="flex-1 overflow-y-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4 bg-gray-50">
           <div className="space-y-4 sm:space-y-6">
-
-            {/* ✅ CONFIRMACIÓN DE CANCELACIÓN (reemplaza confirm() nativo que mostraba IP) */}
-            {showCancelConfirm && (
-              <Card className="p-4 bg-red-50 border-2 border-red-300 animate-in fade-in slide-in-from-top-2">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="font-bold text-sm text-red-900">¿Desea cancelar?</p>
-                    <p className="text-xs text-red-700 mt-1">Se perderán los datos ingresados en el formulario.</p>
-                    <div className="flex gap-2 mt-3">
-                      <Button
-                        size="sm"
-                        onClick={confirmarCancelacion}
-                        className="bg-red-600 hover:bg-red-700 text-white text-xs"
-                      >
-                        Sí, cancelar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setShowCancelConfirm(false)}
-                        className="text-xs"
-                      >
-                        Continuar editando
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            )}
 
             {/* ✅ PROGRESO DEL FORMULARIO */}
             <FormProgress completed={completedFields} total={totalFields} />
@@ -614,6 +618,7 @@ export function ModalNuevoProcesoDisciplinario({
             </Button>
           </div>
         </div>
+        </div>{/* end relative wrapper */}
       </DialogContent>
     </Dialog>
   );
