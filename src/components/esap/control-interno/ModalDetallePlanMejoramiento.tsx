@@ -425,6 +425,37 @@ export function ModalDetallePlanMejoramiento({ planId, onClose, onPlanActualizad
     }
   }, [plan?.id]);
 
+  // Estado de evidencias (Documentos) para el badge del tab
+  const [evidenciasPorAccion, setEvidenciasPorAccion] = useState<Record<string, EvidenciaItem[]>>({});
+  const [cargandoEvidenciasDoc, setCargandoEvidenciasDoc] = useState(false);
+  useEffect(() => {
+    if (!plan?.acciones?.length) {
+      setEvidenciasPorAccion({});
+      setCargandoEvidenciasDoc(false);
+      return;
+    }
+    let cancelled = false;
+    setCargandoEvidenciasDoc(true);
+    const cargarEvidencias = async () => {
+      const evidenciasMap: Record<string, EvidenciaItem[]> = {};
+      for (const accion of plan.acciones) {
+        try {
+          const evidencias = await controlInternoService.getEvidenciasByAccion(accion.id);
+          if (!cancelled) evidenciasMap[accion.id] = Array.isArray(evidencias) ? evidencias : [];
+        } catch (error) {
+          if (!cancelled) evidenciasMap[accion.id] = [];
+        }
+      }
+      if (!cancelled) {
+        setEvidenciasPorAccion(evidenciasMap);
+        setCargandoEvidenciasDoc(false);
+      }
+    };
+    cargarEvidencias();
+    return () => { cancelled = true; };
+  }, [plan?.id, plan?.acciones]);
+  const totalEvidencias = useMemo(() => Object.values(evidenciasPorAccion).flat().length, [evidenciasPorAccion]);
+
   const estadisticas = useMemo(() => {
     if (!plan) {
       return {
@@ -940,7 +971,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose, onPlanActualizad
               onClick={() => setTabActiva('documentos')}
               icon={<FileText className="w-4 h-4" />}
               label="Documentos"
-              badge="0"
+              badge={totalEvidencias > 0 ? totalEvidencias.toString() : undefined}
             />
             <TabButton
               active={tabActiva === 'seguimiento'}
@@ -977,7 +1008,14 @@ export function ModalDetallePlanMejoramiento({ planId, onClose, onPlanActualizad
                   onRefresh={refetch}
                 />
               )}
-              {tabActiva === 'documentos' && <TabDocumentos plan={plan} />}
+              {tabActiva === 'documentos' && (
+                <TabDocumentos
+                  plan={plan}
+                  evidenciasPorAccion={evidenciasPorAccion}
+                  setEvidenciasPorAccion={setEvidenciasPorAccion}
+                  cargandoEvidencias={cargandoEvidenciasDoc}
+                />
+              )}
               {tabActiva === 'seguimiento' && <TabSeguimiento plan={plan} />}
             </motion.div>
           </AnimatePresence>
@@ -1864,11 +1902,16 @@ interface EvidenciaItem {
   planMejoramientoId?: string;
 }
 
-function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
+interface TabDocumentosProps {
+  plan: PlanMejoramientoDetalle;
+  evidenciasPorAccion: Record<string, EvidenciaItem[]>;
+  setEvidenciasPorAccion: React.Dispatch<React.SetStateAction<Record<string, EvidenciaItem[]>>>;
+  cargandoEvidencias: boolean;
+}
+
+function TabDocumentos({ plan, evidenciasPorAccion, setEvidenciasPorAccion, cargandoEvidencias }: TabDocumentosProps) {
   const [modalCargarDocumento, setModalCargarDocumento] = useState(false);
   const [documentoVistaPrevia, setDocumentoVistaPrevia] = useState<DocumentoPlan | null>(null);
-  const [evidenciasPorAccion, setEvidenciasPorAccion] = useState<Record<string, EvidenciaItem[]>>({});
-  const [cargandoEvidencias, setCargandoEvidencias] = useState(true);
 
   // Estados para el modal de carga
   const [accionSeleccionadaId, setAccionSeleccionadaId] = useState<string>('');
@@ -1877,29 +1920,7 @@ function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
   const [archivoSeleccionado, setArchivoSeleccionado] = useState<File | null>(null);
   const [subiendo, setSubiendo] = useState(false);
 
-  // Cargar evidencias al montar
-  useEffect(() => {
-    const cargarEvidencias = async () => {
-      setCargandoEvidencias(true);
-      const evidenciasMap: Record<string, EvidenciaItem[]> = {};
-
-      for (const accion of plan.acciones) {
-        try {
-          const evidencias = await controlInternoService.getEvidenciasByAccion(accion.id);
-          evidenciasMap[accion.id] = Array.isArray(evidencias) ? evidencias : [];
-        } catch (error) {
-          console.error(`Error cargando evidencias para acción ${accion.id}:`, error);
-          evidenciasMap[accion.id] = [];
-        }
-      }
-
-      setEvidenciasPorAccion(evidenciasMap);
-      setCargandoEvidencias(false);
-    };
-
-    cargarEvidencias();
-  }, [plan.acciones]);
-
+  // Total de evidencias (viene del padre; el badge del tab usa el mismo valor)
   const totalEvidencias = Object.values(evidenciasPorAccion).flat().length;
 
   const handleCargarDocumento = () => {

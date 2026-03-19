@@ -825,7 +825,6 @@ interface TarjetaAuditoriaProps {
   onArchivar: (aud: Auditoria) => void;
   onEliminar: (aud: Auditoria) => void;
   onEditar: (aud: Auditoria) => void;
-  onCrearPlan?: (aud: Auditoria) => void; // ← NUEVO: Crear Plan de Mejoramiento
   colapsada?: boolean; // NUEVO: Estado de colapso
   onToggleColapso?: (id: string) => void; // NUEVO: Toggle colapso
   // ✅ Funciones de conteo dinámico
@@ -853,7 +852,6 @@ function TarjetaAuditoria({
   onArchivar,
   onEliminar,
   onEditar,
-  onCrearPlan,
   colapsada = false,
   onToggleColapso,
   contarHallazgos,
@@ -868,6 +866,7 @@ function TarjetaAuditoria({
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'auditoria',
     item: auditoria,
+    canDrag: () => auditoria.estado !== 'Finalizada',
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging()
     })
@@ -888,7 +887,7 @@ function TarjetaAuditoria({
         ref={drag}
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
-        className="cursor-move touch-none w-full relative"
+        className={`w-full relative ${auditoria.estado === 'Finalizada' ? 'cursor-default' : 'cursor-move touch-none'}`}
       >
         <Card className="bg-white border-2 hover:shadow-md transition-all flex flex-col w-full border-gray-200">
           <div 
@@ -976,7 +975,7 @@ function TarjetaAuditoria({
       ref={drag}
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
-      className="cursor-move touch-none w-full relative"
+      className={`w-full relative ${auditoria.estado === 'Finalizada' ? 'cursor-default' : 'cursor-move touch-none'}`}
     >
       <Card 
         className="bg-white border-2 hover:shadow-md transition-all flex flex-col w-full border-gray-200"
@@ -1297,22 +1296,6 @@ function TarjetaAuditoria({
               )}
             </div>
 
-            {/* NUEVO: Botón Crear Plan de Mejoramiento - SOLO si está Finalizada con hallazgos */}
-            {auditoria.estado === 'Finalizada' && auditoria.hallazgos > 0 && onCrearPlan && (
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCrearPlan(auditoria);
-                }}
-                size="sm"
-                className="text-xs font-bold w-full mb-2"
-                style={{ background: '#DC2626', color: '#FFFFFF' }}
-              >
-                <Target className="w-3 h-3 mr-1 flex-shrink-0" />
-                <span className="truncate">Crear Plan de Mejoramiento</span>
-              </Button>
-            )}
-
             {/* Menú de Acciones Horizontales - CONDICIONAL SEGÚN ESTADO */}
             <div className="flex items-center justify-between gap-1 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
               {/* Cambiar estado - DESHABILITADO en Finalizada */}
@@ -1541,7 +1524,6 @@ interface ColumnaKanbanProps {
   onArchivar: (aud: Auditoria) => void;
   onEliminar: (aud: Auditoria) => void;
   onEditar: (aud: Auditoria) => void;
-  onCrearPlan?: (aud: Auditoria) => void; // ← NUEVO
   tarjetasColapsadas?: Set<string>; // ← NUEVO: Set de IDs de tarjetas colapsadas
   onToggleColapsoTarjeta?: (id: string) => void; // ← NUEVO: Toggle para tarjetas individuales
   // ✅ Funciones de conteo dinámico
@@ -1568,7 +1550,6 @@ function ColumnaKanban({
   onArchivar,
   onEliminar,
   onEditar,
-  onCrearPlan,
   tarjetasColapsadas,
   onToggleColapsoTarjeta,
   contarHallazgos,
@@ -1783,7 +1764,6 @@ function ColumnaKanban({
               onArchivar={onArchivar}
               onEliminar={onEliminar}
               onEditar={onEditar}
-              onCrearPlan={onCrearPlan}
               contarHallazgos={contarHallazgos}
               contarHallazgosCriticos={contarHallazgosCriticos}
               contarTareasPendientes={contarTareasPendientes}
@@ -3588,7 +3568,6 @@ export function GestionAuditoriasKanbanSimple() {
                     onExportar={handleExportar}
                     onArchivar={handleArchivar}
                     onEliminar={handleEliminar}
-                    onCrearPlan={handleCrearPlan}
                     onEditar={handleEditarAuditoria}
                     tarjetasColapsadas={tarjetasColapsadas}
                     onToggleColapsoTarjeta={toggleTarjetaColapsada}
@@ -4021,19 +4000,6 @@ export function GestionAuditoriasKanbanSimple() {
                         Proceso de Auditoría
                       </Button>
                       
-                      {/* NUEVO: Botón Crear Plan de Mejoramiento - SOLO si está Finalizada con hallazgos */}
-                      {auditoria.estado === 'Finalizada' && auditoria.hallazgos > 0 && (
-                        <Button 
-                          size="sm" 
-                          className="gap-2 flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white" 
-                          onClick={() => handleCrearPlan(auditoria)}
-                          title="Crear Plan de Mejoramiento para los hallazgos identificados"
-                        >
-                          <Target className="w-4 h-4" />
-                          Crear Plan de Mejoramiento
-                        </Button>
-                      )}
-                      
                       <Button size="sm" variant="outline" className="gap-2 flex-1 sm:flex-none" onClick={() => handleEditarAuditoria(auditoria)}>
                         <Edit className="w-4 h-4" />
                         Editar
@@ -4090,8 +4056,8 @@ export function GestionAuditoriasKanbanSimple() {
               if (e.includes('planeacion') || e.includes('planeación')) return 'planeacion';
               if (e.includes('ejecucion') || e.includes('ejecución')) return 'ejecucion';
               if (e.includes('comunicacion') || e.includes('comunicación')) return 'comunicacion';
-              if (e.includes('seguimiento')) return 'documentacion';
-              if (e.includes('finalizada')) return 'historial';
+              if (e.includes('seguimiento')) return 'seguimiento';
+              if (e.includes('finalizada')) return 'finalizada';
               return 'general';
             })()}
             onClose={() => {

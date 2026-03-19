@@ -66,24 +66,43 @@ interface CreatePlanDto {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Mapea estado del backend al formato del frontend
+ * Mapea estado del backend al formato del frontend (Kanban)
+ * Incluye variantes de nomenclatura del backend para evitar planes en columna incorrecta
  */
 function mapearEstado(estado: string): EstadoPlan {
+  const e = String(estado || '').trim().toLowerCase().replace(/-/g, '_').replace(/\s+/g, '_');
   const mapa: Record<string, EstadoPlan> = {
-    'formulacion': 'FORMULACION',
-    'FORMULACION': 'FORMULACION',
-    'aprobado': 'APROBADO',
-    'APROBADO': 'APROBADO',
-    'en_ejecucion': 'EN_EJECUCION',
-    'EN_EJECUCION': 'EN_EJECUCION',
-    'con_retraso': 'CON_RETRASO',
-    'CON_RETRASO': 'CON_RETRASO',
-    'completado': 'COMPLETADO',
-    'COMPLETADO': 'COMPLETADO',
-    'suspendido': 'SUSPENDIDO',
-    'SUSPENDIDO': 'SUSPENDIDO',
+    // Formulación
+    formulacion: 'FORMULACION',
+    formulando: 'FORMULACION',
+    borrador: 'FORMULACION',
+    en_formulacion: 'FORMULACION',
+    // Aprobado
+    aprobado: 'APROBADO',
+    aprobacion: 'APROBADO',
+    aprobado_por_jefe: 'APROBADO',
+    // En Ejecución
+    en_ejecucion: 'EN_EJECUCION',
+    en_progreso: 'EN_EJECUCION',
+    en_seguimiento: 'EN_EJECUCION',
+    abierto: 'EN_EJECUCION',
+    vigente: 'EN_EJECUCION',
+    activo: 'EN_EJECUCION',
+    // Con Retraso
+    con_retraso: 'CON_RETRASO',
+    retrasado: 'CON_RETRASO',
+    vencido: 'CON_RETRASO',
+    // Completado
+    completado: 'COMPLETADO',
+    cumplido: 'COMPLETADO',
+    cerrado: 'COMPLETADO',
+    finalizado: 'COMPLETADO',
+    implementado: 'COMPLETADO',
+    // Suspendido
+    suspendido: 'SUSPENDIDO',
+    pausado: 'SUSPENDIDO',
   };
-  return mapa[estado] || 'FORMULACION';
+  return mapa[e] ?? 'FORMULACION';
 }
 
 /**
@@ -150,6 +169,33 @@ function transformarPlan(planBackend: any): PlanMejoramientoKanban {
       : auditoriaObj) ||
     'Sin auditoría';
 
+  /**
+   * Estado derivado desde las ACCIONES (origen de verdad):
+   * - Sin acciones → FORMULACION
+   * - Todas completadas → COMPLETADO
+   * - Con acciones, vencido, no todas completadas → CON_RETRASO
+   * - Con acciones, no vencido, no todas completadas → EN_EJECUCION
+   * - Con acciones, 0% completadas, no vencido → APROBADO (listo para ejecutar)
+   * - SUSPENDIDO solo si el backend lo envía explícitamente (acción manual)
+   */
+  const estadoBackend = String(planBackend.estado || '').trim().toLowerCase().replace(/-/g, '_');
+  const explicitamenteSuspendido = ['suspendido', 'pausado'].includes(estadoBackend);
+
+  let estadoPlan: EstadoPlan;
+  if (explicitamenteSuspendido) {
+    estadoPlan = 'SUSPENDIDO';
+  } else if (totalAccionesCalc === 0) {
+    estadoPlan = 'FORMULACION';
+  } else if (porcentajeAvance >= 100) {
+    estadoPlan = 'COMPLETADO';
+  } else if (diasRestantes < 0) {
+    estadoPlan = 'CON_RETRASO';
+  } else if (accionesCompletadas === 0 && accionesEnProceso === 0) {
+    estadoPlan = 'APROBADO';
+  } else {
+    estadoPlan = 'EN_EJECUCION';
+  }
+
   return {
     id: planBackend.id,
     codigo: planBackend.codigo || `PM-${new Date().getFullYear()}-${planBackend.id?.substring(0, 4) || '001'}`,
@@ -162,7 +208,7 @@ function transformarPlan(planBackend: any): PlanMejoramientoKanban {
     fechaAprobacion: planBackend.fechaAprobacion || planBackend.fecha_aprobacion,
     fechaInicio: planBackend.fechaInicio || planBackend.fecha_inicio,
     fechaFin: planBackend.fechaFin || planBackend.fecha_fin || planBackend.fechaLimite || '',
-    estado: mapearEstado(planBackend.estado),
+    estado: estadoPlan,
     semaforo: (planBackend.semaforo as SemaforoPlan) || calcularSemaforo(porcentajeAvance, diasRestantes),
     totalHallazgos: hallazgos.length || planBackend.totalHallazgos || 0,
     totalAcciones: totalAccionesCalc,

@@ -1370,12 +1370,21 @@ export class AuditoriasService {
   /**
    * Aprueba el Informe de Cierre (Jefe OCI). Pasa la auditoría a Finalizada.
    * Debe llamarse solo cuando todas las acciones estén verificadas (validación en controller).
+   * aprobadoPorId puede ser number (id_tercero) o string (UUID) del token.
    */
   async aprobarInformeCierre(
     id: string,
     aprobadoPor: string,
-    aprobadoPorId?: number,
+    aprobadoPorId?: number | string,
   ): Promise<Auditoria> {
+    // Resolver UUID a id_tercero (bigint). Las columnas finalizada_por_id e informe_cierre_aprobado_por_id son integer.
+    let idTercero: number | null = null;
+    if (typeof aprobadoPorId === 'string') {
+      idTercero = await this.getUserIdTerceroFromUUID(aprobadoPorId);
+    } else if (typeof aprobadoPorId === 'number') {
+      idTercero = aprobadoPorId;
+    }
+
     const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
     if (!auditoria) {
       throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
@@ -1389,14 +1398,14 @@ export class AuditoriasService {
     const estadoAnterior = auditoria.estadoKanban;
     auditoria.informeCierreAprobado = true;
     auditoria.informeCierreAprobadoPor = aprobadoPor;
-    auditoria.informeCierreAprobadoPorId = aprobadoPorId ?? null;
+    auditoria.informeCierreAprobadoPorId = idTercero ?? null;
     auditoria.informeCierreAprobadoAt = new Date();
     auditoria.estadoKanban = EstadoKanban.FINALIZADA;
     auditoria.fase = FaseAuditoria.COMPLETADA;
     auditoria.progreso = 100;
     if (!auditoria.fechaFinalizacion) auditoria.fechaFinalizacion = new Date();
     if (!auditoria.finalizadaPor) auditoria.finalizadaPor = aprobadoPor;
-    if (auditoria.finalizadaPorId == null && aprobadoPorId != null) auditoria.finalizadaPorId = aprobadoPorId;
+    if (auditoria.finalizadaPorId == null && idTercero != null) auditoria.finalizadaPorId = idTercero;
     const saved = await this.auditoriaRepository.save(auditoria);
 
     const historial = new HistorialAuditoria();
@@ -1404,7 +1413,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
     historial.fecha = new Date();
     historial.hora = new Date().toTimeString().slice(0, 5);
-    historial.usuarioId = aprobadoPorId || 1;
+    historial.usuarioId = idTercero ?? 1;
     historial.accion = 'Aprobación Informe de Cierre';
     historial.descripcion = `Informe de cierre aprobado por Jefe OCI. Auditoría ${auditoria.codigo} cerrada.`;
     historial.estadoAnterior = estadoAnterior;

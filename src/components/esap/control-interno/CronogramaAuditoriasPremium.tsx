@@ -54,7 +54,10 @@ import type { AuditoriaProgramadaUI, TipoAuditoria as TipoAuditoriaHook, EstadoA
 
 type VistaCalendario = 'dia' | 'semana' | 'mes' | 'año';
 type EstadoAuditoria = EstadoAuditoriaHook; // Usar tipo del hook
-type TipoAuditoria = TipoAuditoriaHook | 'regular' | 'territorial' | 'especial'; // Combinar tipos
+// Tipo técnico de auditoría (del hook): GESTION, CUMPLIMIENTO, etc.
+type TipoAuditoria = TipoAuditoriaHook;
+// Tipo operativo para filtros visuales: Regular / Territorial / Especial
+type TipoFiltroOperativo = 'regular' | 'territorial' | 'especial';
 
 interface AuditoriaProgramada {
   id: string;
@@ -131,7 +134,8 @@ export function CronogramaAuditoriasPremium({
   // 🆕 FILTROS COMPLETOS DEL KANBAN
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoAuditoria | 'TODOS'>('TODOS');
-  const [filtroTipo, setFiltroTipo] = useState<TipoAuditoria | 'TODOS'>('TODOS');
+  // Filtro por tipo operativo (Regular / Territorial / Especial)
+  const [filtroTipo, setFiltroTipo] = useState<TipoFiltroOperativo | 'TODOS'>('TODOS');
   const [filtroTerritorial, setFiltroTerritorial] = useState<string>('Todas las Territoriales');
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState<AuditoriaProgramada | null>(null);
 
@@ -146,8 +150,40 @@ export function CronogramaAuditoriasPremium({
       // Filtro de estado
       const cumpleEstado = filtroEstado === 'TODOS' || aud.estado === filtroEstado;
       
-      // Filtro de tipo
-      const cumpleTipo = filtroTipo === 'TODOS' || aud.tipo === filtroTipo;
+      // Filtro de tipo (usamos el tipo operativo mapeado en el hook:
+      // 'regular' | 'territorial' | 'especial')
+      const tipoOperativoRaw = (aud as any).tipoOperativo as string | undefined;
+      const tipoKanbanRaw = (aud as any).tipoKanban as string | undefined;
+      const tipoBackendRaw = (aud as any).tipo as string | undefined;
+
+      // Normalizamos el tipo operativo usando varias fuentes posibles:
+      // 1. tipoOperativo (si viene del hook)
+      // 2. tipoKanban (si viene del backend de kanban)
+      // 3. tipo backend "Regular / Territorial / Especial" (no los técnicos GESTION / CUMPLIMIENTO)
+      let tipoAudNormalizado: string | undefined;
+
+      if (typeof tipoOperativoRaw === 'string' && tipoOperativoRaw.trim() !== '') {
+        tipoAudNormalizado = tipoOperativoRaw.toLowerCase();
+      } else if (typeof tipoKanbanRaw === 'string' && tipoKanbanRaw.trim() !== '') {
+        tipoAudNormalizado = tipoKanbanRaw.toLowerCase();
+      } else if (typeof tipoBackendRaw === 'string' && tipoBackendRaw.trim() !== '') {
+        const tipoLower = tipoBackendRaw.toLowerCase();
+        // Si el backend envía directamente Regular / Territorial / Especial
+        if (['regular', 'territorial', 'especial'].includes(tipoLower)) {
+          tipoAudNormalizado = tipoLower;
+        } else if (tipoLower === 'especial') {
+          // Cuando el tipo técnico es ESPECIAL, lo tratamos como operativo "especial"
+          tipoAudNormalizado = 'especial';
+        } else if (tipoLower === 'gestion') {
+          // Cuando solo sabemos que es GESTION, lo asumimos como "regular" por defecto
+          tipoAudNormalizado = 'regular';
+        }
+      }
+
+      const cumpleTipo =
+        filtroTipo === 'TODOS' ||
+        (typeof tipoAudNormalizado === 'string' &&
+          tipoAudNormalizado === (filtroTipo as string).toLowerCase());
       
       // Filtro territorial (aquí asumimos que las auditorías tienen una propiedad territorial)
       // Si no existe en el tipo, esto se puede ignorar o adaptar
@@ -290,10 +326,10 @@ export function CronogramaAuditoriasPremium({
               <option value="COMPLETADA">Comunicación</option>
             </select>
 
-            {/* Filtro Tipo */}
+            {/* Filtro Tipo (operativo: Regular / Territorial / Especial) */}
             <select
               value={filtroTipo}
-              onChange={(e) => setFiltroTipo(e.target.value as TipoAuditoria | 'TODOS')}
+              onChange={(e) => setFiltroTipo(e.target.value as TipoFiltroOperativo | 'TODOS')}
               className="px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-xs font-bold focus:border-[#2962FF] outline-none"
             >
               <option value="TODOS">Todos los tipos</option>
