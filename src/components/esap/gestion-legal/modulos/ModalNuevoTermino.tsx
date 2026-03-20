@@ -24,7 +24,6 @@ const MODULOS_PROCESO = [
     { value: 'ASESORIA', label: 'Asesoría Jurídica' },
     { value: 'ORGANOS_CONTROL', label: 'Órganos de Control' },
     { value: 'PROCESOS_COACTIVOS', label: 'Procesos Coactivos' },
-    { value: 'MANUAL', label: 'Manual / Otro' },
 ];
 
 const PRIORIDADES = [
@@ -45,7 +44,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
         observaciones: '',
         numeroRadicado: '',
         responsableId: '',
-        origenModulo: 'MANUAL'
+        origenModulo: ''
     });
 
     // Cargar profesionales
@@ -63,7 +62,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
 
     // Cargar procesos del módulo seleccionado
     useEffect(() => {
-        if (!open || formData.origenModulo === 'MANUAL') {
+        if (!open || !formData.origenModulo) {
             setProcesosModulo([]);
             return;
         }
@@ -118,7 +117,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                 observaciones: '',
                 numeroRadicado: '',
                 responsableId: '',
-                origenModulo: 'MANUAL'
+                origenModulo: ''
             });
         } catch (error) {
             console.error('Error creando término:', error);
@@ -165,7 +164,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                     </div>
 
                     {/* Proceso del módulo */}
-                    {formData.origenModulo !== 'MANUAL' && (
+                    {formData.origenModulo && (
                         <div className="space-y-2">
                             <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
                                 <Briefcase className="w-4 h-4" />
@@ -274,21 +273,6 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                             </SelectContent>
                         </Select>
                     </div>
-
-                    {/* Radicado Manual */}
-                    {formData.origenModulo === 'MANUAL' && (
-                        <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                                Vinculación (Radicado - Opcional)
-                            </Label>
-                            <Input
-                                placeholder="Ej: EXP-2025-001"
-                                value={formData.numeroRadicado}
-                                onChange={(e) => setFormData({ ...formData, numeroRadicado: e.target.value })}
-                                className="border-2 border-gray-300 focus:border-blue-500"
-                            />
-                        </div>
-                    )}
 
                     {/* Observaciones */}
                     <div className="space-y-2">

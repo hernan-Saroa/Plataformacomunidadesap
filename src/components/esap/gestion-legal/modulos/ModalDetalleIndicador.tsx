@@ -171,7 +171,7 @@ export function ModalDetalleIndicador({ isOpen, onClose, indicador, onEditar, on
                     <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">Meta</p>
                   </div>
                   <p className="text-2xl font-black text-blue-700">
-                    {indicador.meta}<span className="text-sm font-semibold ml-0.5">{indicador.unidadMedida}</span>
+                    {indicador.meta}<span className="text-sm font-semibold ml-0.5">{indicador.unidadMedida === 'PORCENTAJE' ? '%' : indicador.unidadMedida === 'NUMERO' ? '' : indicador.unidadMedida}</span>
                   </p>
                 </div>
 
@@ -199,7 +199,7 @@ export function ModalDetalleIndicador({ isOpen, onClose, indicador, onEditar, on
                     <p className="text-xs font-bold text-green-700 uppercase tracking-wide">Actual</p>
                   </div>
                   <p className="text-2xl font-black text-green-700">
-                    {indicador.valorActual}<span className="text-sm font-semibold ml-0.5">{indicador.unidadMedida}</span>
+                    {indicador.valorActual}<span className="text-sm font-semibold ml-0.5">{indicador.unidadMedida === 'PORCENTAJE' ? '%' : indicador.unidadMedida === 'NUMERO' ? '' : indicador.unidadMedida}</span>
                   </p>
                   <p className="text-xs text-gray-500 mt-0.5">{indicador.ultimaActualizacion.toLocaleDateString('es-CO')}</p>
                 </div>
@@ -208,11 +208,11 @@ export function ModalDetalleIndicador({ isOpen, onClose, indicador, onEditar, on
               {/* Barra de progreso visual: muestra avance sobre la meta */}
               <div className="space-y-1">
                 <div className="flex justify-between text-xs text-gray-500">
-                  <span>0 {indicador.unidadMedida}</span>
+                  <span>0{indicador.unidadMedida === 'PORCENTAJE' ? '%' : ''}</span>
                   <span className="font-semibold text-gray-700">
-                    {indicador.valorActual} de {indicador.meta} {indicador.unidadMedida}
+                    {indicador.valorActual} de {indicador.meta}{indicador.unidadMedida === 'PORCENTAJE' ? '%' : ''}
                   </span>
-                  <span>{indicador.meta} {indicador.unidadMedida}</span>
+                  <span>{indicador.meta}{indicador.unidadMedida === 'PORCENTAJE' ? '%' : ''}</span>
                 </div>
                 <div className="relative h-5 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
                   <div
