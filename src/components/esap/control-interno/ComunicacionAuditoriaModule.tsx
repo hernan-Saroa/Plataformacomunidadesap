@@ -329,13 +329,36 @@ export const ComunicacionAuditoriaModule: React.FC<{
         setPlanEstadisticas(null);
       }
       if (audData) {
+        const objTexto = (arr: { descripcion?: string; objetivo?: string }[] | undefined) =>
+          Array.isArray(arr) && arr.length > 0
+            ? arr.map((o) => o.descripcion || o.objetivo || '').filter(Boolean).join(' ')
+            : undefined;
         setAuditoria(prev => ({
           ...prev,
           id: audData.id,
           codigo: audData.codigo || prev.codigo,
           nombre: audData.nombre || audData.titulo || prev.nombre,
+          proceso: audData.procesoAuditado || audData.proceso || prev.proceso,
           auditorLider: typeof audData.auditorLider === 'string' ? audData.auditorLider : (audData.auditorLider?.nombre || prev.auditorLider),
+          fechaInicio: audData.fechaInicio || prev.fechaInicio,
+          fechaFin: audData.fechaFin || prev.fechaFin,
           hallazgos: h,
+          // Variables para PDF e informe (procedentes de BD)
+          ...(audData.territorial && { territorial: audData.territorial }),
+          ...(audData.alcance && { alcance: audData.alcance }),
+          ...(objTexto(audData.objetivos) && { objetivo: objTexto(audData.objetivos) }),
+          ...(audData.equipoAuditores && audData.equipoAuditores.length > 0 && {
+            equipoAuditores: audData.equipoAuditores.map((a: any) => ({ nombre: a.nombre || a.nom_largo || 'Auditor', rol: a.cargo || a.rol })),
+          }),
+          ...(audData.responsable && { responsable: audData.responsable }),
+          ...(audData.responsableAreaNombre && { responsableUnidad: audData.responsableAreaNombre }),
+          ...(audData.responsableAreaCargo && { cargo: audData.responsableAreaCargo }),
+          ...(audData.areaObjetivo && { areaResponsable: audData.areaObjetivo }),
+          ...(audData.territorialInfo && {
+            lugarEjecucion: audData.territorialInfo.ciudad
+              ? `${audData.territorialInfo.ciudad}${audData.territorialInfo.departamento ? ' – ' + audData.territorialInfo.departamento : ''}`
+              : audData.territorial,
+          }),
         }));
       }
     } catch (err: any) {
@@ -735,8 +758,28 @@ export const ComunicacionAuditoriaModule: React.FC<{
                         typeof auditoria.auditorLider === 'string'
                           ? auditoria.auditorLider
                           : (auditoria as any).auditorLider?.nombre || 'No asignado',
+                      // Variables adicionales (opcionales)
+                      radicado: (auditoria as any).radicado,
+                      fechaOficio: informePreliminar.fecha,
+                      destinatarioNombre: (auditoria as any).responsable || (auditoria as any).responsableUnidad,
+                      destinatarioCargo: (auditoria as any).cargo || 'Director(a) Territorial',
+                      unidadAuditable: (auditoria as any).territorial || (auditoria as any).areaResponsable || auditoria.nombre,
+                      fechaLimitePronunciamiento: (auditoria as any).fechaLimitePronunciamiento,
+                      jefeOCI: (auditoria as any).jefeOCI,
+                      elaboro: typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre,
+                      tituloAuditoria: (auditoria as any).tituloAuditoria,
+                      responsableUnidadAuditada: (auditoria as any).responsable || (auditoria as any).responsableUnidad,
+                      lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).territorial,
+                      fechaEjecucionInicio: auditoria.fechaInicio,
+                      fechaEjecucionFin: auditoria.fechaFin,
+                      periodoAuditoria: auditoria.fechaInicio && auditoria.fechaFin ? `${auditoria.fechaInicio} al ${auditoria.fechaFin}` : undefined,
+                      equipoAuditor: (auditoria as any).equipoAuditores?.map((a: any) => ({ nombre: a.nombre || a, rol: a.rol })),
+                      objetivo: (auditoria as any).objetivo,
+                      alcance: (auditoria as any).alcance,
+                      marcoNormativo: (auditoria as any).marcoNormativo,
+                      contextoGeneral: (auditoria as any).contextoGeneral,
                     },
-                    informePreliminar,
+                    { ...informePreliminar, foliosAnexos: informePreliminar.hallazgos ? Math.max(10, informePreliminar.hallazgos * 3) : undefined },
                     hallazgosParaPDF
                   );
                 }}
@@ -805,6 +848,36 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 loading={loadingInformeCierre}
                 onLeccionesChange={setLeccionesAprendidas}
                 onRecomendacionesChange={setRecomendacionesFuturas}
+                onDescargarPDF={async () => {
+                  try {
+                    const { exportarPDFInformeCierre } = await import('./services/exportarPDFInformeCierreEjecutivo');
+                    const datos: import('./services/exportarPDFInformeCierreEjecutivo').DatosInformeCierre = {
+                      auditoria: {
+                        codigo: auditoria.codigo,
+                        nombre: auditoria.nombre,
+                        auditorLider: typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre || '—',
+                        territorial: (auditoria as any).territorial,
+                        cronograma: { fechaInicio: auditoria.fechaInicio, fechaFin: auditoria.fechaFin },
+                      },
+                      resumen: resumenCierre ? { ...resumenCierre, leccionesAprendidas, recomendacionesFuturasAuditorias: recomendacionesFuturas } : null,
+                      planes: planesParaVerificacion || [],
+                      hallazgos: (auditoria.hallazgos || []).map((h: Hallazgo) => ({
+                        id: h.id,
+                        codigo: h.codigo,
+                        titulo: h.titulo,
+                        descripcion: h.descripcion || '',
+                        gravedad: h.gravedad,
+                        decisionAuditor: h.decisionAuditor,
+                        estado: h.estado,
+                        fundamentacionTecnica: h.fundamentacionTecnica,
+                      })),
+                    };
+                    await exportarPDFInformeCierre(datos);
+                    toast.success('Informe de cierre descargado');
+                  } catch (err: any) {
+                    toast.error(err?.message || 'Error al generar el PDF');
+                  }
+                }}
                 onGuardarBorrador={readOnly ? async () => {} : async () => {
                   if (!useAPI) return;
                   setLoadingInformeCierre(true);
@@ -1455,9 +1528,12 @@ const SeccionInformeFinal: React.FC<{
             <div className="flex items-center gap-3">
               <AlertCircle className="w-8 h-8 text-red-600 flex-shrink-0" />
               <div>
-                <p className="font-bold text-red-900">No se puede avanzar al Informe Final</p>
+                <p className="font-bold text-red-900">No se puede generar el Informe Final</p>
                 <p className="text-sm text-red-700">
                   Existen {enControversia} controversia(s) pendiente(s) de decisión del auditor.
+                </p>
+                <p className="text-sm text-red-600 mt-1">
+                  Vaya a <strong>Gestión de Hallazgos</strong> (sección 2) y registre la decisión del auditor (Ratificado, Modificado o Retirado) para cada hallazgo en controversia.
                 </p>
               </div>
             </div>
@@ -1638,6 +1714,7 @@ const SeccionInformeFinal: React.FC<{
             size="sm"
             onClick={onGenerar}
             disabled={hayBloqueo || !informe.observacionesFinales?.trim()}
+            title={hayBloqueo ? 'Resuelva las controversias en Gestión de Hallazgos' : !informe.observacionesFinales?.trim() ? 'Complete las observaciones finales' : undefined}
             className="font-medium bg-green-600 hover:bg-green-700 text-white"
           >
             <FileCheck className="w-4 h-4 mr-2" />
@@ -1900,6 +1977,7 @@ const SeccionInformeCierre: React.FC<{
   onRecomendacionesChange: (v: string) => void;
   onGuardarBorrador: () => Promise<void>;
   onAprobar: () => Promise<void>;
+  onDescargarPDF?: () => Promise<void>;
   puedeAprobar: boolean;
   useAPI: boolean;
   embedded?: boolean;
@@ -1914,6 +1992,7 @@ const SeccionInformeCierre: React.FC<{
   onRecomendacionesChange,
   onGuardarBorrador,
   onAprobar,
+  onDescargarPDF,
   puedeAprobar,
   useAPI,
   embedded,
@@ -1959,10 +2038,18 @@ const SeccionInformeCierre: React.FC<{
       )}
 
       {informeCierreAprobado ? (
-        <div className="p-6 rounded-lg border-2 border-green-300 bg-green-50">
-          <CheckCircle2 className="w-10 h-10 text-green-600 mb-2" />
-          <p className="font-bold text-green-900">Informe de cierre aprobado. Auditoría cerrada.</p>
-          <p className="text-sm text-green-700 mt-1">El expediente queda cerrado e inmutable.</p>
+        <div className="space-y-3">
+          <div className="p-6 rounded-lg border-2 border-green-300 bg-green-50">
+            <CheckCircle2 className="w-10 h-10 text-green-600 mb-2" />
+            <p className="font-bold text-green-900">Informe de cierre aprobado. Auditoría cerrada.</p>
+            <p className="text-sm text-green-700 mt-1">El expediente queda cerrado e inmutable.</p>
+          </div>
+          {onDescargarPDF && resumen && (
+            <Button size="sm" variant="outline" className="border-green-600 text-green-700 hover:bg-green-50" onClick={onDescargarPDF}>
+              <Download className="w-4 h-4 mr-1" />
+              Descargar Informe de Cierre (PDF)
+            </Button>
+          )}
         </div>
       ) : (
         <>
@@ -1992,6 +2079,12 @@ const SeccionInformeCierre: React.FC<{
           </div>
           )}
           <div className="flex flex-wrap gap-2">
+            {onDescargarPDF && resumen && (
+              <Button size="sm" variant="outline" className="border-green-600 text-green-700 hover:bg-green-50" onClick={onDescargarPDF}>
+                <Download className="w-4 h-4 mr-1" />
+                Descargar Informe de Cierre (PDF)
+              </Button>
+            )}
             {useAPI && !readOnly && (
               <>
                 <Button size="sm" variant="outline" disabled={guardando} onClick={handleGuardar}>
@@ -2307,19 +2400,50 @@ const ModalPreviewInforme: React.FC<{
             efectos: h.efectos,
             recomendaciones: h.recomendaciones,
           }))
-        : undefined;
+        : tipo === 'final' && auditoria.hallazgos?.length
+          ? auditoria.hallazgos.map((h: Hallazgo) => ({
+              codigo: h.codigo,
+              titulo: h.titulo,
+              gravedad: h.gravedad,
+              descripcion: h.descripcion || '',
+              causas: h.causas,
+              efectos: h.efectos,
+              recomendaciones: h.recomendaciones,
+              estadoFinal: h.estado,
+              decisionAuditor: h.decisionAuditor,
+              fundamentacionTecnica: h.fundamentacionTecnica,
+            }))
+          : undefined;
+    const auditoriaBase = {
+      codigo: auditoria.codigo,
+      nombre: auditoria.nombre,
+      proceso: auditoria.proceso,
+      auditorLider:
+        typeof auditoria.auditorLider === 'string'
+          ? auditoria.auditorLider
+          : (auditoria as any).auditorLider?.nombre || 'No asignado',
+      ...(tipo === 'preliminar' && {
+        fechaOficio: informe?.fecha,
+        destinatarioNombre: (auditoria as any).responsable || (auditoria as any).responsableUnidad,
+        destinatarioCargo: (auditoria as any).cargo || 'Director(a) Territorial',
+        unidadAuditable: (auditoria as any).territorial || (auditoria as any).areaResponsable || auditoria.nombre,
+        fechaEjecucionInicio: auditoria.fechaInicio,
+        fechaEjecucionFin: auditoria.fechaFin,
+        periodoAuditoria: auditoria.fechaInicio && auditoria.fechaFin ? `${auditoria.fechaInicio} al ${auditoria.fechaFin}` : undefined,
+        equipoAuditor: (auditoria as any).equipoAuditores?.map((a: any) => ({ nombre: a.nombre || a, rol: a.rol })),
+        objetivo: (auditoria as any).objetivo,
+        alcance: (auditoria as any).alcance,
+        marcoNormativo: (auditoria as any).marcoNormativo,
+        contextoGeneral: (auditoria as any).contextoGeneral,
+      }),
+    };
+    const informeParaPDF = tipo === 'preliminar' && informe?.hallazgos
+      ? { ...informe, foliosAnexos: Math.max(10, informe.hallazgos * 3) }
+      : informe;
     await exportarPDFInformeAuditoria(
       tipo === 'preliminar' ? 'preliminar' : 'final',
-      {
-        codigo: auditoria.codigo,
-        nombre: auditoria.nombre,
-        proceso: auditoria.proceso,
-        auditorLider:
-          typeof auditoria.auditorLider === 'string'
-            ? auditoria.auditorLider
-            : (auditoria as any).auditorLider?.nombre || 'No asignado',
-      },
-      informe,
+      auditoriaBase,
+      informeParaPDF,
       hallazgosParaPDF
     );
   };

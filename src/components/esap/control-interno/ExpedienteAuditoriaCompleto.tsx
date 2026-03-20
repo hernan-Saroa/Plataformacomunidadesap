@@ -2329,9 +2329,42 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
             Informe de Cierre
           </Button>
         ) : (
-          <Button variant="outline" disabled className="text-gray-400">
-            <Download className="w-4 h-4 mr-2" />
-            Informe de Cierre (no disponible)
+          <Button
+            variant="outline"
+            className="border-green-600 text-green-700 hover:bg-green-50"
+            onClick={async () => {
+              try {
+                const { exportarPDFInformeCierre } = await import('./services/exportarPDFInformeCierreEjecutivo');
+                const datos = {
+                  auditoria: {
+                    codigo: resumen?.codigo || auditoria.codigo,
+                    nombre: resumen?.nombre || auditoria.nombre,
+                    auditorLider: auditoria.auditorLider?.nombre || '—',
+                    territorial: auditoria.territorial,
+                    cronograma: { fechaInicio: resumen?.fechaInicio, fechaFin: resumen?.fechaFin },
+                  },
+                  resumen: resumen ? { ...resumen, leccionesAprendidas: resumen.leccionesAprendidas, recomendacionesFuturasAuditorias: resumen.recomendacionesFuturasAuditorias } : null,
+                  planes: planes,
+                  hallazgos: hallazgos.map((h: any) => ({
+                    id: h.id,
+                    codigo: h.codigo,
+                    titulo: h.titulo,
+                    descripcion: h.descripcion || '',
+                    gravedad: h.gravedad,
+                    decisionAuditor: h.decisionAuditor,
+                    estado: h.estado,
+                    fundamentacionTecnica: h.fundamentacionTecnica,
+                  })),
+                };
+                await exportarPDFInformeCierre(datos);
+                toast.success('Informe de cierre descargado');
+              } catch (e: any) {
+                toast.error(e?.message || 'Error al generar el PDF');
+              }
+            }}
+          >
+            <FileText className="w-4 h-4 mr-2" />
+            Generar / Descargar Informe de Cierre
           </Button>
         )}
         {docEjecutivo ? (
