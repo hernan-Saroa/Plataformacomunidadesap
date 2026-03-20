@@ -18,7 +18,7 @@ import {
 import { toast } from 'sonner';
 import { ocService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
-import { authService } from '../../../../services/api/authService';
+
 import { Permissions } from '../../../../enums/permissions';
 
 interface DocumentoSeleccionado {
@@ -277,8 +277,11 @@ export function ModalGestionDocumentos({
 
       const fullUrl = `${baseUrl}${prefix}/files/${filename}`;
 
-      // Fethcing data to force download
-      const response = await fetch(fullUrl);
+      // Fetching data to force download (with auth header)
+      const token = localStorage.getItem('esap_auth_token');
+      const response = await fetch(fullUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (!response.ok) throw new Error('Network response was not ok.');
       const blob = await response.blob();
       const donwloadUrl = window.URL.createObjectURL(blob);
