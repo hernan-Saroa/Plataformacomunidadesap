@@ -80,8 +80,6 @@ interface Auditoria {
   areaAuditable: string;
   procesoNombre: string;
   nivelRiesgo: NivelRiesgo;
-  alcance?: string;
-  objetivos?: string[];
   responsableArea: {
     id: string;
     nombre: string;
@@ -337,21 +335,19 @@ export function ExpedienteAuditoriaCompleto({
           areaAuditable: data.areaObjetivo || data.territorial || 'Sin área definida',
           procesoNombre: data.procesoAuditado || data.nombre,
           nivelRiesgo: (data.riesgoKanban || 'Medio') as NivelRiesgo,
-          alcance: data.alcance || data.descripcion,
-          objetivos: Array.isArray(data.objetivos) ? data.objetivos : (data.objetivo ? [data.objetivo] : undefined),
           
           responsableArea: {
             id: String(data.auditorLiderId || '1'),
             nombre: data.responsableAreaNombre || data.responsable || 'Sin responsable',
             cargo: data.responsableAreaCargo || 'Responsable',
-            email: data.responsableAreaEmail || 'responsable@esap.edu.co',
-            telefono: data.responsableAreaTelefono,
+            email: `responsable@esap.edu.co`,
+            telefono: undefined,
           },
           
           auditorLider: {
             id: String(data.auditorLiderId || '1'),
             nombre: data.auditorLider?.nombre || 'Sin auditor líder',
-            email: data.auditorLider?.email || 'auditor@esap.edu.co',
+            email: 'auditor@esap.edu.co',
             foto: undefined,
           },
           
@@ -360,7 +356,7 @@ export function ExpedienteAuditoriaCompleto({
                 id: eq.id || String(eq.personaId),
                 nombre: eq.nombreCompleto || eq.nombre || 'Auditor',
                 rol: eq.rol || 'Auditor',
-                email: eq.email || 'auditor@esap.edu.co',
+                email: 'auditor@esap.edu.co',
                 foto: undefined,
               }))
             : [],
@@ -391,14 +387,14 @@ export function ExpedienteAuditoriaCompleto({
           },
           
           fechasClave: {
-            planeacionInicio: data.fechaInicioPlaneacion ? new Date(data.fechaInicioPlaneacion) : new Date(data.fechaInicio),
-            planeacionFin: data.fechaFinPlaneacion ? new Date(data.fechaFinPlaneacion) : undefined,
-            ejecucionInicio: data.fechaInicioEjecucion ? new Date(data.fechaInicioEjecucion) : undefined,
-            ejecucionFin: data.fechaFinEjecucion ? new Date(data.fechaFinEjecucion) : undefined,
-            comunicacionInicio: data.fechaInicioComunicacion ? new Date(data.fechaInicioComunicacion) : undefined,
-            comunicacionFin: data.fechaFinComunicacion ? new Date(data.fechaFinComunicacion) : undefined,
-            informePreliminar: data.informePreliminar ? new Date(data.informePreliminar) : undefined,
-            informeFinal: data.informeFinal ? new Date(data.informeFinal) : undefined,
+            planeacionInicio: new Date(data.fechaInicio),
+            planeacionFin: undefined,
+            ejecucionInicio: undefined,
+            ejecucionFin: undefined,
+            comunicacionInicio: undefined,
+            comunicacionFin: undefined,
+            informePreliminar: undefined,
+            informeFinal: undefined,
           },
           
           metadata: {
@@ -1257,7 +1253,6 @@ export function ExpedienteAuditoriaCompleto({
                 setRecargarTrigger(t => t + 1);
                 onComunicacionCompletadaProp?.();
               }}
-                  onCambiarTab={setActiveTab}
                   readOnly={auditoria.estado === 'finalizada'}
                 />
               )}
@@ -1588,7 +1583,6 @@ interface TabFaseProps {
   checklistCompletados?: Record<string, boolean>;
   onToggleChecklist?: (id: string, completado: boolean) => void;
   onComunicacionCompletada?: () => void;
-  onCambiarTab?: (tab: string) => void;
   readOnly?: boolean;
 }
 
@@ -1760,7 +1754,7 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist, read
 }
 
 // TAB 4: COMUNICACIÓN — Mismo patrón que Planeación/Ejecución: Card + contenido. Flujo: Informe Preliminar, Gestión Hallazgos, Decisión, Plan Mejoramiento
-function TabComunicacion({ auditoria, onComunicacionCompletada, onCambiarTab, readOnly }: TabFaseProps) {
+function TabComunicacion({ auditoria, onComunicacionCompletada, readOnly }: TabFaseProps) {
   return (
     <div className="space-y-4">
       <Card className="p-3 border-l-4 border-l-green-600 bg-green-50">
@@ -1782,7 +1776,6 @@ function TabComunicacion({ auditoria, onComunicacionCompletada, onCambiarTab, re
           estadoAuditoria={auditoria.estado}
           embedded
           onComunicacionCompletada={onComunicacionCompletada}
-          onCambiarTab={onCambiarTab}
           readOnly={readOnly}
         />
       </div>
@@ -2151,129 +2144,36 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
   }, [hallazgos]);
 
   const docCierre = useMemo(() => documentos.find(d => d.id.startsWith('doc-cierre') || /cierre|informe\s*de\s*cierre/i.test(d.nombre)), [documentos]);
+  const docEjecutivo = useMemo(() => documentos.find(d => /ejecutivo|informe\s*ejecutivo/i.test(d.nombre)), [documentos]);
 
-  const descargarDocSubido = async (doc: DocumentoExpediente): Promise<boolean> => {
+  const descargarDoc = async (doc: DocumentoExpediente) => {
     const url = doc.urlDownload || (doc as any).url;
-    if (!url) return false;
+    if (!url) {
+      toast.error('No hay enlace de descarga para este documento');
+      return;
+    }
     try {
       const fullUrl = url.startsWith('http') ? url : `${window.location.origin}${url}`;
       const res = await fetch(fullUrl, { headers: getDefaultHeaders() });
       if (!res.ok) throw new Error(res.statusText);
       const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = blobUrl;
+      link.href = URL.createObjectURL(blob);
       link.download = doc.nombre || 'documento';
-      document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
+      URL.revokeObjectURL(link.href);
       toast.success('Descarga iniciada');
-      return true;
-    } catch {
-      return false;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al descargar');
     }
   };
 
-  const descargarInformeCierre = async () => {
-    if (docCierre) {
-      const ok = await descargarDocSubido(docCierre);
-      if (ok) return;
-    }
+  const generarYDescargarEjecutivo = async () => {
     try {
-      const { exportarPDFInformeCierre } = await import('./services/exportarPDFInformeCierreEjecutivo');
-      await exportarPDFInformeCierre({
-        auditoria: {
-          codigo: auditoria.codigo,
-          nombre: auditoria.nombre,
-          tipo: auditoria.tipo,
-          estado: auditoria.estado,
-          areaAuditable: auditoria.areaAuditable,
-          procesoNombre: auditoria.procesoNombre,
-          nivelRiesgo: auditoria.nivelRiesgo,
-          alcance: auditoria.alcance,
-          objetivos: auditoria.objetivos,
-          auditorLider: auditoria.auditorLider?.nombre,
-          auditorLiderEmail: auditoria.auditorLider?.email,
-          responsableArea: auditoria.responsableArea,
-          equipoAuditores: auditoria.equipoAuditores?.map((e: any) => ({ nombre: e.nombre, rol: e.rol, email: e.email })),
-          cronograma: auditoria.cronograma,
-          progreso: auditoria.progreso,
-          estadisticas: auditoria.estadisticas,
-          fechasClave: auditoria.fechasClave,
-          metadata: auditoria.metadata,
-          territorial: auditoria.areaAuditable,
-        },
-        resumen,
-        planes,
-        hallazgos: hallazgos.map((h: any) => ({
-          id: h.id,
-          codigo: h.codigo,
-          titulo: h.titulo,
-          descripcion: h.descripcion,
-          gravedad: h.gravedad || h.criticidad,
-          criterioIncumplido: h.criterioIncumplido,
-          causas: h.causas,
-          efectos: h.efectos,
-          recomendaciones: h.recomendaciones,
-          decisionAuditor: h.decisionAuditor,
-          estado: h.estado,
-          fundamentacionTecnica: h.fundamentacionTecnica,
-          fechaDeteccion: h.fechaDeteccion,
-        })),
-      });
-      toast.success('Informe de Cierre generado en PDF');
+      await controlInternoService.generarInformeEjecutivo(auditoriaId);
+      toast.success('Informe ejecutivo generado. Revise la sección Documentación para descargarlo.');
     } catch (e: any) {
-      toast.error(e?.message || 'Error al generar Informe de Cierre');
-    }
-  };
-
-  const descargarInformeEjecutivo = async () => {
-    try {
-      const { exportarPDFInformeEjecutivo } = await import('./services/exportarPDFInformeCierreEjecutivo');
-      await exportarPDFInformeEjecutivo({
-        auditoria: {
-          codigo: auditoria.codigo,
-          nombre: auditoria.nombre,
-          tipo: auditoria.tipo,
-          estado: auditoria.estado,
-          areaAuditable: auditoria.areaAuditable,
-          procesoNombre: auditoria.procesoNombre,
-          nivelRiesgo: auditoria.nivelRiesgo,
-          alcance: auditoria.alcance,
-          objetivos: auditoria.objetivos,
-          auditorLider: auditoria.auditorLider?.nombre,
-          auditorLiderEmail: auditoria.auditorLider?.email,
-          responsableArea: auditoria.responsableArea,
-          equipoAuditores: auditoria.equipoAuditores?.map((e: any) => ({ nombre: e.nombre, rol: e.rol, email: e.email })),
-          cronograma: auditoria.cronograma,
-          progreso: auditoria.progreso,
-          estadisticas: auditoria.estadisticas,
-          fechasClave: auditoria.fechasClave,
-          metadata: auditoria.metadata,
-          territorial: auditoria.areaAuditable,
-        },
-        resumen,
-        planes,
-        hallazgos: hallazgos.map((h: any) => ({
-          id: h.id,
-          codigo: h.codigo,
-          titulo: h.titulo,
-          descripcion: h.descripcion,
-          gravedad: h.gravedad || h.criticidad,
-          criterioIncumplido: h.criterioIncumplido,
-          causas: h.causas,
-          efectos: h.efectos,
-          recomendaciones: h.recomendaciones,
-          decisionAuditor: h.decisionAuditor,
-          estado: h.estado,
-          fundamentacionTecnica: h.fundamentacionTecnica,
-          fechaDeteccion: h.fechaDeteccion,
-        })),
-      });
-      toast.success('Informe Ejecutivo generado en PDF');
-    } catch (e: any) {
-      toast.error(e?.message || 'Error al generar Informe Ejecutivo');
+      toast.error(e?.message || 'Error al generar informe ejecutivo');
     }
   };
 
@@ -2421,16 +2321,30 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
         </div>
       )}
 
-      {/* Botones descarga PDF - formato institucional ESAP */}
+      {/* Botones descarga */}
       <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200">
-        <Button variant="outline" className="border-green-600 text-green-700 hover:bg-green-50" onClick={descargarInformeCierre}>
-          <Download className="w-4 h-4 mr-2" />
-          Informe de Cierre
-        </Button>
-        <Button variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50" onClick={descargarInformeEjecutivo}>
-          <FileText className="w-4 h-4 mr-2" />
-          Generar / Descargar Informe Ejecutivo
-        </Button>
+        {docCierre ? (
+          <Button variant="outline" className="border-green-600 text-green-700 hover:bg-green-50" onClick={() => descargarDoc(docCierre)}>
+            <Download className="w-4 h-4 mr-2" />
+            Informe de Cierre
+          </Button>
+        ) : (
+          <Button variant="outline" disabled className="text-gray-400">
+            <Download className="w-4 h-4 mr-2" />
+            Informe de Cierre (no disponible)
+          </Button>
+        )}
+        {docEjecutivo ? (
+          <Button variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50" onClick={() => descargarDoc(docEjecutivo)}>
+            <Download className="w-4 h-4 mr-2" />
+            Informe Ejecutivo
+          </Button>
+        ) : (
+          <Button variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50" onClick={generarYDescargarEjecutivo}>
+            <FileText className="w-4 h-4 mr-2" />
+            Generar / Descargar Informe Ejecutivo
+          </Button>
+        )}
       </div>
     </div>
   );
