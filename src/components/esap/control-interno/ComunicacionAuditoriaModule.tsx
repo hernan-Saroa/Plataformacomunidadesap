@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   FileText, 
@@ -27,6 +27,7 @@ import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { Button } from '../../ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../ui/dialog';
+import { ModalFinalizarAuditoria } from './modales/ModalesGestion';
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { InputSIGL, TextareaSIGL } from '../gestion-legal/design-system/InputSIGL';
 import { toast } from 'sonner@2.0.3';
@@ -126,6 +127,15 @@ const AUDITORIA_MOCK: Auditoria = {
   ],
 };
 
+/** Documento en formato expediente (id, nombre, urlDownload, etc.) */
+interface DocExpedienteSimple {
+  id: string;
+  nombre: string;
+  urlDownload?: string;
+  tipo?: string;
+  fase?: string;
+}
+
 export const ComunicacionAuditoriaModule: React.FC<{
   auditoriaId?: string;
   auditoriaInfo?: { codigo?: string; nombre?: string };
@@ -139,7 +149,13 @@ export const ComunicacionAuditoriaModule: React.FC<{
   onComunicacionCompletada?: () => void;
   /** true = auditoría finalizada, solo lectura (sin formularios ni botones de acción) */
   readOnly?: boolean;
-}> = ({ auditoriaId, auditoriaInfo, estadoAuditoria: estadoAuditoriaProp, soloSeguimiento = false, embedded = false, onComunicacionCompletada, readOnly = false }) => {
+  /** Documentos del expediente (para validar Documento de Cierre obligatorio antes de aprobar) */
+  documentos?: DocExpedienteSimple[];
+  /** Callback para subir Documento de Cierre (obligatorio antes de pasar a Finalizada) */
+  onSubirDocumento?: (file: File, metadata: { nombre: string; tipoDocumento: string; etapa: string }) => Promise<boolean>;
+  /** Recargar documentos tras subir */
+  onRecargarDocumentos?: () => Promise<void>;
+}> = ({ auditoriaId, auditoriaInfo, estadoAuditoria: estadoAuditoriaProp, soloSeguimiento = false, embedded = false, onComunicacionCompletada, readOnly = false, documentos = [], onSubirDocumento, onRecargarDocumentos }) => {
   const id = auditoriaId || 'aud-001';
   const useAPI = isValidUUID(id);
 
@@ -838,14 +854,21 @@ export const ComunicacionAuditoriaModule: React.FC<{
               />
             )}
 
-            {seccionActual === 6 && soloSeguimiento && (
+            {seccionActual === 6 && soloSeguimiento && (() => {
+              const tieneDocumentoCierre = documentos.some(d =>
+                d.id?.startsWith('doc-cierre') || /cierre|informe\s*de\s*cierre/i.test(d.nombre || '')
+              );
+              return (
               <SeccionInformeCierre
                 auditoriaId={id}
+                auditoriaCodigo={auditoria.codigo}
+                auditoriaNombre={auditoria.nombre}
                 resumen={resumenCierre}
                 leccionesAprendidas={leccionesAprendidas}
                 recomendacionesFuturas={recomendacionesFuturas}
                 informeCierreAprobado={informeCierreAprobado}
                 loading={loadingInformeCierre}
+                tieneDocumentoCierre={tieneDocumentoCierre}
                 onLeccionesChange={setLeccionesAprendidas}
                 onRecomendacionesChange={setRecomendacionesFuturas}
                 onDescargarPDF={async () => {
@@ -896,6 +919,10 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 }}
                 onAprobar={readOnly ? async () => {} : async () => {
                   if (!useAPI) return;
+                  if (!tieneDocumentoCierre) {
+                    toast.error('Debe subir el Documento de Cierre antes de aprobar.');
+                    return;
+                  }
                   setLoadingInformeCierre(true);
                   try {
                     await controlInternoService.aprobarInformeCierre(id);
@@ -913,8 +940,35 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 useAPI={readOnly ? false : useAPI}
                 embedded={embedded}
                 readOnly={readOnly}
+                onSubirDocumento={onSubirDocumento}
+                onRecargarDocumentos={onRecargarDocumentos}
+                totalHallazgos={resumenCierre?.totalHallazgos ?? (auditoria.hallazgos?.length ?? 0)}
+                onFinalizarConDocumento={readOnly || !onSubirDocumento ? undefined : async (archivo, _comentarios) => {
+                  if (!onSubirDocumento) return;
+                  const ok = await onSubirDocumento(archivo, {
+                    nombre: `Informe de Cierre - ${auditoria.codigo || auditoria.nombre}`,
+                    tipoDocumento: 'informe',
+                    etapa: 'cierre',
+                  });
+                  if (!ok) throw new Error('Error al subir');
+                  await onRecargarDocumentos?.();
+                  setLoadingInformeCierre(true);
+                  try {
+                    await controlInternoService.updateInformeCierre(id, {
+                      leccionesAprendidas,
+                      recomendacionesFuturasAuditorias: recomendacionesFuturas,
+                    });
+                    await controlInternoService.aprobarInformeCierre(id);
+                    setInformeCierreAprobado(true);
+                    cargarResumenCierre();
+                    onComunicacionCompletada?.();
+                  } finally {
+                    setLoadingInformeCierre(false);
+                  }
+                }}
               />
-            )}
+            );
+            })()}
           </motion.div>
         </AnimatePresence>
         </div>
@@ -1968,11 +2022,14 @@ const SeccionVerificacionCumplimiento: React.FC<{
 
 const SeccionInformeCierre: React.FC<{
   auditoriaId: string;
+  auditoriaCodigo?: string;
+  auditoriaNombre?: string;
   resumen: any;
   leccionesAprendidas: string;
   recomendacionesFuturas: string;
   informeCierreAprobado: boolean;
   loading: boolean;
+  tieneDocumentoCierre: boolean;
   onLeccionesChange: (v: string) => void;
   onRecomendacionesChange: (v: string) => void;
   onGuardarBorrador: () => Promise<void>;
@@ -1982,12 +2039,20 @@ const SeccionInformeCierre: React.FC<{
   useAPI: boolean;
   embedded?: boolean;
   readOnly?: boolean;
+  onSubirDocumento?: (file: File, metadata: { nombre: string; tipoDocumento: string; etapa: string }) => Promise<boolean>;
+  onRecargarDocumentos?: () => Promise<void>;
+  totalHallazgos?: number;
+  onFinalizarConDocumento?: (archivo: File, comentarios: string) => Promise<void>;
 }> = ({
+  auditoriaId,
+  auditoriaCodigo,
+  auditoriaNombre,
   resumen,
   leccionesAprendidas,
   recomendacionesFuturas,
   informeCierreAprobado,
   loading,
+  tieneDocumentoCierre,
   onLeccionesChange,
   onRecomendacionesChange,
   onGuardarBorrador,
@@ -1997,9 +2062,15 @@ const SeccionInformeCierre: React.FC<{
   useAPI,
   embedded,
   readOnly = false,
+  onSubirDocumento,
+  onRecargarDocumentos,
+  totalHallazgos = 0,
+  onFinalizarConDocumento,
 }) => {
   const [guardando, setGuardando] = useState(false);
   const [aprobando, setAprobando] = useState(false);
+  const [showModalFinalizar, setShowModalFinalizar] = useState(false);
+  const sinHallazgos = (totalHallazgos ?? 0) === 0;
 
   const handleGuardar = async () => {
     setGuardando(true);
@@ -2011,8 +2082,17 @@ const SeccionInformeCierre: React.FC<{
   };
 
   const handleAprobar = async () => {
-    if (!leccionesAprendidas.trim() || !recomendacionesFuturas.trim()) {
-      toast.error('Lecciones aprendidas y Recomendaciones son obligatorios para aprobar el informe de cierre.');
+    // Si falta el Documento de Cierre: abrir el modal oficial "Finalizar Auditoría"
+    if (!tieneDocumentoCierre && onFinalizarConDocumento && !readOnly) {
+      setShowModalFinalizar(true);
+      return;
+    }
+    if (!tieneDocumentoCierre) {
+      toast.error('Debe subir el Documento de Cierre en la pestaña Documentación antes de aprobar.');
+      return;
+    }
+    if (!sinHallazgos && (!leccionesAprendidas.trim() || !recomendacionesFuturas.trim())) {
+      toast.error('Lecciones aprendidas y Recomendaciones son obligatorios cuando hay hallazgos.');
       return;
     }
     setAprobando(true);
@@ -2053,8 +2133,20 @@ const SeccionInformeCierre: React.FC<{
         </div>
       ) : (
         <>
+          {/* Estado Documento de Cierre: una línea; la subida se pide al aprobar si falta */}
+          <div className="text-sm flex items-center gap-2">
+            {tieneDocumentoCierre ? (
+              <span className="font-medium text-green-700 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" /> Documento de Cierre subido
+              </span>
+            ) : (
+              <span className="text-amber-700">Documento de Cierre: pendiente (se solicitará al aprobar)</span>
+            )}
+          </div>
           <div>
-            <label className="block font-medium text-gray-700 mb-1">Lecciones aprendidas (obligatorio)</label>
+            <label className="block font-medium text-gray-700 mb-1">
+              Lecciones aprendidas {sinHallazgos ? '(opcional)' : '(obligatorio)'}
+            </label>
             <TextareaSIGL
               placeholder="Describa las lecciones aprendidas de esta auditoría..."
               value={leccionesAprendidas}
@@ -2064,7 +2156,9 @@ const SeccionInformeCierre: React.FC<{
             />
           </div>
           <div>
-            <label className="block font-medium text-gray-700 mb-1">Recomendaciones para futuras auditorías (obligatorio)</label>
+            <label className="block font-medium text-gray-700 mb-1">
+              Recomendaciones para futuras auditorías {sinHallazgos ? '(opcional)' : '(obligatorio)'}
+            </label>
             <TextareaSIGL
               placeholder="Recomendaciones para mejorar futuras auditorías..."
               value={recomendacionesFuturas}
@@ -2093,7 +2187,7 @@ const SeccionInformeCierre: React.FC<{
                 <Button
                   size="sm"
                   className="bg-green-600 hover:bg-green-700 text-white"
-                  disabled={!puedeAprobar || !leccionesAprendidas.trim() || !recomendacionesFuturas.trim() || aprobando}
+                  disabled={!puedeAprobar || aprobando}
                   onClick={handleAprobar}
                 >
                   {aprobando ? 'Aprobando…' : 'Aprobar Informe de Cierre — Jefe OCI'}
@@ -2101,6 +2195,17 @@ const SeccionInformeCierre: React.FC<{
               </>
             )}
           </div>
+
+          {/* Modal oficial "Finalizar Auditoría" - mismo que Kanban */}
+          {onFinalizarConDocumento && (
+            <ModalFinalizarAuditoria
+              isOpen={showModalFinalizar}
+              onClose={() => setShowModalFinalizar(false)}
+              auditoriaId={auditoriaId}
+              auditoriaTitulo={auditoriaCodigo || auditoriaNombre || 'Auditoría'}
+              onFinalizar={onFinalizarConDocumento}
+            />
+          )}
         </>
       )}
     </div>

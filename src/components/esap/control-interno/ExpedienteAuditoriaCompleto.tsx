@@ -272,9 +272,9 @@ const PESTANAS_BASE: { id: TabActiva; label: string; icon: typeof Info }[] = [
   { id: 'ejecucion', label: 'Ejecución', icon: ClipboardCheck },
   { id: 'comunicacion', label: 'Comunicación', icon: FileText },
   { id: 'seguimiento', label: 'Seguimiento', icon: BookOpen },
+  { id: 'finalizada', label: 'Finalizada', icon: CheckCircle },
   { id: 'documentacion', label: 'Documentación', icon: FolderOpen },
   { id: 'historial', label: 'Historial', icon: History },
-  { id: 'finalizada', label: 'Finalizada', icon: CheckCircle }
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1259,6 +1259,9 @@ export function ExpedienteAuditoriaCompleto({
               {activeTab === 'seguimiento' && (
                 <TabSeguimiento
                   auditoria={auditoria}
+                  documentos={documentos}
+                  onSubirDocumento={subirDocumento}
+                  onRecargarDocumentos={recargarDocumentos}
                   onComunicacionCompletada={() => {
                     setRecargarTrigger(t => t + 1);
                     onComunicacionCompletadaProp?.();
@@ -1786,7 +1789,18 @@ function TabComunicacion({ auditoria, onComunicacionCompletada, readOnly }: TabF
 }
 
 // Tab Seguimiento: Verificación de Cumplimiento + Informe de Cierre (mismo nivel que Comunicación)
-function TabSeguimiento({ auditoria, onComunicacionCompletada, readOnly }: TabFaseProps) {
+function TabSeguimiento({
+  auditoria,
+  documentos = [],
+  onSubirDocumento,
+  onRecargarDocumentos,
+  onComunicacionCompletada,
+  readOnly,
+}: TabFaseProps & {
+  documentos?: DocumentoExpediente[];
+  onSubirDocumento?: (file: File, metadata: { nombre: string; tipoDocumento: string; etapa: string }) => Promise<boolean>;
+  onRecargarDocumentos?: () => Promise<void>;
+}) {
   return (
     <div className="space-y-4">
       <Card className="p-3 border-l-4 border-l-indigo-600 bg-indigo-50">
@@ -1805,6 +1819,9 @@ function TabSeguimiento({ auditoria, onComunicacionCompletada, readOnly }: TabFa
           estadoAuditoria="Seguimiento"
           soloSeguimiento
           embedded
+          documentos={documentos}
+          onSubirDocumento={onSubirDocumento}
+          onRecargarDocumentos={onRecargarDocumentos}
           onComunicacionCompletada={onComunicacionCompletada}
           readOnly={readOnly}
         />
@@ -2093,6 +2110,7 @@ interface TabFinalizadaProps {
   documentos: DocumentoExpediente[];
 }
 
+/** Tab Finalizada: Preliminar, Final y Ejecutivo se generan por la plataforma. Documento de Cierre se sube en Seguimiento. */
 function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProps) {
   const [resumen, setResumen] = useState<any>(null);
   const [planes, setPlanes] = useState<any[]>([]);
@@ -2155,7 +2173,13 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
     try {
       const fullUrl = url.startsWith('http') ? url : `${window.location.origin}${url}`;
       const res = await fetch(fullUrl, { headers: getDefaultHeaders() });
-      if (!res.ok) throw new Error(res.statusText);
+      if (!res.ok) {
+        if (res.status === 404) {
+          toast.error('El archivo no está disponible en el servidor. Use "Generar / Descargar Informe de Cierre" o "Generar / Descargar Informe Ejecutivo" para obtener el PDF.');
+          return;
+        }
+        throw new Error(res.statusText);
+      }
       const blob = await res.blob();
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -2170,10 +2194,32 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
 
   const generarYDescargarEjecutivo = async () => {
     try {
-      await controlInternoService.generarInformeEjecutivo(auditoriaId);
-      toast.success('Informe ejecutivo generado. Revise la sección Documentación para descargarlo.');
+      const { exportarPDFInformeEjecutivo } = await import('./services/exportarPDFInformeCierreEjecutivo');
+      const datos = {
+        auditoria: {
+          codigo: resumen?.codigo || auditoria.codigo,
+          nombre: resumen?.nombre || auditoria.nombre,
+          auditorLider: auditoria.auditorLider?.nombre || '—',
+          territorial: auditoria.territorial,
+          cronograma: { fechaInicio: resumen?.fechaInicio, fechaFin: resumen?.fechaFin },
+          progreso: { general: 100 },
+        },
+        resumen: resumen ? { ...resumen } : null,
+        planes: planes,
+        hallazgos: hallazgos.map((h: any) => ({
+          id: h.id,
+          codigo: h.codigo,
+          titulo: h.titulo,
+          descripcion: h.descripcion || '',
+          gravedad: h.gravedad,
+          decisionAuditor: h.decisionAuditor,
+          estado: h.estado,
+        })),
+      };
+      await exportarPDFInformeEjecutivo(datos);
+      toast.success('Informe ejecutivo descargado');
     } catch (e: any) {
-      toast.error(e?.message || 'Error al generar informe ejecutivo');
+      toast.error(e?.message || 'Error al generar el PDF');
     }
   };
 
@@ -2321,7 +2367,7 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
         </div>
       )}
 
-      {/* Botones descarga */}
+      {/* Botones descarga — Preliminar, Final, Cierre y Ejecutivo se generan por la plataforma */}
       <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200">
         {docCierre ? (
           <Button variant="outline" className="border-green-600 text-green-700 hover:bg-green-50" onClick={() => descargarDoc(docCierre)}>
@@ -2329,43 +2375,45 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
             Informe de Cierre
           </Button>
         ) : (
-          <Button
-            variant="outline"
-            className="border-green-600 text-green-700 hover:bg-green-50"
-            onClick={async () => {
-              try {
-                const { exportarPDFInformeCierre } = await import('./services/exportarPDFInformeCierreEjecutivo');
-                const datos = {
-                  auditoria: {
-                    codigo: resumen?.codigo || auditoria.codigo,
-                    nombre: resumen?.nombre || auditoria.nombre,
-                    auditorLider: auditoria.auditorLider?.nombre || '—',
-                    territorial: auditoria.territorial,
-                    cronograma: { fechaInicio: resumen?.fechaInicio, fechaFin: resumen?.fechaFin },
-                  },
-                  resumen: resumen ? { ...resumen, leccionesAprendidas: resumen.leccionesAprendidas, recomendacionesFuturasAuditorias: resumen.recomendacionesFuturasAuditorias } : null,
-                  planes: planes,
-                  hallazgos: hallazgos.map((h: any) => ({
-                    id: h.id,
-                    codigo: h.codigo,
-                    titulo: h.titulo,
-                    descripcion: h.descripcion || '',
-                    gravedad: h.gravedad,
-                    decisionAuditor: h.decisionAuditor,
-                    estado: h.estado,
-                    fundamentacionTecnica: h.fundamentacionTecnica,
-                  })),
-                };
-                await exportarPDFInformeCierre(datos);
-                toast.success('Informe de cierre descargado');
-              } catch (e: any) {
-                toast.error(e?.message || 'Error al generar el PDF');
-              }
-            }}
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            Generar / Descargar Informe de Cierre
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              className="border-green-600 text-green-700 hover:bg-green-50"
+              onClick={async () => {
+                try {
+                  const { exportarPDFInformeCierre } = await import('./services/exportarPDFInformeCierreEjecutivo');
+                  const datos = {
+                    auditoria: {
+                      codigo: resumen?.codigo || auditoria.codigo,
+                      nombre: resumen?.nombre || auditoria.nombre,
+                      auditorLider: auditoria.auditorLider?.nombre || '—',
+                      territorial: auditoria.territorial,
+                      cronograma: { fechaInicio: resumen?.fechaInicio, fechaFin: resumen?.fechaFin },
+                    },
+                    resumen: resumen ? { ...resumen, leccionesAprendidas: resumen.leccionesAprendidas, recomendacionesFuturasAuditorias: resumen.recomendacionesFuturasAuditorias } : null,
+                    planes: planes,
+                    hallazgos: hallazgos.map((h: any) => ({
+                      id: h.id,
+                      codigo: h.codigo,
+                      titulo: h.titulo,
+                      descripcion: h.descripcion || '',
+                      gravedad: h.gravedad,
+                      decisionAuditor: h.decisionAuditor,
+                      estado: h.estado,
+                      fundamentacionTecnica: h.fundamentacionTecnica,
+                    })),
+                  };
+                  await exportarPDFInformeCierre(datos);
+                  toast.success('Informe de cierre descargado');
+                } catch (e: any) {
+                  toast.error(e?.message || 'Error al generar el PDF');
+                }
+              }}
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Generar / Descargar Informe de Cierre
+            </Button>
+          </>
         )}
         {docEjecutivo ? (
           <Button variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50" onClick={() => descargarDoc(docEjecutivo)}>
@@ -2373,10 +2421,12 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
             Informe Ejecutivo
           </Button>
         ) : (
-          <Button variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50" onClick={generarYDescargarEjecutivo}>
-            <FileText className="w-4 h-4 mr-2" />
-            Generar / Descargar Informe Ejecutivo
-          </Button>
+          <>
+            <Button variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50" onClick={generarYDescargarEjecutivo}>
+              <FileText className="w-4 h-4 mr-2" />
+              Generar / Descargar Informe Ejecutivo
+            </Button>
+          </>
         )}
       </div>
     </div>

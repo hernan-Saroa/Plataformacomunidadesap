@@ -109,6 +109,10 @@ export async function exportarPDFInformeAuditoria(
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 20;
+  /** Reserva para pie de página (Sede, PBX, Correo, Página N) - evita solapamiento */
+  const FOOTER_MARGIN = 45;
+  const lineHeight = 5;
+  const spaceSection = 8;
 
   // ============================================
   // ENCABEZADO INSTITUCIONAL (MISMO QUE PLAN ANUAL)
@@ -210,47 +214,48 @@ ${jefe}`;
 
     const lineasCuerpo = doc.splitTextToSize(cuerpoOficio, maxWidth);
     doc.text(lineasCuerpo, margin, y);
-    y += lineasCuerpo.length * 4 + 8;
+    y += lineasCuerpo.length * lineHeight + spaceSection;
 
     doc.setFontSize(9);
     doc.text(`Anexos: Informe Preliminar de Auditoría (${folios}) folios.`, margin, y);
-    y += 5;
+    y += lineHeight + 2;
     doc.text('Copia: N/A', margin, y);
-    y += 6;
+    y += lineHeight + 4;
     doc.text(`Elaboró: ${elaboro}`, margin, y);
-    y += 4;
+    y += lineHeight;
     doc.text(`Revisó: ${reviso}`, margin, y);
-    y += 4;
+    y += lineHeight;
     doc.text(`Aprobó: ${aprobo}`, margin, y);
-    y += 12;
+    y += spaceSection + 6;
 
-    if (y > pageHeight - 50) { doc.addPage(); y = margin; }
+    if (y > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin; }
 
     // ========== DATOS FORMALES DEL INFORME ==========
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.text('TIPO DE INFORME: Informe preliminar de auditoría de evaluación y seguimiento.', margin, y);
-    y += 6;
+    y += lineHeight + 2;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
 
     const tituloAud = auditoria.tituloAuditoria || `Auditoría interna basada en riesgos a los procesos objeto de auditoría, al interior de la ${unidad} de la ESAP.`;
     const lineasTitulo = doc.splitTextToSize(`TÍTULO DE LA AUDITORÍA (unidad auditable): ${tituloAud}`, maxWidth);
     doc.text(lineasTitulo, margin, y);
-    y += lineasTitulo.length * 4 + 4;
+    y += lineasTitulo.length * lineHeight + spaceSection;
 
     doc.text(`RESPONSABLE DE LA UNIDAD AUDITADA: ${auditoria.responsableUnidadAuditada || destinatario} – ${cargoDest}.`, margin, y);
-    y += 5;
+    y += lineHeight + 2;
 
     const lugar = auditoria.lugarEjecucion || 'Sede de la unidad';
     const fechEjIni = auditoria.fechaEjecucionInicio || '—';
     const fechEjFin = auditoria.fechaEjecucionFin || '—';
     doc.text(`LUGAR Y FECHA DE EJECUCIÓN AUDITORÍA: ${lugar} / ${fechEjIni} – ${fechEjFin}`, margin, y);
-    y += 8;
+    y += lineHeight + 4;
 
     doc.text(`PERIODO DE LA AUDITORÍA: ${auditoria.periodoAuditoria || 'Vigencia correspondiente'}.`, margin, y);
-    y += 8;
+    y += lineHeight + 4;
 
+    if (y > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin; }
     if (auditoria.equipoAuditor && auditoria.equipoAuditor.length > 0) {
       doc.setFont('helvetica', 'bold');
       doc.text('EQUIPO AUDITOR:', margin, y);
@@ -258,69 +263,74 @@ ${jefe}`;
       doc.setFont('helvetica', 'normal');
       auditoria.equipoAuditor.forEach((m) => {
         doc.text(`• ${m.nombre}${m.rol ? ` – ${m.rol}` : ''}`, margin + 2, y);
-        y += 5;
+        y += lineHeight;
       });
-      y += 2;
+      y += spaceSection;
     } else {
       doc.text(`EQUIPO AUDITOR: ${auditoria.auditorLider || 'No asignado'} – Auditor Líder.`, margin, y);
-      y += 6;
+      y += lineHeight + 4;
     }
 
+    if (y > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin; }
     const obj = auditoria.objetivo || 'Evaluar el cumplimiento de las normas, directrices, procedimientos y regulaciones aplicables, mediante la auditoría interna como actividad independiente y objetiva.';
     doc.setFont('helvetica', 'bold');
     doc.text('OBJETIVO(S):', margin, y);
-    y += 5;
+    y += lineHeight + 2;
     doc.setFont('helvetica', 'normal');
     const lineasObj = doc.splitTextToSize(obj, maxWidth);
     doc.text(lineasObj, margin, y);
-    y += lineasObj.length * 4 + 4;
+    y += lineasObj.length * lineHeight + spaceSection;
 
+    if (y > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin; }
     const alc = auditoria.alcance || `La etapa de ejecución de la auditoría se realizará de manera presencial, evaluando el desarrollo de las actividades, acciones y controles establecidos.`;
     doc.setFont('helvetica', 'bold');
     doc.text('ALCANCE:', margin, y);
-    y += 5;
+    y += lineHeight + 2;
     doc.setFont('helvetica', 'normal');
     const lineasAlc = doc.splitTextToSize(alc, maxWidth);
     doc.text(lineasAlc, margin, y);
-    y += lineasAlc.length * 4 + 6;
+    y += lineasAlc.length * lineHeight + spaceSection;
 
+    if (y > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin; }
     doc.setFont('helvetica', 'bold');
     doc.text('DECLARACIÓN:', margin, y);
-    y += 5;
+    y += lineHeight + 2;
     doc.setFont('helvetica', 'normal');
     doc.text('La auditoría se realiza con base en el análisis de muestras seleccionadas por los auditores, expedientes, procesos, reportes de sistemas de información y normas aplicables.', margin, y);
-    y += 10;
+    y += lineHeight + spaceSection;
 
-    if (y > pageHeight - 60) { doc.addPage(); y = margin; }
+    if (y > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin; }
 
     // ========== NOTA DE SEGURIDAD Y CONFIDENCIALIDAD ==========
+    const notaBoxHeight = 28;
+    if (y + notaBoxHeight > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin; }
     doc.setFillColor(255, 250, 230);
-    doc.rect(margin, y, pageWidth - 2 * margin, 22, 'F');
+    doc.rect(margin, y, pageWidth - 2 * margin, notaBoxHeight, 'F');
     doc.setDrawColor(220, 200, 100);
-    doc.rect(margin, y, pageWidth - 2 * margin, 22);
+    doc.rect(margin, y, pageWidth - 2 * margin, notaBoxHeight);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
-    doc.text('NOTA DE SEGURIDAD Y CONFIDENCIALIDAD DE LA INFORMACIÓN:', margin + 3, y + 6);
+    doc.text('NOTA DE SEGURIDAD Y CONFIDENCIALIDAD DE LA INFORMACIÓN:', margin + 3, y + 7);
     doc.setFont('helvetica', 'normal');
     const notaSeg = doc.splitTextToSize(
       'Este documento contiene información de interés exclusivo del auditor y el auditado. Hasta tanto no se constituya como informe final y sea publicado en la página web de la ESAP, no podrá ser distribuido ni utilizado por terceros sin el consentimiento previo y por escrito del Jefe de la Oficina de Control Interno.',
       maxWidth - 6
     );
-    doc.text(notaSeg, margin + 3, y + 12);
-    y += 28;
+    doc.text(notaSeg, margin + 3, y + 14);
+    y += notaBoxHeight + spaceSection;
 
-    if (y > pageHeight - 80) { doc.addPage(); y = margin; }
+    if (y > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin; }
 
     // ========== ANTECEDENTES ==========
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.text('ANTECEDENTES', margin, y);
-    y += 6;
+    y += lineHeight + 2;
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.text('MARCO NORMATIVO', margin, y);
-    y += 5;
+    y += lineHeight + 2;
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
@@ -328,28 +338,29 @@ ${jefe}`;
       ? auditoria.marcoNormativo
       : (auditoria.marcoNormativo || 'Ley 87 de 1993, Ley 80/1993, Ley 1150/2007, Ley 1474/2011, Decreto 1082/2015, Decreto 648/2017.').split(',').map((s) => s.trim());
     normas.slice(0, 8).forEach((n) => {
+      if (y > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin; }
       const lineasN = doc.splitTextToSize(`• ${n}`, maxWidth - 4);
       doc.text(lineasN, margin + 2, y);
-      y += lineasN.length * 4 + 1;
+      y += lineasN.length * lineHeight + 2;
     });
-    y += 4;
+    y += spaceSection;
 
     doc.setFont('helvetica', 'bold');
     doc.text('CONTEXTO GENERAL DE LA AUDITORÍA', margin, y);
-    y += 5;
+    y += lineHeight + 2;
     doc.setFont('helvetica', 'normal');
     const ctx = auditoria.contextoGeneral ||
       `De acuerdo con el programa de auditoría anual, se programó y ejecutó la Auditoría Interna a los procesos al interior de la ${unidad}. La verificación se desarrolló en las fechas establecidas.`;
     const lineasCtx = doc.splitTextToSize(ctx, maxWidth);
     doc.text(lineasCtx, margin, y);
-    y += lineasCtx.length * 4 + 6;
+    y += lineasCtx.length * lineHeight + spaceSection;
 
     if (auditoria.fechasReuniones) {
       const lineasReun = doc.splitTextToSize(auditoria.fechasReuniones, maxWidth);
       doc.text(lineasReun, margin, y);
-      y += lineasReun.length * 4 + 6;
+      y += lineasReun.length * lineHeight + spaceSection;
     }
-    y += 4;
+    y += spaceSection;
   }
 
   // ============================================
@@ -366,15 +377,15 @@ ${jefe}`;
   ];
 
   rowsDatos.forEach(([label, value]) => {
-    if (y > pageHeight - 30) { doc.addPage(); y = margin; }
+    if (y > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin; }
     doc.setFont('helvetica', 'bold');
     doc.text(`${label}:`, 20, y);
     doc.setFont('helvetica', 'normal');
     doc.text(String(value || '').substring(0, 90), 70, y);
-    y += 6;
+    y += lineHeight + 2;
   });
 
-  y += 2;
+  y += spaceSection;
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.4);
   doc.line(margin, y, pageWidth - margin, y);
@@ -384,16 +395,16 @@ ${jefe}`;
     const inf = informe as InformePreliminarPDF;
 
     // ========== EJECUCIÓN DE LA AUDITORÍA ==========
-    if (y > pageHeight - 40) { doc.addPage(); y = margin; }
+    if (y > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin; }
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.setTextColor(0, 0, 0);
     doc.text('EJECUCIÓN DE LA AUDITORÍA', margin, y);
-    y += 6;
+    y += lineHeight + 4;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.text('A continuación se detalla lo verificado y validado en cada uno de los procesos auditados, a través de evidencias documentales o inspección en sitio:', margin, y);
-    y += 12;
+    y += lineHeight * 2 + spaceSection;
 
     // Resumen de hallazgos
     doc.setFont('helvetica', 'bold');
@@ -444,7 +455,7 @@ ${jefe}`;
 
       listaHallazgos.forEach((h, index) => {
         // Nueva página si no hay espacio (dejar ~45mm para al menos un bloque)
-        if (y > pageHeight - 55) {
+        if (y > pageHeight - FOOTER_MARGIN) {
           doc.addPage();
           y = margin;
         }
@@ -487,7 +498,7 @@ ${jefe}`;
           y += lineasDesc.length * 4 + 2;
         }
         if (h.causas && h.causas.length > 0) {
-          if (y > pageHeight - 30) { doc.addPage(); y = margin + 5; }
+          if (y > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin + 5; }
           doc.setFont('helvetica', 'bold');
           doc.text('Causas:', margin + 2, y);
           y += 4;
@@ -498,7 +509,7 @@ ${jefe}`;
           y += lineasCausas.length * 3.5 + 2;
         }
         if (h.efectos && h.efectos.length > 0) {
-          if (y > pageHeight - 30) { doc.addPage(); y = margin + 5; }
+          if (y > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin + 5; }
           doc.setFont('helvetica', 'bold');
           doc.text('Efectos:', margin + 2, y);
           y += 4;
@@ -509,7 +520,7 @@ ${jefe}`;
           y += lineasEfectos.length * 3.5 + 2;
         }
         if (h.recomendaciones && h.recomendaciones.length > 0) {
-          if (y > pageHeight - 30) { doc.addPage(); y = margin + 5; }
+          if (y > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin + 5; }
           doc.setFont('helvetica', 'bold');
           doc.text('Recomendaciones:', margin + 2, y);
           y += 4;
@@ -526,7 +537,7 @@ ${jefe}`;
     }
 
     // Observaciones generales
-    if (y > pageHeight - 35) { doc.addPage(); y = margin + 5; }
+    if (y > pageHeight - FOOTER_MARGIN) { doc.addPage(); y = margin + 5; }
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.setTextColor(0, 0, 0);
@@ -566,7 +577,7 @@ Hallazgos ajustados a partir de controversias: ${inf.hallazgosAjustados}.`;
     // ========== DETALLE DE HALLAZGOS FINALES ==========
     const listaHallazgosFinales = hallazgosDetalle && hallazgosDetalle.length > 0 ? hallazgosDetalle : [];
     if (listaHallazgosFinales.length > 0) {
-      if (y > pageHeight - 60) {
+      if (y > pageHeight - FOOTER_MARGIN) {
         doc.addPage();
         y = margin;
       }
@@ -578,7 +589,7 @@ Hallazgos ajustados a partir de controversias: ${inf.hallazgosAjustados}.`;
       y += 8;
 
       listaHallazgosFinales.forEach((h, index) => {
-        if (y > pageHeight - 55) {
+        if (y > pageHeight - FOOTER_MARGIN) {
           doc.addPage();
           y = margin;
         }
@@ -612,7 +623,7 @@ Hallazgos ajustados a partir de controversias: ${inf.hallazgosAjustados}.`;
 
         // Fundamentación técnica (si existe)
         if (h.fundamentacionTecnica && h.fundamentacionTecnica.trim()) {
-          if (y > pageHeight - 40) {
+          if (y > pageHeight - FOOTER_MARGIN) {
             doc.addPage();
             y = margin;
           }
@@ -633,7 +644,7 @@ Hallazgos ajustados a partir de controversias: ${inf.hallazgosAjustados}.`;
     }
 
     // Plazo plan de mejoramiento
-    if (y > pageHeight - 40) {
+    if (y > pageHeight - FOOTER_MARGIN) {
       doc.addPage();
       y = margin;
     }
@@ -654,7 +665,7 @@ Hallazgos ajustados a partir de controversias: ${inf.hallazgosAjustados}.`;
     y += lines.length * 5 + 10;
 
     // Observaciones finales
-    if (y > pageHeight - 40) {
+    if (y > pageHeight - FOOTER_MARGIN) {
       doc.addPage();
       y = margin;
     }
