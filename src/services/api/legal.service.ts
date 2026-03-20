@@ -638,6 +638,14 @@ export class LegalService {
         return apiClient.delete(`${SERVICE_PREFIX}/terminos/${id}`);
     }
 
+    async getNotasTermino(id: string): Promise<any[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/terminos/${id}/notas`);
+    }
+
+    async addNotaTermino(id: string, texto: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/terminos/${id}/notas`, { texto });
+    }
+
 
     // --- TAREAS DE EXPEDIENTE ---
 
@@ -1327,21 +1335,8 @@ export class CorreosJuridicosService {
      * - Direct mode: http://localhost:3008/correos/adjuntos/{id}/download
      */
     async downloadAdjunto(adjuntoId: string): Promise<string> {
-        let url: string;
-
-        if (API_MODE === 'direct') {
-            // Direct mode: go straight to microservice without /legal/api/v1 prefix
-            url = `${MICROSERVICE_URLS.legal}/correos/adjuntos/${adjuntoId}/download`;
-        } else {
-            // Gateway mode: use SERVICE_PREFIX which includes /legal/api/v1
-            const baseUrl = getServiceUrl('legal');
-            url = `${baseUrl}${SERVICE_PREFIX}/correos/adjuntos/${adjuntoId}/download`;
-        }
-
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Error downloading attachment');
-
-        const blob = await response.blob();
+        // Use apiClient.getBlob so the Authorization header is included automatically
+        const blob = await apiClient.getBlob(`${SERVICE_PREFIX}/correos/adjuntos/${adjuntoId}/download`);
         return window.URL.createObjectURL(blob);
     }
 

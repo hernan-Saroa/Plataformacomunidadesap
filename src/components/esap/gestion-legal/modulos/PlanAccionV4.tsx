@@ -222,6 +222,18 @@ const getSemaforoColor = (avance: number) => {
   return '#DC2626'; // Rojo
 };
 
+/** Convierte el enum unidadMedida al símbolo visual correcto */
+const fmtUnidad = (unidad: string): string => {
+  if (unidad === 'PORCENTAJE' || unidad === '%') return '%';
+  return ''; // NUMERO, VALOR, etc. no llevan sufijo
+};
+
+/** Formatea valor + unidad de forma legible */
+const fmtValor = (valor: any, unidad: string): string => {
+  const u = fmtUnidad(unidad);
+  return u ? `${valor}${u}` : `${valor}`;
+};
+
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ModuloPlanAccionV4() {
   // ✅ Obtener permisos del usuario actual
@@ -947,10 +959,10 @@ function VistaLista({
                             </div>
                           </td>
                           <td className="px-4 py-3 text-center whitespace-nowrap">
-                            <span className="text-sm font-bold text-gray-900">{ind.meta}{ind.unidadMedida}</span>
+                            <span className="text-sm font-bold text-gray-900">{fmtValor(ind.meta, ind.unidadMedida)}</span>
                           </td>
                           <td className="px-4 py-3 text-center whitespace-nowrap">
-                            <span className="text-sm font-semibold text-blue-600">{ind.valorActual}{ind.unidadMedida}</span>
+                            <span className="text-sm font-semibold text-blue-600">{fmtValor(ind.valorActual, ind.unidadMedida)}</span>
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
@@ -1081,7 +1093,7 @@ function VistaDashboard({ indicadores }: { indicadores: Indicador[] }) {
                     </div>
                     <div className="ml-4 text-right">
                       <div className="text-2xl font-bold" style={{ color: getSemaforoColor(ind.avance) }}>{ind.avance}%</div>
-                      <div className="text-xs text-gray-600">{ind.valorActual}/{ind.meta} {ind.unidadMedida}</div>
+                      <div className="text-xs text-gray-600">{fmtValor(ind.valorActual, ind.unidadMedida)} / {fmtValor(ind.meta, ind.unidadMedida)}</div>
                     </div>
                   </div>
                 </div>

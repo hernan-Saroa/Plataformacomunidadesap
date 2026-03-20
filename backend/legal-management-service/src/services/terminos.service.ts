@@ -401,6 +401,29 @@ export class TerminosService {
         return docs;
     }
 
+    // Notes stored inline in observaciones using [NOTA] markers
+    async getNotas(id: string): Promise<any[]> {
+        const termino = await this.findOne(id);
+        if (!termino.observaciones) return [];
+        const matches = termino.observaciones.match(/\[NOTA\] [^\n]*/g) || [];
+        return matches.map(m => {
+            const parts = m.replace('[NOTA] ', '').split('|');
+            return {
+                texto: parts[0] || '',
+                usuario: parts[1] || 'Sistema',
+                fecha: parts[2] ? new Date(parts[2]) : new Date(),
+            };
+        }).reverse(); // most recent first
+    }
+
+    async addNota(id: string, texto: string, usuario: string = 'Sistema'): Promise<any> {
+        const termino = await this.findOne(id);
+        const marker = `\n[NOTA] ${texto}|${usuario}|${new Date().toISOString()}`;
+        termino.observaciones = (termino.observaciones || '') + marker;
+        await this.terminoRepository.save(termino);
+        return { texto, usuario, fecha: new Date() };
+    }
+
     // NEW: Add Document logic without altering schema
     async addDocumentoLogico(id: string, file: Express.Multer.File): Promise<any> {
         const termino = await this.findOne(id);

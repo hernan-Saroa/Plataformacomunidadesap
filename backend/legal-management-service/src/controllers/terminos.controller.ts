@@ -101,6 +101,16 @@ export class TerminosController {
         }
     }
 
+    @Get(':id/notas')
+    async getNotas(@Param('id') id: string) {
+        return this.terminosService.getNotas(id);
+    }
+
+    @Post(':id/notas')
+    async addNota(@Param('id') id: string, @Body() body: { texto: string; usuario?: string }) {
+        return this.terminosService.addNota(id, body.texto, body.usuario || 'Sistema');
+    }
+
     @Post(':id/upload-documento')
     @UseInterceptors(FileInterceptor('file', {
         storage: diskStorage({
