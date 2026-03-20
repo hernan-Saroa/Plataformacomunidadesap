@@ -207,6 +207,19 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
  * Convierte respuesta del backend al formato UI
  */
 export function mapBackendToUI(auditoria: AuditoriaResponse): AuditoriaUI {
+  // Detectar tipo operativo (Regular / Territorial / Especial) desde backend.
+  // 🔁 IMPORTANTE: Damos prioridad al campo "tipo" (Regular / Territorial / Especial)
+  // y dejamos "tipoKanban" solo como respaldo.
+  const tipoOperativoRaw: string | undefined =
+    (auditoria.tipo as string | undefined) || ((auditoria as any).tipoKanban as string | undefined);
+  const tipoOperativoNormalizado = tipoOperativoRaw?.toLowerCase();
+  const tipoOperativoValido =
+    tipoOperativoNormalizado === 'regular' ||
+    tipoOperativoNormalizado === 'territorial' ||
+    tipoOperativoNormalizado === 'especial'
+      ? (tipoOperativoNormalizado as 'regular' | 'territorial' | 'especial')
+      : undefined;
+
   return {
     id: auditoria.id,
     nombre: auditoria.nombre,
@@ -224,6 +237,7 @@ export function mapBackendToUI(auditoria: AuditoriaResponse): AuditoriaUI {
     horasEstimadas: calcularHorasEstimadas(auditoria.fechaInicio, auditoria.fechaFin),
     trimestre: calcularTrimestre(auditoria.fechaInicio),
     territorial: auditoria.territorial,
+    tipoOperativo: tipoOperativoValido,
     // Campos adicionales para lista
     objetivo: auditoria.alcance || '',
     alcance: auditoria.alcance || '',
@@ -237,6 +251,8 @@ export interface AuditoriaUI {
   id: string;
   nombre: string;
   tipo: 'CUMPLIMIENTO' | 'GESTION' | 'FINANCIERA' | 'TI' | 'ESPECIAL';
+  // Tipo operativo original: Regular / Territorial / Especial
+  tipoOperativo?: 'regular' | 'territorial' | 'especial';
   proceso: { nombre: string; codigo: string };
   fechaInicio: string;
   fechaFin: string;

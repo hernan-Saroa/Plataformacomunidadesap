@@ -370,7 +370,7 @@ export class AuditoriasController {
   @HttpCode(HttpStatus.OK)
   async aprobarInformeCierre(
     @Param('id') id: string,
-    @Body() body: { aprobadoPor?: string; aprobadoPorId?: number },
+    @Body() body: { aprobadoPor?: string; aprobadoPorId?: number | string },
     @Req() req: any,
   ) {
     const planes = await this.planesMejoramientoService.findByAuditoriaId(id);

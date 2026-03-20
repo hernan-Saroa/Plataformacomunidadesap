@@ -182,25 +182,32 @@ function mapearCriticidad(gravedad: string): 'ALTA' | 'MEDIA' | 'BAJA' {
 }
 
 function mapearEstadoAccion(estado: string): 'PENDIENTE' | 'EN_EJECUCION' | 'COMPLETADA' | 'VENCIDA' {
+  const e = String(estado || '').trim().toLowerCase().replace(/-/g, '_').replace(/\s+/g, '_');
   const mapa: Record<string, 'PENDIENTE' | 'EN_EJECUCION' | 'COMPLETADA' | 'VENCIDA'> = {
-    // Backend -> UI
-    'programada': 'PENDIENTE',
-    'en-progreso': 'EN_EJECUCION',
-    'implementada': 'COMPLETADA',
-    'completada': 'COMPLETADA',
-    'vencida': 'VENCIDA',
-    // Legacy/otros formatos
-    'pendiente': 'PENDIENTE',
-    'PENDIENTE': 'PENDIENTE',
-    'sin_iniciar': 'PENDIENTE',
-    'en_proceso': 'EN_EJECUCION',
-    'EN_PROCESO': 'EN_EJECUCION',
-    'en_ejecucion': 'EN_EJECUCION',
-    'EN_EJECUCION': 'EN_EJECUCION',
-    'COMPLETADA': 'COMPLETADA',
-    'VENCIDA': 'VENCIDA',
+    // Pendiente
+    pendiente: 'PENDIENTE',
+    programada: 'PENDIENTE',
+    sin_iniciar: 'PENDIENTE',
+    sin_iniciar_accion: 'PENDIENTE',
+    // En Ejecución
+    en_progreso: 'EN_EJECUCION',
+    en_proceso: 'EN_EJECUCION',
+    en_ejecucion: 'EN_EJECUCION',
+    en_curso: 'EN_EJECUCION',
+    activa: 'EN_EJECUCION',
+    // Completada
+    completada: 'COMPLETADA',
+    implementada: 'COMPLETADA',
+    completado: 'COMPLETADA',
+    implementado: 'COMPLETADA',
+    finalizada: 'COMPLETADA',
+    cerrada: 'COMPLETADA',
+    // Vencida
+    vencida: 'VENCIDA',
+    vencido: 'VENCIDA',
+    retrasada: 'VENCIDA',
   };
-  return mapa[estado] || 'PENDIENTE';
+  return mapa[e] ?? 'PENDIENTE';
 }
 
 function mapearEstadoPlan(estado: string): PlanMejoramientoDetalle['estado'] {

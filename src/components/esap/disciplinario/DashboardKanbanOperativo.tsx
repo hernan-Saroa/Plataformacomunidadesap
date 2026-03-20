@@ -2574,10 +2574,14 @@ export function DashboardKanbanOperativo({
     try {
       console.log('[DashboardKanban] Cargando datos desde backend...');
 
-      // Cargar noticias y procesos en paralelo
+      // Cargar noticias y procesos en paralelo (filtrados por profesional si hay filtro activo)
       const [noticiasRaw, procesosRaw] = await Promise.all([
-        disciplinaryService.getAllNoticias(),
-        disciplinaryService.getAllProcesos()
+        filtroProfesionalId 
+          ? disciplinaryService.getMisNoticias(filtroProfesionalId)
+          : disciplinaryService.getAllNoticias(),
+        filtroProfesionalId 
+          ? disciplinaryService.getMisProcesos(filtroProfesionalId)
+          : disciplinaryService.getAllProcesos()
       ]);
 
       const noticiasData = getDataArray<ApiNoticia>(noticiasRaw);

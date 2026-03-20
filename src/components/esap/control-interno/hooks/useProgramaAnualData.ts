@@ -30,7 +30,10 @@ export interface AuditoriaProgramadaUI {
   id: string;
   procesoId: string;
   proceso: ProcesoAuditableUI;
+  // Tipo técnico (Gestión, Cumplimiento, etc.)
   tipo: TipoAuditoria;
+  // 🆕 Tipo operativo original (Regular / Territorial / Especial) para filtros del cronograma
+  tipoOperativo?: 'regular' | 'territorial' | 'especial';
   nombre: string;
   objetivo: string;
   alcance: string;
@@ -168,11 +171,25 @@ function mapAuditoriaBackendToUI(
     }
   }
 
+  // Detectar tipo operativo (Regular / Territorial / Especial) desde backend.
+  // 🔁 IMPORTANTE: Damos prioridad al campo "tipo" (Regular / Territorial / Especial)
+  // y dejamos "tipoKanban" solo como respaldo.
+  const tipoOperativoRaw: string | undefined =
+    (auditoria.tipo as string | undefined) || (auditoria.tipoKanban as string | undefined);
+  const tipoOperativoNormalizado = tipoOperativoRaw?.toLowerCase();
+  const tipoOperativoValido =
+    tipoOperativoNormalizado === 'regular' ||
+    tipoOperativoNormalizado === 'territorial' ||
+    tipoOperativoNormalizado === 'especial'
+      ? (tipoOperativoNormalizado as 'regular' | 'territorial' | 'especial')
+      : undefined;
+
   return {
     id: auditoria.id,
     procesoId: auditoria.procesoId,
     proceso: procesoUI,
     tipo: mapTipoAuditoria(auditoria.tipo),
+    tipoOperativo: tipoOperativoValido,
     nombre: auditoria.nombre,
     objetivo: auditoria.alcance || '', // Backend no tiene campo "objetivo" separado
     alcance: auditoria.alcance || '',
@@ -361,6 +378,8 @@ export function useProgramaAnualData(
               horasEstimadas: a.horasEstimadas,
             },
             tipo: a.tipo,
+            // Propagar tipo operativo (Regular / Territorial / Especial) para filtros del cronograma
+            tipoOperativo: a.tipoOperativo,
             nombre: a.nombre,
             objetivo: a.objetivo || '',
             alcance: a.alcance || '',

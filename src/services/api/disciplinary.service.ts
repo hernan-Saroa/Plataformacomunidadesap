@@ -422,6 +422,13 @@ class DisciplinaryService {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news`);
     }
 
+    /**
+     * Obtiene las noticias asociadas a los procesos de un profesional específico
+     */
+    async getMisNoticias(profesionalId: string): Promise<DisciplinaryNews[]> {
+        return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news/my-news`, { profesionalId });
+    }
+
     async returnNews(id: string, observaciones: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones });
     }

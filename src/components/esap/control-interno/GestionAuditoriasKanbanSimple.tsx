@@ -868,6 +868,7 @@ function TarjetaAuditoria({
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'auditoria',
     item: auditoria,
+    canDrag: () => auditoria.estado !== 'Finalizada',
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging()
     })
@@ -888,7 +889,7 @@ function TarjetaAuditoria({
         ref={drag}
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
-        className="cursor-move touch-none w-full relative"
+        className={`w-full relative ${auditoria.estado === 'Finalizada' ? 'cursor-default' : 'cursor-move touch-none'}`}
       >
         <Card className="bg-white border-2 hover:shadow-md transition-all flex flex-col w-full border-gray-200">
           <div 
@@ -976,7 +977,7 @@ function TarjetaAuditoria({
       ref={drag}
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
-      className="cursor-move touch-none w-full relative"
+      className={`w-full relative ${auditoria.estado === 'Finalizada' ? 'cursor-default' : 'cursor-move touch-none'}`}
     >
       <Card 
         className="bg-white border-2 hover:shadow-md transition-all flex flex-col w-full border-gray-200"

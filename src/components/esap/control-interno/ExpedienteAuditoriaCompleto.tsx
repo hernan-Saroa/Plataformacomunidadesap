@@ -30,7 +30,8 @@ import {
   Building2, User, Award, ClipboardCheck, MessageSquare,
   Sparkles, Info, ChevronRight, ChevronDown, Edit2, Trash2,
   Upload, Archive, ExternalLink, Filter, Search, Tag,
-  BarChart3, PieChart, LineChart, CheckSquare, Paperclip, BookOpen
+  BarChart3, PieChart, LineChart, CheckSquare, Paperclip, BookOpen,
+  Lightbulb, Flag
 } from 'lucide-react';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
@@ -68,7 +69,7 @@ import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/envi
 type EstadoAuditoria = 'planeacion' | 'ejecucion' | 'comunicacion' | 'seguimiento' | 'finalizada';
 type TipoAuditoria = 'Sede' | 'Territorial' | 'Especial';
 type NivelRiesgo = 'Alto' | 'Medio' | 'Bajo';
-type TabActiva = 'general' | 'planeacion' | 'ejecucion' | 'comunicacion' | 'seguimiento' | 'documentacion' | 'historial';
+type TabActiva = 'general' | 'planeacion' | 'ejecucion' | 'comunicacion' | 'seguimiento' | 'documentacion' | 'historial' | 'finalizada';
 
 interface Auditoria {
   id: string;
@@ -265,14 +266,15 @@ const HISTORIAL_EJEMPLO: EventoHistorial[] = [
 // CONFIGURACIÓN DE TABS
 // ═══════════════════════════════════════════════════════════════════════════
 
-const pestanas = [
-  { id: 'general' as TabActiva, label: 'General', icon: Info },
-  { id: 'planeacion' as TabActiva, label: 'Planeación', icon: FileSearch },
-  { id: 'ejecucion' as TabActiva, label: 'Ejecución', icon: ClipboardCheck },
-  { id: 'comunicacion' as TabActiva, label: 'Comunicación', icon: FileText },
-  { id: 'seguimiento' as TabActiva, label: 'Seguimiento', icon: BookOpen },
-  { id: 'documentacion' as TabActiva, label: 'Documentación', icon: FolderOpen },
-  { id: 'historial' as TabActiva, label: 'Historial', icon: History }
+const PESTANAS_BASE: { id: TabActiva; label: string; icon: typeof Info }[] = [
+  { id: 'general', label: 'General', icon: Info },
+  { id: 'planeacion', label: 'Planeación', icon: FileSearch },
+  { id: 'ejecucion', label: 'Ejecución', icon: ClipboardCheck },
+  { id: 'comunicacion', label: 'Comunicación', icon: FileText },
+  { id: 'seguimiento', label: 'Seguimiento', icon: BookOpen },
+  { id: 'documentacion', label: 'Documentación', icon: FolderOpen },
+  { id: 'historial', label: 'Historial', icon: History },
+  { id: 'finalizada', label: 'Finalizada', icon: CheckCircle }
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -727,7 +729,7 @@ export function ExpedienteAuditoriaCompleto({
     if (estadoLower === 'ejecución' || estadoLower === 'ejecucion') return 'ejecucion';
     if (estadoLower === 'comunicación' || estadoLower === 'comunicacion') return 'comunicacion';
     if (estadoLower === 'seguimiento') return 'seguimiento';
-    if (estadoLower === 'finalizada') return 'historial';
+    if (estadoLower === 'finalizada') return 'finalizada';
     return 'general';
   };
   
@@ -744,6 +746,27 @@ export function ExpedienteAuditoriaCompleto({
       setActiveTab(tab);
     }
   }, [isOpen, tabInicial, auditoria?.estado]);
+
+  // Cuando la auditoría pasa a Finalizada (ej. tras aprobar informe cierre), ir al tab Finalizada
+  useEffect(() => {
+    if (auditoria?.estado === 'finalizada') {
+      setActiveTab('finalizada');
+    }
+  }, [auditoria?.estado]);
+
+  // Al cargar la auditoría, seleccionar tab según estado (ej. Seguimiento si está en seguimiento)
+  const hasAppliedTabFromAuditoriaRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      hasAppliedTabFromAuditoriaRef.current = false;
+      return;
+    }
+    if (!auditoria) return;
+    if (hasAppliedTabFromAuditoriaRef.current) return;
+    hasAppliedTabFromAuditoriaRef.current = true;
+    const tab = getTabAutomatico();
+    setActiveTab(tab);
+  }, [isOpen, auditoria?.id, auditoria?.estado]);
 
   const diasRestantes = useMemo(() => {
     if (!auditoria?.cronograma?.fechaFin) return 0;
@@ -1163,7 +1186,7 @@ export function ExpedienteAuditoriaCompleto({
             ═════════════════════════════════════════════════════════════════ */}
         <div className="flex-shrink-0 border-b bg-gray-50">
           <div className="flex overflow-x-auto px-6 scrollbar-hide">
-            {pestanas.map((pestana) => {
+            {(PESTANAS_BASE.filter((p) => p.id !== 'finalizada' || auditoria?.estado === 'finalizada')).map((pestana) => {
               const Icon = pestana.icon;
               const isActive = activeTab === pestana.id;
               
@@ -1204,30 +1227,33 @@ export function ExpedienteAuditoriaCompleto({
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {activeTab === 'general' && <TabGeneral auditoria={auditoria} />}
+              {activeTab === 'general' && <TabGeneral auditoria={auditoria} readOnly={auditoria.estado === 'finalizada'} />}
               {activeTab === 'planeacion' && (
                 <TabPlaneacion 
                   auditoria={auditoria} 
                   checklistCompletados={auditoria.checklistCompletados}
-                  onToggleChecklist={handleToggleChecklist}
+                  onToggleChecklist={auditoria.estado === 'finalizada' ? undefined : handleToggleChecklist}
+                  readOnly={auditoria.estado === 'finalizada'}
                 />
               )}
               {activeTab === 'ejecucion' && (
                 <TabEjecucion 
                   auditoria={auditoria}
                   checklistCompletados={auditoria.checklistCompletados}
-                  onToggleChecklist={handleToggleChecklist}
+                  onToggleChecklist={auditoria.estado === 'finalizada' ? undefined : handleToggleChecklist}
+                  readOnly={auditoria.estado === 'finalizada'}
                 />
               )}
               {activeTab === 'comunicacion' && (
                 <TabComunicacion 
                   auditoria={auditoria}
                   checklistCompletados={auditoria.checklistCompletados}
-                  onToggleChecklist={handleToggleChecklist}
+                  onToggleChecklist={auditoria.estado === 'finalizada' ? undefined : handleToggleChecklist}
                   onComunicacionCompletada={() => {
                 setRecargarTrigger(t => t + 1);
                 onComunicacionCompletadaProp?.();
               }}
+                  readOnly={auditoria.estado === 'finalizada'}
                 />
               )}
               {activeTab === 'seguimiento' && (
@@ -1237,6 +1263,7 @@ export function ExpedienteAuditoriaCompleto({
                     setRecargarTrigger(t => t + 1);
                     onComunicacionCompletadaProp?.();
                   }}
+                  readOnly={auditoria.estado === 'finalizada'}
                 />
               )}
               {activeTab === 'documentacion' && (
@@ -1246,11 +1273,19 @@ export function ExpedienteAuditoriaCompleto({
                   onFiltroChange={setFiltroDocumentos}
                   auditoriaId={auditoria.id}
                   loading={loadingDocumentos}
-                  onSubirDocumento={subirDocumento}
+                  onSubirDocumento={auditoria.estado === 'finalizada' ? undefined : subirDocumento}
                   onRecargar={recargarDocumentos}
+                  readOnly={auditoria.estado === 'finalizada'}
                 />
               )}
               {activeTab === 'historial' && <TabHistorial eventos={historial} />}
+              {activeTab === 'finalizada' && (
+                <TabFinalizada
+                  auditoriaId={auditoria.id}
+                  auditoria={auditoria}
+                  documentos={documentos}
+                />
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -1270,7 +1305,7 @@ export function ExpedienteAuditoriaCompleto({
               {/* MÉTRICAS EN DESKTOP - SEGÚN ESTÁNDAR: hidden md:block */}
               <div className="text-xs text-gray-600 hidden md:block">
                 <strong className="font-black" style={{ color: '#003DA5' }}>
-                  {pestanas.find(p => p.id === activeTab)?.label}
+                  {(PESTANAS_BASE.find(p => p.id === activeTab) || PESTANAS_BASE[0])?.label}
                 </strong> · 
                 <strong className="text-green-600"> {auditoria.progreso.general}% completado</strong> · 
                 <strong className="text-orange-600"> {diasRestantes} días restantes</strong>
@@ -1307,17 +1342,19 @@ export function ExpedienteAuditoriaCompleto({
 // TABS INDIVIDUALES
 // ═══════════════════════════════════════════════════════════════════════════
 
-function TabGeneral({ auditoria }: { auditoria: Auditoria }) {
+function TabGeneral({ auditoria, readOnly }: { auditoria: Auditoria; readOnly?: boolean }) {
   return (
     <div className="space-y-4">
       {/* Resumen ejecutivo */}
       <Card className="p-4 border-l-4 border-l-blue-600">
         <div className="flex items-start justify-between mb-3">
           <h3 className="text-sm font-bold text-gray-900">Resumen Ejecutivo</h3>
-          <Button variant="ghost" size="sm">
-            <Edit2 className="w-4 h-4 mr-2" />
-            Editar
-          </Button>
+          {!readOnly && (
+            <Button variant="ghost" size="sm">
+              <Edit2 className="w-4 h-4 mr-2" />
+              Editar
+            </Button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1546,9 +1583,10 @@ interface TabFaseProps {
   checklistCompletados?: Record<string, boolean>;
   onToggleChecklist?: (id: string, completado: boolean) => void;
   onComunicacionCompletada?: () => void;
+  readOnly?: boolean;
 }
 
-function TabPlaneacion({ auditoria }: TabFaseProps) {
+function TabPlaneacion({ auditoria, readOnly }: TabFaseProps) {
   return (
     <div className="space-y-4">
       <Card className="p-3 border-l-4 border-l-purple-600 bg-purple-50">
@@ -1569,7 +1607,7 @@ function TabPlaneacion({ auditoria }: TabFaseProps) {
 }
 
 // TAB 3: EJECUCIÓN
-function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist }: TabFaseProps) {
+function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist, readOnly }: TabFaseProps) {
   const [modalAperturaOpen, setModalAperturaOpen] = useState(false);
   const [modalCierreOpen, setModalCierreOpen] = useState(false);
   const [reunionApertura, setReunionApertura] = useState<any | null>(null);
@@ -1629,15 +1667,17 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist }: Ta
               {reunionApertura ? `Fecha: ${fechaReunion(reunionApertura)} - ${reunionApertura.modalidad || ''}` : 'Kick-off oficial con el área auditada'}
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setModalAperturaOpen(true)}
-            className="font-medium"
-          >
-            <Users className="w-4 h-4 mr-2" />
-            {reunionApertura ? 'Editar Reunión' : 'Registrar Reunión'}
-          </Button>
+          {!readOnly && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModalAperturaOpen(true)}
+              className="font-medium"
+            >
+              <Users className="w-4 h-4 mr-2" />
+              {reunionApertura ? 'Editar Reunión' : 'Registrar Reunión'}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1663,15 +1703,17 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist }: Ta
               {reunionCierre ? `Fecha: ${fechaReunion(reunionCierre)} - ${reunionCierre.modalidad || ''}` : 'Cierre con el área auditada y firma de acta'}
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setModalCierreOpen(true)}
-            className="font-medium"
-          >
-            <Users className="w-4 h-4 mr-2" />
-            {reunionCierre ? 'Editar Reunión' : 'Registrar Reunión'}
-          </Button>
+          {!readOnly && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModalCierreOpen(true)}
+              className="font-medium"
+            >
+              <Users className="w-4 h-4 mr-2" />
+              {reunionCierre ? 'Editar Reunión' : 'Registrar Reunión'}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1712,7 +1754,7 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist }: Ta
 }
 
 // TAB 4: COMUNICACIÓN — Mismo patrón que Planeación/Ejecución: Card + contenido. Flujo: Informe Preliminar, Gestión Hallazgos, Decisión, Plan Mejoramiento
-function TabComunicacion({ auditoria, onComunicacionCompletada }: TabFaseProps) {
+function TabComunicacion({ auditoria, onComunicacionCompletada, readOnly }: TabFaseProps) {
   return (
     <div className="space-y-4">
       <Card className="p-3 border-l-4 border-l-green-600 bg-green-50">
@@ -1734,6 +1776,7 @@ function TabComunicacion({ auditoria, onComunicacionCompletada }: TabFaseProps) 
           estadoAuditoria={auditoria.estado}
           embedded
           onComunicacionCompletada={onComunicacionCompletada}
+          readOnly={readOnly}
         />
       </div>
       {/* DOCUMENTOS DE COMUNICACIÓN (al final) */}
@@ -1743,7 +1786,7 @@ function TabComunicacion({ auditoria, onComunicacionCompletada }: TabFaseProps) 
 }
 
 // Tab Seguimiento: Verificación de Cumplimiento + Informe de Cierre (mismo nivel que Comunicación)
-function TabSeguimiento({ auditoria, onComunicacionCompletada }: TabFaseProps) {
+function TabSeguimiento({ auditoria, onComunicacionCompletada, readOnly }: TabFaseProps) {
   return (
     <div className="space-y-4">
       <Card className="p-3 border-l-4 border-l-indigo-600 bg-indigo-50">
@@ -1763,6 +1806,7 @@ function TabSeguimiento({ auditoria, onComunicacionCompletada }: TabFaseProps) {
           soloSeguimiento
           embedded
           onComunicacionCompletada={onComunicacionCompletada}
+          readOnly={readOnly}
         />
       </div>
     </div>
@@ -1777,14 +1821,16 @@ function TabDocumentacion({
   loading,
   onSubirDocumento,
   onRecargar,
+  readOnly,
 }: {
   documentos: DocumentoExpediente[];
   filtro: string;
   onFiltroChange: (filtro: string) => void;
   auditoriaId: string;
   loading?: boolean;
-  onSubirDocumento: (file: File, metadata: { nombre: string; descripcion?: string; tipoDocumento: string; etapa: string }) => Promise<boolean>;
+  onSubirDocumento?: (file: File, metadata: { nombre: string; descripcion?: string; tipoDocumento: string; etapa: string }) => Promise<boolean>;
   onRecargar: () => void;
+  readOnly?: boolean;
 }) {
   const [modalCargar, setModalCargar] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
@@ -1828,6 +1874,7 @@ function TabDocumentacion({
 
   // ✅ Manejar subida de documento conectada al backend
   const handleSubirDocumento = async (docData: any) => {
+    if (!onSubirDocumento || readOnly) return;
     if (!docData.archivo) {
       toast.error('❌ Error', { description: 'Selecciona un archivo para subir' });
       return;
@@ -1893,16 +1940,18 @@ function TabDocumentacion({
               {loading ? 'Cargando...' : 'Actualizar'}
             </Button>
           </div>
-          <Button 
-            size="sm" 
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-            className="font-bold"
-            onClick={() => setModalCargar(true)}
-            disabled={subiendo}
-          >
-            <Upload className="w-3 h-3 mr-1" />
-            {subiendo ? 'Subiendo...' : 'Cargar Documento'}
-          </Button>
+          {!readOnly && (
+            <Button 
+              size="sm" 
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+              className="font-bold"
+              onClick={() => setModalCargar(true)}
+              disabled={subiendo}
+            >
+              <Upload className="w-3 h-3 mr-1" />
+              {subiendo ? 'Subiendo...' : 'Cargar Documento'}
+            </Button>
+          )}
         </div>
 
         {loading ? (
@@ -2029,6 +2078,274 @@ function TabHistorial({ eventos }: { eventos: EventoHistorial[] }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TAB FINALIZADA — Panel de auditoría cerrada (inmutable)
+// Resumen ejecutivo, acciones del plan, lecciones, recomendaciones, trazabilidad, descargas
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface TabFinalizadaProps {
+  auditoriaId: string;
+  auditoria: Auditoria;
+  documentos: DocumentoExpediente[];
+}
+
+function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProps) {
+  const [resumen, setResumen] = useState<any>(null);
+  const [planes, setPlanes] = useState<any[]>([]);
+  const [hallazgos, setHallazgos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const cargar = async () => {
+      setLoading(true);
+      try {
+        const [resCierre, planesData, hallazgosData] = await Promise.all([
+          controlInternoService.getResumenEjecutivoCierre(auditoriaId).catch(() => null),
+          controlInternoService.getPlanesMejoramientoByAuditoria(auditoriaId).catch(() => []),
+          controlInternoService.getHallazgosByAuditoria(auditoriaId).catch(() => []),
+        ]);
+        if (!cancelled) {
+          setResumen(resCierre);
+          setPlanes(Array.isArray(planesData) ? planesData : []);
+          setHallazgos(Array.isArray(hallazgosData) ? hallazgosData : []);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    cargar();
+    return () => { cancelled = true; };
+  }, [auditoriaId]);
+
+  const todasLasAcciones = useMemo(() => {
+    const out: { planCodigo: string; accion: any }[] = [];
+    for (const plan of planes) {
+      for (const accion of plan.acciones || []) {
+        out.push({ planCodigo: plan.codigo || plan.id, accion });
+      }
+    }
+    return out;
+  }, [planes]);
+
+  const conteoHallazgos = useMemo(() => {
+    let ratificados = 0, retirados = 0, aceptados = 0;
+    for (const h of hallazgos) {
+      const d = (h.decisionAuditor || h.estado || '').toLowerCase();
+      if (d === 'ratificado' || d === 'modificado') ratificados++;
+      else if (d === 'retirado') retirados++;
+      else if (d === 'aceptado') aceptados++;
+    }
+    return { ratificados, retirados, aceptados, total: hallazgos.length };
+  }, [hallazgos]);
+
+  const docCierre = useMemo(() => documentos.find(d => d.id.startsWith('doc-cierre') || /cierre|informe\s*de\s*cierre/i.test(d.nombre)), [documentos]);
+  const docEjecutivo = useMemo(() => documentos.find(d => /ejecutivo|informe\s*ejecutivo/i.test(d.nombre)), [documentos]);
+
+  const descargarDoc = async (doc: DocumentoExpediente) => {
+    const url = doc.urlDownload || (doc as any).url;
+    if (!url) {
+      toast.error('No hay enlace de descarga para este documento');
+      return;
+    }
+    try {
+      const fullUrl = url.startsWith('http') ? url : `${window.location.origin}${url}`;
+      const res = await fetch(fullUrl, { headers: getDefaultHeaders() });
+      if (!res.ok) throw new Error(res.statusText);
+      const blob = await res.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = doc.nombre || 'documento';
+      link.click();
+      URL.revokeObjectURL(link.href);
+      toast.success('Descarga iniciada');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al descargar');
+    }
+  };
+
+  const generarYDescargarEjecutivo = async () => {
+    try {
+      await controlInternoService.generarInformeEjecutivo(auditoriaId);
+      toast.success('Informe ejecutivo generado. Revise la sección Documentación para descargarlo.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al generar informe ejecutivo');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-gray-500">
+        <Clock className="w-8 h-8 animate-pulse mr-2" />
+        Cargando resumen de cierre…
+      </div>
+    );
+  }
+
+  const fechaInicio = resumen?.fechaInicio || auditoria.cronograma?.fechaInicio;
+  const fechaFin = resumen?.fechaFin || auditoria.cronograma?.fechaFin;
+  const fechasStr = [fechaInicio, fechaFin].map(d => d instanceof Date ? d.toLocaleDateString('es-CO') : (d || '').toString().split('T')[0]).filter(Boolean).join(' – ');
+  const planCodigo = resumen?.planVinculado || resumen?.planCodigo || planes[0]?.codigo || planes[0]?.id || '—';
+  const cumplidas = todasLasAcciones.filter(({ accion }) => (String(accion.estadoVerificacionOci || '').toLowerCase() === 'cumplida')).length;
+  const parciales = todasLasAcciones.filter(({ accion }) => (String(accion.estadoVerificacionOci || '').toLowerCase() === 'parcial')).length;
+
+  return (
+    <div className="space-y-6">
+      {/* Banner Auditoría Finalizada */}
+      <Card className="p-4 border-l-4 border-l-green-600 bg-green-50">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-green-100">
+            <Flag className="w-6 h-6 text-green-700" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-green-900">Auditoría Finalizada</h2>
+            <p className="text-sm text-green-700">Expediente inmutable · Plan {planCodigo} completado</p>
+          </div>
+        </div>
+      </Card>
+
+      {/* Resumen ejecutivo */}
+      <Card className="p-4 border-l-4 border-l-blue-600 bg-blue-50/50">
+        <h3 className="text-sm font-bold text-gray-900 mb-3 uppercase tracking-wide">Resumen ejecutivo</h3>
+        <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+          <div className="flex justify-between md:block"><dt className="text-gray-600 font-medium">Auditoría</dt><dd className="font-bold text-gray-900">{resumen?.codigo || auditoria.codigo}</dd></div>
+          <div className="flex justify-between md:block"><dt className="text-gray-600 font-medium">Nombre</dt><dd className="font-bold text-gray-900">{resumen?.nombre || auditoria.nombre}</dd></div>
+          <div className="flex justify-between md:block"><dt className="text-gray-600 font-medium">Auditor Líder</dt><dd className="font-bold text-gray-900">{auditoria.auditorLider?.nombre || '—'}</dd></div>
+          <div className="flex justify-between md:block"><dt className="text-gray-600 font-medium">Período</dt><dd className="font-bold text-gray-900">{fechasStr || '—'}</dd></div>
+          <div className="flex justify-between md:block"><dt className="text-gray-600 font-medium">Plan vinculado</dt><dd className="font-bold text-gray-900">{planCodigo}</dd></div>
+          <div className="flex justify-between md:block"><dt className="text-gray-600 font-medium">Total hallazgos</dt><dd className="font-bold text-gray-900">{conteoHallazgos.total}</dd></div>
+          <div className="flex justify-between md:block"><dt className="text-gray-600 font-medium">Ratificados</dt><dd className="font-bold text-gray-900">{conteoHallazgos.ratificados}</dd></div>
+          <div className="flex justify-between md:block"><dt className="text-gray-600 font-medium">Retirados</dt><dd className="font-bold text-gray-900">{conteoHallazgos.retirados}</dd></div>
+          <div className="flex justify-between md:block"><dt className="text-gray-600 font-medium">Aceptados</dt><dd className="font-bold text-gray-900">{conteoHallazgos.aceptados}</dd></div>
+          <div className="flex justify-between md:block"><dt className="text-gray-600 font-medium">Acciones de mejora</dt><dd className="font-bold text-gray-900">{todasLasAcciones.length}</dd></div>
+          <div className="flex justify-between md:block"><dt className="text-gray-600 font-medium">Cumplidas</dt><dd className="font-bold text-green-700">{cumplidas}</dd></div>
+          <div className="flex justify-between md:block"><dt className="text-gray-600 font-medium">Parciales</dt><dd className="font-bold text-amber-700">{parciales}</dd></div>
+        </dl>
+      </Card>
+
+      {/* Acciones del plan — estado final */}
+      {todasLasAcciones.length > 0 && (
+        <div>
+          <h3 className="text-sm font-bold text-gray-900 mb-3 uppercase tracking-wide">Acciones del plan — estado final</h3>
+          <div className="space-y-4">
+            {todasLasAcciones.map(({ planCodigo: codigoPlan, accion }, idx) => {
+              const estado = String(accion.estadoVerificacionOci || '').toLowerCase();
+              const esCumplida = estado === 'cumplida';
+              const esParcial = estado === 'parcial';
+              const fechaFinAccion = accion.fechaFin ? (typeof accion.fechaFin === 'string' ? accion.fechaFin.split('T')[0] : accion.fechaFin) : '—';
+              return (
+                <Card key={accion.id} className={`p-4 border-l-4 ${esCumplida ? 'border-l-green-600 bg-green-50/50' : esParcial ? 'border-l-amber-500 bg-amber-50/50' : 'border-l-gray-400 bg-gray-50'}`}>
+                  <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                    <div className="flex items-start gap-3 flex-1">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-sm font-bold flex-shrink-0">{idx + 1}</div>
+                      <div>
+                        <p className="font-medium text-gray-900">{accion.descripcion}</p>
+                        <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-600">
+                          <span className="flex items-center gap-1"><User className="w-3 h-3" />{accion.responsable || '—'}</span>
+                          <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{fechaFinAccion}</span>
+                          <span>Plan: {codigoPlan}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <Badge className={esCumplida ? 'bg-green-100 text-green-800' : esParcial ? 'bg-amber-100 text-amber-800' : 'bg-gray-200 text-gray-800'}>
+                      Verificada: {estado === 'cumplida' ? 'Cumplida' : estado === 'parcial' ? 'Parcial' : estado === 'incumplida' ? 'Incumplida' : '—'}
+                    </Badge>
+                  </div>
+                  {(accion.observacionOci || accion.evidenciaVerificada) && (
+                    <div className="mt-2 pl-11 text-sm text-gray-600 flex items-start gap-2">
+                      <MessageSquare className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span className="italic">{accion.observacionOci || accion.evidenciaVerificada}</span>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Lecciones aprendidas */}
+      {(resumen?.leccionesAprendidas || '') && (
+        <Card className="p-4 border-l-4 border-l-violet-500 bg-violet-50/50">
+          <div className="flex items-center gap-2 mb-2">
+            <BookOpen className="w-5 h-5 text-violet-700" />
+            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Lecciones aprendidas</h3>
+          </div>
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">{resumen.leccionesAprendidas}</p>
+        </Card>
+      )}
+
+      {/* Recomendaciones */}
+      {(resumen?.recomendacionesFuturasAuditorias || '') && (
+        <Card className="p-4 border-l-4 border-l-blue-500 bg-blue-50/50">
+          <div className="flex items-center gap-2 mb-2">
+            <Lightbulb className="w-5 h-5 text-amber-600" />
+            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Recomendaciones</h3>
+          </div>
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">{resumen.recomendacionesFuturasAuditorias}</p>
+        </Card>
+      )}
+
+      {/* Trazabilidad de hallazgos */}
+      {hallazgos.length > 0 && (
+        <div>
+          <h3 className="text-sm font-bold text-gray-900 mb-3 uppercase tracking-wide">Trazabilidad de hallazgos</h3>
+          <div className="space-y-3">
+            {hallazgos.map((h) => {
+              const decision = (h.decisionAuditor || h.estado || '').toLowerCase();
+              const label = decision === 'ratificado' || decision === 'modificado' ? 'RATIFICADO' : decision === 'retirado' ? 'RETIRADO' : decision === 'aceptado' ? 'ACEPTADO' : (h.estado || 'Sin decisión').toUpperCase();
+              return (
+                <Card key={h.id} className="p-4 border-l-4 border-l-red-200 bg-red-50/50">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-bold text-gray-900">{h.codigo || h.id} — {label}</p>
+                      <p className="text-sm text-gray-700 mt-1">{h.titulo || h.descripcion || '—'}</p>
+                      {(h.fundamentacionTecnica || (h as any).fundamentacion) && (
+                        <p className="text-xs text-gray-600 mt-2 italic">{(h as any).fundamentacionTecnica || (h as any).fundamentacion}</p>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 flex items-center gap-1">
+                      <User className="w-3 h-3" />
+                      {(h as any).auditorValido || (h as any).decisionPor || auditoria.auditorLider?.nombre || '—'}
+                      {(h as any).fechaDecision && <span> · {(h as any).fechaDecision.toString().split('T')[0]}</span>}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Botones descarga */}
+      <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200">
+        {docCierre ? (
+          <Button variant="outline" className="border-green-600 text-green-700 hover:bg-green-50" onClick={() => descargarDoc(docCierre)}>
+            <Download className="w-4 h-4 mr-2" />
+            Informe de Cierre
+          </Button>
+        ) : (
+          <Button variant="outline" disabled className="text-gray-400">
+            <Download className="w-4 h-4 mr-2" />
+            Informe de Cierre (no disponible)
+          </Button>
+        )}
+        {docEjecutivo ? (
+          <Button variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50" onClick={() => descargarDoc(docEjecutivo)}>
+            <Download className="w-4 h-4 mr-2" />
+            Informe Ejecutivo
+          </Button>
+        ) : (
+          <Button variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50" onClick={generarYDescargarEjecutivo}>
+            <FileText className="w-4 h-4 mr-2" />
+            Generar / Descargar Informe Ejecutivo
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
