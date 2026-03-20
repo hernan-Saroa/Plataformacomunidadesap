@@ -17,7 +17,37 @@ import { SolicitudInforme, EtapaSolicitudInforme } from '../core/types';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { legalService } from '../../../../services/api/legal.service';
-import { getServiceUrl } from '../../../../config/environment';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
+
+/** Parsea observaciones almacenadas en la BD separando descripción base de notas */
+function parseObservaciones(texto: string): { descripcionBase: string; notas: Array<{ fecha: string; usuario: string; texto: string }> } {
+  // Quitar líneas de ARCHIVO_ADJUNTO
+  const sinAdjuntos = texto.replace(/\[ARCHIVO_ADJUNTO\][^\n]*/g, '').replace(/\[NOTA\][^\n]*/g, '').trim();
+
+  // Separar por el delimitador de comentarios "---"
+  const partes = sinAdjuntos.split(/\n{0,2}---\n/);
+
+  // Primera parte es la descripción original
+  const descripcionBase = (partes[0] || '').trim();
+
+  // Las demás partes son notas: "[date time] Usuario:\ntexto"
+  const notas = partes.slice(1).map(p => {
+    const match = p.match(/^\[([^\]]+)\]\s+([^:]+):\n?([\s\S]*)/);
+    if (match) {
+      return { fecha: match[1].trim(), usuario: match[2].trim(), texto: match[3].trim() };
+    }
+    return { fecha: '', usuario: 'Sistema', texto: p.trim() };
+  }).filter(n => n.texto);
+
+  return { descripcionBase, notas };
+}
+
+function getFileDownloadUrl(fileUrl: string, nombre: string): string {
+  const filename = fileUrl?.includes('/') ? fileUrl.split('/').pop()! : fileUrl;
+  const baseUrl = getServiceUrl('legal');
+  const prefix = API_MODE === 'direct' ? '' : '/legal';
+  return `${baseUrl}${prefix}/files/download/${filename}?name=${encodeURIComponent(nombre)}`;
+}
 
 interface ModalDetalleSolicitudInformeProps {
   isOpen: boolean;
@@ -448,21 +478,54 @@ export function ModalDetalleSolicitudInforme({
             </div>
 
             {/* ASUNTO Y DESCRIPCIÓN */}
-            <div className="space-y-3">
-              <h3 className="font-bold text-gray-900">Asunto</h3>
-              <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
-                {solicitud.asunto}
-              </p>
-
-              {solicitud.descripcion && (
-                <>
-                  <h3 className="font-bold text-gray-900 mt-4">Descripción Detallada</h3>
+            {(() => {
+              const { descripcionBase, notas } = solicitud.descripcion
+                ? parseObservaciones(solicitud.descripcion)
+                : { descripcionBase: '', notas: [] };
+              return (
+                <div className="space-y-3">
+                  <h3 className="font-bold text-gray-900">Asunto</h3>
                   <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
-                    {solicitud.descripcion}
+                    {solicitud.asunto}
                   </p>
-                </>
-              )}
-            </div>
+
+                  {descripcionBase && (
+                    <>
+                      <h3 className="font-bold text-gray-900 mt-4">Descripción Detallada</h3>
+                      <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg whitespace-pre-wrap">
+                        {descripcionBase}
+                      </p>
+                    </>
+                  )}
+
+                  {/* Notas guardadas — visual timeline */}
+                  {notas.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-gray-600" />
+                        Notas y Comentarios ({notas.length})
+                      </h3>
+                      <div className="space-y-2">
+                        {notas.map((nota, i) => (
+                          <div key={i} className="flex gap-3">
+                            <div className="flex-shrink-0 w-7 h-7 bg-[#003DA5] rounded-full flex items-center justify-center text-white text-xs font-bold mt-0.5">
+                              {(nota.usuario || 'S')[0].toUpperCase()}
+                            </div>
+                            <div className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs font-bold text-gray-700">{nota.usuario}</span>
+                                <span className="text-xs text-gray-400">{nota.fecha}</span>
+                              </div>
+                              <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{nota.texto}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* 🔗 INFORMACIÓN DE INTEGRACIÓN TRANSVERSAL */}
             {solicitud.moduloOrigen && solicitud.moduloOrigen !== 'TERMINOS_INFORMES' && (
@@ -597,14 +660,12 @@ export function ModalDetalleSolicitudInforme({
                         </div>
                       </div>
                       {archivo.url && (
-                        <Button 
-                          variant="ghost" 
+                        <Button
+                          variant="ghost"
                           size="sm"
                           className="text-blue-600 hover:bg-blue-50"
-                          onClick={() => {
-                            const baseUrl = getServiceUrl('legal');
-                            window.open(`${baseUrl}/${archivo.url}`, '_blank');
-                          }}
+                          title="Descargar"
+                          onClick={() => window.open(getFileDownloadUrl(archivo.url!, archivo.nombre), '_blank')}
                         >
                           <Download className="w-4 h-4" />
                         </Button>
