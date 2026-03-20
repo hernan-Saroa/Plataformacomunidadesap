@@ -32,7 +32,6 @@ import { InputSIGL, TextareaSIGL } from '../gestion-legal/design-system/InputSIG
 import { toast } from 'sonner@2.0.3';
 import controlInternoService from '../../../services/api/controlInternoService';
 import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
-import { ModalFinalizarAuditoria } from './modales';
 
 // ====================================
 // TIPOS Y DATOS
@@ -138,11 +137,9 @@ export const ComunicacionAuditoriaModule: React.FC<{
   embedded?: boolean;
   /** Callback cuando se finaliza la comunicación y pasa a Seguimiento */
   onComunicacionCompletada?: () => void;
-  /** Callback para cambiar el tab del expediente padre (ej. a 'seguimiento') */
-  onCambiarTab?: (tab: string) => void;
   /** true = auditoría finalizada, solo lectura (sin formularios ni botones de acción) */
   readOnly?: boolean;
-}> = ({ auditoriaId, auditoriaInfo, estadoAuditoria: estadoAuditoriaProp, soloSeguimiento = false, embedded = false, onComunicacionCompletada, onCambiarTab, readOnly = false }) => {
+}> = ({ auditoriaId, auditoriaInfo, estadoAuditoria: estadoAuditoriaProp, soloSeguimiento = false, embedded = false, onComunicacionCompletada, readOnly = false }) => {
   const id = auditoriaId || 'aud-001';
   const useAPI = isValidUUID(id);
 
@@ -184,7 +181,6 @@ export const ComunicacionAuditoriaModule: React.FC<{
   const [recomendacionesFuturas, setRecomendacionesFuturas] = useState('');
   const [loadingInformeCierre, setLoadingInformeCierre] = useState(false);
   const [informeCierreAprobado, setInformeCierreAprobado] = useState(false);
-  const [modalFinalizarOpen, setModalFinalizarOpen] = useState(false);
   const enSeguimiento = soloSeguimiento || pasamosASeguimiento || (estadoAuditoriaProp && String(estadoAuditoriaProp).toLowerCase().includes('seguimiento'));
 
   const { agregarAuditoriaConHallazgos, seleccionarAuditoria, navegarAVerPlan } = useIntegracionAuditoriaPlanes();
@@ -551,7 +547,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
         await controlInternoService.updateEstadoKanbanAuditoria(id, 'Seguimiento');
         toast.success('Fase de Comunicación completada. Continúe con Verificación de Cumplimiento e Informe de Cierre.');
         setPasamosASeguimiento(true);
-        onCambiarTab?.('seguimiento');
+        setTabPrincipal('seguimiento');
         setSeccionActual(5);
         onComunicacionCompletada?.();
       } catch (err: any) {
@@ -560,7 +556,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
     } else {
       toast.success('Fase de Comunicación completada. Continúe con Verificación e Informe de Cierre.');
       setPasamosASeguimiento(true);
-      onCambiarTab?.('seguimiento');
+      setTabPrincipal('seguimiento');
       setSeccionActual(5);
       onComunicacionCompletada?.();
     }
@@ -827,7 +823,18 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 }}
                 onAprobar={readOnly ? async () => {} : async () => {
                   if (!useAPI) return;
-                  setModalFinalizarOpen(true);
+                  setLoadingInformeCierre(true);
+                  try {
+                    await controlInternoService.aprobarInformeCierre(id);
+                    toast.success('Informe de cierre aprobado. Auditoría finalizada.');
+                    setInformeCierreAprobado(true);
+                    cargarResumenCierre();
+                    onComunicacionCompletada?.();
+                  } catch (err: any) {
+                    toast.error(err?.message || 'Error al aprobar');
+                  } finally {
+                    setLoadingInformeCierre(false);
+                  }
                 }}
                 puedeAprobar={readOnly ? false : todasAccionesVerificadas}
                 useAPI={readOnly ? false : useAPI}
@@ -885,39 +892,6 @@ export const ComunicacionAuditoriaModule: React.FC<{
             onConfirmar={handleDecisionAuditor}
           />
         )}
-
-        {/* MODAL FINALIZAR AUDITORÍA - Documento de cierre obligatorio */}
-        <ModalFinalizarAuditoria
-          isOpen={modalFinalizarOpen}
-          onClose={() => setModalFinalizarOpen(false)}
-          auditoriaId={id}
-          auditoriaTitulo={auditoriaInfo?.nombre || auditoria?.nombre || 'Auditoría'}
-          onFinalizar={async (archivo, comentarios) => {
-            if (!useAPI) return;
-            setLoadingInformeCierre(true);
-            try {
-              await controlInternoService.updateInformeCierre(id, {
-                leccionesAprendidas,
-                recomendacionesFuturasAuditorias: recomendacionesFuturas,
-              });
-              const usuarioStr = localStorage.getItem('usuario');
-              const usuario = usuarioStr ? JSON.parse(usuarioStr) : null;
-              const finalizadaPor = usuario?.nombre || 'Usuario';
-              const finalizadaPorId = usuario?.id || 1;
-              await controlInternoService.finalizarAuditoria(id, archivo, comentarios, finalizadaPor, finalizadaPorId);
-              toast.success('Auditoría finalizada correctamente. Documento de cierre adjuntado.');
-              setInformeCierreAprobado(true);
-              cargarResumenCierre();
-              onComunicacionCompletada?.();
-              setModalFinalizarOpen(false);
-            } catch (err: any) {
-              toast.error(err?.message || 'Error al finalizar');
-              throw err;
-            } finally {
-              setLoadingInformeCierre(false);
-            }
-          }}
-        />
 
         {/* MODAL PREVIEW */}
         {modalPreview.abierto && (
@@ -2014,7 +1988,7 @@ const SeccionInformeCierre: React.FC<{
           </div>
           {!readOnly && (
           <div className="p-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 text-sm">
-            Al hacer clic en «Finalizar Auditoría» se abrirá un modal para adjuntar el documento de cierre obligatorio (matriz o formato de cierre). Sin este documento no se puede finalizar. La auditoría pasará a estado Finalizada y el expediente quedará inmutable.
+            Al aprobar el informe de cierre, la auditoría pasará a estado Finalizada y el expediente quedará inmutable.
           </div>
           )}
           <div className="flex flex-wrap gap-2">
@@ -2029,7 +2003,7 @@ const SeccionInformeCierre: React.FC<{
                   disabled={!puedeAprobar || !leccionesAprendidas.trim() || !recomendacionesFuturas.trim() || aprobando}
                   onClick={handleAprobar}
                 >
-                  {aprobando ? 'Abriendo…' : 'Finalizar Auditoría'}
+                  {aprobando ? 'Aprobando…' : 'Aprobar Informe de Cierre — Jefe OCI'}
                 </Button>
               </>
             )}
