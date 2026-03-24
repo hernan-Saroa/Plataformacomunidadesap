@@ -50,7 +50,7 @@ usage() {
     echo "  up        - Iniciar todos los servicios"
     echo "  down      - Detener todos los servicios"
     echo "  restart   - Reiniciar todos los servicios"
-    echo "  rebuild   - Reconstruir y reiniciar todos los servicios"
+    echo "  rebuild   - Reconstruir sin bajar servicios y publicar al finalizar"
     echo "  rebuild-frontend - Reconstruir y reiniciar solo frontend"
     echo "  rebuild-service <servicio> - Reconstruir y reiniciar solo un servicio"
     echo "  rebuild-select - Seleccionar interactivamente un servicio para rebuild"
@@ -101,20 +101,22 @@ cmd_restart() {
 
 # Comando: rebuild
 cmd_rebuild() {
-    echo -e "${YELLOW}Reconstruyendo servicios QA...${NC}"
-    docker compose -f docker-compose.qa.yml down
+    echo -e "${YELLOW}Reconstruyendo servicios QA (sin detener la versión actual)...${NC}"
+    echo -e "${YELLOW}La aplicación seguirá disponible mientras termina el build.${NC}"
 
     echo -e "${YELLOW}Limpiando node_modules/dist/build locales (frontend y backend) para reducir el contexto de build...${NC}"
     rm -rf node_modules dist build
     find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
 
-    # Construir imagenes
+    # Construir imágenes con los contenedores actuales activos.
     docker compose -f docker-compose.qa.yml --env-file .env.qa build
+
+    # Publicar nueva versión una vez terminado el build.
     docker compose -f docker-compose.qa.yml --env-file .env.qa up -d
     # Ejecutar migraciones automáticamente
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
-    echo -e "${GREEN}Servicios QA reconstruidos y reiniciados${NC}"
+    echo -e "${GREEN}Nueva versión publicada. Servicios QA reconstruidos y reiniciados.${NC}"
 }
 
 # Comando: rebuild-frontend (rápido)
