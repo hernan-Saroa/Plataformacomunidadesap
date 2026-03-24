@@ -20,18 +20,19 @@ import {
   Loader2,
   ArrowUp
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
-import { VerificationCertificate } from '../../types';
+import { VerificationCertificate } from '../../types/index';
 import { toast } from 'sonner@2.0.3';
 import { copyToClipboard } from '@/utils/browser';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
-import esapLogo from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import graduadosService from '../../services/api/graduados.service';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { buildServiceAssetUrl } from '../../config/environment';
 import headerImg from '../../assets/graduation-certificates/img_primera.png';
 import footerImg from '../../assets/graduation-certificates/img_segunda.png';
+import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface VerificationCertificateDisplayProps {
   certificate: VerificationCertificate;
@@ -44,7 +45,6 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   const containerRef = useRef<HTMLDivElement>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [showShareMenu, setShowShareMenu] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const lastEmailSentRef = useRef<string | null>(null);
   const lastEmailAttemptRef = useRef<string | null>(null);
@@ -195,32 +195,91 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     return { pdf, fileName };
   };
 
+  const downloadBlobAsFile = (pdfBlob: Blob) => {
+    const fileName = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
+    const url = window.URL.createObjectURL(pdfBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const getPublicPdfUrl = () => {
+    const pdfUrl = certificate.certificatePdfUrl?.trim();
+    if (pdfUrl) {
+      return buildServiceAssetUrl('registro-academico', pdfUrl);
+    }
+
+    const certificateNumber = certificate.certificateNumber?.trim();
+    if (!certificateNumber) {
+      return null;
+    }
+
+    return buildServiceAssetUrl(
+      'registro-academico',
+      `/uploads/graduation-certificates/${encodeURIComponent(certificateNumber)}.pdf`
+    );
+  };
+
+  const descargarPdfPorRutaPublica = async (): Promise<Blob> => {
+    const publicPdfUrl = getPublicPdfUrl();
+    if (!publicPdfUrl) {
+      throw new Error('No se encontr� una ruta p�blica para descargar el certificado.');
+    }
+
+    const response = await fetch(publicPdfUrl, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/pdf',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`No se pudo descargar el certificado (${response.status}).`);
+    }
+
+    return response.blob();
+  };
+
   const handleDownload = async () => {
     setIsDownloading(true);
     toast.loading('Descargando certificado PDF...', { id: 'pdf-generation' });
 
     try {
-      // Registrar la descarga
+      // Registrar la descarga (no bloquea la descarga si falla)
       if (certificate?.id) {
         try {
-          await graduadosService.descargas.registrar(certificate.id);
+          await graduadosService.descargas.registrar(certificate.id, {
+            skipErrorToast: true,
+          });
         } catch (error) {
           console.warn('No se pudo registrar la descarga:', error);
         }
       }
 
-      // Descargar el PDF desde el backend (el mismo que se envía por correo)
-      const pdfBlob = await graduadosService.certificados.descargarPDF(certificate.id);
+      let pdfBlob: Blob;
 
-      // Crear URL temporal para descargar
-      const url = window.URL.createObjectURL(pdfBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      try {
+        // Intento principal por endpoint de descarga
+        pdfBlob = await graduadosService.certificados.descargarPDF(certificate.id, {
+          skipErrorToast: true,
+        });
+      } catch (downloadError: any) {
+        const status = Number(downloadError?.status);
+
+        // Fallback robusto para autoservicio publico sin JWT
+        if (status === 401 || status === 403 || status === 404) {
+          pdfBlob = await descargarPdfPorRutaPublica();
+        } else {
+          throw downloadError;
+        }
+      }
+
+      downloadBlobAsFile(pdfBlob);
 
       toast.success('Certificado descargado exitosamente!', {
         id: 'pdf-generation',
@@ -277,91 +336,24 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   // Por eso eliminamos el useEffect que llamaba a enviarCertificadoPorEmail()
   // para evitar enviar correos duplicados.
 
-  const handleShare = async () => {
-    /**
-     * FUNCIONALIDAD DE COMPARTIR CERTIFICADO
-     * =======================================
-     * Este botón permite compartir el enlace de verificación mediante:
-     * 1. Web Share API (nativo en dispositivos móviles)
-     * 2. Copiar al portapapeles (fallback)
-     * 3. Opciones de compartir por email, WhatsApp, etc.
-     */
-
+  const handleCopyVerificationUrl = async () => {
     const shareUrl = `${window.location.origin}/verificar-certificado/${certificate.qrCode}`;
-    const shareTitle = `Certificado de Verificación - ${certificate.graduate.fullName}`;
-    const shareText = `Certificado de Verificación de Título ESAP\n\nGraduado: ${certificate.graduate.fullName}\nPrograma: ${certificate.graduate.programName}\nTítulo: ${certificate.graduate.titleType}\n\nVerificar autenticidad en:`;
 
-    // Intentar usar Web Share API (disponible en móviles modernos)
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: shareTitle,
-          text: shareText,
-          url: shareUrl
-        });
-
-        toast.success('¡Compartido exitosamente!', {
-          description: 'El enlace ha sido compartido'
-        });
-
-        return;
-      } catch (error: any) {
-        // Usuario canceló o error en la compartición
-        if (error.name !== 'AbortError') {
-          console.error('Error al compartir:', error);
-        }
-      }
-    }
-
-    // Fallback: Copiar al portapapeles
     try {
-      await copyToClipboard(shareUrl);
+      const copied = await copyToClipboard(shareUrl);
 
-      toast.success('✓ Enlace de verificación copiado al portapapeles', {
-        description: 'Pega el enlace donde quieras compartirlo',
-        duration: 4000,
-        action: {
-          label: 'Ver opciones',
-          onClick: () => {
-            // Mostrar opciones adicionales de compartir
-            toast.info('Opciones de compartir', {
-              description: (
-                <div className="space-y-2 mt-2">
-                  <a
-                    href={`mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(shareText + '\n\n' + shareUrl)}`}
-                    className="block px-3 py-2 bg-blue-100 text-blue-900 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    📧 Compartir por Email
-                  </a>
-                  <a
-                    href={`https://wa.me/?text=${encodeURIComponent(shareText + '\n\n' + shareUrl)}`}
-                    className="block px-3 py-2 bg-green-100 text-green-900 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    💬 Compartir por WhatsApp
-                  </a>
-                </div>
-              ),
-              duration: 10000
-            });
-          }
-        }
+      if (!copied) {
+        throw new Error('No se pudo copiar al portapapeles');
+      }
+
+      toast.success('Enlace copiado', {
+        description: 'La URL de verificación fue copiada al portapapeles',
+        duration: 3500,
       });
-
-      // Analytics o tracking
-      console.log('📊 Enlace compartido:', {
-        certificateNumber: certificate.certificateNumber,
-        shareUrl: shareUrl,
-        timestamp: new Date().toISOString()
-      });
-
     } catch (error) {
-      console.error('Error al copiar al portapapeles:', error);
+      console.error('Error al copiar enlace de verificación:', error);
       toast.error('No se pudo copiar el enlace', {
-        description: 'Por favor, copia manualmente la URL de verificación'
+        description: 'Por favor, copia manualmente la URL de verificación',
       });
     }
   };
@@ -544,20 +536,11 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
 
           <Card className="border-4 border-[#1e5da8] shadow-2xl bg-white">
             {/* Official Header with Logo */}
-            <div className="bg-gradient-to-r from-[#1e5da8] to-[#154a85] px-8 py-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-6">
-                  <div className="bg-white rounded-xl p-3 shadow-lg">
-                    <img src={esapLogo} alt="ESAP Logo" className="h-16 w-auto" />
-                  </div>
-                  <div className="text-white">
-                    <h1 className="text-2xl font-bold tracking-wide">
-                      ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA
-                    </h1>
-                    <p className="text-blue-100 text-sm mt-1 tracking-wider">
-                      ESAP • República de Colombia
-                    </p>
-                  </div>
+            {/* <div className="bg-gradient-to-r from-[#1e5da8] to-[#154a85] px-8 py-6"> */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-6">
+                <div className="bg-white rounded-xl p-3 shadow-lg">
+                  <ESAPLogo variant="color" className="h-16 w-auto" />
                 </div>
                 <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-lg border border-white/30">
                   <Shield className="w-5 h-5 text-white" />
@@ -647,11 +630,11 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
 
                       <div className="bg-white rounded-xl border border-gray-200 p-5">
                         <div className="flex items-center gap-3 mb-2">
-                          <Hash className="w-5 h-5 text-[#1e5da8]" />
-                          <p className="text-xs text-gray-600 uppercase tracking-wider">Número de Diploma</p>
+                          <FileText className="w-5 h-5 text-[#1e5da8]" />
+                          <p className="text-xs text-gray-600 uppercase tracking-wider">Tipo de Solicitante</p>
                         </div>
-                        <p className="text-lg font-mono font-bold text-gray-900">
-                          {certificate.graduate.diplomaNumber}
+                        <p className="text-lg font-bold text-gray-900 capitalize">
+                          {certificate.requester.type === 'graduado' ? 'Graduado' : 'Empresa'}
                         </p>
                       </div>
 
@@ -666,16 +649,6 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                           </p>
                         </div>
                       )}
-
-                      <div className="bg-white rounded-xl border border-gray-200 p-5">
-                        <div className="flex items-center gap-3 mb-2">
-                          <FileText className="w-5 h-5 text-[#1e5da8]" />
-                          <p className="text-xs text-gray-600 uppercase tracking-wider">Tipo de Solicitante</p>
-                        </div>
-                        <p className="text-lg font-bold text-gray-900 capitalize">
-                          {certificate.requester.type === 'graduado' ? 'Graduado' : 'Empresa'}
-                        </p>
-                      </div>
                     </div>
 
                     {/* Official Statement */}
@@ -709,13 +682,17 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                         <h4 className="font-bold text-gray-900 text-sm uppercase tracking-wide">Código QR</h4>
                       </div>
                       <div className="flex-1 flex items-center justify-center">
-                        <div className="inline-block p-4 bg-white rounded-xl border-2 border-[#1e5da8]/30 shadow-sm">
-                          <QRCodeSVG
+                        <div
+                          className="w-full max-w-full rounded-xl border-2 border-[#1e5da8]/30 bg-white p-3 shadow-sm sm:p-4"
+                          style={{ width: 'min(100%, 260px)' }}
+                        >
+                          <QRCodeCanvas
                             value={verificationUrl}
-                            size={160}
+                            size={512}
                             level="H"
                             includeMargin={true}
                             fgColor="#1e5da8"
+                            style={{ width: '100%', height: 'auto', display: 'block' }}
                           />
                         </div>
                       </div>
@@ -787,11 +764,11 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                       {verificationUrl}
                     </code>
                     <Button
-                      onClick={handleShare}
+                      onClick={handleCopyVerificationUrl}
                       size="sm"
                       className="flex-shrink-0 bg-[#1e5da8] hover:bg-[#174a87]"
                     >
-                      <Share2 className="w-3.5 h-3.5 mr-1.5" />
+                      <Copy className="w-3.5 h-3.5 mr-1.5" />
                       Copiar
                     </Button>
                   </div>
@@ -980,13 +957,13 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                   )}
                 </Button>
                 <Button
-                  onClick={handleShare}
+                  onClick={handleCopyVerificationUrl}
                   variant="outline"
                   className="flex-1 border-2 border-[#1e5da8] text-[#1e5da8] hover:bg-[#1e5da8] hover:text-white"
                   size="lg"
                 >
-                  <Share2 className="w-5 h-5 mr-2" />
-                  Compartir Enlace
+                  <Copy className="w-5 h-5 mr-2" />
+                  Copiar URL
                 </Button>
                 {onClose && (
                   <Button
@@ -1020,3 +997,4 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     </div>
   );
 }
+

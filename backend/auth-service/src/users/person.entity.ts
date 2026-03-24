@@ -6,8 +6,8 @@ import { Sede } from './sede.entity';
 
 @Entity('personas')
 export class Person {
-  @PrimaryColumn({ name: 'id_tercero' })
-  id: number;
+  @PrimaryColumn('uuid', { name: 'id_person' })
+  id: string;
 
   @Column({ name: 'num_identificacion' })
   identification_number: string;

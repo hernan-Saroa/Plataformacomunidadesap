@@ -39,12 +39,10 @@ const initialFormState = {
   probabilidadResidual: '2',
   impactoResidual: '2',
   etapa: 'IDENTIFICADO',
-  cuantiaEstimada: '',
-  // Nuevos campos para asociación con proceso
   moduloOrigen: '',
   procesoId: '',
   procesoRadicado: '',
-  porcentajeProvision: ''
+  cuantiaEstimada: '0'
 };
 
 export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }: ModalNuevoRiesgoProps) {
@@ -73,12 +71,10 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
         probabilidadResidual: String(riesgoEditar.probabilidadResidual || 2),
         impactoResidual: String(riesgoEditar.impactoResidual || 2),
         etapa: riesgoEditar.etapa || 'IDENTIFICADO',
-        cuantiaEstimada: riesgoEditar.cuantiaEstimada ? String(riesgoEditar.cuantiaEstimada) : '',
-        // Campos de asociación (pueden ser null en riesgos antiguos)
         moduloOrigen: riesgoEditar.moduloOrigen || '',
         procesoId: riesgoEditar.procesoId || '',
         procesoRadicado: riesgoEditar.procesoRadicado || '',
-        porcentajeProvision: riesgoEditar.porcentajeProvision ? String(riesgoEditar.porcentajeProvision) : ''
+        cuantiaEstimada: String(riesgoEditar.cuantiaEstimada || 0)
       });
       // Cargar controles existentes
       if (Array.isArray(riesgoEditar.controlesExistentes)) {
@@ -206,11 +202,9 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
       impactoInherente: parseInt(formData.impactoInherente),
       probabilidadResidual: parseInt(formData.probabilidadResidual),
       impactoResidual: parseInt(formData.impactoResidual),
-      cuantiaEstimada: formData.cuantiaEstimada ? Number(formData.cuantiaEstimada) : 0,
-      porcentajeProvision: formData.porcentajeProvision ? Number(formData.porcentajeProvision) : 0,
-      provisionContable: formData.cuantiaEstimada && formData.porcentajeProvision
-        ? (Number(formData.cuantiaEstimada) * (Number(formData.porcentajeProvision) / 100))
-        : 0,
+      cuantiaEstimada: 0,
+      porcentajeProvision: 0,
+      provisionContable: 0,
       causas: formData.causas ? formData.causas.split('\n').filter(Boolean) : [],
       consecuencias: formData.consecuencias ? formData.consecuencias.split('\n').filter(Boolean) : [],
       controlesExistentes: controlesLista.filter(c => c.descripcion.trim()),
@@ -372,10 +366,10 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                         handleChange('procesoId', e.target.value);
                         handleChange('procesoRadicado', selected?.radicado || '');
 
-                        // Autocompletar cuantía si es Defensa Judicial y tiene valor
-                        if (formData.moduloOrigen === 'DEFENSA_JUDICIAL' && selected?.cuantia) {
+                        handleChange('procesoId', e.target.value);
+                        handleChange('procesoRadicado', selected?.radicado || '');
+                        if (selected?.cuantia) {
                           handleChange('cuantiaEstimada', String(selected.cuantia));
-                          toast.info(`Cuantía actualizada automáticamente: $${selected.cuantia.toLocaleString()}`);
                         }
                       }}
                       className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
@@ -411,8 +405,6 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
               </div>
 
               {/* Campo oculto para mantener compatibilidad con riesgos antiguos */}
-              <input type="hidden" value={formData.proceso} />
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="tipoRiesgo" className="text-sm font-semibold text-gray-700">
@@ -433,54 +425,29 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                 </div>
               </div>
 
-              {/* Campo Cuantía Estimada para Provisión Contable */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                <div className="space-y-2">
+              {/* Campo de Cuantía (Visible para Riesgo Fiscal o si hay cuantía) */}
+              {(formData.tipoRiesgo === 'FISCAL' || Number(formData.cuantiaEstimada) > 0) && (
+                <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
                   <Label htmlFor="cuantiaEstimada" className="text-sm font-semibold text-gray-700">
-                    💰 Cuantía Estimada (Provisión Contable)
+                    Cuantía Estimada del Riesgo
                   </Label>
-                  <Input
-                    id="cuantiaEstimada"
-                    type="number"
-                    placeholder="Ej: 50000000"
-                    value={formData.cuantiaEstimada}
-                    onChange={(e) => handleChange('cuantiaEstimada', e.target.value)}
-                    className="border-2 border-gray-300 focus:border-green-500"
-                  />
-                  <p className="text-xs text-gray-500">
-                    Valor monetario estimado del riesgo (para cálculo de provisión)
+                  <div className="relative mt-1">
+                    <span className="absolute left-3 top-2.5 text-gray-500">$</span>
+                    <Input
+                      id="cuantiaEstimada"
+                      type="number"
+                      placeholder="0"
+                      value={formData.cuantiaEstimada}
+                      onChange={(e) => handleChange('cuantiaEstimada', e.target.value)}
+                      className="pl-7 border-2 border-gray-300 focus:border-green-500 font-mono"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Para riesgos fiscales, ingrese el valor estimado de la posible pérdida.
                   </p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="porcentajeProvision" className="text-sm font-semibold text-gray-700">
-                    📊 Porcentaje Provisión (%)
-                  </Label>
-                  <Input
-                    id="porcentajeProvision"
-                    type="number"
-                    min="0"
-                    max="100"
-                    placeholder="Ej: 50"
-                    value={formData.porcentajeProvision}
-                    onChange={(e) => handleChange('porcentajeProvision', e.target.value)}
-                    className="border-2 border-gray-300 focus:border-green-500"
-                  />
-                </div>
-              </div>
-
-              {formData.cuantiaEstimada && formData.porcentajeProvision && (
-                <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200 flex items-center justify-between">
-                  <div>
-                    <span className="text-sm font-semibold text-green-700 block">Provisión Contable Calculada</span>
-                    <span className="text-xs text-green-600">
-                      ${Number(formData.cuantiaEstimada).toLocaleString()} × {formData.porcentajeProvision}%
-                    </span>
-                  </div>
-                  <div className="text-xl font-bold text-green-700">
-                    ${(Number(formData.cuantiaEstimada) * (Number(formData.porcentajeProvision) / 100)).toLocaleString()}
-                  </div>
-                </div>
               )}
+
             </div>
 
             {/* Sección 2: Análisis del Riesgo */}
@@ -519,11 +486,11 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
               </div>
             </div>
 
-            {/* Sección 3: Evaluación del Riesgo */}
+            {/* Sección 3: Evaluación del Riesgo Inherente */}
             <div className="space-y-4">
               <div className="flex items-center gap-2 pb-2 border-b-2 border-purple-100">
                 <Activity className="w-5 h-5 text-purple-600" />
-                <h3 className="font-bold text-gray-900">Evaluación del Riesgo (Matriz 5x5)</h3>
+                <h3 className="font-bold text-gray-900">Evaluación del Riesgo Inherente (Matriz 5x5)</h3>
               </div>
 
               {/* Riesgo Inherente */}
@@ -586,70 +553,6 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                   </div>
                   <p className="text-xs text-gray-600 mt-2">
                     Nivel: {parseInt(formData.probabilidadInherente) * parseInt(formData.impactoInherente)} / 25
-                  </p>
-                </div>
-              </div>
-
-              {/* Riesgo Residual */}
-              <div className="bg-gradient-to-br from-green-50 to-blue-50 border-2 border-green-200 rounded-xl p-4">
-                <h4 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-green-600" />
-                  Riesgo Residual (Con controles aplicados)
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="probabilidadResidual" className="text-sm font-semibold text-gray-700">
-                      Probabilidad (1-5)
-                    </Label>
-                    <select
-                      id="probabilidadResidual"
-                      value={formData.probabilidadResidual}
-                      onChange={(e) => handleChange('probabilidadResidual', e.target.value)}
-                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
-                    >
-                      <option value="1">1 - Raro</option>
-                      <option value="2">2 - Improbable</option>
-                      <option value="3">3 - Posible</option>
-                      <option value="4">4 - Probable</option>
-                      <option value="5">5 - Casi Seguro</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="impactoResidual" className="text-sm font-semibold text-gray-700">
-                      Impacto (1-5)
-                    </Label>
-                    <select
-                      id="impactoResidual"
-                      value={formData.impactoResidual}
-                      onChange={(e) => handleChange('impactoResidual', e.target.value)}
-                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
-                    >
-                      <option value="1">1 - Insignificante</option>
-                      <option value="2">2 - Menor</option>
-                      <option value="3">3 - Moderado</option>
-                      <option value="4">4 - Mayor</option>
-                      <option value="5">5 - Catastrófico</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-lg p-3 border-2" style={{ borderColor: colorResidual.text }}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-gray-700">Zona de Riesgo Residual:</span>
-                    <span
-                      className="px-4 py-2 rounded-full font-bold text-sm"
-                      style={{
-                        backgroundColor: colorResidual.bg,
-                        color: colorResidual.text
-                      }}
-                    >
-                      {colorResidual.label}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    Nivel: {parseInt(formData.probabilidadResidual) * parseInt(formData.impactoResidual)} / 25
                   </p>
                 </div>
               </div>
@@ -763,6 +666,78 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                     <option value="TRATAMIENTO">4️⃣ En Tratamiento</option>
                     <option value="MONITOREO">5️⃣ Monitoreado</option>
                   </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Sección 5: Evaluación del Riesgo Residual */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b-2 border-green-100">
+                <Activity className="w-5 h-5 text-green-600" />
+                <h3 className="font-bold text-gray-900">Evaluación del Riesgo Residual (Matriz 5x5)</h3>
+              </div>
+
+              {/* Riesgo Residual */}
+              <div className="bg-gradient-to-br from-green-50 to-blue-50 border-2 border-green-200 rounded-xl p-4">
+                <h4 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-green-600" />
+                  Riesgo Residual (Con controles aplicados)
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="probabilidadResidual" className="text-sm font-semibold text-gray-700">
+                      Probabilidad (1-5)
+                    </Label>
+                    <select
+                      id="probabilidadResidual"
+                      value={formData.probabilidadResidual}
+                      onChange={(e) => handleChange('probabilidadResidual', e.target.value)}
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                    >
+                      <option value="1">1 - Raro</option>
+                      <option value="2">2 - Improbable</option>
+                      <option value="3">3 - Posible</option>
+                      <option value="4">4 - Probable</option>
+                      <option value="5">5 - Casi Seguro</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="impactoResidual" className="text-sm font-semibold text-gray-700">
+                      Impacto (1-5)
+                    </Label>
+                    <select
+                      id="impactoResidual"
+                      value={formData.impactoResidual}
+                      onChange={(e) => handleChange('impactoResidual', e.target.value)}
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                    >
+                      <option value="1">1 - Insignificante</option>
+                      <option value="2">2 - Menor</option>
+                      <option value="3">3 - Moderado</option>
+                      <option value="4">4 - Mayor</option>
+                      <option value="5">5 - Catastrófico</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg p-3 border-2" style={{ borderColor: colorResidual.text }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-gray-700">Zona de Riesgo Residual:</span>
+                    <span
+                      className="px-4 py-2 rounded-full font-bold text-sm"
+                      style={{
+                        backgroundColor: colorResidual.bg,
+                        color: colorResidual.text
+                      }}
+                    >
+                      {colorResidual.label}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    Nivel: {parseInt(formData.probabilidadResidual) * parseInt(formData.impactoResidual)} / 25
+                  </p>
                 </div>
               </div>
             </div>

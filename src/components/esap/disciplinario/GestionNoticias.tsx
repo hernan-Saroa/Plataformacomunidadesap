@@ -1117,7 +1117,17 @@ export function GestionNoticias() {
         telefono: denuncianteData.telefono || '',
         direccion: denuncianteData.direccion || '',
         entidad: denuncianteData.entidad || denuncianteData.dependencia || '',
-        dependencia: denuncianteData.dependencia || ''
+        dependencia: denuncianteData.dependencia || '',
+        // ✅ NUEVO: Incluir apoderado del denunciante
+        ...(denuncianteData.apoderado && denuncianteData.apoderado.nombre ? {
+          apoderado: {
+            nombre: denuncianteData.apoderado.nombre || '',
+            cedula: denuncianteData.apoderado.cedula || '',
+            email: denuncianteData.apoderado.correo || '',
+            telefono: denuncianteData.apoderado.celular || '',
+            direccion: denuncianteData.apoderado.direccion || ''
+          }
+        } : {})
       };
 
       // Map Disciplinable(s)
@@ -1131,7 +1141,17 @@ export function GestionNoticias() {
         cedula: mainDisciplinableData.identificacion || mainDisciplinableData.cedula || '',
         identificacion: mainDisciplinableData.identificacion || mainDisciplinableData.cedula || '',
         cargo: mainDisciplinableData.cargo || 'N/A',
-        dependencia: mainDisciplinableData.dependencia || 'Sin Dependencia'
+        dependencia: mainDisciplinableData.dependencia || 'Sin Dependencia',
+        // ✅ NUEVO: Incluir apoderado del disciplinable (denunciado)
+        ...(mainDisciplinableData.apoderado && mainDisciplinableData.apoderado.nombre ? {
+          apoderado: {
+            nombre: mainDisciplinableData.apoderado.nombre || '',
+            cedula: mainDisciplinableData.apoderado.cedula || '',
+            email: mainDisciplinableData.apoderado.correo || '',
+            telefono: mainDisciplinableData.apoderado.celular || '',
+            direccion: mainDisciplinableData.apoderado.direccion || ''
+          }
+        } : {})
       };
 
       const createDto: CreateNewsDto = {
@@ -1141,6 +1161,8 @@ export function GestionNoticias() {
         hechos: data.descripcionHechos || 'Sin descripción',
         denunciante: denuncianteObj as any, // Pass object, service handles stringify
         disciplinable: disciplinableObj as any,
+        // Fecha de los hechos para cálculo de caducidad (Ley 734/2002 Art. 30)
+        fechaHechos: data.fechaHechos || undefined,
         // NO enviar: radicado, fechaRecepcion, estado (los genera el backend)
       };
 
@@ -1849,41 +1871,53 @@ export function GestionNoticias() {
 
         {showRemitirCompetenciaModal && noticiaSeleccionada && (
           <ModalRemitirCompetencia
-            noticia={noticiaSeleccionada}
+            noticia={{
+              id: noticiaSeleccionada.id,
+              numero: noticiaSeleccionada.numeroRadicado || noticiaSeleccionada.radicado || '',
+              origen: noticiaSeleccionada.origen || 'De oficio',
+              fechaRecepcion: noticiaSeleccionada.fechaRecepcion || '',
+              denunciante: Array.isArray(noticiaSeleccionada.denunciante) && noticiaSeleccionada.denunciante.length > 0 
+                ? { nombre: noticiaSeleccionada.denunciante[0].nombre || '', identificacion: noticiaSeleccionada.denunciante[0].cedula || '' }
+                : { nombre: '', identificacion: '' },
+              denunciado: Array.isArray(noticiaSeleccionada.disciplinable) && noticiaSeleccionada.disciplinable.length > 0 
+                ? { 
+                    nombre: noticiaSeleccionada.disciplinable[0].nombre || '', 
+                    identificacion: noticiaSeleccionada.disciplinable[0].cedula || '', 
+                    cargo: noticiaSeleccionada.disciplinable[0].cargo || '' 
+                  }
+                : { nombre: '', identificacion: '', cargo: '' }
+            }}
             onClose={() => {
               setShowRemitirCompetenciaModal(false);
               setNoticiaSeleccionada(null);
             }}
-            onConfirm={(data) => {
-              // Actualizar la noticia: cambiar el número de ND a RC
-              setNoticias(noticias.map(n => {
-                if (n.id === noticiaSeleccionada?.id) {
-                  return {
-                    ...n,
-                    radicado: data.numeroRC,
-                    origen: 'Remisión por competencia' as const,
-                    estado: 'devuelto' as const,
-                    estadoLabel: 'Devuelto' as const,
-                    historialAuditoria: [
-                      ...n.historialAuditoria,
-                      {
-                        id: Date.now().toString(),
-                        tipo: 'devolucion' as const,
-                        usuario: 'Sistema',
-                        fecha: new Date().toISOString(),
-                        observaciones: `Remitido por competencia a: ${data.areaDestino}. Justificación: ${data.justificacion}`
-                      }
-                    ]
-                  };
-                }
-                return n;
-              }));
+            onConfirm={async (data) => {
+              try {
+                setLoading(true);
+                
+                // Llamar al backend para remitir por competencia
+                await disciplinaryService.remitirPorCompetencia({
+                  newsId: noticiaSeleccionada.id,
+                  emailDestinatario: data.entidadCorreo,
+                  entidadDestino: data.entidadNombre,
+                  justificacion: data.justificacion,
+                  usuarioRemision: 'Sistema'
+                });
 
-              toast.success('Remitido por Competencia', {
-                description: `La noticia ahora tiene el número ${data.numeroRC} y ha sido remitida a ${data.areaDestino}.`
-              });
-              setShowRemitirCompetenciaModal(false);
-              setNoticiaSeleccionada(null);
+                // Actualizar la lista de noticias
+                await loadNoticias();
+
+                toast.success('Remitido por Competencia', {
+                  description: `La noticia ha sido remitida a ${data.entidadNombre} y se ha enviado un correo a ${data.entidadCorreo}.`
+                });
+                setShowRemitirCompetenciaModal(false);
+                setNoticiaSeleccionada(null);
+              } catch (error) {
+                console.error('Error al remitir por competencia:', error);
+                toast.error('Error al remitir la noticia por competencia');
+              } finally {
+                setLoading(false);
+              }
             }}
           />
         )}

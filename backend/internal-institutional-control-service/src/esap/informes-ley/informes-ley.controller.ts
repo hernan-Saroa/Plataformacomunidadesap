@@ -15,12 +15,17 @@ import {
   UploadedFile,
   BadRequestException,
   NotFoundException,
+  UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { existsSync, mkdirSync, readFileSync } from 'fs';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { Permissions } from '../../auth/decorators/permissions.decorator';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import { InformesLeyService } from './informes-ley.service';
 import { InformeGeneratorService } from './services/informe-generator.service';
 import { PlantillasService } from './services/plantillas.service';
@@ -61,6 +66,8 @@ export class InformesLeyController {
   // ==================== CRUD INFORMES ====================
 
   @Get()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   findAll(
     @Query('categoria') categoria?: string,
     @Query('periodicidad') periodicidad?: string,
@@ -76,56 +83,78 @@ export class InformesLeyController {
   }
 
   @Get('estadisticas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   getEstadisticas() {
     return this.informesLeyService.getEstadisticas();
   }
 
   @Get('estadisticas/categoria')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   getEstadisticasPorCategoria() {
     return this.informesLeyService.getEstadisticasPorCategoria();
   }
 
   @Get('estadisticas/periodicidad')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   getEstadisticasPorPeriodicidad() {
     return this.informesLeyService.getEstadisticasPorPeriodicidad();
   }
 
   @Get('calendario/:year')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   getCalendarioAnual(@Param('year') year: string) {
     return this.informesLeyService.getCalendarioAnual(parseInt(year, 10));
   }
 
   @Get('proximos-vencimientos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   getProximosVencimientos(@Query('dias') dias?: string) {
     return this.informesLeyService.getProximosVencimientos(dias ? parseInt(dias, 10) : 7);
   }
 
   @Get('vencidos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   getEntregasVencidas() {
     return this.informesLeyService.getEntregasVencidas();
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   findOne(@Param('id') id: string) {
     return this.informesLeyService.findOne(id);
   }
 
   @Get('codigo/:codigo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   findByCodigo(@Param('codigo') codigo: string) {
     return this.informesLeyService.findByCodigo(codigo);
   }
 
   @Post()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_CREATE)
   create(@Body() createDto: CreateInformeLeyDto) {
     return this.informesLeyService.create(createDto);
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_EDIT)
   update(@Param('id') id: string, @Body() updateDto: UpdateInformeLeyDto) {
     return this.informesLeyService.update(id, updateDto);
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.informesLeyService.delete(id);
@@ -134,6 +163,8 @@ export class InformesLeyController {
   // ==================== CRUD ENTREGAS ====================
 
   @Get('entregas/all')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   findAllEntregas(
     @Query('informeId') informeId?: string,
     @Query('estado') estado?: string,
@@ -151,26 +182,36 @@ export class InformesLeyController {
   }
 
   @Get(':informeId/entregas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   getEntregasByInforme(@Param('informeId') informeId: string) {
     return this.informesLeyService.getEntregasByInforme(informeId);
   }
 
   @Get('entregas/:id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   findOneEntrega(@Param('id') id: string) {
     return this.informesLeyService.findOneEntrega(id);
   }
 
   @Post('entregas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_CREATE)
   createEntrega(@Body() createDto: CreateEntregaDto) {
     return this.informesLeyService.createEntrega(createDto);
   }
 
   @Patch('entregas/:id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_EDIT)
   updateEntrega(@Param('id') id: string, @Body() updateDto: UpdateEntregaDto) {
     return this.informesLeyService.updateEntrega(id, updateDto);
   }
 
   @Delete('entregas/:id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   removeEntrega(@Param('id') id: string) {
     return this.informesLeyService.deleteEntrega(id);
@@ -179,6 +220,8 @@ export class InformesLeyController {
   // ==================== FUNCIONES ESPECIALES ====================
 
   @Post('actualizar-estados-vencidos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_EDIT)
   actualizarEstadosVencidos() {
     return this.informesLeyService.actualizarEstadosVencidos();
   }
@@ -190,6 +233,8 @@ export class InformesLeyController {
    * Generar informe automático con datos del sistema
    */
   @Post(':id/generar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORMES_LEY_GENERATE)
   async generarInforme(
     @Param('id') id: string,
     @Body() body: GenerarInformeDto,
@@ -210,11 +255,15 @@ export class InformesLeyController {
   // ==================== PLANTILLAS ====================
 
   @Get('plantillas/all')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   async obtenerPlantillas() {
     return this.plantillasService.findAll();
   }
 
   @Get('plantillas/:codigo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   async obtenerPlantillaPorCodigo(@Param('codigo') codigo: string) {
     return this.plantillasService.findByCodigo(codigo);
   }
@@ -226,6 +275,8 @@ export class InformesLeyController {
    * Enviar informe a revisión (Auditor → Jefe OCI)
    */
   @Post(':informeId/entregas/:entregaId/enviar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_EDIT)
   async enviarRevision(
     @Param('informeId') informeId: string,
     @Param('entregaId') entregaId: string,
@@ -249,6 +300,8 @@ export class InformesLeyController {
    * Aprobar informe (Jefe OCI)
    */
   @Post(':informeId/entregas/:entregaId/aprobar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_APPROVE)
   async aprobarInforme(
     @Param('informeId') informeId: string,
     @Param('entregaId') entregaId: string,
@@ -272,6 +325,8 @@ export class InformesLeyController {
    * Rechazar informe (Jefe OCI)
    */
   @Post(':informeId/entregas/:entregaId/rechazar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_APPROVE)
   async rechazarInforme(
     @Param('informeId') informeId: string,
     @Param('entregaId') entregaId: string,
@@ -295,6 +350,8 @@ export class InformesLeyController {
    * Obtener workflow de una entrega
    */
   @Get('entregas/:entregaId/workflow')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   async obtenerWorkflow(@Param('entregaId') entregaId: string) {
     return this.workflowAprobacionService.obtenerWorkflow(entregaId);
   }
@@ -304,6 +361,8 @@ export class InformesLeyController {
    * Obtener historial de una entrega
    */
   @Get('entregas/:entregaId/historial')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_VIEW)
   async obtenerHistorial(@Param('entregaId') entregaId: string) {
     return this.workflowAprobacionService.obtenerHistorial(entregaId);
   }
@@ -315,6 +374,8 @@ export class InformesLeyController {
    * Subir archivo para una entrega de informe
    */
   @Post('entregas/:entregaId/upload')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORME_CREATE)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -433,6 +494,8 @@ export class InformesLeyController {
    * Servir archivos de informes generados
    */
   @Get('archivos/:nombreArchivo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.INFORMES_LEY_EXPORT)
   async servirArchivo(
     @Param('nombreArchivo') nombreArchivo: string,
     @Res() res: Response,

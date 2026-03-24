@@ -15,9 +15,10 @@ import {
   QrCode,
   Eye,
   Copy,
-  Activity
+  Activity,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
-import { QRCodeCanvas } from 'qrcode.react';
 import { toast } from 'sonner@2.0.3';
 import { Badge } from '../ui/badge';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
@@ -25,18 +26,22 @@ import { ModalCodigoQR } from './ModalCodigoQR';
 import { HistorialVerificacionesQR } from './HistorialVerificacionesQR';
 import { getPublicBaseUrl } from '../../config/environment';
 import { certificadosService } from '../../services/api/certificados.service';
+import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 
 interface CertificadoDetallePanelProps {
   certificado: {
     id: string;
     consecutivo: string;
     qrCode: string;
+    certificateHash?: string;
+    verification_code?: string;
     cantidadEscaneos: number;
     empleado: {
       nombre: string;
       documento: string;
       email: string;
       cargo: string;
+      cargo_calculado?: string;
       dependencia: string;
       dependenciaPadre: string;
       tipoVinculacion: string;
@@ -44,12 +49,24 @@ interface CertificadoDetallePanelProps {
       grado: string;
       salario: number;
     };
-    estado: 'activo' | 'revocado' | 'expirado';
+    estado: 'activo' | 'inactivo' | 'revocado' | 'expirado';
     tipoSolicitud?: 'AUTOSERVICIO' | 'MANUAL';
     fechaSolicitud: string;
     fechaGeneracion: string;
     position_location?: string;
+    department?: string;
     campus?: string;
+    cod_cargo?: string;
+    cod_grade?: string;
+    observations?: string;
+    request?: {
+      observations?: string;
+    };
+    technical_bonus?: number;
+    incluyeSalario?: boolean;
+    incluyePrimaTecnica?: boolean;
+    templateSnapshot?: any;
+    templateType?: 'docente' | 'administrador';
     solicitante?: {
       nombre: string;
       tipo: 'autoservicio' | 'manual';
@@ -62,12 +79,34 @@ interface CertificadoDetallePanelProps {
 export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDetallePanelProps) {
   const [showPDFViewer, setShowPDFViewer] = React.useState(false);
   const [autoPDFAction, setAutoPDFAction] = React.useState<'download' | 'print' | 'email' | null>(null);
+  const [isDownloading, setIsDownloading] = React.useState(false);
   const [isSendingEmail, setIsSendingEmail] = React.useState(false);
+  const [emailFeedback, setEmailFeedback] = React.useState<{
+    type: 'success' | 'error' | null;
+    message: string;
+  }>({ type: null, message: '' });
+  const emailFeedbackTimerRef = React.useRef<number | null>(null);
+  const downloadFallbackTimerRef = React.useRef<number | null>(null);
   const [showQRModal, setShowQRModal] = React.useState(false);
   const [showHistorialVerificaciones, setShowHistorialVerificaciones] = React.useState(false);
   const verificationBase = getPublicBaseUrl();
   const verificationPath = '/verificar-certificado';
-  const verificationUrl = `${verificationBase}${verificationPath}/${certificado.qrCode}`;
+  const codigoVerificacion = String(
+    certificado.qrCode ||
+    certificado.certificateHash ||
+    certificado.verification_code ||
+    certificado.consecutivo ||
+    '',
+  ).trim();
+  const verificationUrl = `${verificationBase}${verificationPath}/${encodeURIComponent(codigoVerificacion)}`;
+  const incluyeSalarioCertificado = certificado.incluyeSalario !== false;
+  const incluyePrimaTecnicaCertificado = incluyeSalarioCertificado && (
+    certificado.incluyePrimaTecnica ?? false
+  );
+  const primaTecnicaCertificado = Number(
+    certificado.technical_bonus ??
+      (certificado.empleado.salario || 0) * 0.2,
+  );
   const normalizarDependencia = (value?: string | null) => {
     const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
     if (!cleaned) return '';
@@ -75,7 +114,33 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     if (lower === 'registro padre' || lower === 'registro hijo') return '';
     return cleaned;
   };
-  const ubicacionCargo = normalizarDependencia(certificado.position_location) || '';
+  const ubicacionCargo =
+    normalizarDependencia(
+      certificado.department ||
+      certificado.position_location ||
+      certificado.empleado.dependencia ||
+      '',
+    ) || '';
+  const cargoCalculado = (
+    certificado.empleado.cargo_calculado ||
+    formatCargoDisplay({
+      cargoSource: certificado.empleado.cargo,
+      codCargo: selectPreferredCargoCode(
+        certificado.request?.cod_cargo,
+        certificado.request?.codCargo,
+        certificado.cod_cargo,
+        (certificado as any)?.codCargo,
+        (certificado.empleado as any)?.cod_cargo,
+        (certificado.empleado as any)?.codCargo,
+      ),
+      codGrade: certificado.cod_grade,
+      observations: certificado.request?.observations || certificado.observations,
+      templateType: certificado.templateType,
+      includeCodeLabel: true,
+      codeLabel: 'Codigo',
+    }) ||
+    certificado.empleado.cargo
+  );
 
   // Helper para formatear fechas de forma segura
   const parseDateOnly = (fechaStr: string) => {
@@ -310,15 +375,15 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
         tipo: normalizarDispositivo(item.dispositivo || item.device || item.device_type),
         sistemaOperativo: item.sistemaOperativo || item.device?.os || item.so || item.dispositivo?.sistemaOperativo || 'No informado',
         navegador: item.navegador || item.device?.browser || item.browser || item.dispositivo?.navegador || 'No informado',
-        version: item.device?.version || item.version || '',
+        version: item.device?.version || item.dispositivo?.version || item.version || '',
       },
       ubicacion: {
-        ip: item.ip || item.ipAddress || item.ubicacion?.ip || '0.0.0.0',
-        pais: item.pais || item.country || item.ubicacion?.pais || 'Desconocido',
-        ciudad: item.ciudad || item.city || item.ubicacion?.ciudad || 'Desconocido',
-        latitud: item.latitud || item.lat || item.ubicacion?.latitud,
-        longitud: item.longitud || item.lng || item.ubicacion?.longitud,
-        proveedor: item.proveedor || item.isp || item.ubicacion?.proveedor,
+        ip: item.ip || item.ipAddress || item.ubicacion?.ip || item.ubicacion?.ipAddress || '0.0.0.0',
+        pais: item.pais || item.country || item.ubicacion?.pais || item.ubicacion?.country || 'Desconocido',
+        ciudad: item.ciudad || item.city || item.ubicacion?.ciudad || item.ubicacion?.city || 'Desconocido',
+        latitud: item.latitud || item.lat || item.latitude || item.ubicacion?.latitud || item.ubicacion?.latitude,
+        longitud: item.longitud || item.lng || item.longitude || item.ubicacion?.longitud || item.ubicacion?.longitude,
+        proveedor: item.proveedor || item.isp || item.ubicacion?.proveedor || item.ubicacion?.isp,
       },
       detalles: item.detalles || item.mensaje || item.message,
     }));
@@ -329,8 +394,16 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     setCargandoHistorial(true);
     setHistorialError(null);
 
+    if (!codigoVerificacion) {
+      setHistorialError('No hay un codigo de verificacion disponible para este certificado.');
+      setVerificaciones([]);
+      setHistorialCargado(true);
+      setCargandoHistorial(false);
+      return;
+    }
+
     try {
-      const response = await certificadosService.validacion.historialValidaciones(certificado.qrCode);
+      const response = await certificadosService.validacion.historialValidaciones(codigoVerificacion);
       const historialRemoto =
         response?.validation_history ||
         response?.validationHistory ||
@@ -366,53 +439,123 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   };
 
   const totalVerificaciones = verificaciones.length || certificado.cantidadEscaneos || 0;
+  const spinnerTransition = {
+    repeat: Infinity,
+    duration: 0.8,
+    ease: 'linear' as const,
+  };
+  const sendingTextTransition = {
+    repeat: Infinity,
+    duration: 1.2,
+    ease: 'easeInOut' as const,
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (emailFeedbackTimerRef.current) {
+        window.clearTimeout(emailFeedbackTimerRef.current);
+      }
+      if (downloadFallbackTimerRef.current) {
+        window.clearTimeout(downloadFallbackTimerRef.current);
+      }
+    };
+  }, []);
+
+  const programarLimpiezaFeedback = (delay = 6000) => {
+    if (emailFeedbackTimerRef.current) {
+      window.clearTimeout(emailFeedbackTimerRef.current);
+    }
+    emailFeedbackTimerRef.current = window.setTimeout(() => {
+      setEmailFeedback({ type: null, message: '' });
+    }, delay);
+  };
 
   const handleDescargar = () => {
-    if (certificado.pdfUrl) {
-      const link = document.createElement('a');
-      link.href = certificado.pdfUrl;
-      link.download = `${certificado.consecutivo}.pdf`;
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      toast.success('Descarga iniciada', {
-        description: `${certificado.consecutivo}.pdf`
-      });
-      return;
-    }
+    if (isDownloading) return;
 
-    // Generar mediante visor en modo oculto
+    // Generar mediante visor en modo oculto para asegurar variables actualizadas
+    setIsDownloading(true);
     setAutoPDFAction('download');
     setShowPDFViewer(true);
-    setTimeout(() => {
+
+    // Fallback defensivo para no dejar el boton bloqueado si algo externo falla.
+    if (downloadFallbackTimerRef.current) {
+      window.clearTimeout(downloadFallbackTimerRef.current);
+    }
+    downloadFallbackTimerRef.current = window.setTimeout(() => {
+      setIsDownloading(false);
       setShowPDFViewer(false);
       setAutoPDFAction(null);
-    }, 800);
+    }, 15000);
+  };
+
+  const handleAutoActionComplete = (action: 'download' | 'print', success: boolean) => {
+    if (action !== 'download') return;
+
+    if (downloadFallbackTimerRef.current) {
+      window.clearTimeout(downloadFallbackTimerRef.current);
+      downloadFallbackTimerRef.current = null;
+    }
+
+    setIsDownloading(false);
+    setShowPDFViewer(false);
+    setAutoPDFAction(null);
+
+    if (success) {
+      toast.success('Descarga completada', {
+        description: 'El certificado se descargó correctamente.',
+        duration: 3000,
+      });
+    } else {
+      toast.error('No se pudo descargar el certificado', {
+        description: 'Intenta nuevamente en unos segundos.',
+        duration: 4000,
+      });
+    }
   };
 
   const handleEnviarEmail = async () => {
     if (isSendingEmail) return;
     if (!certificado.empleado.email || certificado.empleado.email === 'N/A') {
       toast.error('No hay un correo registrado para este empleado');
+      setEmailFeedback({
+        type: 'error',
+        message: 'No se encontró un correo registrado para reenviar este certificado.',
+      });
+      programarLimpiezaFeedback(7000);
       return;
     }
     setIsSendingEmail(true);
+    setEmailFeedback({ type: null, message: '' });
     toast.loading('Preparando certificado para enviar...', { id: 'send-certificate-email' });
 
     try {
-      const response = await certificadosService.laborales.reenviar(certificado.id);
+      const response = await certificadosService.laborales.reenviar(certificado.id, {
+        includeSalary: incluyeSalarioCertificado,
+        includeTechnicalBonus: incluyePrimaTecnicaCertificado,
+        publicBaseUrl: getPublicBaseUrl(),
+      });
       toast.success('Correo reenviado', {
         id: 'send-certificate-email',
         description: `Certificado enviado a ${response?.email || certificado.empleado.email}`,
         duration: 3000,
       });
+      setEmailFeedback({
+        type: 'success',
+        message: `Certificado reenviado correctamente a ${response?.email || certificado.empleado.email}.`,
+      });
+      programarLimpiezaFeedback();
     } catch (error: any) {
       toast.error('No se pudo reenviar el certificado', {
         id: 'send-certificate-email',
         description: error?.message || 'Intenta nuevamente',
         duration: 5000,
       });
+      setEmailFeedback({
+        type: 'error',
+        message: error?.message || 'No se pudo reenviar el certificado. Intenta nuevamente.',
+      });
+      programarLimpiezaFeedback(7000);
     } finally {
       setIsSendingEmail(false);
       setAutoPDFAction(null);
@@ -420,18 +563,6 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   };
 
   const handleImprimir = () => {
-    if (certificado.pdfUrl) {
-      const printWindow = window.open(certificado.pdfUrl, '_blank');
-      if (printWindow) {
-        printWindow.addEventListener('load', () => {
-          printWindow.focus();
-          printWindow.print();
-        });
-      }
-      toast.info('Enviando a impresion...');
-      return;
-    }
-
     setAutoPDFAction('print');
     setShowPDFViewer(true);
     setTimeout(() => {
@@ -490,6 +621,21 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     }
   };
 
+  const handleCopiarCodigoQR = async () => {
+    if (!codigoVerificacion) {
+      toast.error('No hay codigo QR disponible para copiar');
+      return;
+    }
+    const copiado = await copiarAlPortapapeles(codigoVerificacion);
+    if (copiado) {
+      toast.success('Codigo QR copiado', {
+        description: 'El codigo de verificacion completo fue copiado al portapapeles'
+      });
+    } else {
+      toast.error('No se pudo copiar el codigo QR');
+    }
+  };
+
   const handleVerPDF = () => {
     setShowPDFViewer(true);
   };
@@ -497,6 +643,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   const getEstadoBadge = (estado: string) => {
     const estilos = {
       activo: { bg: 'bg-green-100', text: 'text-green-800', icon: CheckCircle, label: 'Activo' },
+      inactivo: { bg: 'bg-red-100', text: 'text-red-800', icon: Clock, label: 'Inactivo' },
       revocado: { bg: 'bg-red-100', text: 'text-red-800', icon: Clock, label: 'Revocado' },
       expirado: { bg: 'bg-gray-100', text: 'text-gray-800', icon: Clock, label: 'Expirado' }
     };
@@ -566,7 +713,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         </label>
                         <p className="text-sm text-gray-900 flex items-center gap-1.5">
                           <Briefcase className="w-3.5 h-3.5 text-gray-400" />
-                          {certificado.empleado.cargo}
+                          {cargoCalculado}
                         </p>
                       </div>
                       <div>
@@ -579,7 +726,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                     </div>
 
-                    {/* Fecha Vinculación y Ubicación */}
+                    {/* Fecha Vinculación y Correo */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
@@ -592,35 +739,47 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Ubicación
+                          Correo Electrónico
                         </label>
-                        <p className="text-sm text-gray-900">
-                          {ubicacionCargo}
+                        <p className="text-sm text-gray-900 flex items-center gap-1.5 break-all">
+                          <Mail className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                          {certificado.empleado.email}
                         </p>
                       </div>
                     </div>
 
-                    {/* Correo y Salario */}
+                    {/* Dependencia y Salario */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Correo Electrónico
+                          Dependencia
                         </label>
                         <p className="text-sm text-gray-900 flex items-center gap-1.5">
-                          <Mail className="w-3.5 h-3.5 text-gray-400" />
-                          {certificado.empleado.email}
+                          {certificado.empleado.dependencia || ubicacionCargo || 'No disponible'}
                         </p>
                       </div>
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Salario
                         </label>
-                        <p className="text-sm text-gray-900 font-bold flex items-center gap-1.5">
-                          <DollarSign className="w-3.5 h-3.5 text-green-600" />
-                          ${certificado.empleado.salario.toLocaleString('es-CO')} COP
-                        </p>
+                        {incluyeSalarioCertificado ? (
+                          <>
+                            <p className="text-sm text-gray-900 font-bold flex items-center gap-1.5">
+                              <DollarSign className="w-3.5 h-3.5 text-green-600" />
+                              ${Number(certificado.empleado.salario || 0).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} COP
+                            </p>
+                            {incluyePrimaTecnicaCertificado && primaTecnicaCertificado > 0 && (
+                              <p className="text-xs text-emerald-700 mt-1 pl-5">
+                                Prima Tecnica: ${Number(primaTecnicaCertificado).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} COP
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-sm text-amber-700 font-medium">No incluido en este certificado</p>
+                        )}
                       </div>
                     </div>
+
                   </div>
                 </div>
               </div>
@@ -694,23 +853,20 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Código QR
                         </label>
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-white border border-gray-200 rounded-lg shadow-sm">
-                            <QRCodeCanvas
-                              value={verificationUrl}
-                              size={72}
-                              level="H"
-                              includeMargin
-                              className="block"
-                            />
-                          </div>
-                          <div className="flex flex-col">
-                            <p className="text-sm text-blue-600 font-mono flex items-center gap-1.5">
-                              <QrCode className="w-3.5 h-3.5" />
-                              {certificado.qrCode}
-                            </p>
-                            <span className="text-xs text-gray-500">Escanea para verificar este certificado</span>
-                          </div>
+                        <div className="flex items-start gap-2">
+                          <p className="text-xs text-blue-600 font-mono flex items-start gap-1.5 break-all leading-5">
+                            <QrCode className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                            {codigoVerificacion || 'No disponible'}
+                          </p>
+                          {!!codigoVerificacion && (
+                            <button
+                              onClick={handleCopiarCodigoQR}
+                              className="text-gray-400 hover:text-[#003DA5] transition-colors"
+                              title="Copiar codigo QR completo"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div>
@@ -743,17 +899,63 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                     </button>
                     <button
                       onClick={handleDescargar}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-sm font-medium"
+                      disabled={isDownloading}
+                      aria-busy={isDownloading}
+                      className={`flex items-center justify-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-lg transition-colors text-sm font-medium ${
+                        isDownloading ? 'opacity-80 cursor-not-allowed' : 'hover:bg-green-100'
+                      }`}
                     >
-                      <Download className="w-4 h-4" />
-                      Descargar
+                      {isDownloading ? (
+                        <motion.span
+                          className="inline-flex"
+                          animate={{ rotate: 360 }}
+                          transition={spinnerTransition}
+                        >
+                          <Loader2 className="w-4 h-4" />
+                        </motion.span>
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                      {isDownloading ? (
+                        <motion.span
+                          animate={{ opacity: [1, 0.55, 1] }}
+                          transition={sendingTextTransition}
+                        >
+                          Descargando...
+                        </motion.span>
+                      ) : (
+                        'Descargar'
+                      )}
                     </button>
                     <button
                       onClick={handleEnviarEmail}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors text-sm font-medium"
+                      disabled={isSendingEmail}
+                      aria-busy={isSendingEmail}
+                      className={`flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-50 text-purple-700 rounded-lg transition-colors text-sm font-medium ${
+                        isSendingEmail ? 'opacity-80 cursor-not-allowed' : 'hover:bg-purple-100'
+                      }`}
                     >
-                      <Mail className="w-4 h-4" />
-                      Reenviar
+                      {isSendingEmail ? (
+                        <motion.span
+                          className="inline-flex"
+                          animate={{ rotate: 360 }}
+                          transition={spinnerTransition}
+                        >
+                          <Loader2 className="w-4 h-4" />
+                        </motion.span>
+                      ) : (
+                        <Mail className="w-4 h-4" />
+                      )}
+                      {isSendingEmail ? (
+                        <motion.span
+                          animate={{ opacity: [1, 0.55, 1] }}
+                          transition={sendingTextTransition}
+                        >
+                          Enviando...
+                        </motion.span>
+                      ) : (
+                        'Reenviar'
+                      )}
                     </button>
                     <button
                       onClick={handleImprimir}
@@ -776,6 +978,48 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       <Activity className="w-4 h-4" />
                       {showHistorialVerificaciones ? 'Ocultar' : 'Ver'} Historial de Verificaciones
                     </button>
+                    {(isDownloading || isSendingEmail || emailFeedback.type) && (
+                      <div
+                        className={`col-span-2 rounded-lg border px-3 py-2 text-xs flex items-center gap-2 ${
+                          isDownloading || isSendingEmail
+                            ? 'bg-blue-50 border-blue-200 text-blue-700'
+                            : emailFeedback.type === 'success'
+                              ? 'bg-green-50 border-green-200 text-green-700'
+                              : 'bg-red-50 border-red-200 text-red-700'
+                        }`}
+                      >
+                        {isDownloading || isSendingEmail ? (
+                          <motion.span
+                            className="inline-flex flex-shrink-0"
+                            animate={{ rotate: 360 }}
+                            transition={spinnerTransition}
+                          >
+                            <Loader2 className="w-3.5 h-3.5" />
+                          </motion.span>
+                        ) : emailFeedback.type === 'success' ? (
+                          <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                        ) : (
+                          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                        )}
+                        {isDownloading ? (
+                          <motion.span
+                            animate={{ opacity: [1, 0.55, 1] }}
+                            transition={sendingTextTransition}
+                          >
+                            Generando y descargando certificado...
+                          </motion.span>
+                        ) : isSendingEmail ? (
+                          <motion.span
+                            animate={{ opacity: [1, 0.55, 1] }}
+                            transition={sendingTextTransition}
+                          >
+                            Enviando certificado al correo registrado...
+                          </motion.span>
+                        ) : (
+                          <span>{emailFeedback.message}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -827,10 +1071,26 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
           {/* Visor de PDF Modal */}
           <VisorPDFCertificado
             isOpen={showPDFViewer}
-            onClose={() => setShowPDFViewer(false)}
+            onClose={() => {
+              setShowPDFViewer(false);
+              if (isDownloading) {
+                if (downloadFallbackTimerRef.current) {
+                  window.clearTimeout(downloadFallbackTimerRef.current);
+                  downloadFallbackTimerRef.current = null;
+                }
+                setIsDownloading(false);
+                setAutoPDFAction(null);
+              }
+            }}
             autoAction={autoPDFAction || undefined}
             hiddenMode={!!autoPDFAction}
-            certificado={certificado}
+            onAutoActionComplete={handleAutoActionComplete}
+            certificado={{
+              ...certificado,
+              incluyeSalario: incluyeSalarioCertificado,
+              incluyePrimaTecnica: incluyePrimaTecnicaCertificado,
+              technical_bonus: primaTecnicaCertificado,
+            }}
           />
 
           {/* Modal Código QR */}

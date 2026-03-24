@@ -22,6 +22,10 @@ class EvidenciaDto {
 
   @IsDateString()
   fecha: string;
+
+  @IsString()
+  @IsOptional()
+  url?: string;
 }
 
 export class CreateHallazgoDto {
@@ -62,6 +66,14 @@ export class CreateHallazgoDto {
   @IsString()
   @IsNotEmpty()
   criterioIncumplido: string;
+
+  @IsString()
+  @IsOptional()
+  causa?: string;
+
+  @IsString()
+  @IsOptional()
+  efecto?: string;
 
   @IsArray()
   @IsOptional()

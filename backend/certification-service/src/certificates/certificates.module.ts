@@ -14,6 +14,7 @@ import { Firmante } from './firmante.entity';
 import { TemplateConfigController } from './template-config.controller';
 import { TemplateConfigService } from './template-config.service';
 import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
+import { TechnicalBonusAssignment } from './technical-bonus-assignment.entity';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
       TemplateConfig,
       TemplateConfigChange,
       Firmante,
+      TechnicalBonusAssignment,
     ]),
   ],
   controllers: [CertificatesController, TemplateConfigController],

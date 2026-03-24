@@ -19,13 +19,14 @@ import { apiClient } from './apiClient';
 import { getServiceUrl, API_MODE, MICROSERVICE_URLS } from '../../config/environment';
 
 // Base URL del servicio de Control Interno usando variables de entorno
-// En modo gateway: http://localhost:3000 o http://4.156.71.181:3000
+// En modo gateway: http://localhost:3000 o http://4.156.71.181/services
 // En modo direct: http://localhost:3007
 const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
 
 // Prefijo del servicio para el API Gateway
 // En modo gateway se usa: /control-institucional/api/v1
-// En modo direct no se usa prefijo porque se conecta directo al microservicio
+// En modo direct NO se usa prefijo - el microservicio no tiene prefijo global
+// El gateway maneja: /control-institucional/api/v1/auditorias -> microservicio:3007/auditorias
 const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '';
 
 // ============================================================================
@@ -49,9 +50,33 @@ export interface ProcesoAuditable {
     riesgoInherente: number;
     riesgoResidual: number;
     nivelRiesgo: 'bajo' | 'medio' | 'alto';
+    // Distribución de riesgos DAFP
+    riesgosExtremos?: number;
+    riesgosAltos?: number;
+    riesgosModerados?: number;
+    riesgosBajos?: number;
+    totalRiesgos?: number;
+    // Requerimientos especiales
+    requerimientoComite?: boolean;
+    requerimientoEntesReg?: boolean;
+    // Campos DAFP calculados y decisión
+    vigencia?: number;
+    fechaCorte?: string;
+    ponderacionRiesgo?: string;
+    diasRotacion?: number;
+    decisionRotacion?: string;
+    decisionFinal?: string;
+    motivoDecision?: string;
+    prioridadRegla?: number;
+    // Score C+E-M (modelo simplificado 0-15)
+    criticidad?: number;
+    exposicion?: number;
+    mitigantes?: number;
+    scoreRiesgo?: number;
   };
   frecuenciaAuditoria: string;
   ultimaAuditoria?: string;
+  resultadoUltimaAuditoria?: string;
   proximaAuditoria?: string;
   prioridad: number;
   priorizacionAnos: number;
@@ -87,12 +112,15 @@ export interface Hallazgo {
   auditoriaEntity?: AuditoriaProgramada;
   descripcion: string;
   criterioIncumplido: string;
+  causa?: string;
+  efecto?: string;
   normativaRelacionada: string[];
   evidencias: Array<{
     id: string;
     nombre: string;
     tipo: string;
     fecha: string;
+    url?: string;
   }>;
   recomendaciones: string[];
   fechaDeteccion: string;
@@ -109,10 +137,11 @@ export interface ListaChequeo {
   codigo: string;
   nombre: string;
   descripcion: string;
-  tipo: 'cumplimiento' | 'proceso' | 'sistema' | 'procedimiento';
+  tipo: 'cumplimiento' | 'proceso' | 'sistema' | 'procedimiento' | 'planeacion' | 'ejecucion' | 'comunicacion' | 'seguimiento';
   categoria: string;
   version: string;
   estado: 'activa' | 'inactiva' | 'obsoleta';
+  activa?: boolean; // ✅ Estado de activación
   items?: any[];
   itemsJsonb?: Array<{
     id: string;
@@ -129,6 +158,18 @@ export interface ListaChequeo {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  // ✅ VINCULACIÓN CON AUDITORÍA
+  auditoriaId?: string;
+  nombreAuditoria?: string;
+  auditorResponsable?: string;
+  fechaAplicacion?: string;
+  itemsCompletados?: number;
+  cumplimiento?: number;
+  // ✅ FASES QUE IMPACTA LA LISTA
+  fasePlaneacion?: boolean;
+  faseEjecucion?: boolean;
+  faseComunicacion?: boolean;
+  faseSeguimiento?: boolean;
 }
 
 export interface PlanIndividual {
@@ -144,6 +185,58 @@ export interface PlanIndividual {
   estado: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// Tipos para Tareas de Auditoría
+export type EstadoTarea = 'Pendiente' | 'En Progreso' | 'Completada' | 'Cancelada';
+export type PrioridadTarea = 'Baja' | 'Media' | 'Alta' | 'Urgente';
+export type FaseTarea = 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento';
+
+export interface TareaAuditoria {
+  id: string;
+  auditoriaId: string;
+  titulo: string;
+  descripcion?: string;
+  estado: EstadoTarea;
+  prioridad: PrioridadTarea;
+  fase?: FaseTarea;
+  responsableId: string;
+  responsableNombre: string;
+  fechaVencimiento?: string;
+  fechaCompletado?: string;
+  fechaCreacion: string;
+  progreso: number;
+  notas?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTareaAuditoriaDto {
+  auditoriaId: string;
+  titulo: string;
+  descripcion?: string;
+  estado?: EstadoTarea;
+  prioridad?: PrioridadTarea;
+  fase?: FaseTarea;
+  responsableId: string;
+  responsableNombre: string;
+  fechaVencimiento?: string;
+  progreso?: number;
+  notas?: string;
+}
+
+export interface UpdateTareaAuditoriaDto {
+  titulo?: string;
+  descripcion?: string;
+  estado?: EstadoTarea;
+  prioridad?: PrioridadTarea;
+  fase?: FaseTarea;
+  responsableId?: string;
+  responsableNombre?: string;
+  fechaVencimiento?: string;
+  fechaCompletado?: string;
+  progreso?: number;
+  notas?: string;
 }
 
 // ============================================================================
@@ -163,8 +256,8 @@ class ControlInternoAPIClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    // En modo gateway: http://4.156.71.181:3000/control-institucional/api/v1/plan-anual-5-roles
-    // En modo direct: http://localhost:3007/plan-anual-5-roles
+    // En modo gateway: http://4.156.71.181/services/control-institucional/api/v1/plan-anual-5-roles
+    // En modo direct: http://localhost:3007/plan-anual-5-roles (sin prefijo /api/v1)
     const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
     
     const defaultHeaders: HeadersInit = {
@@ -173,7 +266,7 @@ class ControlInternoAPIClient {
     };
 
     // Agregar token si existe
-    const token = localStorage.getItem('esap_access_token');
+    const token = localStorage.getItem('esap_auth_token');
     if (token) {
       defaultHeaders['Authorization'] = `Bearer ${token}`;
     }
@@ -245,7 +338,7 @@ class ControlInternoAPIClient {
     
     // Agregar token si existe
     const headers: HeadersInit = {};
-    const token = localStorage.getItem('esap_access_token');
+    const token = localStorage.getItem('esap_auth_token');
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -322,10 +415,11 @@ class ControlInternoService {
   // ==========================================================================
   
   /**
-   * Obtiene todos los procesos auditables
+   * Obtiene procesos auditables. Por defecto solo activos (para catálogo parametrizado).
    */
-  async getProcesosAuditables(): Promise<ProcesoAuditable[]> {
-    return client.get<ProcesoAuditable[]>('/universo-auditorias/procesos');
+  async getProcesosAuditables(soloActivos = true): Promise<ProcesoAuditable[]> {
+    const q = soloActivos ? '' : '?soloActivos=false';
+    return client.get<ProcesoAuditable[]>(`/universo-auditorias/procesos${q}`);
   }
   
   /**
@@ -354,6 +448,20 @@ class ControlInternoService {
    */
   async deleteProceso(id: string): Promise<void> {
     return client.delete(`/universo-auditorias/procesos/${id}`);
+  }
+
+  /**
+   * Inactiva un proceso (sin eliminar historial)
+   */
+  async inactivarProceso(id: string): Promise<ProcesoAuditable> {
+    return client.patch<ProcesoAuditable>(`/universo-auditorias/procesos/${id}/inactivar`, {});
+  }
+
+  /**
+   * Reactiva un proceso
+   */
+  async activarProceso(id: string): Promise<ProcesoAuditable> {
+    return client.patch<ProcesoAuditable>(`/universo-auditorias/procesos/${id}/activar`, {});
   }
 
   /**
@@ -529,6 +637,150 @@ class ControlInternoService {
   async getBorradores(): Promise<Hallazgo[]> {
     return client.get<Hallazgo[]>('/hallazgos/categoria/borradores');
   }
+
+  /**
+   * Obtiene hallazgos por auditoría ID
+   */
+  async getHallazgosByAuditoria(auditoriaId: string): Promise<Hallazgo[]> {
+    return client.get<Hallazgo[]>(`/auditorias/${auditoriaId}/hallazgos`);
+  }
+
+  /**
+   * Área auditada acepta el hallazgo
+   */
+  async aceptarHallazgo(hallazgoId: string): Promise<Hallazgo> {
+    return client.post<Hallazgo>(`/hallazgos/${hallazgoId}/aceptar`, {});
+  }
+
+  /**
+   * Área auditada presenta controversia (documento debe subirse antes vía POST /documentos)
+   */
+  async presentarControversia(
+    hallazgoId: string,
+    data: { argumentos: string; documentoId: string; documentoNombre: string },
+  ): Promise<Hallazgo> {
+    return client.post<Hallazgo>(`/hallazgos/${hallazgoId}/controversia`, data);
+  }
+
+  /**
+   * Auditor toma decisión sobre controversia
+   */
+  async decisionAuditor(
+    hallazgoId: string,
+    data: { tipoDecision: 'ratificado' | 'modificado' | 'retirado'; fundamentacionTecnica: string; auditorId?: number },
+  ): Promise<Hallazgo> {
+    return client.post<Hallazgo>(`/hallazgos/${hallazgoId}/decision-auditor`, data);
+  }
+
+  /**
+   * Genera informe preliminar y notifica al área (actualiza hallazgos a NOTIFICADO)
+   */
+  async generarInformePreliminar(auditoriaId: string): Promise<{ generado: boolean; hallazgosNotificados: number; mensaje: string }> {
+    return client.post<any>(`/auditorias/${auditoriaId}/informe-preliminar/generar`, {});
+  }
+
+  /**
+   * Estado del flujo de comunicación para la UI
+   */
+  async getEstadoComunicacion(auditoriaId: string): Promise<{
+    informePreliminarGenerado: boolean;
+    informeFinalGenerado?: boolean;
+    informeEjecutivoGenerado?: boolean;
+    hayControversiasPendientes: boolean;
+    puedeGenerarInformeFinal: boolean;
+    conteo: { pendiente: number; aceptado: number; enControversia: number };
+  }> {
+    return client.get<any>(`/auditorias/${auditoriaId}/comunicacion/estado`);
+  }
+
+  async generarInformeFinal(auditoriaId: string) {
+    return client.post<any>(`/auditorias/${auditoriaId}/informe-final/generar`, {});
+  }
+
+  async generarInformeEjecutivo(auditoriaId: string) {
+    return client.post<any>(`/auditorias/${auditoriaId}/informe-ejecutivo/generar`, {});
+  }
+  
+  // ==========================================================================
+  // TAREAS DE AUDITORÍA
+  // ==========================================================================
+  
+  /**
+   * Obtiene todas las tareas con filtros opcionales
+   */
+  async getTareasAuditoria(params?: { 
+    auditoriaId?: string; 
+    estado?: string; 
+    prioridad?: string;
+    fase?: string;
+    responsableId?: string;
+  }): Promise<TareaAuditoria[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.auditoriaId) queryParams.append('auditoriaId', params.auditoriaId);
+    if (params?.estado) queryParams.append('estado', params.estado);
+    if (params?.prioridad) queryParams.append('prioridad', params.prioridad);
+    if (params?.fase) queryParams.append('fase', params.fase);
+    if (params?.responsableId) queryParams.append('responsableId', params.responsableId);
+    
+    const query = queryParams.toString();
+    return client.get<TareaAuditoria[]>(`/tareas-auditoria${query ? `?${query}` : ''}`);
+  }
+
+  /**
+   * Obtiene tareas de una auditoría específica
+   */
+  async getTareasByAuditoria(auditoriaId: string): Promise<TareaAuditoria[]> {
+    return client.get<TareaAuditoria[]>(`/tareas-auditoria/auditoria/${auditoriaId}`);
+  }
+
+  /**
+   * Obtiene una tarea por ID
+   */
+  async getTareaById(id: string): Promise<TareaAuditoria> {
+    return client.get<TareaAuditoria>(`/tareas-auditoria/${id}`);
+  }
+
+  /**
+   * Crea una nueva tarea
+   */
+  async createTarea(data: CreateTareaAuditoriaDto): Promise<TareaAuditoria> {
+    return client.post<TareaAuditoria>('/tareas-auditoria', data);
+  }
+
+  /**
+   * Actualiza una tarea
+   */
+  async updateTarea(id: string, data: UpdateTareaAuditoriaDto): Promise<TareaAuditoria> {
+    return client.put<TareaAuditoria>(`/tareas-auditoria/${id}`, data);
+  }
+
+  /**
+   * Marca una tarea como completada
+   */
+  async completarTarea(id: string): Promise<TareaAuditoria> {
+    return client.patch<TareaAuditoria>(`/tareas-auditoria/${id}/completar`);
+  }
+
+  /**
+   * Elimina una tarea
+   */
+  async deleteTarea(id: string): Promise<void> {
+    return client.delete(`/tareas-auditoria/${id}`);
+  }
+
+  /**
+   * Obtiene estadísticas de tareas por auditoría
+   */
+  async getEstadisticasTareas(auditoriaId: string): Promise<{
+    total: number;
+    pendientes: number;
+    enProgreso: number;
+    completadas: number;
+    canceladas: number;
+    progresoGeneral: number;
+  }> {
+    return client.get(`/tareas-auditoria/auditoria/${auditoriaId}/estadisticas`);
+  }
   
   // ==========================================================================
   // LISTAS DE CHEQUEO
@@ -589,6 +841,22 @@ class ControlInternoService {
   }
 
   /**
+   * Actualiza un item de una lista (marcar completado/pendiente)
+   * @param listaId - ID de la lista de chequeo
+   * @param itemId - ID del item a actualizar
+   * @param data - Datos a actualizar incluyendo auditoriaId para guardar estado específico
+   */
+  async actualizarItemLista(listaId: string, itemId: string, data: {
+    completado?: boolean;
+    responsable?: string;
+    fechaCompletado?: string;
+    observaciones?: string;
+    auditoriaId?: string; // ID de la auditoría para guardar estado específico
+  }): Promise<any> {
+    return client.patch(`/listas-chequeo/${listaId}/items/${itemId}`, data);
+  }
+
+  /**
    * Aplica una lista a una auditoría
    */
   async aplicarLista(data: {
@@ -609,6 +877,12 @@ class ControlInternoService {
    * Obtiene las listas aplicadas a una auditoría
    */
   async getListasAplicadas(auditoriaId: string): Promise<any[]> {
+    // Validar que sea un UUID válido antes de hacer la llamada
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!auditoriaId || !uuidRegex.test(auditoriaId)) {
+      console.warn(`[getListasAplicadas] auditoriaId inválido (no es UUID): ${auditoriaId}`);
+      return [];
+    }
     return client.get<any[]>(`/listas-chequeo/auditoria/${auditoriaId}`);
   }
 
@@ -616,6 +890,12 @@ class ControlInternoService {
    * Obtiene los resultados de listas aplicadas
    */
   async getResultadosListas(auditoriaId: string): Promise<any> {
+    // Validar que sea un UUID válido antes de hacer la llamada
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!auditoriaId || !uuidRegex.test(auditoriaId)) {
+      console.warn(`[getResultadosListas] auditoriaId inválido (no es UUID): ${auditoriaId}`);
+      return null;
+    }
     return client.get(`/listas-chequeo/auditoria/${auditoriaId}/resultados`);
   }
   
@@ -767,6 +1047,64 @@ class ControlInternoService {
   }
 
   // ==========================================================================
+  // VINCULACIÓN: AUDITORÍAS ↔ ROL 4 (EVALUACIÓN Y SEGUIMIENTO)
+  // ==========================================================================
+
+  /**
+   * Obtiene el cumplimiento del programa de auditorías para un año
+   */
+  async getCumplimientoAuditorias(año: number): Promise<{
+    totalProgramadas: number;
+    totalFinalizadas: number;
+    porcentajeCumplimiento: number;
+    desglosePorTipo: Record<string, { programadas: number; finalizadas: number; en_proceso: number; pendientes: number }>;
+    actividadId?: string;
+  }> {
+    return client.get(`/plan-anual-5-roles/auditorias/cumplimiento/${año}`);
+  }
+
+  /**
+   * Configura una actividad para cálculo automático de auditorías
+   */
+  async configurarActividadAuditorias(actividadId: string, año: number): Promise<any> {
+    return client.post('/plan-anual-5-roles/auditorias/configurar', { actividadId, año });
+  }
+
+  /**
+   * Obtiene las auditorías vinculadas a una actividad
+   */
+  async getAuditoriasVinculadas(actividadId: string): Promise<{
+    total: number;
+    auditorias: Array<{
+      id: string;
+      codigo: string;
+      nombre: string;
+      tipo: string;
+      estadoKanban: string;
+      progreso: number;
+      fechaInicio: Date;
+      fechaFin: Date;
+    }>;
+  }> {
+    return client.get(`/plan-anual-5-roles/actividades/${actividadId}/auditorias`);
+  }
+
+  /**
+   * Recalcula manualmente el cumplimiento de auditorías para un año
+   */
+  async recalcularCumplimientoAuditorias(año: number): Promise<{
+    success: boolean;
+    actividadActualizada?: string;
+    cumplimiento: {
+      totalProgramadas: number;
+      totalFinalizadas: number;
+      porcentajeCumplimiento: number;
+    };
+  }> {
+    return client.post(`/plan-anual-5-roles/auditorias/recalcular/${año}`, {});
+  }
+
+  // ==========================================================================
   // PLANES DE MEJORAMIENTO
   // ==========================================================================
   
@@ -793,6 +1131,48 @@ class ControlInternoService {
    */
   async getPlanMejoramientoByHallazgo(hallazgoId: string): Promise<any> {
     return client.get<any>(`/planes-mejoramiento/hallazgo/${hallazgoId}`);
+  }
+
+  /**
+   * Obtiene los planes de mejoramiento de una auditoría (para verificación OCI / Cierre)
+   */
+  async getPlanesMejoramientoByAuditoria(auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/planes-mejoramiento/auditoria/${auditoriaId}`);
+  }
+
+  /**
+   * Registra la verificación OCI de una acción (Cierre - Sección 1). Inmutable tras registrar.
+   */
+  async registrarVerificacionOci(
+    planId: string,
+    accionId: string,
+    dto: { estadoVerificacionOci: 'cumplida' | 'parcial' | 'incumplida'; evidenciaVerificada: string; observacionOci?: string },
+  ): Promise<any> {
+    return client.patch<any>(`/planes-mejoramiento/${planId}/acciones/${accionId}/verificacion-oci`, dto);
+  }
+
+  /**
+   * Resumen ejecutivo para el Informe de Cierre
+   */
+  async getResumenEjecutivoCierre(auditoriaId: string): Promise<any> {
+    return client.get<any>(`/auditorias/${auditoriaId}/resumen-ejecutivo-cierre`);
+  }
+
+  /**
+   * Guarda borrador del Informe de Cierre (lecciones y recomendaciones)
+   */
+  async updateInformeCierre(
+    auditoriaId: string,
+    dto: { leccionesAprendidas?: string; recomendacionesFuturasAuditorias?: string },
+  ): Promise<any> {
+    return client.patch<any>(`/auditorias/${auditoriaId}/informe-cierre`, dto);
+  }
+
+  /**
+   * Aprueba el Informe de Cierre (Jefe OCI). Auditoría pasa a Finalizada.
+   */
+  async aprobarInformeCierre(auditoriaId: string, body?: { aprobadoPor?: string; aprobadoPorId?: number }): Promise<any> {
+    return client.post<any>(`/auditorias/${auditoriaId}/aprobar-informe-cierre`, body || {});
   }
 
   /**
@@ -844,8 +1224,93 @@ class ControlInternoService {
     return client.delete(`/planes-mejoramiento/${planId}/acciones/${accionId}`);
   }
 
+  // ==========================================================================
+  // DOCUMENTOS DE PLAN DE MEJORAMIENTO (Por Acción)
+  // ==========================================================================
+
   /**
-   * Cargar evidencia en una acción
+   * Subir documento/evidencia para una acción correctiva específica
+   * Usa el campo JSONB 'evidencias' de la entidad AccionCorrectiva
+   */
+  async subirDocumentoAccion(
+    planId: string,
+    accionId: string,
+    archivo: File,
+    metadata: {
+      nombre?: string;
+      descripcion?: string;
+      tipoDocumento?: string;
+      subidoPor: string;
+      subidoPorId?: number;
+    },
+    onProgress?: (progress: number) => void
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', archivo);
+    if (metadata.descripcion) formData.append('descripcion', metadata.descripcion);
+    formData.append('subidoPor', metadata.subidoPor);
+
+    // Usar endpoint de evidencias JSONB en AccionCorrectiva
+    return client.upload<any>(`/planes-mejoramiento/${planId}/acciones/${accionId}/evidencias/upload`, formData, onProgress);
+  }
+
+  /**
+   * Obtener evidencias/documentos de una acción correctiva (desde JSONB)
+   */
+  async getDocumentosAccion(planId: string, accionId: string): Promise<any[]> {
+    // Obtener el plan y extraer las evidencias de la acción
+    const plan = await this.getPlanMejoramiento(planId);
+    const accion = plan?.acciones?.find((a: any) => a.id === accionId);
+    return accion?.evidencias || [];
+  }
+
+  /**
+   * Obtener todos los documentos del plan agrupados por acción
+   */
+  async getDocumentosPlanAgrupados(planId: string): Promise<{
+    documentosGenerales: any[];
+    documentosPorAccion: { accionId: string; documentos: any[] }[];
+  }> {
+    return client.get<any>(`/planes-mejoramiento/${planId}/documentos/agrupados`);
+  }
+
+  /**
+   * Validar documento de una acción (auditor)
+   */
+  async validarDocumentoAccion(
+    planId: string,
+    documentoId: string,
+    data: {
+      estadoValidacion: 'ACEPTADA' | 'CON_OBSERVACIONES' | 'RECHAZADA';
+      validadoPor: string;
+      comentariosAuditor?: string;
+      solicitaNuevaEvidencia?: boolean;
+    }
+  ): Promise<any> {
+    return client.post<any>(`/planes-mejoramiento/${planId}/documentos/${documentoId}/validar`, data);
+  }
+
+  /**
+   * Descargar documento
+   */
+  async descargarDocumentoAccion(planId: string, documentoId: string): Promise<Blob> {
+    const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/planes-mejoramiento/${planId}/documentos/${documentoId}/descargar`;
+    const token = localStorage.getItem('esap_auth_token');
+    
+    const response = await fetch(url, {
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Error al descargar documento: ${response.status}`);
+    }
+    
+    return response.blob();
+  }
+
+  /**
+   * Cargar evidencia en una acción (metadata, sin archivo)
+   * @deprecated Usar subirDocumentoAccion en su lugar
    */
   async cargarEvidenciaAccion(planId: string, accionId: string, evidencia: any): Promise<any> {
     return client.post<any>(`/planes-mejoramiento/${planId}/acciones/${accionId}/evidencias`, evidencia);
@@ -998,11 +1463,12 @@ class ControlInternoService {
   /**
    * Obtiene todos los documentos
    */
-  async getDocumentos(params?: { auditoriaId?: string; etapa?: string; tipo?: string }): Promise<any[]> {
+  async getDocumentos(params?: { auditoriaId?: string; etapa?: string; tipo?: string; tipoDocumento?: string }): Promise<any[]> {
     const queryParams = new URLSearchParams();
     if (params?.auditoriaId) queryParams.append('auditoriaId', params.auditoriaId);
     if (params?.etapa) queryParams.append('etapa', params.etapa);
-    if (params?.tipo) queryParams.append('tipo', params.tipo);
+    const tipo = params?.tipoDocumento || params?.tipo;
+    if (tipo) queryParams.append('tipoDocumento', tipo);
     const query = queryParams.toString();
     return client.get<any[]>(`/documentos${query ? `?${query}` : ''}`);
   }
@@ -1019,6 +1485,14 @@ class ControlInternoService {
    */
   async getDocumentosByEtapa(auditoriaId: string, etapa: string): Promise<any[]> {
     return client.get<any[]>(`/documentos/auditoria/${auditoriaId}/etapa/${etapa}`);
+  }
+
+  /**
+   * Plantillas de biblioteca requeridas para una auditoría en una etapa (solo aplicables a esa auditoría).
+   * Usar para validar cantidad de documentos a subir en planeación.
+   */
+  async getPlantillasRequeridas(etapa: string, auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/documentos/plantillas-requeridas?etapa=${encodeURIComponent(etapa)}&auditoriaId=${encodeURIComponent(auditoriaId)}`);
   }
 
   /**
@@ -1041,6 +1515,8 @@ class ControlInternoService {
       auditoriaId?: string;
       hallazgoId?: string;
       planMejoramientoId?: string;
+      documentoBibliotecaId?: string;
+      visibleAuditoriaId?: string;
       subidoPor?: string;
     },
     onProgress?: (progress: number) => void
@@ -1054,6 +1530,8 @@ class ControlInternoService {
     if (metadata.auditoriaId) formData.append('auditoriaId', metadata.auditoriaId);
     if (metadata.hallazgoId) formData.append('hallazgoId', metadata.hallazgoId);
     if (metadata.planMejoramientoId) formData.append('planMejoramientoId', metadata.planMejoramientoId);
+    if (metadata.documentoBibliotecaId) formData.append('documentoBibliotecaId', metadata.documentoBibliotecaId);
+    if (metadata.visibleAuditoriaId) formData.append('visibleAuditoriaId', metadata.visibleAuditoriaId);
     if (metadata.subidoPor) formData.append('subidoPor', metadata.subidoPor);
 
     return client.upload<any>('/documentos', formData, onProgress);
@@ -1162,7 +1640,7 @@ class ControlInternoService {
    */
   async downloadEvidencia(id: string): Promise<Blob> {
     const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/evidencias/${id}/download`;
-    const token = localStorage.getItem('esap_access_token');
+    const token = localStorage.getItem('esap_auth_token');
     
     const response = await fetch(url, {
       headers: {
@@ -1242,6 +1720,14 @@ class ControlInternoService {
     return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/ejecucion/iniciar`, data);
   }
 
+  async getReunionApertura(auditoriaId: string): Promise<any> {
+    return client.get<any>(`/etapas-auditoria/auditoria/${auditoriaId}/ejecucion/reunion-apertura`);
+  }
+
+  async getReunionCierre(auditoriaId: string): Promise<any> {
+    return client.get<any>(`/etapas-auditoria/auditoria/${auditoriaId}/ejecucion/reunion-cierre`);
+  }
+
   async registrarReunionApertura(auditoriaId: string, data: any): Promise<any> {
     return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/ejecucion/reunion-apertura`, data);
   }
@@ -1258,21 +1744,9 @@ class ControlInternoService {
     return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/ejecucion/completar`);
   }
 
-  // Comunicación
+  // Comunicación - generarInformeFinal y generarInformeEjecutivo usan /auditorias/ (ver métodos arriba)
   async iniciarComunicacion(auditoriaId: string, data: any): Promise<any> {
     return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/comunicacion/iniciar`, data);
-  }
-
-  async generarInformePreliminar(auditoriaId: string): Promise<any> {
-    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/comunicacion/generar-informe-preliminar`);
-  }
-
-  async generarInformeFinal(auditoriaId: string): Promise<any> {
-    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/comunicacion/generar-informe-final`);
-  }
-
-  async generarInformeEjecutivo(auditoriaId: string): Promise<any> {
-    return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/comunicacion/generar-informe-ejecutivo`);
   }
 
   async completarComunicacion(auditoriaId: string): Promise<any> {
@@ -1358,6 +1832,14 @@ class ControlInternoService {
   }
 
   /**
+   * Actualiza el estado Kanban de una auditoría (para drag & drop)
+   * Soporta todos los estados: 'Plan Anual', 'Planeación', 'Ejecución', 'Comunicación', 'Seguimiento', 'Finalizada'
+   */
+  async updateEstadoKanbanAuditoria(id: string, estadoKanban: string): Promise<any> {
+    return client.patch<any>(`/auditorias/${id}/estado-kanban`, { estadoKanban });
+  }
+
+  /**
    * Obtiene auditorías por fase
    */
   async getAuditoriasByFase(fase: string): Promise<any[]> {
@@ -1401,6 +1883,118 @@ class ControlInternoService {
   }
 
   // ==========================================================================
+  // NOTAS DE AUDITORÍA
+  // ==========================================================================
+
+  /**
+   * Obtiene todas las notas de una auditoría
+   */
+  async getNotasAuditoria(auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/auditorias/${auditoriaId}/notas`);
+  }
+
+  /**
+   * Crea una nueva nota para una auditoría
+   * Categorías válidas: General, Hallazgo, Seguimiento, Evidencia, Recomendación, Observación
+   */
+  async createNotaAuditoria(auditoriaId: string, data: {
+    contenido: string;
+    categoria?: 'General' | 'Hallazgo' | 'Seguimiento' | 'Evidencia' | 'Recomendación' | 'Observación';
+    esImportante?: boolean;
+    usuarioId?: string;
+    usuarioNombre?: string;
+  }): Promise<any> {
+    return client.post<any>(`/auditorias/${auditoriaId}/notas`, data);
+  }
+
+  /**
+   * Actualiza una nota existente
+   */
+  async updateNotaAuditoria(auditoriaId: string, notaId: string, data: {
+    contenido?: string;
+    categoria?: 'General' | 'Hallazgo' | 'Seguimiento' | 'Evidencia' | 'Recomendación' | 'Observación';
+    esImportante?: boolean;
+  }): Promise<any> {
+    return client.patch<any>(`/auditorias/${auditoriaId}/notas/${notaId}`, data);
+  }
+
+  /**
+   * Elimina una nota (soft delete)
+   */
+  async deleteNotaAuditoria(auditoriaId: string, notaId: string): Promise<void> {
+    return client.delete(`/auditorias/${auditoriaId}/notas/${notaId}`);
+  }
+
+  /**
+   * Marca o desmarca una nota como importante
+   */
+  async toggleImportanteNota(auditoriaId: string, notaId: string): Promise<any> {
+    return client.patch<any>(`/auditorias/${auditoriaId}/notas/${notaId}/importante`);
+  }
+
+  // ==========================================================================
+  // HISTORIAL / TRAZABILIDAD DE AUDITORÍA
+  // ==========================================================================
+
+  /**
+   * Obtiene el historial completo de cambios de una auditoría
+   */
+  async getHistorialAuditoria(auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/auditorias/${auditoriaId}/historial`);
+  }
+
+  // ==========================================================================
+  // APROBACIÓN DE AUDITORÍAS
+  // ==========================================================================
+
+  /**
+   * Aprueba una auditoría
+   */
+  async aprobarAuditoria(id: string, data?: {
+    comentarios?: string;
+    usuarioId?: number;
+    usuarioNombre?: string;
+  }): Promise<any> {
+    return client.post<any>(`/auditorias/${id}/aprobar`, data || {});
+  }
+
+  /**
+   * Rechaza una auditoría
+   */
+  async rechazarAuditoria(id: string, justificacion: string): Promise<any> {
+    return client.post<any>(`/auditorias/${id}/rechazar`, { justificacion });
+  }
+
+  /**
+   * Finaliza una auditoría con documento de cierre
+   */
+  async finalizarAuditoria(
+    id: string, 
+    archivo: File, 
+    observaciones: string,
+    finalizadaPor: string,
+    finalizadaPorId: number
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', archivo);
+    formData.append('observaciones', observaciones);
+    formData.append('finalizadaPor', finalizadaPor);
+    formData.append('finalizadaPorId', finalizadaPorId.toString());
+
+    // Usar client.upload que maneja baseURL + servicePrefix automáticamente
+    // -> directo: http://localhost:3007/auditorias/:id/finalizar
+    // -> gateway: http://host/services/control-institucional/api/v1/auditorias/:id/finalizar
+    return client.upload<any>(`/auditorias/${id}/finalizar`, formData);
+  }
+
+  /**
+   * Solicita modificación de una auditoría
+   */
+  async solicitarModificacionAuditoria(id: string, observaciones: string): Promise<any> {
+    return client.post<any>(`/auditorias/${id}/modificacion`, { observaciones });
+  }
+
+  // ==========================================================================
   // DASHBOARD
   // ==========================================================================
   
@@ -1420,6 +2014,105 @@ class ControlInternoService {
         actividadesRecientes: [],
       };
     }
+  }
+
+  // ==========================================================================
+  // NOTIFICACIONES - CONFIGURACIÓN
+  // ==========================================================================
+
+  /**
+   * Obtiene las preferencias de notificación de un usuario
+   */
+  async getPreferenciasNotificacion(usuarioId: string): Promise<any> {
+    return client.get(`/notificaciones/preferencias/${usuarioId}`);
+  }
+
+  /**
+   * Actualiza las preferencias de notificación de un usuario
+   */
+  async updatePreferenciasNotificacion(usuarioId: string, preferencias: any): Promise<any> {
+    return client.put(`/notificaciones/preferencias/${usuarioId}`, preferencias);
+  }
+
+  /**
+   * Obtiene todas las notificaciones de un usuario
+   */
+  async getNotificacionesUsuario(usuarioId: string, filtros?: {
+    estado?: string;
+    tipo?: string;
+    leida?: boolean;
+    prioridad?: string;
+  }): Promise<any> {
+    const params = new URLSearchParams();
+    if (filtros?.estado) params.append('estado', filtros.estado);
+    if (filtros?.tipo) params.append('tipo', filtros.tipo);
+    if (filtros?.leida !== undefined) params.append('leida', String(filtros.leida));
+    if (filtros?.prioridad) params.append('prioridad', filtros.prioridad);
+    
+    const queryString = params.toString();
+    return client.get(`/notificaciones/usuario/${usuarioId}${queryString ? `?${queryString}` : ''}`);
+  }
+
+  /**
+   * Obtiene el conteo de notificaciones no leídas
+   */
+  async getConteoNotificacionesNoLeidas(usuarioId: string): Promise<{ count: number }> {
+    return client.get(`/notificaciones/usuario/${usuarioId}/conteo`);
+  }
+
+  /**
+   * Marca una notificación como leída
+   */
+  async marcarNotificacionLeida(notificacionId: string, usuarioId: string): Promise<any> {
+    return client.put(`/notificaciones/${notificacionId}/leida`, { usuarioId });
+  }
+
+  /**
+   * Marca todas las notificaciones como leídas
+   */
+  async marcarTodasNotificacionesLeidas(usuarioId: string): Promise<any> {
+    return client.put(`/notificaciones/usuario/${usuarioId}/todas-leidas`, {});
+  }
+
+  /**
+   * Crea una nueva notificación personalizada
+   */
+  async crearNotificacion(data: {
+    usuarioId: string;
+    titulo: string;
+    mensaje: string;
+    tipo?: string;
+    prioridad?: string;
+    canal?: string;
+    accion?: { texto: string; url: string };
+  }): Promise<any> {
+    return client.post('/notificaciones', data);
+  }
+
+  /**
+   * Obtiene todas las notificaciones (admin)
+   */
+  async getTodasNotificaciones(filtros?: {
+    estado?: string;
+    tipo?: string;
+    leida?: boolean;
+    prioridad?: string;
+  }): Promise<any> {
+    const params = new URLSearchParams();
+    if (filtros?.estado) params.append('estado', filtros.estado);
+    if (filtros?.tipo) params.append('tipo', filtros.tipo);
+    if (filtros?.leida !== undefined) params.append('leida', String(filtros.leida));
+    if (filtros?.prioridad) params.append('prioridad', filtros.prioridad);
+    
+    const queryString = params.toString();
+    return client.get(`/notificaciones/todas${queryString ? `?${queryString}` : ''}`);
+  }
+
+  /**
+   * Ejecuta el job de notificaciones automáticas (admin/testing)
+   */
+  async ejecutarJobNotificaciones(): Promise<any> {
+    return client.post('/notificaciones/ejecutar-job-automatico', {});
   }
 }
 

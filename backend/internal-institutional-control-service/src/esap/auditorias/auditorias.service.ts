@@ -20,6 +20,7 @@ import { Documento } from '../documentos/entities/documento.entity';
 import { AuditoriaKanbanDto, PersonaDto, ObjetivoDto } from './dto/auditoria-kanban.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
+import { ConfiguracionesProfesionalesOCIGService } from '../configuraciones/configuraciones-profesionales-ocig.service';
 
 @Injectable()
 export class AuditoriasService {
@@ -44,6 +45,7 @@ export class AuditoriasService {
     private readonly documentoRepository: Repository<Documento>,
     private readonly dataSource: DataSource,
     private readonly notificacionesService: NotificacionesService,
+    private readonly profesionalesOCIGService: ConfiguracionesProfesionalesOCIGService,
   ) {}
 
   /**
@@ -171,6 +173,8 @@ export class AuditoriasService {
       ...auditoria,
       fechaInicio: this.serializeDate(auditoria.fechaInicio),
       fechaFin: this.serializeDate(auditoria.fechaFin),
+      fechaFinPlaneacion: auditoria.fechaFinPlaneacion ? this.serializeDate(auditoria.fechaFinPlaneacion) : null,
+      fechaFinEjecucion: auditoria.fechaFinEjecucion ? this.serializeDate(auditoria.fechaFinEjecucion) : null,
       // Asegurar que checklistCompletados se devuelva como objeto (no string)
       checklistCompletados: auditoria.checklistCompletados 
         ? (typeof auditoria.checklistCompletados === 'string' 
@@ -262,7 +266,11 @@ export class AuditoriasService {
       query.andWhere('auditoria.fechaFin <= :fechaHasta', { fechaHasta: filters.fechaHasta });
     }
 
-    const auditorias = await query.getMany();
+    const auditorias = await query
+      .leftJoinAndSelect('auditoria.objetivos', 'objetivos')
+      .leftJoinAndSelect('auditoria.criterios', 'criterios')
+      .leftJoinAndSelect('auditoria.equipoAuditores', 'equipoAuditores')
+      .getMany();
     // Serializar fechas para evitar problemas de zona horaria
     return auditorias.map(aud => this.serializeAuditoria(aud));
   }
@@ -273,7 +281,7 @@ export class AuditoriasService {
   async findOne(id: string): Promise<Auditoria> {
     const auditoria = await this.auditoriaRepository.findOne({
       where: { id },
-      relations: ['objetivos', 'equipoAuditores'],
+      relations: ['objetivos', 'criterios', 'equipoAuditores'],
     });
 
     if (!auditoria) {
@@ -287,7 +295,7 @@ export class AuditoriasService {
     if (auditoria.auditorLiderId) {
       try {
         const lider = await this.auditoriaRepository.query(
-          `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+          `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
            FROM auth.personas 
            WHERE id_tercero = $1`,
           [auditoria.auditorLiderId]
@@ -295,7 +303,7 @@ export class AuditoriasService {
         if (lider && lider.length > 0 && lider[0]) {
           const p = lider[0];
           const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
-          const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+          const iniciales = this.getIniciales(nombreCompleto);
           auditorLider = {
             nombre: nombreCompleto,
             cargo: 'Auditor Líder',
@@ -313,7 +321,7 @@ export class AuditoriasService {
     if (auditoria.auditorAsignadoId) {
       try {
         const asignado = await this.auditoriaRepository.query(
-          `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+          `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
            FROM auth.personas 
            WHERE id_tercero = $1`,
           [auditoria.auditorAsignadoId]
@@ -321,7 +329,7 @@ export class AuditoriasService {
         if (asignado && asignado.length > 0 && asignado[0]) {
           const p = asignado[0];
           const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
-          const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+          const iniciales = this.getIniciales(nombreCompleto);
           auditorAsignado = {
             nombre: nombreCompleto,
             cargo: 'Auditor',
@@ -373,10 +381,39 @@ export class AuditoriasService {
     // Parsear fechas sin conversión de zona horaria
     const fechaInicio = this.parseDateOnly(createDto.fechaInicio);
     const fechaFin = this.parseDateOnly(createDto.fechaFin);
+    
+    // Parsear fechas de las etapas si están presentes
+    const fechaFinPlaneacion = createDto.fechaFinPlaneacion 
+      ? this.parseDateOnly(createDto.fechaFinPlaneacion) 
+      : undefined;
+    const fechaFinEjecucion = createDto.fechaFinEjecucion 
+      ? this.parseDateOnly(createDto.fechaFinEjecucion) 
+      : undefined;
 
     // Validar que fechaFin sea posterior a fechaInicio
     if (fechaFin < fechaInicio) {
       throw new BadRequestException('La fecha de finalización debe ser posterior a la fecha de inicio');
+    }
+    
+    // Validar cronograma de 3 etapas si se proporcionan las fechas
+    if (fechaFinPlaneacion) {
+      if (fechaFinPlaneacion <= fechaInicio) {
+        throw new BadRequestException('La fecha de fin de Planeación debe ser posterior al inicio de la auditoría');
+      }
+    }
+    
+    if (fechaFinEjecucion) {
+      if (!fechaFinPlaneacion) {
+        throw new BadRequestException('Debe especificar la fecha de fin de Planeación antes de la fecha de fin de Ejecución');
+      }
+      if (fechaFinEjecucion <= fechaFinPlaneacion) {
+        throw new BadRequestException('La fecha de fin de Ejecución debe ser posterior al fin de Planeación');
+      }
+    }
+    
+    // Si se proporciona fechaFinEjecucion, validar que fechaFin sea posterior
+    if (fechaFinEjecucion && fechaFin <= fechaFinEjecucion) {
+      throw new BadRequestException('La fecha de fin de la auditoría (fin de Comunicación) debe ser posterior al fin de Ejecución');
     }
 
     // Generar código automático
@@ -397,13 +434,16 @@ export class AuditoriasService {
       codigo,
       fechaInicio: fechaInicio,
       fechaFin: fechaFin,
+      fechaFinPlaneacion: fechaFinPlaneacion,
+      fechaFinEjecucion: fechaFinEjecucion,
       fase: createDto.fase || FaseAuditoria.PLANEACION,
       prioridad: createDto.prioridad || PrioridadAuditoria.MEDIA,
       progreso: createDto.progreso ?? 0,
       hallazgos: 0,
       activa: true, // CRÍTICO: Asegurar que la auditoría esté activa para que aparezca en el Kanban
-      // Establecer estadoKanban inicial a 'Planeación' por defecto
-      estadoKanban: EstadoKanban.PLANEACION,
+      // Establecer estadoKanban inicial - si viene del DTO usarlo, sino 'Plan Anual' por defecto
+      // El DTO puede enviar el string directamente que corresponde al valor del enum
+      estadoKanban: (createDto.estadoKanban as EstadoKanban) || EstadoKanban.PLAN_ANUAL,
     };
 
     // Incluir campos opcionales si tienen valor
@@ -474,6 +514,16 @@ export class AuditoriasService {
     if (createDto.responsableAreaEmail) auditoriaData.responsableAreaEmail = createDto.responsableAreaEmail;
     if (createDto.observacionesAdicionales) auditoriaData.observacionesAdicionales = createDto.observacionesAdicionales;
     if (createDto.programaAnualMetadata) auditoriaData.programaAnualMetadata = createDto.programaAnualMetadata;
+
+    // actividad_plan_anual_id es UUID. auditor_lider_id/auditor_asignado_id/supervisor son BIGINT (idTercero).
+    // NUNCA asignar idTercero (100, 12, 24) a actividadPlanAnualId → "invalid input syntax for type uuid"
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const actividadIdRaw = (createDto as any).actividadPlanAnualId ?? createDto.programaAnualMetadata?.actividadPlanAnualId;
+    if (actividadIdRaw && typeof actividadIdRaw === 'string' && uuidRegex.test(actividadIdRaw)) {
+      auditoriaData.actividadPlanAnualId = actividadIdRaw;
+    } else {
+      auditoriaData.actividadPlanAnualId = null; // Explícito: evitar que TypeORM tome valores de otras props
+    }
 
     const auditoria = this.auditoriaRepository.create(auditoriaData);
 
@@ -567,6 +617,28 @@ export class AuditoriasService {
       console.error('[AuditoriasService.create] Error al crear notificaciones:', notifError);
     }
 
+    // ✅ Registrar evento de creación en el historial
+    try {
+      const ahora = new Date();
+      const fecha = ahora.toISOString().split('T')[0];
+      const hora = ahora.toTimeString().split(' ')[0];
+      
+      const historialCreacion = new HistorialAuditoria();
+      historialCreacion.auditoriaId = auditoriaGuardada.id;
+      historialCreacion.tipoEvento = TipoEvento.CREACION;
+      historialCreacion.fecha = new Date(fecha);
+      historialCreacion.hora = hora;
+      historialCreacion.usuarioId = Number(createDto.auditorLiderId) || 1;
+      historialCreacion.accion = 'Auditoría creada';
+      historialCreacion.descripcion = `Se creó la auditoría ${auditoriaGuardada.codigo} - ${auditoriaGuardada.nombre}`;
+      historialCreacion.estadoNuevo = auditoriaGuardada.estadoKanban || auditoriaGuardada.fase || 'Planeación';
+      historialCreacion.cambios = [];
+      
+      await this.historialRepository.save(historialCreacion);
+    } catch (histError) {
+      console.error('[AuditoriasService.create] Error al registrar en historial:', histError);
+    }
+
     return this.serializeAuditoria(auditoriaCompleta || auditoriaGuardada) as any;
   }
 
@@ -584,16 +656,43 @@ export class AuditoriasService {
     }
 
     // Validar fechas si se actualizan
-    if (updateDto.fechaInicio || updateDto.fechaFin) {
+    if (updateDto.fechaInicio || updateDto.fechaFin || updateDto.fechaFinPlaneacion || updateDto.fechaFinEjecucion) {
       const fechaInicio = updateDto.fechaInicio 
         ? this.parseDateOnly(updateDto.fechaInicio) 
         : auditoria.fechaInicio;
       const fechaFin = updateDto.fechaFin 
         ? this.parseDateOnly(updateDto.fechaFin) 
         : auditoria.fechaFin;
+      const fechaFinPlaneacion = updateDto.fechaFinPlaneacion 
+        ? this.parseDateOnly(updateDto.fechaFinPlaneacion) 
+        : auditoria.fechaFinPlaneacion;
+      const fechaFinEjecucion = updateDto.fechaFinEjecucion 
+        ? this.parseDateOnly(updateDto.fechaFinEjecucion) 
+        : auditoria.fechaFinEjecucion;
 
       if (fechaFin < fechaInicio) {
         throw new BadRequestException('La fecha de finalización debe ser posterior a la fecha de inicio');
+      }
+      
+      // Validar cronograma de 3 etapas
+      if (fechaFinPlaneacion) {
+        if (fechaFinPlaneacion <= fechaInicio) {
+          throw new BadRequestException('La fecha de fin de Planeación debe ser posterior al inicio de la auditoría');
+        }
+      }
+      
+      if (fechaFinEjecucion) {
+        if (!fechaFinPlaneacion) {
+          throw new BadRequestException('Debe especificar la fecha de fin de Planeación antes de la fecha de fin de Ejecución');
+        }
+        if (fechaFinEjecucion <= fechaFinPlaneacion) {
+          throw new BadRequestException('La fecha de fin de Ejecución debe ser posterior al fin de Planeación');
+        }
+      }
+      
+      // Si se proporciona fechaFinEjecucion, validar que fechaFin sea posterior
+      if (fechaFinEjecucion && fechaFin <= fechaFinEjecucion) {
+        throw new BadRequestException('La fecha de fin de la auditoría (fin de Comunicación) debe ser posterior al fin de Ejecución');
       }
     }
 
@@ -610,6 +709,16 @@ export class AuditoriasService {
     if (updateDto.responsable) auditoria.responsable = updateDto.responsable;
     if (updateDto.fechaInicio) auditoria.fechaInicio = this.parseDateOnly(updateDto.fechaInicio);
     if (updateDto.fechaFin) auditoria.fechaFin = this.parseDateOnly(updateDto.fechaFin);
+    if (updateDto.fechaFinPlaneacion !== undefined) {
+      auditoria.fechaFinPlaneacion = updateDto.fechaFinPlaneacion 
+        ? this.parseDateOnly(updateDto.fechaFinPlaneacion) 
+        : undefined;
+    }
+    if (updateDto.fechaFinEjecucion !== undefined) {
+      auditoria.fechaFinEjecucion = updateDto.fechaFinEjecucion 
+        ? this.parseDateOnly(updateDto.fechaFinEjecucion) 
+        : undefined;
+    }
     if (updateDto.progreso !== undefined) auditoria.progreso = updateDto.progreso;
     if (updateDto.prioridad) auditoria.prioridad = updateDto.prioridad as PrioridadAuditoria;
     if (updateDto.hallazgos !== undefined) auditoria.hallazgos = updateDto.hallazgos;
@@ -820,6 +929,31 @@ export class AuditoriasService {
       relations: ['objetivos', 'criterios', 'equipoAuditores', 'territorialInfo', 'especialInfo'],
     });
 
+    // ✅ Registrar evento de actualización en el historial si hay cambios importantes
+    if (cambios.length > 0) {
+      try {
+        const ahora = new Date();
+        const fecha = ahora.toISOString().split('T')[0];
+        const hora = ahora.toTimeString().split(' ')[0];
+        
+        const historialActualizacion = new HistorialAuditoria();
+        historialActualizacion.auditoriaId = saved.id;
+        historialActualizacion.tipoEvento = TipoEvento.ACTUALIZACION;
+        historialActualizacion.fecha = new Date(fecha);
+        historialActualizacion.hora = hora;
+        historialActualizacion.usuarioId = 1; // TODO: Obtener del contexto de autenticación
+        historialActualizacion.accion = 'Auditoría actualizada';
+        historialActualizacion.descripcion = `Cambios realizados: ${cambios.join(', ')}`;
+        historialActualizacion.estadoAnterior = estadoAnterior || undefined;
+        historialActualizacion.estadoNuevo = updateDto.estadoKanban || updateDto.fase || saved.estadoKanban || saved.fase || undefined;
+        historialActualizacion.cambios = cambios.map(c => ({ campo: c, valorAnterior: '', valorNuevo: '' }));
+        
+        await this.historialRepository.save(historialActualizacion);
+      } catch (histError) {
+        console.error('[AuditoriasService.update] Error al registrar en historial:', histError);
+      }
+    }
+
     // Serializar fechas para evitar problemas de zona horaria
     return this.serializeAuditoria(auditoriaActualizada || saved) as any;
   }
@@ -935,7 +1069,22 @@ export class AuditoriasService {
       throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
     }
     
+    // Guardar estado anterior para el historial
+    const estadoAnterior = auditoria.estadoKanban;
+    const faseAnterior = auditoria.fase;
+    
     auditoria.fase = fase;
+    
+    // ✅ Sincronizar estadoKanban con la fase
+    // Mapeo de FaseAuditoria -> EstadoKanban
+    const faseToEstadoKanban: Record<FaseAuditoria, EstadoKanban> = {
+      [FaseAuditoria.PLANEACION]: EstadoKanban.PLANEACION,
+      [FaseAuditoria.EN_CURSO]: EstadoKanban.EJECUCION,
+      [FaseAuditoria.REVISION]: EstadoKanban.COMUNICACION,
+      [FaseAuditoria.COMPLETADA]: EstadoKanban.FINALIZADA,
+    };
+    const estadoNuevo = faseToEstadoKanban[fase] || EstadoKanban.PLANEACION;
+    auditoria.estadoKanban = estadoNuevo;
 
     // Si se completa, asegurar progreso al 100%
     if (fase === FaseAuditoria.COMPLETADA) {
@@ -943,7 +1092,344 @@ export class AuditoriasService {
     }
 
     const saved = await this.auditoriaRepository.save(auditoria);
+    
+    // ✅ Registrar en el historial
+    const ahora = new Date();
+    const fecha = ahora.toISOString().split('T')[0];
+    const hora = ahora.toTimeString().slice(0, 5);
+
+    const historial = new HistorialAuditoria();
+    historial.auditoriaId = id;
+    historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
+    historial.fecha = new Date(fecha);
+    historial.hora = hora;
+    historial.usuarioId = 1; // TODO: Obtener del contexto de autenticación
+    historial.accion = 'Cambio de estado';
+    historial.descripcion = `Auditoría ${auditoria.codigo} cambió de ${estadoAnterior || faseAnterior} a ${estadoNuevo}`;
+    historial.estadoAnterior = estadoAnterior || faseAnterior || undefined;
+    historial.estadoNuevo = estadoNuevo || undefined;
+
+    await this.historialRepository.save(historial);
+    
     // Serializar fechas para evitar problemas de zona horaria
+    return this.serializeAuditoria(saved) as any;
+  }
+
+  /**
+   * Actualiza el estado Kanban de una auditoría (para drag & drop del frontend)
+   * Acepta tanto valores en español como normalizados
+   */
+  async updateEstadoKanban(id: string, estadoKanbanInput: string): Promise<Auditoria> {
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    }
+    
+    // Guardar estado anterior para el historial
+    const estadoAnterior = auditoria.estadoKanban;
+    
+    // Normalizar el estado recibido del frontend
+    const estadoNormalizado = estadoKanbanInput.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    
+    // Mapear al enum EstadoKanban
+    let nuevoEstadoKanban: EstadoKanban;
+    if (estadoNormalizado.includes('plan anual') || estadoNormalizado === 'plan-anual') {
+      nuevoEstadoKanban = EstadoKanban.PLAN_ANUAL;
+    } else if (estadoNormalizado === 'planeacion' || estadoNormalizado === 'planificacion') {
+      nuevoEstadoKanban = EstadoKanban.PLANEACION;
+    } else if (estadoNormalizado === 'ejecucion' || estadoNormalizado.includes('curso')) {
+      nuevoEstadoKanban = EstadoKanban.EJECUCION;
+    } else if (estadoNormalizado === 'comunicacion' || estadoNormalizado.includes('informe') || estadoNormalizado.includes('revision')) {
+      nuevoEstadoKanban = EstadoKanban.COMUNICACION;
+    } else if (estadoNormalizado === 'seguimiento') {
+      nuevoEstadoKanban = EstadoKanban.SEGUIMIENTO;
+    } else if (estadoNormalizado === 'finalizada' || estadoNormalizado.includes('completad') || estadoNormalizado.includes('cerrad')) {
+      nuevoEstadoKanban = EstadoKanban.FINALIZADA;
+    } else {
+      // Por defecto, intentar usar el valor tal como viene si coincide con el enum
+      const estadoDirecto = Object.values(EstadoKanban).find(
+        e => e.toLowerCase() === estadoNormalizado || e === estadoKanbanInput
+      );
+      nuevoEstadoKanban = estadoDirecto || EstadoKanban.PLANEACION;
+    }
+    
+    // Actualizar el estado
+    auditoria.estadoKanban = nuevoEstadoKanban;
+    
+    // Sincronizar la fase del backend (para compatibilidad)
+    const estadoToFase: Record<EstadoKanban, FaseAuditoria> = {
+      [EstadoKanban.PLAN_ANUAL]: FaseAuditoria.PLANEACION,
+      [EstadoKanban.PLANEACION]: FaseAuditoria.PLANEACION,
+      [EstadoKanban.EJECUCION]: FaseAuditoria.EN_CURSO,
+      [EstadoKanban.COMUNICACION]: FaseAuditoria.REVISION,
+      [EstadoKanban.SEGUIMIENTO]: FaseAuditoria.COMPLETADA,
+      [EstadoKanban.FINALIZADA]: FaseAuditoria.COMPLETADA,
+    }
+    auditoria.fase = estadoToFase[nuevoEstadoKanban];
+    
+    // NO PERMITIR cambiar a FINALIZADA sin usar el endpoint específico
+    if (nuevoEstadoKanban === EstadoKanban.FINALIZADA) {
+      throw new BadRequestException(
+        'Para finalizar una auditoría debe usar el endpoint /finalizar y adjuntar el documento de cierre obligatorio'
+      );
+    }
+
+    const saved = await this.auditoriaRepository.save(auditoria);
+    
+    // ✅ Registrar en el historial
+    const ahora = new Date();
+    const fecha = ahora.toISOString().split('T')[0];
+    const hora = ahora.toTimeString().slice(0, 5);
+
+    const historial = new HistorialAuditoria();
+    historial.auditoriaId = id;
+    historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
+    historial.fecha = new Date(fecha);
+    historial.hora = hora;
+    historial.usuarioId = 1; // TODO: Obtener del contexto de autenticación
+    historial.accion = 'Cambio de estado (Kanban)';
+    historial.descripcion = `Auditoría ${auditoria.codigo} cambió de "${estadoAnterior}" a "${nuevoEstadoKanban}"`;
+    historial.estadoAnterior = estadoAnterior || undefined;
+    historial.estadoNuevo = nuevoEstadoKanban;
+
+    await this.historialRepository.save(historial);
+    
+    // Serializar fechas para evitar problemas de zona horaria
+    return this.serializeAuditoria(saved) as any;
+  }
+
+  /**
+   * Finaliza una auditoría con documento de cierre obligatorio (con archivo)
+   * El documento debe ser una matriz o formato de cierre formal
+   */
+  async finalizarAuditoriaConArchivo(
+    id: string,
+    file: any,
+    observaciones: string,
+    finalizadaPor: string,
+    finalizadaPorId: number | null,
+  ): Promise<Auditoria> {
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    }
+
+    // Validar que no esté ya finalizada
+    if (auditoria.estadoKanban === EstadoKanban.FINALIZADA) {
+      throw new BadRequestException('La auditoría ya está finalizada');
+    }
+
+    const estadoAnterior = auditoria.estadoKanban;
+
+    // Construir URL del archivo (ajustar según configuración del servidor)
+    const port = process.env.PORT || '3007';
+    const baseUrl = process.env.BASE_URL || `http://localhost:${port}`;
+    const fileUrl = `${baseUrl}/uploads/auditorias/cierre/${file.filename}`;
+
+    // Actualizar estado a Finalizada
+    auditoria.estadoKanban = EstadoKanban.FINALIZADA;
+    auditoria.fase = FaseAuditoria.COMPLETADA;
+    auditoria.progreso = 100;
+    auditoria.fechaFinalizacion = new Date();
+    auditoria.documentoCierre = {
+      nombre: file.originalname,
+      url: fileUrl,
+      tipo: file.mimetype,
+      tamano: file.size,
+      fechaCarga: new Date().toISOString(),
+      cargadoPor: finalizadaPor,
+    };
+    auditoria.observacionesCierre = observaciones;
+    auditoria.finalizadaPor = finalizadaPor;
+    auditoria.finalizadaPorId = finalizadaPorId || undefined;
+
+    const saved = await this.auditoriaRepository.save(auditoria);
+
+    // ✅ Registrar en el historial
+    const ahora = new Date();
+    const fecha = ahora.toISOString().split('T')[0];
+    const hora = ahora.toTimeString().slice(0, 5);
+
+    const historial = new HistorialAuditoria();
+    historial.auditoriaId = id;
+    historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
+    historial.fecha = new Date(fecha);
+    historial.hora = hora;
+    historial.usuarioId = finalizadaPorId || 1;
+    historial.accion = 'Finalización de auditoría';
+    historial.descripcion = `Auditoría ${auditoria.codigo} finalizada. Documento de cierre: ${file.originalname}`;
+    historial.estadoAnterior = estadoAnterior || undefined;
+    historial.estadoNuevo = EstadoKanban.FINALIZADA;
+
+    await this.historialRepository.save(historial);
+
+    // Serializar fechas para evitar problemas de zona horaria
+    return this.serializeAuditoria(saved) as any;
+  }
+
+  /**
+   * Finaliza una auditoría con documento de cierre obligatorio
+   * El documento debe ser una matriz o formato de cierre formal
+   */
+  async finalizarAuditoria(id: string, finalizarDto: any): Promise<Auditoria> {
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    }
+
+    // Validar que se haya proporcionado el documento de cierre
+    if (!finalizarDto.documentoCierre || !finalizarDto.documentoCierre.url) {
+      throw new BadRequestException(
+        'El documento de cierre (matriz/formato) es obligatorio para finalizar la auditoría'
+      );
+    }
+
+    // Validar que no esté ya finalizada
+    if (auditoria.estadoKanban === EstadoKanban.FINALIZADA) {
+      throw new BadRequestException('La auditoría ya está finalizada');
+    }
+
+    const estadoAnterior = auditoria.estadoKanban;
+
+    // Actualizar estado a Finalizada
+    auditoria.estadoKanban = EstadoKanban.FINALIZADA;
+    auditoria.fase = FaseAuditoria.COMPLETADA;
+    auditoria.progreso = 100;
+    auditoria.fechaFinalizacion = new Date();
+    auditoria.documentoCierre = finalizarDto.documentoCierre;
+    auditoria.observacionesCierre = finalizarDto.observacionesCierre;
+    auditoria.finalizadaPor = finalizarDto.finalizadaPor;
+    auditoria.finalizadaPorId = finalizarDto.finalizadaPorId;
+
+    const saved = await this.auditoriaRepository.save(auditoria);
+
+    // ✅ Registrar en el historial
+    const ahora = new Date();
+    const fecha = ahora.toISOString().split('T')[0];
+    const hora = ahora.toTimeString().slice(0, 5);
+
+    const historial = new HistorialAuditoria();
+    historial.auditoriaId = id;
+    historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
+    historial.fecha = new Date(fecha);
+    historial.hora = hora;
+    historial.usuarioId = finalizarDto.finalizadaPorId || 1;
+    historial.accion = 'Finalización de auditoría';
+    historial.descripcion = `Auditoría ${auditoria.codigo} finalizada. Documento de cierre: ${finalizarDto.documentoCierre.nombre}`;
+    historial.estadoAnterior = estadoAnterior || undefined;
+    historial.estadoNuevo = EstadoKanban.FINALIZADA;
+
+    await this.historialRepository.save(historial);
+
+    // Serializar fechas para evitar problemas de zona horaria
+    return this.serializeAuditoria(saved) as any;
+  }
+
+  /**
+   * Resumen ejecutivo para el Informe de Cierre (Sección 2 - auto-compilado)
+   */
+  async getResumenEjecutivoCierre(id: string): Promise<any> {
+    const auditoria = await this.auditoriaRepository.findOne({
+      where: { id },
+      relations: ['objetivos', 'equipoAuditores'],
+    });
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    }
+    const fechaInicio = auditoria.fechaInicio instanceof Date
+      ? auditoria.fechaInicio.toISOString().split('T')[0]
+      : String(auditoria.fechaInicio).split('T')[0];
+    const fechaFin = auditoria.fechaFin instanceof Date
+      ? auditoria.fechaFin.toISOString().split('T')[0]
+      : String(auditoria.fechaFin).split('T')[0];
+    return {
+      codigo: auditoria.codigo,
+      nombre: auditoria.nombre,
+      procesoAuditado: auditoria.nombre,
+      fechaInicio,
+      fechaFin,
+      auditorLider: auditoria.auditorLiderId,
+      totalHallazgos: auditoria.hallazgos ?? 0,
+      observacionesCierre: auditoria.observacionesCierre,
+      leccionesAprendidas: auditoria.leccionesAprendidas,
+      recomendacionesFuturasAuditorias: auditoria.recomendacionesFuturasAuditorias,
+      informeCierreAprobado: auditoria.informeCierreAprobado,
+    };
+  }
+
+  /**
+   * Actualiza borrador del Informe de Cierre (lecciones y recomendaciones)
+   */
+  async updateInformeCierre(
+    id: string,
+    dto: { leccionesAprendidas?: string; recomendacionesFuturasAuditorias?: string },
+  ): Promise<Auditoria> {
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    }
+    if (auditoria.informeCierreAprobado) {
+      throw new BadRequestException('El informe de cierre ya fue aprobado y no puede modificarse');
+    }
+    if (dto.leccionesAprendidas !== undefined) auditoria.leccionesAprendidas = dto.leccionesAprendidas;
+    if (dto.recomendacionesFuturasAuditorias !== undefined) auditoria.recomendacionesFuturasAuditorias = dto.recomendacionesFuturasAuditorias;
+    const saved = await this.auditoriaRepository.save(auditoria);
+    return this.serializeAuditoria(saved) as any;
+  }
+
+  /**
+   * Aprueba el Informe de Cierre (Jefe OCI). Pasa la auditoría a Finalizada.
+   * Debe llamarse solo cuando todas las acciones estén verificadas (validación en controller).
+   * aprobadoPorId puede ser number (id_tercero) o string (UUID) del token.
+   */
+  async aprobarInformeCierre(
+    id: string,
+    aprobadoPor: string,
+    aprobadoPorId?: number | string,
+  ): Promise<Auditoria> {
+    // Resolver UUID a id_tercero (bigint). Las columnas finalizada_por_id e informe_cierre_aprobado_por_id son integer.
+    let idTercero: number | null = null;
+    if (typeof aprobadoPorId === 'string') {
+      idTercero = await this.getUserIdTerceroFromUUID(aprobadoPorId);
+    } else if (typeof aprobadoPorId === 'number') {
+      idTercero = aprobadoPorId;
+    }
+
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    }
+    if (auditoria.informeCierreAprobado) {
+      throw new BadRequestException('El informe de cierre ya fue aprobado');
+    }
+    if (auditoria.estadoKanban === EstadoKanban.FINALIZADA) {
+      throw new BadRequestException('La auditoría ya está finalizada');
+    }
+    const estadoAnterior = auditoria.estadoKanban;
+    auditoria.informeCierreAprobado = true;
+    auditoria.informeCierreAprobadoPor = aprobadoPor;
+    auditoria.informeCierreAprobadoPorId = idTercero ?? null;
+    auditoria.informeCierreAprobadoAt = new Date();
+    auditoria.estadoKanban = EstadoKanban.FINALIZADA;
+    auditoria.fase = FaseAuditoria.COMPLETADA;
+    auditoria.progreso = 100;
+    if (!auditoria.fechaFinalizacion) auditoria.fechaFinalizacion = new Date();
+    if (!auditoria.finalizadaPor) auditoria.finalizadaPor = aprobadoPor;
+    if (auditoria.finalizadaPorId == null && idTercero != null) auditoria.finalizadaPorId = idTercero;
+    const saved = await this.auditoriaRepository.save(auditoria);
+
+    const historial = new HistorialAuditoria();
+    historial.auditoriaId = id;
+    historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
+    historial.fecha = new Date();
+    historial.hora = new Date().toTimeString().slice(0, 5);
+    historial.usuarioId = idTercero ?? 1;
+    historial.accion = 'Aprobación Informe de Cierre';
+    historial.descripcion = `Informe de cierre aprobado por Jefe OCI. Auditoría ${auditoria.codigo} cerrada.`;
+    historial.estadoAnterior = estadoAnterior;
+    historial.estadoNuevo = EstadoKanban.FINALIZADA;
+    await this.historialRepository.save(historial);
+
     return this.serializeAuditoria(saved) as any;
   }
 
@@ -1017,7 +1503,7 @@ export class AuditoriasService {
             if (auditoria.auditorLiderId) {
               try {
                 const lider = await this.auditoriaRepository.query(
-                  `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+                  `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
                    FROM auth.personas 
                    WHERE id_tercero = $1`,
                   [auditoria.auditorLiderId]
@@ -1025,7 +1511,7 @@ export class AuditoriasService {
                 if (lider && lider.length > 0 && lider[0]) {
                   const p = lider[0];
                   const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
-                  const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+                  const iniciales = this.getIniciales(nombreCompleto);
                   auditorLider = {
                     nombre: nombreCompleto,
                     cargo: 'Auditor Líder',
@@ -1043,7 +1529,7 @@ export class AuditoriasService {
             if (auditoria.auditorAsignadoId) {
               try {
                 const asignado = await this.auditoriaRepository.query(
-                  `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+                  `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
                    FROM auth.personas 
                    WHERE id_tercero = $1`,
                   [auditoria.auditorAsignadoId]
@@ -1051,7 +1537,7 @@ export class AuditoriasService {
                 if (asignado && asignado.length > 0 && asignado[0]) {
                   const p = asignado[0];
                   const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
-                  const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+                  const iniciales = this.getIniciales(nombreCompleto);
                   auditorAsignado = {
                     nombre: nombreCompleto,
                     cargo: 'Auditor',
@@ -1075,7 +1561,7 @@ export class AuditoriasService {
                 const primerMiembro = equipoActivo[0];
                 if (primerMiembro.personaId) {
                   const lider = await this.auditoriaRepository.query(
-                    `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+                    `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
                      FROM auth.personas 
                      WHERE id_tercero = $1`,
                     [primerMiembro.personaId]
@@ -1083,7 +1569,7 @@ export class AuditoriasService {
                   if (lider && lider.length > 0 && lider[0]) {
                     const p = lider[0];
                     const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
-                    const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+                    const iniciales = this.getIniciales(nombreCompleto);
                     auditorLider = {
                       nombre: nombreCompleto,
                       cargo: 'Auditor Líder',
@@ -1269,14 +1755,14 @@ export class AuditoriasService {
 
         if (auditoria.auditorLiderId) {
           const lider = await this.auditoriaRepository.query(
-            `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+            `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
              FROM auth.personas 
              WHERE id_tercero = $1`,
             [auditoria.auditorLiderId]
           );
           if (lider && lider.length > 0) {
             const p = lider[0];
-            const iniciales = p.sig_tercero || this.getIniciales(p.nom_largo);
+            const iniciales = this.getIniciales(p.nom_largo);
             auditorLider = {
               nombre: p.nom_largo,
               cargo: 'Auditor Líder',
@@ -1289,14 +1775,14 @@ export class AuditoriasService {
 
         if (auditoria.auditorAsignadoId) {
           const asignado = await this.auditoriaRepository.query(
-            `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+            `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
              FROM auth.personas 
              WHERE id_tercero = $1`,
             [auditoria.auditorAsignadoId]
           );
           if (asignado && asignado.length > 0) {
             const p = asignado[0];
-            const iniciales = p.sig_tercero || this.getIniciales(p.nom_largo);
+            const iniciales = this.getIniciales(p.nom_largo);
             auditorAsignado = {
               nombre: p.nom_largo,
               cargo: 'Auditor',
@@ -1316,7 +1802,7 @@ export class AuditoriasService {
             const primerMiembro = equipoActivo[0];
             if (primerMiembro.personaId) {
               const lider = await this.auditoriaRepository.query(
-                `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+                `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
                  FROM auth.personas 
                  WHERE id_tercero = $1`,
                 [primerMiembro.personaId]
@@ -1324,7 +1810,7 @@ export class AuditoriasService {
               if (lider && lider.length > 0 && lider[0]) {
                 const p = lider[0];
                 const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
-                const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+                const iniciales = this.getIniciales(nombreCompleto);
                 auditorLider = {
                   nombre: nombreCompleto,
                   cargo: 'Auditor Líder',
@@ -1562,11 +2048,11 @@ export class AuditoriasService {
 
         if (nota.autorId) {
           const autor = await this.auditoriaRepository.query(
-            `SELECT nom_largo, sig_tercero FROM auth.personas WHERE id_tercero = $1`,
+            `SELECT nom_largo, nom_tercero, pri_apellido FROM auth.personas WHERE id_tercero = $1`,
             [nota.autorId]
           );
           if (autor && autor.length > 0) {
-            autorNombre = autor[0].nom_largo || 'Usuario Desconocido';
+            autorNombre = autor[0].nom_largo || `${autor[0].nom_tercero || ''} ${autor[0].pri_apellido || ''}`.trim() || 'Usuario Desconocido';
             autorCargo = 'Auditor'; // TODO: Obtener desde auditor_perfil
           }
         }
@@ -1618,7 +2104,7 @@ export class AuditoriasService {
     let autorCargo = 'N/A';
     if (saved.autorId) {
       const autor = await this.auditoriaRepository.query(
-        `SELECT nom_largo, sig_tercero FROM auth.personas WHERE id_tercero = $1`,
+        `SELECT nom_largo, nom_tercero, pri_apellido FROM auth.personas WHERE id_tercero = $1`,
         [saved.autorId]
       );
       if (autor && autor.length > 0) {
@@ -1674,7 +2160,7 @@ export class AuditoriasService {
     let autorCargo = 'N/A';
     if (saved.autorId) {
       const autor = await this.auditoriaRepository.query(
-        `SELECT nom_largo, sig_tercero FROM auth.personas WHERE id_tercero = $1`,
+        `SELECT nom_largo, nom_tercero, pri_apellido FROM auth.personas WHERE id_tercero = $1`,
         [saved.autorId]
       );
       if (autor && autor.length > 0) {
@@ -1734,7 +2220,7 @@ export class AuditoriasService {
     let autorCargo = 'N/A';
     if (saved.autorId) {
       const autor = await this.auditoriaRepository.query(
-        `SELECT nom_largo, sig_tercero FROM auth.personas WHERE id_tercero = $1`,
+        `SELECT nom_largo, nom_tercero, pri_apellido FROM auth.personas WHERE id_tercero = $1`,
         [saved.autorId]
       );
       if (autor && autor.length > 0) {
@@ -2433,7 +2919,7 @@ export class AuditoriasService {
   async buscarPersonaPorNumeroIdentificacion(numeroIdentificacion: string): Promise<{ id_tercero: number; nombre: string; } | null> {
     try {
       const resultado = await this.auditoriaRepository.query(
-        `SELECT id_tercero, nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+        `SELECT id_tercero, nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
          FROM auth.personas 
          WHERE num_identificacion = $1 
          LIMIT 1`,
@@ -2455,43 +2941,41 @@ export class AuditoriasService {
   }
 
   /**
-   * Obtiene todas las personas de auth.personas que pueden ser auditores
-   * Retorna la lista completa para usar en selectores
+   * Obtiene personas configuradas como profesionales OCIG que pueden ser auditores
+   * Los profesionales se configuran desde el módulo de Configuración OCIG
    */
   async obtenerPersonasDisponibles(): Promise<any[]> {
     try {
-      const personas = await this.auditoriaRepository.query(
-        `SELECT 
-          id_tercero,
-          num_identificacion,
-          tip_identificacion,
-          nom_largo,
-          sig_tercero,
-          nom_tercero,
-          pri_apellido,
-          seg_apellido,
-          seg_nombre,
-          dir_email
-         FROM auth.personas 
-         WHERE id_tercero IS NOT NULL
-         ORDER BY nom_largo ASC`
-      );
+      // Obtener profesionales OCIG configurados (solo activos)
+      const profesionalesOCIG = await this.profesionalesOCIGService.findAll(false);
+      
+      console.log(`[obtenerPersonasDisponibles] ${profesionalesOCIG.length} profesionales OCIG configurados`);
+      
+      if (profesionalesOCIG.length === 0) {
+        console.warn('[obtenerPersonasDisponibles] No hay profesionales OCIG configurados. Configure profesionales en el módulo de Configuración.');
+        return [];
+      }
 
-      return personas.map((p: any) => ({
-        id: String(p.id_tercero),
-        idPersona: Number(p.id_tercero),
-        nombre: p.nom_largo || 'Usuario Sin Nombre',
-        iniciales: p.sig_tercero || this.getIniciales(p.nom_largo || 'US'),
-        tipoIdentificacion: p.tip_identificacion || 'CC',
-        numeroIdentificacion: p.num_identificacion || '',
-        email: p.dir_email || '',
-        cargo: 'Auditor', // Por defecto, se puede ajustar según rol
-        especialidad: 'General',
-        auditoriasConducto: 0, // Se puede calcular en el futuro
-        disponibilidad: 'Disponible'
+      return profesionalesOCIG.map((p: any) => ({
+        id: String(p.idTercero),
+        idPersona: Number(p.idTercero),
+        nombre: p.nombre || 'Usuario Sin Nombre',
+        iniciales: this.getIniciales(p.nombre || 'US'),
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: p.identificacion || '',
+        email: p.email || '',
+        cargo: p.rolOcig || 'Auditor',
+        rolCode: p.rolOcig || '',
+        especialidad: p.especialidades?.join(', ') || 'General',
+        especialidades: p.especialidades || [],
+        puedeSerLider: p.puedeSerLider || false,
+        capacidadMaximaAuditorias: p.capacidadMaximaAuditorias || 4,
+        horasMensualesDisponibles: p.horasMensualesDisponibles || 150,
+        auditoriasConducto: 0,
+        disponibilidad: p.activo ? 'Disponible' : 'No disponible'
       }));
     } catch (error) {
-      console.error('Error al obtener personas disponibles:', error);
+      console.error('Error al obtener profesionales OCIG:', error);
       return [];
     }
   }

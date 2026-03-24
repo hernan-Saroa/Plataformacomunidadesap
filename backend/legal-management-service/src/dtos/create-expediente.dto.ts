@@ -45,6 +45,23 @@ export class CreateExpedienteDto {
     @IsOptional()
     cuantia?: number;
 
+    // Provisión y Riesgo
+    @IsOptional()
+    @IsString()
+    nivelRiesgo?: string;
+
+    @IsOptional()
+    @IsNumber()
+    provisionContable?: number;
+
+    @IsOptional()
+    @IsDateString()
+    fechaEstimacionProvision?: string;
+
+    @IsOptional()
+    @IsString()
+    observacionProvision?: string;
+
     // Fechas
     @IsDateString()
     fechaNotificacion: string;
@@ -66,7 +83,25 @@ export class CreateExpedienteDto {
     terminoProcesalDias?: number;
 
     @IsOptional()
+    @IsString()
+    tipoConteoTermino?: 'HABILES' | 'CALENDARIO';
+
+    @IsOptional()
     @IsArray()
     @IsString({ each: true })
     documentosInicialesUrls?: string[];
+
+    @IsOptional()
+    @IsArray()
+    actors?: Array<{
+        nombre: string;
+        tipoPersona: string;
+        identificacion?: string;
+        rol: string;
+        cargo?: string;
+        email?: string;
+        telefono?: string;
+        direccion?: string;
+        apoderado?: string;
+    }>;
 }

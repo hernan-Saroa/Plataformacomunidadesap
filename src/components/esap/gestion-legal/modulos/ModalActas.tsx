@@ -44,7 +44,32 @@ const tiposActa = [
   'Audiencia de Fallo'
 ];
 
-// Mocks eliminados - Datos cargados desde API
+// Datos mock de actas (REDUCIDOS)
+const actasMock = [
+  {
+    id: 1,
+    tipo: 'Audiencia Inicial',
+    numero: 'ACTA-AUD-001-2024',
+    fecha: '12/12/2024',
+    hora: '10:00 AM - 11:30 AM',
+    lugar: 'Juzgado Administrativo',
+    presidente: 'Dra. Juez Titular',
+    participantes: [
+      'Juez',
+      'Apoderado ESAP',
+      'Secretaria Judicial'
+    ],
+    resumen: 'Acta de ejemplo para referencia',
+    decisiones: [
+      'Se admite la demanda presentada',
+    ],
+    estado: 'Firmada',
+    estadoColor: 'green',
+    archivo: 'acta_ejemplo.pdf',
+    tamaño: '1.8 MB',
+    duracion: '1h 30min'
+  },
+];
 
 export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasProps) {
   const [actas, setActas] = useState<any[]>([]);
@@ -163,8 +188,20 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
     try {
       toast.info('Iniciando descarga...');
       const fileUrl = getFileUrl(acta.archivoUrl);
-      const response = await fetch(fileUrl);
-      if (!response.ok) throw new Error('Error al descargar');
+
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(fileUrl, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -175,9 +212,23 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      toast.success('✅ Descarga completada');
     } catch (error) {
       console.error('Download error:', error);
-      toast.error('Error al descargar el archivo');
+      // Fallback: intentar descarga directa
+      try {
+        const fileUrl = getFileUrl(acta.archivoUrl);
+        const link = document.createElement('a');
+        link.href = fileUrl;
+        link.setAttribute('download', acta.archivo || `acta_${acta.id}.pdf`);
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...');
+      } catch {
+        toast.error('Error al descargar el archivo');
+      }
     }
   };
 
@@ -292,10 +343,21 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
       const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/actas/expediente/${expedienteId}/download-zip`;
 
-      const response = await fetch(url);
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
 
       if (!response.ok) {
-        throw new Error('Error al descargar las actas');
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
 
       const blob = await response.blob();
@@ -314,7 +376,22 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
       });
     } catch (error) {
       console.error('Error descargando ZIP:', error);
-      toast.error('Error al descargar actas', { id: 'download-actas' });
+      // Fallback: intentar descarga directa
+      try {
+        const expedienteId = expediente.uuid || expediente.id;
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        const url = `${baseUrl}${prefix}/actas/expediente/${expedienteId}/download-zip`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...', { id: 'download-actas' });
+      } catch {
+        toast.error('Error al descargar actas', { id: 'download-actas' });
+      }
     }
   };
 
@@ -421,13 +498,16 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+        <DialogContent hideCloseButton className="w-full max-w-[95vw] sm:max-w-5xl !max-h-[70vh] overflow-hidden flex flex-col p-0 gap-0">
           <DialogTitle className="sr-only">
             Actas de Audiencias - Expediente {expediente.id}
           </DialogTitle>
           <DialogDescription className="sr-only">
             Gestión de actas de audiencias y diligencias del expediente {expediente.id}
           </DialogDescription>
+
+          {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+
 
           {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
           <ModalHeaderClean
@@ -656,14 +736,14 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
                                 Descargar
                               </Button>
                               {hasPermission('delete') && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleEliminarActa(acta.id, acta.numero)}
-                                className="hover:bg-red-100 text-red-600"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleEliminarActa(acta.id, acta.numero)}
+                                  className="hover:bg-red-100 text-red-600"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
                               )}
                             </div>
                           </div>
@@ -729,13 +809,13 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
                   Descargar Firmadas (ZIP)
                 </Button>
                 {hasPermission('create') && (
-                <Button
-                  onClick={() => setIsCreateOpen(true)}
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
-                >
-                  <Plus className="w-3.5 h-3.5 mr-1.5" />
-                  Nueva Acta
-                </Button>
+                  <Button
+                    onClick={() => setIsCreateOpen(true)}
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    Nueva Acta
+                  </Button>
                 )}
               </div>
             </div>

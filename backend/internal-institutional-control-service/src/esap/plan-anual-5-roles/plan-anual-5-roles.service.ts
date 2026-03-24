@@ -4,9 +4,11 @@ import { Repository, DataSource } from 'typeorm';
 import { PlanAnual5Roles } from './entities/plan-anual-5-roles.entity';
 import { RolPlanAnual5 } from './entities/rol-plan-anual-5.entity';
 import { ActividadPlanAnual5 } from './entities/actividad-plan-anual-5.entity';
+import { AdjuntoActividadPlanAnual5 } from './entities/adjunto-actividad-plan-anual-5.entity';
 import { HistorialPlanAnual, TipoEventoPlanAnual } from './entities/historial-plan-anual.entity';
 import { CreatePlanAnual5RolesDto } from './dto/create-plan-anual-5-roles.dto';
 import { CreateActividadDto } from './dto/create-actividad.dto';
+import { CreateAdjuntoDto } from './dto/create-adjunto.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 
@@ -27,6 +29,8 @@ export class PlanAnual5RolesService {
     private readonly rolRepository: Repository<RolPlanAnual5>,
     @InjectRepository(ActividadPlanAnual5)
     private readonly actividadRepository: Repository<ActividadPlanAnual5>,
+    @InjectRepository(AdjuntoActividadPlanAnual5)
+    private readonly adjuntoRepository: Repository<AdjuntoActividadPlanAnual5>,
     @InjectRepository(HistorialPlanAnual)
     private readonly historialRepository: Repository<HistorialPlanAnual>,
     private readonly dataSource: DataSource,
@@ -38,7 +42,10 @@ export class PlanAnual5RolesService {
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
       .leftJoinAndSelect('roles.actividades', 'actividades')
-      .orderBy('plan.año', 'DESC');
+      .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
+      .orderBy('plan.año', 'DESC')
+      .addOrderBy('roles.rol_numero', 'ASC')
+      .addOrderBy('actividades.created_at', 'ASC');
 
     if (year) {
       query.where('plan.año = :year', { year });
@@ -48,10 +55,15 @@ export class PlanAnual5RolesService {
   }
 
   async findOne(id: string): Promise<PlanAnual5Roles> {
-    const plan = await this.planRepository.findOne({
-      where: { id },
-      relations: ['roles', 'roles.actividades'],
-    });
+    const plan = await this.planRepository
+      .createQueryBuilder('plan')
+      .leftJoinAndSelect('plan.roles', 'roles')
+      .leftJoinAndSelect('roles.actividades', 'actividades')
+      .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
+      .where('plan.id = :id', { id })
+      .orderBy('roles.rol_numero', 'ASC')
+      .addOrderBy('actividades.created_at', 'ASC')
+      .getOne();
 
     if (!plan) {
       throw new NotFoundException(`Plan Anual con ID ${id} no encontrado`);
@@ -61,10 +73,15 @@ export class PlanAnual5RolesService {
   }
 
   async findByYear(year: number): Promise<PlanAnual5Roles | null> {
-    return this.planRepository.findOne({
-      where: { año: year },
-      relations: ['roles', 'roles.actividades'],
-    });
+    return this.planRepository
+      .createQueryBuilder('plan')
+      .leftJoinAndSelect('plan.roles', 'roles')
+      .leftJoinAndSelect('roles.actividades', 'actividades')
+      .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
+      .where('plan.año = :year', { year })
+      .orderBy('roles.rol_numero', 'ASC')
+      .addOrderBy('actividades.created_at', 'ASC')
+      .getOne();
   }
 
   async create(createDto: CreatePlanAnual5RolesDto, usuarioId?: string): Promise<PlanAnual5Roles> {
@@ -75,14 +92,17 @@ export class PlanAnual5RolesService {
     }
 
     // Crear el plan
-    const plan = this.planRepository.create({
+    const plan: PlanAnual5Roles = this.planRepository.create({
       año: createDto.año,
       responsable: createDto.responsable,
+      responsable_id: createDto.responsable_id,
+      fecha_inicio: createDto.fecha_inicio ? new Date(createDto.fecha_inicio) : undefined,
+      fecha_fin: createDto.fecha_fin ? new Date(createDto.fecha_fin) : undefined,
       estado: createDto.estado || 'borrador',
       fecha_creacion: new Date(),
     });
 
-    const savedPlan = await this.planRepository.save(plan);
+    const savedPlan: PlanAnual5Roles = await this.planRepository.save(plan);
 
     // Obtener roles del template desde la BD (NO desde memoria)
     const rolesTemplate = await this.getRolesTemplate();
@@ -156,10 +176,10 @@ export class PlanAnual5RolesService {
 
     if (updateDto.estado !== undefined && updateDto.estado !== plan.estado) {
       cambios.push({ campo: 'estado', valorAnterior: plan.estado, valorNuevo: updateDto.estado });
-      plan.estado = updateDto.estado;
+      plan.estado = updateDto.estado as 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' | 'activo';
     }
 
-    const savedPlan = await this.planRepository.save(plan);
+    const savedPlan: PlanAnual5Roles = await this.planRepository.save(plan);
 
     // Registrar en historial si hubo cambios
     if (cambios.length > 0) {
@@ -173,6 +193,18 @@ export class PlanAnual5RolesService {
         savedPlan.estado,
         cambios
       );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NOTIFICACIONES: Enviar al Jefe OCI cuando el plan se envía a revisión
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (updateDto.estado && updateDto.estado !== estadoAnterior) {
+      try {
+        await this.notificarCambioEstadoPlan(savedPlan, estadoAnterior, updateDto.estado);
+      } catch (notifError) {
+        // No fallar la operación si las notificaciones fallan
+        console.error('[PlanAnual5RolesService.update] Error al enviar notificaciones:', notifError);
+      }
     }
 
     return this.findOne(savedPlan.id);
@@ -199,6 +231,13 @@ export class PlanAnual5RolesService {
   }
 
   async addActividad(rolId: string, createDto: CreateActividadDto, usuarioId?: string | number): Promise<ActividadPlanAnual5> {
+    // 🔍 LOG: Ver qué llega del frontend
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📥 [addActividad] Recibido createDto:');
+    console.log('   - nombre:', createDto.nombre);
+    console.log('   - configuracionEvidencias (RAW):', JSON.stringify(createDto.configuracionEvidencias, null, 2));
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
     const rol = await this.rolRepository.findOne({
       where: { id: rolId },
       relations: ['plan'],
@@ -213,10 +252,65 @@ export class PlanAnual5RolesService {
     const fechaInicio = createDto.fecha_inicio || new Date().toISOString().split('T')[0];
     const fechaFin = createDto.fecha_fin || new Date().toISOString().split('T')[0];
     
+    // Asignar configuración de evidencias por defecto si no se proporciona
+    // Los campos documentos/observaciones se derivan de adjuntosRequeridos/observacionRequerida
+    let configEvidencias = createDto.configuracionEvidencias;
+    console.log('🔧 [addActividad] configEvidencias ANTES de procesar:', configEvidencias ? 'TIENE VALOR' : 'ES NULL/UNDEFINED');
+    
+    if (!configEvidencias) {
+      // Por defecto: todo flexible/opcional  
+      configEvidencias = {
+        observaciones: false,
+        documentos: false,
+        observacionRequerida: 'OPCIONAL' as const,
+        adjuntosRequeridos: 'OPCIONAL' as const,
+        minimoAdjuntos: 0,
+        longitudMinimaObservacion: 0
+      };
+      console.log('⚠️ [addActividad] No vino configuración, usando defaults');
+    } else {
+      console.log('📋 [addActividad] Procesando configuración recibida...');
+      console.log('   - adjuntosRequeridos:', configEvidencias.adjuntosRequeridos);
+      console.log('   - observacionRequerida:', configEvidencias.observacionRequerida);
+      console.log('   - documentos (recibido):', configEvidencias.documentos);
+      console.log('   - observaciones (recibido):', configEvidencias.observaciones);
+      
+      // Si vienen adjuntosRequeridos/observacionRequerida (formato legacy), derivar documentos/observaciones
+      // Si solo vienen documentos/observaciones como booleanos (formato nuevo), usarlos directamente
+      if (configEvidencias.adjuntosRequeridos !== undefined) {
+        configEvidencias.documentos = configEvidencias.adjuntosRequeridos !== 'NO_REQUERIDO';
+      } else if (configEvidencias.documentos === undefined) {
+        configEvidencias.documentos = false; // Default
+      }
+      // Si ya viene documentos como booleano, lo respetamos
+      
+      if (configEvidencias.observacionRequerida !== undefined) {
+        configEvidencias.observaciones = configEvidencias.observacionRequerida !== 'NO_REQUERIDO';
+      } else if (configEvidencias.observaciones === undefined) {
+        configEvidencias.observaciones = false; // Default
+      }
+      // Si ya viene observaciones como booleano, lo respetamos
+      
+      console.log('   - documentos (final):', configEvidencias.documentos);
+      console.log('   - observaciones (final):', configEvidencias.observaciones);
+      
+      // Asegurar valores por defecto para campos numéricos
+      if (configEvidencias.minimoAdjuntos === undefined) {
+        configEvidencias.minimoAdjuntos = configEvidencias.adjuntosRequeridos === 'OBLIGATORIO' ? 1 : 0;
+      }
+      if (configEvidencias.longitudMinimaObservacion === undefined) {
+        configEvidencias.longitudMinimaObservacion = configEvidencias.observacionRequerida === 'OBLIGATORIO' ? 10 : 0;
+      }
+    }
+    
+    console.log('✅ [addActividad] configEvidencias FINAL:', JSON.stringify(configEvidencias, null, 2));
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
     const query = `
       INSERT INTO control_interno.actividad_plan_anual_5 
-      (rol_id, plan_id, nombre, descripcion, responsable, fecha_inicio, fecha_fin, estado, porcentaje_avance, observaciones, prioridad)
-      VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11)
+      (rol_id, plan_id, nombre, descripcion, responsable, fecha_inicio, fecha_fin, estado, porcentaje_avance, observaciones, prioridad,
+       control, evaluacion, seguimiento, requiere_verificacion_director, verificada_por_director, fecha_verificacion, observaciones_director, configuracion_evidencias)
+      VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
       RETURNING *
     `;
     
@@ -232,6 +326,15 @@ export class PlanAnual5RolesService {
       createDto.porcentaje_avance || 0,
       createDto.observaciones || null,
       createDto.prioridad || 'Media',
+      // Nuevos campos migración 129
+      createDto.control || null,
+      createDto.evaluacion || null,
+      createDto.seguimiento || null,
+      createDto.requiereVerificacionDirector || false,
+      createDto.verificadaPorDirector || false,
+      createDto.fechaVerificacion || null,
+      createDto.observacionesDirector || null,
+      JSON.stringify(configEvidencias),
     ]);
 
     const saved = result[0];
@@ -254,6 +357,32 @@ export class PlanAnual5RolesService {
       [{ campo: 'actividad', valorAnterior: '', valorNuevo: createDto.nombre }]
     );
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // AUTO-CONFIGURAR ACTIVIDAD DE AUDITORÍAS SI ES DEL ROL 4
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const nombreLower = createDto.nombre.toLowerCase();
+      const esActividadAuditorias = 
+        rol.rol_numero === 4 && 
+        (nombreLower.includes('auditoría') || 
+         nombreLower.includes('auditoria') || 
+         nombreLower.includes('programa de auditor'));
+
+      if (esActividadAuditorias) {
+        console.log(`[addActividad] 🔗 Auto-configurando actividad ${saved.id} como actividad de auditorías (Rol 4)`);
+        
+        // Usar la función SQL para configurar
+        await this.dataSource.query(`
+          SELECT control_interno.fn_configurar_actividad_auditorias_plan($1, $2)
+        `, [rol.planId, rol.plan.año]);
+        
+        console.log(`[addActividad] ✅ Actividad de auditorías configurada automáticamente`);
+      }
+    } catch (autoConfigError) {
+      // No fallar la creación si la auto-configuración falla
+      console.error('[addActividad] ⚠️ Error en auto-configuración de auditorías:', autoConfigError);
+    }
+
     // Recargar la actividad con relaciones
     return this.actividadRepository.findOne({
       where: { id: saved.id },
@@ -274,6 +403,56 @@ export class PlanAnual5RolesService {
     if (!actividad) {
       throw new NotFoundException(`Actividad con ID ${actividadId} no encontrada`);
     }
+
+    // ========================================
+    // VALIDACIÓN DE EVIDENCIAS REQUERIDAS
+    // ========================================
+    // Si se intenta completar la actividad (100% o estado='completada'),
+    // verificar que se cumplan los requisitos de evidencia
+    const intentaCompletar = 
+      (updateDto.porcentaje_avance !== undefined && updateDto.porcentaje_avance === 100) ||
+      (updateDto.estado !== undefined && updateDto.estado === 'completada');
+
+    if (intentaCompletar && actividad.configuracionEvidencias) {
+      const config = typeof actividad.configuracionEvidencias === 'string' 
+        ? JSON.parse(actividad.configuracionEvidencias) 
+        : actividad.configuracionEvidencias;
+      
+      console.log('🔍 [updateActividad] Validando evidencias para completar:', JSON.stringify(config));
+      
+      // Verificar si se requieren documentos/adjuntos
+      if (config.documentos === true) {
+        const adjuntosCount = await this.adjuntoRepository.count({
+          where: { actividadId: actividadId }
+        });
+        console.log(`📎 Adjuntos encontrados: ${adjuntosCount}, requeridos: ${config.minimoAdjuntos || 1}`);
+        
+        const minimoRequerido = config.minimoAdjuntos || 1;
+        if (adjuntosCount < minimoRequerido) {
+          throw new BadRequestException(
+            `No puede completar esta actividad. Se requiere${minimoRequerido > 1 ? 'n' : ''} al menos ${minimoRequerido} adjunto${minimoRequerido > 1 ? 's' : ''}, pero solo hay ${adjuntosCount}.`
+          );
+        }
+      }
+      
+      // Verificar si se requieren observaciones
+      if (config.observaciones === true) {
+        // La observación puede venir en el updateDto o ya estar en la actividad
+        const observacionActual = updateDto.observaciones ?? actividad.observaciones;
+        const longitudMinima = config.longitudMinimaObservacion || 10;
+        
+        console.log(`📝 Observación actual: "${observacionActual}", longitud mínima: ${longitudMinima}`);
+        
+        if (!observacionActual || observacionActual.trim().length < longitudMinima) {
+          throw new BadRequestException(
+            `No puede completar esta actividad. Se requiere una observación con al menos ${longitudMinima} caracteres.`
+          );
+        }
+      }
+      
+      console.log('✅ Validación de evidencias completada exitosamente');
+    }
+    // ========================================
 
     // Construir query de actualización con fechas como strings
     const updates: string[] = [];
@@ -340,6 +519,41 @@ export class PlanAnual5RolesService {
       values.push(updateDto.prioridad);
       cambios.push({ campo: 'prioridad', valorAnterior: actividad.prioridad || '', valorNuevo: updateDto.prioridad });
     }
+    if (updateDto.control !== undefined && updateDto.control !== actividad.control) {
+      updates.push(`control = $${paramIndex++}`);
+      values.push(updateDto.control);
+      cambios.push({ campo: 'control', valorAnterior: actividad.control || '', valorNuevo: updateDto.control });
+    }
+    if (updateDto.evaluacion !== undefined && updateDto.evaluacion !== actividad.evaluacion) {
+      updates.push(`evaluacion = $${paramIndex++}`);
+      values.push(updateDto.evaluacion);
+      cambios.push({ campo: 'evaluacion', valorAnterior: actividad.evaluacion || '', valorNuevo: updateDto.evaluacion });
+    }
+    if (updateDto.seguimiento !== undefined && updateDto.seguimiento !== actividad.seguimiento) {
+      updates.push(`seguimiento = $${paramIndex++}`);
+      values.push(updateDto.seguimiento);
+      cambios.push({ campo: 'seguimiento', valorAnterior: actividad.seguimiento || '', valorNuevo: updateDto.seguimiento });
+    }
+    if (updateDto.configuracionEvidencias !== undefined) {
+      const configStr = JSON.stringify(updateDto.configuracionEvidencias);
+      const activConfigStr = actividad.configuracionEvidencias ? JSON.stringify(actividad.configuracionEvidencias) : null;
+      if (configStr !== activConfigStr) {
+        updates.push(`configuracion_evidencias = $${paramIndex++}::jsonb`);
+        values.push(configStr);
+        cambios.push({ campo: 'configuracion_evidencias', valorAnterior: activConfigStr || '', valorNuevo: configStr });
+      }
+    }
+    if (updateDto.requiereVerificacionDirector !== undefined && updateDto.requiereVerificacionDirector !== actividad.requiereVerificacionDirector) {
+      updates.push(`requiere_verificacion_director = $${paramIndex++}`);
+      values.push(updateDto.requiereVerificacionDirector);
+      cambios.push({ campo: 'requiere_verificacion_director', valorAnterior: String(actividad.requiereVerificacionDirector), valorNuevo: String(updateDto.requiereVerificacionDirector) });
+    }
+    // Soporte para campo activo (soft delete / reactivar)
+    if ((updateDto as any).activo !== undefined && (updateDto as any).activo !== actividad.activo) {
+      updates.push(`activo = $${paramIndex++}`);
+      values.push((updateDto as any).activo);
+      cambios.push({ campo: 'activo', valorAnterior: String(actividad.activo), valorNuevo: String((updateDto as any).activo) });
+    }
 
     if (updates.length === 0) {
       return actividad;
@@ -397,7 +611,9 @@ export class PlanAnual5RolesService {
     const planId = actividad.planId;
     const nombreActividad = actividad.nombre;
 
-    await this.actividadRepository.remove(actividad);
+    // Soft delete: marcar como inactivo en lugar de eliminar
+    actividad.activo = false;
+    await this.actividadRepository.save(actividad);
 
     // Recalcular estadísticas
     await this.recalcularRol(rolId);
@@ -407,12 +623,12 @@ export class PlanAnual5RolesService {
     await this.registrarHistorial(
       planId,
       TipoEventoPlanAnual.ACTIVIDAD_ELIMINADA,
-      'Actividad eliminada',
-      `Actividad "${nombreActividad}" eliminada`,
+      'Actividad desactivada',
+      `Actividad "${nombreActividad}" marcada como inactiva`,
       usuarioId,
       undefined,
       undefined,
-      [{ campo: 'actividad', valorAnterior: nombreActividad, valorNuevo: '' }]
+      [{ campo: 'activo', valorAnterior: 'true', valorNuevo: 'false' }]
     );
   }
 
@@ -425,7 +641,7 @@ export class PlanAnual5RolesService {
 
   private async recalcularRol(rolId: string): Promise<void> {
     const actividades = await this.actividadRepository.find({
-      where: { rolId },
+      where: { rolId, activo: true },
     });
 
     const totalActividades = actividades.length;
@@ -449,13 +665,14 @@ export class PlanAnual5RolesService {
       relations: ['actividades'],
     });
 
-    const totalActividades = roles.reduce((sum, r) => sum + r.actividades.length, 0);
+    // Solo contar actividades activas
+    const totalActividades = roles.reduce((sum, r) => sum + r.actividades.filter((a) => a.activo !== false).length, 0);
     const actividadesCompletadas = roles.reduce(
-      (sum, r) => sum + r.actividades.filter((a) => a.estado === 'completada').length,
+      (sum, r) => sum + r.actividades.filter((a) => a.activo !== false && a.estado === 'completada').length,
       0,
     );
     const actividadesEnProgreso = roles.reduce(
-      (sum, r) => sum + r.actividades.filter((a) => a.estado === 'en-progreso').length,
+      (sum, r) => sum + r.actividades.filter((a) => a.activo !== false && a.estado === 'en-progreso').length,
       0,
     );
 
@@ -542,7 +759,7 @@ export class PlanAnual5RolesService {
     if (plan.responsable) {
       try {
         const responsable = await this.dataSource.query(
-          `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR sig_tercero ILIKE $1 LIMIT 1`,
+          `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR CONCAT(nom_tercero, ' ', pri_apellido) ILIKE $1 LIMIT 1`,
           [`%${plan.responsable}%`]
         );
         if (responsable && responsable.length > 0) {
@@ -580,6 +797,114 @@ export class PlanAnual5RolesService {
         });
       } catch (error) {
         console.error(`[PlanAnual5RolesService.crearNotificacionesPlanAnualCreado] Error al crear notificación:`, error);
+      }
+    }
+  }
+
+  /**
+   * Notifica a los usuarios correspondientes cuando el estado del plan cambia
+   * - en-revision: Notifica al Jefe OCI para que revise y apruebe
+   * - aprobado: Notifica al responsable del plan
+   * - en-ejecucion: Notifica a todos los auditores asignados
+   */
+  private async notificarCambioEstadoPlan(
+    plan: PlanAnual5Roles, 
+    estadoAnterior: string, 
+    nuevoEstado: string
+  ): Promise<void> {
+    console.log(`[PlanAnual5RolesService.notificarCambioEstadoPlan] ${estadoAnterior} → ${nuevoEstado}`);
+    
+    const usuariosNotificar: string[] = [];
+    let titulo = '';
+    let mensaje = '';
+    let prioridad = PrioridadNotificacion.NORMAL;
+
+    switch (nuevoEstado) {
+      case 'en-revision':
+        // Notificar al Jefe OCI para que revise y apruebe el plan
+        titulo = `📋 Plan Anual ${plan.año} - Pendiente de Aprobación`;
+        mensaje = `El Plan Anual de Auditoría ${plan.año} ha sido enviado a revisión y está pendiente de su aprobación. Responsable: ${plan.responsable || 'No especificado'}.`;
+        prioridad = PrioridadNotificacion.ALTA;
+        
+        const jefesOCI = await this.obtenerJefesControlInterno();
+        usuariosNotificar.push(...jefesOCI);
+        break;
+
+      case 'aprobado':
+        // Notificar al responsable que el plan fue aprobado
+        titulo = `✅ Plan Anual ${plan.año} - Aprobado`;
+        mensaje = `El Plan Anual de Auditoría ${plan.año} ha sido aprobado. Ya puede proceder a activarlo para iniciar la ejecución.`;
+        prioridad = PrioridadNotificacion.ALTA;
+        
+        // Buscar al responsable
+        if (plan.responsable) {
+          try {
+            const responsable = await this.dataSource.query(
+              `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR CONCAT(nom_tercero, ' ', pri_apellido) ILIKE $1 LIMIT 1`,
+              [`%${plan.responsable}%`]
+            );
+            if (responsable && responsable.length > 0) {
+              usuariosNotificar.push(String(responsable[0].id_tercero));
+            }
+          } catch (error) {
+            console.error(`[notificarCambioEstadoPlan] Error al buscar responsable:`, error);
+          }
+        }
+        break;
+
+      case 'en-ejecucion':
+        // Notificar a todos que el plan está vigente
+        titulo = `🚀 Plan Anual ${plan.año} - Vigente`;
+        mensaje = `El Plan Anual de Auditoría ${plan.año} ha sido activado y está vigente. Las actividades programadas deben iniciar su ejecución.`;
+        prioridad = PrioridadNotificacion.ALTA;
+        
+        // Notificar a Jefes OCI y responsable
+        const jefes = await this.obtenerJefesControlInterno();
+        usuariosNotificar.push(...jefes);
+        
+        if (plan.responsable) {
+          try {
+            const resp = await this.dataSource.query(
+              `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR CONCAT(nom_tercero, ' ', pri_apellido) ILIKE $1 LIMIT 1`,
+              [`%${plan.responsable}%`]
+            );
+            if (resp && resp.length > 0) {
+              usuariosNotificar.push(String(resp[0].id_tercero));
+            }
+          } catch (error) {
+            console.error(`[notificarCambioEstadoPlan] Error al buscar responsable:`, error);
+          }
+        }
+        break;
+
+      default:
+        // No enviar notificaciones para otros estados
+        return;
+    }
+
+    // Eliminar duplicados y enviar notificaciones
+    const usuariosUnicos = [...new Set(usuariosNotificar)];
+    
+    for (const usuarioId of usuariosUnicos) {
+      try {
+        await this.notificacionesService.create({
+          usuarioId,
+          tipoNotificacion: TipoNotificacion.OTRO,
+          titulo,
+          mensaje,
+          prioridad,
+          canal: CanalNotificacion.SISTEMA,
+          metadata: {
+            planAnualId: plan.id,
+            año: plan.año,
+            estadoAnterior,
+            nuevoEstado,
+            responsable: plan.responsable,
+          },
+        });
+        console.log(`[notificarCambioEstadoPlan] Notificación enviada a usuario ${usuarioId}`);
+      } catch (error) {
+        console.error(`[notificarCambioEstadoPlan] Error al crear notificación para ${usuarioId}:`, error);
       }
     }
   }
@@ -795,6 +1120,395 @@ export class PlanAnual5RolesService {
       
       // Fecha de consulta
       fechaConsulta: new Date(),
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MÉTODOS PARA ADJUNTOS DE ACTIVIDADES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async getAdjuntos(actividadId: string): Promise<AdjuntoActividadPlanAnual5[]> {
+    // Verificar que la actividad existe
+    const actividad = await this.actividadRepository.findOne({ where: { id: actividadId } });
+    if (!actividad) {
+      throw new NotFoundException(`Actividad con ID ${actividadId} no encontrada`);
+    }
+
+    return this.adjuntoRepository.find({
+      where: { actividadId },
+      order: { fechaCarga: 'DESC' },
+    });
+  }
+
+  async addAdjunto(actividadId: string, createDto: CreateAdjuntoDto): Promise<AdjuntoActividadPlanAnual5> {
+    // Verificar que la actividad existe
+    const actividad = await this.actividadRepository.findOne({ where: { id: actividadId } });
+    if (!actividad) {
+      throw new NotFoundException(`Actividad con ID ${actividadId} no encontrada`);
+    }
+
+    const adjunto = this.adjuntoRepository.create({
+      actividadId,
+      ...createDto,
+    });
+
+    return this.adjuntoRepository.save(adjunto);
+  }
+
+  async deleteAdjunto(adjuntoId: string): Promise<void> {
+    const adjunto = await this.adjuntoRepository.findOne({ where: { id: adjuntoId } });
+    if (!adjunto) {
+      throw new NotFoundException(`Adjunto con ID ${adjuntoId} no encontrado`);
+    }
+
+    await this.adjuntoRepository.remove(adjunto);
+  }
+
+  /**
+   * Exportar plan anual a Excel (xlsx)
+   * Encabezado institucional formato EM-PT-004
+   * Estructura: Logo | Título | Código/Versión/Fecha
+   */
+  async exportExcel(planId: string): Promise<{ buffer: Buffer; nombre: string }> {
+    const plan = await this.findOne(planId);
+    const XLSX = await import('xlsx');
+
+    const año = plan.año ?? new Date().getFullYear();
+    const nombre = `plan-anual-auditoria-${año}.xlsx`;
+    const fechaActual = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    // Encabezado institucional formato EM-PT-004 (igual que PDF)
+    // Estructura: Col A-B (Logo ESAP) | Col C-H (Título centrado) | Col I (Label) | Col J (Valor)
+    const headers = ['Rol', 'Nº', 'Actividad', 'Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Fin', 'Estado', '% Avance', 'Control'];
+    const rows: unknown[][] = [
+      // Filas 1-3: Encabezado institucional con 3 secciones (celdas combinadas)
+      ['ESAP', '', 'PLAN ANUAL DE AUDITORÍA INTERNA', '', '', '', '', '', 'CÓDIGO:', 'EM-PT-004'],
+      ['', '', 'Vigencia ' + año, '', '', '', '', '', 'VERSIÓN:', '3'],
+      ['', '', '', '', '', '', '', '', 'FECHA:', fechaActual],
+      // Fila 4: Proceso (todo el ancho)
+      ['PROCESO: EVALUACIÓN CONTROL Y MEJORA', '', '', '', '', '', '', '', '', ''],
+      // Fila 5: Espacio
+      [],
+      // Fila 6-7: Información del plan
+      ['INFORMACIÓN DEL PLAN', '', '', '', '', '', '', '', '', ''],
+      ['Vigencia:', año, '', 'Estado:', plan.estado ?? 'BORRADOR', '', 'Responsable:', plan.responsable ?? 'Sin asignar', '', ''],
+      ['Fecha Creación:', plan.fecha_creacion ? new Date(plan.fecha_creacion).toLocaleDateString('es-CO') : 'N/A', '', '', '', '', '', '', '', ''],
+      // Fila 9: Espacio
+      [],
+      // Fila 10: Headers de la tabla de actividades
+      headers,
+    ];
+
+    const roles = plan.roles ?? [];
+    for (const rol of roles) {
+      const actividades = Array.isArray(rol.actividades) ? rol.actividades : [];
+      for (let i = 0; i < actividades.length; i++) {
+        const a = actividades[i];
+        const fechaInicio = a.fecha_inicio != null ? new Date(a.fecha_inicio).toISOString().split('T')[0] : '';
+        const fechaFin = a.fecha_fin != null ? new Date(a.fecha_fin).toISOString().split('T')[0] : '';
+        rows.push([
+          rol.nombre ?? '',
+          i + 1,
+          a.nombre ?? '',
+          a.descripcion ?? '',
+          a.responsable ?? '',
+          fechaInicio,
+          fechaFin,
+          a.estado ?? '',
+          a.porcentaje_avance ?? 0,
+          a.control ?? '',
+          a.evaluacion ?? '',
+          a.seguimiento ?? '',
+        ]);
+      }
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    
+    // Configurar anchos de columna
+    ws['!cols'] = [
+      { wch: 25 }, // Rol
+      { wch: 5 },  // Nº
+      { wch: 40 }, // Actividad
+      { wch: 30 }, // Descripción
+      { wch: 25 }, // Responsable
+      { wch: 12 }, // Fecha Inicio
+      { wch: 12 }, // Fecha Fin
+      { wch: 15 }, // Estado
+      { wch: 10 }, // % Avance
+      { wch: 20 }, // Control
+      { wch: 20 }, // Evaluación
+      { wch: 20 }, // Seguimiento
+    ];
+    
+    // Merge cells para encabezado institucional (igual que PDF)
+    ws['!merges'] = [
+      // Filas 1-3: Logo ESAP columnas A-B (combinadas verticalmente)
+      { s: { r: 0, c: 0 }, e: { r: 2, c: 1 } },
+      // Fila 1: Título columnas C-H
+      { s: { r: 0, c: 2 }, e: { r: 0, c: 7 } },
+      // Fila 2: Subtítulo columnas C-H  
+      { s: { r: 1, c: 2 }, e: { r: 1, c: 7 } },
+      // Fila 3: Espacio columnas C-H
+      { s: { r: 2, c: 2 }, e: { r: 2, c: 7 } },
+      // Fila 4: Proceso todo el ancho
+      { s: { r: 3, c: 0 }, e: { r: 3, c: 9 } },
+      // Fila 6: Info del plan header
+      { s: { r: 5, c: 0 }, e: { r: 5, c: 9 } },
+    ];
+    
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Plan Anual');
+    const buffer = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+    return { buffer, nombre };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MÉTODOS PARA VINCULACIÓN CON AUDITORÍAS - Rol 4 (Evaluación y Seguimiento)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Obtiene el cumplimiento del programa de auditorías para un año específico
+   */
+  async getCumplimientoAuditorias(año: number): Promise<{
+    totalProgramadas: number;
+    totalFinalizadas: number;
+    porcentajeCumplimiento: number;
+    desglosePorTipo: Record<string, { programadas: number; finalizadas: number; en_proceso: number; pendientes: number }>;
+    actividadId?: string;
+  }> {
+    // Usar la función SQL que creamos
+    const result = await this.dataSource.query(`
+      SELECT * FROM control_interno.fn_calcular_cumplimiento_auditorias(NULL, $1)
+    `, [año]);
+
+    if (result.length === 0) {
+      return {
+        totalProgramadas: 0,
+        totalFinalizadas: 0,
+        porcentajeCumplimiento: 0,
+        desglosePorTipo: {}
+      };
+    }
+
+    const row = result[0];
+    
+    // Buscar la actividad de auditorías del Rol 4 para este año
+    const actividad = await this.dataSource.query(`
+      SELECT a.id
+      FROM control_interno.actividad_plan_anual_5 a
+      INNER JOIN control_interno.rol_plan_anual_5 r ON a.rol_id = r.id
+      INNER JOIN control_interno.plan_anual_5_roles p ON r.plan_id = p.id
+      WHERE r.rol_numero = 4 
+        AND a.tipo_calculo = 'auditorias'
+        AND p.ano = $1
+      LIMIT 1
+    `, [año]);
+
+    return {
+      totalProgramadas: row.total_programadas || 0,
+      totalFinalizadas: row.total_finalizadas || 0,
+      porcentajeCumplimiento: row.porcentaje_cumplimiento || 0,
+      desglosePorTipo: row.desglose_por_tipo || {},
+      actividadId: actividad[0]?.id
+    };
+  }
+
+  /**
+   * Configura una actividad como "de auditorías" para cálculo automático
+   */
+  async configurarActividadAuditorias(
+    actividadId: string,
+    año: number,
+    usuarioId?: string | number
+  ): Promise<ActividadPlanAnual5> {
+    // Verificar que la actividad existe y pertenece al Rol 4
+    const actividad = await this.dataSource.query(`
+      SELECT a.*, r.rol_numero, p.ano
+      FROM control_interno.actividad_plan_anual_5 a
+      INNER JOIN control_interno.rol_plan_anual_5 r ON a.rol_id = r.id
+      INNER JOIN control_interno.plan_anual_5_roles p ON r.plan_id = p.id
+      WHERE a.id = $1
+    `, [actividadId]);
+
+    if (actividad.length === 0) {
+      throw new NotFoundException(`Actividad con ID ${actividadId} no encontrada`);
+    }
+
+    if (actividad[0].rol_numero !== 4) {
+      throw new BadRequestException('Solo se pueden configurar actividades del Rol 4 (Evaluación y Seguimiento) como actividades de auditorías');
+    }
+
+    // Desactivar cualquier otra actividad de auditorías para este año
+    await this.dataSource.query(`
+      UPDATE control_interno.actividad_plan_anual_5 a
+      SET tipo_calculo = 'manual'
+      FROM control_interno.rol_plan_anual_5 r,
+           control_interno.plan_anual_5_roles p
+      WHERE a.rol_id = r.id
+        AND r.plan_id = p.id
+        AND p.ano = $1
+        AND a.tipo_calculo = 'auditorias'
+        AND a.id != $2
+    `, [año, actividadId]);
+
+    // Configurar esta actividad como "auditorías"
+    await this.dataSource.query(`
+      UPDATE control_interno.actividad_plan_anual_5
+      SET tipo_calculo = 'auditorias'
+      WHERE id = $1
+    `, [actividadId]);
+
+    // Vincular todas las auditorías del año a esta actividad
+    await this.dataSource.query(`
+      SELECT control_interno.fn_vincular_auditorias_actividad($1, $2)
+    `, [actividadId, año]);
+
+    // Calcular cumplimiento inicial
+    const cumplimiento = await this.getCumplimientoAuditorias(año);
+    
+    // Actualizar la actividad con los datos de cumplimiento
+    await this.dataSource.query(`
+      UPDATE control_interno.actividad_plan_anual_5
+      SET 
+        total_auditorias_programadas = $1,
+        total_auditorias_finalizadas = $2,
+        porcentaje_avance = $3,
+        auditorias_por_tipo = $4,
+        estado = CASE 
+          WHEN $3 >= 100 THEN 'completada'
+          WHEN $3 > 0 THEN 'en-progreso'
+          ELSE 'pendiente'
+        END,
+        updated_at = NOW()
+      WHERE id = $5
+    `, [
+      cumplimiento.totalProgramadas,
+      cumplimiento.totalFinalizadas,
+      cumplimiento.porcentajeCumplimiento,
+      JSON.stringify(cumplimiento.desglosePorTipo),
+      actividadId
+    ]);
+
+    // Registrar en historial
+    if (usuarioId) {
+      await this.registrarHistorial(
+        (await this.actividadRepository.findOne({ where: { id: actividadId }, relations: ['rol'] }))?.rol.planId || '',
+        TipoEventoPlanAnual.ACTIVIDAD_ACTUALIZADA,
+        `Actividad "${actividad[0].nombre}" configurada para cálculo automático de auditorías`,
+        String(usuarioId)
+      );
+    }
+
+    return this.actividadRepository.findOne({ where: { id: actividadId } }) as Promise<ActividadPlanAnual5>;
+  }
+
+  /**
+   * Obtiene el resumen de auditorías vinculadas a una actividad
+   */
+  async getAuditoriasVinculadas(actividadId: string): Promise<{
+    total: number;
+    auditorias: Array<{
+      id: string;
+      codigo: string;
+      nombre: string;
+      tipo: string;
+      estadoKanban: string;
+      progreso: number;
+      fechaInicio: Date;
+      fechaFin: Date;
+    }>;
+  }> {
+    const auditorias = await this.dataSource.query(`
+      SELECT 
+        id, codigo, nombre, tipo, estado_kanban as "estadoKanban",
+        progreso, fecha_inicio as "fechaInicio", fecha_fin as "fechaFin"
+      FROM control_interno.auditoria
+      WHERE actividad_plan_anual_id = $1
+        AND activa = true
+        AND archivada = false
+      ORDER BY fecha_inicio ASC
+    `, [actividadId]);
+
+    return {
+      total: auditorias.length,
+      auditorias
+    };
+  }
+
+  /**
+   * Recalcula manualmente el cumplimiento de auditorías para un año
+   */
+  async recalcularCumplimientoAuditorias(año: number): Promise<{
+    success: boolean;
+    actividadActualizada?: string;
+    cumplimiento: {
+      totalProgramadas: number;
+      totalFinalizadas: number;
+      porcentajeCumplimiento: number;
+    };
+  }> {
+    // Buscar la actividad de auditorías del Rol 4
+    const actividadResult = await this.dataSource.query(`
+      SELECT a.id
+      FROM control_interno.actividad_plan_anual_5 a
+      INNER JOIN control_interno.rol_plan_anual_5 r ON a.rol_id = r.id
+      INNER JOIN control_interno.plan_anual_5_roles p ON r.plan_id = p.id
+      WHERE r.rol_numero = 4 
+        AND a.tipo_calculo = 'auditorias'
+        AND p.ano = $1
+      LIMIT 1
+    `, [año]);
+
+    if (actividadResult.length === 0) {
+      // No hay actividad configurada, solo obtener estadísticas
+      const cumplimiento = await this.getCumplimientoAuditorias(año);
+      return {
+        success: true,
+        cumplimiento: {
+          totalProgramadas: cumplimiento.totalProgramadas,
+          totalFinalizadas: cumplimiento.totalFinalizadas,
+          porcentajeCumplimiento: cumplimiento.porcentajeCumplimiento
+        }
+      };
+    }
+
+    const actividadId = actividadResult[0].id;
+    
+    // Recalcular
+    const cumplimiento = await this.getCumplimientoAuditorias(año);
+    
+    // Actualizar la actividad
+    await this.dataSource.query(`
+      UPDATE control_interno.actividad_plan_anual_5
+      SET 
+        total_auditorias_programadas = $1,
+        total_auditorias_finalizadas = $2,
+        porcentaje_avance = $3,
+        auditorias_por_tipo = $4,
+        estado = CASE 
+          WHEN $3 >= 100 THEN 'completada'
+          WHEN $3 > 0 THEN 'en-progreso'
+          ELSE 'pendiente'
+        END,
+        updated_at = NOW()
+      WHERE id = $5
+    `, [
+      cumplimiento.totalProgramadas,
+      cumplimiento.totalFinalizadas,
+      cumplimiento.porcentajeCumplimiento,
+      JSON.stringify(cumplimiento.desglosePorTipo),
+      actividadId
+    ]);
+
+    return {
+      success: true,
+      actividadActualizada: actividadId,
+      cumplimiento: {
+        totalProgramadas: cumplimiento.totalProgramadas,
+        totalFinalizadas: cumplimiento.totalFinalizadas,
+        porcentajeCumplimiento: cumplimiento.porcentajeCumplimiento
+      }
     };
   }
 }

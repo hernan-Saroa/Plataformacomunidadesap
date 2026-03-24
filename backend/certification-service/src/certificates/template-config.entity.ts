@@ -30,7 +30,7 @@ export class TemplateConfig {
   @Column({ name: 'entity_logo_size', nullable: true })
   entityLogoSize: string;
 
-  @Column({ name: 'typography_font', default: 'Times New Roman', nullable: true })
+  @Column({ name: 'typography_font', default: 'Arial Narrow, Arial, sans-serif', nullable: true })
   typographyFont: string;
 
   @Column({ name: 'cargo_title', type: 'text', nullable: true })

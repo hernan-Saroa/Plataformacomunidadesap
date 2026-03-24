@@ -154,7 +154,7 @@ export class DiasHabilesService {
     obtenerTerminoLegal(tipoSolicitud: string): number {
         switch (tipoSolicitud?.toLowerCase()) {
             case 'consulta':
-                return 15; // 15 días hábiles para consultas simples
+                return 30; // 30 días hábiles para consultas jurídicas
             case 'concepto_juridico':
                 return 30; // 30 días hábiles para conceptos formales
             case 'control_legalidad':

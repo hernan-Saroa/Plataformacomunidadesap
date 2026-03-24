@@ -15,6 +15,17 @@
 
 import { useEffect, useCallback } from 'react';
 
+// Definición de atajos globales de ESAP
+// export const ESAP_GLOBAL_SHORTCUTS = [
+//   { key: 'Ctrl/Cmd + K', description: 'Abrir búsqueda global', action: 'search' },
+//   { key: 'Ctrl/Cmd + /', description: 'Ver todos los atajos', action: 'shortcuts' },
+//   { key: 'Ctrl/Cmd + M', description: 'Abrir/cerrar menú', action: 'menu' },
+//   { key: 'Ctrl/Cmd + 1-9', description: 'Ir a sección específica', action: 'navigate' },
+//   { key: '←/→', description: 'Navegar entre secciones', action: 'navigate' },
+//   { key: 'Alt + ↑/↓', description: 'Primera/última sección', action: 'navigate' },
+//   { key: 'Escape', description: 'Cerrar modal/menú', action: 'close' },
+// ] as const;
+
 interface MenuItem {
   id: string;
   label: string;

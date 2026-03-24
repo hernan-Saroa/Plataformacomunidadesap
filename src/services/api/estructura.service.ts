@@ -7,7 +7,7 @@
  * URL: /auth/api/v1/estructura-organizacional -> auth-service:3001/estructura-organizacional
  */
 
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 import type {
   Seccional,
   Sede,

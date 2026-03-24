@@ -62,12 +62,16 @@ export class ActasService {
 
         // REGISTRO AUTOMÁTICO EN HISTORIAL UNIFICADO
         try {
-            let descripcion = saved.archivoNombre ? `Nueva Acta cargada: ${saved.archivoNombre}` : 'Nueva Acta programada';
-            descripcion += saved.fecha ? `. Fecha: ${new Date(saved.fecha).toLocaleDateString()}` : '';
+            const esFirmada = !!saved.archivoNombre;
+            const titulo = esFirmada ? 'Acta Firmada Cargada' : 'Acta Programada';
+            const detalle = esFirmada
+                ? `Se ha cargado el acta firmada: "${saved.archivoNombre}". Tipo: ${saved.tipo}.`
+                : `Se ha programado una nueva acta: "${saved.numeroActa}". Fecha: ${saved.fecha}. Tipo: ${saved.tipo}.`;
+
             await this.actuacionService.registrarEventoAutomatico(
                 expedienteId,
-                saved.tipo ? `Acta ${saved.tipo} ${saved.numeroActa || ''}` : 'Acta de Comité',
-                descripcion,
+                titulo,
+                detalle,
                 'ACTA',
                 saved.id,
                 { archivo: saved.archivoUrl }
@@ -104,6 +108,20 @@ export class ActasService {
         acta.archivoTamano = file.size;
         acta.estado = 'Firmada';
 
-        return this.actaRepository.save(acta);
+        const saved = await this.actaRepository.save(acta);
+
+        // LOG UPLOAD/FIRMA
+        try {
+            await this.actuacionService.registrarEventoAutomatico(
+                acta.expedienteId,
+                'Acta Firmada Subida',
+                `Se ha subido el documento firmado para el acta ${acta.numeroActa}. Archivo: ${acta.archivoNombre}`,
+                'ACTA',
+                acta.id,
+                { archivo: acta.archivoUrl }
+            );
+        } catch (e) { console.error(e); }
+
+        return saved;
     }
 }

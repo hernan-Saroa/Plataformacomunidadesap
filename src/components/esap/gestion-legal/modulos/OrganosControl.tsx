@@ -10,6 +10,7 @@ import {
   Mail, Search, FileCheck, Send, X,
   Clock, FolderOpen, MessageSquare, Archive,
   Eye, ArrowUpDown, ChevronLeft, ChevronRight,
+  ChevronDown,
   Calendar, User, FileText, Download, Filter,
   Upload, Paperclip, Save, MoreVertical, Loader2
 } from 'lucide-react';
@@ -17,10 +18,11 @@ import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { ModuleFilters } from '../design-system/ModuleFilters';
 import { Input } from '../../../ui/input';
 import { Textarea } from '../../../ui/textarea';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
@@ -37,6 +39,8 @@ import { ModalGestionDocumentos as ModalDocumentos } from './ModalGestionDocumen
 import { ModalRespuestaOrgano as ModalRespuesta } from './ModalRespuestaOrgano';
 import { ModalComentariosOrgano as ModalComentarios } from './ModalComentariosOrgano';
 import { ModalSolicitudInsumo } from './ModalSolicitudInsumo';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // Tipo para drag and drop
 const ItemTypes = {
@@ -64,7 +68,12 @@ export interface Requerimiento {
   docRespuestas?: number;
   docSoportes?: number;
   docInternos?: number;
+  actuaciones?: number;
+  descripcion?: string;
+  areaResponsable?: string;
 }
+
+// MOCK_DATA Eliminado - Se usan datos reales del backend
 
 // Función auxiliar para colores de semáforo
 const getSemaforoColor = (dias: number) => {
@@ -73,15 +82,21 @@ const getSemaforoColor = (dias: number) => {
   return '#10B981';
 };
 
+const ETAPAS_CONFIG = [
+  { valor: 'RECIBIDO' as const, nombre: 'Recibido', color: '#6B7280', bg: '#F3F4F6' },
+  { valor: 'EN_ANALISIS' as const, nombre: 'En análisis', color: '#F59E0B', bg: '#FFFBEB' },
+  { valor: 'EN_RESPUESTA' as const, nombre: 'En respuesta', color: '#3B82F6', bg: '#EFF6FF' },
+  { valor: 'ENVIADO' as const, nombre: 'Enviado', color: '#10B981', bg: '#ECFDF5' },
+];
+
 export function OrganosControl() {
-  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista'>('kanban');
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+
+  const [tipoVista, setTipoVista] = useState<'lista' | 'archivados'>('lista');
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroOrganismo, setFiltroOrganismo] = useState<string>('');
-  const [filtroEtapa, setFiltroEtapa] = useState<string>('');
-  const [ordenamiento, setOrdenamiento] = useState<{ campo: string; direccion: 'asc' | 'desc' }>({
-    campo: 'diasRestantes',
-    direccion: 'asc'
-  });
+  const [filtroSemaforo, setFiltroSemaforo] = useState<string>('TODOS');
   const [paginaActual, setPaginaActual] = useState(1);
   const itemsPorPagina = 10;
 
@@ -104,28 +119,76 @@ export function OrganosControl() {
       setLoading(true);
       const data = await ocService.getRequerimientosOC();
 
+      // Cargar configuración local de organismos como fallback
+      let organismosConfig: any[] = [];
+      try {
+        const stored = localStorage.getItem('sigl-organismos-control');
+        if (stored) organismosConfig = JSON.parse(stored);
+      } catch (e) { console.error('Error parseando config organismos', e); }
+
       // Mapear respuesta del backend al formato del componente
-      const mappedData: Requerimiento[] = data.map((req: any) => ({
-        id: req.id, // O req.radicadoInterno si se prefiere mostrar ese
-        numeroOficio: req.radicadoExterno || 'S/N',
-        organismo: req.organismo?.nombre || 'Desconocido',
-        asunto: req.asunto || 'Sin asunto',
-        responsable: req.funcionarioResponsable || 'Sin asignar',
-        fechaRadicacion: req.fechaRecepcion ? new Date(req.fechaRecepcion) : new Date(),
-        fechaVencimiento: req.fechaVencimiento ? new Date(req.fechaVencimiento) : new Date(),
-        diasRestantes: req.diasRestantes !== undefined ? req.diasRestantes : 0,
-        diasTotales: req.plazoOtorgado || 0,
-        etapa: req.estado as 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO',
-        ultimaActuacion: 'Sin información reciente', // TODO: Traer última actuación real
-        documentos: req.documentosCount || 0,
-        // Map document categories
-        docRequerimientos: req.docRequerimientos || 0,
-        docRespuestas: req.docRespuestas || 0,
-        docSoportes: req.docSoportes || 0,
-        docInternos: req.docInternos || 0,
-      }));
+      const mappedData: Requerimiento[] = data.map((req: any) => {
+        // Resolver nombre de organismo: Backend Relation -> LocalStorage Config -> ID -> 'Desconocido'
+        const rawId = req.organismoId || req.organismo_id;
+        let nombreOrganismo = 'Desconocido';
+
+        if (req.organismo?.nombre) {
+          nombreOrganismo = req.organismo.nombre;
+        } else if (rawId) {
+          const match = organismosConfig.find((o: any) => String(o.id).trim() === String(rawId).trim());
+          if (match) nombreOrganismo = match.nombre;
+          else nombreOrganismo = String(rawId);
+        } else {
+          nombreOrganismo = 'Desconocido';
+        }
+
+        return {
+          id: req.id, // O req.radicadoInterno si se prefiere mostrar ese
+          numeroOficio: req.radicadoExterno || 'S/N',
+          organismo: nombreOrganismo,
+          asunto: req.asunto || 'Sin asunto',
+          responsable: req.funcionarioResponsable || 'Sin asignar',
+          fechaRadicacion: req.fechaRecepcion ? new Date(req.fechaRecepcion) : new Date(),
+          fechaVencimiento: req.fechaVencimiento ? new Date(req.fechaVencimiento) : new Date(),
+          diasRestantes: req.diasRestantes !== undefined ? req.diasRestantes : 0,
+          diasTotales: req.plazoOtorgado || 0,
+          descripcion: req.descripcion || '',
+          areaResponsable: req.areaResponsable || 'Oficina Jurídica',
+          etapa: req.estado as 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO',
+          ultimaActuacion: req.ultimaActuacion || 'Sin información reciente', // TODO: Traer última actuación real
+          documentos: req.documentosCount || 0,
+          // Map document categories
+          docRequerimientos: req.docRequerimientos || 0,
+          docRespuestas: req.docRespuestas || 0,
+          docSoportes: req.docSoportes || 0,
+          docInternos: req.docInternos || 0,
+        };
+      });
 
       setRequerimientos(mappedData);
+
+      // Cargar archivados
+      const archivadosData = await ocService.getArchivados();
+
+      const mappedArchivados: ItemArchivado[] = archivadosData.map((req: any) => ({
+        id: req.id,
+        codigo: req.radicadoExterno || req.radicadoInterno,
+        nombre: req.asunto,
+        tipo: 'Requerimiento Órgano Control',
+        estado: req.estadoArchivo as EstadoArchivado,
+        fechaArchivado: req.fechaArchivo ? new Date(req.fechaArchivo) : new Date(),
+        usuarioArchivo: req.usuarioArchivo || 'Desconocido',
+        motivoArchivo: req.motivoArchivo || 'Sin motivo',
+        metadatos: {
+          'Organismo': req.organismo?.nombre || 'Desconocido',
+          'Número Oficio': req.radicadoExterno || 'S/N',
+          'Tipo Requerimiento': req.tipoRequerimiento || 'General',
+          'Fecha Radicación': req.fechaRecepcion ? new Date(req.fechaRecepcion).toLocaleDateString() : 'N/A'
+        }
+      }));
+
+      setItemsArchivados(mappedArchivados);
+
     } catch (error) {
       console.error('Error cargando requerimientos:', error);
       toast.error('Error al cargar datos', {
@@ -135,6 +198,55 @@ export function OrganosControl() {
       setLoading(false);
     }
   };
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
+
+  // ✅ Función para restaurar un requerimiento archivado
+  const handleRestaurar = async (itemId: string) => {
+    try {
+      await ocService.restaurarRequerimiento(itemId, usuario?.nombre || 'Usuario Sistema');
+      toast.success('Requerimiento restaurado', {
+        description: 'El requerimiento ha vuelto al tablero principal.'
+      });
+      fetchRequerimientos(); // Recargar ambas listas
+    } catch (error) {
+      console.error('Error restaurando:', error);
+      toast.error('Error al restaurar', {
+        description: 'No se pudo restaurar el requerimiento.'
+      });
+    }
+  };
+
+  // ✅ Función para eliminar permanentemente un requerimiento
+  const handleEliminarPermanente = async (itemId: string) => {
+    try {
+      await ocService.eliminarRequerimientoPermanente(itemId, usuario?.nombre || 'Usuario Sistema');
+      toast.success('Requerimiento eliminado', {
+        description: 'El requerimiento ha sido eliminado permanentemente.'
+      });
+      fetchRequerimientos();
+    } catch (error) {
+      console.error('Error eliminando:', error);
+      toast.error('Error al eliminar', {
+        description: 'No se pudo eliminar el requerimiento.'
+      });
+    }
+  };
+
+  // Handler para mover requerimientos entre etapas
+  // const handleMoverRequerimiento = (requerimientoId: string, nuevaEtapa: 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO') => {
+  //   setRequerimientos((prevRequerimientos) => 
+  //     prevRequerimientos.map((req) => 
+  //       req.id === requerimientoId 
+  //         ? { ...req, etapa: nuevaEtapa }
+  //         : req
+  //     )
+  //   );
+
+  //   toast.success('Requerimiento movido exitosamente', {
+  //     description: `Cambiado a etapa: ${nuevaEtapa}`
+  //   });
+  // };
 
   useEffect(() => {
     fetchRequerimientos();
@@ -246,7 +358,7 @@ export function OrganosControl() {
         labelMobile: 'Nuevo',
         icon: <Plus className="w-4 h-4" />,
         onClick: () => setModalNuevoOpen(true),
-        variant: 'primary'
+        variant: 'primary' as const
       }]
     }
     return []
@@ -256,14 +368,14 @@ export function OrganosControl() {
     <div className="space-y-4">
       {/* Header */}
       <ModuleHeader
-        title="Tablero Kanban Operativo"
-        subtitle="Gestión de requerimientos de órganos de control"
+        title="Órganos de Control"
+        subtitle="Gestión integral de requerimientos de órganos de control"
         toggleView={{
           current: tipoVista,
-          onChange: (view) => setTipoVista(view as 'kanban' | 'lista'),
+          onChange: (view) => setTipoVista(view as 'lista' | 'archivados'),
           options: [
-            { label: 'Kanban', icon: <Columns3 className="w-4 h-4" />, value: 'kanban' },
-            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
+            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' },
+            { label: 'Archivados', icon: <Archive className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
         buttons={addBtnsPermission()}
@@ -273,9 +385,19 @@ export function OrganosControl() {
             variant="icon"
             sections={[
               {
-                label: "📋 Propósito",
-                content: "Gestión de requerimientos de Contraloría, Procuraduría, Fiscalía y otros órganos de control.",
-                type: "default"
+                label: "Propósito",
+                content: "Gestión centralizada de requerimientos de Contraloría, Procuraduría, Fiscalía y demás órganos de control.",
+                type: "info"
+              },
+              {
+                label: "Flujo de trabajo",
+                content: "Recibido → En análisis → En respuesta → Enviado. Puede actualizar la etapa desde la lista sin salir del módulo.",
+                type: "premium"
+              },
+              {
+                label: "Semáforo de términos",
+                content: "Rojo: vencido. Amarillo: 0-5 días. Verde: más de 5 días.",
+                type: "warning"
               }
             ]}
           />
@@ -292,15 +414,15 @@ export function OrganosControl() {
             color: 'blue'
           },
           {
-            label: 'Urgentes',
-            value: urgentes,
-            icon: <AlertCircle className="w-5 h-5" />,
-            color: 'red'
-          },
-          {
             label: 'Vencidos',
             value: vencidos,
             icon: <AlertTriangle className="w-5 h-5" />,
+            color: 'red'
+          },
+          {
+            label: 'Urgentes',
+            value: urgentes,
+            icon: <AlertCircle className="w-5 h-5" />,
             color: 'orange'
           },
           {
@@ -312,26 +434,6 @@ export function OrganosControl() {
         ]}
       />
 
-      {/* Tablero Kanban */}
-      {tipoVista === 'kanban' && (
-        <DndProvider backend={HTML5Backend}>
-          <div className="flex gap-4 overflow-x-auto pb-4">
-            {etapas.map((etapa) => (
-              <ColumnaKanban
-                key={etapa.nombre}
-                etapa={etapa}
-                onVerRequerimiento={handleVerRequerimiento}
-                onDocumentos={handleDocumentos}
-                onRespuesta={handleRespuesta}
-                onComentarios={handleComentarios}
-                onInsumo={handleInsumo}
-                onMoverRequerimiento={handleMoverRequerimiento}
-              />
-            ))}
-          </div>
-        </DndProvider>
-      )}
-
       {/* Vista Lista */}
       {tipoVista === 'lista' && (
         <VistaLista
@@ -340,18 +442,26 @@ export function OrganosControl() {
           setSearchTerm={setSearchTerm}
           filtroOrganismo={filtroOrganismo}
           setFiltroOrganismo={setFiltroOrganismo}
-          filtroEtapa={filtroEtapa}
-          setFiltroEtapa={setFiltroEtapa}
-          ordenamiento={ordenamiento}
-          setOrdenamiento={setOrdenamiento}
+          filtroSemaforo={filtroSemaforo}
+          setFiltroSemaforo={setFiltroSemaforo}
           paginaActual={paginaActual}
           setPaginaActual={setPaginaActual}
           itemsPorPagina={itemsPorPagina}
+          onCambiarEtapa={handleMoverRequerimiento}
           onVerRequerimiento={handleVerRequerimiento}
           onDocumentos={handleDocumentos}
           onRespuesta={handleRespuesta}
           onComentarios={handleComentarios}
-          onInsumo={handleInsumo}
+        />
+      )}
+
+      {/* Vista Archivados */}
+      {tipoVista === 'archivados' && (
+        <VistaArchivados
+          items={itemsArchivados}
+          moduloNombre="Órganos de Control"
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
         />
       )}
 
@@ -379,8 +489,7 @@ export function OrganosControl() {
           isOpen={modalDocsOpen}
           onClose={() => setModalDocsOpen(false)}
           requerimientoId={requerimientoSeleccionado.id}
-          tituloContexto="Gestión de Documentos"
-          nombreRequerimiento={`Requerimiento ${requerimientoSeleccionado.numeroOficio}`}
+          nombreRequerimiento={requerimientoSeleccionado.numeroOficio}
         />
       )}
 
@@ -390,10 +499,7 @@ export function OrganosControl() {
           onClose={() => setModalRespuestaOpen(false)}
           requerimientoId={requerimientoSeleccionado.id}
           organismoNombre={requerimientoSeleccionado.organismo}
-          onSuccess={() => {
-            fetchRequerimientos();
-            setModalRespuestaOpen(false);
-          }}
+          onSuccess={fetchRequerimientos}
         />
       )}
 
@@ -402,6 +508,7 @@ export function OrganosControl() {
           isOpen={modalComentariosOpen}
           onClose={() => setModalComentariosOpen(false)}
           requerimientoId={requerimientoSeleccionado.id}
+          radicado={requerimientoSeleccionado.numeroOficio}
         />
       )}
 
@@ -626,39 +733,30 @@ function TarjetaRequerimiento({
               className="w-full text-xs font-bold"
               style={{ background: '#003DA5', color: '#FFFFFF' }}
             >
-              <Eye className="w-3 h-3 mr-1" />
+              <Archive className="w-3 h-3 mr-1" />
               Ver Requerimiento
             </Button>
 
-            <div className="grid grid-cols-3 gap-1">
-              <Button
-                onClick={() => onDocumentos(req)}
-                size="sm"
-                variant="outline"
-                className="text-[11px] px-1 justify-center"
-              >
-                <FileCheck className="w-3 h-3" />
-              </Button>
-
+            <div className="grid grid-cols-2 gap-1">
               <Button
                 onClick={() => onRespuesta(req)}
                 size="sm"
                 variant="outline"
                 className="text-[11px] px-1 justify-center"
               >
-                <Send className="w-3 h-3" />
+                <Send className="w-3 h-3 mr-0.5" />
+                Respuesta
               </Button>
-              {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_SOLICITAR_INSUMO) && (
+
               <Button
-                onClick={() => onInsumo(req)}
+                onClick={() => onDocumentos(req)}
                 size="sm"
                 variant="outline"
                 className="text-[11px] px-1 justify-center"
-                title="Solicitar Insumo"
               >
-                <User className="w-3 h-3" />
+                <FileCheck className="w-3 h-3 mr-0.5" />
+                Docs
               </Button>
-              )}
             </div>
 
             <Button
@@ -684,228 +782,208 @@ function VistaLista({
   setSearchTerm,
   filtroOrganismo,
   setFiltroOrganismo,
-  filtroEtapa,
-  setFiltroEtapa,
-  ordenamiento,
-  setOrdenamiento,
+  filtroSemaforo,
+  setFiltroSemaforo,
   paginaActual,
   setPaginaActual,
   itemsPorPagina,
+  onCambiarEtapa,
   onVerRequerimiento,
   onDocumentos,
   onRespuesta,
-  onComentarios,
-  onInsumo
+  onComentarios
 }: {
   requerimientos: Requerimiento[];
   searchTerm: string;
   setSearchTerm: (term: string) => void;
   filtroOrganismo: string;
   setFiltroOrganismo: (organismo: string) => void;
-  filtroEtapa: string;
-  setFiltroEtapa: (etapa: string) => void;
-  ordenamiento: { campo: string; direccion: 'asc' | 'desc' };
-  setOrdenamiento: (ordenamiento: { campo: string; direccion: 'asc' | 'desc' }) => void;
+  filtroSemaforo: string;
+  setFiltroSemaforo: (filtro: string) => void;
   paginaActual: number;
   setPaginaActual: (pagina: number) => void;
   itemsPorPagina: number;
+  onCambiarEtapa: (reqId: string, nuevaEtapa: 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO') => void;
   onVerRequerimiento: (req: Requerimiento) => void;
   onDocumentos: (req: Requerimiento) => void;
   onRespuesta: (req: Requerimiento) => void;
   onComentarios: (req: Requerimiento) => void;
-  onInsumo: (req: Requerimiento) => void;
 }) {
-  const organos = Array.from(new Set(requerimientos.map(r => r.organismo)));
-  const etapas = Array.from(new Set(requerimientos.map(r => r.etapa)));
+  const organos = Array.from(new Set(requerimientos.map((r) => r.organismo)));
 
-  const filtrarRequerimientos = (req: Requerimiento) => {
-    const matchesSearch = req.asunto.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.responsable.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesOrganismo = filtroOrganismo ? req.organismo === filtroOrganismo : true;
-    const matchesEtapa = filtroEtapa ? req.etapa === filtroEtapa : true;
-    return matchesSearch && matchesOrganismo && matchesEtapa;
-  };
+  const requerimientosFiltrados = requerimientos
+    .filter((req) => {
+      const q = searchTerm.toLowerCase();
+      const matchesSearch = !q ||
+        req.asunto.toLowerCase().includes(q) ||
+        req.id.toLowerCase().includes(q) ||
+        req.numeroOficio.toLowerCase().includes(q) ||
+        req.organismo.toLowerCase().includes(q) ||
+        req.responsable.toLowerCase().includes(q);
 
-  const requerimientosFiltrados = requerimientos.filter(filtrarRequerimientos);
+      const matchesOrganismo = !filtroOrganismo || req.organismo === filtroOrganismo;
 
-  const ordenarRequerimientos = (req1: Requerimiento, req2: Requerimiento) => {
-    if (ordenamiento.campo === 'diasRestantes') {
-      return ordenamiento.direccion === 'asc' ? req1.diasRestantes - req2.diasRestantes : req2.diasRestantes - req1.diasRestantes;
-    }
-    if (ordenamiento.campo === 'asunto') {
-      return ordenamiento.direccion === 'asc' ? req1.asunto.localeCompare(req2.asunto) : req2.asunto.localeCompare(req1.asunto);
-    }
-    return 0;
-  };
+      const matchesSemaforo =
+        filtroSemaforo === 'TODOS' ||
+        (filtroSemaforo === 'VENCIDO' && req.diasRestantes < 0) ||
+        (filtroSemaforo === 'URGENTE' && req.diasRestantes >= 0 && req.diasRestantes <= 5) ||
+        (filtroSemaforo === 'EN_TERMINO' && req.diasRestantes > 5);
 
-  const requerimientosOrdenados = [...requerimientosFiltrados].sort(ordenarRequerimientos);
+      return matchesSearch && matchesOrganismo && matchesSemaforo;
+    })
+    .sort((a, b) => a.diasRestantes - b.diasRestantes);
 
-  const requerimientosPaginados = requerimientosOrdenados.slice((paginaActual - 1) * itemsPorPagina, paginaActual * itemsPorPagina);
+  const requerimientosPaginados = requerimientosFiltrados.slice((paginaActual - 1) * itemsPorPagina, paginaActual * itemsPorPagina);
 
-  const totalPaginas = Math.ceil(requerimientosFiltrados.length / itemsPorPagina);
+  const total = requerimientosFiltrados.length;
+  const totalPaginas = Math.ceil(total / itemsPorPagina);
 
   return (
-    <Card className="p-4">
-      {/* Filtros y búsqueda */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-        <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-10 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
+    <div className="space-y-4">
+      <ModuleFilters
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Buscar por ID, oficio, asunto, organismo o responsable..."
+        filters={[
+          {
+            type: 'select',
+            value: filtroOrganismo,
+            onChange: setFiltroOrganismo,
+            options: [
+              { value: '', label: 'Todos los organismos' },
+              ...organos.map((o) => ({ value: o, label: o }))
+            ]
+          },
+          {
+            type: 'select',
+            value: filtroSemaforo,
+            onChange: setFiltroSemaforo,
+            options: [
+              { value: 'TODOS', label: 'Todos los estados' },
+              { value: 'VENCIDO', label: 'Vencidos' },
+              { value: 'URGENTE', label: 'Urgentes (0-5 días)' },
+              { value: 'EN_TERMINO', label: 'En término (>5 días)' }
+            ]
+          }
+        ]}
+        totalItems={requerimientos.length}
+        filteredItems={requerimientosFiltrados.length}
+        onClearFilters={() => {
+          setSearchTerm('');
+          setFiltroOrganismo('');
+          setFiltroSemaforo('TODOS');
+          setPaginaActual(1);
+        }}
+        counterText={`Mostrando ${requerimientosFiltrados.length} de ${requerimientos.length} requerimientos`}
+      />
 
-        <div className="relative">
-          <Building2 className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <select
-            value={filtroOrganismo}
-            onChange={(e) => setFiltroOrganismo(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-10 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="">Todos los órganos</option>
-            {organos.map(org => (
-              <option key={org} value={org}>{org}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="relative">
-          <Filter className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <select
-            value={filtroEtapa}
-            onChange={(e) => setFiltroEtapa(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-10 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="">Todas las etapas</option>
-            {etapas.map(etapa => (
-              <option key={etapa} value={etapa}>{etapa}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex gap-2">
-          <select
-            value={ordenamiento.campo}
-            onChange={(e) => setOrdenamiento({ ...ordenamiento, campo: e.target.value })}
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="diasRestantes">Días restantes</option>
-            <option value="asunto">Asunto</option>
-          </select>
-          <Button
-            onClick={() => setOrdenamiento({ ...ordenamiento, direccion: ordenamiento.direccion === 'asc' ? 'desc' : 'asc' })}
-            size="sm"
-            variant="outline"
-            className="px-3"
-          >
-            {ordenamiento.direccion === 'asc' ? '↑' : '↓'}
-          </Button>
-        </div>
-      </div>
-
-      {/* Tabla */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">ID</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Organismo</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Asunto</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Responsable</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Días restantes</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Docs</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Etapa</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Última actuación</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {requerimientosPaginados.map(req => (
-              <tr key={req.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3">
-                  <span className="font-bold text-sm" style={{ color: '#003DA5' }}>{req.id}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
-                    {req.organismo}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3">
-                  <p className="text-sm text-gray-900 font-medium line-clamp-2 max-w-xs">
-                    {req.asunto}
-                  </p>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <Avatar className="w-7 h-7">
-                      <AvatarFallback className="text-xs" style={{ background: '#E0EDFF', color: '#003DA5' }}>
-                        {req.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm text-gray-700">{req.responsable}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <Badge className="text-xs flex items-center gap-1 font-semibold w-fit" style={{
-                    color: getSemaforoColor(req.diasRestantes),
-                    backgroundColor: `${getSemaforoColor(req.diasRestantes)}20`,
-                    border: `1px solid ${getSemaforoColor(req.diasRestantes)}`
-                  }}>
-                    <div className="w-2 h-2 rounded-full" style={{ background: getSemaforoColor(req.diasRestantes) }} />
-                    {Math.abs(req.diasRestantes)} días
-                  </Badge>
-                </td>
-                <td className="px-4 py-3">
-                  <span className="text-sm font-semibold text-gray-700">{req.documentos || 0}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <Badge variant="outline" className="text-xs">
-                    {req.etapa}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3">
-                  <p className="text-xs text-gray-600 line-clamp-2 max-w-xs">
-                    {req.ultimaActuacion || 'Sin actuaciones'}
-                  </p>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onVerRequerimiento(req)}
-                      title="Ver Detalle"
-                    >
-                      <Eye className="w-4 h-4 text-gray-600" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onRespuesta(req)}
-                      title="Responder"
-                    >
-                      <Send className="w-4 h-4 text-blue-600" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onInsumo(req)}
-                      title="Solicitar Insumo"
-                    >
-                      <User className="w-4 h-4 text-orange-600" />
-                    </Button>
-                  </div>
-                </td>
+      <Card className="overflow-hidden border border-gray-200">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">ID / Oficio</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Organismo</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Asunto</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Responsable</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Término</th>
+                <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Etapa</th>
+                <th className="px-4 py-3 text-center text-sm font-bold text-gray-500">Acciones</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {requerimientosPaginados.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-16 text-center text-gray-400">
+                    <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p>No se encontraron requerimientos</p>
+                  </td>
+                </tr>
+              )}
+
+              {requerimientosPaginados.map((req) => (
+                <tr key={req.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <p className="font-bold text-sm" style={{ color: '#003DA5' }}>{req.numeroOficio}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                      {req.organismo}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-sm text-gray-900 font-medium line-clamp-2 max-w-xs">
+                      {req.asunto}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <Avatar className="w-7 h-7">
+                        <AvatarFallback className="text-xs" style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                          {req.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm text-gray-700">{req.responsable}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge className="text-xs flex items-center gap-1 font-semibold w-fit" style={{
+                      color: getSemaforoColor(req.diasRestantes),
+                      backgroundColor: `${getSemaforoColor(req.diasRestantes)}20`,
+                      border: `1px solid ${getSemaforoColor(req.diasRestantes)}`
+                    }}>
+                      <div className="w-2 h-2 rounded-full" style={{ background: getSemaforoColor(req.diasRestantes) }} />
+                      {req.diasRestantes < 0 ? `${Math.abs(req.diasRestantes)}d vencido` : `${req.diasRestantes}d restantes`}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <SelectorEtapa
+                      etapaActual={req.etapa}
+                      onChange={(nuevaEtapa) => onCambiarEtapa(req.id, nuevaEtapa)}
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-center gap-0.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onVerRequerimiento(req)}
+                        title="Ver Detalle"
+                      >
+                        <Eye className="w-4 h-4 text-gray-600" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onRespuesta(req)}
+                        title="Responder"
+                      >
+                        <Send className="w-4 h-4 text-blue-600" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onDocumentos(req)}
+                        title="Documentos"
+                      >
+                        <FileCheck className="w-4 h-4 text-gray-600" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onComentarios(req)}
+                        title="Comentarios"
+                      >
+                        <MessageSquare className="w-4 h-4 text-gray-600" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       {/* Paginación */}
       {totalPaginas > 1 && (
@@ -917,7 +995,7 @@ function VistaLista({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
+              onClick={() => setPaginaActual(Math.max(1, paginaActual - 1))}
               disabled={paginaActual === 1}
             >
               <ChevronLeft className="w-4 h-4" />
@@ -928,7 +1006,7 @@ function VistaLista({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
+              onClick={() => setPaginaActual(Math.min(totalPaginas, paginaActual + 1))}
               disabled={paginaActual === totalPaginas}
             >
               <ChevronRight className="w-4 h-4" />
@@ -936,6 +1014,39 @@ function VistaLista({
           </div>
         </div>
       )}
-    </Card>
+    </div>
+  );
+}
+
+function SelectorEtapa({
+  etapaActual,
+  onChange
+}: {
+  etapaActual: Requerimiento['etapa'];
+  onChange: (etapa: Requerimiento['etapa']) => void;
+}) {
+  const config = ETAPAS_CONFIG.find((e) => e.valor === etapaActual) || ETAPAS_CONFIG[0];
+
+  return (
+    <div className="relative">
+      <select
+        value={etapaActual}
+        onChange={(e) => onChange(e.target.value as Requerimiento['etapa'])}
+        className="appearance-none text-xs font-semibold rounded-lg pl-3 pr-7 py-1.5 border cursor-pointer transition-all focus:ring-2 focus:ring-blue-300 focus:outline-none"
+        style={{
+          color: config.color,
+          backgroundColor: config.bg,
+          borderColor: `${config.color}40`
+        }}
+      >
+        {ETAPAS_CONFIG.map((e) => (
+          <option key={e.valor} value={e.valor}>{e.nombre}</option>
+        ))}
+      </select>
+      <ChevronDown
+        className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"
+        style={{ color: config.color }}
+      />
+    </div>
   );
 }

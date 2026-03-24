@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
@@ -12,6 +13,9 @@ import { Signer } from './certificates/signer.entity';
 import { TemplateConfig } from './certificates/template-config.entity';
 import { TemplateConfigChange } from './certificates/template-config-change.entity';
 import { Firmante } from './certificates/firmante.entity';
+import { TechnicalBonusAssignment } from './certificates/technical-bonus-assignment.entity';
+import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
 @Module({
   imports: [
@@ -24,12 +28,29 @@ import { Firmante } from './certificates/firmante.entity';
       password: process.env.DB_PASS,
       database: process.env.DB_NAME,
       schema: process.env.DB_SCHEMA,
-      entities: [CertificateRequest, Certificate, CertificateValidation, CertificateTemplate, Signer, TemplateConfig, TemplateConfigChange, Firmante],
+      entities: [
+        CertificateRequest,
+        Certificate,
+        CertificateValidation,
+        CertificateTemplate,
+        Signer,
+        TemplateConfig,
+        TemplateConfigChange,
+        Firmante,
+        TechnicalBonusAssignment,
+      ],
       synchronize: false, // Using existing schema
     }),
     CertificatesModule,
+    AuthModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+  ],
 })
 export class AppModule {}

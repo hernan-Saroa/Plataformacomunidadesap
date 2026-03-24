@@ -14,16 +14,98 @@ export class AuditService {
     private readonly requestLogRepository: Repository<RequestLog>,
   ) {}
 
+  /**
+   * Calcula las diferencias entre dos objetos y retorna un array de cambios
+   */
+  private calculateChanges(
+    previousData: any,
+    newData: any,
+  ): Array<{ field: string; oldValue: any; newValue: any }> {
+    const changes: Array<{ field: string; oldValue: any; newValue: any }> = [];
+
+    if (!previousData || !newData) {
+      return changes;
+    }
+
+    // Obtener todas las claves de ambos objetos
+    const allKeys = new Set([
+      ...Object.keys(previousData || {}),
+      ...Object.keys(newData || {}),
+    ]);
+
+    for (const key of allKeys) {
+      const oldValue = previousData[key];
+      const newValue = newData[key];
+
+      // Comparar valores (stringify para comparar objetos/arrays)
+      const oldStr = JSON.stringify(oldValue);
+      const newStr = JSON.stringify(newValue);
+
+      if (oldStr !== newStr) {
+        changes.push({
+          field: key,
+          oldValue: oldValue,
+          newValue: newValue,
+        });
+      }
+    }
+
+    return changes;
+  }
+
   async createLog(createAuditLogDto: CreateAuditLogDto): Promise<RequestLog> {
     try {
+      // Calcular cambios automáticamente si hay previousData y newData
+      let changes = createAuditLogDto.changes;
+      
+      // Solo calcular cambios si ambos datos existen (actualización)
+      if (
+        !changes &&
+        createAuditLogDto.previousData &&
+        createAuditLogDto.newData
+      ) {
+        changes = this.calculateChanges(
+          createAuditLogDto.previousData,
+          createAuditLogDto.newData,
+        );
+      }
+      
+      // Si es una creación (solo newData), generar cambios desde newData
+      if (
+        !changes &&
+        !createAuditLogDto.previousData &&
+        createAuditLogDto.newData
+      ) {
+        changes = Object.keys(createAuditLogDto.newData).map(key => ({
+          field: key,
+          oldValue: null,
+          newValue: createAuditLogDto.newData[key],
+        }));
+      }
+      
+      // Si es una eliminación (solo previousData), generar cambios desde previousData
+      if (
+        !changes &&
+        createAuditLogDto.previousData &&
+        !createAuditLogDto.newData
+      ) {
+        changes = Object.keys(createAuditLogDto.previousData).map(key => ({
+          field: key,
+          oldValue: createAuditLogDto.previousData[key],
+          newValue: null,
+        }));
+      }
+
       const log = this.requestLogRepository.create({
         ...createAuditLogDto,
+        changes: changes || [],
         timestamp: new Date(),
         hasLargeBody: (createAuditLogDto.requestBodySize || 0) >= 10240,
         hasLargeResponse: (createAuditLogDto.responseBodySize || 0) >= 10240,
       });
 
       const savedLog = await this.requestLogRepository.save(log);
+      this.logger.log(`Log de auditoría creado: ${savedLog.id} - Entidad: ${savedLog.entityName || 'N/A'}, Cambios: ${changes?.length || 0}`);
       return savedLog;
     } catch (error) {
       this.logger.error('Error al crear log de auditoría:', error);
@@ -81,6 +163,19 @@ export class AuditService {
     if (queryDto.statusCode) {
       queryBuilder.andWhere('log.statusCode = :statusCode', {
         statusCode: queryDto.statusCode,
+      });
+    }
+
+    // Filtros para tracking de cambios (nuevos campos)
+    if (queryDto.entityName) {
+      queryBuilder.andWhere('log.entityName = :entityName', {
+        entityName: queryDto.entityName,
+      });
+    }
+
+    if (queryDto.entityId) {
+      queryBuilder.andWhere('log.entityId = :entityId', {
+        entityId: queryDto.entityId,
       });
     }
 

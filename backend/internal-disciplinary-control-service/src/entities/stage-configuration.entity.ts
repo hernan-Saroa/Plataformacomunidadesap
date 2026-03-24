@@ -1,25 +1,37 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 @Entity('stage_configuration')
 export class StageConfiguration {
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-    @Column({ type: 'varchar', default: 'RECEPCIÓN' })
-    etapa: string;
+  @Column({ type: 'varchar', default: 'RECEPCIÓN' })
+  etapa: string;
 
-    @Column({ name: 'diasHabiles', type: 'int', default: 30 })
-    diasHabiles: number;
+  @Column({ name: 'diasHabiles', type: 'int', default: 30 })
+  diasHabiles: number;
 
-    @Column({ type: 'text', nullable: true })
-    descripcion: string;
+  @Column({ type: 'varchar', default: '#6B7280' })
+  color: string;
 
-    @Column({ default: true })
-    activo: boolean;
+  @Column({ type: 'text', nullable: true })
+  descripcion: string;
 
-    @CreateDateColumn({ name: 'createdAt' })
-    createdAt: Date;
+  @Column({ default: true })
+  activo: boolean;
 
-    @UpdateDateColumn({ name: 'updatedAt' })
-    updatedAt: Date;
+  @Column({ type: 'int', default: 0 })
+  orden: number;
+
+  @CreateDateColumn({ name: 'createdAt' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updatedAt' })
+  updatedAt: Date;
 }

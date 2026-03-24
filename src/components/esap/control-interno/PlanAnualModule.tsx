@@ -36,13 +36,15 @@ import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { Badge } from '../../ui/badge';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { planAnual5RolesApi } from './services/api';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
+import headerImg from '../../../assets/graduation-certificates/img_primera.png';
+import footerImg from '../../../assets/graduation-certificates/img_segunda.png';
 
 // Notificaciones
 import { useCrearNotificacion } from './hooks/useCrearNotificacion';
@@ -58,6 +60,28 @@ declare module 'jspdf' {
   }
 }
 import { useEffect } from 'react';
+
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
+
+// ✅ NUEVO: Importar validaciones Decreto 648/2017
+import {
+  validarDecreto648,
+  validarAntesDeAprobar,
+  validacionRapida,
+  generarMensajeToast,
+  obtenerEstadisticasPlan,
+  type ResultadoValidacion
+} from './utils/validacionesDecreto648';
+
+// ✅ NUEVO: Importar badge de cumplimiento Decreto 648
+import { BadgeDecreto648Completo, BadgeDecreto648Simple } from './components/BadgeDecreto648';
+
+// ✅ NUEVO: Importar servicio de generación de PDF
+import { generarPDFPlanAnual, validarDatosParaPDF } from './services/pdfPlanAnual';
+
+// ✅ NUEVO: Importar helper de configuración
+import { cargarConfiguracionPDF } from './utils/configuracionHelper';
 
 // ============ TIPOS ============
 
@@ -534,6 +558,12 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
                                 actividad.estado === 'En Ejecución' ? 'en-progreso' :
                                 actividad.estado === 'Completada' ? 'completada' : 'retrasada';
                 
+                // 🔍 LOG: Ver configuración de evidencias de la actividad
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                console.log('🎯 [handleGuardarPlan] Actividad:', actividad.nombre);
+                console.log('   - configuracionEvidencias (original):', JSON.stringify(actividad.configuracionEvidencias, null, 2));
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                
                 const actividadData = {
                   nombre: actividad.nombre.trim(),
                   descripcion: (actividad.descripcion || '').trim(),
@@ -542,7 +572,9 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
                   fecha_fin: actividad.fechaFin,
                   estado: estadoBD,
                   porcentaje_avance: actividad.porcentaje || 0,
-                  prioridad: 'Media' as const
+                  prioridad: 'Media' as const,
+                  // ✅ AGREGADO: Incluir configuración de evidencias
+                  configuracionEvidencias: actividad.configuracionEvidencias || undefined
                 };
 
                 if (!actividad.id || actividad.id.startsWith('act-')) {
@@ -672,7 +704,9 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
                   fecha_fin: actividad.fechaFin,
                   estado: estadoBD,
                   porcentaje_avance: actividad.porcentaje || 0,
-                  prioridad: 'Media' as const
+                  prioridad: 'Media' as const,
+                  // ✅ AGREGADO: Incluir configuración de evidencias
+                  configuracionEvidencias: actividad.configuracionEvidencias || undefined
                 };
 
                 if (!actividad.id || actividad.id.startsWith('act-')) {
@@ -727,6 +761,39 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
   };
 
   const handleAprobar = (plan: PlanAnual) => {
+    // ✅ NUEVO: Validar antes de mostrar modal de aprobación
+    const validacion = validarAntesDeAprobar(plan);
+    
+    if (!validacion.valido) {
+      // Mostrar errores en toast
+      const mensaje = generarMensajeToast(validacion);
+      
+      toast.error(mensaje.titulo, {
+        description: mensaje.descripcion,
+        duration: 8000,
+      });
+      
+      // Mostrar detalles en consola para debugging
+      console.error('❌ Validación Decreto 648/2017 falló:', validacion);
+      
+      // Mostrar errores específicos
+      if (validacion.errores.length > 0) {
+        setTimeout(() => {
+          validacion.errores.forEach((error, idx) => {
+            setTimeout(() => {
+              toast.error(`Error ${idx + 1}`, {
+                description: error,
+                duration: 6000
+              });
+            }, idx * 500);
+          });
+        }, 1000);
+      }
+      
+      return; // Bloquear aprobación
+    }
+    
+    // Si pasa validación, mostrar modal
     setPlanActual(plan);
     setMostrarModalAprobacion(true);
   };
@@ -773,9 +840,9 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
 
   const handleExportarPDF = async (plan: PlanAnual) => {
     try {
-    toast.success('Generando PDF...', {
-      description: 'El documento se descargará en unos segundos'
-    });
+      toast.info('Generando PDF...', {
+        description: 'El documento se descargará en unos segundos'
+      });
     
       // Importar jspdf-autotable dinámicamente
       const autoTableModule = await import('jspdf-autotable');
@@ -788,158 +855,93 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
         format: 'a4'
       });
 
-      // Función helper para cargar imagen del logo
-      const loadLogoImage = async (): Promise<string | null> => {
-        try {
-          // Intentar cargar desde diferentes ubicaciones posibles
-          const possiblePaths = [
-            '/src/assets/esap-logo.png',
-            '/src/assets/esap-logo.jpg',
-            '/assets/esap-logo.png',
-            '/assets/esap-logo.jpg',
-            './assets/esap-logo.png',
-            './assets/esap-logo.jpg'
-          ];
-          
-          // Por ahora retornamos null para usar el logo dibujado
-          // Si tienes la imagen, puedes agregarla aquí
-          return null;
-        } catch (error) {
-          return null;
-        }
-      };
-
       // Configuración de colores
-      const colorAzul = [0, 61, 165]; // #003DA5
-      const colorGris = [128, 128, 128];
+      const colorAzul: [number, number, number] = [0, 61, 165]; // #003DA5
+      const colorGris: [number, number, number] = [128, 128, 128];
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 10;
 
-      // ============ HEADER ============
-      // Logo ESAP: Intentar cargar imagen, si no, dibujar manualmente
-      const logoX = 15;
-      const logoY = 10;
-      const logoWidth = 25;
-      const logoHeight = 15;
-      
-      const logoImage = await loadLogoImage();
-      
-      if (logoImage) {
-        // Si tenemos la imagen, usarla
-        doc.addImage(logoImage, 'PNG', logoX, logoY, logoWidth, logoHeight);
-      } else {
-        // Dibujar logo manualmente: Triángulo de 10 círculos (1, 2, 3, 4) con letras "esap" en la base
-        const circleRadius = 2.3;
-        
-        // Establecer color azul para todos los círculos
-        doc.setFillColor(...colorAzul);
-        doc.setDrawColor(...colorAzul);
-        
-        // Fila 1 (arriba): 1 círculo
-        doc.circle(logoX + 11, logoY + 2, circleRadius, 'FD');
-        
-        // Fila 2: 2 círculos
-        doc.circle(logoX + 8.5, logoY + 5.5, circleRadius, 'FD');
-        doc.circle(logoX + 13.5, logoY + 5.5, circleRadius, 'FD');
-        
-        // Fila 3: 3 círculos
-        doc.circle(logoX + 6, logoY + 9, circleRadius, 'FD');
-        doc.circle(logoX + 11, logoY + 9, circleRadius, 'FD');
-        doc.circle(logoX + 16, logoY + 9, circleRadius, 'FD');
-        
-        // Fila 4 (base): 4 círculos con letras "esap" en minúsculas en blanco
-        const baseY = logoY + 12.5;
-        const baseCircles = [
-          { x: logoX + 3.5, letter: 'e' },
-          { x: logoX + 9, letter: 's' },
-          { x: logoX + 14.5, letter: 'a' },
-          { x: logoX + 20, letter: 'p' }
-        ];
-        
-        baseCircles.forEach((circle) => {
-          // Asegurar que el círculo se dibuje completamente
-          doc.setFillColor(...colorAzul);
-          doc.setDrawColor(...colorAzul);
-          doc.circle(circle.x, baseY, circleRadius, 'FD');
-          
-          // Agregar letra en blanco dentro del círculo
-          doc.setTextColor(255, 255, 255);
-          doc.setFontSize(6);
-          doc.setFont(undefined, 'bold');
-          doc.text(circle.letter, circle.x, baseY + 1.3, { align: 'center' });
-        });
-      }
-      
-      // Texto ESAP debajo del logo
-      const textY = logoY + 16.5;
-      doc.setFontSize(7);
-      doc.setTextColor(...colorAzul);
-      doc.setFont(undefined, 'bold');
-      doc.text('Escuela Superior de', logoX, textY);
-      doc.text('Administración Pública', logoX, textY + 3);
+      // ============ HEADER INSTITUCIONAL ESAP ============
+      // Logo ESAP (texto simulado)
+      doc.setFillColor(...colorAzul);
+      doc.rect(margin, 8, 45, 22, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ESAP', margin + 22.5, 18, { align: 'center' });
+      doc.setFontSize(6);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Escuela Superior de', margin + 22.5, 23, { align: 'center' });
+      doc.text('Administración Pública', margin + 22.5, 27, { align: 'center' });
       
       // Título principal (centrado)
-      doc.setFontSize(14);
-      doc.setFont(undefined, 'bold');
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
       doc.setTextColor(0, 0, 0);
-      doc.text('PLAN DE AUDITORIA INTERNAS DEL SISTEMA DE GESTIÓN DE LA CALIDAD', 105, 20, { align: 'center', maxWidth: 140 });
+      doc.text('PLAN DE AUDITORÍAS INTERNAS', 115, 14, { align: 'center' });
+      doc.text('SISTEMA DE GESTIÓN DE LA CALIDAD', 115, 20, { align: 'center' });
 
       // Metadata (Código, Versión, Fecha) - lado derecho
-      doc.setFontSize(9);
-      doc.setFont(undefined, 'normal');
-      doc.text('Código: EM-FO-014', 160, 10);
-      doc.text('Versión: 1', 160, 14);
-      doc.text(`Fecha: ${new Date().toLocaleDateString('es-CO')}`, 160, 18);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Código: EM-FO-014', 165, 12);
+      doc.text('Versión: 1', 165, 16);
+      doc.text(`Fecha: ${new Date().toLocaleDateString('es-CO')}`, 165, 20);
 
       let yPos = 35; // Más espacio después del header
 
       // ============ SECCIÓN: PROCESO ============
       yPos += 5; // Espacio antes de la sección
       doc.setFontSize(12);
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.setTextColor(...colorAzul);
       doc.text('PROCESO: EVALUACION, CONTROL Y MEJORA', 10, yPos);
       yPos += 8; // Espacio después del título
 
       doc.setFontSize(10);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.setTextColor(0, 0, 0);
       
       // Campos del proceso
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('FECHA DEL PLAN:', 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text(new Date().toLocaleDateString('es-CO'), 50, yPos);
       yPos += 10; // Espacio entre líneas
 
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       const procesoLabel = 'PROCESO/DEPENDENCIA A AUDITAR:';
       doc.text(procesoLabel, 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       // Calcular posición X para el valor: después del label + espacio
       const procesoLabelWidth = doc.getTextWidth(procesoLabel);
       doc.text('Control Interno - Plan Anual', 10 + procesoLabelWidth + 5, yPos);
       yPos += 10; // Espacio vertical normal
 
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       const responsableLabel = 'RESPONSABLE PROCESO/DEPENDENCIA A AUDITAR:';
       doc.text(responsableLabel, 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       // Calcular posición X para el valor: después del label + espacio
       const responsableLabelWidth = doc.getTextWidth(responsableLabel);
       doc.text(plan.jefeOCI.nombre, 10 + responsableLabelWidth + 5, yPos);
       yPos += 10; // Espacio después
 
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('AUDITOR LIDER:', 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text(plan.jefeOCI.nombre, 50, yPos);
       yPos += 8;
 
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('EQUIPO AUDITOR:', 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       const equipoAuditores = plan.roles
-        .flatMap(rol => rol.actividades.map(act => act.responsableNombre))
-        .filter((nombre, index, arr) => arr.indexOf(nombre) === index)
+        .flatMap(rol => rol.actividades.map(act => {
+          const actAny = act as any;
+          return actAny.responsable?.nombre || actAny.responsable || actAny.responsableNombre || '';
+        }))
+        .filter((nombre, index, arr) => nombre && arr.indexOf(nombre) === index)
         .join(', ') || 'Por definir';
       // Dividir texto largo en múltiples líneas
       const equipoLines = doc.splitTextToSize(equipoAuditores, 140);
@@ -952,48 +954,48 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       doc.rect(10, yPos, 190, 8, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(12);
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('ASPECTOS A TENER EN CUENTA', 105, yPos + 6, { align: 'center' });
       yPos += 10; // Espacio después del banner
 
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(10);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
 
       // Objetivo
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('OBJETIVO DE LA AUDITORIA:', 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       const objetivoText = doc.splitTextToSize('Verificar el cumplimiento del Plan Anual de Control Interno según Decreto 648/2017', 180);
       doc.text(objetivoText, 10, yPos + 5);
       yPos += objetivoText.length * 5 + 8; // Espacio dinámico
 
       // Alcance
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('ALCANCE DE LA AUDITORIA:', 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text(`Plan Anual ${plan.año} - ${plan.roles.length} roles del Decreto 648/2017`, 10, yPos + 5);
       yPos += 10;
 
       // Criterios
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('CRITERIOS DE AUDITORÍA:', 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text('Decreto 648 de 2017 - Sistema de Control Interno', 10, yPos + 5);
       yPos += 10;
 
       // Método
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('METODO DE AUDITORIA:', 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text('Revisión documental y verificación de actividades', 10, yPos + 5);
       yPos += 10;
 
       // Recursos
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('RECURSOS:', 10, yPos);
       yPos += 6; // Más espacio
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text('FINANCIEROS', 10, yPos);
       doc.text('LOGISTICOS', 50, yPos);
       doc.text('TECNOLÓGICOS', 90, yPos);
@@ -1006,19 +1008,26 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       doc.rect(10, yPos, 190, 8, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(12);
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('CRONOGRAMA Y EQUIPO AUDITOR', 105, yPos + 6, { align: 'center' });
       yPos += 10; // Espacio después del banner
 
       // Preparar datos de la tabla
       const tableData: any[] = [];
-      plan.roles.forEach(rol => {
+      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach(rol => {
         rol.actividades.forEach(actividad => {
+          // Obtener nombre del responsable (puede venir como 'responsable' o 'responsableNombre')
+          const actAny = actividad as any;
+          const nombreResponsable = actAny.responsable?.nombre 
+            || actAny.responsable 
+            || actAny.responsableNombre 
+            || 'Por asignar';
+          
           tableData.push([
             `${rol.nombre}: ${actividad.nombre}`,
-            actividad.responsableNombre || 'Por asignar',
-            actividad.responsableNombre || 'Por asignar',
-            actividad.fechaInicio || 'Por definir',
+            nombreResponsable,
+            nombreResponsable,
+            actAny.fechaInicio || actAny.fecha_inicio || 'Por definir',
             'Por definir',
             'Por definir'
           ]);
@@ -1074,21 +1083,21 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       doc.rect(10, yPos, 90, 8, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(10);
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('FIRMA DEL AUDITOR LÍDER', 55, yPos + 6, { align: 'center' });
       yPos += 12; // Espacio entre banner y nombre
       doc.setTextColor(0, 0, 0);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text(plan.jefeOCI.nombre, 55, yPos, { align: 'center' });
 
       // Firma Jefe Oficina de Planeación
       doc.setFillColor(...colorAzul);
       doc.rect(110, yPos - 12, 90, 8, 'F');
       doc.setTextColor(255, 255, 255);
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('FIRMA JEFE OFICINA DE PLANEACIÓN', 155, yPos - 6, { align: 'center' });
       doc.setTextColor(0, 0, 0);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text('_________________________', 155, yPos + 2, { align: 'center' });
 
       // Guardar PDF
@@ -1191,7 +1200,7 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       ];
 
       const rolesRows: any[] = [];
-      plan.roles.forEach(rol => {
+      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach(rol => {
         if (rol.actividades.length === 0) {
           rolesRows.push([
             rol.nombre,
@@ -1243,7 +1252,7 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       ];
 
       const cronogramaRows: any[] = [];
-      plan.roles.forEach(rol => {
+      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach(rol => {
         rol.actividades.forEach(actividad => {
           cronogramaRows.push([
             `${rol.nombre}: ${actividad.nombre}`,
@@ -1331,7 +1340,7 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
   };
 
   return (
-    <div className="space-y-4 pb-8">
+    <Container4K>
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
@@ -1420,7 +1429,7 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
           onAprobar={handleConfirmarAprobacion}
         />
       )}
-    </div>
+    </Container4K>
   );
 }
 
@@ -1563,6 +1572,11 @@ function ListaPlanesAnuales({ planes, onCrearNuevo, onVerDetalle, onEditar, onAp
                   <span className="text-gray-700">
                     {plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0)} actividades
                   </span>
+                </div>
+
+                {/* ✅ NUEVO: Badge de cumplimiento Decreto 648 */}
+                <div className="pt-2" onClick={(e) => e.stopPropagation()}>
+                  <BadgeDecreto648Simple plan={plan} />
                 </div>
               </div>
 
@@ -2724,22 +2738,27 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
         )}
       </div>
 
-      {/* TABS DE NAVEGACIÓN */}
-      <Card className="p-1">
-        <div className="flex gap-1">
-          <button
-            onClick={() => setTabActiva('detalle')}
-            className={`flex-1 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
-              tabActiva === 'detalle'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
+      {/* ✅ NUEVO: BADGE CUMPLIMIENTO DECRETO 648/2017 */}
+      <BadgeDecreto648Completo plan={plan} />
+
+      {/* ESTADO Y JEFE OCI */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="p-6">
+          <h3 className="font-bold text-sm text-gray-900 mb-4">Estado del Plan</h3>
+          <Badge
+            className={`text-sm px-3 py-1 ${
+              plan.estado === 'Aprobado'
+                ? 'bg-green-100 text-green-800'
+                : plan.estado === 'En Revisión'
+                ? 'bg-yellow-100 text-yellow-800'
+                : 'bg-gray-100 text-gray-800'
             }`}
           >
             <div className="flex items-center justify-center gap-2">
               <FileText className="w-4 h-4" />
               <span>Detalle</span>
             </div>
-          </button>
+          </Badge>
           <button
             onClick={() => setTabActiva('indicadores')}
             className={`flex-1 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
@@ -2754,7 +2773,7 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
             </div>
           </button>
         </div>
-      </Card>
+      </div>
 
       {/* CONTENIDO DE LAS TABS */}
       {tabActiva === 'detalle' && (
@@ -2799,7 +2818,7 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
             </h3>
 
             <div className="space-y-6">
-              {plan.roles.map((rol) => (
+              {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => (
             <div key={rol.id} className="border-l-4 pl-4" style={{ borderLeftColor: rol.color }}>
               <div className="flex items-center gap-3 mb-4">
                 <span className="text-3xl">{rol.icono}</span>
@@ -2861,7 +2880,7 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
                       const response = await fetch(urlDescarga, {
                         method: 'GET',
                         headers: {
-                          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                          'Authorization': `Bearer ${localStorage.getItem('esap_auth_token')}`,
                         },
                       });
 

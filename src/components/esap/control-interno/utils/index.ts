@@ -99,3 +99,5 @@ export {
   ESTADOS_LISTA_CHEQUEO,
   MENSAJES
 };
+// Conversores de datos
+export * from './procesoAuditableConverters';

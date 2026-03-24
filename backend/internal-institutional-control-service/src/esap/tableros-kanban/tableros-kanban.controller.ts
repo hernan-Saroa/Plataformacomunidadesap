@@ -9,7 +9,12 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { Permissions } from '../../auth/decorators/permissions.decorator';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import { TablerosKanbanService } from './tableros-kanban.service';
 import { CreateTableroKanbanDto } from './dto/create-tablero-kanban.dto';
 import { UpdateTableroKanbanDto } from './dto/update-tablero-kanban.dto';
@@ -25,6 +30,8 @@ export class TablerosKanbanController {
    * Obtener todos los tableros
    */
   @Get()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   findAll(@Query('includeInactive') includeInactive?: string) {
     const includeInactiveBool = includeInactive === 'true';
     return this.tablerosKanbanService.findAll(includeInactiveBool);
@@ -35,6 +42,8 @@ export class TablerosKanbanController {
    * Obtener un tablero por ID
    */
   @Get(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   findOne(@Param('id') id: string) {
     return this.tablerosKanbanService.findOne(id);
   }
@@ -44,6 +53,8 @@ export class TablerosKanbanController {
    * Obtener tablero por tipo
    */
   @Get('tipo/:tipo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   findByTipo(@Param('tipo') tipo: string) {
     return this.tablerosKanbanService.findByTipo(tipo);
   }
@@ -53,6 +64,8 @@ export class TablerosKanbanController {
    * Crear un nuevo tablero
    */
   @Post()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   create(@Body() createDto: CreateTableroKanbanDto) {
     return this.tablerosKanbanService.create(createDto);
   }
@@ -62,6 +75,8 @@ export class TablerosKanbanController {
    * Actualizar un tablero
    */
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   update(@Param('id') id: string, @Body() updateDto: UpdateTableroKanbanDto) {
     return this.tablerosKanbanService.update(id, updateDto);
   }
@@ -71,6 +86,8 @@ export class TablerosKanbanController {
    * Eliminar un tablero (soft delete)
    */
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.tablerosKanbanService.remove(id);
@@ -81,6 +98,8 @@ export class TablerosKanbanController {
    * Restaurar un tablero eliminado
    */
   @Post(':id/restore')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   restore(@Param('id') id: string) {
     return this.tablerosKanbanService.restore(id);
   }
@@ -94,6 +113,8 @@ export class TablerosKanbanController {
    * Crear una nueva etapa
    */
   @Post(':tableroId/etapas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   createEtapa(
     @Param('tableroId') tableroId: string,
     @Body() createDto: CreateEtapaKanbanDto,
@@ -106,6 +127,8 @@ export class TablerosKanbanController {
    * Actualizar una etapa
    */
   @Patch(':tableroId/etapas/:etapaId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   updateEtapa(
     @Param('tableroId') tableroId: string,
     @Param('etapaId') etapaId: string,
@@ -123,6 +146,8 @@ export class TablerosKanbanController {
    * Eliminar una etapa
    */
   @Delete(':tableroId/etapas/:etapaId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   removeEtapa(
     @Param('tableroId') tableroId: string,
@@ -136,6 +161,8 @@ export class TablerosKanbanController {
    * Reordenar etapas
    */
   @Post(':tableroId/etapas/reordenar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   reordenarEtapas(
     @Param('tableroId') tableroId: string,
     @Body() body: { etapasIds: string[] },

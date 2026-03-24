@@ -40,6 +40,12 @@ export class Certificate {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   technical_bonus: number;
 
+  @Column({ type: 'boolean', default: true })
+  include_salary: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  include_technical_bonus: boolean;
+
   @Column({ length: 255, nullable: true })
   salary_text: string;
 
@@ -47,10 +53,10 @@ export class Certificate {
   department: string;
 
   @Column({ length: 255, nullable: true })
-  department_parent: string;
+  cod_cargo: string;
 
   @Column({ length: 255, nullable: true })
-  department_son: string;
+  cod_grade: string;
 
   @Column({ length: 100, nullable: true })
   campus: string;
@@ -72,6 +78,15 @@ export class Certificate {
 
   @Column({ length: 255, nullable: true })
   pdf_url: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  template_snapshot: any | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  template_type: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  template_version: string | null;
 
   @Column({ length: 50, default: 'VALID' })
   status: string;

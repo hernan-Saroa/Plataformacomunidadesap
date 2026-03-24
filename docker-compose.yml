@@ -192,6 +192,8 @@ services:
       NODE_ENV: development
       PORT: 3005
 
+      JWT_SECRET: esap-super-secret-jwt-key-2024
+
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
@@ -201,6 +203,7 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+      NOTIFICATIONS_SERVICE_URL: http://notifications-service:3009
     ports:
       - "3005:3005"
     depends_on:

@@ -96,6 +96,22 @@ export class AccionCorrectiva {
     fechaValidacion?: string;
   }>;
 
+  /** Verificación OCI (Cierre): cumplida | parcial | incumplida | sin_verificar */
+  @Column({ name: 'estado_verificacion_oci', type: 'varchar', length: 20, nullable: true, default: 'sin_verificar' })
+  estadoVerificacionOci?: string | null;
+
+  @Column({ name: 'evidencia_verificada', type: 'text', nullable: true })
+  evidenciaVerificada?: string | null;
+
+  @Column({ name: 'observacion_oci', type: 'text', nullable: true })
+  observacionOci?: string | null;
+
+  @Column({ name: 'fecha_verificacion_oci', type: 'timestamp', nullable: true })
+  fechaVerificacionOci?: Date | null;
+
+  @Column({ name: 'verificada_por_id', type: 'bigint', nullable: true })
+  verificadaPorId?: number | null;
+
   @OneToMany(() => RegistroSeguimiento, (registro) => registro.accion, { cascade: true })
   registrosSeguimiento: RegistroSeguimiento[];
 

@@ -45,6 +45,15 @@ export class PeiIndicador {
     @Column({ name: 'tipo_indicador', length: 50, default: 'GESTION' })
     tipoIndicador: string;
 
+    @Column({ name: 'archived_at', type: 'timestamp with time zone', nullable: true })
+    archivedAt: Date | null;
+
+    @Column({ name: 'archived_by', type: 'varchar', length: 255, nullable: true })
+    archivedBy: string | null;
+
+    @Column({ name: 'archive_reason', type: 'text', nullable: true })
+    archiveReason: string | null;
+
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 

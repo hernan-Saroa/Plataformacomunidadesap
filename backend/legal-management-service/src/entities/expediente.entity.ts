@@ -1,16 +1,20 @@
 
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { Actuacion } from './actuacion.entity';
 import { DecisionDisciplinaria } from './decision-disciplinaria.entity';
 import { Evidencia } from './evidencia.entity';
 import { Documento } from './documento.entity';
+import { Actor } from './actor.entity';
 
 @Entity('expedientes', { schema: 'legal_management' })
 export class Expediente {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @OneToMany(() => Actuacion, (actuacion) => actuacion.expediente)
+    @OneToMany(() => Actor, (actor) => actor.expediente, { cascade: true })
+    actors: Actor[];
+
+    // Data populated manually by Service, no ORM relation
     actuaciones: Actuacion[];
 
     @OneToMany(() => DecisionDisciplinaria, (decision) => decision.expediente)
@@ -21,6 +25,17 @@ export class Expediente {
 
     @OneToMany(() => Evidencia, (evidencia) => evidencia.expediente)
     evidencias: Evidencia[];
+
+    // Relación recursiva para procesos anexados
+    @Column({ name: 'proceso_principal_id', nullable: true })
+    procesoPrincipalId: string;
+
+    @ManyToOne(() => Expediente, expediente => expediente.procesosAnexados, { nullable: true })
+    @JoinColumn({ name: 'proceso_principal_id' })
+    procesoPrincipal: Expediente;
+
+    @OneToMany(() => Expediente, expediente => expediente.procesoPrincipal)
+    procesosAnexados: Expediente[];
 
     documentosCount: number = 0;
 
@@ -48,9 +63,24 @@ export class Expediente {
     @Column('numeric', { precision: 15, scale: 2, nullable: true })
     cuantia: number;
 
-    // Campos adicionales para Dashboard
+    // Campos para Dashboard y Conciliación
+    @Column({ name: 'nivel_riesgo', nullable: true })
+    nivelRiesgo: string;
+
+    @Column('numeric', { name: 'provision_contable', precision: 15, scale: 2, nullable: true })
+    provisionContable: number;
+
+    @Column({ name: 'fecha_estimacion_provision', type: 'timestamp', nullable: true })
+    fechaEstimacionProvision: Date;
+
+    @Column({ name: 'observacion_provision', type: 'text', nullable: true })
+    observacionProvision: string;
+
     @Column({ name: 'abogado_sustanciador', nullable: true })
     abogadoSustanciador: string;
+
+    @Column('text', { name: 'abogados_anteriores', array: true, default: '{}' })
+    abogadosAnteriores: string[];
 
     @Column({ name: 'fecha_prescripcion', type: 'timestamp', nullable: true })
     fechaPrescripcion: Date;
@@ -60,6 +90,9 @@ export class Expediente {
 
     @Column({ name: 'termino_procesal_dias', nullable: true })
     terminoProcesalDias: number;
+
+    @Column({ name: 'tipo_conteo_termino', default: 'HABILES' })
+    tipoConteoTermino: string; // 'HABILES' (business days) or 'CALENDARIO' (calendar days)
 
     @Column({ name: 'ultima_actuacion', nullable: true })
     ultimaActuacion: string;
@@ -166,6 +199,19 @@ export class Expediente {
 
     @Column({ name: 'datos_requeridos', type: 'text', nullable: true })
     datosRequeridos: string | null;
+
+    // Campos para archivado/eliminado (soft-delete)
+    @Column({ name: 'estado_archivo', default: 'ACTIVO' })
+    estadoArchivo: string; // 'ACTIVO' | 'ARCHIVADO' | 'ELIMINADO'
+
+    @Column({ name: 'fecha_archivo', type: 'timestamp', nullable: true })
+    fechaArchivo: Date;
+
+    @Column({ name: 'usuario_archivo', nullable: true })
+    usuarioArchivo: string;
+
+    @Column({ name: 'motivo_archivo', type: 'text', nullable: true })
+    motivoArchivo: string;
 
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;

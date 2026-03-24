@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
+  OneToMany,
   CreateDateColumn,
   UpdateDateColumn,
   Index,
@@ -10,6 +11,7 @@ import {
 } from 'typeorm';
 import { RolPlanAnual5 } from './rol-plan-anual-5.entity';
 import { PlanAnual5Roles } from './plan-anual-5-roles.entity';
+import { AdjuntoActividadPlanAnual5 } from './adjunto-actividad-plan-anual-5.entity';
 
 @Entity('actividad_plan_anual_5', { schema: 'control_interno' })
 export class ActividadPlanAnual5 {
@@ -67,6 +69,69 @@ export class ActividadPlanAnual5 {
     default: 'Media',
   })
   prioridad: 'Alta' | 'Media' | 'Baja';
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NUEVOS CAMPOS - Migración 129
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Column({ type: 'text', nullable: true })
+  control: string;
+
+  @Column({ type: 'text', nullable: true })
+  evaluacion: string;
+
+  @Column({ type: 'text', nullable: true })
+  seguimiento: string;
+
+  @Column({ type: 'boolean', name: 'requiere_verificacion_director', default: false })
+  requiereVerificacionDirector: boolean;
+
+  @Column({ type: 'boolean', name: 'verificada_por_director', default: false })
+  verificadaPorDirector: boolean;
+
+  @Column({ type: 'timestamp', name: 'fecha_verificacion', nullable: true })
+  fechaVerificacion: Date;
+
+  @Column({ type: 'text', name: 'observaciones_director', nullable: true })
+  observacionesDirector: string;
+
+  @Column({ type: 'jsonb', name: 'configuracion_evidencias', nullable: true })
+  configuracionEvidencias: {
+    adjuntosRequeridos: 'OBLIGATORIO' | 'OPCIONAL' | 'NO_REQUERIDO';
+    observacionRequerida: 'OBLIGATORIO' | 'OPCIONAL' | 'NO_REQUERIDO';
+    minimoAdjuntos?: number;
+    tiposAdjuntosPermitidos?: string[];
+    longitudMinimaObservacion?: number;
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CAMPOS PARA VINCULACIÓN CON AUDITORÍAS - Migración 148
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Column({ type: 'varchar', length: 50, name: 'tipo_calculo', default: 'manual' })
+  tipoCalculo: 'manual' | 'auditorias' | 'planes_mejoramiento';
+
+  @Column({ type: 'integer', name: 'total_auditorias_programadas', default: 0 })
+  totalAuditoriasProgramadas: number;
+
+  @Column({ type: 'integer', name: 'total_auditorias_finalizadas', default: 0 })
+  totalAuditoriasFinalizadas: number;
+
+  @Column({ type: 'jsonb', name: 'auditorias_por_tipo', nullable: true })
+  auditoriasPorTipo: {
+    regular?: { programadas: number; finalizadas: number; en_proceso: number; pendientes: number };
+    territorial?: { programadas: number; finalizadas: number; en_proceso: number; pendientes: number };
+    especial?: { programadas: number; finalizadas: number; en_proceso: number; pendientes: number };
+    seguimiento?: { programadas: number; finalizadas: number; en_proceso: number; pendientes: number };
+  };
+
+  // Relación con adjuntos
+  @OneToMany(() => AdjuntoActividadPlanAnual5, (adjunto) => adjunto.actividad, { cascade: true })
+  adjuntos: AdjuntoActividadPlanAnual5[];
+
+  // Soft delete
+  @Column({ type: 'boolean', default: true })
+  activo: boolean;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

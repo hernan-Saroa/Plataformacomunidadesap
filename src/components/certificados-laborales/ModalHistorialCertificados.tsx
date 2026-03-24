@@ -4,10 +4,12 @@
  */
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Search, FileText, Calendar, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
 import { Badge } from '../ui/badge';
-import { useHistorialCertificados } from '../../hooks/useHistorialCertificados';
+import { PaginationPremium } from '../shared/PaginationPremium';
+import { useHistorialCertificados, type Empleado } from '../../hooks/useHistorialCertificados';
 
 interface ModalHistorialCertificadosProps {
   isOpen: boolean;
@@ -26,6 +28,9 @@ export function ModalHistorialCertificados({ isOpen, onClose }: ModalHistorialCe
   } = useHistorialCertificados();
 
   const [busquedaEmpleado, setBusquedaEmpleado] = React.useState('');
+  const [historialPage, setHistorialPage] = React.useState(1);
+  const [empleadoSeleccionadoSnapshot, setEmpleadoSeleccionadoSnapshot] = React.useState<Empleado | null>(null);
+  const historialItemsPerPage = 5;
 
   // Filtrar empleados por búsqueda
   const empleadosFiltrados = React.useMemo(() => {
@@ -47,12 +52,33 @@ export function ModalHistorialCertificados({ isOpen, onClose }: ModalHistorialCe
     if (!isOpen) {
       limpiarHistorial();
       setBusquedaEmpleado('');
+      setHistorialPage(1);
+      setEmpleadoSeleccionadoSnapshot(null);
     }
   }, [isOpen, limpiarHistorial]);
+
+  React.useEffect(() => {
+    setHistorialPage(1);
+  }, [empleadoSeleccionado]);
+
+  React.useEffect(() => {
+    if (!empleadoSeleccionado) {
+      setEmpleadoSeleccionadoSnapshot(null);
+      return;
+    }
+
+    const empleadoActual = empleados.find(
+      (emp) => emp.id === empleadoSeleccionado || emp.documento === empleadoSeleccionado
+    );
+    if (empleadoActual) {
+      setEmpleadoSeleccionadoSnapshot(empleadoActual);
+    }
+  }, [empleadoSeleccionado, empleados]);
 
   const getEstadoBadge = (estado: string) => {
     const estilos = {
       activo: { bg: 'bg-green-100', text: 'text-green-800', label: 'Activo', icon: CheckCircle },
+      inactivo: { bg: 'bg-red-100', text: 'text-red-800', label: 'Inactivo', icon: Clock },
       revocado: { bg: 'bg-red-100', text: 'text-red-800', label: 'Revocado', icon: XCircle },
       expirado: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Expirado', icon: Clock },
     };
@@ -66,13 +92,39 @@ export function ModalHistorialCertificados({ isOpen, onClose }: ModalHistorialCe
     );
   };
 
-  const empleadoSeleccionadoData = empleados.find(
-    (emp) => emp.id === empleadoSeleccionado || emp.documento === empleadoSeleccionado
+  const empleadoSeleccionadoData =
+    empleadoSeleccionadoSnapshot ||
+    empleados.find((emp) => emp.id === empleadoSeleccionado || emp.documento === empleadoSeleccionado);
+
+  const getHistorialSortTime = React.useCallback((cert: { fechaGeneracion?: string; fechaSolicitud?: string }) => {
+    const preferred = cert.fechaGeneracion || cert.fechaSolicitud;
+    const preferredTime = preferred ? new Date(preferred).getTime() : NaN;
+    if (Number.isFinite(preferredTime)) return preferredTime;
+
+    const solicitudTime = cert.fechaSolicitud ? new Date(cert.fechaSolicitud).getTime() : NaN;
+    return Number.isFinite(solicitudTime) ? solicitudTime : 0;
+  }, []);
+
+  const historialOrdenado = React.useMemo(
+    () => [...historial].sort((a, b) => getHistorialSortTime(b) - getHistorialSortTime(a)),
+    [historial, getHistorialSortTime]
   );
+
+  const historialTotalPages = Math.max(1, Math.ceil(historialOrdenado.length / historialItemsPerPage));
+  const historialPaginado = React.useMemo(() => {
+    const startIndex = (historialPage - 1) * historialItemsPerPage;
+    return historialOrdenado.slice(startIndex, startIndex + historialItemsPerPage);
+  }, [historialOrdenado, historialPage]);
+
+  React.useEffect(() => {
+    if (historialPage > historialTotalPages) {
+      setHistorialPage(historialTotalPages);
+    }
+  }, [historialPage, historialTotalPages]);
 
   if (!isOpen) return null;
 
-  return (
+  const modalContent = (
     <div className="fixed inset-0 z-[9999] overflow-hidden">
       {/* Overlay */}
       <AnimatePresence>
@@ -137,6 +189,7 @@ export function ModalHistorialCertificados({ isOpen, onClose }: ModalHistorialCe
                         key={empleado.id}
                         onClick={() => {
                           setEmpleadoSeleccionado(empleado.id);
+                          setEmpleadoSeleccionadoSnapshot(empleado);
                           setBusquedaEmpleado('');
                         }}
                         className={`w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0 ${
@@ -176,7 +229,10 @@ export function ModalHistorialCertificados({ isOpen, onClose }: ModalHistorialCe
                         </div>
                       </div>
                       <button
-                        onClick={() => setEmpleadoSeleccionado(null)}
+                        onClick={() => {
+                          setEmpleadoSeleccionado(null);
+                          setEmpleadoSeleccionadoSnapshot(null);
+                        }}
                         className="text-sm text-red-600 hover:text-red-700 font-medium"
                       >
                         Cambiar
@@ -194,9 +250,9 @@ export function ModalHistorialCertificados({ isOpen, onClose }: ModalHistorialCe
                       <Calendar className="w-5 h-5 text-[#003DA5]" />
                       Historial de Certificados
                     </h3>
-                    {historial.length > 0 && (
+                    {historialOrdenado.length > 0 && (
                       <span className="text-sm text-gray-600">
-                        {historial.length} certificado{historial.length !== 1 ? 's' : ''}
+                        {historialOrdenado.length} certificado{historialOrdenado.length !== 1 ? 's' : ''}
                       </span>
                     )}
                   </div>
@@ -211,7 +267,7 @@ export function ModalHistorialCertificados({ isOpen, onClose }: ModalHistorialCe
                       <XCircle className="w-12 h-12 mx-auto mb-4 text-red-500" />
                       <p className="text-red-600 font-medium">{error}</p>
                     </div>
-                  ) : historial.length === 0 ? (
+                  ) : historialOrdenado.length === 0 ? (
                     <div className="text-center py-12 bg-gray-50 border border-gray-200 rounded-lg">
                       <FileText className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                       <p className="text-gray-600 font-medium">No se encontraron certificados</p>
@@ -220,6 +276,7 @@ export function ModalHistorialCertificados({ isOpen, onClose }: ModalHistorialCe
                       </p>
                     </div>
                   ) : (
+                    <div className="space-y-4">
                     <div className="border border-gray-200 rounded-lg overflow-hidden">
                       <div className="overflow-x-auto">
                         <table className="w-full">
@@ -253,7 +310,7 @@ export function ModalHistorialCertificados({ isOpen, onClose }: ModalHistorialCe
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-200">
-                            {historial.map((cert) => (
+                            {historialPaginado.map((cert) => (
                               <tr key={cert.id} className="hover:bg-gray-50 transition-colors">
                                 <td className="px-4 py-4 whitespace-nowrap">{getEstadoBadge(cert.estado)}</td>
                                 <td className="px-4 py-4 whitespace-nowrap">
@@ -302,6 +359,18 @@ export function ModalHistorialCertificados({ isOpen, onClose }: ModalHistorialCe
                         </table>
                       </div>
                     </div>
+                    {historialOrdenado.length > historialItemsPerPage && (
+                      <div className="pt-4 border-t border-gray-200">
+                        <PaginationPremium
+                          currentPage={historialPage}
+                          totalPages={historialTotalPages}
+                          onPageChange={setHistorialPage}
+                          itemsPerPage={historialItemsPerPage}
+                          totalItems={historialOrdenado.length}
+                        />
+                      </div>
+                    )}
+                    </div>
                   )}
                 </div>
               )}
@@ -334,5 +403,11 @@ export function ModalHistorialCertificados({ isOpen, onClose }: ModalHistorialCe
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined') {
+    return createPortal(modalContent, document.body);
+  }
+
+  return modalContent;
 }
 

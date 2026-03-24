@@ -1,0 +1,2 @@
+ALTER TABLE academic_registration.graduation_certificate_requests
+ALTER COLUMN graduation_date DROP NOT NULL;

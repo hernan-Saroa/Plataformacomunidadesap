@@ -28,6 +28,9 @@ export class ProcesoCoactivoAdjunto {
     @Column({ nullable: true })
     tipo: string;
 
+    @Column({ name: 'es_titulo_ejecutivo', default: false })
+    esTituloEjecutivo: boolean;
+
     @Column({ name: 'archivo_url', nullable: true })
     archivoUrl: string;
 

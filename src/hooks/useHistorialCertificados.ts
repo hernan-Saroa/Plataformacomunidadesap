@@ -19,7 +19,7 @@ export interface Empleado {
 export interface CertificadoHistorial {
   id: string;
   consecutivo: string;
-  estado: 'activo' | 'revocado' | 'expirado';
+  estado: 'activo' | 'inactivo' | 'revocado' | 'expirado';
   fechaSolicitud: string;
   fechaGeneracion: string;
   cantidadEscaneos: number;
@@ -39,6 +39,60 @@ interface UseHistorialCertificadosReturn {
 }
 
 export function useHistorialCertificados(): UseHistorialCertificadosReturn {
+  const normalizarDocumento = (value?: string | number | null) => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    const digits = raw.replace(/\D+/g, '');
+    return digits || raw.toLowerCase();
+  };
+
+  const normalizarFechaContrato = (value?: string | number | Date | null) => {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    }
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day);
+    }
+    const dmyMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (dmyMatch) {
+      const day = Number(dmyMatch[1]);
+      const month = Number(dmyMatch[2]) - 1;
+      const year = Number(dmyMatch[3]);
+      return new Date(year, month, day);
+    }
+    const parsed = new Date(raw);
+    if (isNaN(parsed.getTime())) return null;
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  };
+
+  const resolverEstadoLaboral = (
+    hiringDate?: string | number | Date | null,
+    endDate?: string | number | Date | null,
+    statusRaw?: string | null,
+  ): 'activo' | 'inactivo' => {
+    const start = normalizarFechaContrato(hiringDate);
+    const end = normalizarFechaContrato(endDate);
+    const today = normalizarFechaContrato(new Date());
+
+    if (start || end) {
+      if (!start || !today) return 'inactivo';
+      if (today < start) return 'inactivo';
+      if (!end) return 'activo';
+      return today <= end ? 'activo' : 'inactivo';
+    }
+
+    const statusUpper = String(statusRaw || '').trim().toUpperCase();
+    if (statusUpper === 'INACTIVO') return 'inactivo';
+    if (statusUpper === 'ACTIVO') return 'activo';
+    return 'activo';
+  };
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [empleadoSeleccionado, setEmpleadoSeleccionado] = useState<string | null>(null);
   const [historial, setHistorial] = useState<CertificadoHistorial[]>([]);
@@ -124,19 +178,53 @@ export function useHistorialCertificados(): UseHistorialCertificadosReturn {
       });
 
       const items = Array.isArray(response) ? response : (response.items || []);
-      
+      const documentoSeleccionado = normalizarDocumento(empleado.documento);
+      const itemsFiltrados = items.filter((cert: any) => {
+        const documentoCertificado = normalizarDocumento(cert?.id_number);
+        if (!documentoSeleccionado || !documentoCertificado) return false;
+        return documentoCertificado === documentoSeleccionado;
+      });
+
       // Transformar los datos al formato del historial
-      const historialTransformado: CertificadoHistorial[] = items
-        .map((cert: any) => ({
-          id: cert.id,
-          consecutivo: cert.certificate_number || cert.id,
-          estado: cert.status === 'VALID' ? 'activo' : cert.status === 'REVOKED' ? 'revocado' : 'expirado',
-          fechaSolicitud: cert.created_at,
-          fechaGeneracion: cert.issuance_timestamp || cert.created_at,
-          cantidadEscaneos: cert.validation_count || 0,
-          pdfUrl: cert.pdf_url,
-          verificationCode: cert.verification_code,
-        }))
+      const historialTransformado: CertificadoHistorial[] = itemsFiltrados
+        .map((cert: any) => {
+          const employmentStatusRaw = String(
+            cert.employment_status ||
+            cert.request?.status ||
+            cert.request_status ||
+            ''
+          ).trim().toUpperCase();
+          const hiringDate =
+            cert.request?.hiring_date ||
+            cert.request?.hiringDate ||
+            cert.hiring_date ||
+            cert.hiringDate ||
+            null;
+          const endDate =
+            cert.request?.request_date ||
+            cert.request?.requestDate ||
+            cert.request_date ||
+            cert.requestDate ||
+            null;
+          const employmentEstado = resolverEstadoLaboral(hiringDate, endDate, employmentStatusRaw);
+          const certificadoEstado =
+            cert.status === 'REVOKED'
+              ? 'revocado'
+              : cert.status === 'EXPIRED'
+                ? 'expirado'
+                : employmentEstado;
+
+          return {
+            id: cert.id,
+            consecutivo: cert.certificate_number || cert.id,
+            estado: certificadoEstado,
+            fechaSolicitud: cert.created_at,
+            fechaGeneracion: cert.issuance_timestamp || cert.created_at,
+            cantidadEscaneos: cert.validation_count || 0,
+            pdfUrl: cert.pdf_url,
+            verificationCode: cert.verification_code,
+          };
+        })
         .sort((a, b) => {
           // Ordenar por fecha de solicitud descendente (más recientes primero)
           return new Date(b.fechaSolicitud).getTime() - new Date(a.fechaSolicitud).getTime();

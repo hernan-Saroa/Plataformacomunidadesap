@@ -11,6 +11,8 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  Put,
+  Query,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -34,7 +36,7 @@ interface FileData {
 @ApiTags('Noticias Disciplinarias')
 @Controller('disciplinary-news')
 export class NewsController {
-  constructor(private newsService: NewsService) {}
+  constructor(private newsService: NewsService) { }
 
   /**
    * H1: Radicar una nueva noticia disciplinaria con soportes
@@ -99,6 +101,29 @@ export class NewsController {
   }
 
   /**
+   * H3: Listar noticias del profesional autenticado
+   * Retorna las noticias asociadas a los procesos asignados al profesional
+   */
+  @Get('my-news')
+  @ApiOperation({
+    summary: 'Mis Noticias',
+    description: 'Retorna las noticias asociadas a los procesos del profesional autenticado',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de noticias del profesional',
+    type: [DisciplinaryNews],
+  })
+  async getMyNews(
+    @Query('profesionalId') profesionalId: string,
+  ): Promise<DisciplinaryNews[]> {
+    if (!profesionalId) {
+      throw new BadRequestException('profesionalId es requerido');
+    }
+    return await this.newsService.findByProfessionalId(profesionalId);
+  }
+
+  /**
    * Obtener todas las noticias
    */
   @Get()
@@ -131,6 +156,23 @@ export class NewsController {
   @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
   async getById(@Param('id') id: string): Promise<DisciplinaryNews> {
     return await this.newsService.findById(id);
+  }
+
+  /**
+   * Actualizar datos de una noticia (edición por Profesional)
+   */
+  @Put(':id')
+  @ApiOperation({
+    summary: 'Editar Noticia Disciplinaria',
+    description: 'Actualiza los datos de una noticia y registra el cambio en el historial de auditoría',
+  })
+  @ApiResponse({ status: 200, description: 'Noticia actualizada', type: DisciplinaryNews })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async update(
+    @Param('id') id: string,
+    @Body() body: any,
+  ): Promise<DisciplinaryNews> {
+    return await this.newsService.update(id, body);
   }
 
   /**
@@ -230,5 +272,30 @@ export class NewsController {
     @Body() body: { reason: string },
   ): Promise<DisciplinaryNews> {
     return await this.newsService.archive(id, body.reason);
+  }
+
+  /**
+   * Asociar noticia a un proceso existente
+   */
+  @Patch(':id/associate-process')
+  @ApiOperation({
+    summary: 'Asociar Noticia a Proceso',
+    description: 'Asocia una noticia disciplinaria a un proceso existente',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Noticia asociada exitosamente',
+    type: DisciplinaryNews,
+  })
+  @ApiResponse({ status: 404, description: 'Noticia o proceso no encontrado' })
+  async associateProcess(
+    @Param('id') id: string,
+    @Body() body: { procesoDestinoId: string; justificacion: string },
+  ): Promise<DisciplinaryNews> {
+    return await this.newsService.associateNewsToProcess(
+      id,
+      body.procesoDestinoId,
+      body.justificacion,
+    );
   }
 }

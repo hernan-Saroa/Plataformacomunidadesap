@@ -29,8 +29,7 @@ import {
 import { ValidarCertificadoQR } from '../certificados-laborales/ValidarCertificadoQR';
 import { ValidarCertificadoGrado } from '../esap/registro-academico/ValidarCertificadoGrado';
 import { Card } from '../ui/card';
-import { FooterWorldClass } from '../FooterWorldClass';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface ValidadorCertificadosPublicoProps {
   onBack: () => void;
@@ -41,19 +40,23 @@ type TipoCertificado = 'selector' | 'laboral' | 'grado';
 export function ValidadorCertificadosPublico({ onBack }: ValidadorCertificadosPublicoProps) {
   const [tipoSeleccionado, setTipoSeleccionado] = useState<TipoCertificado>('selector');
 
-  // Si el usuario seleccionó Certificado Laboral
-  if (tipoSeleccionado === 'laboral') {
-    return <ValidarCertificadoQR onBack={() => setTipoSeleccionado('selector')} />;
-  }
-
-  // Si el usuario seleccionó Certificado de Grado
-  if (tipoSeleccionado === 'grado') {
-    return <ValidarCertificadoGrado onBack={() => setTipoSeleccionado('selector')} />;
-  }
-
-  // Vista principal: Selector de tipo de certificado
+  // Vista principal: Selector de tipo de certificado + Modales
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F0F6FF] to-[#E0EEFF]">
+      {/* ✅ Modal de Certificado de Grado */}
+      <ValidarCertificadoGrado 
+        isOpen={tipoSeleccionado === 'grado'} 
+        onClose={() => setTipoSeleccionado('selector')} 
+      />
+
+      {/* Si el usuario seleccionó Certificado Laboral - Vista completa */}
+      {tipoSeleccionado === 'laboral' && (
+        <ValidarCertificadoQR onBack={() => setTipoSeleccionado('selector')} />
+      )}
+
+      {/* Vista del selector - Solo se muestra si tipoSeleccionado es 'selector' */}
+      {tipoSeleccionado === 'selector' && (
+        <>
       {/* Navbar Superior Flotante - Similar al Landing */}
       <motion.nav 
         initial={{ y: -100, opacity: 0 }}
@@ -69,10 +72,9 @@ export function ValidadorCertificadosPublico({ onBack }: ValidadorCertificadosPu
           <div className="flex items-center justify-between">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <img 
-                src={esapLogoWhite} 
-                alt="ESAP Logo" 
-                className="h-8 sm:h-10 w-auto object-contain brightness-0 invert"
+              <ESAPLogo 
+                variant="white"
+                className="h-8 sm:h-10 w-auto"
               />
               <div className="hidden sm:block">
                 <p className="text-xs font-semibold text-white">Validador de Certificados</p>
@@ -371,9 +373,18 @@ export function ValidadorCertificadosPublico({ onBack }: ValidadorCertificadosPu
           </motion.div>
         </div>
         
-        {/* Footer del Landing */}
-        <FooterWorldClass />
+        {/* Footer Simple */}
+        <footer className="bg-gray-900 text-white py-12 mt-16">
+          <div className="container mx-auto px-4 text-center">
+            <ESAPLogo variant="white" className="h-12 w-auto mx-auto mb-4" />
+            <p className="text-gray-400 text-sm">
+              © 2026 ESAP - Escuela Superior de Administración Pública
+            </p>
+          </div>
+        </footer>
       </div>
+        </>
+      )}
     </div>
   );
 }

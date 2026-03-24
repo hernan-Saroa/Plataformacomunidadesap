@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Param, Body, UseInterceptors, UploadedFile, Res, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Put, Param, Body, UseInterceptors, UploadedFile, Res, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join, basename } from 'path';
@@ -34,6 +34,7 @@ export class DocumentosConsultaController {
             tipoDocumento?: string;
             descripcion?: string;
             subidoPor?: string;
+            firmado?: string;
         },
         @UploadedFile() file: Express.Multer.File
     ) {
@@ -49,8 +50,56 @@ export class DocumentosConsultaController {
             archivoUrl: `files/${file.filename}`, // Ruta relativa - frontend construye la URL absoluta
             archivoNombreOriginal: file.originalname,
             subidoPor: body.subidoPor,
+            firmado: body.firmado === 'true' || body.firmado === '1',
             tamanoBytes: file.size,
             mimeType: file.mimetype
+        });
+    }
+
+    // Reemplazar documento sin firmar por uno firmado
+    @Post('documentos/:documentoId/replace')
+    @UseInterceptors(FileInterceptor('archivo', {
+        storage: diskStorage({
+            destination: './uploads',
+            filename: (req, file, cb) => {
+                const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
+                cb(null, `${randomName}${extname(file.originalname)}`);
+            }
+        })
+    }))
+    async replaceDocumento(
+        @Param('documentoId') documentoId: string,
+        @UploadedFile() file: Express.Multer.File
+    ) {
+        if (!file) {
+            throw new BadRequestException('El archivo firmado es obligatorio');
+        }
+
+        // Obtener el documento existente
+        const existingDoc = await this.documentosService.findOne(documentoId);
+
+        // Eliminar archivo anterior si existe
+        if (existingDoc.archivoUrl) {
+            try {
+                const oldFilename = existingDoc.archivoUrl.includes('/')
+                    ? existingDoc.archivoUrl.split('/').pop() || ''
+                    : existingDoc.archivoUrl;
+                const oldPath = join(process.cwd(), 'uploads', oldFilename);
+                if (fs.existsSync(oldPath)) {
+                    fs.unlinkSync(oldPath);
+                }
+            } catch (error) {
+                console.error('Error eliminando archivo anterior:', error);
+            }
+        }
+
+        // Actualizar con el nuevo archivo firmado
+        return this.documentosService.update(documentoId, {
+            archivoUrl: `files/${file.filename}`,
+            archivoNombreOriginal: file.originalname,
+            tamanoBytes: file.size,
+            mimeType: file.mimetype,
+            firmado: true
         });
     }
 

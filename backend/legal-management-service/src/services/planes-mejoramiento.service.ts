@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+import { Repository, DataSource, In, IsNull, Not } from 'typeorm';
 import { PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario } from '../entities/planes-mejoramiento.entity';
 import { Riesgo } from '../entities/riesgo.entity';
 import { Abogado } from '../entities/abogado.entity';
@@ -28,6 +28,7 @@ export class PlanesMejoramientoService {
         // Let's do a raw left join for performance to get the Risk Title.
 
         const planes = await this.planRepo.find({
+            where: { archivedAt: IsNull() },
             order: { createdAt: 'DESC' },
             relations: ['evidencias', 'seguimientos', 'comentarios']
         });
@@ -118,6 +119,25 @@ export class PlanesMejoramientoService {
         };
     }
 
+    async getDocumentos(planId: string): Promise<PlanEvidencia[]> {
+        return this.evidenciaRepo.find({
+            where: { planId },
+            order: { createdAt: 'DESC' }
+        });
+    }
+
+    async uploadDocumento(planId: string, file: Express.Multer.File, titulo: string, uploadedBy?: string): Promise<PlanEvidencia> {
+        await this.findOne(planId); // Verify exists
+        const evidencia = this.evidenciaRepo.create({
+            planId,
+            titulo: titulo || file.originalname,
+            urlArchivo: file.filename,
+            tipoArchivo: file.mimetype,
+            uploadedBy: uploadedBy || 'Sistema'
+        });
+        return this.evidenciaRepo.save(evidencia);
+    }
+
     async addEvidencia(planId: string, data: Partial<PlanEvidencia>) {
         await this.findOne(planId); // Verify exists
         const evidencia = this.evidenciaRepo.create({ ...data, planId });
@@ -177,5 +197,42 @@ export class PlanesMejoramientoService {
         // Simple update
         Object.assign(plan, data);
         return this.planRepo.save(plan);
+    }
+
+    // ==================== ARCHIVADO ====================
+    async getArchivados() {
+        return this.planRepo.find({
+            where: { archivedAt: Not(IsNull()) },
+            relations: ['evidencias', 'seguimientos', 'comentarios'],
+            order: { createdAt: 'DESC' },
+        });
+    }
+
+    async archivar(id: string) {
+        const planEntity = await this.planRepo.findOneBy({ id });
+        if (!planEntity) throw new NotFoundException(`Plan ${id} no encontrado`);
+
+        planEntity.archivedAt = new Date();
+        planEntity.archivedBy = 'System';
+        planEntity.archiveReason = 'Archivado manualmente';
+
+        return this.planRepo.save(planEntity);
+    }
+
+    async restaurar(id: string) {
+        const planEntity = await this.planRepo.findOneBy({ id });
+        if (!planEntity) throw new NotFoundException(`Plan ${id} no encontrado`);
+
+        planEntity.archivedAt = null;
+        planEntity.archivedBy = null;
+        planEntity.archiveReason = null;
+
+        return this.planRepo.save(planEntity);
+    }
+
+    async eliminar(id: string) {
+        const planEntity = await this.planRepo.findOneBy({ id });
+        if (!planEntity) throw new NotFoundException(`Plan ${id} no encontrado`);
+        await this.planRepo.remove(planEntity);
     }
 }

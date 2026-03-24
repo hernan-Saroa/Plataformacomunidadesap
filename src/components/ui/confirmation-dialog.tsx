@@ -195,11 +195,10 @@ export function ConfirmationDialog({
                       value={typedWord}
                       onChange={(e) => setTypedWord(e.target.value.toUpperCase())}
                       placeholder={`Escribe "${confirmationWord}"`}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 font-mono ${
-                        typedWord && typedWord !== confirmationWord
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 font-mono ${typedWord && typedWord !== confirmationWord
                           ? 'border-red-500'
                           : 'border-gray-300'
-                      }`}
+                        }`}
                       disabled={isConfirming}
                       autoFocus
                     />
@@ -280,7 +279,9 @@ export function useConfirmation() {
         props: {
           ...props,
           onConfirm: async () => {
-            await props.onConfirm();
+            if (props.onConfirm) {
+              await props.onConfirm();
+            }
             resolve(true);
           },
           onClose: () => {
@@ -298,7 +299,7 @@ export function useConfirmation() {
       onClose={() => setConfirmationState({ open: false, props: {} })}
       title=""
       description=""
-      onConfirm={() => {}}
+      onConfirm={() => { }}
       {...confirmationState.props}
     />
   );

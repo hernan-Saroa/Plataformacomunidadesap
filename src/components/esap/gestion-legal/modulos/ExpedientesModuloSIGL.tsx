@@ -8,8 +8,17 @@ import {
   File, FolderCheck, FileCheck, Scale, Gavel, FileQuestion,
   BarChart3
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from 'sonner@2.0.3';
+import { ModalExpedienteConsulta } from './ModalExpedienteConsulta';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 import { ModalSIGL } from '../design-system/ModalSIGL';
+import {
+  CATEGORIAS_DOCUMENTOS,
+  SUGERENCIAS_TIPO_DOCUMENTO,
+} from '../core/expedienteShared';
+import { ModalHeaderClean } from './ModalHeaderClean';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalSeleccionTipo } from './ModalSeleccionTipo';
 import { ModalAutos } from './ModalAutos';
@@ -23,6 +32,7 @@ import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 
 import { buildApiUrl, getServiceUrl, API_MODE } from '../../../../config/environment';
+import { isViewableInBrowser } from '../../../../utils/fileUtils';
 
 // Helper to build correct file URL for both direct and gateway modes
 // Direct mode: http://localhost:3008/files/{filename}
@@ -72,17 +82,13 @@ type TipoProceso =
   | 'OTRO';
 
 type TipoDocumento =
-  | 'DEMANDA'
-  | 'CONTESTACION'
-  | 'PRUEBAS'
-  | 'EVIDENCIAS'
-  | 'SENTENCIAS'
-  | 'TUTELAS'
-  | 'RECURSOS'
-  | 'CONCEPTOS'
   | 'ACTAS'
-  | 'NOTIFICACIONES'
+  | 'EVIDENCIAS'
   | 'OFICIOS'
+  | 'AUTOS'
+  | 'PRUEBAS'
+  | 'COMUNICACIONES'
+  | 'NOTIFICACIONES'
   | 'OTROS';
 
 interface Documento {
@@ -118,25 +124,11 @@ type VistaActual = 'expedientes' | 'estadisticas';
 
 export const TIPOS_DOCUMENTO = [
   {
-    id: 'DEMANDA' as TipoDocumento,
-    nombre: 'Demandas',
-    descripcion: 'Demandas presentadas contra ESAP',
-    color: 'red',
-    icon: Scale
-  },
-  {
-    id: 'CONTESTACION' as TipoDocumento,
-    nombre: 'Contestaciones',
-    descripcion: 'Contestaciones y respuestas a demandas',
-    color: 'blue',
+    id: 'ACTAS' as TipoDocumento,
+    nombre: 'Actas',
+    descripcion: 'Actas de audiencias, reuniones, diligencias',
+    color: 'yellow',
     icon: FileText
-  },
-  {
-    id: 'PRUEBAS' as TipoDocumento,
-    nombre: 'Pruebas',
-    descripcion: 'Documentos probatorios, evidencias, anexos',
-    color: 'green',
-    icon: FolderCheck
   },
   {
     id: 'EVIDENCIAS' as TipoDocumento,
@@ -146,39 +138,32 @@ export const TIPOS_DOCUMENTO = [
     icon: FolderCheck
   },
   {
-    id: 'SENTENCIAS' as TipoDocumento,
-    nombre: 'Sentencias y Fallos',
-    descripcion: 'Sentencias, autos, providencias judiciales',
-    color: 'purple',
+    id: 'OFICIOS' as TipoDocumento,
+    nombre: 'Oficios',
+    descripcion: 'Oficios enviados y recibidos',
+    color: 'teal',
+    icon: File
+  },
+  {
+    id: 'AUTOS' as TipoDocumento,
+    nombre: 'Autos',
+    descripcion: 'Autos judiciales, providencias, decretos',
+    color: 'violet',
     icon: Gavel
   },
   {
-    id: 'TUTELAS' as TipoDocumento,
-    nombre: 'Tutelas',
-    descripcion: 'Acciones de tutela y respuestas',
-    color: 'orange',
-    icon: AlertCircle
+    id: 'PRUEBAS' as TipoDocumento,
+    nombre: 'Pruebas',
+    descripcion: 'Documentos probatorios y pruebas',
+    color: 'blue',
+    icon: FolderCheck
   },
   {
-    id: 'RECURSOS' as TipoDocumento,
-    nombre: 'Recursos',
-    descripcion: 'Recursos de apelación, reposición, casación',
+    id: 'COMUNICACIONES' as TipoDocumento,
+    nombre: 'Comunicaciones',
+    descripcion: 'Comunicaciones internas y externas',
     color: 'indigo',
     icon: FileCheck
-  },
-  {
-    id: 'CONCEPTOS' as TipoDocumento,
-    nombre: 'Conceptos Jurídicos',
-    descripcion: 'Conceptos, memoriales, alegatos',
-    color: 'cyan',
-    icon: FileQuestion
-  },
-  {
-    id: 'ACTAS' as TipoDocumento,
-    nombre: 'Actas',
-    descripcion: 'Actas de audiencias, reuniones, diligencias',
-    color: 'yellow',
-    icon: FileText
   },
   {
     id: 'NOTIFICACIONES' as TipoDocumento,
@@ -188,35 +173,32 @@ export const TIPOS_DOCUMENTO = [
     icon: Archive
   },
   {
-    id: 'OFICIOS' as TipoDocumento,
-    nombre: 'Oficios',
-    descripcion: 'Oficios enviados y recibidos',
-    color: 'teal',
-    icon: File
-  },
-  {
     id: 'OTROS' as TipoDocumento,
-    nombre: 'Otros Documentos',
-    descripcion: 'Documentos varios no clasificados',
+    nombre: 'Documentos Generales',
+    descripcion: 'Demandas, contestaciones, sentencias y otros documentos',
     color: 'gray',
     icon: File
   }
 ];
 
-// Placeholder para Coactivos que no está implementado en backend aún
-const EXPEDIENTES_COACTIVOS_MOCK: Expediente[] = [
+// ════════════════════════════════════════════════════════════════════════════
+// DATOS MOCK (REDUCIDOS PARA OPTIMIZACIÓN)
+// ════════════════════════════════════════════════════════════════════════════
+
+const EXPEDIENTES_MOCK: Expediente[] = [
+  // Ejemplo mínimo de expediente para referencia
   {
-    id: 'exp-coa-001',
-    radicado: 'PC-2025-001',
-    nombreProceso: 'Coactivo - Juan Carlos Pérez (Matrícula)',
-    tipoProceso: 'PROCESOS_COACTIVOS',
-    fechaInicio: '2024-08-15',
-    fechaActualizacion: '2024-12-20',
+    id: 'exp-dj-001',
+    radicado: 'PJ-2025-001',
+    nombreProceso: 'Proceso de Ejemplo',
+    tipoProceso: 'DEFENSA_JUDICIAL',
+    fechaInicio: '2024-10-15',
+    fechaActualizacion: '2025-01-12',
     estado: 'EN_PROCESO',
-    responsable: 'Dra. Laura Sánchez',
-    totalDocumentos: 1,
+    responsable: 'Abogado Responsable',
+    totalDocumentos: 3,
     documentos: [
-      { id: 'd20', nombre: 'Título Ejecutivo Matrícula.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '345 KB', fechaCreacion: '2024-08-15', autor: 'Oficina Financiera' },
+      { id: 'd1', nombre: 'Documento 1.pdf', tipo: 'DEMANDA', tipoArchivo: 'PDF', tamanio: '1.2 MB', fechaCreacion: '2024-10-15', autor: 'Usuario' },
     ]
   },
 ];
@@ -226,6 +208,9 @@ const EXPEDIENTES_COACTIVOS_MOCK: Expediente[] = [
 // ════════════════════════════════════════════════════════════════════════════
 
 export function ExpedientesModuloSIGL() {
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
   const [vistaActiva, setVistaActiva] = useState<VistaActual>('expedientes');
   const [expedientes, setExpedientes] = useState<Expediente[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -619,12 +604,52 @@ export function ExpedientesModuloSIGL() {
   const [modalActasOpen, setModalActasOpen] = useState(false);
   const [modalEvidenciasOpen, setModalEvidenciasOpen] = useState(false);
   const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
+
+  // ✅ Estado para el nuevo modal de Subir Documento (estilo TabDocumentosExpediente)
+  const [modalSubirDocOpen, setModalSubirDocOpen] = useState(false);
+  const [nuevaCategoria, setNuevaCategoria] = useState('documentos');
+  const [nuevoTipoDocumento, setNuevoTipoDocumento] = useState('');
   const [modalRespuestaOpen, setModalRespuestaOpen] = useState(false);
   const [modalCargarOpen, setModalCargarOpen] = useState(false); // Generic
 
   const handleCargarClick = (exp: Expediente) => {
     setExpedienteSeleccionado(exp);
-    setModalSeleccionOpen(true);
+    setNuevaCategoria('documentos');
+    setNuevoTipoDocumento('');
+    setModalSubirDocOpen(true);
+  };
+
+  // ✅ Upload handler del nuevo modal (estilo TabDocumentosExpediente)
+  const ejecutarSubidaDocumento = () => {
+    if (!nuevoTipoDocumento.trim()) {
+      toast.error('Tipo de documento requerido', {
+        description: 'Debe indicar el tipo de documento a cargar'
+      });
+      return;
+    }
+    if (!expedienteSeleccionado) return;
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx,.xls,.zip,.rar,.7z,.pptx,.ppt,.csv,.txt,.rtf';
+
+    input.onchange = (e: any) => {
+      const file = e.target?.files?.[0];
+      if (file) {
+        // Map categoria to TIPOS_DOCUMENTO id for the existing handleGenericUpload
+        const tipoMap: Record<string, string> = {
+          actas: 'ACTAS', evidencias: 'EVIDENCIAS', oficios: 'OFICIOS',
+          autos: 'AUTOS', pruebas: 'PRUEBAS', comunicaciones: 'OTROS',
+          notificaciones: 'NOTIFICACIONES', documentos: 'OTROS'
+        };
+        const tipoId = tipoMap[nuevaCategoria] || 'OTROS';
+        handleGenericUpload(file, tipoId);
+        setModalSubirDocOpen(false);
+        setNuevoTipoDocumento('');
+        setNuevaCategoria('documentos');
+      }
+    };
+    input.click();
   };
 
   const handleTipoSelected = (tipoId: string) => {
@@ -716,6 +741,42 @@ export function ExpedientesModuloSIGL() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'EXP-999',
+      codigo: 'EXP-DJ-2024-999',
+      nombre: 'Expediente Demanda Laboral - Juan Pérez vs ESAP',
+      tipo: 'Expediente',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-01T16:30:00'),
+      usuarioArchivo: 'Dr. Carlos Mendoza',
+      motivoArchivo: 'Proceso finalizado con sentencia favorable. Todos los documentos digitalizados y respaldados en sistema central',
+      metadatos: {
+        'Radicado': 'PJ-2023-045',
+        'Tipo Proceso': 'Defensa Judicial - Laboral',
+        'Total Documentos': '47',
+        'Sentencia': 'Favorable a ESAP',
+        'Fecha Finalización': '01/12/2024',
+        'Responsable': 'Dr. Carlos Mendoza García'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un expediente archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando expediente:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Expediente restaurado exitosamente');
+  };
+
+  // ✅ Función para eliminar permanentemente un expediente
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente expediente:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Expediente eliminado permanentemente');
   };
 
   return (
@@ -835,24 +896,144 @@ export function ExpedientesModuloSIGL() {
             />
           )}
 
-          <ModalCargarDocumento
-            isOpen={modalCargarOpen}
-            onClose={() => setModalCargarOpen(false)}
-            onCargar={handleGenericUpload}
-            radicado={expedienteSeleccionado.radicado}
-            tipoProceso={expedienteSeleccionado.tipoProceso}
-            preSelectedType={selectedTipoId}
-          />
-
-          {/* Visor de Documentos Centralizado */}
-          <VisorDocumentoModal
-            isOpen={visorOpen}
-            onClose={() => setVisorOpen(false)}
-            archivo={documentoVisor?.url}
-            numero={documentoVisor?.nombre}
-            asunto={documentoVisor?.tipo}
-          />
         </>
+      )}
+
+      {/* ✅ Visor de Documentos FUERA del guard (se abre con Eye button sin necesitar expedienteSeleccionado) */}
+      <VisorDocumentoModal
+        isOpen={visorOpen}
+        onClose={() => setVisorOpen(false)}
+        archivo={documentoVisor?.url}
+        numero={documentoVisor?.nombre}
+        asunto={documentoVisor?.tipo}
+      />
+
+      {/* ✅ Nuevo Modal Subir Documento (estilo TabDocumentosExpediente) */}
+      {modalSubirDocOpen && expedienteSeleccionado && (
+        <Dialog open={modalSubirDocOpen} onOpenChange={setModalSubirDocOpen}>
+          <DialogContent hideCloseButton className="w-[95vw] max-w-[700px] !max-h-[82vh] flex flex-col p-0">
+            <DialogTitle className="sr-only">Subir Documento</DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario para subir un nuevo documento al expediente {expedienteSeleccionado.radicado}
+            </DialogDescription>
+
+            <ModalHeaderClean
+              titulo="Subir Documento"
+              subtitulo={`Expediente ${expedienteSeleccionado.radicado} • Seleccione categoría y tipo`}
+              icono={Upload}
+              colorIcono="blue"
+              onClose={() => setModalSubirDocOpen(false)}
+            />
+
+            <div className="p-6 space-y-5 overflow-y-auto">
+              {/* Categoría del documento */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-3">
+                  <Filter className="w-4 h-4 inline mr-1.5" />
+                  Categoría del Documento *
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {CATEGORIAS_DOCUMENTOS.filter(c => c.id !== 'todos').map((cat) => {
+                    const isSelected = nuevaCategoria === cat.id;
+                    const CatIcon = cat.icono;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setNuevaCategoria(cat.id)}
+                        className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 transition-all text-center ${
+                          isSelected
+                            ? 'shadow-md text-white'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                        }`}
+                        style={isSelected ? { background: cat.color, borderColor: cat.color } : {}}
+                      >
+                        <CatIcon className="w-5 h-5" />
+                        <span className="text-xs font-bold">{cat.nombre}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Tipo de documento */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  <FileText className="w-4 h-4 inline mr-1.5" />
+                  Tipo de Documento *
+                </label>
+                <input
+                  type="text"
+                  value={nuevoTipoDocumento}
+                  onChange={(e) => setNuevoTipoDocumento(e.target.value)}
+                  placeholder="Ej: Demanda, Acta de Audiencia, Oficio de Citación..."
+                  className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                {/* Sugerencias según categoría */}
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {(SUGERENCIAS_TIPO_DOCUMENTO[nuevaCategoria] || []).map((sug) => (
+                    <button
+                      key={sug}
+                      type="button"
+                      onClick={() => setNuevoTipoDocumento(sug)}
+                      className="px-2 py-1 text-[11px] font-semibold bg-gray-100 text-gray-600 rounded-md border border-gray-200 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition-all"
+                    >
+                      {sug}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Info de la categoría seleccionada */}
+              {(() => {
+                const catInfo = CATEGORIAS_DOCUMENTOS.find(c => c.id === nuevaCategoria);
+                if (!catInfo) return null;
+                const CatIcon = catInfo.icono;
+                return (
+                  <div className="p-3 rounded-lg border-2" style={{ borderColor: `${catInfo.color}40`, background: `${catInfo.color}08` }}>
+                    <div className="flex items-center gap-2">
+                      <CatIcon className="w-5 h-5" style={{ color: catInfo.color }} />
+                      <div>
+                        <p className="text-sm font-bold" style={{ color: catInfo.color }}>
+                          Se archivará en: {catInfo.nombre}
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          Formatos aceptados: PDF, DOC, DOCX, JPG, PNG, XLS, XLSX, ZIP, RAR, PPTX, CSV, TXT
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalSubirDocOpen(false);
+                  setNuevoTipoDocumento('');
+                  setNuevaCategoria('documentos');
+                }}
+                className="px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={ejecutarSubidaDocumento}
+                disabled={!nuevoTipoDocumento.trim()}
+                className={`flex items-center gap-2 px-5 py-2 text-sm font-bold text-white rounded-lg transition-all ${
+                  nuevoTipoDocumento.trim() ? 'hover:shadow-lg' : 'opacity-50 cursor-not-allowed'
+                }`}
+                style={{ background: nuevoTipoDocumento.trim() ? '#003DA5' : '#9CA3AF' }}
+              >
+                <Upload className="w-4 h-4" />
+                Seleccionar Archivo
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
@@ -1090,22 +1271,31 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onVie
   // Agrupar documentos por tipo
   const documentosPorTipo = useMemo(() => {
     const grupos: Record<TipoDocumento, Documento[]> = {
-      DEMANDA: [],
-      CONTESTACION: [],
-      PRUEBAS: [],
-      EVIDENCIAS: [],
-      SENTENCIAS: [],
-      TUTELAS: [],
-      RECURSOS: [],
-      CONCEPTOS: [],
       ACTAS: [],
-      NOTIFICACIONES: [],
+      EVIDENCIAS: [],
       OFICIOS: [],
+      AUTOS: [],
+      PRUEBAS: [],
+      COMUNICACIONES: [],
+      NOTIFICACIONES: [],
       OTROS: []
     };
 
+    // Mapear tipos antiguos a las 8 categorías actuales
+    const tipoNormalizado = (tipo: string): TipoDocumento => {
+      const map: Record<string, TipoDocumento> = {
+        DEMANDA: 'OTROS', CONTESTACION: 'OTROS', SENTENCIAS: 'OTROS',
+        TUTELAS: 'OTROS', RECURSOS: 'OTROS', CONCEPTOS: 'OTROS',
+        ACTAS: 'ACTAS', EVIDENCIAS: 'EVIDENCIAS', OFICIOS: 'OFICIOS',
+        AUTOS: 'AUTOS', PRUEBAS: 'PRUEBAS', COMUNICACIONES: 'COMUNICACIONES',
+        NOTIFICACIONES: 'NOTIFICACIONES', OTROS: 'OTROS'
+      };
+      return map[tipo] || 'OTROS';
+    };
+
     expediente.documentos.forEach(doc => {
-      grupos[doc.tipo].push(doc);
+      const cat = tipoNormalizado(doc.tipo);
+      grupos[cat].push(doc);
     });
 
     return grupos;
@@ -1161,15 +1351,17 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onVie
             </div>
 
             <div className="flex gap-2 w-full sm:w-auto">
+              {/* Ocultar botón por solicitud del usuario
               {authService.hasPermission(Permissions.GESTION_LEGAL_EXPEDIENTES_ELECTRONICOS_UPLOAD) && (
-              <button
-                onClick={onUpload}
-                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
-              >
-                <Upload className="w-4 h-4" />
-                Cargar
-              </button>
+                <button
+                  onClick={onUpload}
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  Cargar
+                </button>
               )}
+              */}
               <button
                 onClick={onToggleExpand}
                 className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center justify-center gap-2"
@@ -1204,22 +1396,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onVie
                 <h4 className="text-sm font-medium text-gray-900 mb-4">Documentos por Tipo</h4>
 
                 <div className="space-y-3">
-                  {TIPOS_DOCUMENTO.filter(tipoDoc => {
-                    // Lógica de filtrado por Tipo de Proceso
-
-                    // DEFENSA_JUDICIAL: Mostrar EVIDENCIAS, ocultar PRUEBAS (según requerimiento)
-                    if (expediente.tipoProceso === 'DEFENSA_JUDICIAL') {
-                      if (tipoDoc.id === 'PRUEBAS') return false;
-                      if (tipoDoc.id === 'EVIDENCIAS') return true;
-                    }
-
-                    // JUZGAMIENTO: Mostrar AMBAS (Pruebas y Evidencias)
-                    if (expediente.tipoProceso === 'JUZGAMIENTO') {
-                      // Se muestran ambas por defecto
-                    }
-
-                    return true;
-                  }).map((tipoDoc) => {
+                  {TIPOS_DOCUMENTO.map((tipoDoc) => {
                     const docs = documentosPorTipo[tipoDoc.id];
                     const Icon = tipoDoc.icon;
 
@@ -1262,6 +1439,7 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon, onViewDoc }: Ca
     red: 'bg-red-50 border-red-200 text-red-700',
     blue: 'bg-blue-50 border-blue-200 text-blue-700',
     green: 'bg-green-50 border-green-200 text-green-700',
+    violet: 'bg-violet-50 border-violet-200 text-violet-700',
     purple: 'bg-purple-50 border-purple-200 text-purple-700',
     orange: 'bg-orange-50 border-orange-200 text-orange-700',
     indigo: 'bg-indigo-50 border-indigo-200 text-indigo-700',
@@ -1400,13 +1578,15 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon, onViewDoc }: Ca
                       </div>
 
                       <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-                        <button
-                          onClick={() => handleVerDocumento(doc)}
-                          className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
-                          title="Ver documento"
-                        >
-                          <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
-                        </button>
+                        {(isViewableInBrowser(doc.nombre) || isViewableInBrowser(doc.url)) && (
+                          <button
+                            onClick={() => handleVerDocumento(doc)}
+                            className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
+                            title="Ver documento"
+                          >
+                            <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => handleDescargarDocumento(doc, e)}
                           className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
@@ -1571,6 +1751,7 @@ function VistaEstadisticas({ expedientes }: VistaEstadisticasProps) {
       DEMANDA: 0,
       CONTESTACION: 0,
       PRUEBAS: 0,
+      AUTOS: 0,
       SENTENCIAS: 0,
       TUTELAS: 0,
       RECURSOS: 0,

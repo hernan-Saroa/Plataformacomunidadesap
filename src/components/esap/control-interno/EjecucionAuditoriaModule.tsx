@@ -45,7 +45,7 @@ import { toast } from 'sonner@2.0.3';
 
 // Design system
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
-import { ButtonSIGL } from '../gestion-legal/design-system/Button';
+import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 

@@ -13,6 +13,7 @@ import { Hallazgo } from '../../hallazgos/entities/hallazgo.entity';
 import { PlanMejoramiento } from '../../planes-mejoramiento/entities/plan-mejoramiento.entity';
 
 export enum TipoDocumento {
+  // Tipos originales de auditoría
   OFICIO_ANUNCIO = 'oficio_anuncio',
   CARTA_REPRESENTACION = 'carta_representacion',
   CARTA_COMPROMISO = 'carta_compromiso',
@@ -21,17 +22,31 @@ export enum TipoDocumento {
   ACTA_REUNION_CIERRE = 'acta_reunion_cierre',
   LISTA_CHEQUEO = 'lista_chequeo',
   EVIDENCIA_HALLAZGO = 'evidencia_hallazgo',
+  EVIDENCIA_CONTROVERSIA = 'evidencia_controversia',
   INFORME_PRELIMINAR = 'informe_preliminar',
   INFORME_FINAL = 'informe_final',
   INFORME_EJECUTIVO = 'informe_ejecutivo',
   EVIDENCIA_PLAN_MEJORAMIENTO = 'evidencia_plan_mejoramiento',
+  // Tipos para Biblioteca de Plantillas
+  PLANTILLA = 'plantilla',
+  OFICIO = 'oficio',
+  ACTA = 'acta',
+  INFORME = 'informe',
+  EVIDENCIA = 'evidencia',
+  FORMATO = 'formato',
+  GUIA = 'guia',
   OTRO = 'otro',
 }
 
 export enum EtapaDocumento {
-  PLANEACION = 'planeacion',
+  PLANIFICACION = 'planificacion',
+  PLANEACION = 'planeacion', // Alias para compatibilidad
   EJECUCION = 'ejecucion',
+  HALLAZGOS = 'hallazgos',
   COMUNICACION = 'comunicacion',
+  COMUNICACION_RESULTADOS = 'comunicacion_resultados',
+  SEGUIMIENTO = 'seguimiento',
+  CIERRE = 'cierre',
 }
 
 @Entity('documento', { schema: 'control_interno' })
@@ -85,6 +100,18 @@ export class Documento {
   @ManyToOne(() => PlanMejoramiento, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'plan_mejoramiento_id' })
   planMejoramiento?: PlanMejoramiento | null;
+
+  /** Documento plantilla de biblioteca que cumple este subido (auditoria + documento_biblioteca_id) */
+  @Column({ name: 'documento_biblioteca_id', type: 'uuid', nullable: true })
+  documentoBibliotecaId?: string | null;
+
+  /** Plantilla: visible solo para esta auditoría. NULL = visible para todas */
+  @Column({ name: 'visible_auditoria_id', type: 'uuid', nullable: true })
+  visibleAuditoriaId?: string | null;
+
+  @ManyToOne(() => Documento, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'documento_biblioteca_id' })
+  documentoBiblioteca?: Documento | null;
 
   @Column({ name: 'ruta_archivo', type: 'varchar', length: 500, nullable: false })
   rutaArchivo: string;

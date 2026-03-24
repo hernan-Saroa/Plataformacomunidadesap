@@ -23,7 +23,7 @@ import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import { toast } from 'sonner@2.0.3';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogo } from './assets/ESAPLogo';
 
 interface FooterWorldClassProps {
   variant?: 'light' | 'dark';
@@ -137,9 +137,8 @@ export function FooterWorldClass({ variant = 'dark' }: FooterWorldClassProps) {
               transition={{ duration: 0.6 }}
               className="flex-shrink-0"
             >
-              <img 
-                src={esapLogoWhite} 
-                alt="ESAP - Escuela Superior de Administración Pública" 
+              <ESAPLogo 
+                variant="white"
                 className="h-20 w-auto object-contain drop-shadow-2xl"
               />
             </motion.div>
