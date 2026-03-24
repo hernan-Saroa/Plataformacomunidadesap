@@ -139,6 +139,11 @@ export class UniversoAuditoriasService {
         totalRiesgos: evaluacionRiesgo.totalRiesgos,
         requerimientoComite: evaluacionRiesgo.requerimientoComite,
         requerimientoEntesReg: evaluacionRiesgo.requerimientoEntesReg,
+        // Score C+E-M (modelo simplificado DAFP) — siempre incluir para persistir en JSONB
+        criticidad: evaluacionRiesgo.criticidad ?? 0,
+        exposicion: evaluacionRiesgo.exposicion ?? 0,
+        mitigantes: evaluacionRiesgo.mitigantes ?? 0,
+        scoreRiesgo: evaluacionRiesgo.scoreRiesgo ?? 0,
       },
       prioridad,
       priorizacionAnos,

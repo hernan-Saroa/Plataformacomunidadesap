@@ -35,6 +35,12 @@ export const MATRIZ_ROTACION: Record<string, { plan: string; dias: number }> = {
 // FUNCIONES DE CÁLCULO
 // ════════════════════════════════════════════════════════════════════════════
 
+/**
+ * Calcula ponderación de riesgo según metodología DAFP (porcentajes ACUMULADOS).
+ * Reglas: ≥20% extremos → EXTREMO | ≥30% (ext+altos) → ALTO | ≥40% (ext+altos+mod) → MODERADO
+ * | ≥50% todos → BAJO | else → MUY BAJO
+ * NOTA: porcTodos es siempre 100% cuando hay riesgos; la regla BAJO aplica como mínimo.
+ */
 export function calcularPonderacionRiesgo(
   extremos: number,
   altos: number,
@@ -45,16 +51,14 @@ export function calcularPonderacionRiesgo(
   if (total === 0) return 'MUY BAJO';
 
   const porcExtremos = (extremos / total) * 100;
-  const porcAltos = (altos / total) * 100;
-  const porcModerados = (moderados / total) * 100;
-  const porcBajos = (bajos / total) * 100;
-  const porcTodos = porcExtremos + porcAltos + porcModerados + porcBajos;
+  const porcExtremosAltos = ((extremos + altos) / total) * 100;
+  const porcExtremosAltosMod = ((extremos + altos + moderados) / total) * 100;
+  // porcTodos = 100% siempre que total > 0; la regla BAJO es el piso cuando hay riesgos
 
   if (porcExtremos >= 20) return 'EXTREMO';
-  if (porcAltos >= 30) return 'ALTO';
-  if (porcModerados >= 40) return 'MODERADO';
-  if (porcTodos >= 50) return 'BAJO';
-  return 'MUY BAJO';
+  if (porcExtremosAltos >= 30) return 'ALTO';
+  if (porcExtremosAltosMod >= 40) return 'MODERADO';
+  return 'BAJO'; // Cualquier otra distribución con riesgos → mínimo BAJO
 }
 
 export function calcularDiasTranscurridos(fechaUltima: string | null, fechaCorte: string): number | null {

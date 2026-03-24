@@ -96,6 +96,11 @@ export class ProcesoAuditable {
     decisionFinal?: string;               // 'INCLUIR PLAN ANUAL' | 'AUDITORÍA POSTERIOR'
     motivoDecision?: string;              // Justificación de la decisión
     prioridadRegla?: number;              // 1-5, qué regla DAFP aplicó
+    // Score C+E-M (modelo simplificado 0-15)
+    criticidad?: number;
+    exposicion?: number;
+    mitigantes?: number;
+    scoreRiesgo?: number;
   };
 
   @Column({ name: 'frecuencia_auditoria', type: 'varchar', length: 255, nullable: false })

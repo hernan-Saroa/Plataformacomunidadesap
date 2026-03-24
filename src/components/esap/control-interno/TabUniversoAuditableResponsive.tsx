@@ -161,6 +161,13 @@ export function TabUniversoAuditableResponsive({
   const handleGuardarEvaluacionDafp = async (evaluacion: Partial<EvaluacionDafpCompleta>) => {
     if (!procesoSeleccionadoDafp) return;
     
+    // Obtener C,E,M existentes o del formulario (FormularioEvaluacionDafpCompleta no los tiene, preservar los guardados)
+    const evRiesgo = procesoSeleccionadoDafp._evaluacionRiesgo as Record<string, unknown> | undefined;
+    const criticidad = (evaluacion as any).criticidad ?? evRiesgo?.criticidad ?? 0;
+    const exposicion = (evaluacion as any).exposicion ?? evRiesgo?.exposicion ?? 0;
+    const mitigantes = (evaluacion as any).mitigantes ?? evRiesgo?.mitigantes ?? 0;
+    const scoreRiesgo = (evaluacion as any).scoreRiesgo ?? evRiesgo?.scoreRiesgo ?? (Number(criticidad) + Number(exposicion) - Number(mitigantes));
+
     // Convertir evaluación DAFP al formato del formulario que espera el backend
     const datosActualizados = {
       // Mantener datos básicos del proceso
@@ -185,6 +192,11 @@ export function TabUniversoAuditableResponsive({
       decisionFinal: evaluacion.decisionFinal || 'AUDITORÍA POSTERIOR',
       motivoDecision: evaluacion.motivoDecision || '',
       prioridadRegla: evaluacion.prioridadRegla || 5,
+      // Score C+E-M para persistir en backend
+      criticidad,
+      exposicion,
+      mitigantes,
+      scoreRiesgo,
     };
     
     // ✅ Guardar directamente al backend usando la función editarProceso del hook

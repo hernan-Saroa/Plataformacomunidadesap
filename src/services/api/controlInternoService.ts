@@ -68,6 +68,11 @@ export interface ProcesoAuditable {
     decisionFinal?: string;
     motivoDecision?: string;
     prioridadRegla?: number;
+    // Score C+E-M (modelo simplificado 0-15)
+    criticidad?: number;
+    exposicion?: number;
+    mitigantes?: number;
+    scoreRiesgo?: number;
   };
   frecuenciaAuditoria: string;
   ultimaAuditoria?: string;

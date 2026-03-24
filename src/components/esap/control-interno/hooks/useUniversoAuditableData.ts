@@ -162,7 +162,7 @@ export function mapBackendToUI(proceso: BackendProcesoAuditable): ProcesoAuditab
     macroproceso: proceso.macroproceso || 'General',
     tipoProceso,
     dependenciaResponsable: proceso.dependencia || proceso.responsable || 'Sin asignar',
-    scoreRiesgo: puntajeRiesgo,
+    scoreRiesgo: (proceso.evaluacionRiesgo as any)?.scoreRiesgo ?? puntajeRiesgo,
     frecuenciaSugerida: frecuencia,
     horasEstimadas: calcularHorasEstimadas(nivelRiesgo),
     // Guardamos los campos backend para mapeo inverso
@@ -319,6 +319,11 @@ export function mapFormularioDafpToBackend(formData: any): Partial<BackendProces
       totalRiesgos: formData.totalRiesgos || 0,
       requerimientoComite: formData.requerimientoComite || false,
       requerimientoEntesReg: formData.requerimientoEntesReg || false,
+      // Score C+E-M (modelo simplificado 0-15)
+      criticidad: formData.criticidad ?? 0,
+      exposicion: formData.exposicion ?? 0,
+      mitigantes: formData.mitigantes ?? 0,
+      scoreRiesgo: formData.scoreRiesgoCEM ?? formData.scoreRiesgo ?? 0,
       // NOTA: Los campos vigencia, fechaCorte, ponderacionRiesgo, diasRotacion,
       // decisionRotacion, decisionFinal, motivoDecision, prioridadRegla
       // NO se envían al backend porque no los acepta en evaluacionRiesgo

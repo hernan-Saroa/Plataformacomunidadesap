@@ -74,6 +74,31 @@ class EvaluacionRiesgoDto {
   @IsOptional()
   @IsBoolean()
   requerimientoEntesReg?: boolean;
+
+  // Score C+E-M (modelo simplificado 0-15)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  criticidad?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  exposicion?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  mitigantes?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(15)
+  scoreRiesgo?: number;
 }
 
 export class CreateProcesoAuditableDto {

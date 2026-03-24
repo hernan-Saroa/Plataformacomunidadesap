@@ -31,6 +31,10 @@ interface EvaluacionRiesgoExtendida {
   probabilidad?: number;
   impacto?: number;
   riesgoInherente?: number;
+  criticidad?: number;
+  exposicion?: number;
+  mitigantes?: number;
+  scoreRiesgo?: number;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -71,6 +75,13 @@ export function convertirProcesoAFormularioDafp(
   const requerimientoComite = evaluacionRiesgo?.requerimientoComite ?? false;
   const requerimientoEntesReg = evaluacionRiesgo?.requerimientoEntesReg ?? false;
 
+  // Score C+E-M (modelo simplificado) — usar 0 cuando no hay datos guardados
+  const criticidad = evaluacionRiesgo?.criticidad ?? 0;
+  const exposicion = evaluacionRiesgo?.exposicion ?? 0;
+  const mitigantes = evaluacionRiesgo?.mitigantes ?? 0;
+  const scoreRiesgoCEM = evaluacionRiesgo?.scoreRiesgo ?? proceso.scoreRiesgo ?? (criticidad + exposicion - mitigantes);
+  const nivelRiesgoCEM = scoreRiesgoCEM >= 10 ? 'Crítico' : scoreRiesgoCEM >= 7 ? 'Alto' : scoreRiesgoCEM >= 4 ? 'Moderado' : 'Bajo';
+
   // Determinar ponderación de riesgo basada en nivel
   const ponderacionRiesgo = obtenerPonderacionRiesgo(proceso.nivelRiesgo);
 
@@ -106,13 +117,20 @@ export function convertirProcesoAFormularioDafp(
     motivoDecision: '',
     prioridadRegla: calcularPrioridadRegla(proceso.nivelRiesgo),
 
+    // Score C+E-M
+    criticidad,
+    exposicion,
+    mitigantes,
+    scoreRiesgoCEM,
+    nivelRiesgoCEM,
+
     // Metadatos de compatibilidad con backend
     codigo: proceso._codigo || proceso.codigo || '',
     macroproceso: proceso._macroproceso || proceso.macroproceso || proceso.categoria || 'General',
     tipoProceso: proceso.tipo,
     dependenciaResponsable: proceso._dependencia || proceso.dependenciaResponsable || '',
     nivelRiesgo: proceso.nivelRiesgo,
-    scoreRiesgo: proceso.puntajeRiesgo,
+    scoreRiesgo: scoreRiesgoCEM ?? proceso.puntajeRiesgo,
     numeroAuditorias: 0,
     frecuenciaSugerida: proceso.frecuenciaAuditoria,
     horasEstimadas: proceso.horasEstimadas || 60,
