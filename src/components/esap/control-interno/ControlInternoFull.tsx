@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Shield,
   LayoutDashboard,
@@ -75,6 +75,12 @@ interface ControlInternoContentProps {
   setNavegacionManual: (timestamp: number) => void;
 }
 
+/** Navegación programática al módulo de Listas de Chequeo (desde expediente/Comunicación) */
+interface NavegacionListasChequeo {
+  tabInicial: 'BIBLIOTECA' | 'LISTAS_CHEQUEO';
+  auditoriaId?: string;
+}
+
 function ControlInternoContent({
   seccionActiva,
   setSeccionActiva,
@@ -82,7 +88,18 @@ function ControlInternoContent({
   setNavegacionManual
 }: ControlInternoContentProps) {
   const { auditoriaSeleccionada } = useIntegracionAuditoriaPlanes();
-  
+  const [navegacionListasChequeo, setNavegacionListasChequeo] = useState<NavegacionListasChequeo | null>(null);
+  const refTabListasChequeo = useRef<NavegacionListasChequeo | null>(null);
+  const [listasChequeoTabActiva, setListasChequeoTabActiva] = useState<'BIBLIOTECA' | 'LISTAS_CHEQUEO'>('BIBLIOTECA');
+
+  const handleNavegarAListasChequeo = (nav: NavegacionListasChequeo | null) => {
+    refTabListasChequeo.current = nav;
+    setNavegacionListasChequeo(nav);
+    if (nav?.tabInicial === 'LISTAS_CHEQUEO') {
+      setListasChequeoTabActiva('LISTAS_CHEQUEO');
+    }
+  };
+
   // ✅ HOOK DE PERMISOS - Para filtrar submódulos
   const { puedeAcceder, esSuperUsuario } = useControlInternoPermissions();
   
@@ -213,8 +230,20 @@ function ControlInternoContent({
       case "plan-operativo":
         return <PlanificacionModuleRediseno vista="plan-operativo" onNavegarModulo={(seccion) => setSeccionActiva(seccion as SeccionActiva)} />;
       
-      case "listas-chequeo":
-        return <ListasChequeoModule />;
+      case "listas-chequeo": {
+        const nav = navegacionListasChequeo ?? refTabListasChequeo.current;
+        return (
+          <ListasChequeoModule
+            tabActiva={listasChequeoTabActiva}
+            onTabChange={setListasChequeoTabActiva}
+            auditoriaIdFoco={nav?.auditoriaId}
+            onNavegacionAplicada={() => {
+              refTabListasChequeo.current = null;
+              setNavegacionListasChequeo(null);
+            }}
+          />
+        );
+      }
       
       case "planes-mejoramiento":
         return <PlanesMejoramientoModuleRediseno />;
@@ -240,7 +269,8 @@ function ControlInternoContent({
       activeSection={seccionActiva}
       onSectionChange={(section) => {
         setSeccionActiva(section as SeccionActiva);
-        setNavegacionManual(Date.now()); // ← NUEVO: Actualizar timestamp de navegación manual
+        setNavegacionManual(Date.now());
+        if (section !== 'listas-chequeo') setListasChequeoTabActiva('BIBLIOTECA');
       }}
     >
       {/* Navegación automática */}
@@ -248,6 +278,7 @@ function ControlInternoContent({
         seccionActiva={seccionActiva}
         onCambiarSeccion={setSeccionActiva}
         navegacionManual={navegacionManual}
+        onNavegarAListasChequeo={handleNavegarAListasChequeo}
       />
       
       {/* Contenido de la sección */}
@@ -262,12 +293,14 @@ interface MenuDinamicoWrapperProps {
   seccionActiva: SeccionActiva;
   onCambiarSeccion: (seccion: SeccionActiva) => void;
   navegacionManual: number;
+  onNavegarAListasChequeo: (nav: NavegacionListasChequeo | null) => void;
 }
 
 function MenuDinamicoWrapper({ 
   seccionActiva, 
   onCambiarSeccion,
-  navegacionManual
+  navegacionManual,
+  onNavegarAListasChequeo
 }: MenuDinamicoWrapperProps) {
   const { auditoriaSeleccionada, auditoriaIdParaVerPlan } = useIntegracionAuditoriaPlanes();
   const [yaNavego, setYaNavego] = useState(false);
@@ -320,6 +353,24 @@ function MenuDinamicoWrapper({
       setYaNavegoVerPlan(false);
     }
   }, [auditoriaIdParaVerPlan, seccionActiva, onCambiarSeccion, navegacionManual, yaNavegoVerPlan]);
+
+  // ✅ Navegación: Ir a módulo de Listas de Chequeo (desde expediente/Comunicación)
+  useEffect(() => {
+    const handler = (e: CustomEvent<{ seccion: string; auditoriaId?: string }>) => {
+      const seccion = e.detail?.seccion;
+      if (seccion === 'listas-chequeo') {
+        const nav = { tabInicial: 'LISTAS_CHEQUEO' as const, auditoriaId: e.detail?.auditoriaId };
+        onNavegarAListasChequeo(nav);
+        onCambiarSeccion('listas-chequeo');
+        toast.success('Navegando a Listas de Chequeo', {
+          description: e.detail?.auditoriaId ? 'Mostrando listas de la auditoría' : undefined,
+          duration: 2000,
+        });
+      }
+    };
+    window.addEventListener('navegarModuloControlInterno', handler as EventListener);
+    return () => window.removeEventListener('navegarModuloControlInterno', handler as EventListener);
+  }, [onCambiarSeccion, onNavegarAListasChequeo]);
 
   return null;
 }

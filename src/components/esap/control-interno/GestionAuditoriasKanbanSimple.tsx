@@ -2308,8 +2308,40 @@ export function GestionAuditoriasKanbanSimple() {
       const nuevaAuditoriaId = await crearAuditoriaBackend(datosBackend);
       
       if (nuevaAuditoriaId) {
+        // Crear hallazgos preliminares si se incluyeron en el formulario
+        if (data.incluirHallazgosPreliminares && data.hallazgos?.length > 0) {
+          try {
+            const aud = await controlInternoService.getAuditoriaById(nuevaAuditoriaId);
+            const codigoAuditoria = aud?.codigo || data.titulo;
+            const areaBase = data.areaObjetivo || 'Por asignar';
+            const hoy = new Date().toISOString().split('T')[0];
+            for (const h of data.hallazgos) {
+              if (h.descripcion?.trim() && h.criterio?.trim()) {
+                await controlInternoService.createHallazgo({
+                  titulo: h.descripcion.substring(0, 100),
+                  categoria: 'borrador',
+                  area: areaBase,
+                  descripcion: h.descripcion,
+                  criterioIncumplido: h.criterio,
+                  causa: h.causa || undefined,
+                  efecto: h.efecto || undefined,
+                  recomendaciones: h.recomendacion ? [h.recomendacion] : [],
+                  fechaDeteccion: h.fechaIdentificacion || hoy,
+                  auditoria: codigoAuditoria,
+                  auditoriaId: nuevaAuditoriaId,
+                });
+              }
+            }
+          } catch (errHallazgos) {
+            console.error('Error creando hallazgos preliminares:', errHallazgos);
+            toast.warning('Auditoría creada, pero hubo un error al guardar algunos hallazgos preliminares');
+          }
+        }
+
         toast.success('✅ Auditoría creada exitosamente', {
-          description: `"${data.titulo}" registrada correctamente`
+          description: data.incluirHallazgosPreliminares && data.hallazgos?.length
+            ? `"${data.titulo}" con ${data.hallazgos.length} hallazgo(s) preliminar(es)`
+            : `"${data.titulo}" registrada correctamente`
         });
         
         // Recargar auditorías desde el backend

@@ -323,8 +323,26 @@ const mapApiListaToUI = (lista: any): ListaChequeo => {
 
 type TabActiva = 'BIBLIOTECA' | 'LISTAS_CHEQUEO';
 
-export function ListasChequeoModule() {
-  const [tabActiva, setTabActiva] = useState<TabActiva>('BIBLIOTECA');
+export interface ListasChequeoModuleProps {
+  /** Tab activo (modo controlado desde padre) */
+  tabActiva?: TabActiva;
+  /** Callback cuando cambia el tab (modo controlado) */
+  onTabChange?: (tab: TabActiva) => void;
+  /** @deprecated usar tabActiva/onTabChange */
+  tabInicial?: TabActiva;
+  /** Auditoría a enfocar (filtrar listas aplicadas a esta auditoría) */
+  auditoriaIdFoco?: string;
+  /** Llamar cuando la navegación programática ya fue aplicada */
+  onNavegacionAplicada?: () => void;
+}
+
+export function ListasChequeoModule({ tabActiva: tabActivaProp, onTabChange, tabInicial, auditoriaIdFoco, onNavegacionAplicada }: ListasChequeoModuleProps = {}) {
+  const [tabActivaInterno, setTabActivaInterno] = useState<TabActiva>('BIBLIOTECA');
+  const esControlado = tabActivaProp !== undefined && onTabChange !== undefined;
+  const tabActiva = esControlado ? tabActivaProp : tabActivaInterno;
+  const setTabActiva = esControlado ? onTabChange : setTabActivaInterno;
+
+  useEffect(() => { onNavegacionAplicada?.(); }, []);
   const [documentosBiblioteca, setDocumentosBiblioteca] = useState<DocumentoBiblioteca[]>([]);
   const [listasBackend, setListasBackend] = useState<ListaChequeo[]>([]);
   const [auditorias, setAuditorias] = useState<any[]>([]);
@@ -430,6 +448,7 @@ export function ListasChequeoModule() {
               listasIniciales={listasBackend}
               isLoading={isLoading}
               loadError={loadError}
+              auditoriaIdFoco={auditoriaIdFoco}
             />
           )}
         </motion.div>
@@ -993,9 +1012,11 @@ interface GestionListasChequeoProps {
   listasIniciales: ListaChequeo[];
   isLoading: boolean;
   loadError: string | null;
+  /** Al filtrar desde expediente/Comunicación, mostrar solo listas de esta auditoría */
+  auditoriaIdFoco?: string;
 }
 
-function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciales, isLoading, loadError }: GestionListasChequeoProps) {
+function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciales, isLoading, loadError, auditoriaIdFoco }: GestionListasChequeoProps) {
   const [listas, setListas] = useState<ListaChequeo[]>(listasIniciales || []);
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODOS');
   const [mostrarModalCrear, setMostrarModalCrear] = useState(false);
@@ -1075,6 +1096,8 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
   const listasFiltradas = listas.filter(lista => 
     filtroEtapa === 'TODOS' || lista.etapaKanban === filtroEtapa
   );
+
+  const auditoriaFoco = auditoriaIdFoco ? auditorias.find((a: any) => (a?.id ?? '') === auditoriaIdFoco) : null;
 
   const estadisticas = {
     totalListas: listas.length,
@@ -1160,6 +1183,21 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+      {/* Banner: contexto de auditoría cuando se navega desde expediente/Comunicación */}
+      {auditoriaIdFoco && (
+        <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-xl flex items-center gap-3">
+          <CheckSquare className="w-6 h-6 text-blue-600 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-bold text-blue-900">Listas de chequeo para la auditoría</p>
+            <p className="text-sm text-blue-700">
+              {auditoriaFoco
+                ? [auditoriaFoco.codigo, auditoriaFoco.nombre].filter(Boolean).join(' - ') || 'Auditoría seleccionada'
+                : 'Auditoría seleccionada'}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-6 sm:mb-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -1607,7 +1645,9 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
   const modoEdicion = !!listaEditar;
   const [nombre, setNombre] = useState(listaEditar?.nombre || '');
   const [descripcion, setDescripcion] = useState(listaEditar?.descripcion || '');
-  const [etapaKanban, setEtapaKanban] = useState<EtapaKanban>(listaEditar?.etapaKanban || 'PLANEACION');
+  const etapaInicial = listaEditar?.etapaKanban || 'PLANEACION';
+  const etapaPermitida = ['PLANEACION', 'EJECUCION', 'COMUNICACION'].includes(etapaInicial) ? etapaInicial : 'COMUNICACION';
+  const [etapaKanban, setEtapaKanban] = useState<EtapaKanban>(etapaPermitida as EtapaKanban);
   const [items, setItems] = useState<ItemChequeo[]>(listaEditar?.items || []);
   const [nuevoItemTexto, setNuevoItemTexto] = useState('');
   const [plantillaItemActual, setPlantillaItemActual] = useState<string>(''); // Plantilla para el ítem que se está creando
@@ -1801,8 +1841,7 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
             >
               <option value="PLANEACION">Planeación</option>
               <option value="EJECUCION">Ejecución</option>
-              <option value="SEGUIMIENTO">Seguimiento</option>
-              <option value="CIERRE">Cierre</option>
+              <option value="COMUNICACION">Comunicación</option>
             </select>
           </div>
 

@@ -67,6 +67,14 @@ export class CreateHallazgoDto {
   @IsNotEmpty()
   criterioIncumplido: string;
 
+  @IsString()
+  @IsOptional()
+  causa?: string;
+
+  @IsString()
+  @IsOptional()
+  efecto?: string;
+
   @IsArray()
   @IsOptional()
   normativaRelacionada?: string[];

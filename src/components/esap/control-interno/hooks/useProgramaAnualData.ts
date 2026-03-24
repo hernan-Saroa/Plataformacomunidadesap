@@ -294,6 +294,16 @@ export interface AuditoriaCreateData {
   planAnualAño?: number;
   rolDecretoAsociado?: string;
   estadoKanban?: string; // Estado inicial para el tablero Kanban
+  incluirHallazgosPreliminares?: boolean;
+  hallazgos?: Array<{
+    id: string;
+    descripcion: string;
+    criterio: string;
+    causa?: string;
+    efecto?: string;
+    recomendacion?: string;
+    fechaIdentificacion?: string;
+  }>;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -501,6 +511,35 @@ export function useProgramaAnualData(
       const auditoriaId = await auditoriaService.crear(formData, showToasts);
       
       if (auditoriaId) {
+        // Crear hallazgos preliminares si se incluyeron
+        if (data.incluirHallazgosPreliminares && data.hallazgos?.length) {
+          try {
+            const aud = await controlInternoService.getAuditoriaById(auditoriaId);
+            const codigoAuditoria = aud?.codigo || data.titulo;
+            const areaBase = data.areaObjetivo || 'Por asignar';
+            const hoy = new Date().toISOString().split('T')[0];
+            for (const h of data.hallazgos) {
+              if (h.descripcion?.trim() && h.criterio?.trim()) {
+                await controlInternoService.createHallazgo({
+                  titulo: h.descripcion.substring(0, 100),
+                  categoria: 'borrador',
+                  area: areaBase,
+                  descripcion: h.descripcion,
+                  criterioIncumplido: h.criterio,
+                  causa: h.causa || undefined,
+                  efecto: h.efecto || undefined,
+                  recomendaciones: h.recomendacion ? [h.recomendacion] : [],
+                  fechaDeteccion: h.fechaIdentificacion || hoy,
+                  auditoria: codigoAuditoria,
+                  auditoriaId,
+                });
+              }
+            }
+          } catch (errH) {
+            console.error('Error creando hallazgos preliminares:', errH);
+            if (showToasts) toast.warning('Auditoría creada, pero hubo un error al guardar algunos hallazgos preliminares');
+          }
+        }
         // Refrescar datos
         await fetchAuditorias();
         return true;

@@ -173,6 +173,10 @@ export class CreateAuditoriaDto {
   @IsOptional()
   programaAnualMetadata?: any;
 
+  /** ID de la actividad del plan anual (UUID). Si se envía valor no-UUID, se ignora. */
+  @IsOptional()
+  actividadPlanAnualId?: string;
+
   // Estado inicial del Kanban (cualquier string, se valida contra etapas del tablero en el servicio)
   @IsOptional()
   @IsString()

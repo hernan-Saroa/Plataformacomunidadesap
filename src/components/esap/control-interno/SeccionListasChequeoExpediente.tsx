@@ -281,6 +281,12 @@ export function SeccionListasChequeoExpediente({
     );
   }
 
+  const navegarAModuloListasChequeo = () => {
+    window.dispatchEvent(new CustomEvent('navegarModuloControlInterno', {
+      detail: { seccion: 'listas-chequeo', auditoriaId }
+    }));
+  };
+
   if (listasEtapaActual.length === 0) {
     return (
       <div className="bg-white rounded-xl border-2 border-gray-200 p-8">
@@ -293,7 +299,7 @@ export function SeccionListasChequeoExpediente({
             Puedes crear listas de chequeo personalizadas en el módulo correspondiente
           </p>
           <button
-            onClick={() => toast.info('📋 Navegar al módulo de Listas de Chequeo')}
+            onClick={navegarAModuloListasChequeo}
             className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-bold flex items-center gap-2 mx-auto hover:shadow-lg transition-all"
           >
             <Plus className="w-5 h-5" />
@@ -318,7 +324,7 @@ export function SeccionListasChequeoExpediente({
           </p>
         </div>
         <button
-          onClick={() => toast.info('📋 Abrir módulo completo de Listas de Chequeo')}
+          onClick={navegarAModuloListasChequeo}
           className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg font-semibold flex items-center gap-2 transition-colors"
         >
           <ExternalLink className="w-4 h-4" />

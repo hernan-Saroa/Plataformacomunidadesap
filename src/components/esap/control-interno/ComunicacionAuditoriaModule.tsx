@@ -1107,54 +1107,66 @@ const SeccionInformePreliminar: React.FC<{
           <div className="space-y-3">
             {auditoria.hallazgos.map((hallazgo, index) => (
               <div key={hallazgo.id} className="border border-gray-200 rounded-lg p-4 hover:border-purple-300 transition-colors">
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-sm font-semibold text-gray-700">
+                <div className="flex items-start justify-between mb-2 gap-2">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-sm font-semibold text-gray-700 flex-shrink-0">
                       {index + 1}
                     </div>
-                    <div>
-                      <h4 className="font-semibold text-gray-900">{hallazgo.titulo}</h4>
-                      <p className="text-sm text-gray-600 mt-1">{hallazgo.descripcion}</p>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-semibold text-gray-900 truncate" title={hallazgo.titulo}>{hallazgo.titulo}</h4>
+                      <p className="text-sm text-gray-600 mt-1 line-clamp-2" title={hallazgo.descripcion}>{hallazgo.descripcion}</p>
                     </div>
                   </div>
                   <BadgeSIGL variant={
                     hallazgo.gravedad === 'GRAVE' ? 'danger' :
                     hallazgo.gravedad === 'MODERADO' ? 'warning' : 'info'
-                  }>
+                  } className="flex-shrink-0">
                     {hallazgo.gravedad}
                   </BadgeSIGL>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3 text-sm">
-                  <div>
+                  <div className="min-w-0">
                     <span className="font-medium text-gray-700">Causas:</span>
-                    <div className="text-gray-600 mt-1">
-                      {hallazgo.causas?.length ? (
-                        <ul className="list-disc list-inside">{hallazgo.causas.map((c, i) => <li key={i}>{c}</li>)}</ul>
+                    <div className="text-gray-600 mt-1 overflow-hidden">
+                      {(hallazgo.causas?.length ? hallazgo.causas : (hallazgo as any).causa ? [(hallazgo as any).causa] : []).length ? (
+                        <ul className="list-disc list-inside space-y-0.5">
+                          {(hallazgo.causas?.length ? hallazgo.causas : [(hallazgo as any).causa]).map((c, i) => (
+                            <li key={i} className="truncate" title={c}>{c}</li>
+                          ))}
+                        </ul>
                       ) : hallazgo.descripcion ? (
-                        <p className="text-gray-600">{hallazgo.descripcion}</p>
+                        <p className="text-gray-600 truncate" title={hallazgo.descripcion}>{hallazgo.descripcion}</p>
                       ) : (
                         <span className="text-gray-400">—</span>
                       )}
                     </div>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <span className="font-medium text-gray-700">Efectos:</span>
-                    <div className="text-gray-600 mt-1">
-                      {hallazgo.efectos?.length ? (
-                        <ul className="list-disc list-inside">{hallazgo.efectos.map((e, i) => <li key={i}>{e}</li>)}</ul>
+                    <div className="text-gray-600 mt-1 overflow-hidden">
+                      {(hallazgo.efectos?.length ? hallazgo.efectos : (hallazgo as any).efecto ? [(hallazgo as any).efecto] : []).length ? (
+                        <ul className="list-disc list-inside space-y-0.5">
+                          {(hallazgo.efectos?.length ? hallazgo.efectos : [(hallazgo as any).efecto]).map((e, i) => (
+                            <li key={i} className="truncate" title={e}>{e}</li>
+                          ))}
+                        </ul>
                       ) : hallazgo.criterioIncumplido ? (
-                        <p className="text-gray-600">{hallazgo.criterioIncumplido}</p>
+                        <p className="text-gray-600 truncate" title={hallazgo.criterioIncumplido}>{hallazgo.criterioIncumplido}</p>
                       ) : (
                         <span className="text-gray-400">—</span>
                       )}
                     </div>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <span className="font-medium text-gray-700">Recomendaciones:</span>
-                    <div className="text-gray-600 mt-1">
+                    <div className="text-gray-600 mt-1 overflow-hidden">
                       {hallazgo.recomendaciones?.length ? (
-                        <ul className="list-disc list-inside">{hallazgo.recomendaciones.map((r, i) => <li key={i}>{r}</li>)}</ul>
+                        <ul className="list-disc list-inside space-y-0.5">
+                          {hallazgo.recomendaciones.map((r, i) => (
+                            <li key={i} className="truncate" title={r}>{r}</li>
+                          ))}
+                        </ul>
                       ) : (
                         <span className="text-gray-400">—</span>
                       )}
@@ -1266,21 +1278,21 @@ const SeccionGestionHallazgos: React.FC<{
           return (
             <CardSIGL key={hallazgo.id}>
               <div className="p-6">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
+                <div className="flex items-start justify-between mb-3 gap-2">
+                  <div className="min-w-0 flex-1">
                     <span className="text-sm font-medium text-gray-500">{hallazgo.codigo || hallazgo.id}</span>
-                    <h4 className="font-semibold text-gray-900 mt-1">{hallazgo.titulo || hallazgo.descripcion?.substring(0, 60)}</h4>
+                    <h4 className="font-semibold text-gray-900 mt-1 truncate" title={hallazgo.titulo || hallazgo.descripcion}>{hallazgo.titulo || hallazgo.descripcion?.substring(0, 60)}</h4>
                   </div>
                   <BadgeSIGL variant={
                     conDec ? (estado === 'retirado' ? 'success' : estado === 'ratificado' ? 'danger' : 'info') :
                     enControv ? 'warning' : pendiente ? 'default' : 'success'
-                  }>
+                  } className="flex-shrink-0">
                     {estado === 'notificado' ? 'Pendiente respuesta' : estado.replace('-', ' ')}
                   </BadgeSIGL>
                 </div>
-                <p className="text-sm text-gray-600 mb-2">{hallazgo.descripcion}</p>
+                <p className="text-sm text-gray-600 mb-2 line-clamp-2" title={hallazgo.descripcion}>{hallazgo.descripcion}</p>
                 {hallazgo.criterioIncumplido && (
-                  <p className="text-xs text-gray-500">Criterio: {hallazgo.criterioIncumplido}</p>
+                  <p className="text-xs text-gray-500 truncate" title={hallazgo.criterioIncumplido}>Criterio: {hallazgo.criterioIncumplido}</p>
                 )}
 
                 {pendiente && (

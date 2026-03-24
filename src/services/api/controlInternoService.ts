@@ -107,6 +107,8 @@ export interface Hallazgo {
   auditoriaEntity?: AuditoriaProgramada;
   descripcion: string;
   criterioIncumplido: string;
+  causa?: string;
+  efecto?: string;
   normativaRelacionada: string[];
   evidencias: Array<{
     id: string;

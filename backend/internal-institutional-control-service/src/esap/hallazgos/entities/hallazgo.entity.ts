@@ -62,6 +62,12 @@ export class Hallazgo {
   @Column({ name: 'criterio_incumplido', type: 'text' })
   criterioIncumplido: string;
 
+  @Column({ type: 'text', nullable: true })
+  causa?: string;
+
+  @Column({ type: 'text', nullable: true })
+  efecto?: string;
+
   @Column({
     name: 'normativa_relacionada',
     type: 'jsonb',

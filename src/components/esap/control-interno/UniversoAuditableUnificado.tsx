@@ -432,6 +432,8 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
               planAnualAño: data.planAnualAño,
               rolDecretoAsociado: data.rolDecretoAsociado,
               estadoKanban: data.estadoKanban || 'Plan Anual', // Crear en Plan Anual por defecto
+              incluirHallazgosPreliminares: data.incluirHallazgosPreliminares,
+              hallazgos: data.hallazgos,
             };
             
             const exito = await agregarAuditoria(auditoriaData);

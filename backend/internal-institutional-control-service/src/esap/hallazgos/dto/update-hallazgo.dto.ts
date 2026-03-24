@@ -65,6 +65,14 @@ export class UpdateHallazgoDto {
   @IsOptional()
   criterioIncumplido?: string;
 
+  @IsString()
+  @IsOptional()
+  causa?: string;
+
+  @IsString()
+  @IsOptional()
+  efecto?: string;
+
   @IsArray()
   @IsOptional()
   normativaRelacionada?: string[];

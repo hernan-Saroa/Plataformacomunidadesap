@@ -322,6 +322,8 @@ export class HallazgosService {
     if (updateDto.titulo !== undefined) hallazgo.titulo = updateDto.titulo;
     if (updateDto.descripcion !== undefined) hallazgo.descripcion = updateDto.descripcion;
     if (updateDto.criterioIncumplido !== undefined) hallazgo.criterioIncumplido = updateDto.criterioIncumplido;
+    if (updateDto.causa !== undefined) hallazgo.causa = updateDto.causa;
+    if (updateDto.efecto !== undefined) hallazgo.efecto = updateDto.efecto;
     if (updateDto.categoria !== undefined) hallazgo.categoria = updateDto.categoria as any;
     if (updateDto.estado !== undefined) hallazgo.estado = updateDto.estado as any;
     if (updateDto.area !== undefined) hallazgo.area = updateDto.area;

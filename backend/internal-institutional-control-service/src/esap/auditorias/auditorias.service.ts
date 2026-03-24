@@ -515,6 +515,16 @@ export class AuditoriasService {
     if (createDto.observacionesAdicionales) auditoriaData.observacionesAdicionales = createDto.observacionesAdicionales;
     if (createDto.programaAnualMetadata) auditoriaData.programaAnualMetadata = createDto.programaAnualMetadata;
 
+    // actividad_plan_anual_id es UUID. auditor_lider_id/auditor_asignado_id/supervisor son BIGINT (idTercero).
+    // NUNCA asignar idTercero (100, 12, 24) a actividadPlanAnualId → "invalid input syntax for type uuid"
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const actividadIdRaw = (createDto as any).actividadPlanAnualId ?? createDto.programaAnualMetadata?.actividadPlanAnualId;
+    if (actividadIdRaw && typeof actividadIdRaw === 'string' && uuidRegex.test(actividadIdRaw)) {
+      auditoriaData.actividadPlanAnualId = actividadIdRaw;
+    } else {
+      auditoriaData.actividadPlanAnualId = null; // Explícito: evitar que TypeORM tome valores de otras props
+    }
+
     const auditoria = this.auditoriaRepository.create(auditoriaData);
 
     const saved = await this.auditoriaRepository.save(auditoria);

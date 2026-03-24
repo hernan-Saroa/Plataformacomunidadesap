@@ -101,6 +101,9 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
     area: '',
     descripcion: '',
     criterioIncumplido: '',
+    causa: '',
+    efecto: '',
+    recomendacion: '',
     fechaDeteccion: new Date().toISOString().split('T')[0],
     responsable: ''
   });
@@ -217,8 +220,9 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
 
   // Crear o actualizar hallazgo
   const handleCrearHallazgo = async () => {
-    if (!nuevoHallazgo.area || !nuevoHallazgo.descripcion || !nuevoHallazgo.criterioIncumplido) {
-      toast.error('Por favor completa los campos obligatorios');
+    if (!nuevoHallazgo.area || !nuevoHallazgo.descripcion || !nuevoHallazgo.criterioIncumplido ||
+        !nuevoHallazgo.causa?.trim() || !nuevoHallazgo.efecto?.trim() || !nuevoHallazgo.recomendacion?.trim()) {
+      toast.error('Por favor completa todos los campos obligatorios: Descripción, Criterio Incumplido, Causa, Efecto y Recomendación');
       return;
     }
 
@@ -240,6 +244,9 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
           area: nuevoHallazgo.area,
           descripcion: nuevoHallazgo.descripcion,
           criterioIncumplido: nuevoHallazgo.criterioIncumplido,
+          causa: nuevoHallazgo.causa || undefined,
+          efecto: nuevoHallazgo.efecto || undefined,
+          recomendaciones: nuevoHallazgo.recomendacion ? [nuevoHallazgo.recomendacion] : [],
           responsable: nuevoHallazgo.responsable || undefined
         });
         toast.success('Hallazgo actualizado exitosamente');
@@ -251,6 +258,9 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
           area: nuevoHallazgo.area,
           descripcion: nuevoHallazgo.descripcion,
           criterioIncumplido: nuevoHallazgo.criterioIncumplido,
+          causa: nuevoHallazgo.causa || undefined,
+          efecto: nuevoHallazgo.efecto || undefined,
+          recomendaciones: nuevoHallazgo.recomendacion ? [nuevoHallazgo.recomendacion] : [],
           fechaDeteccion: nuevoHallazgo.fechaDeteccion,
           responsable: nuevoHallazgo.responsable || undefined,
           auditoria: auditoriaNombre,
@@ -292,6 +302,9 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
         area: '',
         descripcion: '',
         criterioIncumplido: '',
+        causa: '',
+        efecto: '',
+        recomendacion: '',
         fechaDeteccion: new Date().toISOString().split('T')[0],
         responsable: ''
       });
@@ -309,12 +322,17 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
   // Abrir formulario para editar hallazgo
   const handleEditarHallazgo = (hallazgo: Hallazgo) => {
     setHallazgoEditandoId(hallazgo.id);
+    const recom = Array.isArray(hallazgo.recomendaciones) && hallazgo.recomendaciones.length
+      ? hallazgo.recomendaciones[0] : '';
     setNuevoHallazgo({
       titulo: (hallazgo as any).titulo || hallazgo.descripcion?.substring(0, 100) || '',
       categoria: hallazgo.categoria as CategoriaHallazgo,
       area: hallazgo.area,
       descripcion: hallazgo.descripcion,
       criterioIncumplido: hallazgo.criterioIncumplido,
+      causa: (hallazgo as any).causa || '',
+      efecto: (hallazgo as any).efecto || '',
+      recomendacion: recom,
       fechaDeteccion: hallazgo.fechaDeteccion?.split('T')[0] || new Date().toISOString().split('T')[0],
       responsable: hallazgo.responsable || ''
     });
@@ -332,6 +350,9 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
       area: '',
       descripcion: '',
       criterioIncumplido: '',
+      causa: '',
+      efecto: '',
+      recomendacion: '',
       fechaDeteccion: new Date().toISOString().split('T')[0],
       responsable: ''
     });
@@ -595,6 +616,45 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Causa *
+                </label>
+                <textarea
+                  value={nuevoHallazgo.causa}
+                  onChange={(e) => setNuevoHallazgo(prev => ({ ...prev, causa: e.target.value }))}
+                  placeholder="Razón del hallazgo..."
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Efecto *
+                </label>
+                <textarea
+                  value={nuevoHallazgo.efecto}
+                  onChange={(e) => setNuevoHallazgo(prev => ({ ...prev, efecto: e.target.value }))}
+                  placeholder="Consecuencia del hallazgo..."
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Recomendación *
+                </label>
+                <textarea
+                  value={nuevoHallazgo.recomendacion}
+                  onChange={(e) => setNuevoHallazgo(prev => ({ ...prev, recomendacion: e.target.value }))}
+                  placeholder="Acción correctiva recomendada..."
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
@@ -852,19 +912,19 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
 
                   {/* Footer con información adicional */}
                   <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-200">
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-500 mb-0.5">Área Responsable:</p>
-                      <p className="text-xs font-semibold text-gray-900">{hallazgo.area}</p>
+                      <p className="text-xs font-semibold text-gray-900 truncate" title={hallazgo.area}>{hallazgo.area}</p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-500 mb-0.5">Responsable:</p>
-                      <p className="text-xs font-semibold text-gray-900">{getNombreResponsable(hallazgo.responsable)}</p>
+                      <p className="text-xs font-semibold text-gray-900 truncate" title={getNombreResponsable(hallazgo.responsable)}>{getNombreResponsable(hallazgo.responsable)}</p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-500 mb-0.5">Criterio Incumplido:</p>
-                      <p className="text-xs font-semibold text-gray-900">{hallazgo.criterioIncumplido}</p>
+                      <p className="text-xs font-semibold text-gray-900 truncate" title={hallazgo.criterioIncumplido}>{hallazgo.criterioIncumplido || '—'}</p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-500 mb-0.5">Fecha Detección:</p>
                       <p className="text-xs font-semibold text-gray-900">{hallazgo.fechaDeteccion?.split('T')[0] || 'N/A'}</p>
                     </div>
@@ -963,7 +1023,7 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
                   <label className="block text-sm font-bold text-gray-900 mb-1">
                     Criterio Incumplido:
                   </label>
-                  <p className="text-sm text-gray-700">
+                  <p className="text-sm text-gray-700 break-words">
                     {hallazgoSeleccionado.criterioIncumplido}
                   </p>
                 </div>
@@ -1029,22 +1089,22 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
                   return tieneCausaEfecto ? (
                     <div className="grid grid-cols-2 gap-4">
                       {causaMatch?.[1] && (
-                        <div>
+                        <div className="min-w-0">
                           <label className="block text-sm font-bold text-gray-900 mb-1">Causa:</label>
-                          <p className="text-sm text-gray-700">{causaMatch[1].trim()}</p>
+                          <p className="text-sm text-gray-700 break-words">{causaMatch[1].trim()}</p>
                         </div>
                       )}
                       {efectoMatch?.[1] && (
-                        <div>
+                        <div className="min-w-0">
                           <label className="block text-sm font-bold text-gray-900 mb-1">Efecto:</label>
-                          <p className="text-sm text-gray-700">{efectoMatch[1].trim()}</p>
+                          <p className="text-sm text-gray-700 break-words">{efectoMatch[1].trim()}</p>
                         </div>
                       )}
                     </div>
                   ) : (
                     <div>
                       <label className="block text-sm font-bold text-gray-900 mb-1">Observaciones:</label>
-                      <p className="text-sm text-gray-700">{obs}</p>
+                      <p className="text-sm text-gray-700 break-words">{obs}</p>
                     </div>
                   );
                 })()}
@@ -1054,9 +1114,9 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
                     <label className="block text-sm font-bold text-gray-900 mb-1">
                       Recomendaciones:
                     </label>
-                    <ul className="list-disc list-inside text-sm text-gray-700">
+                    <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
                       {hallazgoSeleccionado.recomendaciones.map((rec, idx) => (
-                        <li key={idx}>{rec}</li>
+                        <li key={idx} className="break-words">{rec}</li>
                       ))}
                     </ul>
                   </div>
