@@ -50,6 +50,7 @@ import { convertirProcesoABorrador } from './utils-aprobacion'; // ✅ NUEVO: Ut
 import { obtenerAccionesPorEtapa, obtenerDescripcionEtapa, type EtapaProceso } from './accionesPorEtapa'; // ✅ NUEVO: Acciones por etapa
 import { useResponsive } from './hooks/useResponsive'; // ✅ Hook responsive simplificado
 import { ModalDetallesProceso } from './ModalDetallesProceso'; // ✅ Modal World Class con pestañas
+import { ModalDetallesAsociacion } from './ModalDetallesAsociacion'; // ✅ Modal para ver detalles de asociación de procesos
 import { WizardConvertirProcesoWorldClass } from './WizardConvertirProcesoWorldClass'; // ✅ Wizard conversión con disponibilidad de profesionales
 import { ModalDetallesNoticia } from './ModalDetallesNoticia'; // ✅ Modal World Class detalles de noticia
 import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProcess as ApiProceso } from '../../../services/api/disciplinary.service';
@@ -254,6 +255,7 @@ type ModalType =
   | 'devolver-competencia'
   | 'ver-detalles'
   | 'ver-detalles-remision'  // ✅ NUEVO: Modal para ver detalles de remisión por competencia
+  | 'ver-detalles-asociacion'  // ✅ NUEVO: Modal para ver detalles de asociación de procesos
   | 'aprobar-borrador'
   | 'archivar-noticia'
   | 'editor-documentos'
@@ -521,6 +523,7 @@ interface TarjetaProcesoProps {
   colapsada?: boolean; // NUEVO: Indica si la tarjeta está colapsada
   onToggleColapso?: () => void; // NUEVO: Toggle para colapsar/expandir
   onEditarProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
+  onVerDetallesAsociacion?: (proceso: Proceso) => void; // ✅ NUEVO: Ver detalles de asociación
 }
 
 function TarjetaProceso({
@@ -537,6 +540,7 @@ function TarjetaProceso({
   onComentarios,
   noticiasAsociadas = [], // ✅ NUEVO
   onVerNoticiaAsociada, // ✅ NUEVO
+  onVerDetallesAsociacion, // ✅ NUEVO: Ver detalles de asociación
   vistaCompacta,
   isMobile,
   colapsada,
@@ -660,12 +664,16 @@ function TarjetaProceso({
                 {noticiasExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
               </button>
             )}
-            {/* ✅ NUEVO: Badge de proceso asociado */}
+            {/* ✅ NUEVO: Badge de proceso asociado - CLICKEABLE */}
             {proceso.procesoAsociadoId && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-300 flex items-center gap-0.5" title={`Asociado a: ${proceso.procesoAsociadoNumero}`}>
+              <button
+                onClick={(e) => { e.stopPropagation(); onVerDetallesAsociacion?.(proceso); }}
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-300 flex items-center gap-0.5 hover:bg-blue-200 transition-colors cursor-pointer"
+                title={`Ver detalles de asociación: ${proceso.procesoAsociadoNumero}`}
+              >
                 <Link2 className="w-2.5 h-2.5" />
                 {proceso.procesoAsociadoTipo === 'conexo' ? 'Conexo' : proceso.procesoAsociadoTipo === 'similar' ? 'Similar' : proceso.procesoAsociadoTipo === 'consolidado' ? 'Consolidado' : 'Asociado'}
-              </span>
+              </button>
             )}
           </div>
 
@@ -696,9 +704,13 @@ function TarjetaProceso({
             </motion.div>
           )}
 
-          {/* Métricas — fila compacta inline */}
+          {/* Métricas — fila compacta inline - CLICKEABLE */}
           {proceso.procesoAsociadoId && (
-            <div className="mt-2 pt-2 border-t border-blue-200 bg-blue-50 p-2 rounded-md">
+            <div 
+              className="mt-2 pt-2 border-t border-blue-200 bg-blue-50 p-2 rounded-md cursor-pointer hover:bg-blue-100 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onVerDetallesAsociacion?.(proceso); }}
+              title="Ver detalles de la asociación"
+            >
               <div className="flex items-center gap-1.5">
                 <Link2 className="w-3 h-3 text-blue-600" />
                 <span className="text-[10px] font-bold text-blue-800">Proceso Asociado:</span>
@@ -1397,6 +1409,7 @@ interface ColumnaKanbanProps {
   onSolicitarReasignacion?: (proceso: Proceso) => void; // ✅ NUEVO: Solicitar reasignación
   onAsociarProcesoProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Asociar proceso a otro proceso (post-Recepción)
   onEditarProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
+  onVerDetallesAsociacion?: (proceso: Proceso) => void; // ✅ NUEVO: Ver detalles de asociación
   vistaCompacta: boolean;
   isMobile?: boolean;
   colapsada?: boolean;
@@ -1434,6 +1447,7 @@ function ColumnaKanban({
   onSolicitarReasignacion, // ✅ NUEVO
   onAsociarProcesoProceso, // ✅ NUEVO: Asociar proceso a proceso
   onEditarProceso, // ✅ NUEVO: Editar proceso
+  onVerDetallesAsociacion, // ✅ NUEVO: Ver detalles de asociación
   vistaCompacta,
   isMobile,
   colapsada = false,
@@ -1787,6 +1801,7 @@ function ColumnaKanban({
               onGestionActas={onGestionActas}
               onComentarios={onComentarios}
               onSolicitarReasignacion={onSolicitarReasignacion} // ✅ NUEVO: Solicitar reasignación
+              onVerDetallesAsociacion={onVerDetallesAsociacion} // ✅ NUEVO: Ver detalles de asociación
               onAsociarProcesoProceso={onAsociarProcesoProceso} // ✅ NUEVO: Asociar proceso a otro proceso
               onEditarProceso={onEditarProceso} // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
               noticiasAsociadas={getNoticiasAsociadas(proceso.id)} // ✅ NUEVO: Noticias asociadas a este proceso
@@ -3989,6 +4004,12 @@ export function DashboardKanbanOperativo({
     setModalActivo('ver-detalles-remision');
   };
 
+  // ✅ NUEVO: Handler para ver detalles de asociación de procesos (clic en el proceso asociado)
+  const handleVerDetallesAsociacion = (proceso: Proceso) => {
+    setItemSeleccionado(proceso);
+    setModalActivo('ver-detalles-asociacion');
+  };
+
   // ✅ NUEVO: Handler para ver noticia asociada desde el proceso
   const handleVerNoticiaAsociada = (noticia: Noticia) => {
     // Scroll hasta la noticia (si está visible)
@@ -4671,6 +4692,7 @@ export function DashboardKanbanOperativo({
                         onSolicitarReasignacion={handleSolicitarReasignacion}
                         onAsociarProcesoProceso={handleAsociarProcesoProceso} // ✅ NUEVO: Asociar proceso a proceso
                         onEditarProceso={handleEditarProceso} // ✅ NUEVO: Editar proceso
+                        onVerDetallesAsociacion={handleVerDetallesAsociacion} // ✅ NUEVO: Ver detalles de asociación
                         vistaCompacta={vistaCompacta}
                         isMobile={isMobile}
                         colapsada={columnasColapsadas.has(etapa.nombre)}
@@ -5583,7 +5605,38 @@ export function DashboardKanbanOperativo({
         {/* ══ DETALLES DE NOTICIA — World Class Completo ══ */}
         {modalActivo === 'ver-detalles' && itemSeleccionado && itemSeleccionado.tipo === 'noticia' && (
           <ModalDetallesNoticia
-        />)}
+            noticia={itemSeleccionado as Noticia}
+            onClose={() => setModalActivo(null)}
+            onEditar={(noticia) => handleEditarNoticia(noticia as Noticia)}
+            onConvertir={(noticia) => handleConvertirNoticia(noticia as Noticia)}
+          />
+        )}
+
+        {/* NUEVO: MODAL DETALLES ASOCIACION - Ver detalles de asociacion entre procesos */}
+        {modalActivo === 'ver-detalles-asociacion' && itemSeleccionado && itemSeleccionado.tipo === 'proceso' && (() => {
+          const procesoOrigen = itemSeleccionado as Proceso;
+          const procesoDestino = items.find(item => 
+            item.tipo === 'proceso' && item.id === procesoOrigen.procesoAsociadoId
+          ) as Proceso | undefined;
+          
+          return (
+            <ModalDetallesAsociacion
+              isOpen={modalActivo === 'ver-detalles-asociacion'}
+              onClose={() => {
+                setModalActivo(null);
+                setItemSeleccionado(null);
+              }}
+              procesoOrigen={procesoOrigen}
+              procesoDestino={procesoDestino}
+              tipoAsociacion={procesoOrigen.procesoAsociadoTipo}
+              fechaAsociacion={procesoOrigen.procesoAsociadoFecha}
+              onVerProceso={(proceso) => {
+                setItemSeleccionado(proceso);
+                setModalActivo('ver-detalles');
+              }}
+            />
+          );
+        })()}
 
         {/* ✅ NUEVO: MODAL DETALLES REMISIÓN — Ver información completa de remisión por competencia */}
         {modalActivo === 'ver-detalles-remision' && itemSeleccionado && itemSeleccionado.tipo === 'noticia' && (
