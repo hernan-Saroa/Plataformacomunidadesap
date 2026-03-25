@@ -354,12 +354,128 @@ export class NewsService {
   }
 
   /**
+   * Remite una noticia por competencia a otra entidad
+   * Actualiza el estado a REMITIDA y guarda los datos de remisión
+   */
+  async remitirNoticia(
+    id: string,
+    data: {
+      numeroRC: string;
+      entidadRemision: string;
+      correoEntidadRemision: string;
+      fechaRemision: Date;
+      tipoRemision?: string;
+      justificacionRemision?: string;
+    },
+    descripcionRemision?: {
+      numeroRadicado: string;
+      origen: string;
+      fechaRecepcion: string | Date;
+      territorial: string;
+      dependenciaDenunciado: string;
+      denunciante: any;
+      disciplinable: any;
+      hechos: string;
+      conductas?: string[];
+      fundamentosLegales?: string[];
+    },
+  ): Promise<DisciplinaryNews> {
+    const noticia = await this.findById(id);
+
+    // Actualizar estado y campos de remisión
+    noticia.estado = NewsStatus.REMITIDA;
+    noticia.kanbanStage = 'REMITIDA';
+    noticia.numeroRC = data.numeroRC;
+    noticia.entidadRemision = data.entidadRemision;
+    noticia.correoEntidadRemision = data.correoEntidadRemision;
+    noticia.fechaRemision = data.fechaRemision;
+    noticia.tipoRemision = data.tipoRemision ?? null;
+    noticia.justificacionRemision = data.justificacionRemision ?? null;
+
+    // Guardar descripción detallada en el campo JSON
+    if (descripcionRemision) {
+      noticia.descripcionRemision = descripcionRemision;
+    } else {
+      // Construir descripción desde la noticia
+      noticia.descripcionRemision = {
+        numeroRadicado: noticia.radicado,
+        origen: typeof noticia.origen === 'string' ? noticia.origen : noticia.origen,
+        fechaRecepcion: new Date(noticia.fechaRecepcion).toISOString(),
+        territorial: noticia.territorial,
+        dependenciaDenunciado: noticia.dependenciaDenunciado,
+        denunciante: typeof noticia.denunciante === 'string' ? JSON.parse(noticia.denunciante) : noticia.denunciante,
+        disciplinable: typeof noticia.disciplinable === 'string' ? JSON.parse(noticia.disciplinable) : noticia.disciplinable,
+        hechos: noticia.hechos,
+        conductas: noticia.conductas,
+        fundamentosLegales: [],
+      };
+    }
+
+    // Registrar en auditoría
+    const historyEntry = {
+      id: Date.now().toString(),
+      tipo: 'remision_competencia',
+      usuario: 'Sistema',
+      fecha: new Date().toISOString(),
+      observaciones: `Noticia remitida por competencia a ${data.entidadRemision}. Número RC: ${data.numeroRC}`,
+    };
+    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+
+    console.log('✅ Remitiendo noticia por competencia:', {
+      newsId: id,
+      numeroRC: data.numeroRC,
+      entidadRemision: data.entidadRemision,
+      estado: NewsStatus.REMITIDA,
+    });
+
+    return await this.newsRepository.save(noticia);
+  }
+
+  /**
+   * Actualiza los detalles de remisión en formato JSON
+   */
+  async updateRemisionDetails(
+    id: string,
+    descripcion: {
+      numeroRadicado: string;
+      origen: string;
+      fechaRecepcion: string | Date;
+      territorial: string;
+      dependenciaDenunciado: string;
+      denunciante: any;
+      disciplinable: any;
+      hechos: string;
+      conductas?: string[];
+      fundamentosLegales?: string[];
+    },
+  ): Promise<DisciplinaryNews> {
+    const noticia = await this.findById(id);
+
+    // Guardar la descripción detallada como JSON usando el campo de la entidad
+    noticia.descripcionRemision = descripcion;
+
+    return await this.newsRepository.save(noticia);
+  }
+
+  /**
    * Construye el contenido HTML del correo de remisión por competencia
    */
   buildRemisionEmailContent(
     noticia: DisciplinaryNews,
     entidadDestino: string,
     justificacion: string,
+    descripcionRemision?: {
+      numeroRadicado: string;
+      origen: string;
+      fechaRecepcion: string | Date;
+      territorial: string;
+      dependenciaDenunciado: string;
+      denunciante: any;
+      disciplinable: any;
+      hechos: string;
+      conductas?: string[];
+      fundamentosLegales?: string[];
+    },
   ): string {
     const formatDate = (date: Date | string | undefined): string => {
       if (!date) return 'No especificada';
@@ -375,13 +491,27 @@ export class NewsService {
     const formatPersonInfo = (person: any): string => {
       if (!person) return 'No disponible';
       let info = `<strong>${person.nombre || 'Sin nombre'}</strong>`;
-      if (person.cedula) info += `<br>C.C.: ${person.cedula}`;
+      if (person.cedula || person.identificacion) info += `<br>C.C.: ${person.cedula || person.identificacion}`;
       if (person.cargo) info += `<br>Cargo: ${person.cargo}`;
       if (person.dependencia) info += `<br>Dependencia: ${person.dependencia}`;
       if (person.entidad) info += `<br>Entidad: ${person.entidad}`;
       if (person.email) info += `<br>Email: ${person.email}`;
       if (person.telefono) info += `<br>Teléfono: ${person.telefono}`;
       return info;
+    };
+
+    // Usar datos de descripcionRemision o construir desde la noticia
+    const datos = descripcionRemision || {
+      numeroRadicado: noticia.radicado,
+      origen: typeof noticia.origen === 'string' ? noticia.origen : noticia.origen,
+      fechaRecepcion: new Date(noticia.fechaRecepcion).toISOString(),
+      territorial: noticia.territorial,
+      dependenciaDenunciado: noticia.dependenciaDenunciado,
+      denunciante: typeof noticia.denunciante === 'string' ? JSON.parse(noticia.denunciante) : noticia.denunciante,
+      disciplinable: typeof noticia.disciplinable === 'string' ? JSON.parse(noticia.disciplinable) : noticia.disciplinable,
+      hechos: noticia.hechos,
+      conductas: noticia.conductas,
+      fundamentosLegales: [],
     };
 
     return `
@@ -410,7 +540,7 @@ export class NewsService {
                 </tr>
                 <tr>
                   <td style="font-weight: 600; color: #374151;">Radicado Original:</td>
-                  <td style="color: #111827;">${noticia.radicado}</td>
+                  <td style="color: #111827;">${datos.numeroRadicado}</td>
                 </tr>
               </table>
             </td>
@@ -432,7 +562,7 @@ export class NewsService {
           </tr>
           <tr>
             <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-              ${formatPersonInfo(noticia.denunciante)}
+              ${formatPersonInfo(datos.denunciante)}
             </td>
           </tr>
           <tr>
@@ -442,7 +572,7 @@ export class NewsService {
           </tr>
           <tr>
             <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-              ${formatPersonInfo(noticia.disciplinable)}
+              ${formatPersonInfo(datos.disciplinable)}
             </td>
           </tr>
           <tr>
@@ -452,10 +582,10 @@ export class NewsService {
           </tr>
           <tr>
             <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-              ${noticia.hechos || 'No especificados'}
+              ${datos.hechos || 'No especificados'}
             </td>
           </tr>
-          ${noticia.conductas && noticia.conductas.length > 0 ? `
+          ${datos.conductas && datos.conductas.length > 0 ? `
           <tr>
             <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
               Conductasallegadas
@@ -464,7 +594,7 @@ export class NewsService {
           <tr>
             <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
               <ul style="margin: 0; padding-left: 20px;">
-                ${noticia.conductas.map(c => `<li>${c}</li>`).join('')}
+                ${datos.conductas.map(c => `<li>${c}</li>`).join('')}
               </ul>
             </td>
           </tr>
@@ -479,29 +609,37 @@ export class NewsService {
               <table width="100%" cellspacing="0" cellpadding="8" style="background: #f9fafb; border-radius: 8px;">
                 <tr>
                   <td style="font-weight: 600; color: #374151;">Origen:</td>
-                  <td style="color: #111827;">${noticia.origen || 'No especificado'}</td>
+                  <td style="color: #111827;">${datos.origen || 'No especificado'}</td>
                 </tr>
                 <tr>
                   <td style="font-weight: 600; color: #374151;">Territorial:</td>
-                  <td style="color: #111827;">${noticia.territorial || 'No especificada'}</td>
+                  <td style="color: #111827;">${datos.territorial || 'No especificada'}</td>
                 </tr>
                 <tr>
                   <td style="font-weight: 600; color: #374151;">Dependencia del Denunciado:</td>
-                  <td style="color: #111827;">${noticia.dependenciaDenunciado || 'No especificada'}</td>
+                  <td style="color: #111827;">${datos.dependenciaDenunciado || 'No especificada'}</td>
                 </tr>
                 <tr>
                   <td style="font-weight: 600; color: #374151;">Fecha de Recepción:</td>
-                  <td style="color: #111827;">${formatDate(noticia.fechaRecepcion)}</td>
+                  <td style="color: #111827;">${formatDate(datos.fechaRecepcion)}</td>
                 </tr>
-                ${noticia.fechaQueja ? `
-                <tr>
-                  <td style="font-weight: 600; color: #374151;">Fecha de los Hechos:</td>
-                  <td style="color: #111827;">${formatDate(noticia.fechaQueja)}</td>
-                </tr>
-                ` : ''}
               </table>
             </td>
           </tr>
+          ${datos.fundamentosLegales && datos.fundamentosLegales.length > 0 ? `
+          <tr>
+            <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              Fundamentos Legales
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              <ul style="margin: 0; padding-left: 20px;">
+                ${datos.fundamentosLegales.map(f => `<li>${f}</li>`).join('')}
+              </ul>
+            </td>
+          </tr>
+          ` : ''}
           ${noticia.adjuntos && noticia.adjuntos.length > 0 ? `
           <tr>
             <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
