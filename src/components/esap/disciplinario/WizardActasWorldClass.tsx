@@ -15,12 +15,13 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, FileCheck, Download, Upload, CheckCircle, AlertCircle,
   Calendar, Users, MessageSquare, Search, Clock, Paperclip,
   Shield, Sparkles, Zap, Star, User, AlertTriangle, Info,
-  FileText, Tag
+  FileText, Tag, ChevronDown, ChevronUp, MapPin
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { BadgeNomenclatura } from './components/BadgeNomenclatura';
@@ -139,6 +140,7 @@ interface Persona {
 }
 
 interface ProcesoCompleto {
+  id?: string;
   numeroProceso: string;
   denunciado: Persona;
   denunciante: Persona;
@@ -161,6 +163,19 @@ interface ActaGenerada {
   fecha: string;
   participantes: number;
   firmada: boolean;
+  estado: string;
+  archivoNombre: string;
+  archivoTamano: string;
+  etapa: string;
+  responsable: string;
+  lugar?: string;
+  horario?: string;
+  duracion?: string;
+  observaciones?: string;
+  resumen?: string;
+  decisiones?: string;
+  asistentes: string[];
+  archivoDisponible: boolean;
 }
 
 interface WizardActasWorldClassProps {
@@ -169,6 +184,108 @@ interface WizardActasWorldClassProps {
   onActaCreada?: (acta: any) => void;
 }
 
+const isUuidLike = (value?: string) =>
+  !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+const formatearTamanoArchivo = (size?: number, fallback?: string) => {
+  if (typeof size === 'number' && !Number.isNaN(size)) {
+    if (size >= 1024 * 1024) {
+      return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+    }
+    return `${Math.max(1, Math.round(size / 1024))} KB`;
+  }
+  return fallback || '0 KB';
+};
+
+const normalizarTexto = (valor?: string | null) =>
+  (valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '_')
+    .toUpperCase()
+    .trim();
+
+const normalizarEtapaActa = (valor?: string | null) => {
+  const etapa = normalizarTexto(valor);
+  if (etapa === 'INDAGACION') return 'INDAGACION_PREVIA';
+  if (etapa === 'EVALUACION') return 'VALORACION';
+  return etapa;
+};
+
+const parsearDescripcionActa = (descripcion?: string | null) => {
+  const resultado: Record<string, string> = {};
+
+  (descripcion || '')
+    .split('|')
+    .map((parte) => parte.trim())
+    .filter(Boolean)
+    .forEach((parte) => {
+      const separador = parte.indexOf(':');
+      if (separador === -1) return;
+      const llave = normalizarTexto(parte.slice(0, separador));
+      const valor = parte.slice(separador + 1).trim();
+      if (llave && valor) {
+        resultado[llave] = valor;
+      }
+    });
+
+  const participantesTexto = resultado.PARTICIPANTES || '';
+  const asistentesDesdeDescripcion = (resultado.ASISTENTES || '')
+    .split(';')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const asistentesCompatibles = asistentesDesdeDescripcion.length > 0
+    ? asistentesDesdeDescripcion
+    : (!participantesTexto || /^\d+$/.test(participantesTexto)
+      ? []
+      : participantesTexto.split(/[;,]/).map((item) => item.trim()).filter(Boolean));
+  const participantesNumericos = participantesTexto && /^\d+$/.test(participantesTexto)
+    ? Number(participantesTexto)
+    : asistentesCompatibles.length;
+
+  return {
+    tipo: resultado.TIPO || '',
+    fecha: resultado.FECHA_ACTA || '',
+    lugar: resultado.LUGAR || '',
+    horario: resultado.HORARIO || '',
+    duracion: resultado.DURACION || '',
+    observaciones: resultado.OBSERVACIONES || '',
+    resumen: resultado.RESUMEN || '',
+    decisiones: resultado.DECISIONES || '',
+    participantes: participantesNumericos,
+    asistentes: asistentesCompatibles,
+  };
+};
+
+const mapearActaGenerada = (doc: any): ActaGenerada => {
+  const meta = parsearDescripcionActa(doc.descripcion || doc.description);
+  const fecha = meta.fecha || (doc.fechaCarga ? doc.fechaCarga.split('T')[0] : new Date().toISOString().split('T')[0]);
+  const estadoBackend = (doc.metadatos?.estado || '').toUpperCase();
+  const archivoDisponible = Boolean(doc.urlExterna || doc.url || doc.downloadUrl);
+
+  return {
+    id: doc.id,
+    numero: doc.nombre || doc.archivoNombre || `ACTA-${doc.id}`,
+    tipo: meta.tipo || 'Acta',
+    fecha,
+    participantes: doc.participantes ?? meta.participantes ?? 0,
+    firmada: ['FIRMADO', 'NOTIFICADO', 'APROBADO'].includes(estadoBackend),
+    estado: ['FIRMADO', 'NOTIFICADO', 'APROBADO'].includes(estadoBackend) ? 'Firmada' : 'Cargada',
+    archivoNombre: doc.archivoNombre || doc.nombre || 'acta',
+    archivoTamano: formatearTamanoArchivo(doc.fileSize, doc.tamaño),
+    etapa: doc.etapa || 'Sin etapa',
+    responsable: doc.usuarioCarga || 'Sistema',
+    lugar: meta.lugar,
+    horario: meta.horario,
+    duracion: meta.duracion,
+    observaciones: meta.observaciones,
+    resumen: meta.resumen,
+    decisiones: meta.decisiones,
+    asistentes: meta.asistentes,
+    archivoDisponible,
+  };
+};
+
 // ==================== COMPONENTE PRINCIPAL ====================
 export function WizardActasWorldClass({
   proceso,
@@ -176,7 +293,7 @@ export function WizardActasWorldClass({
   onActaCreada
 }: WizardActasWorldClassProps) {
   // ✅ Hook para obtener configuraciones de actas desde la BD
-  const { configurations: configsActas, loading: loadingActas, refetch } = useActasConfigurationActive();
+  const { configurations: configsActas } = useActasConfigurationActive();
   
   // Estados del Wizard
   const [paso, setPaso] = useState(1);
@@ -211,12 +328,98 @@ export function WizardActasWorldClass({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Estados de Actas Generadas
-  const [actasGeneradas] = useState<ActaGenerada[]>([]);
+  const [processId, setProcessId] = useState('');
+  const [actasGeneradas, setActasGeneradas] = useState<ActaGenerada[]>([]);
+  const [cargandoActasGeneradas, setCargandoActasGeneradas] = useState(false);
+  const [actaExpandidaId, setActaExpandidaId] = useState<string | null>(null);
+  const [descargandoActaId, setDescargandoActaId] = useState<string | null>(null);
 
   // ==================== EFECTOS ====================
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     setFechaActa(today);
+  }, []);
+
+  const cargarActasGeneradas = async (procId: string, expandirPrimera = false) => {
+    if (!procId) return;
+
+    setCargandoActasGeneradas(true);
+    try {
+      const actas = await disciplinaryService.getActas(procId);
+      const mapeadas = actas
+        .map(mapearActaGenerada)
+        .sort((a, b) => `${b.fecha}${b.id}`.localeCompare(`${a.fecha}${a.id}`));
+
+      setActasGeneradas(mapeadas);
+      setActaExpandidaId((actual) => {
+        if (expandirPrimera) {
+          return mapeadas[0]?.id || null;
+        }
+        return actual && mapeadas.some((item) => item.id === actual)
+          ? actual
+          : (mapeadas[0]?.id || null);
+      });
+    } catch (error) {
+      console.error('Error cargando actas del proceso:', error);
+      setActasGeneradas([]);
+      setActaExpandidaId(null);
+    } finally {
+      setCargandoActasGeneradas(false);
+    }
+  };
+
+  useEffect(() => {
+    let activo = true;
+
+    const resolverProceso = async () => {
+      const directId = proceso?.id || '';
+      if (directId && isUuidLike(directId)) {
+        if (activo) setProcessId(directId);
+        return;
+      }
+
+      if (!proceso?.numeroProceso) {
+        if (activo) setProcessId('');
+        return;
+      }
+
+      try {
+        const procesoEncontrado = await disciplinaryService.getProcesoByRadicado(proceso.numeroProceso);
+        if (activo) {
+          setProcessId(procesoEncontrado?.id || '');
+        }
+      } catch (error) {
+        console.error('Error resolviendo proceso para actas:', error);
+        if (activo) {
+          setProcessId('');
+        }
+      }
+    };
+
+    resolverProceso();
+    return () => {
+      activo = false;
+    };
+  }, [proceso?.id, proceso?.numeroProceso]);
+
+  useEffect(() => {
+    if (!processId) return;
+    cargarActasGeneradas(processId);
+  }, [processId]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
   }, []);
 
   // ==================== FUNCIONES ====================
@@ -243,34 +446,35 @@ export function WizardActasWorldClass({
   };
 
   const handleDescargarPlantilla = async () => {
-    // Si hay una plantilla en la configuración de la BD, usarla
-    // La URL puede estar en plantilla.url o directamente en plantilla (según cómo viene de la BD)
     const plantillaUrl = tipoSeleccionado?.plantilla?.url || tipoSeleccionado?.plantilla;
     const nombreArchivo = tipoSeleccionado?.nombre_plantilla || tipoSeleccionado?.nombre || 'acta_generica.docx';
-    
-    if (plantillaUrl) {
-      setDescargando(true);
-      try {
-        console.log('Descargando plantilla desde:', plantillaUrl);
-        // Abrir en nueva pestaña para descargar
-        window.open(plantillaUrl, '_blank');
-      } catch (error) {
-        console.error('Error descargando plantilla:', error);
-        toast.error('Error al descargar la plantilla', {
-          description: 'No se pudo descargar el archivo. Verifique que la URL sea correcta.',
-          duration: 5000,
-        });
-      }
-      setDescargando(false);
-    } else {
-      // Fallback: mostrar mensaje de que no hay plantilla configurada
+
+    if (!plantillaUrl) {
       toast.warning('No hay plantilla configurada para este tipo de acta', {
         description: 'Configure una plantilla en la sección de configuración',
         duration: 3000,
       });
+      return;
     }
-    
-    setPlantillaDescargada(true);
+
+    setDescargando(true);
+    try {
+      const urlProcesada = disciplinaryService.getFileUrl(plantillaUrl);
+      await disciplinaryService.downloadFileFromUrl(urlProcesada, nombreArchivo);
+      setPlantillaDescargada(true);
+      toast.success('Plantilla descargada correctamente', {
+        description: nombreArchivo,
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error('Error descargando plantilla:', error);
+      toast.error('Error al descargar la plantilla', {
+        description: 'No se pudo descargar el archivo configurado para este tipo de acta.',
+        duration: 5000,
+      });
+    } finally {
+      setDescargando(false);
+    }
   };
 
   const handleSiguiente = () => {
@@ -310,12 +514,16 @@ export function WizardActasWorldClass({
       const allowedMimeTypes = [
         'application/pdf',
         'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       ];
       const allowedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx'];
       const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-      
-      if (!allowedMimeTypes.includes(file.type) || !allowedExtensions.includes(fileExtension)) {
+      const mimeValido = allowedMimeTypes.includes(file.type);
+      const extensionValida = allowedExtensions.includes(fileExtension);
+
+      if (!mimeValido && !extensionValida) {
         toast.error('Tipo de archivo no permitido', {
           description: 'Para Actas solo se permiten archivos PDF, Word o Excel'
         });
@@ -336,21 +544,55 @@ export function WizardActasWorldClass({
   };
 
   const handleCrearActa = async () => {
+    if (!processId || !isUuidLike(processId)) {
+      toast.error('No se pudo identificar el proceso para crear el acta');
+      return;
+    }
+    if (!tipoSeleccionado) {
+      toast.error('Debes seleccionar un tipo de acta');
+      return;
+    }
+    if (!archivoAdjunto) {
+      toast.error('Debes adjuntar el archivo del acta');
+      return;
+    }
+
     setCreandoActa(true);
     try {
-      // ✅ Generar nomenclatura única desde el backend
       const result = await disciplinaryService.generarConsecutivoActa();
       const nomenclatura = result.consecutive;
+
+      await disciplinaryService.createActa(
+        processId,
+        {
+          numeroActa: nomenclatura,
+          nombre: nomenclatura,
+          tipo: tipoSeleccionado?.nombre || tipoSeleccionado?.tipo || 'Acta',
+          fecha: fechaActa,
+          lugar: lugarDiligencia,
+          participantes: participantes.length,
+          participantesDetalle: participantes,
+          observaciones,
+          etapa: normalizarEtapaActa(proceso.etapaActual),
+          categoria: normalizarEtapaActa(proceso.etapaActual),
+          usuarioCarga: proceso.profesionalAsignado?.nombre || 'Sistema'
+        },
+        archivoAdjunto
+      );
+
+      await cargarActasGeneradas(processId, true);
+      resetearWizard();
+      setVistaActual('lista');
 
       toast.success('Acta creada exitosamente', {
         description: `${nomenclatura} - ${tipoSeleccionado?.nombre}`,
         duration: 4000,
       });
-      
+
       if (onActaCreada) {
         onActaCreada({
           tipo: tipoSeleccionado?.nombre,
-          nomenclatura: nomenclatura, // ✅ Incluir nomenclatura del backend
+          nomenclatura,
           fecha: fechaActa,
           lugar: lugarDiligencia,
           participantes,
@@ -358,8 +600,6 @@ export function WizardActasWorldClass({
           archivo: archivoAdjunto?.name
         });
       }
-      
-      onClose();
     } catch (error) {
       console.error('Error al crear acta:', error);
       toast.error('Error al crear el acta. Por favor intente de nuevo.');
@@ -379,12 +619,38 @@ export function WizardActasWorldClass({
     setObservacionesAdjunto('');
     setPlantillaDescargada(false);
     setBusqueda('');
-    setNomenclaturaGenerada(null); // ✅ Resetear nomenclatura
+    setNomenclaturaGenerada(null);
+    setNomenclaturaPreview('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleNuevoActa = () => {
     resetearWizard();
     setVistaActual('wizard');
+  };
+
+  const handleDescargarActa = async (acta: ActaGenerada) => {
+    if (!processId) {
+      toast.error('No se pudo identificar el proceso de esta acta');
+      return;
+    }
+
+    if (!acta.archivoDisponible) {
+      toast.error('Esta acta no tiene un archivo cargado para descargar');
+      return;
+    }
+
+    setDescargandoActaId(acta.id);
+    try {
+      await disciplinaryService.downloadDocument(processId, acta.id, acta.archivoNombre);
+    } catch (error) {
+      console.error('Error descargando acta:', error);
+      toast.error('No se pudo descargar el archivo del acta');
+    } finally {
+      setDescargandoActaId((actual) => (actual === acta.id ? null : actual));
+    }
   };
 
   const agregarParticipante = () => {
@@ -404,12 +670,18 @@ export function WizardActasWorldClass({
   };
 
   // Convertir las configuraciones de la BD al formato esperado por el componente
+  const etapaProcesoNormalizada = normalizarEtapaActa(proceso.etapaActual);
   const configsActivas = (configsActas || [])
     .filter(c => c.estado === 'activo')
     .map(config => normalizarTipoActa(config));
-  
-  // Si hay configuraciones en la BD, usarlas; si no, usar el fallback
-  const tiposActas = configsActivas.length > 0 ? configsActivas : TIPOS_ACTAS_FALLBACK;
+  const configsPorEtapa = configsActivas.filter((config: any) => {
+    if (!config.stage) return true;
+    return normalizarEtapaActa(config.stage) === etapaProcesoNormalizada;
+  });
+
+  const tiposActas = configsPorEtapa.length > 0
+    ? configsPorEtapa
+    : (configsActivas.length > 0 ? configsActivas : TIPOS_ACTAS_FALLBACK);
   
   // Filtrar por búsqueda
   const tiposFiltrados = tiposActas.filter((tipo: any) => {
@@ -420,12 +692,13 @@ export function WizardActasWorldClass({
   });
 
   // ==================== RENDER ====================
-  return (
+  const modalContent = (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 flex items-center justify-center z-[150] p-4 sm:p-6 bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 flex items-center justify-center z-[100000] bg-black/50 backdrop-blur-sm overflow-hidden"
+      style={{ padding: 'clamp(12px, 2vw, 24px)' }}
       onClick={onClose}
     >
       <motion.div
@@ -434,13 +707,15 @@ export function WizardActasWorldClass({
         exit={{ scale: 0.9, opacity: 0, y: 40 }}
         transition={{ type: 'spring', duration: 0.5 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-7xl max-h-[95vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-7xl overflow-hidden flex flex-col min-h-0"
         style={{
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)'
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)',
+          height: 'calc(100dvh - clamp(24px, 4vw, 48px))',
+          maxHeight: 'calc(100dvh - clamp(24px, 4vw, 48px))'
         }}
       >
         {/* ==================== HEADER PREMIUM ==================== */}
-        <div className="relative overflow-hidden">
+        <div className="relative overflow-hidden shrink-0">
           {/* Gradient Background - Púrpura/Violeta para Actas */}
           <div 
             className="absolute inset-0"
@@ -450,13 +725,13 @@ export function WizardActasWorldClass({
           />
           
           {/* Decorative Elements */}
-          <div className="absolute top-0 right-0 w-96 h-96 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/2" />
-          <div className="absolute bottom-0 left-0 w-64 h-64 bg-white opacity-5 rounded-full translate-y-1/2 -translate-x-1/2" />
+          <div className="absolute top-0 right-0 w-72 h-72 sm:w-96 sm:h-96 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/2" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 sm:w-64 sm:h-64 bg-white opacity-5 rounded-full translate-y-1/2 -translate-x-1/2" />
           
           {/* Content */}
           <div className="relative px-6 sm:px-8 py-5 sm:py-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-4 min-w-0">
                 {/* Icon Container con Glassmorphism */}
                 <div 
                   className="p-3 rounded-2xl backdrop-blur-xl"
@@ -469,16 +744,16 @@ export function WizardActasWorldClass({
                   <FileCheck className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
                 </div>
                 
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                <div className="min-w-0">
+                  <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight truncate">
                     Gestión de Actas
                   </h2>
-                  <div className="flex items-center gap-3 mt-1">
-                    <p className="text-sm text-purple-100 font-medium">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1 min-w-0">
+                    <p className="text-sm text-purple-100 font-medium truncate max-w-[11rem] sm:max-w-[18rem]">
                       {proceso.numeroProceso}
                     </p>
-                    <div className="w-1 h-1 rounded-full bg-purple-300" />
-                    <p className="text-sm text-purple-100 font-medium hidden sm:block">
+                    <div className="hidden sm:block w-1 h-1 rounded-full bg-purple-300" />
+                    <p className="text-sm text-purple-100 font-medium hidden sm:block truncate max-w-[24rem]">
                       {proceso.denunciado?.nombre || 'Cargando...'}
                     </p>
                   </div>
@@ -496,12 +771,12 @@ export function WizardActasWorldClass({
         </div>
 
         {/* ==================== TABS PREMIUM ==================== */}
-        <div className="bg-gradient-to-b from-gray-50 to-white border-b border-gray-200">
-          <div className="px-6 sm:px-8 pt-4">
-            <div className="flex gap-2">
+        <div className="bg-gradient-to-b from-gray-50 to-white border-b border-gray-200 shrink-0">
+          <div className="px-4 sm:px-8 pt-4 overflow-x-auto">
+            <div className="flex gap-2 min-w-max">
               <button
                 onClick={handleNuevoActa}
-                className={`relative px-5 py-3 rounded-t-2xl font-bold text-sm transition-all duration-300 ${
+                className={`relative px-4 sm:px-5 py-3 rounded-t-2xl font-bold text-sm transition-all duration-300 shrink-0 ${
                   vistaActual === 'wizard'
                     ? 'text-purple-700'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/50'
@@ -524,7 +799,7 @@ export function WizardActasWorldClass({
               
               <button
                 onClick={() => setVistaActual('lista')}
-                className={`relative px-5 py-3 rounded-t-2xl font-bold text-sm transition-all duration-300 ${
+                className={`relative px-4 sm:px-5 py-3 rounded-t-2xl font-bold text-sm transition-all duration-300 shrink-0 ${
                   vistaActual === 'lista'
                     ? 'text-purple-700'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/50'
@@ -556,13 +831,13 @@ export function WizardActasWorldClass({
         </div>
 
         {/* ==================== CONTENIDO ==================== */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {vistaActual === 'wizard' ? (
             <div className="px-6 sm:px-8 py-6 sm:py-8">
               {/* Indicador de Progreso Premium */}
               <div className="mb-8 sm:mb-10">
-                <div className="max-w-4xl mx-auto">
-                  <div className="flex items-center justify-between">
+                <div className="max-w-4xl mx-auto overflow-x-auto">
+                  <div className="flex items-center justify-between min-w-[520px] sm:min-w-0">
                     {[
                       { num: 1, label: 'Seleccionar Tipo', icon: Search },
                       { num: 2, label: 'Información', icon: Users },
@@ -751,7 +1026,7 @@ export function WizardActasWorldClass({
                                   </div>
 
                                   <div className="flex-1 min-w-0">
-                                    <div className="flex items-start justify-between mb-2">
+                                    <div className="flex items-start justify-between gap-3 mb-2">
                                       <h3 className="text-sm font-black text-gray-900 leading-tight pr-2">
                                         {tipo.nombre}
                                       </h3>
@@ -790,7 +1065,7 @@ export function WizardActasWorldClass({
                                   transition={{ duration: 0.3 }}
                                   className="border-t-2 border-purple-100 bg-gradient-to-r from-purple-50/50 to-violet-50/50 p-4"
                                 >
-                                  <div className="flex items-center justify-between gap-3">
+                                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                     <div className="flex items-center gap-2.5 flex-1 min-w-0">
                                       <div className="p-1.5 rounded-lg bg-purple-100">
                                         <FileText className="w-4 h-4 text-purple-700" />
@@ -811,7 +1086,7 @@ export function WizardActasWorldClass({
                                         handleDescargarPlantilla();
                                       }}
                                       disabled={descargando}
-                                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs text-white transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 ${
+                                      className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs text-white transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 ${
                                         plantillaDescargada
                                           ? 'bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700'
                                           : 'bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900'
@@ -857,8 +1132,8 @@ export function WizardActasWorldClass({
                                     animate={{ opacity: 1, y: 0 }}
                                     className="mt-3 p-3 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-xl"
                                   >
-                                    <div className="flex items-center justify-between gap-3">
-                                      <div className="flex items-center gap-2.5">
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                      <div className="flex items-center gap-2.5 min-w-0">
                                         <div className="p-1.5 rounded-lg bg-amber-100">
                                           <Tag className="w-4 h-4 text-amber-700" />
                                         </div>
@@ -909,8 +1184,8 @@ export function WizardActasWorldClass({
                                     animate={{ opacity: 1, y: 0 }}
                                     className="mt-3 p-3 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-xl"
                                   >
-                                    <div className="flex items-center justify-between gap-3">
-                                      <div className="flex items-center gap-2.5">
+                                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                    <div className="flex items-center gap-2.5 min-w-0">
                                         <div className="p-1.5 rounded-lg bg-amber-100">
                                           <Tag className="w-4 h-4 text-amber-700" />
                                         </div>
@@ -1014,7 +1289,7 @@ export function WizardActasWorldClass({
                         </div>
 
                         <div>
-                          <div className="flex items-center justify-between mb-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
                             <label className="text-sm font-bold text-gray-900 flex items-center gap-2">
                               <Users className="w-4 h-4 text-purple-600" />
                               Participantes
@@ -1022,7 +1297,7 @@ export function WizardActasWorldClass({
                             </label>
                             <button
                               onClick={agregarParticipante}
-                              className="px-3 py-1.5 rounded-lg font-bold text-xs text-white shadow-sm hover:shadow-md transition-all"
+                              className="w-full sm:w-auto px-3 py-1.5 rounded-lg font-bold text-xs text-white shadow-sm hover:shadow-md transition-all"
                               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)' }}
                             >
                               + Agregar
@@ -1159,7 +1434,7 @@ export function WizardActasWorldClass({
                             {subiendo ? 'Cargando archivo...' : 'Arrastra o haz clic para subir'}
                           </p>
                           <p className="text-sm text-gray-600 mb-4">
-                            Formatos soportados: .doc, .docx, .pdf
+                            Formatos soportados: .doc, .docx, .pdf, .xls, .xlsx
                           </p>
                           {subiendo && (
                             <div className="w-48 h-1.5 mx-auto bg-gray-200 rounded-full overflow-hidden">
@@ -1222,7 +1497,7 @@ export function WizardActasWorldClass({
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".pdf,.doc,.docx"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx"
                         onChange={handleFileChange}
                         className="hidden"
                       />
@@ -1325,8 +1600,8 @@ export function WizardActasWorldClass({
 
                         {/* ✅ NUEVO: Nomenclatura que se generará */}
                         <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-300 rounded-xl p-5">
-                          <div className="flex items-center justify-between gap-4">
-                            <div>
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                            <div className="min-w-0">
                               <p className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-2">
                                 <Tag className="w-4 h-4" />
                                 NOMENCLATURA ASIGNADA
@@ -1375,7 +1650,19 @@ export function WizardActasWorldClass({
             </div>
           ) : (
             <div className="px-6 sm:px-8 py-6 sm:py-8">
-              {actasGeneradas.length === 0 ? (
+              {cargandoActasGeneradas ? (
+                <div className="text-center py-20">
+                  <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-purple-50 flex items-center justify-center">
+                    <div className="w-10 h-10 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                  <p className="text-lg font-bold text-gray-900 mb-2">
+                    Cargando actas del proceso
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    Estamos consultando el expediente documental asociado a este proceso.
+                  </p>
+                </div>
+              ) : actasGeneradas.length === 0 ? (
                 <div className="text-center py-20">
                   <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gray-100 flex items-center justify-center">
                     <FileCheck className="w-12 h-12 text-gray-300" />
@@ -1395,14 +1682,314 @@ export function WizardActasWorldClass({
                     Crear Primera Acta
                   </button>
                 </div>
-              ) : null}
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 rounded-2xl p-4 sm:p-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 rounded-2xl bg-purple-100">
+                          <FileCheck className="w-6 h-6 text-purple-700" />
+                        </div>
+                        <div>
+                          <p className="text-base font-black text-gray-900">Actas registradas en el proceso</p>
+                          <p className="text-sm text-gray-600">
+                            {actasGeneradas.length} acta{actasGeneradas.length !== 1 ? 's' : ''} disponible{actasGeneradas.length !== 1 ? 's' : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleNuevoActa}
+                        className="px-4 py-2.5 rounded-xl text-sm font-bold text-white shadow-lg hover:shadow-xl transition-all inline-flex items-center justify-center gap-2"
+                        style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)' }}
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        Crear nueva acta
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {actasGeneradas.map((acta, index) => {
+                      const expandida = actaExpandidaId === acta.id;
+                      const descargandoActa = descargandoActaId === acta.id;
+                      const plantillaAsociada = tiposActas.find((tipo: any) =>
+                        normalizarTexto(tipo.nombre) === normalizarTexto(acta.tipo) ||
+                        normalizarTexto(tipo.tipo) === normalizarTexto(acta.tipo)
+                      );
+                      const colorActa = plantillaAsociada?.color || '#8B5CF6';
+                      const IconoActa = plantillaAsociada?.icon || FileText;
+                      const textoArchivo = acta.archivoDisponible ? acta.archivoNombre : 'No se subio archivo';
+
+                      return (
+                        <motion.div
+                          key={acta.id}
+                          initial={{ opacity: 0, y: 12 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.04 }}
+                          className="border-2 border-gray-200 rounded-2xl bg-white overflow-hidden shadow-sm hover:shadow-md transition-all"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setActaExpandidaId(expandida ? null : acta.id)}
+                            className="w-full p-4 sm:p-5 text-left hover:bg-purple-50/30 transition-colors"
+                          >
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                              <div
+                                className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+                                style={{ backgroundColor: `${colorActa}18` }}
+                              >
+                                <IconoActa className="w-6 h-6" style={{ color: colorActa }} />
+                              </div>
+
+                              <div className="flex-1 min-w-0">
+                                <div className="flex flex-wrap items-center gap-2 mb-2">
+                                  <BadgeNomenclatura
+                                    nomenclatura={acta.numero}
+                                    tipo="ACTA"
+                                    size="md"
+                                    showIcon={true}
+                                    showCopy={true}
+                                  />
+                                  <span
+                                    className="px-2 py-1 rounded-full text-xs font-bold"
+                                    style={{ backgroundColor: acta.firmada ? '#DCFCE7' : '#F3E8FF', color: acta.firmada ? '#166534' : '#7E22CE' }}
+                                  >
+                                    {acta.estado}
+                                  </span>
+                                  <span className="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
+                                    {acta.etapa}
+                                  </span>
+                                  <span
+                                    className="px-2 py-1 rounded-full text-xs font-semibold border"
+                                    style={{
+                                      backgroundColor: acta.archivoDisponible ? '#ECFDF5' : '#FFF7ED',
+                                      color: acta.archivoDisponible ? '#047857' : '#C2410C',
+                                      borderColor: acta.archivoDisponible ? '#A7F3D0' : '#FDBA74',
+                                    }}
+                                  >
+                                    {acta.archivoDisponible ? 'Archivo cargado' : 'Sin archivo'}
+                                  </span>
+                                </div>
+
+                                <p className="text-base font-black text-gray-900">{acta.tipo}</p>
+                                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-gray-600">
+                                  <span className="flex items-center gap-1.5">
+                                    <Calendar className="w-4 h-4 text-purple-600" />
+                                    {acta.fecha}
+                                  </span>
+                                  <span className="flex items-center gap-1.5">
+                                    <Users className="w-4 h-4 text-purple-600" />
+                                    {acta.participantes || 0} participante{acta.participantes === 1 ? '' : 's'}
+                                  </span>
+                                  <span
+                                    className="flex items-center gap-1.5 truncate"
+                                    style={{ color: acta.archivoDisponible ? undefined : '#C2410C' }}
+                                  >
+                                    <Paperclip
+                                      className="w-4 h-4"
+                                      style={{ color: acta.archivoDisponible ? '#7C3AED' : '#F97316' }}
+                                    />
+                                    {textoArchivo}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 pl-2 self-end sm:self-auto">
+                                <span className="hidden sm:inline text-xs font-bold text-gray-400">
+                                  {expandida ? 'Ocultar detalle' : 'Ver detalle'}
+                                </span>
+                                <div className="w-9 h-9 rounded-xl border border-gray-200 bg-white flex items-center justify-center text-gray-500">
+                                  {expandida ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+
+                          <AnimatePresence initial={false}>
+                            {expandida && (
+                              <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                exit={{ opacity: 0, height: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="overflow-hidden border-t border-gray-100 bg-gradient-to-b from-white to-purple-50/30"
+                              >
+                                <div className="p-4 sm:p-5 grid grid-cols-1 xl:grid-cols-[1.3fr_0.7fr] gap-4">
+                                  <div className="space-y-4">
+                                    <div className="rounded-2xl border border-purple-100 bg-white p-4">
+                                      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-purple-500">Datos del acta</p>
+                                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                                        <div className="rounded-xl bg-purple-50 p-3">
+                                          <p className="text-xs font-semibold text-purple-600 mb-1">Responsable</p>
+                                          <p className="font-bold text-gray-900">{acta.responsable}</p>
+                                        </div>
+                                        <div className="rounded-xl bg-purple-50 p-3">
+                                          <p className="text-xs font-semibold text-purple-600 mb-1">Archivo</p>
+                                          <p className="font-bold text-gray-900">
+                                            {acta.archivoDisponible ? acta.archivoTamano : 'Sin archivo cargado'}
+                                          </p>
+                                          <p
+                                            className="mt-1 text-xs font-semibold break-all"
+                                            style={{ color: acta.archivoDisponible ? '#7E22CE' : '#C2410C' }}
+                                          >
+                                            {textoArchivo}
+                                          </p>
+                                        </div>
+                                        <div className="rounded-xl bg-purple-50 p-3 sm:col-span-2">
+                                          <p className="text-xs font-semibold text-purple-600 mb-1">Lugar</p>
+                                          <p className="font-bold text-gray-900 flex items-center gap-2">
+                                            <MapPin className="w-4 h-4 text-purple-600" />
+                                            {acta.lugar || 'No registrado'}
+                                          </p>
+                                        </div>
+                                        {plantillaAsociada?.nombre_plantilla && (
+                                          <div className="rounded-xl bg-purple-50 p-3 sm:col-span-2">
+                                            <p className="text-xs font-semibold text-purple-600 mb-1">Plantilla asociada</p>
+                                            <p className="font-bold text-gray-900">{plantillaAsociada.nombre_plantilla}</p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {acta.asistentes.length > 0 && (
+                                      <div className="rounded-2xl border border-purple-100 bg-white p-4">
+                                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-purple-500">Participantes registrados</p>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                          {acta.asistentes.map((asistente) => (
+                                            <span key={asistente} className="px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-xs font-semibold border border-purple-200">
+                                              {asistente}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {(acta.observaciones || acta.resumen || acta.decisiones) && (
+                                      <div className="rounded-2xl border border-purple-100 bg-white p-4 space-y-3">
+                                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-purple-500">Contenido registrado</p>
+                                        {acta.observaciones && (
+                                          <div>
+                                            <p className="text-xs font-semibold text-gray-500 mb-1">Observaciones</p>
+                                            <p className="text-sm text-gray-800 leading-relaxed">{acta.observaciones}</p>
+                                          </div>
+                                        )}
+                                        {acta.resumen && (
+                                          <div>
+                                            <p className="text-xs font-semibold text-gray-500 mb-1">Resumen</p>
+                                            <p className="text-sm text-gray-800 leading-relaxed">{acta.resumen}</p>
+                                          </div>
+                                        )}
+                                        {acta.decisiones && (
+                                          <div>
+                                            <p className="text-xs font-semibold text-gray-500 mb-1">Decisiones</p>
+                                            <p className="text-sm text-gray-800 leading-relaxed">{acta.decisiones}</p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="rounded-2xl border border-purple-100 bg-white p-4">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-purple-500">Resumen rápido</p>
+                                    <div className="mt-3 space-y-3 text-sm">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-gray-500">Nomenclatura</span>
+                                        <span className="font-bold text-gray-900 text-right">{acta.numero}</span>
+                                      </div>
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-gray-500">Fecha</span>
+                                        <span className="font-bold text-gray-900 text-right">{acta.fecha}</span>
+                                      </div>
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-gray-500">Horario</span>
+                                        <span className="font-bold text-gray-900 text-right">{acta.horario || 'No registrado'}</span>
+                                      </div>
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-gray-500">Duración</span>
+                                        <span className="font-bold text-gray-900 text-right">{acta.duracion || 'No registrada'}</span>
+                                      </div>
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-gray-500">Archivo</span>
+                                        <span
+                                          className="font-bold text-right break-all"
+                                          style={{ color: acta.archivoDisponible ? '#111827' : '#C2410C' }}
+                                        >
+                                          {textoArchivo}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-start justify-between gap-3">
+                                        <span className="text-gray-500">Estado del archivo</span>
+                                        <span
+                                          className="font-bold text-right"
+                                          style={{ color: descargandoActa ? '#7C3AED' : (acta.archivoDisponible ? '#047857' : '#C2410C') }}
+                                        >
+                                          {descargandoActa
+                                            ? 'Descargando...'
+                                            : acta.archivoDisponible
+                                              ? 'Disponible'
+                                              : 'No cargado'}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDescargarActa(acta)}
+                                      disabled={descargandoActa || !acta.archivoDisponible}
+                                      className="mt-4 w-full px-4 py-3 rounded-xl text-sm font-bold border transition-all inline-flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:shadow-none"
+                                      style={acta.archivoDisponible
+                                        ? {
+                                            borderColor: '#C4B5FD',
+                                            color: '#6D28D9',
+                                            backgroundColor: descargandoActa ? '#EDE9FE' : '#F5F3FF',
+                                          }
+                                        : {
+                                            borderColor: '#E5E7EB',
+                                            color: '#9CA3AF',
+                                            backgroundColor: '#F3F4F6',
+                                          }}
+                                      aria-busy={descargandoActa}
+                                    >
+                                      {descargandoActa ? (
+                                        <>
+                                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                          Descargando...
+                                        </>
+                                      ) : acta.archivoDisponible ? (
+                                        <>
+                                          <Download className="w-4 h-4" />
+                                          Descargar acta
+                                        </>
+                                      ) : (
+                                        <>
+                                          <AlertCircle className="w-4 h-4" />
+                                          Sin archivo para descargar
+                                        </>
+                                      )}
+                                    </button>
+                                    {!acta.archivoDisponible && (
+                                      <p className="mt-2 text-xs leading-relaxed text-orange-700">
+                                        Este registro existe en el proceso, pero no tiene un archivo adjunto cargado.
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
 
         {/* ==================== FOOTER PREMIUM ==================== */}
         {vistaActual === 'wizard' && (
-          <div className="border-t-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+          <div className="border-t-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 shrink-0">
             <div className="px-6 sm:px-8 py-4 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3">
               <div>
                 {paso > 1 && (
@@ -1460,4 +2047,10 @@ export function WizardActasWorldClass({
       </motion.div>
     </motion.div>
   );
+
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(modalContent, document.body);
 }
