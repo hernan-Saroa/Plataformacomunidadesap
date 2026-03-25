@@ -13,8 +13,10 @@ services:
       args:
         # Nueva estructura de URLs: /{service}/api/v{version}/{path}
         # Ejemplo: /auth/api/v1/users
-        VITE_API_URL: "http://172.16.202.222:3000"
+        VITE_API_URL: "http://172.16.202.222/services"
         VITE_ONLYOFFICE_URL: "http://172.16.202.222:9000"
+        VITE_MICROSOFT_TENANT_ID: ${VITE_MICROSOFT_TENANT_ID}
+        VITE_MICROSOFT_CLIENT_ID: ${VITE_MICROSOFT_CLIENT_ID}
     container_name: superapp-frontend-pre
     ports:
       - "80:80"
@@ -24,6 +26,8 @@ services:
     networks:
       - superapp-net-pre
     restart: unless-stopped
+    volumes:
+      - ./backend/certification-service/uploads:/usr/share/nginx/uploads:ro
 
     # ============ ONLYOFFICE DOCUMENT SERVER ============
   onlyoffice:
@@ -49,6 +53,9 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+
+      # JWT - debe coincidir con auth-service (pre)
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
 
       # CORS - Permitir acceso desde el frontend
       CORS_ORIGIN: "http://172.16.202.222"
@@ -144,6 +151,9 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: academic_registration
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service-pre:3009
@@ -175,6 +185,9 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: academic_work_plan
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
     ports:
@@ -204,6 +217,9 @@ services:
       DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
       DB_SCHEMA: certification
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
@@ -237,8 +253,12 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: internal_disciplinary_control
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
+      NOTIFICATION_SERVICE_URL: http://notifications-service-pre:3009
     ports:
       - "3005:3005"
     depends_on:
@@ -266,6 +286,9 @@ services:
       DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
       DB_SCHEMA: interoperability
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
@@ -296,6 +319,9 @@ services:
       DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
       DB_SCHEMA: internal_institutional_control
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
@@ -330,6 +356,9 @@ services:
       DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
       DB_SCHEMA: legal_management
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
 
       
       AZURE_TENANT_ID: ${AZURE_TENANT_ID}
@@ -367,6 +396,9 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: notifications
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USER}
@@ -403,6 +435,9 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: travel_expenses
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
     ports:
@@ -431,6 +466,9 @@ services:
       DB_USER: postgres
       DB_PASSWORD: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
     ports:
       - "3011:3011"
     depends_on:

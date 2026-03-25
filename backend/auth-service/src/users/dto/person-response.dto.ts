@@ -52,7 +52,7 @@ export class UserResponseDto {
 
 export class PersonResponseDto {
   @Expose()
-  id: number;
+  id: string;
 
   @Expose()
   identification_number: string;

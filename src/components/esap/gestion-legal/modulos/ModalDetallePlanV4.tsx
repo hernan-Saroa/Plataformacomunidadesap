@@ -5,11 +5,12 @@
  * ✅ Ver historial de seguimientos
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
     X, Calendar, User, Clock, AlertTriangle, CheckCircle2, FileText,
-    TrendingUp, Activity, Target, Plus, AlertCircle, Building2
+    TrendingUp, Activity, Target, Plus, AlertCircle, Building2,
+    Upload, Download, Eye, Loader2, Paperclip
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -19,7 +20,33 @@ import { Textarea } from '../../../ui/textarea';
 import { Badge } from '../../../ui/badge';
 import { Progress } from '../../../ui/progress';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { legalService } from '../../../../services/api/legal.service';
+import { API_MODE, getServiceUrl } from '../../../../config/environment';
+
+function getFileViewUrl(filename: string): string {
+    const baseUrl = getServiceUrl('legal');
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
+    return `${baseUrl}${prefix}/files/${filename}`;
+}
+
+function getFileDownloadUrl(filename: string, originalName: string): string {
+    const baseUrl = getServiceUrl('legal');
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
+    // Preserve the original file extension in the download name
+    const ext = filename.includes('.') ? filename.substring(filename.lastIndexOf('.')) : '';
+    const nameWithExt = originalName.match(/\.[a-zA-Z0-9]+$/) ? originalName : `${originalName}${ext}`;
+    return `${baseUrl}${prefix}/files/download/${filename}?name=${encodeURIComponent(nameWithExt)}`;
+}
+
+function getFileIcon(mimeType: string): string {
+    if (!mimeType) return '📎';
+    if (mimeType.includes('pdf')) return '📄';
+    if (mimeType.includes('word') || mimeType.includes('document')) return '📝';
+    if (mimeType.includes('sheet') || mimeType.includes('excel')) return '📊';
+    if (mimeType.includes('image')) return '🖼️';
+    return '📎';
+}
 
 // ==================== TIPOS ====================
 interface Seguimiento {
@@ -95,7 +122,7 @@ const formatearFecha = (fecha?: string): string => {
 export function ModalDetallePlanV4({ isOpen, onClose, planId, onPlanUpdated }: ModalDetallePlanV4Props) {
     const [plan, setPlan] = useState<PlanDetalle | null>(null);
     const [loading, setLoading] = useState(true);
-    const [tabActiva, setTabActiva] = useState<'resumen' | 'progreso' | 'historial'>('resumen');
+    const [tabActiva, setTabActiva] = useState<'resumen' | 'progreso' | 'historial' | 'documentos'>('resumen');
 
     // Form for progress update
     const [nuevoSeguimiento, setNuevoSeguimiento] = useState({
@@ -104,9 +131,27 @@ export function ModalDetallePlanV4({ isOpen, onClose, planId, onPlanUpdated }: M
     });
     const [guardando, setGuardando] = useState(false);
 
+    // Documentos
+    const [documentos, setDocumentos] = useState<any[]>([]);
+    const [loadingDocs, setLoadingDocs] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [tituloDoc, setTituloDoc] = useState('');
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Visor
+    const [visorOpen, setVisorOpen] = useState(false);
+    const [visorDoc, setVisorDoc] = useState<{ archivo: string; numero: string } | null>(null);
+
     useEffect(() => {
         if (isOpen && planId) {
             fetchPlan();
+            fetchDocumentos();
+        } else {
+            setDocumentos([]);
+            setSelectedFile(null);
+            setTituloDoc('');
+            setTabActiva('resumen');
         }
     }, [isOpen, planId]);
 
@@ -125,6 +170,48 @@ export function ModalDetallePlanV4({ isOpen, onClose, planId, onPlanUpdated }: M
             toast.error('Error al cargar el plan de mejoramiento');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchDocumentos = async () => {
+        setLoadingDocs(true);
+        try {
+            const docs = await legalService.getDocumentosPlan(planId);
+            setDocumentos(docs);
+        } catch {
+            // silently fail
+        } finally {
+            setLoadingDocs(false);
+        }
+    };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setSelectedFile(file);
+            if (!tituloDoc) setTituloDoc(file.name.replace(/\.[^/.]+$/, ''));
+        }
+    };
+
+    const handleUploadDocumento = async () => {
+        if (!selectedFile) { toast.error('Seleccione un archivo'); return; }
+        if (!tituloDoc.trim()) { toast.error('Ingrese un título'); return; }
+        setUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('titulo', tituloDoc.trim());
+            formData.append('uploadedBy', 'Sistema');
+            await legalService.uploadDocumentoPlan(planId, formData);
+            toast.success('Documento cargado exitosamente');
+            setSelectedFile(null);
+            setTituloDoc('');
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            fetchDocumentos();
+        } catch {
+            toast.error('Error al cargar el documento');
+        } finally {
+            setUploading(false);
         }
     };
 
@@ -169,6 +256,7 @@ export function ModalDetallePlanV4({ isOpen, onClose, planId, onPlanUpdated }: M
     const origenConfig = plan ? getOrigenConfig(plan.origen) : null;
 
     return (
+        <>
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent
                 hideCloseButton
@@ -215,7 +303,8 @@ export function ModalDetallePlanV4({ isOpen, onClose, planId, onPlanUpdated }: M
                                 {[
                                     { id: 'resumen', label: 'Resumen', icon: <FileText className="w-4 h-4" /> },
                                     { id: 'progreso', label: 'Actualizar Progreso', icon: <TrendingUp className="w-4 h-4" /> },
-                                    { id: 'historial', label: 'Historial', icon: <Clock className="w-4 h-4" /> }
+                                    { id: 'historial', label: 'Historial', icon: <Clock className="w-4 h-4" /> },
+                                    { id: 'documentos', label: 'Documentos', icon: <Paperclip className="w-4 h-4" /> }
                                 ].map(tab => (
                                     <button
                                         key={tab.id}
@@ -425,6 +514,130 @@ export function ModalDetallePlanV4({ isOpen, onClose, planId, onPlanUpdated }: M
                                     )}
                                 </div>
                             )}
+                            {/* Tab: Documentos */}
+                            {tabActiva === 'documentos' && (
+                                <div className="space-y-5">
+                                    <h3 className="text-sm font-black text-gray-900 flex items-center gap-2">
+                                        <Paperclip className="w-4 h-4 text-blue-600" />
+                                        Documentos Adjuntos
+                                        {documentos.length > 0 && (
+                                            <Badge className="bg-blue-100 text-blue-700">{documentos.length}</Badge>
+                                        )}
+                                    </h3>
+
+                                    {/* Zona de carga */}
+                                    <div className="border-2 border-dashed border-gray-200 rounded-xl p-5 bg-gray-50 space-y-3">
+                                        {selectedFile ? (
+                                            <div className="flex items-center gap-2 p-2 bg-white rounded-lg border border-blue-200">
+                                                <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                                                <span className="text-sm text-gray-700 truncate flex-1">{selectedFile.name}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                                                    className="text-gray-400 hover:text-gray-600 text-lg leading-none"
+                                                >×</button>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="w-full flex flex-col items-center gap-1 py-4 text-gray-400 hover:text-blue-600 transition-colors"
+                                            >
+                                                <Upload className="w-7 h-7" />
+                                                <span className="text-sm font-medium">Haga clic para seleccionar un archivo</span>
+                                                <span className="text-xs">PDF, Word, Excel, imágenes</span>
+                                            </button>
+                                        )}
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                                            className="hidden"
+                                            onChange={handleFileSelect}
+                                        />
+                                        {selectedFile && (
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={tituloDoc}
+                                                    onChange={e => setTituloDoc(e.target.value)}
+                                                    placeholder="Título del documento"
+                                                    className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                                />
+                                                <Button
+                                                    onClick={handleUploadDocumento}
+                                                    disabled={uploading}
+                                                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                                                >
+                                                    {uploading
+                                                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                                                        : <Upload className="w-4 h-4" />
+                                                    }
+                                                    <span className="ml-1.5">{uploading ? 'Cargando...' : 'Cargar'}</span>
+                                                </Button>
+                                            </div>
+                                        )}
+                                        {!selectedFile && (
+                                            <Button variant="outline" size="sm" className="w-full" onClick={() => fileInputRef.current?.click()}>
+                                                <Upload className="w-4 h-4 mr-2" />
+                                                Seleccionar archivo
+                                            </Button>
+                                        )}
+                                    </div>
+
+                                    {/* Lista de documentos */}
+                                    {loadingDocs ? (
+                                        <div className="flex items-center justify-center py-6 text-gray-400 text-sm">
+                                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                            Cargando documentos...
+                                        </div>
+                                    ) : documentos.length === 0 ? (
+                                        <div className="text-center py-8 text-gray-400">
+                                            <Paperclip className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                                            <p className="text-sm">No hay documentos cargados aún</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                                            {documentos.map((doc: any) => (
+                                                <div key={doc.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 hover:shadow-sm transition-all">
+                                                    <div className="flex items-center gap-2.5 overflow-hidden">
+                                                        <div className="p-1.5 bg-blue-50 rounded border border-blue-100 flex-shrink-0 text-base leading-none">
+                                                            {getFileIcon(doc.tipoArchivo)}
+                                                        </div>
+                                                        <div className="truncate">
+                                                            <p className="font-semibold text-sm text-gray-900 truncate">{doc.titulo}</p>
+                                                            <p className="text-xs text-gray-400">
+                                                                {new Date(doc.createdAt).toLocaleDateString('es-CO')}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                                                        <Button
+                                                            size="sm" variant="ghost"
+                                                            className="h-7 w-7 p-0 text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+                                                            title="Ver documento"
+                                                            onClick={() => {
+                                                                setVisorDoc({ archivo: getFileViewUrl(doc.urlArchivo), numero: doc.titulo });
+                                                                setVisorOpen(true);
+                                                            }}
+                                                        >
+                                                            <Eye className="w-3.5 h-3.5" />
+                                                        </Button>
+                                                        <Button
+                                                            size="sm" variant="ghost"
+                                                            className="h-7 w-7 p-0 text-gray-500 hover:text-green-600 hover:bg-green-50"
+                                                            title="Descargar"
+                                                            onClick={() => window.open(getFileDownloadUrl(doc.urlArchivo, doc.titulo), '_blank')}
+                                                        >
+                                                            <Download className="w-3.5 h-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Footer */}
@@ -445,5 +658,16 @@ export function ModalDetallePlanV4({ isOpen, onClose, planId, onPlanUpdated }: M
                 )}
             </DialogContent>
         </Dialog>
+
+        {visorDoc && (
+            <VisorDocumentoModal
+                isOpen={visorOpen}
+                onClose={() => { setVisorOpen(false); setVisorDoc(null); }}
+                archivo={visorDoc.archivo}
+                numero={visorDoc.numero}
+                asunto="Plan de Mejoramiento"
+            />
+        )}
+    </>
     );
 }

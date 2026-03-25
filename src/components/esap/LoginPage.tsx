@@ -144,12 +144,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         { id: '5', nombre: 'Estudiantes', tipo: 'interno', email: 'estudiantes@esap.edu.co', rol: 'student', password: 'Esap2026*' },
         { id: '6', nombre: 'Gestor de Certificados', tipo: 'interno', email: 'cerlaboral@esap.edu.co', rol: 'certificados', password: 'Esap2026*' },
         { id: '7', nombre: 'Funcionario', tipo: 'interno', email: 'funcionario@esap.edu.co', rol: 'funcionario', password: 'Esap2026*' },
-        { id: '8', nombre: 'Coordinador de Arquitectura Empresarial', tipo: 'interno', email: 'ar.empresarial@esap.edu.co', rol: 'arquitectura', password: 'Esap2026*' },
-        { id: '9', nombre: 'Coordinador de Arquitectura Empresarial', tipo: 'interno', email: 'arqempresarial@esap.edu.co', rol: 'arquitectura', password: 'Esap2026*' },
         { id: '10', nombre: 'Gestión Legal', tipo: 'interno', email: 'gestion.legal@esap.edu.co', rol: 'gestion-legal', password: 'Esap2026*' }, // ✅ Gestión Legal
-        { id: '11', nombre: 'Control Interno', tipo: 'interno', email: 'OCIG@esap.edu.co', rol: 'control-interno', password: 'Esap2026*' }, // ✅ Control Interno OCIG
-        { id: '12', nombre: 'Control Disciplinario', tipo: 'interno', email: 'c.disciplinario@esap.edu.co', rol: 'control-disciplinario', password: 'Esap2026*' }, // ✅ Control Disciplinario
-        { id: '13', nombre: 'Registro Académico', tipo: 'interno', email: 'registro.academico@esap.edu.co', rol: 'registro-academico', password: 'Esap2026*' }, // ✅ Registro Académico
       ];
 
       // // Verificar si el email existe en las credenciales válidas
@@ -223,21 +218,6 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
       } else if (emailLower === 'gestion.legal@esap.edu.co') {
         toast.success('⚖️ ¡Bienvenido Gestión Legal!', {
           description: 'Acceso a la Gestión Legal concedido',
-          duration: 3500,
-        });
-      } else if (emailLower === 'ocig@esap.edu.co') {
-        toast.success('🔍 ¡Bienvenido OCIG!', {
-          description: 'Acceso al Módulo de Control Interno de Gestión concedido',
-          duration: 3500,
-        });
-      } else if (emailLower === 'c.disciplinario@esap.edu.co') {
-        toast.success('🔍 ¡Bienvenido Control Disciplinario!', {
-          description: 'Acceso al Módulo de Control Disciplinario concedido',
-          duration: 3500,
-        });
-      } else if (emailLower === 'registro.academico@esap.edu.co') {
-        toast.success('📚 ¡Bienvenido Registro Académico!', {
-          description: 'Acceso al Módulo de Registro Académico concedido',
           duration: 3500,
         });
       }
@@ -554,10 +534,6 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                   <div className="flex items-center justify-between">
                     <span className="font-medium">📋 Certificados:</span>
                     <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">cerlaboral@esap.edu.co</code>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">🏛️ Arq. Empresarial:</span>
-                    <code className="px-2 py-0.5 bg-white rounded font-mono text-[10px] sm:text-xs">arqempresarial@esap.edu.co</code>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="font-medium">⚖️ Gestión Legal:</span>

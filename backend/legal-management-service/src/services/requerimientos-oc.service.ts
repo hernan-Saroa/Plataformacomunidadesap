@@ -8,6 +8,8 @@ import { CorreosJuridicosService } from './correos-juridicos.service';
 import { ComentariosDocumentosOCService } from './comentarios-documentos-oc.service';
 import { Abogado } from '../entities/abogado.entity';
 import { RespuestaBorradorOC } from '../entities/respuesta-borrador-oc.entity';
+import { TipoRequerimientoOC } from '../entities/tipo-requerimiento-oc.entity';
+import { DiasHabilesService } from './dias-habiles.service';
 
 @Injectable()
 export class RequerimientosOCService {
@@ -22,8 +24,11 @@ export class RequerimientosOCService {
         private readonly abogadoRepo: Repository<Abogado>,
         @InjectRepository(RespuestaBorradorOC)
         private readonly borradorRepo: Repository<RespuestaBorradorOC>,
+        @InjectRepository(TipoRequerimientoOC)
+        private readonly tipoRequerimientoRepo: Repository<TipoRequerimientoOC>,
         private readonly correosService: CorreosJuridicosService,
         private readonly comentariosService: ComentariosDocumentosOCService,
+        private readonly diasHabilesService: DiasHabilesService,
     ) { }
 
     // ============================================
@@ -34,11 +39,18 @@ export class RequerimientosOCService {
     }
 
     // ============================================
+    // TIPOS DE REQUERIMIENTO (Catálogo)
+    // ============================================
+    async findAllTiposRequerimiento(): Promise<TipoRequerimientoOC[]> {
+        return this.tipoRequerimientoRepo.find({ where: { activo: true }, order: { orden: 'ASC' } });
+    }
+
+    // ============================================
     // REQUERIMIENTOS
     // ============================================
     async findAll(): Promise<RequerimientoOC[]> {
         const reqs = await this.requerimientoRepo.createQueryBuilder('req')
-            .leftJoinAndSelect('req.organismo', 'organismo')
+            // .leftJoinAndSelect('req.organismo', 'organismo') // Relación eliminada para soportar IDs string locales
             .leftJoinAndSelect('req.abogadoAsignado', 'abogado') // Map to 'abogado' alias matching property name if possible, or use property name
             .loadRelationCountAndMap('req.documentosCount', 'req.documentos')
             .loadRelationCountAndMap('req.docRequerimientos', 'req.documentos', 'docReq', qb =>
@@ -53,43 +65,80 @@ export class RequerimientosOCService {
             .loadRelationCountAndMap('req.docInternos', 'req.documentos', 'docInt', qb =>
                 qb.where("docInt.tipoDocumento NOT IN ('oficio', 'respuesta', 'acuse', 'anexo', 'evidencia', 'informe')")
             )
+            .where("(req.estadoArchivo IS NULL OR req.estadoArchivo = 'ACTIVO')")
             .orderBy('req.fechaVencimiento', 'ASC')
             .getMany();
 
         return reqs.map(r => this.calcularDiasRestantes(r));
     }
 
+    async findAllArchivados(): Promise<RequerimientoOC[]> {
+        const reqs = await this.requerimientoRepo.createQueryBuilder('req')
+            .leftJoinAndSelect('req.abogadoAsignado', 'abogado')
+            .where("req.estadoArchivo = 'ARCHIVADO' OR req.estadoArchivo = 'ELIMINADO'")
+            .orderBy('req.fechaArchivo', 'DESC')
+            .getMany();
+
+        return reqs;
+    }
+
     async findOne(id: string): Promise<RequerimientoOC> {
         const req = await this.requerimientoRepo.findOne({
             where: { id },
-            relations: ['organismo', 'abogadoAsignado']
+            relations: ['abogadoAsignado']
         });
         if (!req) throw new NotFoundException(`Requerimiento ${id} no encontrado`);
         return this.calcularDiasRestantes(req);
     }
 
     async create(data: Partial<RequerimientoOC>): Promise<RequerimientoOC> {
-        // Generar radicado interno automático
-        const year = new Date().getFullYear();
-        const count = await this.requerimientoRepo.count();
-        data.radicadoInterno = `REQ-OC-${year}-${String(count + 1).padStart(4, '0')}`;
+        try {
+            // Generar radicado interno automático de forma robusta
+            const year = new Date().getFullYear();
+            const prefix = `REQ-OC-${year}-`;
 
-        // Calcular fecha de vencimiento si no viene
-        if (!data.fechaVencimiento && data.fechaRecepcion && data.plazoOtorgado) {
-            data.fechaVencimiento = this.calcularFechaVencimiento(
-                new Date(data.fechaRecepcion),
-                data.plazoOtorgado,
-                data.unidadTiempo || 'DIAS_HABILES'
-            );
+            // Buscar el último radicado de este año para incrementar
+            const qb = this.requerimientoRepo.createQueryBuilder('req');
+            qb.select('MAX(req.radicadoInterno)', 'max');
+            qb.where('req.radicadoInterno LIKE :prefix', { prefix: `${prefix}%` });
+
+            const result = await qb.getRawOne();
+            const maxRadicado = result ? result.max : null;
+
+            let nextNumber = 1;
+            if (maxRadicado) {
+                // Extraer el número final: REQ-OC-2025-0005 -> 5
+                const parts = maxRadicado.split('-');
+                const numPart = parts[parts.length - 1];
+                nextNumber = parseInt(numPart) + 1;
+            }
+
+            data.radicadoInterno = `${prefix}${String(nextNumber).padStart(4, '0')}`;
+
+            // Calcular fecha de vencimiento si no viene
+            if (!data.fechaVencimiento && data.fechaRecepcion && data.plazoOtorgado) {
+                data.fechaVencimiento = this.calcularFechaVencimiento(
+                    new Date(data.fechaRecepcion),
+                    data.plazoOtorgado,
+                    data.unidadTiempo || 'DIAS_HABILES'
+                );
+            }
+
+            // Calcular prioridad automáticamente basándose en el tiempo
+            if (data.fechaVencimiento && data.plazoOtorgado) {
+                data.prioridad = this.calcularPrioridadAutomatica(data.plazoOtorgado, data.unidadTiempo || 'DIAS_HABILES');
+            }
+
+            const req = this.requerimientoRepo.create(data);
+            return await this.requerimientoRepo.save(req);
+        } catch (error) {
+            console.error('Error creando Requerimiento OC:', error);
+            // Re-throw con mensaje más claro si es constraint violation
+            if (error.code === '23505') { // Postgres unique violation
+                throw new Error('Error de duplicidad: Ya existe un requerimiento con este radicado interno. Por favor intente nuevamente.');
+            }
+            throw error;
         }
-
-        // Calcular prioridad automáticamente basándose en el tiempo
-        if (data.fechaVencimiento && data.plazoOtorgado) {
-            data.prioridad = this.calcularPrioridadAutomatica(data.plazoOtorgado, data.unidadTiempo || 'DIAS_HABILES');
-        }
-
-        const req = this.requerimientoRepo.create(data);
-        return this.requerimientoRepo.save(req);
     }
 
     async update(id: string, data: Partial<RequerimientoOC>): Promise<RequerimientoOC> {
@@ -335,16 +384,70 @@ export class RequerimientosOCService {
         } else if (unidad === 'DIAS_CALENDARIO') {
             fecha.setDate(fecha.getDate() + plazo);
         } else {
-            // DIAS_HABILES - agregar días saltando fines de semana
-            let diasAgregados = 0;
-            while (diasAgregados < plazo) {
-                fecha.setDate(fecha.getDate() + 1);
-                const dia = fecha.getDay();
-                if (dia !== 0 && dia !== 6) diasAgregados++;
-            }
+            // DIAS_HABILES - usar servicio robusto (Ley 1437)
+            return this.diasHabilesService.agregarDiasHabiles(fecha, plazo);
         }
 
         return fecha;
+    }
+
+    // ============================================
+    // SISTEMA DE ARCHIVO
+    // ============================================
+    async archivar(id: string, data: { motivo: string; usuario: string }): Promise<RequerimientoOC> {
+        const req = await this.findOne(id);
+        req.estadoArchivo = 'ARCHIVADO';
+        req.fechaArchivo = new Date();
+        req.usuarioArchivo = data.usuario;
+        req.motivoArchivo = data.motivo;
+        req.estado = 'CERRADO'; // Al archivar, se cierra automáticamente si no lo estaba
+
+        await this.comentariosService.createComentario({
+            requerimientoId: id,
+            contenido: `Requerimiento archivado. Motivo: ${data.motivo}`,
+            tipo: 'seguimiento',
+            autorNombre: data.usuario
+        });
+
+        return this.requerimientoRepo.save(req);
+    }
+
+    async restaurar(id: string, usuario: string): Promise<RequerimientoOC> {
+        const req = await this.findOne(id);
+        req.estadoArchivo = 'ACTIVO';
+        req.fechaArchivo = null;
+        req.usuarioArchivo = null;
+        req.motivoArchivo = null;
+
+        // Al restaurar, devolvemos al estado inicial para que aparezca en el tablero
+        req.estado = 'RECIBIDO';
+
+        await this.comentariosService.createComentario({
+            requerimientoId: id,
+            contenido: 'Requerimiento restaurado del archivo',
+            tipo: 'seguimiento',
+            autorNombre: usuario
+        });
+
+        return this.requerimientoRepo.save(req);
+    }
+
+    async eliminarPermanente(id: string, usuario: string, motivo: string): Promise<void> {
+        const req = await this.findOne(id);
+
+        // Si ya está eliminado (soft delete), procedemos a borrarlo físicamente (hard delete)
+        if (req.estadoArchivo === 'ELIMINADO') {
+            await this.requerimientoRepo.delete(id);
+            return;
+        }
+
+        // Si no, hacemos Soft Delete (marcar como ELIMINADO para auditoría)
+        req.estadoArchivo = 'ELIMINADO';
+        req.fechaArchivo = new Date();
+        req.usuarioArchivo = usuario;
+        req.motivoArchivo = motivo;
+
+        await this.requerimientoRepo.save(req);
     }
 
     private calcularPrioridadAutomatica(plazo: number, unidad: UnidadTiempo): Prioridad {

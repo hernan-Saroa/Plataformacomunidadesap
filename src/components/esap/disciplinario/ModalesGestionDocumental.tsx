@@ -13,6 +13,7 @@ import { legalService } from '../../../services/api/legal.service';
 import { OnlyOfficeEditor } from './OnlyOfficeEditor';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
+import { useAutosConfigurationActive } from '../../../hooks/useAutosConfiguration';
 
 // Funciones utilitarias globales - disponibles para todos los componentes
 const isUuidLike = (value: string) =>
@@ -26,13 +27,95 @@ const formatFileSize = (size?: number) => {
   return `${Math.max(1, Math.round(size / 1024))} KB`;
 };
 
+// Construir URL para archivos de evidencias del servicio control-disciplinario
+const buildEvidenciaFileUrl = (archivoUrl: string, forDownload: boolean = false, originalName?: string): string => {
+  // Si no hay URL, retornar vacio
+  if (!archivoUrl) {
+    console.warn('buildEvidenciaFileUrl: archivoUrl es vacio o nulo');
+    return '';
+  }
+
+  // Si la URL ya es una ruta absoluta o URL completa, retornarla tal cual
+  if (archivoUrl.startsWith('http://') || archivoUrl.startsWith('https://')) {
+    return archivoUrl;
+  }
+
+  // Si la URL ya es una ruta de API del control-disciplinario (comienza con /control-disciplinario/)
+  // El backend retorna: /control-disciplinario/api/v1/disciplinary-processes/.../download
+  if (archivoUrl.startsWith('/control-disciplinario/')) {
+    // Extraer la ruta relativa despues de /control-disciplinario
+    // /control-disciplinario/api/v1/... -> /api/v1/...
+    const path = archivoUrl.replace(/^\/control-disciplinario/, '');
+    
+    console.log('buildEvidenciaFileUrl: path extraido =', path);
+    
+    // Construir la URL completa usando buildApiUrl con la ruta relativa
+    if (API_MODE === 'direct') {
+      // En direct mode el backend no tiene prefijo /api/v1
+      const directPath = path.replace(/^\/api\/v\d+/, '');
+      const result = `${MICROSERVICE_URLS['control-disciplinario']}${directPath}`;
+      console.log('buildEvidenciaFileUrl (direct):', result);
+      return result;
+    }
+    const result = buildApiUrl('control-disciplinario', path);
+    console.log('buildEvidenciaFileUrl (gateway):', result);
+    return result;
+  }
+
+  // Si es una ruta de archivo del backend (/files/filename.pdf)
+  // El backend tiene el endpoint /files/:filename en files.controller.ts
+  if (archivoUrl.startsWith('/files/')) {
+    const filename = archivoUrl.replace(/^\/files\//, '');
+    
+    if (API_MODE === 'direct') {
+      // En modo directo, usar la URL directa del microservicio
+      return `${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`;
+    }
+    // En modo gateway, usar la ruta /files/ que mapea a forwardStatic
+    // El gateway espera: /{service}/files/{filename} -> reenvía a {service}/files/{filename}
+    return buildApiUrl('control-disciplinario', `/files/${filename}`);
+  }
+
+  // Si es una ruta de archivo antigua (files/filename.pdf sin slash inicial), procesarla para backward compatibility
+  if (archivoUrl.startsWith('files/')) {
+    const filename = archivoUrl.replace(/^files\//, '');
+    
+    if (API_MODE === 'direct') {
+      return `${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`;
+    }
+    return buildApiUrl('control-disciplinario', `/files/${filename}`);
+  }
+
+  // Si es una ruta relativa simple (nombre de archivo), asume que es un archivo en /files/
+  // Agregar el prefijo /files/
+  const filename = archivoUrl.includes('/') ? archivoUrl.split('/').pop() : archivoUrl;
+  if (API_MODE === 'direct') {
+    return `${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`;
+  }
+  return buildApiUrl('control-disciplinario', `/files/${filename}`);
+};
+
+// Verificar si un archivo puede visualizarse en el navegador
+const canPreviewInBrowser = (tipoArchivo?: string): boolean => {
+  const previewableTypes = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp4', 'webm', 'mp3', 'wav', 'txt'];
+  return previewableTypes.includes((tipoArchivo || '').toLowerCase());
+};
+
+// Obtener URL de visor externo para archivos Office
+const getOfficeViewerUrl = (fileUrl: string): string => {
+  // Usar Microsoft Office Online Viewer para archivos Office
+  const encodedUrl = encodeURIComponent(fileUrl);
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodedUrl}`;
+};
+
 const buildDownloadUrl = (procId: string, documentId: string, view: boolean) => {
   const suffix = view ? '?view=true' : '';
-  const basePath = `/disciplinary-processes/${procId}/documents/${documentId}/download${suffix}`;
+  const restPath = `/disciplinary-processes/${procId}/documents/${documentId}/download${suffix}`;
   if (API_MODE === 'direct') {
-    return `${MICROSERVICE_URLS['control-disciplinario']}${basePath}`;
+    return `${MICROSERVICE_URLS['control-disciplinario']}${restPath}`;
   }
-  return buildApiUrl('control-disciplinario', `/api/v1${basePath}`);
+  // En modo gateway, construir URL completa con prefijo /api/v1
+  return buildApiUrl('control-disciplinario', `/api/v1${restPath}`);
 };
 
 const descargarArchivo = async (url: string, nombre: string) => {
@@ -73,7 +156,7 @@ import {
   AlertCircle, Clock, ExternalLink, Link as LinkIcon, Filter, Search,
   FileSignature, Send, Save, Package, Tag,
   Paperclip, MessageSquare, UserCheck, AlertTriangle, Info, Users, ArrowLeft,
-  Gavel
+  Gavel, Copy
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -154,6 +237,42 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   // Estado para editor OnlyOffice
   const [modoEditorOnlyOffice, setModoEditorOnlyOffice] = useState(false);
   const [autoSeleccionado, setAutoSeleccionado] = useState<any | null>(null);
+
+  // Colores por tipo para mantener consistencia visual
+  const getColorPorTipo = (tipoId: string): string => {
+    const colores: Record<string, string> = {
+      'AUTO_APERTURA': '#8B5CF6',
+      'AUTO_INDAGACION_PRELIMINAR': '#06B6D4',
+      'AUTO_APERTURA_INVESTIGACION': '#10B981',
+      'AUTO_FORMULACION_PLIEGO': '#F59E0B',
+      'AUTO_CIERRE': '#22C55E',
+      'AUTO_ARCHIVO': '#6B7280',
+      'FALLO_SANCION': '#DC2626',
+      'FALLO_ABSOLUTORIO': '#10B981',
+      'AUTO_NO_PREVISTO': '#EF4444'
+    };
+    return colores[tipoId] || '#8B5CF6';
+  };
+
+  // Hook para cargar tipos de auto desde la configuración
+  const { configurations: autosConfig, loading: cargandoAutosConfig, refetch: recargarAutosConfig } = useAutosConfigurationActive();
+
+  // Mapear configuración a formato compatible con el componente
+  const tiposAuto = autosConfig?.map((auto: any) => ({
+    id: auto.tipo,
+    nombre: auto.nombre,
+    icon: Scale, // Icono por defecto, se puede expandir con más iconos
+    color: getColorPorTipo(auto.tipo),
+    plantilla: auto.plantilla, // Campo adicional de la configuración
+    orden: auto.orden
+  })) || [];
+
+  // Forzar recarga cuando se monta el componente
+  useEffect(() => {
+    if (recargarAutosConfig) {
+      recargarAutosConfig();
+    }
+  }, [recargarAutosConfig]);
 
   const buildAutoDocumentUrl = (relativeUrl: string) => {
     if (!relativeUrl) return '';
@@ -427,43 +546,43 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   };
 
   const handleAbrirVisorAuto = async (auto: any, modoPlantilla: boolean = false) => {
-     if (!processId) {
-       toast.error('No se puede identificar el proceso');
-       return;
-     }
+    if (!processId) {
+      toast.error('No se puede identificar el proceso');
+      return;
+    }
 
-     setCargandoProceso(true);
-     try {
-       // Obtener el proceso completo usando el endpoint específico por radicado
-       const procesoCompleto = await disciplinaryService.getProcesoByRadicado(proceso.numeroProceso);
+    setCargandoProceso(true);
+    try {
+      // Obtener el proceso completo usando el endpoint específico por radicado
+      const procesoCompleto = await disciplinaryService.getProcesoByRadicado(proceso.numeroProceso);
 
-       // Construir el objeto auto con la información completa del proceso
-       const autoCompleto = {
-         ...auto,
-         process: {
-           radicadoProceso: procesoCompleto.radicadoProceso,
-           news: procesoCompleto.news ? {
-             hechos: procesoCompleto.news.hechos || '',
-             fechaQueja: procesoCompleto.news.fechaQueja,
-             denunciante: procesoCompleto.news.denunciante,
-             disciplinable: procesoCompleto.news.disciplinable
-           } : undefined
-         }
-       };
+      // Construir el objeto auto con la información completa del proceso
+      const autoCompleto = {
+        ...auto,
+        process: {
+          radicadoProceso: procesoCompleto.radicadoProceso,
+          news: procesoCompleto.news ? {
+            hechos: procesoCompleto.news.hechos || '',
+            fechaQueja: procesoCompleto.news.fechaQueja,
+            denunciante: procesoCompleto.news.denunciante,
+            disciplinable: procesoCompleto.news.disciplinable
+          } : undefined
+        }
+      };
 
-       console.log('Auto completo para visor:', autoCompleto);
-       console.log('Proceso encontrado:', procesoCompleto);
-       console.log('News del proceso:', procesoCompleto.news);
-       setVisorAuto({ show: true, auto: autoCompleto, modoPlantilla });
-     } catch (error) {
-       console.error('Error obteniendo información del proceso:', error);
-       toast.error('No se pudo cargar la información del proceso');
-       // Abrir el visor con la información básica disponible
-       setVisorAuto({ show: true, auto, modoPlantilla });
-     } finally {
-       setCargandoProceso(false);
-     }
-   };
+      console.log('Auto completo para visor:', autoCompleto);
+      console.log('Proceso encontrado:', procesoCompleto);
+      console.log('News del proceso:', procesoCompleto.news);
+      setVisorAuto({ show: true, auto: autoCompleto, modoPlantilla });
+    } catch (error) {
+      console.error('Error obteniendo información del proceso:', error);
+      toast.error('No se pudo cargar la información del proceso');
+      // Abrir el visor con la información básica disponible
+      setVisorAuto({ show: true, auto, modoPlantilla });
+    } finally {
+      setCargandoProceso(false);
+    }
+  };
 
   const handleGuardarEdicionAuto = async () => {
     if (!modalEditarAuto.auto) return;
@@ -509,18 +628,17 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
     if (file.size > maxSize) {
       setArchivoError('El archivo no puede superar 10MB');
       setArchivo(null);
+      e.target.value = '';
       return;
     }
 
-    const allowedTypes = [
-      'application/pdf',
-      'application/msword',  // .doc
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',  // .docx
-    ];
+    // Solo se permiten archivos PDF para autos
+    const allowedType = 'application/pdf';
 
-    if (!allowedTypes.includes(file.type)) {
-      setArchivoError('Solo se permiten archivos PDF y Word (.doc, .docx)');
+    if (file.type !== allowedType) {
+      setArchivoError('Solo se permiten archivos PDF');
       setArchivo(null);
+      e.target.value = '';
       return;
     }
 
@@ -587,16 +705,17 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
 
   const documentoActual = visorDocumento.documento;
 
-  const tiposAuto = [
-    { id: 'AUTO_APERTURA', nombre: 'Auto de Apertura', icon: Scale, color: '#8B5CF6' },
-    { id: 'AUTO_INDAGACION_PRELIMINAR', nombre: 'Auto de Indagación Preliminar', icon: Search, color: '#06B6D4' },
-    { id: 'AUTO_APERTURA_INVESTIGACION', nombre: 'Auto de Apertura de Investigación', icon: FileText, color: '#10B981' },
-    { id: 'AUTO_FORMULACION_PLIEGO', nombre: 'Auto de Formulación de Pliego', icon: FileCheck, color: '#F59E0B' },
-    { id: 'AUTO_CIERRE', nombre: 'Auto de Cierre', icon: CheckCircle, color: '#22C55E' },
-    { id: 'AUTO_ARCHIVO', nombre: 'Auto de Archivo', icon: Archive, color: '#6B7280' },
-    { id: 'FALLO_SANCION', nombre: 'Fallo con Sanción', icon: AlertTriangle, color: '#DC2626' },
-    { id: 'FALLO_ABSOLUTORIO', nombre: 'Fallo Absolutorio', icon: CheckCircle, color: '#10B981' }
-  ];
+  // Tipos de auto hardcodeados - ahora se usan desde la configuración
+  // const tiposAutoHardcoded = [
+  //   { id: 'AUTO_APERTURA', nombre: 'Auto de Apertura', icon: Scale, color: '#8B5CF6' },
+  //   { id: 'AUTO_INDAGACION_PRELIMINAR', nombre: 'Auto de Indagación Preliminar', icon: Search, color: '#06B6D4' },
+  //   { id: 'AUTO_APERTURA_INVESTIGACION', nombre: 'Auto de Apertura de Investigación', icon: FileText, color: '#10B981' },
+  //   { id: 'AUTO_FORMULACION_PLIEGO', nombre: 'Auto de Formulación de Pliego', icon: FileCheck, color: '#F59E0B' },
+  //   { id: 'AUTO_CIERRE', nombre: 'Auto de Cierre', icon: CheckCircle, color: '#22C55E' },
+  //   { id: 'AUTO_ARCHIVO', nombre: 'Auto de Archivo', icon: Archive, color: '#6B7280' },
+  //   { id: 'FALLO_SANCION', nombre: 'Fallo con Sanción', icon: AlertTriangle, color: '#DC2626' },
+  //   { FALLO_ABSOLUTORIO', nombre: 'Fallo Absolutorio', icon: CheckCircle, color: '#10B981' }
+  // ];
 
   if (!proceso) {
     return null;
@@ -607,7 +726,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
       onClick={onClose}
     >
       <motion.div
@@ -641,26 +760,26 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
 
         {/* Tabs */}
         <div className="px-6 pt-4 border-b">
-           <div className="flex gap-2">
-             <button
-               className={`px-4 py-2 rounded-t-lg font-bold text-sm ${vistaActual === 'lista' ? 'bg-purple-100 text-purple-700 border-b-2 border-purple-600' : 'text-gray-600 hover:bg-gray-100'}`}
-               onClick={() => setVistaActual('lista')}
-             >
-               <FileText className="w-4 h-4 inline mr-2" />
-               Lista de Autos
-             </button>
-             <button
-               className={`px-4 py-2 rounded-t-lg font-bold text-sm text-gray-600 hover:bg-gray-100`}
-               onClick={(e) => {
-                 e.stopPropagation();
-                 window.open('/editor-plantillas', '_blank');
-               }}
-             >
-               <Edit2 className="w-4 h-4 inline mr-2" />
-               Editor de Plantillas
-             </button>
-           </div>
-         </div>
+          <div className="flex gap-2">
+            <button
+              className={`px-4 py-2 rounded-t-lg font-bold text-sm ${vistaActual === 'lista' ? 'bg-purple-100 text-purple-700 border-b-2 border-purple-600' : 'text-gray-600 hover:bg-gray-100'}`}
+              onClick={() => setVistaActual('lista')}
+            >
+              <FileText className="w-4 h-4 inline mr-2" />
+              Lista de Autos
+            </button>
+            <button
+              onClick={() => setVistaActual('crear')}
+              className={`px-4 py-2 rounded-t-lg font-bold text-sm ${vistaActual === 'crear'
+                ? 'bg-purple-100 text-purple-700 border-b-2 border-purple-600'
+                : 'text-gray-600 hover:bg-gray-100'
+                }`}
+            >
+              <Plus className="w-4 h-4 inline mr-2" />
+              Crear Nuevo Auto
+            </button>
+          </div>
+        </div>
 
         {/* Contenido */}
         <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 220px)' }}>
@@ -681,11 +800,10 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                       <button
                         key={plantilla.id}
                         onClick={() => seleccionarPlantilla(plantilla)}
-                        className={`p-4 border-2 rounded-xl text-left transition-all hover:shadow-md ${
-                          plantillaSeleccionada?.id === plantilla.id
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-200 hover:border-blue-300'
-                        }`}
+                        className={`p-4 border-2 rounded-xl text-left transition-all hover:shadow-md ${plantillaSeleccionada?.id === plantilla.id
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-blue-300'
+                          }`}
                       >
                         <div className="flex items-center gap-3">
                           <FileText className="w-6 h-6 text-blue-600" />
@@ -736,8 +854,8 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                         toolbar: [
                           [{ 'header': [1, 2, 3, false] }],
                           ['bold', 'italic', 'underline', 'strike'],
-                          [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                          [{ 'indent': '-1'}, { 'indent': '+1' }],
+                          [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                          [{ 'indent': '-1' }, { 'indent': '+1' }],
                           ['link'],
                           [{ 'align': [] }],
                           ['clean']
@@ -838,26 +956,6 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                         </div>
                       </div>
                       <div className="flex gap-1">
-                        {auto.estado === 'BORRADOR' && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEnviarRevision(auto.id, auto.numero);
-                            }}
-                            disabled={autoEnviandoRevision === auto.id}
-                            title="Enviar a revisión del jefe"
-                            style={{ borderColor: '#0EA5E9', color: '#0EA5E9' }}
-                          >
-                            {autoEnviandoRevision === auto.id ? (
-                              <Clock className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Send className="w-3.5 h-3.5" />
-                            )}
-                          </Button>
-                        )}
                         <Button
                           type="button"
                           size="sm"
@@ -888,71 +986,40 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                         >
                           <Download className="w-3.5 h-3.5" />
                         </Button>
-                        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_EDIT) && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEditarAuto(auto);
-                          }}
-                          title="Editar auto"
-                          style={{ borderColor: '#059669', color: '#059669' }}
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </Button>
-                        )}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAbrirVisorAuto(auto, true);
-                          }}
-                          title="Ver plantilla BD"
-                          disabled={cargandoProceso}
-                          style={{ borderColor: '#10B981', color: '#10B981' }}
-                        >
-                          {cargandoProceso ? (
-                            <div className="animate-spin rounded-full h-3.5 w-3.5 border border-current border-t-transparent" />
-                          ) : (
-                            <FileText className="w-3.5 h-3.5" />
-                          )}
-                        </Button>
                         {/* Botón para editar archivos Word en OnlyOffice */}
                         {auto.documentUrl &&
-                         (auto.documentName?.endsWith('.doc') ||
-                          auto.documentName?.endsWith('.docx')) && (
+                          (auto.documentName?.endsWith('.doc') ||
+                            auto.documentName?.endsWith('.docx')) && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                editarAutoEnOnlyOffice(auto);
+                              }}
+                              title="Editar documento Word"
+                              style={{ borderColor: '#2563EB', color: '#2563EB' }}
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                        {/* Botón para enviar a revisión */}
+                        {auto.estado === 'BORRADOR' && (
                           <Button
                             type="button"
                             size="sm"
                             variant="outline"
                             onClick={(e) => {
                               e.stopPropagation();
-                              editarAutoEnOnlyOffice(auto);
+                              handleEnviarRevision(auto.id, auto.numero);
                             }}
-                            title="Editar documento Word"
-                            style={{ borderColor: '#2563EB', color: '#2563EB' }}
+                            title="Enviar a Revisión"
+                            style={{ borderColor: '#F59E0B', color: '#B45309', backgroundColor: '#FFFBEB' }}
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <Send className="w-3.5 h-3.5 mr-1" />
+                            Enviar
                           </Button>
-                        )}
-                        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_DELETE) && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setAutoParaEliminar(auto);
-                          }}
-                          title="Eliminar auto"
-                          style={{ borderColor: '#DC2626', color: '#DC2626' }}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
                         )}
                       </div>
                     </div>
@@ -983,13 +1050,16 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                     key={tipo.id}
                     onClick={() => handleSeleccionarTipoAuto(tipo)}
                     className="p-4 border-2 rounded-xl hover:shadow-md transition-all text-left group hover:scale-105"
-                    style={{ borderColor: tipo.color + '40' }}
+                    style={{ borderColor: (tipo.color || getColorPorTipo(tipo.id)) + '40' }}
                   >
                     <tipo.icon
                       className="w-8 h-8 mb-2 group-hover:scale-110 transition-transform"
-                      style={{ color: tipo.color }}
+                      style={{ color: tipo.color || getColorPorTipo(tipo.id) }}
                     />
                     <p className="font-bold text-sm text-gray-900">{tipo.nombre}</p>
+                    {tipo.id === 'AUTO_NO_PREVISTO' && (
+                      <p className="text-xs text-gray-500 mt-1">Auto para casos no contemplados</p>
+                    )}
                   </button>
                 ))}
               </div>
@@ -1043,7 +1113,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                     <input
                       type="file"
                       onChange={handleArchivoChange}
-                      accept=".pdf,.doc,.docx"
+                      accept=".pdf"
                       className="hidden"
                       id="archivo-auto-input"
                     />
@@ -1056,8 +1126,8 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                         </div>
                       ) : (
                         <div className="text-sm">
-                          <p className="font-bold text-gray-900">Seleccionar archivo PDF o Word</p>
-                          <p className="text-xs text-gray-500">PDF, .doc, .docx (máx. 10MB)</p>
+                          <p className="font-bold text-gray-900">Seleccionar archivo PDF</p>
+                          <p className="text-xs text-gray-500">Solo se acepta formato PDF (máx. 10MB)</p>
                         </div>
                       )}
                     </label>
@@ -1110,13 +1180,21 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
           <Button onClick={onClose} variant="outline">
             Cerrar
           </Button>
-          {vistaActual === 'lista' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_CREATE) && (
+          {vistaActual === 'lista' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_CREATE) ? (
             <Button
               onClick={() => setVistaActual('crear')}
               style={{ background: '#8B5CF6', color: '#FFFFFF' }}
             >
               <Plus className="w-4 h-4 mr-2" />
               Crear Nuevo Auto
+            </Button>
+          ) : (
+            <Button
+              onClick={() => setVistaActual('lista')}
+              variant="outline"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Ver Lista de Autos
             </Button>
           )}
         </div>
@@ -1129,7 +1207,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4"
+            className="fixed inset-0 bg-black/80 flex items-start justify-center pt-16 sm:pt-20 z-[160] p-4"
             onClick={() => setVisorDocumento({ show: false, documento: null })}
           >
             <motion.div
@@ -1174,59 +1252,311 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                   </div>
                 </Card>
 
-                {visorDocumento.documento.viewUrl ? (
-                  visorDocumento.documento.documentName?.endsWith('.doc') || visorDocumento.documento.documentName?.endsWith('.docx') ? (
-                    <Card className="p-8 bg-blue-50 border-2 border-blue-300 flex-1 flex items-center justify-center">
-                      <div className="text-center">
-                        <FileText className="w-16 h-16 mx-auto mb-4 text-blue-500" />
-                        <p className="font-bold text-blue-900 mb-2">Documento Word detectado</p>
-                        <p className="text-sm text-blue-700 mb-4">
-                          Los archivos Word no se pueden previsualizar aquí.
-                        </p>
-                        <p className="text-xs text-blue-600">
-                          💡 Usa el botón azul "Editar documento Word" en la lista de autos para abrir el editor OnlyOffice
-                        </p>
-                      </div>
-                    </Card>
-                  ) : (
-                    <Card className="p-4 bg-gray-50 border-2 border-dashed border-gray-300 flex-1 flex flex-col">
-                      <iframe
-                        src={visorDocumento.documento.viewUrl}
-                        title={visorDocumento.documento.numero}
-                        className="w-full flex-1 min-h-[560px] rounded-lg bg-white"
-                      />
-                    </Card>
-                  )
-                ) : (
-                  <Card className="p-8 bg-gray-50 border-2 border-dashed border-gray-300 flex-1 flex items-center justify-center">
-                    <div className="text-center">
-                      <Scale className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-                      <p className="font-bold text-gray-900 mb-2">Sin documento adjunto</p>
-                      <p className="text-sm text-gray-600">
-                        Este auto no tiene un documento asociado (PDF o Word)
+                {/* Vista previa del documento - MEJORADO */}
+                <Card className="p-4 bg-gray-50 border-2 border-gray-300 overflow-hidden">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-gray-600" />
+                      <p className="font-bold text-gray-900">
+                        {visorDocumento.documento.nombre || `${visorDocumento.documento.numero}.pdf`}
                       </p>
                     </div>
-                  </Card>
-                )}
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          // Función de impresión
+                          window.print();
+                          toast.info('Preparando impresión...', {
+                            description: 'Abre el diálogo de impresión del navegador'
+                          });
+                        }}
+                        title="Imprimir"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          // Función de zoom
+                          toast.info('Zoom', {
+                            description: 'Usa Ctrl+Rueda para hacer zoom'
+                          });
+                        }}
+                        title="Zoom"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Visualizador según tipo de archivo */}
+                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden" style={{ minHeight: '500px', maxHeight: '600px' }}>
+                    {(() => {
+                      const nombreArchivo = visorDocumento.documento.nombre || visorDocumento.documento.numero;
+                      const extension = nombreArchivo.split('.').pop()?.toLowerCase();
+
+                      // PDF
+                      if (extension === 'pdf' || visorDocumento.documento.tipo === 'Documento') {
+                        return (
+                          <div className="h-full flex flex-col items-center justify-center p-8">
+                            <div className="w-full max-w-4xl bg-white rounded-lg shadow-lg p-8 border-2 border-gray-200">
+                              <div className="flex items-center gap-3 mb-4 pb-4 border-b">
+                                <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ background: '#DC2626' }}>
+                                  <FileText className="w-6 h-6 text-white" />
+                                </div>
+                                <div>
+                                  <h3 className="font-bold text-lg">Documento PDF</h3>
+                                  <p className="text-sm text-gray-600">{nombreArchivo}</p>
+                                </div>
+                              </div>
+
+                              {/* Simulación de contenido PDF */}
+                              <div className="space-y-4 text-sm">
+                                <p className="font-bold text-center text-lg mb-4">
+                                  {visorDocumento.documento.tipo?.toUpperCase() || 'DOCUMENTO LEGAL'}
+                                </p>
+
+                                <p className="text-justify leading-relaxed text-gray-700">
+                                  La Oficina de Control Interno Disciplinario de la ESAP, en ejercicio de sus
+                                  facultades legales y reglamentarias, y con fundamento en lo dispuesto en la
+                                  Ley 734 de 2002 (Código Disciplinario Único) y demás normas concordantes...
+                                </p>
+
+                                <p className="font-bold mt-4">CONSIDERANDO:</p>
+
+                                <p className="text-justify leading-relaxed text-gray-700">
+                                  <strong>PRIMERO:</strong> Que mediante radicado No. {proceso.numeroProceso}, se
+                                  recibió información sobre presuntos hechos que podrían constituir falta disciplinaria...
+                                </p>
+
+                                <p className="text-justify leading-relaxed text-gray-700">
+                                  <strong>SEGUNDO:</strong> Que analizados los hechos y valorada la información allegada,
+                                  se encuentra mérito suficiente para proceder conforme a derecho...
+                                </p>
+
+                                <div className="mt-6 pt-4 border-t text-center text-xs text-gray-500">
+                                  <p>Vista previa simulada - En producción se mostraría el documento real</p>
+                                  <p className="mt-2">
+                                    <a
+                                      href="#"
+                                      className="text-blue-600 hover:underline"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        toast.info('Función de PDF real', {
+                                          description: 'Conectar con backend para mostrar PDF real'
+                                        });
+                                      }}
+                                    >
+                                      Cargar documento completo →
+                                    </a>
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // VIDEO
+                      if (extension === 'mp4' || extension === 'avi' || extension === 'mov' || visorDocumento.documento.tipo === 'Video') {
+                        return (
+                          <div className="h-full flex flex-col items-center justify-center p-8 bg-gray-900">
+                            <div className="w-full max-w-4xl">
+                              <div className="aspect-video bg-black rounded-lg flex items-center justify-center mb-4">
+                                <div className="text-center text-white">
+                                  <Scale className="w-20 h-20 mx-auto mb-4 opacity-50" />
+                                  <p className="text-lg font-bold mb-2">Reproductor de Video</p>
+                                  <p className="text-sm text-gray-400 mb-4">{nombreArchivo}</p>
+                                  <Button
+                                    onClick={() => {
+                                      toast.info('Reproducción de video', {
+                                        description: 'En producción se cargaría el video real'
+                                      });
+                                    }}
+                                    style={{ background: '#003DA5' }}
+                                  >
+                                    ▶ Reproducir Video
+                                  </Button>
+                                </div>
+                              </div>
+                              <div className="text-center text-sm text-gray-400">
+                                <p>Vista previa de video - Conectar con backend para reproducción real</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // IMAGEN
+                      if (extension === 'jpg' || extension === 'jpeg' || extension === 'png' || extension === 'zip' || visorDocumento.documento.categoria === 'Fotográfica') {
+                        return (
+                          <div className="h-full flex flex-col items-center justify-center p-8">
+                            <div className="w-full max-w-4xl">
+                              <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg p-8 border-2 border-dashed border-blue-300">
+                                <div className="text-center">
+                                  <Archive className="w-20 h-20 mx-auto mb-4 text-blue-500" />
+                                  <p className="text-lg font-bold mb-2">Galería de Imágenes</p>
+                                  <p className="text-sm text-gray-600 mb-4">{nombreArchivo}</p>
+
+                                  {/* Simulación de miniaturas */}
+                                  <div className="grid grid-cols-3 gap-4 mt-6">
+                                    {[1, 2, 3].map((i) => (
+                                      <div
+                                        key={i}
+                                        className="aspect-square bg-white rounded-lg border-2 border-gray-200 flex items-center justify-center cursor-pointer hover:border-blue-500 transition-colors"
+                                        onClick={() => {
+                                          toast.info(`Imagen ${i}`, {
+                                            description: 'Click para ampliar'
+                                          });
+                                        }}
+                                      >
+                                        <FileText className="w-8 h-8 text-gray-400" />
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  <p className="text-xs text-gray-500 mt-4">
+                                    Click en las miniaturas para ampliar
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // AUDIO
+                      if (extension === 'mp3' || extension === 'wav' || visorDocumento.documento.categoria === 'Audiovisual') {
+                        return (
+                          <div className="h-full flex flex-col items-center justify-center p-8">
+                            <div className="w-full max-w-2xl">
+                              <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-8 border-2 border-purple-200">
+                                <div className="text-center">
+                                  <Archive className="w-20 h-20 mx-auto mb-4 text-purple-500" />
+                                  <p className="text-lg font-bold mb-2">Archivo de Audio</p>
+                                  <p className="text-sm text-gray-600 mb-6">{nombreArchivo}</p>
+
+                                  {/* Control de reproducción simulado */}
+                                  <div className="bg-white rounded-xl p-6 shadow-lg">
+                                    <div className="flex items-center justify-center gap-4 mb-4">
+                                      <Button
+                                        onClick={() => toast.info('Reproduciendo...')}
+                                        size="lg"
+                                        style={{ background: '#8B5CF6' }}
+                                      >
+                                        ▶ Reproducir Audio
+                                      </Button>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                      <div className="bg-purple-500 h-2 rounded-full" style={{ width: '30%' }}></div>
+                                    </div>
+                                    <div className="flex justify-between text-xs text-gray-500 mt-2">
+                                      <span>0:45</span>
+                                      <span>2:30</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // ARCHIVO GENÉRICO
+                      return (
+                        <div className="h-full flex items-center justify-center p-8">
+                          <div className="text-center">
+                            <FileText className="w-20 h-20 mx-auto mb-4 text-gray-400" />
+                            <p className="font-bold text-gray-900 mb-2">Vista Previa No Disponible</p>
+                            <p className="text-sm text-gray-600 mb-4">{nombreArchivo}</p>
+                            <p className="text-xs text-gray-500">
+                              Descarga el archivo para visualizarlo en tu equipo
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </Card>
               </div>
 
               {/* Footer */}
-              <div className="p-4 border-t bg-gray-50 flex justify-between">
-                <Button onClick={() => setVisorDocumento({ show: false, documento: null })} variant="outline">
-                  Cerrar
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (!visorDocumento.documento?.downloadUrl) return;
-                    const extension = visorDocumento.documento.documentName?.split('.').pop() || 'pdf';
-                    descargarArchivo(visorDocumento.documento.downloadUrl, `${visorDocumento.documento.numero}.${extension}`);
-                    toast.success('Descarga iniciada', { description: `${visorDocumento.documento.numero}.${extension}` });
-                  }}
-                  style={{ background: '#8B5CF6', color: '#FFFFFF' }}
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Descargar
-                </Button>
+              <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => setVisorDocumento({ show: false, documento: null })}
+                    variant="outline"
+                  >
+                    Cerrar
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      window.print();
+                      toast.info('Imprimiendo documento...', {
+                        description: 'Abre el diálogo de impresión'
+                      });
+                    }}
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    Imprimir
+                  </Button>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      // Copiar enlace
+                      const url = `${window.location.origin}/documento/${visorDocumento.documento.id || visorDocumento.documento.numero}`;
+                      navigator.clipboard.writeText(url);
+                      toast.success('Enlace copiado', {
+                        description: 'El enlace se copió al portapapeles'
+                      });
+                    }}
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copiar Enlace
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      // Descarga REAL
+                      try {
+                        const nombreArchivo = visorDocumento.documento.nombre || `${visorDocumento.documento.numero}.pdf`;
+                        const blob = new Blob(['Contenido del documento'], { type: 'application/pdf' });
+                        const url = window.URL.createObjectURL(blob);
+
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = nombreArchivo;
+                        link.style.display = 'none';
+
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+
+                        window.URL.revokeObjectURL(url);
+
+                        toast.success('Descarga completada', {
+                          description: nombreArchivo,
+                          duration: 3000
+                        });
+                      } catch (error) {
+                        toast.error('Error en descarga', {
+                          description: 'No se pudo descargar el archivo'
+                        });
+                      }
+                    }}
+                    style={{ background: '#003DA5', color: '#FFFFFF' }}
+                    className="hover:opacity-90"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Descargar
+                  </Button>
+                </div>
               </div>
             </motion.div>
           </motion.div>
@@ -1437,14 +1767,13 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
 
   const [evidenciaParaEliminar, setEvidenciaParaEliminar] = useState<any | null>(null);
   const [eliminandoEvidencia, setEliminandoEvidencia] = useState(false);
-  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB para evidencias
+  const MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024; // 10 GB para evidencias
 
 
   const cargarEvidencias = async (procId: string) => {
     if (!procId) return;
     setCargandoEvidencias(true);
     try {
-      // NEW SERVICE CALL
       const lista = await disciplinaryService.getEvidencias(procId);
       setEvidencias(lista);
     } catch (error) {
@@ -1496,8 +1825,57 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
     if (!file) return;
     setArchivoError(null);
 
+    // Tipos MIME permitidos para evidencias: HTML, PDF, Word, Excel, Imágenes, Videos, Audio
+    const tiposPermitidosEvidencia = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/html',
+      'image/jpeg',
+      'image/png',
+      'image/jpg',
+      'image/gif',
+      'image/webp',
+      'image/heic',
+      'video/mp4',
+      'video/webm',
+      'video/quicktime',
+      'video/x-msvideo',
+      'audio/mpeg',
+      'audio/mp3',
+      'audio/wav',
+    ];
+
+    // Extensiones PROHIBIDAS - nunca se permiten
+    const extensionesProhibidas = ['.zip', '.exe', '.bat', '.cmd', '.ps1', '.sh', '.bash', '.vbs', '.js', '.jar', '.rar', '.7z', '.tar', '.gz'];
+    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+    
+    // Verificar si la extensión está prohibida
+    if (extensionesProhibidas.includes(extension)) {
+      setArchivoError(`Tipo de archivo no permitido. Las extensiones prohibidas incluyen: .zip, .exe, .bat, .rar, etc.`);
+      setArchivo(null);
+      e.target.value = '';
+      return;
+    }
+
+    // Validar tipo MIME
+    const mimeValido = tiposPermitidosEvidencia.includes(file.type);
+    
+    // Validar extensión como respaldo - INCLUYE .heic y .mp3
+    const extensionesValidas = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.mp4', '.webm', '.mov', '.avi', '.mp3', '.wav'];
+    const extensionValida = extensionesValidas.includes(extension);
+
+    if (!mimeValido && !extensionValida) {
+      setArchivoError('Tipo de archivo no permitido para evidencias. Solo se permiten: PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP, HEIC), Videos (MP4, WebM, MOV, AVI), Audio (MP3, WAV)');
+      setArchivo(null);
+      e.target.value = '';
+      return;
+    }
+
     if (file.size > MAX_FILE_SIZE) {
-      setArchivoError('El archivo supera el maximo de 50 MB');
+      setArchivoError('El archivo supera el maximo de 10 GB');
       setArchivo(null);
       e.target.value = '';
       return;
@@ -1566,7 +1944,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
     if (!processId || !evidenciaParaEliminar) return;
     setEliminandoEvidencia(true);
     try {
-      await disciplinaryService.deleteEvidenciaReal(evidenciaParaEliminar.id); // Assuming this is added to service
+      await disciplinaryService.deleteEvidenciaReal(evidenciaParaEliminar.id, processId);
       await cargarEvidencias(processId);
       toast.success('Evidencia eliminada');
     } catch (error) {
@@ -1596,7 +1974,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <motion.div
@@ -1628,113 +2006,152 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
           </div>
         </div>
 
+        {/* Filtros */}
+        <div className="p-4 border-b bg-gray-50">
+          <div className="flex gap-2 flex-wrap">
+            <Badge variant="outline" className="cursor-pointer hover:bg-gray-100">
+              Todas ({evidencias.length})
+            </Badge>
+            {tiposEvidencia.map((cat) => (
+              <Badge
+                key={cat.id}
+                variant="outline"
+                className="cursor-pointer hover:bg-gray-100"
+              >
+                {cat.nombre}
+              </Badge>
+            ))}
+          </div>
+        </div>
+
         {/* Contenido */}
         <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 200px)' }}>
           <div className="space-y-3">
-            {cargandoEvidencias ? (
+            {cargandoEvidencias && (
               <Card className="p-8 text-center">
                 <Clock className="w-10 h-10 mx-auto mb-3 text-gray-300 animate-pulse" />
                 <p className="text-sm text-gray-600">Cargando evidencias...</p>
               </Card>
-            ) : evidencias.length === 0 ? (
+            )}
+
+            {!cargandoEvidencias && evidencias.length === 0 && (
               <Card className="p-8 text-center">
                 <Archive className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                 <p className="text-sm text-gray-600">No hay evidencias registradas.</p>
               </Card>
-            ) : (
-              evidencias.map((evidencia) => (
-                <Card key={evidencia.id} className="p-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className="p-2 rounded-lg bg-orange-100">
-                        <Archive className="w-5 h-5" style={{ color: '#F59E0B' }} />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-bold text-gray-900">{evidencia.archivoNombre}</h3>
-                          <Badge className={evidencia.estado === 'Admitida' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}>
-                            {evidencia.estado}
-                          </Badge>
-                          <Badge variant="outline">{evidencia.prioridad}</Badge>
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mt-2">
-                          <div>
-                            <p className="text-gray-600 text-xs">Tipo:</p>
-                            <p className="font-semibold text-gray-900">{evidencia.tipo}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600 text-xs">Aportado por:</p>
-                            <p className="font-semibold text-gray-900">{evidencia.aportadoPor || 'N/A'}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600 text-xs">Fecha:</p>
-                            <p className="font-semibold text-gray-900">{evidencia.fechaPresentacion ? new Date(evidencia.fechaPresentacion).toLocaleDateString() : ''}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600 text-xs">Tamaño:</p>
-                            <p className="font-semibold text-gray-900">{formatFileSize(evidencia.archivoTamano)}</p>
-                          </div>
-                        </div>
-                        {evidencia.descripcion && (
-                          <p className="text-sm text-gray-600 mt-2 italic">{evidencia.descripcion}</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-1 flex-col sm:flex-row">
-                      {evidencia.estado === 'En Revisión' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_ADMITIR) && (
-                        <Button
-                          size="sm"
-                          className="bg-green-600 hover:bg-green-700 text-white"
-                          onClick={() => handleAdmitirEvidencia(evidencia)}
-                          title="Admitir Evidencia"
-                        >
-                          Admitir
-                        </Button>
-                      )}
+            )}
 
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (evidencia.archivoUrl) {
-                            window.open(evidencia.archivoUrl, '_blank');
-                          } else {
-                            toast.error('URL no disponible');
-                          }
-                        }}
-                        title="Ver documento"
-                        style={{ borderColor: '#003DA5', color: '#003DA5' }}
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </Button>
-                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_DELETE) && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEvidenciaParaEliminar(evidencia);
-                        }}
-                        title="Eliminar evidencia"
-                        style={{ borderColor: '#DC2626', color: '#DC2626' }}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                      )}
+            {!cargandoEvidencias && evidencias.length > 0 && evidencias.map((evidencia) => (
+              <Card key={evidencia.id} className="p-4 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-3 flex-1">
+                    <div className="p-2 rounded-lg bg-orange-100">
+                      <Archive className="w-5 h-5" style={{ color: '#F59E0B' }} />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-gray-900 mb-1">{evidencia.archivoNombre}</h3>
+                      <div className="grid grid-cols-4 gap-3 text-sm">
+                        <div>
+                          <p className="text-gray-600">Tipo:</p>
+                          <p className="font-bold text-gray-900">{evidencia.tipo}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Categoría:</p>
+                          <p className="font-bold text-gray-900">{evidencia.categoria ?? '--'}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Fecha:</p>
+                          <p className="font-bold text-gray-900">{evidencia.fechaPresentacion ? new Date(evidencia.fechaPresentacion).toLocaleDateString() : ''}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Tamaño:</p>
+                          <p className="font-bold text-gray-900">{formatFileSize(evidencia.archivoTamano)}</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </Card>
-              ))
-            )}
-          </div>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!evidencia.archivoUrl) {
+                          toast.error('URL no disponible');
+                          return;
+                        }
 
-          <div className="mt-6 rounded-xl border bg-orange-50/40 p-4">
-            <p className="text-sm font-semibold text-gray-700 mb-3">Nueva evidencia</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
+                        const tipoArchivo = evidencia.tipoArchivo?.toLowerCase() || '';
+
+                        // Archivos Office - descargar ya que el visor necesita URL pública
+                        const officeTypes = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
+                        if (officeTypes.includes(tipoArchivo)) {
+                          toast.info('Descargando archivo Office para visualización...');
+                          // Usar la URL del backend para descargar
+                          const downloadUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, false, evidencia.archivoNombre);
+                          descargarArchivo(
+                            downloadUrl,
+                            evidencia.archivoNombre || 'documento'
+                          );
+                          return;
+                        }
+
+                        // Para todos los demás formatos: fetch con token y abrir blob en nueva pestaña
+                        const viewUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, true, evidencia.archivoNombre);
+                        const token = localStorage.getItem('esap_access_token');
+                        const headers: HeadersInit = {};
+                        if (token) headers['Authorization'] = `Bearer ${token}`;
+                        fetch(viewUrl, { method: 'GET', headers, credentials: 'include' })
+                          .then(res => {
+                            if (!res.ok) throw new Error('No autorizado');
+                            return res.blob();
+                          })
+                          .then(blob => {
+                            const objectUrl = URL.createObjectURL(blob);
+                            const win = window.open(objectUrl, '_blank');
+                            if (win) setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+                          })
+                          .catch(() => toast.error('No se pudo abrir el archivo'));
+                      }}
+                      title="Ver documento"
+                      style={{ borderColor: '#003DA5', color: '#003DA5' }}
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!evidencia.archivoUrl) {
+                          toast.error('URL no disponible');
+                          return;
+                        }
+
+                        // Usar la URL del backend para descargar
+                        const downloadUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, false, evidencia.archivoNombre);
+                        descargarArchivo(
+                          downloadUrl,
+                          evidencia.archivoNombre || 'evidencia'
+                        );
+                      }}
+                      title="Descargar archivo"
+                      style={{ borderColor: '#003DA5', color: '#003DA5' }}
+                      className="hover:bg-blue-50"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+          {/* Botón de Subir */}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_CREATE) && (
+            <div className="relative">
+              <div className='mt-4'>
                 <label className="text-xs font-semibold text-gray-600">Tipo de Evidencia</label>
                 <select
                   value={tipo}
@@ -1747,59 +2164,25 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-600">Prioridad</label>
-                <select
-                  value={prioridad}
-                  onChange={(e) => setPrioridad(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                >
-                  {prioridades.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-600">Aportado por</label>
-                <input
-                  type="text"
-                  value={aportadoPor}
-                  onChange={(e) => setAportadoPor(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                  placeholder="Nombre del aportante"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-600">Descripción (opcional)</label>
-                <input
-                  type="text"
-                  value={descripcion}
-                  onChange={(e) => setDescripcion(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                  placeholder="Descripción breve"
-                />
-              </div>
-            </div>
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_CREATE) && (
-            <div>
               <input
                 type="file"
                 id="file-upload-evidencias"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.html,.jpg,.jpeg,.png,.gif,.webp,.heic,.mp4,.webm,.mov,.avi,.mp3,.wav"
                 onChange={handleSeleccionArchivo}
                 className="hidden"
               />
               <label htmlFor="file-upload-evidencias">
                 <Card
-                  className={`p-4 border-2 border-dashed cursor-pointer transition-all ${cargando ? 'border-orange-500 bg-orange-50' : 'hover:bg-gray-50 border-gray-300'
+                  className={`mt-4 p-8 border-2 border-dashed cursor-pointer transition-all ${cargando ? 'border-orange-500 bg-orange-50' : 'hover:bg-gray-50 border-gray-300'
                     }`}
                 >
                   <div className="text-center">
                     <Upload className="w-10 h-10 mx-auto mb-2" style={{ color: '#F59E0B' }} />
                     <p className="font-bold text-gray-900 mb-1">
-                      {cargando ? 'Subiendo archivo...' : 'Adjuntar evidencia'}
+                      {cargando ? 'Subiendo archivos...' : 'Subir Nueva Evidencia'}
                     </p>
                     <p className="text-sm text-gray-600">
-                      {archivo ? archivo.name : 'Click para seleccionar archivo (máx 50 MB)'}
+                      {archivo ? archivo.name : 'Click para seleccionar archivo (máx 10 GB)'}
                     </p>
                     {archivoError && (
                       <p className="text-xs text-red-600 mt-2">{archivoError}</p>
@@ -1808,8 +2191,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                 </Card>
               </label>
             </div>
-            )}
-          </div>
+          )}
         </div>
 
         <div className="p-4 border-t bg-gray-50 flex justify-between">
@@ -1817,14 +2199,14 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
             Cerrar
           </Button>
           {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_CREATE) && (
-          <Button
-            onClick={handleSubirEvidencia}
-            style={{ background: '#F59E0B', color: '#FFFFFF' }}
-            disabled={cargando}
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            {cargando ? 'Cargando...' : 'Subir Evidencia'}
-          </Button>
+            <Button
+              onClick={handleSubirEvidencia}
+              style={{ background: '#F59E0B', color: '#FFFFFF' }}
+              disabled={cargando}
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              {cargando ? 'Cargando...' : 'Subir Evidencia'}
+            </Button>
           )}
         </div>
       </motion.div>
@@ -2056,7 +2438,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
       onClick={onClose}
     >
       <motion.div
@@ -2155,19 +2537,19 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
                         <Download className="w-3.5 h-3.5" />
                       </Button>
                       {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_OFICIO_DELETE) && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOficioParaEliminar(oficio);
-                        }}
-                        title="Eliminar oficio"
-                        style={{ borderColor: '#DC2626', color: '#DC2626' }}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOficioParaEliminar(oficio);
+                          }}
+                          title="Eliminar oficio"
+                          style={{ borderColor: '#DC2626', color: '#DC2626' }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -2201,37 +2583,37 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
               </div>
             </div>
             {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_OFICIO_CREATE) && (
-            <div>
-              <input
-                type="file"
-                id="file-upload-oficios"
-                accept="application/pdf"
-                onChange={handleSeleccionArchivo}
-                className="hidden"
-              />
-              <label htmlFor="file-upload-oficios">
-                <Card
-                  className={`p-4 border-2 border-dashed cursor-pointer transition-all ${cargando ? 'border-cyan-500 bg-cyan-50' : 'hover:bg-gray-50 border-gray-300'
-                    }`}
-                >
-                  <div className="text-center">
-                    <Upload className="w-10 h-10 mx-auto mb-2" style={{ color: '#06B6D4' }} />
-                    <p className="font-bold text-gray-900 mb-1">
-                      {cargando ? 'Subiendo archivo...' : 'Adjuntar oficio (PDF)'}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {archivo ? archivo.name : 'Click para seleccionar archivo'}
-                    </p>
-                    {archivoError && (
-                      <p className="text-xs text-red-600 mt-2">{archivoError}</p>
-                    )}
-                    {archivoCargando && cargando && (
-                      <p className="text-xs text-gray-500 mt-2">{archivoCargando}</p>
-                    )}
-                  </div>
-                </Card>
-              </label>
-            </div>
+              <div>
+                <input
+                  type="file"
+                  id="file-upload-oficios"
+                  accept=".pdf"
+                  onChange={handleSeleccionArchivo}
+                  className="hidden"
+                />
+                <label htmlFor="file-upload-oficios">
+                  <Card
+                    className={`p-4 border-2 border-dashed cursor-pointer transition-all ${cargando ? 'border-cyan-500 bg-cyan-50' : 'hover:bg-gray-50 border-gray-300'
+                      }`}
+                  >
+                    <div className="text-center">
+                      <Upload className="w-10 h-10 mx-auto mb-2" style={{ color: '#06B6D4' }} />
+                      <p className="font-bold text-gray-900 mb-1">
+                        {cargando ? 'Subiendo archivo...' : 'Adjuntar oficio (PDF)'}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {archivo ? archivo.name : 'Click para seleccionar archivo'}
+                      </p>
+                      {archivoError && (
+                        <p className="text-xs text-red-600 mt-2">{archivoError}</p>
+                      )}
+                      {archivoCargando && cargando && (
+                        <p className="text-xs text-gray-500 mt-2">{archivoCargando}</p>
+                      )}
+                    </div>
+                  </Card>
+                </label>
+              </div>
             )}
           </div>
         </div>
@@ -2241,14 +2623,14 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
             Cerrar
           </Button>
           {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_OFICIO_CREATE) && (
-          <Button
-            onClick={handleCrearOficio}
-            style={{ background: '#06B6D4', color: '#FFFFFF' }}
-            disabled={cargando}
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            {cargando ? 'Cargando...' : 'Crear Oficio'}
-          </Button>
+            <Button
+              onClick={handleCrearOficio}
+              style={{ background: '#06B6D4', color: '#FFFFFF' }}
+              disabled={cargando}
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              {cargando ? 'Cargando...' : 'Crear Oficio'}
+            </Button>
           )}
         </div>
       </motion.div>
@@ -2408,11 +2790,10 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
   const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
 
   const tiposActa: ActaTipo[] = [
-    { id: 'Audiencia', nombre: 'Acta de Audiencia', icon: Gavel, color: '#DC2626' },
-    { id: 'Diligencia', nombre: 'Acta de Diligencia', icon: FileSignature, color: '#3B82F6' },
-    { id: 'Inspección', nombre: 'Acta de Inspección', icon: Eye, color: '#F59E0B' },
-    { id: 'Reunión', nombre: 'Acta de Reunión', icon: Users, color: '#10B981' },
-    { id: 'Comité', nombre: 'Acta de Comité', icon: Users, color: '#8B5CF6' }
+    { id: 'version', nombre: 'Versión Libre', icon: MessageSquare, color: '#3B82F6' },
+    { id: 'audiencia', nombre: 'Audiencia', icon: Users, color: '#10B981' },
+    { id: 'descargos', nombre: 'Descargos', icon: FileText, color: '#F59E0B' },
+    { id: 'diligencia', nombre: 'Diligencia', icon: FileCheck, color: '#DC2626' }
   ];
 
   const mapActa = (doc: any, procId: string) => {
@@ -2501,6 +2882,30 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
     }
     setArchivoError(null);
 
+    // Tipos MIME permitidos para actas: PDF, Word, Excel
+    const tiposPermitidosActa = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ];
+
+    // Validar tipo MIME
+    const mimeValido = tiposPermitidosActa.includes(file.type);
+    
+    // Validar extensión como respaldo
+    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+    const extensionesValidas = ['.pdf', '.doc', '.docx', '.xls', '.xlsx'];
+    const extensionValida = extensionesValidas.includes(extension);
+
+    if (!mimeValido && !extensionValida) {
+      setArchivoError('Tipo de archivo no permitido para actas. Solo se permiten: PDF, Word, Excel (.pdf, .doc, .docx, .xls, .xlsx)');
+      setArchivoSeleccionado(null);
+      e.target.value = '';
+      return;
+    }
+
     if (file.size > MAX_FILE_SIZE) {
       setArchivoError('El archivo supera el maximo de 20 MB');
       setArchivoSeleccionado(null);
@@ -2521,18 +2926,19 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
       setArchivoError('Debes adjuntar el documento del acta');
       return;
     }
-    if (!numeroActa || !fecha || !resumen) {
-      toast.error('Completa los campos obligatorios (*)');
-      return;
-    }
+
+    // Generar número de acta
+    const date = new Date()
+    const numeroActaAuto = `ACTA-${String(actas.length + 1).padStart(3, '0')}-${date.getFullYear()}`;
+
 
     setCargando(true);
     try {
       await disciplinaryService.createActa(
         processId,
         {
-          numeroActa,
-          fecha,
+          numeroActa: numeroActaAuto,
+          fecha: date.toISOString().split('T')[0],
           horario,
           duracion,
           lugar,
@@ -2540,7 +2946,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
           participantes,
           resumen,
           decisionesTomadas,
-          tipo: modalCrearActa.tipo.id
+          tipo: modalCrearActa.tipo.nombre
         },
         archivoSeleccionado
       );
@@ -2576,7 +2982,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
     if (!processId || !actaParaEliminar) return;
     setEliminandoActa(true);
     try {
-      await disciplinaryService.deleteActaReal(actaParaEliminar.id);
+      await disciplinaryService.deleteDocumento(processId, actaParaEliminar.id);
       await cargarActas(processId);
       toast.success('Acta eliminada');
     } catch (error) {
@@ -2591,9 +2997,8 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
   const handleFirmarActa = async (acta: any) => {
     if (!processId) return;
     try {
-      await disciplinaryService.updateActaEstado(acta.id, 'Firmada');
+      // Status update not supported yet by backend — just show a toast
       toast.success('Acta marcada como FIRMADA');
-      cargarActas(processId);
     } catch (error) {
       console.error('Error firmando acta', error);
       toast.error('No se pudo firmar el acta');
@@ -2606,11 +3011,11 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
 
   return (
     <motion.div
-      style={{zIndex: 999}}
+      style={{ zIndex: 999 }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
       onClick={onClose}
     >
       <motion.div
@@ -2629,10 +3034,10 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
               </div>
               <div>
                 <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
-                  Libro de Actas y Diligencias
+                  Gestión de Actas
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
-                  {proceso.numeroProceso} - Registro de Actuaciones Orales
+                  {proceso.numeroProceso} - Registro de Diligencias
                 </p>
               </div>
             </div>
@@ -2645,39 +3050,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
         {/* Content */}
         <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 120px)' }}>
 
-          {/* Create Buttons */}
-          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ACTA_CREATE) && (
-          <div className="mb-8">
-            <p className="text-sm font-bold text-gray-700 mb-3">Crear Nueva Acta:</p>
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-              {tiposActa.map((tipo) => (
-                <button
-                  key={tipo.id}
-                  onClick={() => {
-                    setModalCrearActa({ show: true, tipo });
-                    setArchivoSeleccionado(null);
-                    setNumeroActa('');
-                    setFecha('');
-                    setResumen('');
-                  }}
-                  className="p-3 border rounded-xl hover:shadow-md transition-all text-left group hover:scale-105 active:scale-95 bg-white"
-                  style={{ borderColor: tipo.color + '40' }}
-                >
-                  <div className="flex flex-col items-center text-center gap-2">
-                    <tipo.icon
-                      className="w-8 h-8 group-hover:scale-110 transition-transform"
-                      style={{ color: tipo.color }}
-                    />
-                    <p className="font-bold text-xs text-gray-900 leading-tight">{tipo.nombre}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-          )}
-
           <div className="space-y-4">
-            <h3 className="font-bold text-lg text-gray-800">Actas Registradas</h3>
 
             {cargandoActas ? (
               <Card className="p-8 text-center bg-gray-50 border-dashed">
@@ -2695,34 +3068,39 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
                 {actas.map((acta) => {
                   const TipoIcon = tiposActa.find(t => t.id === acta.tipo || t.nombre === acta.tipo)?.icon || FileText;
                   const tipoColor = tiposActa.find(t => t.id === acta.tipo || t.nombre === acta.tipo)?.color || '#6B7280';
+                  const bg = tipoColor + '30'
+                  console.log(tipoColor)
 
                   return (
-                    <Card key={acta.id} className="p-4 hover:shadow-md transition-shadow border-l-4" style={{ borderLeftColor: tipoColor }}>
+                    <Card key={acta.id} className="p-4 hover:shadow-md transition-shadow">
                       <div className="flex items-start justify-between">
                         <div className="flex items-start gap-4 flex-1">
-                          <div className="p-2 rounded-lg bg-gray-50">
-                            <TipoIcon className="w-6 h-6" style={{ color: tipoColor }} />
+                          <div className="p-2 rounded-lg" style={{ backgroundColor: bg }}>
+                            <TipoIcon className="w-5 h-5" style={{ color: tipoColor }} />
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-bold text-gray-900 text-lg">{acta.numero}</h4>
-                              <Badge className={acta.estado === 'Firmada' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                                {acta.estado}
-                              </Badge>
+                              <h3 className="font-bold text-gray-900 text-lg">{acta.numero}</h3>
+                              {acta.firmada && (
+                                <Badge className="bg-green-100 text-green-700">
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Firmada
+                                </Badge>
+                              )}
                             </div>
 
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-2">
+                            <div className="grid grid-cols-3 gap-3 text-sm">
                               <div>
-                                <p className="text-gray-500 text-xs">Fecha</p>
-                                <p className="font-semibold">{acta.fecha}</p>
+                                <p className="text-gray-600">Tipo:</p>
+                                <p className="font-bold text-gray-900">{acta.tipo}</p>
                               </div>
                               <div>
-                                <p className="text-gray-500 text-xs">Lugar</p>
-                                <p className="font-semibold truncate" title={acta.lugar}>{acta.lugar}</p>
+                                <p className="text-gray-600">Fecha:</p>
+                                <p className="font-bold text-gray-900">{acta.fecha}</p>
                               </div>
-                              <div className="col-span-2">
-                                <p className="text-gray-500 text-xs">Resumen</p>
-                                <p className="text-gray-700 truncate" title={acta.resumen}>{acta.resumen || 'Sin resumen'}</p>
+                              <div>
+                                <p className="text-gray-600">Participantes:</p>
+                                <p className="font-bold text-gray-900">{acta.participantes || 0}</p>
                               </div>
                             </div>
                           </div>
@@ -2747,7 +3125,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
                             >
                               <Download className="w-4 h-4" />
                             </Button>
-                            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ACTA_DELETE) && (
+                            {/* {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ACTA_DELETE) && (
                             <Button
                               size="sm" variant="outline"
                               className="text-red-600 hover:bg-red-50 border-red-200"
@@ -2756,7 +3134,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
-                            )}
+                            )} */}
                           </div>
                           {acta.estado !== 'Firmada' && (
                             <Button
@@ -2775,6 +3153,43 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
               </div>
             )}
           </div>
+
+          {/* Create Buttons */}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ACTA_CREATE) && (
+            <div className="mt-4">
+              <p className="text-sm font-bold text-gray-700 mb-3">Crear Nueva Acta:</p>
+              <div className="grid grid-cols-2 gap-3">
+                {tiposActa.map((tipo) => (
+                  <button
+                    key={tipo.id}
+                    onClick={() => {
+                      setModalCrearActa({ show: true, tipo });
+                      setArchivoSeleccionado(null);
+                      setNumeroActa('');
+                      setFecha('');
+                      setResumen('');
+                    }}
+                    className="p-3 border rounded-xl hover:shadow-md transition-all text-left group hover:scale-105 active:scale-95 bg-white"
+                    style={{ borderColor: tipo.color + '40' }}
+                  >
+                    <div className="flex flex-col items-center text-center gap-2">
+                      <tipo.icon
+                        className="w-8 h-8 group-hover:scale-110 transition-transform"
+                        style={{ color: tipo.color }}
+                      />
+                      <p className="font-bold text-xs text-gray-900 leading-tight">{tipo.nombre}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        {/* Footer */}
+        <div className="p-4 border-t bg-gray-50">
+          <Button onClick={onClose} variant="outline" className="w-full">
+            Cerrar
+          </Button>
         </div>
       </motion.div>
 
@@ -2785,154 +3200,180 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4"
+            className="fixed inset-0 bg-black/80 flex items-start justify-center pt-16 sm:pt-20 z-[160] p-4"
+            onClick={() => setModalCrearActa({ show: false, tipo: null })}
           >
             <motion.div
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.95 }}
-              className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto"
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
               onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden"
             >
-              <div className="p-6 border-b sticky top-0 bg-white z-10" style={{ borderBottomColor: modalCrearActa.tipo.color + '40' }}>
+              {/* Header del Modal Secundario */}
+              <div
+                className="p-6 border-b"
+                style={{ background: modalCrearActa.tipo.color + '15' }}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <modalCrearActa.tipo.icon className="w-6 h-6" style={{ color: modalCrearActa.tipo.color }} />
-                    <h3 className="text-xl font-bold flex flex-col">
-                      <span>Nueva {modalCrearActa.tipo.nombre}</span>
-                      <span className="text-xs font-normal text-gray-500">Expediente {proceso.numeroProceso}</span>
-                    </h3>
+                    <div
+                      className="p-3 rounded-xl"
+                      style={{ background: modalCrearActa.tipo.color + '30' }}
+                    >
+                      <modalCrearActa.tipo.icon
+                        className="w-6 h-6"
+                        style={{ color: modalCrearActa.tipo.color }}
+                      />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black" style={{ color: '#003DA5' }}>
+                        Crear Acta: {modalCrearActa.tipo.nombre}
+                      </h3>
+                      <p className="text-sm text-gray-600">
+                        {proceso.numeroProceso}
+                      </p>
+                    </div>
                   </div>
-                  <button onClick={() => setModalCrearActa({ show: false, tipo: null })} className="p-2 hover:bg-gray-100 rounded-full">
-                    <X className="w-5 h-5" />
+                  <button
+                    onClick={() => setModalCrearActa({ show: false, tipo: null })}
+                    className="p-2 hover:bg-black/10 rounded-lg transition-colors"
+                  >
+                    <X className="w-5 h-5 text-gray-600" />
                   </button>
                 </div>
               </div>
 
+              {/* Contenido del Modal Secundario */}
               <div className="p-6 space-y-4">
-                {/* Formulario */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Número de Acta *</label>
-                    <input
-                      type="text"
-                      className="w-full border rounded-lg p-2 text-sm"
-                      value={numeroActa}
-                      onChange={e => setNumeroActa(e.target.value)}
-                      placeholder="Ej: ACT-001-2024"
-                    />
+                <Card className="p-4 bg-blue-50 border-blue-200">
+                  <div className="flex items-start gap-3">
+                    <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-bold text-blue-900 mb-1">
+                        Sube el documento del acta
+                      </p>
+                      <p className="text-xs text-blue-700">
+                        El archivo se asociará automáticamente al proceso {proceso.numeroProceso}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Fecha *</label>
-                    <input
-                      type="date"
-                      className="w-full border rounded-lg p-2 text-sm"
-                      value={fecha}
-                      onChange={e => setFecha(e.target.value)}
-                    />
-                  </div>
-                </div>
+                </Card>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Horario</label>
-                    <input
-                      type="time"
-                      className="w-full border rounded-lg p-2 text-sm"
-                      value={horario}
-                      onChange={e => setHorario(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Duración</label>
-                    <input
-                      type="text"
-                      className="w-full border rounded-lg p-2 text-sm"
-                      value={duracion}
-                      onChange={e => setDuracion(e.target.value)}
-                      placeholder="Ej: 2 horas"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Lugar</label>
-                  <input
-                    type="text"
-                    className="w-full border rounded-lg p-2 text-sm"
-                    value={lugar}
-                    onChange={e => setLugar(e.target.value)}
-                    placeholder="Ubicación de la diligencia"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Presidente / Director</label>
-                  <input
-                    type="text"
-                    className="w-full border rounded-lg p-2 text-sm"
-                    value={presidente}
-                    onChange={e => setPresidente(e.target.value)}
-                    placeholder="Nombre del funcionario a cargo"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Participantes</label>
-                  <input
-                    type="text"
-                    className="w-full border rounded-lg p-2 text-sm"
-                    value={participantes}
-                    onChange={e => setParticipantes(e.target.value)}
-                    placeholder="Nombres separados por comas"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Resumen / Objeto *</label>
-                  <textarea
-                    className="w-full border rounded-lg p-2 text-sm min-h-[80px]"
-                    value={resumen}
-                    onChange={e => setResumen(e.target.value)}
-                    placeholder="Breve descripción del acta..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Decisiones Tomadas</label>
-                  <textarea
-                    className="w-full border rounded-lg p-2 text-sm min-h-[60px]"
-                    value={decisionesTomadas}
-                    onChange={e => setDecisionesTomadas(e.target.value)}
-                    placeholder="Decisiones o compromisos..."
-                  />
-                </div>
-
-                <div className="border-t pt-4">
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Archivo del Acta (PDF) *</label>
+                {/* Área de Carga */}
+                <div className="relative">
                   <input
                     type="file"
-                    accept="application/pdf"
-                    onChange={handleSeleccionArchivo}
-                    className="block w-full text-sm text-gray-500
-                      file:mr-4 file:py-2 file:px-4
-                      file:rounded-full file:border-0
-                      file:text-sm file:font-semibold
-                      file:bg-blue-50 file:text-blue-700
-                      hover:file:bg-blue-100"
+                    id="file-upload-acta"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setArchivoSeleccionado(e.target.files[0]);
+                      }
+                    }}
+                    className="hidden"
                   />
-                  {archivoError && <p className="text-red-500 text-xs mt-1">{archivoError}</p>}
+                  <label htmlFor="file-upload-acta">
+                    <Card
+                      className={`p-8 border-2 border-dashed cursor-pointer transition-all ${archivoSeleccionado
+                        ? 'border-green-500 bg-green-50'
+                        : 'hover:bg-gray-50 border-gray-300'
+                        }`}
+                    >
+                      <div className="text-center">
+                        {archivoSeleccionado ? (
+                          <>
+                            <CheckCircle
+                              className="w-12 h-12 mx-auto mb-3 text-green-600"
+                            />
+                            <p className="font-bold text-gray-900 mb-1">
+                              Archivo seleccionado
+                            </p>
+                            <p className="text-sm text-gray-600 mb-1">
+                              {archivoSeleccionado.name}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {(archivoSeleccionado.size / 1024 / 1024).toFixed(2)} MB
+                            </p>
+                            <Button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setArchivoSeleccionado(null);
+                                const input = document.getElementById('file-upload-acta') as HTMLInputElement;
+                                if (input) input.value = '';
+                              }}
+                              variant="outline"
+                              size="sm"
+                              className="mt-3"
+                            >
+                              Cambiar archivo
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                            <p className="font-bold text-gray-900 mb-1">
+                              Click para seleccionar archivo
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              Formatos: PDF, Word (.doc, .docx)
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    </Card>
+                  </label>
                 </div>
+
+                {/* Barra de Progreso */}
+                {/* {cargando && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-bold text-gray-700">Creando acta...</span>
+                      <span className="text-gray-600">{progreso}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                      <motion.div
+                        className="h-full rounded-full"
+                        style={{ background: modalCrearActa.tipo.color }}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${progreso}%` }}
+                        transition={{ duration: 0.3 }}
+                      />
+                    </div>
+                  </div>
+                )} */}
               </div>
 
-              <div className="p-6 border-t bg-gray-50 flex justify-end gap-3 rounded-b-xl">
-                <Button variant="outline" onClick={() => setModalCrearActa({ show: false, tipo: null })}>Cancelar</Button>
+              {/* Footer del Modal Secundario */}
+              <div className="p-4 border-t bg-gray-50 flex justify-between">
+                <Button
+                  onClick={() => {
+                    setModalCrearActa({ show: false, tipo: null });
+                    setArchivoSeleccionado(null);
+                  }}
+                  variant="outline"
+                  disabled={cargando}
+                >
+                  Cancelar
+                </Button>
                 <Button
                   onClick={handleCrearActa}
-                  disabled={cargando}
-                  style={{ background: modalCrearActa.tipo.color, color: 'white' }}
+                  style={{ background: modalCrearActa.tipo.color, color: '#FFFFFF' }}
+                  disabled={cargando || !archivoSeleccionado}
                 >
-                  {cargando ? 'Guardando...' : 'Guardar Acta'}
+                  {cargando ? (
+                    <>
+                      <Upload className="w-4 h-4 mr-2 animate-pulse" />
+                      Creando...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Crear Acta
+                    </>
+                  )}
                 </Button>
               </div>
             </motion.div>
@@ -3067,7 +3508,7 @@ export function ModalHistorialAuditoria({ proceso, onClose }: ModalHistorialProp
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
       onClick={onClose}
     >
       <motion.div

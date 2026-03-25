@@ -50,10 +50,14 @@ usage() {
     echo "  up        - Iniciar todos los servicios"
     echo "  down      - Detener todos los servicios"
     echo "  restart   - Reiniciar todos los servicios"
-    echo "  rebuild   - Reconstruir y reiniciar todos los servicios"
+    echo "  rebuild   - Reconstruir sin bajar servicios y publicar al finalizar"
+    echo "  rebuild-frontend - Reconstruir y reiniciar solo frontend"
+    echo "  rebuild-service <servicio> - Reconstruir y reiniciar solo un servicio"
+    echo "  rebuild-select - Seleccionar interactivamente un servicio para rebuild"
     echo "  logs      - Ver logs de todos los servicios"
     echo "  status    - Ver estado de los servicios"
     echo "  clean     - Limpiar contenedores e imágenes no usados (NO borra volúmenes)"
+    echo "  clean-safe - Limpieza segura Docker (preserva volúmenes de BD DEV)"
     echo "  db-backup - Crear backup de la base de datos"
     echo "  db-migrate - Ejecutar migraciones de base de datos"
     echo "  db-reset  - PELIGROSO: Eliminar volumen de DB y reiniciar (requiere confirmación)"
@@ -78,7 +82,7 @@ cmd_up() {
     echo ""
     echo -e "${YELLOW}URLs de acceso:${NC}"
     echo "  Frontend:    http://4.156.71.181"
-    echo "  API Gateway: http://4.156.71.181:3000"
+    echo "  API Gateway: http://4.156.71.181/services"
     echo ""
 }
 
@@ -98,15 +102,70 @@ cmd_restart() {
 
 # Comando: rebuild
 cmd_rebuild() {
-    echo -e "${YELLOW}Reconstruyendo servicios...${NC}"
-    docker compose -f docker-compose.dev.yml down
-    # Construir imagenes
+    echo -e "${YELLOW}Reconstruyendo servicios (sin detener la versión actual)...${NC}"
+    echo -e "${YELLOW}La aplicación seguirá disponible mientras termina el build.${NC}"
+
+    echo -e "${YELLOW}Limpiando node_modules/dist/build locales (frontend y backend) para reducir el contexto de build...${NC}"
+    rm -rf node_modules dist build
+    find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
+
+    # Construir imágenes con los contenedores actuales activos.
     docker compose -f docker-compose.dev.yml --env-file .env.dev build
+
+    # Publicar nueva versión una vez terminado el build.
     docker compose -f docker-compose.dev.yml --env-file .env.dev up -d
+
     # Ejecutar migraciones automáticamente
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
-    echo -e "${GREEN}Servicios reconstruidos y reiniciados${NC}"
+    echo -e "${GREEN}Nueva versión publicada. Servicios reconstruidos y reiniciados.${NC}"
+}
+
+# Comando: rebuild-frontend (rápido)
+cmd_rebuild_frontend() {
+    echo -e "${YELLOW}Reconstruyendo solo frontend...${NC}"
+    docker compose -f docker-compose.dev.yml --env-file .env.dev build frontend
+    docker compose -f docker-compose.dev.yml --env-file .env.dev up -d --no-deps frontend
+    echo -e "${GREEN}Frontend reconstruido y reiniciado${NC}"
+}
+
+# Comando: rebuild-service (rápido para un microservicio)
+cmd_rebuild_service() {
+    local service="$1"
+    if [ -z "$service" ]; then
+        echo -e "${RED}Error: Debes indicar el nombre del servicio${NC}"
+        echo -e "${YELLOW}Ejemplo: $0 rebuild-service auth-service${NC}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}Reconstruyendo servicio: ${service}${NC}"
+    docker compose -f docker-compose.dev.yml --env-file .env.dev build "$service"
+    docker compose -f docker-compose.dev.yml --env-file .env.dev up -d --no-deps "$service"
+    echo -e "${GREEN}Servicio ${service} reconstruido y reiniciado${NC}"
+}
+
+# Comando: rebuild-select (selección interactiva de servicio)
+cmd_rebuild_select() {
+    echo -e "${YELLOW}Cargando servicios disponibles...${NC}"
+    mapfile -t services < <(docker compose -f docker-compose.dev.yml --env-file .env.dev config --services)
+
+    if [ ${#services[@]} -eq 0 ]; then
+        echo -e "${RED}No se encontraron servicios en docker-compose.dev.yml${NC}"
+        exit 1
+    fi
+
+    echo ""
+    echo -e "${GREEN}Selecciona un servicio para rebuild:${NC}"
+    PS3="Ingresa el número (o Ctrl+C para cancelar): "
+    select selected in "${services[@]}"; do
+        if [ -n "$selected" ]; then
+            echo -e "${YELLOW}Servicio seleccionado: ${selected}${NC}"
+            cmd_rebuild_service "$selected"
+            break
+        else
+            echo -e "${RED}Opción inválida. Intenta de nuevo.${NC}"
+        fi
+    done
 }
 
 # Comando: logs
@@ -123,8 +182,38 @@ cmd_status() {
 # Comando: clean
 cmd_clean() {
     echo -e "${YELLOW}Limpiando recursos Docker no utilizados...${NC}"
-    docker system prune -f
+    docker system prune -a -f
+    docker volume prune -f
     echo -e "${GREEN}Limpieza completada${NC}"
+}
+
+# Comando: clean-safe (preserva datos de DB DEV)
+cmd_clean_safe() {
+    echo -e "${YELLOW}Limpieza segura Docker (sin borrar volúmenes de BD DEV)...${NC}"
+    echo -e "${YELLOW}Estado antes de limpiar:${NC}"
+    docker system df
+
+    docker container prune -f
+    docker image prune -f
+    docker builder prune -f --filter "until=168h"
+    docker network prune -f
+
+    # Eliminar solo volúmenes huérfanos, excepto los protegidos de BD DEV
+    while IFS= read -r v; do
+        [ -z "$v" ] && continue
+        case "$v" in
+            esap-pgdata-dev|codigosuperappesap_pgdata-dev)
+                echo -e "${YELLOW}Volumen protegido (omitido): $v${NC}"
+                ;;
+            *)
+                docker volume rm "$v" >/dev/null 2>&1 || true
+                ;;
+        esac
+    done < <(docker volume ls -qf dangling=true)
+
+    echo -e "${GREEN}Limpieza segura completada${NC}"
+    echo -e "${YELLOW}Estado después de limpiar:${NC}"
+    docker system df
 }
 
 # Comando: db-backup
@@ -247,6 +336,15 @@ case "$1" in
     rebuild)
         cmd_rebuild
         ;;
+    rebuild-frontend)
+        cmd_rebuild_frontend
+        ;;
+    rebuild-service)
+        cmd_rebuild_service "$2"
+        ;;
+    rebuild-select)
+        cmd_rebuild_select
+        ;;
     logs)
         cmd_logs
         ;;
@@ -255,6 +353,9 @@ case "$1" in
         ;;
     clean)
         cmd_clean
+        ;;
+    clean-safe)
+        cmd_clean_safe
         ;;
     db-backup)
         cmd_db_backup

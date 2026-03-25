@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as QRCode from 'qrcode';
 import puppeteer from 'puppeteer';
 import { Certificate } from './certificate.entity';
 import { TemplateConfigService } from './template-config.service';
@@ -11,25 +12,76 @@ type PdfOptions = {
   includeSalary?: boolean;
   includeTechnicalBonus?: boolean;
   templateType?: TemplateType;
+  publicBaseUrl?: string;
 };
 
 @Injectable()
 export class LaborCertificatePdfService {
+  private readonly defaultTypographyFont = 'Arial Narrow, Arial, sans-serif';
+
   constructor(private readonly templateConfigService: TemplateConfigService) {}
+
+  private sanitizeTypographyFont(value?: string | null): string {
+    const raw = String(value || '').trim();
+    if (!raw) return this.defaultTypographyFont;
+    const sanitized = raw
+      .replace(/[\r\n\t]/g, ' ')
+      .replace(/[{}<>;`$]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!sanitized || /url\(|@import|expression|javascript:/i.test(sanitized)) {
+      return this.defaultTypographyFont;
+    }
+    return sanitized;
+  }
+
+  private normalizeBoolean(value: unknown, fallback: boolean): boolean {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['true', '1', 'si', 'yes', 'y'].includes(normalized)) return true;
+      if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+    }
+    return fallback;
+  }
 
   async generateCertificatePdf(
     certificate: Certificate,
     options: PdfOptions = {},
   ): Promise<{ filename: string; buffer: Buffer }> {
-    const templateType = options.templateType || this.resolveTemplateType(certificate);
-    const includeSalary = options.includeSalary !== false;
-    const includeTechnicalBonus = options.includeTechnicalBonus === true;
+    const certificateWithTemplate = certificate as Certificate & {
+      template_snapshot?: any;
+      template_type?: string;
+    };
+    const snapshot = certificateWithTemplate.template_snapshot;
+    const templateType =
+      snapshot?.templateType ||
+      snapshot?.template_type ||
+      (certificateWithTemplate.template_type as TemplateType) ||
+      options.templateType ||
+      this.resolveTemplateType(certificate);
+    const includeSalaryPersisted = this.normalizeBoolean(
+      (certificate as Certificate & { include_salary?: boolean | null }).include_salary,
+      true,
+    );
+    const includeTechnicalBonusPersisted = this.normalizeBoolean(
+      (certificate as Certificate & { include_technical_bonus?: boolean | null }).include_technical_bonus,
+      false,
+    );
+    const includeSalary = this.normalizeBoolean(options.includeSalary, includeSalaryPersisted);
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(options.includeTechnicalBonus, includeTechnicalBonusPersisted)
+      : false;
 
-    const config = await this.templateConfigService.getActiveConfig(templateType);
+    const config = snapshot || await this.templateConfigService.getActiveConfig(templateType);
+    const typographyFont = this.sanitizeTypographyFont(
+      config?.typography?.font || config?.typographyFont,
+    );
 
     const logoDataUrl = await this.resolveAssetDataUrl(config?.logo?.url);
     const signatureDataUrl = await this.resolveAssetDataUrl(
-      config?.firmante?.firmaDigitalUrl,
+      config?.firmante?.firmaDigitalUrl || config?.firmante?.firmaUrl,
     );
 
     const contentHtml = this.buildCertificateContent({
@@ -40,14 +92,29 @@ export class LaborCertificatePdfService {
       templateHtml: config?.certificateContentHtml || '',
     });
 
+    const verificationCode =
+      (certificate as Certificate & { verification_code?: string }).verification_code ||
+      certificate.certificate_number ||
+      '';
+    const frontendBaseUrl = options.publicBaseUrl || this.resolveFrontendBaseUrl();
+    const verificationUrl = verificationCode
+      ? `${frontendBaseUrl}/verificar-certificado/${encodeURIComponent(verificationCode)}`
+      : frontendBaseUrl;
+    const qrCodeDataUrl = await this.generateQrCodeDataUrl(verificationUrl);
+
     const html = this.buildHtml({
       certificate,
       contentHtml,
       cargoTitle: config?.cargoTitle || '',
+      typographyFont,
       logoDataUrl,
       signatureDataUrl,
+      qrCodeDataUrl,
       signerName:
-        config?.firmante?.nombreCompleto || certificate.signer_name || '',
+        config?.firmante?.nombreCompleto ||
+        config?.firmante?.nombre ||
+        certificate.signer_name ||
+        '',
     });
 
     const buffer = await this.renderPdf(html);
@@ -74,6 +141,263 @@ export class LaborCertificatePdfService {
     }
     const isDocente = /\bdocen\w*\b|\bdoc\b/.test(text);
     return isDocente ? 'docente' : 'administrador';
+  }
+
+  private resolveFrontendBaseUrl(): string {
+    return (
+      process.env.PUBLIC_FRONTEND_URL ||
+      process.env.FRONTEND_URL ||
+      process.env.FRONTEND_BASE_URL ||
+      'https://esap.edu.co'
+    );
+  }
+
+  private normalizeMoneyValue(value?: string | number | null): number {
+    if (value === null || value === undefined) return 0;
+    const raw =
+      typeof value === 'string' ? value.replace(/[^\d.-]/g, '') : String(value);
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.round(parsed);
+  }
+
+  private formatMoney(value?: string | number | null): string {
+    return this.normalizeMoneyValue(value).toLocaleString('es-CO', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+  }
+
+  private calculateTechnicalBonusPercentage(
+    bonusValue: number,
+    salaryBase: number,
+  ): number {
+    if (!Number.isFinite(bonusValue) || !Number.isFinite(salaryBase)) return 0;
+    if (bonusValue <= 0 || salaryBase <= 0) return 0;
+    return Number(((bonusValue / salaryBase) * 100).toFixed(2));
+  }
+
+  private formatPercentage(value: number): string {
+    if (!Number.isFinite(value) || value <= 0) return '0';
+    return value.toLocaleString('es-CO', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  private normalizeCodeValue(value?: string | number | null): string {
+    if (value === null || value === undefined) return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    const digits = raw.replace(/\D+/g, '');
+    return digits || raw.replace(/\s+/g, '');
+  }
+
+  private selectPreferredCodeValue(
+    ...values: Array<string | number | null | undefined>
+  ): string {
+    const normalized = values
+      .map((value) => this.normalizeCodeValue(value))
+      .filter(Boolean);
+
+    if (!normalized.length) {
+      return '';
+    }
+
+    return normalized.sort((left, right) => {
+      if (left.length !== right.length) {
+        return right.length - left.length;
+      }
+      const leftHasLeadingZero = left.startsWith('0') ? 1 : 0;
+      const rightHasLeadingZero = right.startsWith('0') ? 1 : 0;
+      return rightHasLeadingZero - leftHasLeadingZero;
+    })[0];
+  }
+
+  private truncateCargoCode(value: string): string {
+    if (!value || value.length <= 4 || this.isZeroValue(value)) {
+      return value;
+    }
+    return value.slice(0, 4);
+  }
+
+  private normalizeSpaces(value?: string | null): string {
+    return String(value || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private normalizeSearchText(value?: string | null): string {
+    return String(value || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private normalizeEncargoType(value?: string | null): 'E' | 'N' | null {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized) return null;
+    if (normalized === 'E' || normalized.startsWith('E')) return 'E';
+    if (normalized === 'N' || normalized.startsWith('N')) return 'N';
+    return null;
+  }
+
+  private appendEncargoSuffix(cargo: string, encargoType: 'E' | 'N' | null): string {
+    const base = this.normalizeSpaces(cargo);
+    if (!base || base === 'N/A' || encargoType !== 'E') {
+      return base;
+    }
+    if (/\(\s*E\s*\)$/i.test(base)) {
+      return base.replace(/\(\s*E\s*\)$/i, '(E)');
+    }
+    if (/\sE$/i.test(base)) {
+      return base.replace(/\sE$/i, ' (E)');
+    }
+    return `${base} (E)`;
+  }
+
+  private isZeroValue(value: string): boolean {
+    return Boolean(value) && /^0+$/.test(value);
+  }
+
+  private areEquivalentTemplateValues(a?: string | null, b?: string | null): boolean {
+    const left = this.normalizeSearchText(this.normalizeSpaces(a));
+    const right = this.normalizeSearchText(this.normalizeSpaces(b));
+    if (!left || !right) return false;
+    return left === right;
+  }
+
+  private buildCargoVariable(
+    careerCategory?: string | null,
+    codCargo?: string | number | null,
+    codGrade?: string | number | null,
+    options?: {
+      templateType?: TemplateType;
+      includeCodeLabel?: boolean;
+      codeLabel?: string;
+      observations?: string | null;
+      encargoFlag?: string | null;
+    },
+  ): string {
+    const careerRaw = this.normalizeSpaces(careerCategory);
+    const encargoType = this.normalizeEncargoType(
+      options?.observations ?? options?.encargoFlag,
+    );
+    const leadingMatch = careerRaw.match(/^(\d+)\s+(.+)$/);
+    const leadingCode = this.normalizeCodeValue(leadingMatch?.[1]);
+    let baseText = this.normalizeSpaces(leadingMatch ? leadingMatch[2] : careerRaw);
+    const gradeMatch = careerRaw.match(/\bgrado\s*(\d{1,2})\b/i);
+    const gradeFromText = this.normalizeCodeValue(gradeMatch?.[1]);
+    baseText = this.normalizeSpaces(baseText.replace(/\bgrado\s*\d{1,2}\b/gi, ''));
+
+    let inferredCode = '';
+    let inferredGrade = '';
+    const compactAdminMatch = baseText.match(/^(.*?)(?:\s+)?(\d{4})(\d{2})$/);
+    if (compactAdminMatch && /[A-Za-z\u00C0-\u00FF]/.test(compactAdminMatch[1] || '')) {
+      inferredCode = compactAdminMatch[2];
+      inferredGrade = compactAdminMatch[3];
+      baseText = this.normalizeSpaces(compactAdminMatch[1]);
+    } else {
+      const trailingCodeMatch = baseText.match(
+        /^(.*?)(?:\s+)?(?:c[oó]digo\s+)?(\d{4,5})$/i,
+      );
+      if (trailingCodeMatch && /[A-Za-z\u00C0-\u00FF]/.test(trailingCodeMatch[1] || '')) {
+        inferredCode = trailingCodeMatch[2];
+        baseText = this.normalizeSpaces(trailingCodeMatch[1]);
+      }
+    }
+
+    let codCargoRaw =
+      this.normalizeCodeValue(codCargo) || leadingCode || inferredCode;
+    let codGradeRaw =
+      this.normalizeCodeValue(codGrade) || gradeFromText || inferredGrade;
+
+    const isNoDefinido = /no\s+definido/i.test(careerRaw);
+    const cargoIsZero = this.isZeroValue(codCargoRaw);
+    const gradeIsZero = this.isZeroValue(codGradeRaw);
+
+    if (isNoDefinido && cargoIsZero && gradeIsZero) {
+      return 'No Definido';
+    }
+
+    const resolvedTemplate: TemplateType =
+      options?.templateType ||
+      (/\bdocen\w*\b|\bdoc\b/.test(
+        this.normalizeSearchText(`${careerRaw} ${baseText}`),
+      )
+        ? 'docente'
+        : 'administrador');
+
+    if (
+      codCargoRaw &&
+      codGradeRaw &&
+      codCargoRaw.length > codGradeRaw.length &&
+      codCargoRaw.endsWith(codGradeRaw)
+    ) {
+      const cargoSoloCodigo =
+        codCargoRaw.length >= 4
+          ? codCargoRaw.slice(0, 4)
+          : codCargoRaw.slice(0, -codGradeRaw.length);
+      if (cargoSoloCodigo.length >= 3) {
+        codCargoRaw = cargoSoloCodigo;
+      }
+    }
+
+    if (
+      resolvedTemplate !== 'docente' &&
+      !codGradeRaw &&
+      /^\d{5,6}$/.test(codCargoRaw) &&
+      /[A-Za-z\u00C0-\u00FF]/.test(baseText || careerRaw)
+    ) {
+      codGradeRaw = codCargoRaw.slice(-2);
+      codCargoRaw = codCargoRaw.slice(0, 4);
+    }
+
+    codCargoRaw = this.truncateCargoCode(codCargoRaw);
+
+    const baseFinal =
+      baseText ||
+      this.normalizeSpaces(
+        careerRaw
+          .replace(/^\d+\s+/, '')
+          .replace(/\bgrado\s*\d{1,2}\b/gi, ''),
+      ) ||
+      careerRaw;
+
+    const includeCodeLabel = options?.includeCodeLabel === true;
+    const codeLabel = options?.codeLabel || 'Codigo';
+    const parts: string[] = [];
+    if (baseFinal) parts.push(baseFinal);
+    if (codCargoRaw && !new RegExp(`\\b${codCargoRaw}\\b`).test(baseFinal)) {
+      parts.push(includeCodeLabel ? `${codeLabel} ${codCargoRaw}` : codCargoRaw);
+    }
+    if (resolvedTemplate !== 'docente' && (codGradeRaw || gradeIsZero)) {
+      parts.push(`Grado ${codGradeRaw || '0'}`);
+    }
+
+    return this.appendEncargoSuffix(
+      this.normalizeSpaces(parts.join(' ')) || careerRaw || 'N/A',
+      encargoType,
+    );
+  }
+
+  private async generateQrCodeDataUrl(value: string): Promise<string | null> {
+    if (!value) return null;
+    try {
+      return await QRCode.toDataURL(value, {
+        width: 198,
+        margin: 1,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
+      });
+    } catch (error) {
+      return null;
+    }
   }
 
   private async resolveAssetDataUrl(assetUrl?: string | null): Promise<string | null> {
@@ -120,13 +444,16 @@ export class LaborCertificatePdfService {
     const { certificate, templateType, includeSalary, includeTechnicalBonus, templateHtml } = params;
 
     const certificateExtras = certificate as Certificate & {
-      department_parent?: string;
-      departmentParent?: string;
+      cod_cargo?: string;
+      codCargo?: string;
       observations?: string;
     };
     const requestObservations =
       (certificate as Certificate & { request?: { observations?: string } }).request
         ?.observations || certificateExtras.observations || '';
+    const requestDepartment =
+      (certificate as Certificate & { request?: { department?: string } }).request
+        ?.department || '';
     const requestPositionLocation =
       (certificate as Certificate & { request?: { position_location?: string } }).request
         ?.position_location || '';
@@ -134,7 +461,12 @@ export class LaborCertificatePdfService {
     const fullName = certificate.full_name || '';
     const documentNumber = certificate.id_number || '';
     const requestData = (certificate as Certificate & {
-      request?: { career_category?: string; position_category?: string };
+      request?: {
+        career_category?: string;
+        position_category?: string;
+        cod_cargo?: string;
+        cod_grade?: string;
+      };
     }).request;
     // Match frontend mapping: tipo vinculacion from position_category, cargo from career_category.
     const tipoVinculacion =
@@ -147,22 +479,43 @@ export class LaborCertificatePdfService {
       certificate.career_category ||
       certificate.position_category ||
       '';
+    const codCargoSource = this.selectPreferredCodeValue(
+      requestData?.cod_cargo,
+      requestData?.['codCargo'],
+      (certificate as Certificate & { cod_cargo?: string }).cod_cargo,
+      (certificate as Certificate & { codCargo?: string }).codCargo,
+    );
+    const codGradeSource = this.selectPreferredCodeValue(
+      requestData?.cod_grade,
+      requestData?.['codGrade'],
+      (certificate as Certificate & { cod_grade?: string }).cod_grade,
+      (certificate as Certificate & { codGrade?: string }).codGrade,
+    );
+    const cargoVariable =
+      this.buildCargoVariable(cargoTexto, codCargoSource, codGradeSource, {
+        templateType,
+        includeCodeLabel: true,
+        codeLabel: 'Codigo',
+        observations: requestObservations,
+      }) ||
+      cargoTexto ||
+      tipoVinculacion ||
+      '';
     const grado = certificate.position_location || '';
-    const dependenciaHijo = certificate.department || '';
+    const dependenciaHijo = requestDepartment || certificate.department || '';
     const dependenciaPadre =
-      (certificate as Certificate & { request?: { department_parent?: string } }).request
-        ?.department_parent ||
-      certificateExtras.department_parent ||
-      certificateExtras.departmentParent ||
+      (certificate as Certificate & { request?: { cod_cargo?: string } }).request?.cod_cargo ||
+      certificateExtras.cod_cargo ||
+      certificateExtras.codCargo ||
       '';
 
     const ubicacion =
+      dependenciaHijo ||
       certificate.position_location ||
       certificate.campus ||
-      dependenciaHijo ||
       dependenciaPadre ||
       '';
-    const ubicacionCargo = certificate.position_location || ubicacion;
+    const ubicacionCargo = dependenciaHijo || certificate.position_location || ubicacion;
 
     const cargoPlantilla =
       templateType === 'docente'
@@ -173,16 +526,32 @@ export class LaborCertificatePdfService {
         : (cargoTexto || grado || tipoVinculacion || '');
 
     const dato6 = templateType === 'docente' ? ubicacionCargo : requestObservations;
-    const dato7 = requestPositionLocation || certificate.position_location || '';
-    const cargoDato6 = cargoTexto;
+    const dato7 =
+      requestDepartment ||
+      certificate.department ||
+      requestPositionLocation ||
+      certificate.position_location ||
+      '';
+    const grupoVariable =
+      requestPositionLocation ||
+      certificate.position_location ||
+      '';
+    const cargoDato6 = tipoVinculacion;
 
-    const salarioBase = Number(certificate.monthly_salary || 0);
+    const salarioBase = this.normalizeMoneyValue(certificate.monthly_salary);
     const salarioTextoBase = certificate.salary_text || '';
     const salarioEnLetras =
       includeSalary && salarioBase ? this.numeroALetras(salarioBase) : '';
 
     const fechaVinculacion = this.formatDate(certificate.hiring_date);
     const fechaExpedicion = this.formatDate(certificate.issue_date || new Date());
+    const hasGrupoVariable = /\[GRUPO\]/i.test(templateHtml || '');
+    const hasDependenciaVariable = /\[DEPENDENCIA\]/i.test(templateHtml || '');
+    const shouldHideGrupo =
+      hasGrupoVariable &&
+      hasDependenciaVariable &&
+      this.areEquivalentTemplateValues(grupoVariable, dato7);
+    const grupoVariableResolved = shouldHideGrupo ? '' : grupoVariable;
 
     const replacements: Record<string, string> = {
       '[DATO1]': fullName,
@@ -195,13 +564,18 @@ export class LaborCertificatePdfService {
       '[DATO8]': includeSalary ? (salarioTextoBase || salarioEnLetras) : '',
       '[NOMBRE_EMPLEADO]': fullName,
       '[DOCUMENTO]': documentNumber,
-      '[CARGO]': cargoPlantilla,
+      '[CARGO]': cargoVariable,
       '[CARGO DATO6]': cargoDato6,
-      '[DEPENDENCIA]': dependenciaPadre,
+      '[TIPO_DATO]': cargoDato6,
+      '[GRUPO]': grupoVariableResolved,
+      '[UBICACIÓN]': dato7,
+      '[UBICACION]': dato7,
+      '[DEPENDENCIA]': dato7,
+      '[DEPENDENCIA_PADRE]': dependenciaPadre,
       '[FECHA_INICIO]': fechaVinculacion,
       '[FECHA_FIN]': 'la actualidad',
       '[SALARIO]': includeSalary && salarioBase
-        ? `($${salarioBase.toLocaleString('es-CO')})`
+        ? `($${this.formatMoney(salarioBase)})`
         : '',
       '[SALARIO_LETRAS]': includeSalary ? salarioEnLetras : '',
       '[FECHA_EXPEDICION_COMPLETA]': fechaExpedicion,
@@ -211,19 +585,24 @@ export class LaborCertificatePdfService {
     let result = this.normalizeTemplateHtml(templateHtml || '');
     result = this.replaceVariables(result, replacements);
     result = this.normalizeSpacing(result);
+    result = this.normalizeParagraphStructure(result);
 
     if (!includeSalary) {
       result = this.stripSalarySections(result);
     }
 
     if (includeTechnicalBonus) {
-      const bonusBase = Number(certificate.technical_bonus || 0) || salarioBase * 0.2;
+      const bonusBase = this.normalizeMoneyValue(certificate.technical_bonus);
       if (bonusBase > 0) {
-        result = this.insertTechnicalBonus(result, bonusBase);
+        const bonusPercentage = this.calculateTechnicalBonusPercentage(
+          bonusBase,
+          salarioBase,
+        );
+        result = this.insertTechnicalBonus(result, bonusBase, bonusPercentage);
       }
     }
 
-    return result;
+    return this.normalizeParagraphStructure(result);
   }
 
   private normalizeTemplateHtml(html: string): string {
@@ -282,6 +661,31 @@ export class LaborCertificatePdfService {
     return result;
   }
 
+  private normalizeParagraphStructure(html: string): string {
+    if (!html) {
+      return html;
+    }
+
+    let result = html.replace(/\r\n?/g, '\n').replace(/&nbsp;/g, ' ');
+    result = result.replace(
+      /<(\/)?(p|div|li|ul|ol|section|article|blockquote)\b[^>]*>/gi,
+      '\n',
+    );
+    result = result.replace(/<br\s*\/?>/gi, '\n');
+    result = result.replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n');
+
+    const paragraphs = result
+      .split(/\n+/)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+
+    if (!paragraphs.length) {
+      return '';
+    }
+
+    return paragraphs.map((paragraph) => `<p>${paragraph}</p>`).join('');
+  }
+
   private stripSalarySections(html: string): string {
     if (!html) {
       return html;
@@ -313,10 +717,17 @@ export class LaborCertificatePdfService {
     return result;
   }
 
-  private insertTechnicalBonus(html: string, bonusValue: number): string {
-    const bonusText = `<p>Percibe mensualmente una prima tecnica de ($${bonusValue.toLocaleString(
-      'es-CO',
-    )}) adicional a su asignacion basica mensual.</p>`;
+  private insertTechnicalBonus(
+    html: string,
+    bonusValue: number,
+    bonusPercentage: number,
+  ): string {
+    const bonusValueText = this.numeroALetras(bonusValue);
+    const bonusText = `<p>Percibe una prima técnica en un porcentaje igual al (${this.formatPercentage(
+      bonusPercentage,
+    )}%) sobre la asignación básica mensual de ${bonusValueText} ($${this.formatMoney(
+      bonusValue,
+    )}) pesos m/cte.</p>`;
 
     const expideRegex = /<(p|div|li)[^>]*>[\s\S]*?se expide[\s\S]*?<\/\1>/i;
     const bonusRegex = /<(p|div|li)[^>]*>[\s\S]*?prima\s+t(?:e|\u00e9)cnica[\s\S]*?<\/\1>/gi;
@@ -328,7 +739,7 @@ export class LaborCertificatePdfService {
       result = result.replace(bonusRegex, '');
     }
 
-    const bonusParagraph = existingBonus?.[0] || bonusText;
+    const bonusParagraph = bonusText;
 
     let lastSalaryMatch: RegExpExecArray | null = null;
     let match: RegExpExecArray | null = null;
@@ -352,11 +763,23 @@ export class LaborCertificatePdfService {
     certificate: Certificate;
     contentHtml: string;
     cargoTitle: string;
+    typographyFont: string;
     logoDataUrl?: string | null;
     signatureDataUrl?: string | null;
+    qrCodeDataUrl?: string | null;
     signerName: string;
   }): string {
-    const { certificate, contentHtml, cargoTitle, logoDataUrl, signatureDataUrl, signerName } = params;
+    const {
+      certificate,
+      contentHtml,
+      cargoTitle,
+      typographyFont,
+      logoDataUrl,
+      signatureDataUrl,
+      qrCodeDataUrl,
+      signerName,
+    } = params;
+    const effectiveTypographyFont = this.sanitizeTypographyFont(typographyFont);
     const cargoTitleHtml = (cargoTitle || '').replace(/\n/g, '<br/>');
     const logoTag = logoDataUrl
       ? `<img src="${logoDataUrl}" alt="Logo ESAP" class="logo" />`
@@ -364,6 +787,9 @@ export class LaborCertificatePdfService {
     const signatureTag = signatureDataUrl
       ? `<img src="${signatureDataUrl}" alt="Firma digital" class="signature" />`
       : '<div style="height:60pt;"></div>';
+    const qrTag = qrCodeDataUrl
+      ? `<img src="${qrCodeDataUrl}" alt="Codigo QR" class="qr-code" />`
+      : '';
 
     return `
       <!DOCTYPE html>
@@ -377,8 +803,11 @@ export class LaborCertificatePdfService {
               margin: 0;
               padding: 0;
               background: #ffffff;
-              font-family: 'Arial Narrow', Arial, sans-serif;
+              font-family: ${effectiveTypographyFont};
               color: #000000;
+            }
+            .certificate, .certificate * {
+              font-family: ${effectiveTypographyFont} !important;
             }
             .certificate {
               position: relative;
@@ -416,12 +845,19 @@ export class LaborCertificatePdfService {
               font-weight: bold;
               margin: 0;
             }
-            .certificate-content-block p {
+            .certificate-content-block p,
+            .certificate-content-block div,
+            .certificate-content-block li {
               margin: 0 0 12pt 0;
               text-align: justify;
               text-align-last: left;
               text-indent: 0;
               letter-spacing: normal;
+            }
+            .certificate-content-block p:last-child,
+            .certificate-content-block div:last-child,
+            .certificate-content-block li:last-child {
+              margin-bottom: 0;
             }
             .certificate-content-block span {
               letter-spacing: normal;
@@ -450,16 +886,28 @@ export class LaborCertificatePdfService {
               width: 250px;
               font-size: 7pt;
               line-height: 1.3;
-              font-family: Arial, sans-serif;
+              font-family: ${effectiveTypographyFont};
             }
             .footer-right {
               position: absolute;
               bottom: 40px;
               right: 72px;
               text-align: right;
+              display: flex;
+              flex-direction: column;
+              align-items: flex-end;
+              gap: 6px;
               font-size: 12pt;
               color: #0066cc;
-              font-family: Arial, sans-serif;
+              font-family: ${effectiveTypographyFont};
+            }
+            .qr-code {
+              width: 99px;
+              height: 99px;
+              border: 1px solid #e5e7eb;
+              padding: 4px;
+              background: #ffffff;
+              object-fit: contain;
             }
           </style>
         </head>
@@ -489,7 +937,10 @@ export class LaborCertificatePdfService {
               <p style="margin:0 0 2px 0;">Linea conmutador PBX: 018000 423713</p>
               <p style="margin:0;">Linea nacional gratuita PBX: 018000 423713</p>
             </div>
-            <div class="footer-right">www.esap.edu.co</div>
+            <div class="footer-right">
+              ${qrTag}
+              <div>www.esap.edu.co</div>
+            </div>
           </div>
         </body>
       </html>
@@ -624,3 +1075,4 @@ export class LaborCertificatePdfService {
     return resultado.trim();
   }
 }
+

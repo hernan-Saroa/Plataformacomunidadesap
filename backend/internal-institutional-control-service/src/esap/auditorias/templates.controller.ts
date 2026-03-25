@@ -1,4 +1,8 @@
-import { Controller, Get, Param, Res, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Param, Res, NotFoundException, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { Permissions } from '../../auth/decorators/permissions.decorator';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import type { Response } from 'express';
 import { join } from 'path';
 import { existsSync, createReadStream, statSync } from 'fs';
@@ -16,6 +20,8 @@ export class TemplatesController {
     join(process.cwd(), 'uploads', 'templates');
 
   @Get(':codigo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.CONFIG_MANAGE)
   async getTemplate(@Param('codigo') codigo: string, @Res() res: Response) {
     const filename = this.templatesMap[codigo];
     

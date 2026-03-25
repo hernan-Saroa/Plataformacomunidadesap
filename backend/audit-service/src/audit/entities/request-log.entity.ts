@@ -96,6 +96,26 @@ export class RequestLog {
   @Column({ name: 'error_stack', type: 'text', nullable: true })
   errorStack?: string;
 
+  // Campos para tracking de cambios (datos viejos y nuevos)
+  @Column({ name: 'entity_name', type: 'varchar', length: 100, nullable: true })
+  entityName?: string; // Nombre de la entidad/tabla modificada
+
+  @Column({ name: 'entity_id', type: 'varchar', length: 100, nullable: true })
+  entityId?: string; // ID del registro modificado
+
+  @Column({ name: 'previous_data', type: 'jsonb', nullable: true })
+  previousData?: any; // Datos ANTES de la modificación (payload viejo)
+
+  @Column({ name: 'new_data', type: 'jsonb', nullable: true })
+  newData?: any; // Datos DESPUÉS de la modificación (payload nuevo)
+
+  @Column({ name: 'changes', type: 'jsonb', nullable: true })
+  changes?: Array<{
+    field: string;        // Nombre del campo
+    oldValue: any;        // Valor anterior
+    newValue: any;        // Valor nuevo
+  }>; // Resumen de cambios específicos
+
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   timestamp: Date;
 

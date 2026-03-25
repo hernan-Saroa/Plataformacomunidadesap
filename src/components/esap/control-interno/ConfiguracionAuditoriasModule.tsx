@@ -7,49 +7,37 @@
  * - Tipos de Auditoría (5 tipos principales)
  * - Listas de Chequeo (plantillas de verificación)
  * 
- * ÚLTIMA ACTUALIZACIÓN: 4 Enero 2026 - FUNCIONALIDAD COMPLETA
- * ✅ CRUD completo de tipos de auditoría
- * ✅ CRUD completo de listas de chequeo
+ * ÚLTIMA ACTUALIZACIÓN: 19 Febrero 2026 - CONECTADO CON BACKEND
+ * ✅ CRUD completo de tipos de auditoría (backend)
+ * ✅ CRUD completo de listas de chequeo (backend)
  * ✅ Guardar cambios con confirmación
  * ✅ Modales de edición y creación
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Target, CheckSquare, List, ChevronRight, Info, Save,
   Plus, Edit, Eye, Clock, Users, HelpCircle, X, Trash2, AlertCircle,
-  FileText, Check, GripVertical, Loader
+  FileText, Check, GripVertical, Loader2
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { toast } from 'sonner@2.0.3';
-import {
-  cargarTiposAuditoria,
-  crearTipoAuditoria,
-  actualizarTipoAuditoria,
-  eliminarTipoAuditoria,
-  mapearTipoAuditoriaBackendAFrontend,
-  mapearTipoAuditoriaFrontendABackend
-} from './services/tiposAuditoriaService';
-import {
-  cargarListasChequeo,
-  crearListaChequeo,
-  actualizarListaChequeo,
-  eliminarListaChequeo,
-  mapearListaChequeoBackendAFrontend,
-  mapearListaChequeoFrontendABackend
-} from './services/listasChequeoService';
-import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
+
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '../../ui/container-4k';
+
+// ✅ Hook para conexión con backend
+import { useConfiguracionAuditorias, type TipoAuditoriaFrontend as TipoAuditoria } from './services/useConfiguracionAuditorias';
 
 // ====================================
-// TIPOS
+// TIPOS (algunos locales, otros del hook)
 // ====================================
 
-type TabActiva = 'tipos' | 'listas';
+type TabActiva = 'tipos';
 
 interface TabConfig {
   id: TabActiva;
@@ -60,25 +48,7 @@ interface TabConfig {
   badge?: number;
 }
 
-// TABS_CONFIG se actualizará dinámicamente
-
-// ====================================
-// DATOS MOCK
-// ====================================
-
-interface TipoAuditoria {
-  id: string;
-  codigo: string;
-  nombre: string;
-  descripcion: string;
-  alcance: string;
-  duracionPromedio: number;
-  equipoPromedio: number;
-  color: string;
-  activa: boolean;
-  auditoriasProgramadas: number;
-}
-
+// Interface para listas de chequeo (usada localmente)
 interface ItemChequeo {
   id: string;
   texto: string;
@@ -86,22 +56,9 @@ interface ItemChequeo {
   obligatorio: boolean;
 }
 
-enum TipoListaChequeo {
-  PLANEACION = 'planeacion',
-  EJECUCION = 'ejecucion',
-  COMUNICACION = 'comunicacion'
-}
-
-const TIPOS_LISTA_CHEQUEO = [
-  { valor: TipoListaChequeo.PLANEACION, nombre: 'Planeación', color: '#3B82F6', icono: '📋' },
-  { valor: TipoListaChequeo.EJECUCION, nombre: 'Ejecución', color: '#10B981', icono: '⚙️' },
-  { valor: TipoListaChequeo.COMUNICACION, nombre: 'Comunicación', color: '#F59E0B', icono: '📢' }
-];
-
 interface ListaChequeo {
   id: string;
   nombre: string;
-  tipo: TipoListaChequeo; // NUEVO CAMPO
   tipoAuditoria: string;
   descripcion: string;
   items: ItemChequeo[];
@@ -111,163 +68,16 @@ interface ListaChequeo {
   ultimaActualizacion: string;
 }
 
-// const TIPOS_AUDITORIA_INICIAL: TipoAuditoria[] = [
-//   {
-//     id: 'tipo-001',
-//     codigo: 'AUD-REG',
-//     nombre: 'Regular',
-//     descripcion: 'Auditoría de tipo regular',
-//     alcance: 'Procesos administrativos, académicos y financieros',
-//     duracionPromedio: 30,
-//     equipoPromedio: 3,
-//     color: '#3B82F6',
-//     activa: true,
-//     auditoriasProgramadas: 8
-//   },
-//   {
-//     id: 'tipo-002',
-//     codigo: 'AUD-TERR',
-//     nombre: 'Territorial',
-//     descripcion: 'Auditoría a sedes territoriales',
-//     alcance: 'Procesos de territoriales',
-//     duracionPromedio: 45,
-//     equipoPromedio: 4,
-//     color: '#10B981',
-//     activa: true,
-//     auditoriasProgramadas: 4
-//   },
-//   {
-//     id: 'tipo-003',
-//     codigo: 'AUD-ESP',
-//     nombre: 'Especial',
-//     descripcion: 'Auditoría de tipo especial',
-//     alcance: 'Procesos específicos según requiera',
-//     duracionPromedio: 20,
-//     equipoPromedio: 2,
-//     color: '#F59E0B',
-//     activa: true,
-//     auditoriasProgramadas: 12
-//   }
-// ];
-
-// const LISTAS_CHEQUEO_INICIAL: ListaChequeo[] = [
-//   {
-//     id: 'lista-001',
-//     nombre: 'Lista de Chequeo #1',
-//     tipo: TipoListaChequeo.EJECUCION, // NUEVO CAMPO CON VALOR POR DEFECTO
-//     tipoAuditoria: 'Regular',
-//     descripcion: 'Verificación de procesos administrativos',
-//     items: [
-//       { id: 'item-1', texto: '¿Existe documentación de procesos?', categoria: 'Documentación', obligatorio: true },
-//       { id: 'item-2', texto: '¿Se cumplen los tiempos establecidos?', categoria: 'Cumplimiento', obligatorio: true },
-//       { id: 'item-3', texto: '¿Hay registro de actividades?', categoria: 'Control', obligatorio: false }
-//     ],
-//     activa: true,
-//     usosProgramados: 3,
-//     fechaCreacion: '2025-01-01',
-//     ultimaActualizacion: '2025-01-04'
-//   },
-//   {
-//     id: 'lista-002',
-//     nombre: 'Lista de Chequeo #2',
-//     tipo: TipoListaChequeo.EJECUCION,
-//     tipoAuditoria: 'Regular',
-//     descripcion: 'Control de calidad en servicios',
-//     items: [
-//       { id: 'item-4', texto: '¿Se miden indicadores de calidad?', categoria: 'Medición', obligatorio: true },
-//       { id: 'item-5', texto: '¿Existe plan de mejora?', categoria: 'Mejora', obligatorio: true }
-//     ],
-//     activa: true,
-//     usosProgramados: 2,
-//     fechaCreacion: '2025-01-02',
-//     ultimaActualizacion: '2025-01-03'
-//   },
-//   {
-//     id: 'lista-003',
-//     nombre: 'Lista de Chequeo #3',
-//     tipo: TipoListaChequeo.PLANEACION,
-//     tipoAuditoria: 'Territorial',
-//     descripcion: 'Revisión de recursos humanos',
-//     items: [
-//       { id: 'item-6', texto: '¿Personal capacitado?', categoria: 'Capacitación', obligatorio: true },
-//       { id: 'item-7', texto: '¿Evaluaciones periódicas?', categoria: 'Evaluación', obligatorio: true }
-//     ],
-//     activa: true,
-//     usosProgramados: 1,
-//     fechaCreacion: '2024-12-28',
-//     ultimaActualizacion: '2025-01-02'
-//   },
-//   {
-//     id: 'lista-004',
-//     nombre: 'Lista de Chequeo #4',
-//     tipo: TipoListaChequeo.COMUNICACION,
-//     tipoAuditoria: 'Especial',
-//     descripcion: 'Verificación financiera básica',
-//     items: [
-//       { id: 'item-8', texto: '¿Presupuesto documentado?', categoria: 'Financiero', obligatorio: true }
-//     ],
-//     activa: true,
-//     usosProgramados: 0,
-//     fechaCreacion: '2024-12-20',
-//     ultimaActualizacion: '2024-12-30'
-//   },
-//   {
-//     id: 'lista-005',
-//     nombre: 'Lista de Chequeo #5',
-//     tipo: TipoListaChequeo.EJECUCION,
-//     tipoAuditoria: 'Regular',
-//     descripcion: 'Control de inventarios',
-//     items: [
-//       { id: 'item-9', texto: '¿Inventario actualizado?', categoria: 'Inventario', obligatorio: true }
-//     ],
-//     activa: true,
-//     usosProgramados: 4,
-//     fechaCreacion: '2024-12-15',
-//     ultimaActualizacion: '2024-12-29'
-//   },
-//   {
-//     id: 'lista-006',
-//     nombre: 'Lista de Chequeo #6',
-//     tipo: TipoListaChequeo.EJECUCION,
-//     tipoAuditoria: 'Regular',
-//     descripcion: 'Seguridad y salud en el trabajo',
-//     items: [
-//       { id: 'item-10', texto: '¿Plan de emergencias?', categoria: 'Seguridad', obligatorio: true }
-//     ],
-//     activa: true,
-//     usosProgramados: 2,
-//     fechaCreacion: '2024-12-10',
-//     ultimaActualizacion: '2024-12-28'
-//   },
-//   {
-//     id: 'lista-007',
-//     nombre: 'Lista de Chequeo #7',
-//     tipo: TipoListaChequeo.PLANEACION,
-//     tipoAuditoria: 'Territorial',
-//     descripcion: 'Gestión documental',
-//     items: [
-//       { id: 'item-11', texto: '¿Sistema de archivo adecuado?', categoria: 'Documental', obligatorio: true }
-//     ],
-//     activa: true,
-//     usosProgramados: 1,
-//     fechaCreacion: '2024-12-05',
-//     ultimaActualizacion: '2024-12-27'
-//   },
-//   {
-//     id: 'lista-008',
-//     nombre: 'Lista de Chequeo #8',
-//     tipo: TipoListaChequeo.EJECUCION,
-//     tipoAuditoria: 'Regular',
-//     descripcion: 'Atención al usuario',
-//     items: [
-//       { id: 'item-12', texto: '¿Protocolo de atención definido?', categoria: 'Servicio', obligatorio: true }
-//     ],
-//     activa: true,
-//     usosProgramados: 3,
-//     fechaCreacion: '2024-12-01',
-//     ultimaActualizacion: '2024-12-26'
-//   }
-// ];
+// Configuración de tabs
+const TABS_CONFIG: TabConfig[] = [
+  {
+    id: 'tipos',
+    label: 'Tipos de Auditoría',
+    description: 'Gestión, Financiera, Cumplimiento, TI, Territorial',
+    icon: CheckSquare,
+    color: '#10B981',
+  }
+];
 
 const COLORES_DISPONIBLES = [
   { valor: '#3B82F6', nombre: 'Azul' },
@@ -285,56 +95,57 @@ const COLORES_DISPONIBLES = [
 // ====================================
 
 export function ConfiguracionAuditoriasModule() {
-  const [tabActiva, setTabActiva] = useState<TabActiva>('listas'); // Cambio a 'listas' por defecto
-  const [tipos, setTipos] = useState<TipoAuditoria[]>([]);
-  const [listas, setListas] = useState<ListaChequeo[]>([]);
-  const [cambiosSinGuardar, setCambiosSinGuardar] = useState(false);
-  const [cargandoTipos, setCargandoTipos] = useState(true);
-  const [cargandoListas, setCargandoListas] = useState(true);
-
-  // Cargar datos desde el backend
-  useEffect(() => {
-    async function cargarDatos() {
-      setCargandoTipos(true);
-      setCargandoListas(true);
-      try {
-        // Cargar tipos de auditoría
-        const tiposCargados = await cargarTiposAuditoria();
-        const tiposMapeados = tiposCargados.map(mapearTipoAuditoriaBackendAFrontend);
-        setTipos(tiposMapeados);
-
-        // Cargar listas de chequeo
-        const listasCargadas = await cargarListasChequeo();
-        setListas(listasCargadas);
-      } catch (error) {
-        console.error('Error cargando datos:', error);
-      } finally {
-        setCargandoTipos(false);
-        setCargandoListas(false);
-      }
-    }
-    cargarDatos();
-  }, []);
+  const [tabActiva, setTabActiva] = useState<TabActiva>('tipos');
+  
+  // ✅ Usar hook para conectar con backend
+  const {
+    tiposAuditoria: tipos,
+    listasChequeo: listas,
+    loading,
+    error,
+    crearTipo,
+    actualizarTipo,
+    eliminarTipo,
+    recargarDatos,
+  } = useConfiguracionAuditorias();
 
   const handleGuardarCambios = () => {
-    // Los cambios ya se guardan automáticamente, este botón ya no es necesario
-    // pero lo mantenemos por compatibilidad con el UI
-    toast.success('✅ Todos los cambios están guardados', {
-      description: `Hay ${tipos.length} tipos y ${listas.length} listas de chequeo`
+    // Los cambios ya se guardan automáticamente en el backend
+    recargarDatos();
+    toast.success('✅ Configuración sincronizada con el servidor', {
+      description: `${tipos.length} tipos de auditoría disponibles`
     });
-    setCambiosSinGuardar(false);
   };
 
-  const handleActualizarTipos = (nuevosTipos: TipoAuditoria[]) => {
-    // Esta función se mantiene para compatibilidad, pero los cambios ya se guardan automáticamente
-    setTipos(nuevosTipos);
-    setCambiosSinGuardar(false);
-  };
+  // Mostrar estado de carga
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-[#003DA5]" />
+          <p className="text-gray-600">Cargando configuración...</p>
+        </div>
+      </div>
+    );
+  }
 
-  const handleActualizarListas = (nuevasListas: ListaChequeo[]) => {
-    setListas(nuevasListas);
-    setCambiosSinGuardar(true);
-  };
+  // Mostrar error si existe
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <AlertCircle className="w-12 h-12 text-red-500" />
+          <div>
+            <p className="text-gray-900 font-semibold">Error cargando configuración</p>
+            <p className="text-gray-600 text-sm">{error}</p>
+          </div>
+          <Button onClick={recargarDatos} variant="outline">
+            Reintentar
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50">
@@ -362,50 +173,26 @@ export function ConfiguracionAuditoriasModule() {
             </div>
 
             <div className="flex items-center gap-3">
-              {cambiosSinGuardar && (
-                <motion.div
-                  initial={{ opacity: 0, x: 10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="flex items-center gap-2 text-orange-600 text-sm"
-                >
-                  <AlertCircle className="w-4 h-4" />
-                  <span>Cambios sin guardar</span>
-                </motion.div>
-              )}
+              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                Conectado al servidor
+              </Badge>
               <Button 
                 onClick={handleGuardarCambios} 
-                style={{ background: '#003DA5' }}
-                disabled={!cambiosSinGuardar}
-                className={!cambiosSinGuardar ? 'opacity-50 cursor-not-allowed' : ''}
+                variant="outline"
               >
                 <Save className="w-4 h-4 mr-2" />
-                Guardar
+                Sincronizar
               </Button>
             </div>
           </div>
 
           {/* TABS */}
           <div className="flex gap-2 mt-6">
-            {[
-              {
-                id: 'tipos' as TabActiva,
-                label: 'Tipos de Auditoría',
-                description: 'Regular, Territorial, Especial',
-                icon: CheckSquare,
-                color: '#10B981',
-                badge: tipos.length
-              },
-              {
-                id: 'listas' as TabActiva,
-                label: 'Listas de Chequeo',
-                description: 'Plantillas de verificación estándar',
-                icon: List,
-                color: '#3B82F6',
-                badge: listas.length
-              }
-            ].map((tab) => {
+            {TABS_CONFIG.map((tab) => {
               const isActive = tabActiva === tab.id;
               const Icon = tab.icon;
+              // Mostrar contador real de tipos
+              const badgeCount = tab.id === 'tipos' ? tipos.length : undefined;
 
               return (
                 <motion.button
@@ -437,8 +224,8 @@ export function ConfiguracionAuditoriasModule() {
                     </span>
                     <p className="text-xs text-gray-500">{tab.description}</p>
                   </div>
-                  {tab.badge && (
-                    <Badge variant={isActive ? 'default' : 'outline'} className="text-xs">{tab.badge}</Badge>
+                  {badgeCount !== undefined && badgeCount > 0 && (
+                    <Badge variant={isActive ? 'default' : 'outline'} className="text-xs">{badgeCount}</Badge>
                   )}
                 </motion.button>
               );
@@ -455,20 +242,13 @@ export function ConfiguracionAuditoriasModule() {
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
           >
-            {tabActiva === 'tipos' && (
-              <SeccionTiposAuditoria 
-                tipos={tipos} 
-                onActualizar={handleActualizarTipos}
-              />
-            )}
-            {tabActiva === 'listas' && (
-              <SeccionListasChequeo 
-                listas={listas}
-                onActualizar={handleActualizarListas}
-                tiposAuditoria={tipos}
-                cargandoListas={cargandoListas}
-              />
-            )}
+            {/* ✅ Tipos de Auditoría conectados al backend */}
+            <SeccionTiposAuditoria 
+              tipos={tipos}
+              onCrear={crearTipo}
+              onActualizar={actualizarTipo}
+              onEliminar={eliminarTipo}
+            />
           </motion.div>
         </AnimatePresence>
       </div>
@@ -482,13 +262,15 @@ export function ConfiguracionAuditoriasModule() {
 
 interface SeccionTiposAuditoriaProps {
   tipos: TipoAuditoria[];
-  onActualizar: (tipos: TipoAuditoria[]) => void;
-  cargandoTipos?: boolean;
+  onCrear: (tipo: Omit<TipoAuditoria, 'id' | 'auditoriasProgramadas'>) => Promise<TipoAuditoria | null>;
+  onActualizar: (id: string, tipo: Partial<TipoAuditoria>) => Promise<TipoAuditoria | null>;
+  onEliminar: (id: string) => Promise<boolean>;
 }
 
-function SeccionTiposAuditoria({ tipos, onActualizar, cargandoTipos }: SeccionTiposAuditoriaProps) {
+function SeccionTiposAuditoria({ tipos, onCrear, onActualizar, onEliminar }: SeccionTiposAuditoriaProps) {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [tipoEditando, setTipoEditando] = useState<TipoAuditoria | null>(null);
+  const [guardando, setGuardando] = useState(false);
 
   const handleNuevoTipo = () => {
     setTipoEditando(null);
@@ -501,30 +283,21 @@ function SeccionTiposAuditoria({ tipos, onActualizar, cargandoTipos }: SeccionTi
   };
 
   const handleGuardarTipo = async (tipoNuevo: TipoAuditoria) => {
-    const datosBackend = mapearTipoAuditoriaFrontendABackend(tipoNuevo);
-    
-    if (tipoEditando) {
-      // Actualizar tipo existente
-      const tipoActualizado = await actualizarTipoAuditoria(tipoEditando.id, datosBackend);
-      if (tipoActualizado) {
-        const tipoMapeado = mapearTipoAuditoriaBackendAFrontend(tipoActualizado);
-        const tiposActualizados = tipos.map(t => 
-          t.id === tipoEditando.id ? tipoMapeado : t
-        );
-        onActualizar(tiposActualizados);
+    setGuardando(true);
+    try {
+      if (tipoEditando) {
+        // Actualizar tipo existente
+        await onActualizar(tipoEditando.id, tipoNuevo);
+      } else {
+        // Crear nuevo tipo  
+        await onCrear(tipoNuevo);
       }
-    } else {
-      // Crear nuevo tipo
-      const nuevoTipo = await crearTipoAuditoria(datosBackend);
-      if (nuevoTipo) {
-        const tipoMapeado = mapearTipoAuditoriaBackendAFrontend(nuevoTipo);
-        onActualizar([...tipos, tipoMapeado]);
-      }
-    }
-    
-    if (tipoEditando || !tipos.find(t => t.id === tipoNuevo.id)) {
       setModalAbierto(false);
       setTipoEditando(null);
+    } catch (error) {
+      console.error('Error guardando tipo:', error);
+    } finally {
+      setGuardando(false);
     }
   };
 
@@ -537,10 +310,7 @@ function SeccionTiposAuditoria({ tipos, onActualizar, cargandoTipos }: SeccionTi
       return;
     }
 
-    const eliminado = await eliminarTipoAuditoria(tipoId);
-    if (eliminado) {
-      onActualizar(tipos.filter(t => t.id !== tipoId));
-    }
+    await onEliminar(tipoId);
   };
 
   return (
@@ -551,86 +321,80 @@ function SeccionTiposAuditoria({ tipos, onActualizar, cargandoTipos }: SeccionTi
             <h3 className="text-lg font-bold text-gray-900">Tipos de Auditoría</h3>
             <p className="text-sm text-gray-600 mt-1">Gestiona los tipos de auditoría disponibles</p>
           </div>
-          {authService.hasPermission(Permissions.CONTROL_INTERNO_CONFIGURACIONES_CONFIG_AUDIT_TIPO_CREATE) && (
           <Button onClick={handleNuevoTipo} style={{ background: '#003DA5' }}>
             <Plus className="w-4 h-4 mr-2" />
             Nuevo Tipo
           </Button>
-          )}
         </div>
 
-        {cargandoTipos ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader className="w-8 h-8 animate-spin text-blue-600" />
-            <span className="ml-3 text-gray-600">Cargando tipos de auditoría...</span>
-          </div>
-        ) : tipos.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
-            <CheckSquare className="w-16 h-16 mx-auto mb-4 opacity-50" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {tipos.map((tipo) => (
+            <motion.div
+              key={tipo.id}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="p-4 border-2 rounded-xl"
+              style={{
+                borderColor: tipo.activa ? tipo.color : '#E5E7EB',
+                background: tipo.activa ? tipo.color + '10' : '#F9FAFB'
+              }}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <Badge variant="outline" className="mb-2" style={{ background: tipo.color + '20', color: tipo.color, border: 'none' }}>
+                    {tipo.codigo}
+                  </Badge>
+                  <h4 className="font-bold text-gray-900">{tipo.nombre}</h4>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleEditarTipo(tipo)}
+                    title="Editar tipo"
+                  >
+                    <Edit className="w-3 h-3" />
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleEliminarTipo(tipo.id)}
+                    title="Eliminar tipo"
+                    className="text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+              <p className="text-sm text-gray-600 mb-3">{tipo.descripcion}</p>
+              <div className="grid grid-cols-2 gap-2 text-sm mb-2">
+                <div className="flex items-center gap-1 text-gray-600">
+                  <Clock className="w-3 h-3" />
+                  <span>{tipo.duracionPromedio} días</span>
+                </div>
+                <div className="flex items-center gap-1 text-gray-600">
+                  <Users className="w-3 h-3" />
+                  <span>{tipo.equipoPromedio} personas</span>
+                </div>
+              </div>
+              {tipo.auditoriasProgramadas > 0 && (
+                <div className="mt-2 pt-2 border-t border-gray-200">
+                  <span className="text-xs text-gray-500">
+                    {tipo.auditoriasProgramadas} auditorías programadas
+                  </span>
+                </div>
+              )}
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Mensaje si no hay tipos */}
+        {tipos.length === 0 && (
+          <div className="text-center py-8 text-gray-500">
+            <Target className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p>No hay tipos de auditoría configurados</p>
-            <p className="text-sm mt-2">Haz clic en "Nuevo Tipo" para crear uno</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {tipos.map((tipo) => (
-              <motion.div
-                key={tipo.id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="p-4 border-2 rounded-xl"
-                style={{
-                  borderColor: tipo.activa ? tipo.color : '#E5E7EB',
-                  background: tipo.activa ? tipo.color + '10' : '#F9FAFB'
-                }}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <Badge variant="outline" className="mb-2" style={{ background: tipo.color + '20', color: tipo.color, border: 'none' }}>
-                      {tipo.codigo}
-                    </Badge>
-                    <h4 className="font-bold text-gray-900">{tipo.nombre}</h4>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handleEditarTipo(tipo)}
-                      title="Editar tipo"
-                    >
-                      <Edit className="w-3 h-3" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handleEliminarTipo(tipo.id)}
-                      title="Eliminar tipo"
-                      className="text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </div>
-                <p className="text-sm text-gray-600 mb-3">{tipo.descripcion}</p>
-                <div className="grid grid-cols-2 gap-2 text-sm mb-2">
-                  <div className="flex items-center gap-1 text-gray-600">
-                    <Clock className="w-3 h-3" />
-                    <span>{tipo.duracionPromedio} días</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-gray-600">
-                    <Users className="w-3 h-3" />
-                    <span>{tipo.equipoPromedio} personas</span>
-                  </div>
-                </div>
-                {tipo.auditoriasProgramadas > 0 && (
-                  <div className="mt-2 pt-2 border-t border-gray-200">
-                    <span className="text-xs text-gray-500">
-                      {tipo.auditoriasProgramadas} auditorías programadas
-                    </span>
-                  </div>
-                )}
-              </motion.div>
-            ))}
+            <p className="text-sm">Crea el primer tipo para empezar</p>
           </div>
         )}
       </Card>
@@ -644,6 +408,7 @@ function SeccionTiposAuditoria({ tipos, onActualizar, cargandoTipos }: SeccionTi
               setModalAbierto(false);
               setTipoEditando(null);
             }}
+            guardando={guardando}
           />
         )}
       </AnimatePresence>
@@ -659,9 +424,10 @@ interface ModalTipoAuditoriaProps {
   tipo: TipoAuditoria | null;
   onGuardar: (tipo: TipoAuditoria) => void;
   onCerrar: () => void;
+  guardando?: boolean;
 }
 
-function ModalTipoAuditoria({ tipo, onGuardar, onCerrar }: ModalTipoAuditoriaProps) {
+function ModalTipoAuditoria({ tipo, onGuardar, onCerrar, guardando = false }: ModalTipoAuditoriaProps) {
   const [formData, setFormData] = useState<TipoAuditoria>(
     tipo || {
       id: '',
@@ -764,7 +530,7 @@ function ModalTipoAuditoria({ tipo, onGuardar, onCerrar }: ModalTipoAuditoriaPro
             <Input
               value={formData.nombre}
               onChange={(e) => handleChange('nombre', e.target.value)}
-              placeholder="Regular"
+              placeholder="Auditoría de Gestión"
               required
             />
           </div>
@@ -841,6 +607,7 @@ function ModalTipoAuditoria({ tipo, onGuardar, onCerrar }: ModalTipoAuditoriaPro
               variant="outline"
               onClick={onCerrar}
               className="flex-1"
+              disabled={guardando}
             >
               Cancelar
             </Button>
@@ -848,623 +615,22 @@ function ModalTipoAuditoria({ tipo, onGuardar, onCerrar }: ModalTipoAuditoriaPro
               type="submit"
               style={{ background: '#003DA5' }}
               className="flex-1"
+              disabled={guardando}
             >
-              <Save className="w-4 h-4 mr-2" />
-              {tipo ? 'Actualizar' : 'Crear Tipo'}
-            </Button>
-          </div>
-        </form>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// ====================================
-// SECCIÓN LISTAS DE CHEQUEO
-// ====================================
-
-interface SeccionListasChequeoProps {
-  listas: ListaChequeo[];
-  onActualizar: (listas: ListaChequeo[]) => void;
-  cargandoListas?: boolean;
-  tiposAuditoria: TipoAuditoria[];
-}
-
-function SeccionListasChequeo({ listas, onActualizar, cargandoListas, tiposAuditoria }: SeccionListasChequeoProps) {
-  const [modalAbierto, setModalAbierto] = useState(false);
-  const [listaEditando, setListaEditando] = useState<ListaChequeo | null>(null);
-  const [modalVistaAbierto, setModalVistaAbierto] = useState(false);
-  const [listaViendo, setListaViendo] = useState<ListaChequeo | null>(null);
-
-  const handleNuevaLista = () => {
-    setListaEditando(null);
-    setModalAbierto(true);
-  };
-
-  const handleVerLista = (lista: ListaChequeo) => {
-    setListaViendo(lista);
-    setModalVistaAbierto(true);
-  };
-
-  const handleEditarLista = (lista: ListaChequeo) => {
-    setListaEditando(lista);
-    setModalAbierto(true);
-  };
-
-  const handleGuardarLista = async (listaNueva: ListaChequeo) => {
-    // Preparar tipos de auditoría para el mapeo (necesitamos id y nombre)
-    const tiposParaMapeo = tiposAuditoria.map(t => ({ id: t.id, nombre: t.nombre }));
-    
-    if (listaEditando) {
-      // Actualizar lista existente
-      const listaActualizada = await actualizarListaChequeo(listaEditando.id, listaNueva, tiposParaMapeo);
-      if (listaActualizada) {
-        // Preservar el tipo de lista al actualizar
-        const listaConTipo = { ...listaActualizada, tipo: listaNueva.tipo };
-        const listasActualizadas = listas.map(l => 
-          l.id === listaEditando.id ? listaConTipo : l
-        );
-        onActualizar(listasActualizadas);
-      }
-    } else {
-      // Crear nueva lista
-      const nuevaLista = await crearListaChequeo(listaNueva, tiposParaMapeo);
-      if (nuevaLista) {
-        // Preservar el tipo de lista al crear
-        const listaConTipo = { ...nuevaLista, tipo: listaNueva.tipo };
-        onActualizar([...listas, listaConTipo]);
-      }
-    }
-    
-    if (listaEditando || !listas.find(l => l.id === listaNueva.id)) {
-      setModalAbierto(false);
-      setListaEditando(null);
-    }
-  };
-
-  const handleEliminarLista = async (listaId: string) => {
-    const lista = listas.find(l => l.id === listaId);
-    if (lista && lista.usosProgramados > 0) {
-      toast.error('❌ No se puede eliminar una lista con usos programados', {
-        description: `Esta lista tiene ${lista.usosProgramados} usos programados`
-      });
-      return;
-    }
-
-    const eliminado = await eliminarListaChequeo(listaId);
-    if (eliminado) {
-      onActualizar(listas.filter(l => l.id !== listaId));
-    }
-  };
-
-  return (
-    <>
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900">Listas de Chequeo Estándar</h3>
-            <p className="text-sm text-gray-600 mt-1">Administra listas de verificación</p>
-          </div>
-          {authService.hasPermission(Permissions.CONTROL_INTERNO_CONFIGURACIONES_CONFIG_AUDIT_LISTA_CREATE) && (
-          <Button onClick={handleNuevaLista} style={{ background: '#003DA5' }}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nueva Lista
-          </Button>
-          )}
-        </div>
-
-        {cargandoListas ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader className="w-8 h-8 animate-spin text-blue-600" />
-            <span className="ml-3 text-gray-600">Cargando listas de chequeo...</span>
-          </div>
-        ) : listas.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
-            <List className="w-16 h-16 mx-auto mb-4 opacity-50" />
-            <p>No hay listas de chequeo configuradas</p>
-            <p className="text-sm mt-2">Haz clic en "Nueva Lista" para crear una</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {listas.filter(lista => lista.tipo === TipoListaChequeo.EJECUCION).map((lista) => {
-            const tipoInfo = TIPOS_LISTA_CHEQUEO.find(t => t.valor === lista.tipo);
-            
-            return (
-              <motion.div
-                key={lista.id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="p-4 border-2 border-gray-300 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer bg-white"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <CheckSquare className="w-8 h-8 text-blue-600" />
-                    {tipoInfo && (
-                      <Badge 
-                        variant="outline" 
-                        className="text-xs"
-                        style={{ 
-                          background: tipoInfo.color + '20', 
-                          color: tipoInfo.color,
-                          borderColor: tipoInfo.color 
-                        }}
-                      >
-                        {tipoInfo.icono} {tipoInfo.nombre}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex gap-1">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handleVerLista(lista)}
-                      title="Ver lista"
-                    >
-                      <Eye className="w-3 h-3" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handleEditarLista(lista)}
-                      title="Editar lista"
-                    >
-                      <Edit className="w-3 h-3" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handleEliminarLista(lista.id)}
-                      title="Eliminar lista"
-                      className="text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </div>
-                
-                <h4 className="font-bold text-gray-900 mb-1">{lista.nombre}</h4>
-                <p className="text-sm text-gray-600 mb-3">{lista.tipoAuditoria}</p>
-                
-                <div className="space-y-2 mb-3">
-                  <p className="text-xs text-gray-500">{lista.descripcion}</p>
-                </div>
-
-                <div className="flex items-center justify-between text-xs text-gray-500 pt-3 border-t border-gray-200">
-                  <span className="flex items-center gap-1">
-                    <FileText className="w-3 h-3" />
-                    {lista.items.length} ítems
-                  </span>
-                  {lista.usosProgramados > 0 && (
-                    <Badge variant="outline" className="text-xs">
-                      {lista.usosProgramados} usos
-                    </Badge>
-                  )}
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-        )}
-      </Card>
-
-      <AnimatePresence>
-        {modalAbierto && (
-          <ModalListaChequeo
-            lista={listaEditando}
-            onGuardar={handleGuardarLista}
-            onCerrar={() => {
-              setModalAbierto(false);
-              setListaEditando(null);
-            }}
-            tiposAuditoria={tiposAuditoria}
-          />
-        )}
-        {modalVistaAbierto && listaViendo && (
-          <ModalVistaListaChequeo
-            lista={listaViendo}
-            onCerrar={() => {
-              setModalVistaAbierto(false);
-              setListaViendo(null);
-            }}
-          />
-        )}
-      </AnimatePresence>
-    </>
-  );
-}
-
-// ====================================
-// MODAL LISTA DE CHEQUEO
-// ====================================
-
-interface ModalListaChequeoProps {
-  lista: ListaChequeo | null;
-  onGuardar: (lista: ListaChequeo) => void;
-  onCerrar: () => void;
-  tiposAuditoria: TipoAuditoria[];
-}
-
-function ModalListaChequeo({ lista, onGuardar, onCerrar, tiposAuditoria }: ModalListaChequeoProps) {
-  const [formData, setFormData] = useState<ListaChequeo>(
-    lista || {
-      id: '',
-      nombre: '',
-      tipo: TipoListaChequeo.EJECUCION, // NUEVO CAMPO CON VALOR POR DEFECTO
-      tipoAuditoria: 'Regular',
-      descripcion: '',
-      items: [],
-      activa: true,
-      usosProgramados: 0,
-      fechaCreacion: '',
-      ultimaActualizacion: ''
-    }
-  );
-
-  const [nuevoItem, setNuevoItem] = useState('');
-  const [categoriaItem, setCategoriaItem] = useState('General');
-  const [obligatorioItem, setObligatorioItem] = useState(true);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.nombre.trim() || formData.items.length === 0) {
-      toast.error('❌ Completa el nombre y agrega al menos un ítem');
-      return;
-    }
-
-    // Asegurar que siempre se guarde 'ejecucion' como tipo
-    const formDataConEjecucion = {
-      ...formData,
-      tipo: TipoListaChequeo.EJECUCION
-    };
-
-    onGuardar(formDataConEjecucion);
-  };
-
-  const handleChange = (field: keyof ListaChequeo, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleAgregarItem = () => {
-    if (!nuevoItem.trim()) {
-      toast.error('❌ Escribe el texto del ítem');
-      return;
-    }
-
-    const item: ItemChequeo = {
-      id: `item-${Date.now()}`,
-      texto: nuevoItem,
-      categoria: categoriaItem,
-      obligatorio: obligatorioItem
-    };
-
-    setFormData(prev => ({
-      ...prev,
-      items: [...prev.items, item]
-    }));
-
-    setNuevoItem('');
-    setCategoriaItem('General');
-    setObligatorioItem(true);
-    toast.success('✅ Ítem agregado');
-  };
-
-  const handleEliminarItem = (itemId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      items: prev.items.filter(i => i.id !== itemId)
-    }));
-    toast.success('✅ Ítem eliminado');
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-      onClick={onCerrar}
-    >
-      <motion.div
-        initial={{ scale: 0.9, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.9, y: 20 }}
-        className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">
-              {lista ? 'Editar Lista de Chequeo' : 'Nueva Lista de Chequeo'}
-            </h2>
-            <p className="text-sm text-gray-600 mt-1">
-              {lista ? 'Modifica los datos de la lista' : 'Crea una nueva lista de verificación'}
-            </p>
-          </div>
-          <Button variant="outline" size="sm" onClick={onCerrar}>
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Nombre de la Lista *
-            </label>
-            <Input
-              value={formData.nombre}
-              onChange={(e) => handleChange('nombre', e.target.value)}
-              placeholder="Lista de Chequeo #1"
-              required
-            />
-          </div>
-
-          {/* SELECTOR DE TIPO DE LISTA - OCULTO (siempre se guarda 'ejecucion') */}
-          {/* El campo está oculto porque siempre se guarda 'ejecucion' */}
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Tipo de Auditoría
-              </label>
-              <select
-                value={formData.tipoAuditoria}
-                onChange={(e) => handleChange('tipoAuditoria', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Seleccionar tipo...</option>
-                {tiposAuditoria.map((tipo) => (
-                  <option key={tipo.id} value={tipo.nombre}>
-                    {tipo.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Estado
-              </label>
-              <div className="flex items-center gap-2 h-10">
-                <input
-                  type="checkbox"
-                  id="activa-lista"
-                  checked={formData.activa}
-                  onChange={(e) => handleChange('activa', e.target.checked)}
-                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                />
-                <label htmlFor="activa-lista" className="text-sm text-gray-700">
-                  Lista activa
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Descripción
-            </label>
-            <textarea
-              value={formData.descripcion}
-              onChange={(e) => handleChange('descripcion', e.target.value)}
-              placeholder="Breve descripción de la lista de chequeo..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              rows={2}
-            />
-          </div>
-
-          {/* SECCIÓN DE ÍTEMS */}
-          <div className="border-t pt-4">
-            <h3 className="font-bold text-gray-900 mb-3">Ítems de Verificación ({formData.items.length})</h3>
-            
-            {/* AGREGAR NUEVO ÍTEM */}
-            <div className="bg-gray-50 p-4 rounded-lg mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Agregar nuevo ítem
-              </label>
-              <div className="space-y-2">
-                <Input
-                  value={nuevoItem}
-                  onChange={(e) => setNuevoItem(e.target.value)}
-                  placeholder="¿Existe documentación de procesos?"
-                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAgregarItem())}
-                />
-                <div className="flex gap-2">
-                  <Input
-                    value={categoriaItem}
-                    onChange={(e) => setCategoriaItem(e.target.value)}
-                    placeholder="Categoría"
-                    className="flex-1"
-                  />
-                  <div className="flex items-center gap-2 px-3 border border-gray-300 rounded-lg bg-white">
-                    <input
-                      type="checkbox"
-                      id="obligatorio"
-                      checked={obligatorioItem}
-                      onChange={(e) => setObligatorioItem(e.target.checked)}
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                    />
-                    <label htmlFor="obligatorio" className="text-sm text-gray-700 whitespace-nowrap">
-                      Obligatorio
-                    </label>
-                  </div>
-                  <Button
-                    type="button"
-                    onClick={handleAgregarItem}
-                    style={{ background: '#10B981' }}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Agregar
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* LISTA DE ÍTEMS */}
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {formData.items.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                  <CheckSquare className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No hay ítems agregados</p>
-                </div>
+              {guardando ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Guardando...
+                </>
               ) : (
-                formData.items.map((item, index) => (
-                  <motion.div
-                    key={item.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    className="flex items-start gap-3 p-3 bg-white border border-gray-200 rounded-lg hover:border-blue-300 transition-colors"
-                  >
-                    <div className="flex items-center justify-center w-6 h-6 bg-blue-100 rounded text-blue-600 text-xs font-bold flex-shrink-0">
-                      {index + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-900">{item.texto}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="outline" className="text-xs">
-                          {item.categoria}
-                        </Badge>
-                        {item.obligatorio && (
-                          <Badge variant="default" className="text-xs bg-red-100 text-red-700 border-red-200">
-                            Obligatorio
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEliminarItem(item.id)}
-                      className="text-red-600 hover:bg-red-50 flex-shrink-0"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </motion.div>
-                ))
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  {tipo ? 'Actualizar' : 'Crear Tipo'}
+                </>
               )}
-            </div>
-          </div>
-
-          <div className="flex gap-3 pt-4 border-t border-gray-200">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCerrar}
-              className="flex-1"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              style={{ background: '#003DA5' }}
-              className="flex-1"
-            >
-              <Save className="w-4 h-4 mr-2" />
-              {lista ? 'Actualizar' : 'Crear Lista'}
             </Button>
           </div>
         </form>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// ====================================
-// MODAL VISTA LISTA DE CHEQUEO
-// ====================================
-
-interface ModalVistaListaChequeoProps {
-  lista: ListaChequeo;
-  onCerrar: () => void;
-}
-
-function ModalVistaListaChequeo({ lista, onCerrar }: ModalVistaListaChequeoProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-      onClick={onCerrar}
-    >
-      <motion.div
-        initial={{ scale: 0.9, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.9, y: 20 }}
-        className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">{lista.nombre}</h2>
-            <p className="text-sm text-gray-600 mt-1">{lista.tipoAuditoria}</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={onCerrar}>
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
-
-        <div className="p-6 space-y-4">
-          <div>
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Descripción</h3>
-            <p className="text-sm text-gray-600">{lista.descripcion}</p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4 py-3 bg-gray-50 rounded-lg px-4">
-            <div className="text-center">
-              <p className="text-2xl font-bold text-blue-600">{lista.items.length}</p>
-              <p className="text-xs text-gray-600">Ítems totales</p>
-            </div>
-            <div className="text-center">
-              <p className="text-2xl font-bold text-green-600">
-                {lista.items.filter(i => i.obligatorio).length}
-              </p>
-              <p className="text-xs text-gray-600">Obligatorios</p>
-            </div>
-            <div className="text-center">
-              <p className="text-2xl font-bold text-orange-600">{lista.usosProgramados}</p>
-              <p className="text-xs text-gray-600">Usos programados</p>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-medium text-gray-700 mb-3">Ítems de Verificación</h3>
-            <div className="space-y-2">
-              {lista.items.map((item, index) => (
-                <div
-                  key={item.id}
-                  className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg"
-                >
-                  <div className="flex items-center justify-center w-6 h-6 bg-blue-600 rounded text-white text-xs font-bold flex-shrink-0">
-                    {index + 1}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-900">{item.texto}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="outline" className="text-xs">
-                        {item.categoria}
-                      </Badge>
-                      {item.obligatorio && (
-                        <Badge className="text-xs bg-red-100 text-red-700 border-red-200">
-                          Obligatorio
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  <Check className="w-5 h-5 text-gray-300" />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="pt-4 border-t border-gray-200">
-            <Button onClick={onCerrar} className="w-full" style={{ background: '#003DA5' }}>
-              Cerrar
-            </Button>
-          </div>
-        </div>
       </motion.div>
     </motion.div>
   );

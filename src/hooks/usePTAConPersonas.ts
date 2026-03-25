@@ -14,11 +14,11 @@
  * Fecha: 2026-01-03
  */
 
-import { useState, useEffect, useMemo } from 'react';
 import { usePTA } from '../contexts/PTAContext';
 import { personasPTAIntegrationService } from '../services/personasPTAIntegrationService';
 import type { DocentePTA } from '../types/integracion-personas-pta';
-import { MOCK_USERS_WITH_SEDES, type UserWithSedes } from '../data/mockUsersWithSedes';
+import { MOCK_USERS_WITH_SEDES, type MockUserWithSedes } from '../data/mockUsersWithSedes';
+import { useState, useEffect, useMemo } from 'react';
 
 // ============================================================================
 // TIPOS
@@ -26,7 +26,7 @@ import { MOCK_USERS_WITH_SEDES, type UserWithSedes } from '../data/mockUsersWith
 
 interface UsePTAConPersonasReturn {
   // Usuario y Docente
-  usuarioActual: UserWithSedes | null;
+  usuarioActual: MockUserWithSedes | null;
   docenteInfo: DocentePTA | null;
   esDocente: boolean;
   puedeCrearPTA: boolean;
@@ -116,7 +116,7 @@ export function usePTAConPersonas(userId?: string): UsePTAConPersonasReturn {
   const ptaContext = usePTA();
   
   // Estado del usuario actual
-  const [usuarioActual, setUsuarioActual] = useState<UserWithSedes | null>(null);
+  const [usuarioActual, setUsuarioActual] = useState<MockUserWithSedes | null>(null);
   const [docenteInfo, setDocenteInfo] = useState<DocentePTA | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
 
@@ -130,7 +130,7 @@ export function usePTAConPersonas(userId?: string): UsePTAConPersonasReturn {
       try {
         // TODO: En producción, esto debería venir de useAuth()
         // Por ahora, simulamos con el primer docente de los datos mock
-        let usuario: UserWithSedes | undefined;
+        let usuario: MockUserWithSedes | undefined;
         
         if (userId) {
           usuario = MOCK_USERS_WITH_SEDES.find(u => u.id === userId);

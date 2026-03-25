@@ -14,6 +14,7 @@ import { Hallazgo } from '../hallazgos/entities/hallazgo.entity';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { Aprobacion } from '../aprobaciones/entities/aprobacion.entity';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
+import { AuthModule } from '../../auth/auth.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { NotificacionesModule } from '../notificaciones/notificaciones.module';
       Aprobacion,
     ]),
     NotificacionesModule,
+    AuthModule,
   ],
   controllers: [PlanesMejoramientoController, DocumentosPlanController],
   providers: [PlanesMejoramientoService, DocumentosPlanService],

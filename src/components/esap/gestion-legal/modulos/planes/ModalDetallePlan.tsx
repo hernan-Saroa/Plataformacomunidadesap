@@ -1,8 +1,13 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../../ui/dialog';
 import { Card } from '../../../../ui/card';
 import { Badge } from '../../../../ui/badge';
-import { AlertTriangle, CheckCircle, Clock, FileText, TrendingUp, User } from 'lucide-react';
+import { Button } from '../../../../ui/button';
+import { AlertTriangle, Clock, FileText, TrendingUp, Upload, Download, Eye, Loader2, Paperclip, X } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../../../../ui/avatar';
+import { useState, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
+import { legalService } from '../../../../../services/api/legal.service';
+import { API_MODE, getServiceUrl } from '../../../../../config/environment';
 
 interface ModalDetallePlanProps {
     open: boolean;
@@ -10,12 +15,99 @@ interface ModalDetallePlanProps {
     plan: any;
 }
 
+function getFileViewUrl(filename: string): string {
+    const baseUrl = getServiceUrl('legal');
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
+    return `${baseUrl}${prefix}/files/${filename}`;
+}
+
+function getFileDownloadUrl(filename: string, originalName: string): string {
+    const baseUrl = getServiceUrl('legal');
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
+    return `${baseUrl}${prefix}/files/download/${filename}?name=${encodeURIComponent(originalName)}`;
+}
+
+function getFileIcon(mimeType: string) {
+    if (mimeType?.includes('pdf')) return '📄';
+    if (mimeType?.includes('word') || mimeType?.includes('document')) return '📝';
+    if (mimeType?.includes('sheet') || mimeType?.includes('excel')) return '📊';
+    if (mimeType?.includes('image')) return '🖼️';
+    return '📎';
+}
+
 export function ModalDetallePlan({ open, onClose, plan }: ModalDetallePlanProps) {
+    const [documentos, setDocumentos] = useState<any[]>([]);
+    const [loadingDocs, setLoadingDocs] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [titulo, setTitulo] = useState('');
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (open && plan?.id) {
+            fetchDocumentos();
+        } else {
+            setDocumentos([]);
+            setSelectedFile(null);
+            setTitulo('');
+        }
+    }, [open, plan?.id]);
+
+    const fetchDocumentos = async () => {
+        setLoadingDocs(true);
+        try {
+            const docs = await legalService.getDocumentosPlan(plan.id);
+            setDocumentos(docs);
+        } catch {
+            // silently fail — documents are optional
+        } finally {
+            setLoadingDocs(false);
+        }
+    };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setSelectedFile(file);
+            if (!titulo) setTitulo(file.name.replace(/\.[^/.]+$/, ''));
+        }
+    };
+
+    const handleUpload = async () => {
+        if (!selectedFile) {
+            toast.error('Seleccione un archivo');
+            return;
+        }
+        if (!titulo.trim()) {
+            toast.error('Ingrese un título para el documento');
+            return;
+        }
+
+        setUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('titulo', titulo.trim());
+            formData.append('uploadedBy', 'Sistema');
+
+            await legalService.uploadDocumentoPlan(plan.id, formData);
+            toast.success('Documento cargado exitosamente');
+            setSelectedFile(null);
+            setTitulo('');
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            fetchDocumentos();
+        } catch {
+            toast.error('Error al cargar el documento');
+        } finally {
+            setUploading(false);
+        }
+    };
+
     if (!plan) return null;
 
     return (
         <Dialog open={open} onOpenChange={onClose}>
-            <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-[750px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <span className="text-[#003DA5]">{plan.codigo}</span>
@@ -95,6 +187,145 @@ export function ModalDetallePlan({ open, onClose, plan }: ModalDetallePlanProps)
                         </div>
                     </div>
 
+                    {/* Documentos Adjuntos */}
+                    <div>
+                        <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+                            <Paperclip className="w-4 h-4" />
+                            Documentos del Plan
+                            {documentos.length > 0 && (
+                                <Badge variant="secondary" className="text-xs">{documentos.length}</Badge>
+                            )}
+                        </h4>
+
+                        {/* Upload area */}
+                        <div className="border-2 border-dashed border-gray-200 rounded-lg p-4 bg-gray-50 mb-3">
+                            <div className="space-y-3">
+                                {selectedFile ? (
+                                    <div className="flex items-center gap-2 p-2 bg-white rounded border border-blue-200">
+                                        <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                                        <span className="text-sm text-gray-700 truncate flex-1">{selectedFile.name}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                                            className="text-gray-400 hover:text-gray-600"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="w-full flex flex-col items-center gap-1 py-3 text-gray-400 hover:text-gray-600 transition-colors"
+                                    >
+                                        <Upload className="w-6 h-6" />
+                                        <span className="text-xs">Haga clic para seleccionar un archivo</span>
+                                        <span className="text-xs text-gray-400">PDF, Word, Excel, imágenes</span>
+                                    </button>
+                                )}
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                                    className="hidden"
+                                    onChange={handleFileSelect}
+                                />
+                                {selectedFile && (
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={titulo}
+                                            onChange={e => setTitulo(e.target.value)}
+                                            placeholder="Título del documento"
+                                            className="flex-1 text-sm border border-gray-200 rounded px-3 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        />
+                                        <Button
+                                            size="sm"
+                                            onClick={handleUpload}
+                                            disabled={uploading}
+                                            style={{ background: '#003DA5', color: '#fff' }}
+                                        >
+                                            {uploading ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                                <Upload className="w-4 h-4" />
+                                            )}
+                                            <span className="ml-1">{uploading ? 'Cargando...' : 'Cargar'}</span>
+                                        </Button>
+                                    </div>
+                                )}
+                                {!selectedFile && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full"
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
+                                        <Upload className="w-4 h-4 mr-2" />
+                                        Seleccionar archivo
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Document list */}
+                        {loadingDocs ? (
+                            <div className="flex items-center justify-center py-4 text-gray-400 text-sm">
+                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                Cargando documentos...
+                            </div>
+                        ) : documentos.length === 0 ? (
+                            <p className="text-xs text-gray-400 italic text-center py-2">
+                                No hay documentos cargados aún.
+                            </p>
+                        ) : (
+                            <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                                {documentos.map((doc) => (
+                                    <div key={doc.id} className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-gray-200 hover:shadow-sm transition-all">
+                                        <div className="flex items-center gap-2.5 overflow-hidden">
+                                            <div className="p-1.5 bg-blue-50 rounded border border-blue-100 flex-shrink-0 text-base leading-none">
+                                                {getFileIcon(doc.tipoArchivo)}
+                                            </div>
+                                            <div className="truncate">
+                                                <p className="font-medium text-sm text-gray-900 truncate">{doc.titulo}</p>
+                                                <p className="text-xs text-gray-400">
+                                                    {new Date(doc.createdAt).toLocaleDateString('es-CO')}
+                                                    {doc.uploadedBy && doc.uploadedBy !== 'Sistema' && ` · ${doc.uploadedBy}`}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-7 w-7 p-0 text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+                                                title="Ver documento"
+                                                onClick={() => window.open(getFileViewUrl(doc.urlArchivo), '_blank')}
+                                            >
+                                                <Eye className="w-3.5 h-3.5" />
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-7 w-7 p-0 text-gray-500 hover:text-green-600 hover:bg-green-50"
+                                                title="Descargar"
+                                                onClick={() => {
+                                                    const a = document.createElement('a');
+                                                    a.href = getFileDownloadUrl(doc.urlArchivo, doc.titulo);
+                                                    a.download = doc.titulo;
+                                                    a.click();
+                                                }}
+                                            >
+                                                <Download className="w-3.5 h-3.5" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
                     {/* Timeline / Seguimientos */}
                     <div>
                         <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
@@ -130,4 +361,3 @@ export function ModalDetallePlan({ open, onClose, plan }: ModalDetallePlanProps)
         </Dialog>
     );
 }
-

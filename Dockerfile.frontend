@@ -1,9 +1,13 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm install
+# Configure npm for better network handling
+ENV npm_config_fetch_retries=5
+ENV npm_config_fetch_retry_mintimeout=10000
+ENV npm_config_fetch_retry_maxtimeout=60000
 
+COPY package*.json ./
+RUN npm install --legacy-peer-deps
 COPY . .
 # Si usas build de prod:
 # RUN npm run build

@@ -7,9 +7,9 @@ import * as bodyParser from 'body-parser';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // Aumentar límite de payload para adjuntos de correo (50MB)
-  app.use(bodyParser.json({ limit: '50mb' }));
-  app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+  // Aumentar límite de payload para uploads de documentos (250MB)
+  app.use(bodyParser.json({ limit: '250mb' }));
+  app.use(bodyParser.urlencoded({ limit: '250mb', extended: true }));
 
   app.enableCors({
     origin: true, // Permitir cualquier origen (o configurar según var de entorno)

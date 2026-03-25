@@ -3,6 +3,7 @@
  * ✅ Diseño corporativo ESAP 2025
  * ✅ Header azul corporativo con gradiente
  * ✅ Diseño limpio tipo SAP Fiori
+ * ✅ Destinatarios dinámicos: abogados del proceso
  */
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../ui/dialog';
@@ -17,36 +18,46 @@ import {
   Bell, X, Send, User, Mail, MessageSquare, 
   CheckCircle, Users, AlertCircle
 } from 'lucide-react';
-import { useState } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { useState, useMemo } from 'react';
+import { toast } from 'sonner';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { getServiceUrl } from '../../../../config/environment';
+
+interface AbogadoDisponible {
+  nombre: string;
+  rol: string;
+}
 
 interface ModalNotificarProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
+  abogadosDisponibles?: AbogadoDisponible[];
 }
 
-// Lista de usuarios mock para notificar
-const usuariosDisponibles = [
-  { id: 1, nombre: 'Dr. Juan Pérez López', cargo: 'Coordinador Legal', email: 'juan.perez@esap.gov.co', avatar: 'JP' },
-  { id: 2, nombre: 'Dra. María González', cargo: 'Abogada Senior', email: 'maria.gonzalez@esap.gov.co', avatar: 'MG' },
-  { id: 3, nombre: 'Dr. Carlos Ramírez', cargo: 'Abogado Junior', email: 'carlos.ramirez@esap.gov.co', avatar: 'CR' },
-  { id: 4, nombre: 'Dra. Ana López', cargo: 'Asesora Jurídica', email: 'ana.lopez@esap.gov.co', avatar: 'AL' },
-  { id: 5, nombre: 'Dra. Patricia Rojas', cargo: 'Directora Oficina Jurídica', email: 'patricia.rojas@esap.gov.co', avatar: 'PR' },
-];
-
-export function ModalNotificar({ isOpen, onClose, expediente }: ModalNotificarProps) {
-  const [destinatariosSeleccionados, setDestinatariosSeleccionados] = useState<number[]>([]);
+export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponibles = [] }: ModalNotificarProps) {
+  const [destinatariosSeleccionados, setDestinatariosSeleccionados] = useState<string[]>([]);
   const [asunto, setAsunto] = useState(`Expediente ${expediente.id} - Actualización`);
   const [mensaje, setMensaje] = useState('');
   const [enviarPorEmail, setEnviarPorEmail] = useState(true);
   const [enviarPorSistema, setEnviarPorSistema] = useState(true);
-  const [conCopiaExpediente, setConCopiaExpediente] = useState(false);
   const [enviando, setEnviando] = useState(false);
 
-  const toggleDestinatario = (id: number) => {
+  // Build display list with avatars/emails derived from names
+  const destinatarios = useMemo(() => {
+    return abogadosDisponibles
+      .filter(a => a.nombre && a.nombre.trim() !== '' && a.nombre.toLowerCase() !== 'sin asignar')
+      .map((a, idx) => ({
+        id: `abogado-${idx}`,
+        nombre: a.nombre,
+        cargo: a.rol,
+        email: `${a.nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '.')}@esap.edu.co`,
+        avatar: a.nombre.split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase()
+      }));
+  }, [abogadosDisponibles]);
+
+  const toggleDestinatario = (id: string) => {
     if (destinatariosSeleccionados.includes(id)) {
       setDestinatariosSeleccionados(destinatariosSeleccionados.filter(d => d !== id));
     } else {
@@ -55,14 +66,14 @@ export function ModalNotificar({ isOpen, onClose, expediente }: ModalNotificarPr
   };
 
   const seleccionarTodos = () => {
-    if (destinatariosSeleccionados.length === usuariosDisponibles.length) {
+    if (destinatariosSeleccionados.length === destinatarios.length) {
       setDestinatariosSeleccionados([]);
     } else {
-      setDestinatariosSeleccionados(usuariosDisponibles.map(u => u.id));
+      setDestinatariosSeleccionados(destinatarios.map(u => u.id));
     }
   };
 
-  const handleEnviar = () => {
+  const handleEnviar = async () => {
     if (destinatariosSeleccionados.length === 0) {
       toast.error('⚠️ Selecciona al menos un destinatario', {
         description: 'Debes seleccionar a quién enviar la notificación'
@@ -79,60 +90,136 @@ export function ModalNotificar({ isOpen, onClose, expediente }: ModalNotificarPr
 
     setEnviando(true);
 
-    // Simular envío
-    setTimeout(() => {
-      const destinatarios = usuariosDisponibles.filter(u => destinatariosSeleccionados.includes(u.id));
-      
-      toast.success('✅ Notificación enviada exitosamente', {
-        description: `Enviado a ${destinatarios.length} destinatario(s)`,
-        duration: 4000
-      });
+    const seleccionados = destinatarios.filter(u => destinatariosSeleccionados.includes(u.id));
+    let emailsEnviados = 0;
+    let emailsFallidos = 0;
 
-      // Log para trazabilidad
-      console.log('📧 NOTIFICACIÓN ENVIADA:', {
-        expediente: expediente.id,
-        asunto,
-        mensaje,
-        destinatarios: destinatarios.map(d => ({ nombre: d.nombre, email: d.email })),
-        canales: {
-          email: enviarPorEmail,
-          sistema: enviarPorSistema
-        },
-        conCopia: conCopiaExpediente,
-        fecha: new Date().toISOString()
-      });
+    try {
+      // ========== 1. Enviar por correo electrónico ==========
+      if (enviarPorEmail) {
+        const notificacionesUrl = getServiceUrl('notificaciones');
 
-      // Mostrar detalles del envío
-      setTimeout(() => {
-        if (enviarPorEmail) {
-          toast.info('📨 Emails enviados', {
-            description: `${destinatarios.length} correo(s) electrónico(s) enviado(s)`,
-            duration: 3000
-          });
+        const htmlTemplate = (nombreDestinatario: string) => `
+          <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
+            <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
+              <tr>
+                <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
+                  Gestión Legal ESAP
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+                  ${asunto}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 0 24px 8px 24px; font-size: 13px; color: #6b7280;">
+                  Estimado/a <strong>${nombreDestinatario}</strong>,
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6; white-space: pre-line;">
+                  ${mensaje}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 12px 24px; font-size: 12px; color: #6b7280; background: #f0f7ff; border-top: 1px solid #d7e9ff;">
+                  <strong>Expediente:</strong> ${expediente.id}<br/>
+                  <strong>Etapa:</strong> ${expediente.etapa || 'N/A'}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
+                  ESAP - Escuela Superior de Administración Pública
+                </td>
+              </tr>
+            </table>
+          </div>
+        `;
+
+        // Send one email per recipient (backend DTO expects single @IsEmail() `to`)
+        const emailPromises = seleccionados.map(async (dest) => {
+          try {
+            const response = await fetch(`${notificacionesUrl}/api/v1/emails/send`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                to: dest.email,
+                subject: asunto,
+                text: mensaje,
+                html: htmlTemplate(dest.nombre)
+              })
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              console.error(`Error enviando email a ${dest.email}:`, errorData);
+              emailsFallidos++;
+            } else {
+              emailsEnviados++;
+            }
+          } catch (err) {
+            console.error(`Error de red enviando email a ${dest.email}:`, err);
+            emailsFallidos++;
+          }
+        });
+
+        await Promise.all(emailPromises);
+      }
+
+      // ========== 2. Notificación en el sistema (log de trazabilidad) ==========
+      if (enviarPorSistema) {
+        console.log('🔔 NOTIFICACIÓN INTERNA DEL SISTEMA:', {
+          expediente: expediente.id,
+          asunto,
+          mensaje,
+          destinatarios: seleccionados.map(d => ({ nombre: d.nombre, email: d.email })),
+          fecha: new Date().toISOString()
+        });
+      }
+
+      // ========== 3. Mostrar resultados ==========
+      if (enviarPorEmail) {
+        if (emailsEnviados > 0 && emailsFallidos === 0) {
+          toast.success(`✅ ${emailsEnviados} correo(s) enviado(s) exitosamente`, { duration: 4000 });
+        } else if (emailsEnviados > 0 && emailsFallidos > 0) {
+          toast.warning(`⚠️ ${emailsEnviados} correo(s) enviado(s), ${emailsFallidos} fallido(s)`, { duration: 5000 });
+        } else if (emailsFallidos > 0) {
+          toast.error(`❌ No se pudieron enviar los correos (${emailsFallidos} fallido(s))`, { duration: 5000 });
         }
-        if (enviarPorSistema) {
-          toast.info('🔔 Notificaciones internas', {
-            description: `${destinatarios.length} notificación(es) en el sistema`,
-            duration: 3000
-          });
-        }
-      }, 1500);
+      }
 
-      setEnviando(false);
+      if (enviarPorSistema) {
+        toast.info('🔔 Notificación registrada en el sistema', {
+          description: `${seleccionados.length} destinatario(s) notificado(s)`,
+          duration: 3000
+        });
+      }
+
+      if (!enviarPorEmail && !enviarPorSistema) {
+        toast.warning('⚠️ No se seleccionó ningún canal de envío');
+      }
+
       onClose();
-      
+
       // Resetear formulario
       setTimeout(() => {
         setDestinatariosSeleccionados([]);
         setMensaje('');
         setAsunto(`Expediente ${expediente.id} - Actualización`);
       }, 500);
-    }, 2000);
+
+    } catch (error) {
+      console.error('Error general al enviar notificaciones:', error);
+      toast.error('❌ Error inesperado al enviar las notificaciones');
+    } finally {
+      setEnviando(false);
+    }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[750px] lg:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">
           Enviar Notificación - Expediente {expediente.id}
         </DialogTitle>
@@ -195,56 +282,67 @@ export function ModalNotificar({ isOpen, onClose, expediente }: ModalNotificarPr
               <Label className="text-sm font-bold text-gray-700">
                 👥 Destinatarios ({destinatariosSeleccionados.length} seleccionados)
               </Label>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={seleccionarTodos}
-                className="text-xs font-bold"
-                style={{ borderColor: '#2962FF', color: '#2962FF' }}
-              >
-                {destinatariosSeleccionados.length === usuariosDisponibles.length ? 'Deseleccionar todos' : 'Seleccionar todos'}
-              </Button>
+              {destinatarios.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={seleccionarTodos}
+                  className="text-xs font-bold"
+                  style={{ borderColor: '#2962FF', color: '#2962FF' }}
+                >
+                  {destinatariosSeleccionados.length === destinatarios.length ? 'Deseleccionar todos' : 'Seleccionar todos'}
+                </Button>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {usuariosDisponibles.map((usuario) => {
-                const isSelected = destinatariosSeleccionados.includes(usuario.id);
-                return (
-                  <Card 
-                    key={usuario.id} 
-                    className={`p-3 cursor-pointer transition-all hover:shadow-md ${
-                      isSelected ? 'border-2 bg-blue-50' : 'border-2 border-transparent'
-                    }`}
-                    style={isSelected ? { borderColor: '#2962FF' } : {}}
-                    onClick={() => toggleDestinatario(usuario.id)}
-                  >
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() => toggleDestinatario(usuario.id)}
-                        className="mt-1"
-                      />
-                      <div className="flex items-center gap-3 flex-1">
-                        <div 
-                          className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                          style={{ background: '#2962FF', color: '#FFFFFF' }}
-                        >
-                          <span className="text-xs font-black">{usuario.avatar}</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-black text-gray-900 truncate">{usuario.nombre}</p>
-                          <p className="text-xs text-gray-600 truncate">{usuario.cargo}</p>
-                          <p className="text-xs text-gray-500 truncate flex items-center gap-1">
-                            <Mail className="w-3 h-3" />
-                            {usuario.email}
-                          </p>
+            {destinatarios.length === 0 ? (
+              <Card className="p-4 bg-gray-50 border-gray-200">
+                <p className="text-sm text-gray-500 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  No hay abogados asignados a este proceso. Asigna un abogado al expediente para poder enviar notificaciones.
+                </p>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {destinatarios.map((usuario) => {
+                  const isSelected = destinatariosSeleccionados.includes(usuario.id);
+                  return (
+                    <Card 
+                      key={usuario.id} 
+                      className={`p-3 cursor-pointer transition-all hover:shadow-md ${
+                        isSelected ? 'border-2 bg-blue-50' : 'border-2 border-transparent'
+                      }`}
+                      style={isSelected ? { borderColor: '#2962FF' } : {}}
+                      onClick={() => toggleDestinatario(usuario.id)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleDestinatario(usuario.id)}
+                          className="mt-1"
+                        />
+                        <div className="flex items-center gap-3 flex-1">
+                          <div 
+                            className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                            style={{ background: '#2962FF', color: '#FFFFFF' }}
+                          >
+                            <span className="text-xs font-black">{usuario.avatar}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-black text-gray-900 truncate">{usuario.nombre}</p>
+                            <p className="text-xs text-gray-600 truncate">{usuario.cargo}</p>
+                            <p className="text-xs text-gray-500 truncate flex items-center gap-1">
+                              <Mail className="w-3 h-3" />
+                              {usuario.email}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Opciones de envío */}
@@ -257,7 +355,7 @@ export function ModalNotificar({ isOpen, onClose, expediente }: ModalNotificarPr
                 <Checkbox
                   id="email"
                   checked={enviarPorEmail}
-                  onCheckedChange={(checked) => setEnviarPorEmail(checked as boolean)}
+                  onCheckedChange={(checked: boolean) => setEnviarPorEmail(checked)}
                 />
                 <Label htmlFor="email" className="text-sm font-semibold text-gray-700 cursor-pointer">
                   📧 Enviar por correo electrónico
@@ -267,20 +365,10 @@ export function ModalNotificar({ isOpen, onClose, expediente }: ModalNotificarPr
                 <Checkbox
                   id="sistema"
                   checked={enviarPorSistema}
-                  onCheckedChange={(checked) => setEnviarPorSistema(checked as boolean)}
+                  onCheckedChange={(checked: boolean) => setEnviarPorSistema(checked)}
                 />
                 <Label htmlFor="sistema" className="text-sm font-semibold text-gray-700 cursor-pointer">
                   🔔 Notificación en el sistema
-                </Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="copia"
-                  checked={conCopiaExpediente}
-                  onCheckedChange={(checked) => setConCopiaExpediente(checked as boolean)}
-                />
-                <Label htmlFor="copia" className="text-sm font-semibold text-gray-700 cursor-pointer">
-                  📎 Adjuntar resumen del expediente
                 </Label>
               </div>
             </div>

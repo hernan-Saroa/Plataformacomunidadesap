@@ -10,8 +10,9 @@ import {
   IsArray,
   IsBoolean,
   IsUUID,
+  IsIn,
 } from 'class-validator';
-import { TipoAuditoria, FaseAuditoria, PrioridadAuditoria } from '../entities/auditoria.entity';
+import { TipoAuditoria, FaseAuditoria, PrioridadAuditoria, EstadoKanban } from '../entities/auditoria.entity';
 
 export class CreateAuditoriaDto {
   @IsString()
@@ -42,13 +43,36 @@ export class CreateAuditoriaDto {
   @IsNotEmpty()
   responsable: string;
 
+  // ═══════════════════════════════════════════════════════════════════
+  // CRONOGRAMA DE 3 ETAPAS: Planeación → Ejecución → Comunicación
+  // ═══════════════════════════════════════════════════════════════════
+  
+  // ETAPA 1: PLANEACIÓN
   @IsDateString()
   @IsNotEmpty()
-  fechaInicio: string;
+  fechaInicio: string; // Inicio de Planeación (= fechaInicioPlaneacion)
+
+  @IsDateString()
+  @IsOptional()
+  fechaFinPlaneacion?: string; // Fin de Planeación
+
+  // ETAPA 2: EJECUCIÓN
+  @IsDateString()
+  @IsOptional()
+  fechaInicioEjecucion?: string; // Inicio de Ejecución
+
+  @IsDateString()
+  @IsOptional()
+  fechaFinEjecucion?: string; // Fin de Ejecución
+
+  // ETAPA 3: COMUNICACIÓN
+  @IsDateString()
+  @IsOptional()
+  fechaInicioComunicacion?: string; // Inicio de Comunicación
 
   @IsDateString()
   @IsNotEmpty()
-  fechaFin: string;
+  fechaFin: string; // Fin de Comunicación (fin de auditoría) = fechaFinComunicacion
 
   @IsInt()
   @Min(0)
@@ -148,6 +172,15 @@ export class CreateAuditoriaDto {
   // Metadata del programa anual (periodicidad, vinculación, hitos, etc.)
   @IsOptional()
   programaAnualMetadata?: any;
+
+  /** ID de la actividad del plan anual (UUID). Si se envía valor no-UUID, se ignora. */
+  @IsOptional()
+  actividadPlanAnualId?: string;
+
+  // Estado inicial del Kanban (cualquier string, se valida contra etapas del tablero en el servicio)
+  @IsOptional()
+  @IsString()
+  estadoKanban?: string;
 }
 
 

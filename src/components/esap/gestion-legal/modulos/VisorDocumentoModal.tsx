@@ -10,10 +10,11 @@ import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import {
-  X, FileText, Eye, AlertCircle, ZoomIn, ZoomOut
+  X, FileText, Eye, AlertCircle, ZoomIn, ZoomOut, Download
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner@2.0.3';
+import { isViewableInBrowser, getFileTypeCategory } from '../../../../utils/fileUtils';
 
 interface VisorDocumentoModalProps {
   isOpen: boolean;
@@ -39,11 +40,14 @@ export function VisorDocumentoModal({
   useEffect(() => {
     if (archivo) {
       const isMock = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:');
-      // Si es un archivo mock, no necesitamos esperar 'load' event del iframe/img
-      setIsLoading(!isMock);
+
+      const nombreParaExtension = (numero || archivo || '').toLowerCase();
+      const isViewable = nombreParaExtension.match(/\.(pdf|jpg|jpeg|png|gif|webp)/i) || archivo.match(/\.(pdf|jpg|jpeg|png|gif|webp)/i);
+
+      setIsLoading(!isMock && isViewable !== null);
       setHasError(false);
     }
-  }, [archivo]);
+  }, [archivo, numero]);
 
   if (!archivo || !numero) {
     return null;
@@ -170,9 +174,10 @@ export function VisorDocumentoModal({
           {/* PDF/Image viewer */}
           {archivo && (
             (() => {
-              const extension = archivo.split('.').pop()?.toLowerCase();
-              const isPdf = extension === 'pdf' || archivo.includes('pdf') || archivo.includes('.pdf');
-              const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '') || archivo.match(/\.(jpg|jpeg|png|gif|webp)/i);
+              const nombreParaExtension = (numero || archivo || '').toLowerCase();
+              const extension = nombreParaExtension.split('.').pop()?.toLowerCase();
+              const isPdf = extension === 'pdf' || archivo.includes('pdf') || archivo.includes('.pdf') || nombreParaExtension.includes('.pdf');
+              const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '') || archivo.match(/\.(jpg|jpeg|png|gif|webp)/i) || nombreParaExtension.match(/\.(jpg|jpeg|png|gif|webp)/i);
 
               // MODO SIMULADO: Si es un PDF mock (sin URL real), mostramos un documento HTML simulado
               // Esto evita que se cargue la app recursivamente en el iframe (error "mini ventana web")
@@ -308,14 +313,24 @@ export function VisorDocumentoModal({
                   </div>
                 );
               } else {
+                // Non-viewable file type (Word, Excel, etc.)
+                const fileCategory = getFileTypeCategory(archivo);
                 return (
                   <div className="flex items-center justify-center h-full">
-                    <div className="text-center p-10 bg-white rounded-lg shadow-md">
-                      <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                    <div className="text-center p-10 bg-white rounded-lg shadow-md max-w-md">
+                      <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                       <h3 className="text-lg font-bold text-gray-700 mb-2">Vista previa no disponible</h3>
-                      <p className="text-gray-500">
-                        Este tipo de archivo no se puede visualizar directamente.
+                      <p className="text-gray-500 mb-4">
+                        Los archivos de tipo <strong>{fileCategory}</strong> no se pueden visualizar directamente en el navegador.
                       </p>
+                      <a
+                        href={archivo}
+                        download
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors"
+                      >
+                        <Download className="w-5 h-5" />
+                        Descargar Archivo
+                      </a>
                     </div>
                   </div>
                 );

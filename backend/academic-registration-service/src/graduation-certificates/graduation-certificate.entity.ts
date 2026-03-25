@@ -128,9 +128,6 @@ export class GraduationCertificate {
   )
   validations: CertificateValidation[];
 
-  @OneToMany(
-    () => CertificateDownload,
-    (download) => download.certificate,
-  )
+  @OneToMany(() => CertificateDownload, (download) => download.certificate)
   downloads: CertificateDownload[];
 }

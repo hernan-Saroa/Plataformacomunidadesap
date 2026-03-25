@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Body } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Body, Param } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StageConfiguration } from '../entities/stage-configuration.entity';
@@ -41,7 +41,19 @@ export class ConfigurationController {
 
     @Get('stages')
     async getStageConfigs() {
-        return this.stageConfigRepo.find();
+        return this.stageConfigRepo.find({ order: { orden: 'ASC' } });
+    }
+
+    @Post('stages')
+    async createStage(@Body() config: Partial<StageConfiguration>) {
+        const newStage = this.stageConfigRepo.create(config);
+        return this.stageConfigRepo.save(newStage);
+    }
+
+    @Delete('stages/:id')
+    async deleteStage(id: string) {
+        await this.stageConfigRepo.delete(id);
+        return { message: 'Stage deleted' };
     }
 
     @Put('stages')
@@ -102,8 +114,10 @@ export class ConfigurationController {
                 // Update existing
                 existing.etapa = config.etapa;
                 existing.diasHabiles = config.diasHabiles;
+                existing.color = config.color;
                 existing.descripcion = config.descripcion;
                 existing.activo = config.activo;
+                existing.orden = config.orden;
                 savedConfigs.push(await this.stageConfigRepo.save(existing));
             } else {
                 // Create new (ensure we don't pass the temp ID)
@@ -192,13 +206,13 @@ export class ConfigurationController {
         const stagesCount = await this.stageConfigRepo.count();
         if (stagesCount === 0) {
             const defaults = [
-                { etapa: 'RECEPCION', diasHabiles: 3, descripcion: 'Recepción de la noticia', activo: true },
-                { etapa: 'VALORACION', diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
-                { etapa: 'INDAGACION_PREVIA', diasHabiles: 40, descripcion: 'Indagación previa', activo: true },
-                { etapa: 'INVESTIGACION', diasHabiles: 60, descripcion: 'Investigación disciplinaria', activo: true },
-                { etapa: 'EVALUACION', diasHabiles: 10, descripcion: 'Evaluación de investigación', activo: true },
-                { etapa: 'JUZGAMIENTO', diasHabiles: 50, descripcion: 'Etapa de juzgamiento', activo: true },
-                { etapa: 'SEGUNDA_INSTANCIA', diasHabiles: 10, descripcion: 'Segunda instancia', activo: true },
+                { etapa: 'RECEPCION', diasHabiles: 3, color: '#6B7280', descripcion: 'Recepción de la noticia', activo: true, orden: 1 },
+                { etapa: 'VALORACION', diasHabiles: 10, color: '#6B7280', descripcion: 'Valoración inicial', activo: true, orden: 2 },
+                { etapa: 'INDAGACION_PREVIA', diasHabiles: 40, color: '#6B7280', descripcion: 'Indagación previa', activo: true, orden: 3 },
+                { etapa: 'INVESTIGACION', diasHabiles: 60, color: '#003DA5', descripcion: 'Investigación disciplinaria', activo: true, orden: 4 },
+                { etapa: 'EVALUACION', diasHabiles: 10, color: '#6B7280', descripcion: 'Evaluación de investigación', activo: true, orden: 5 },
+                { etapa: 'JUZGAMIENTO', diasHabiles: 50, color: '#6B7280', descripcion: 'Etapa de juzgamiento', activo: true, orden: 6 },
+                { etapa: 'SEGUNDA_INSTANCIA', diasHabiles: 10, color: '#6B7280', descripcion: 'Segunda instancia', activo: true, orden: 7 },
             ];
             await this.stageConfigRepo.save(defaults);
         }

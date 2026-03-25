@@ -37,6 +37,22 @@ export class ItemListaChequeo {
   @Column({ type: 'integer', default: 0 })
   orden: number;
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CAMPOS DE ESTADO DE COMPLETADO (para persistencia en Kanban)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Column({ type: 'boolean', default: false })
+  completado: boolean;
+
+  @Column({ name: 'fecha_completado', type: 'timestamp', nullable: true })
+  fechaCompletado: Date | null;
+
+  @Column({ name: 'completado_por', type: 'varchar', length: 255, nullable: true })
+  completadoPor: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  observaciones: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

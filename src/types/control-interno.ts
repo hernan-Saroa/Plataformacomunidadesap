@@ -504,6 +504,44 @@ export interface ProcesoAuditable {
   ultimaAuditoria?: string;
   proximaAuditoria?: string;
   prioridad: number;
+  // ✅ Campos de evaluación DAFP para el formulario
+  evaluacionInicial?: EvaluacionInicial;
+  evaluacionDafp?: EvaluacionDafpCompleta;
+  auditable?: boolean;
+}
+
+// ✅ Tipos para evaluación inicial (metodología Decreto 648)
+export interface EvaluacionInicial {
+  p1_cambiosNormativos: number;
+  p2_cambiosEstructurales: number;
+  p3_antecedentes: number;
+  p4_criticidad: number;
+  p5_presupuesto: number;
+  p6_impactoReputacional: number;
+  p7_interes: number;
+  scoreRiesgo: number;
+  nivelRiesgo: string;
+  frecuenciaSugerida: string;
+  horasEstimadas: number;
+  fechaEvaluacion: string;
+}
+
+// ✅ Tipos para evaluación DAFP completa
+export interface EvaluacionDafpCompleta {
+  riesgosExtremos: number;
+  riesgosAltos: number;
+  riesgosModerados: number;
+  riesgosBajos: number;
+  totalRiesgos: number;
+  requerimientoComite: boolean;
+  requerimientoEntesReg: boolean;
+  fechaUltimaAuditoria?: string;
+  resultadoUltimaAuditoria: string;
+  ponderacionRiesgo?: string;
+  decisionFinal?: string;
+  motivoDecision?: string;
+  prioridadRegla?: number;
+  observaciones?: string;
 }
 
 export interface EvaluacionRiesgo {

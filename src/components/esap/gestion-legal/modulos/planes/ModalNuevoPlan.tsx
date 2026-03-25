@@ -8,6 +8,7 @@ import { Textarea } from '../../../../ui/textarea';
 import { toast } from 'sonner';
 import { legalService } from '../../../../../services/api/legal.service';
 import { FileText, Calendar, Building, User, Info, Target } from 'lucide-react';
+import { useConfiguracionesSIGL } from '../../config/ConfiguracionesSIGLContext';
 
 interface ModalNuevoPlanProps {
     open: boolean;
@@ -16,6 +17,7 @@ interface ModalNuevoPlanProps {
 }
 
 export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps) {
+    const { entesControl } = useConfiguracionesSIGL();
     const [loading, setLoading] = useState(false);
 
     // Data Sources
@@ -119,12 +121,11 @@ export function ModalNuevoPlan({ open, onClose, onSuccess }: ModalNuevoPlanProps
                                         <SelectValue placeholder="Seleccionar ente..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="CONTRALORIA_GENERAL">🏛️ Contraloría General</SelectItem>
-                                        <SelectItem value="PROCURADURIA_GENERAL">⚖️ Procuraduría General</SelectItem>
-                                        <SelectItem value="CONTROL_INTERNO">🔍 Oficina Control Interno</SelectItem>
-                                        <SelectItem value="AUDITORIA_EXTERNA">📋 Auditoría Externa</SelectItem>
-                                        <SelectItem value="RIESGO">⚠️ Riesgo Materializado</SelectItem>
-                                        <SelectItem value="AUTOEVALUACION">🔄 Autoevaluación</SelectItem>
+                                        {entesControl.filter(e => e.activo).map(ente => (
+                                            <SelectItem key={ente.id} value={ente.id}>
+                                                {ente.nombre}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>

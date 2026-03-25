@@ -14,26 +14,23 @@
  * Fecha: 2026-01-03
  */
 
-import type { UserWithSedes } from '../data/mockUsersWithSedes';
-import type {
-  DocentePTA,
-  ResultadoSincronizacion,
-  BusquedaDocente,
-  AprobadorPTA,
-  RutaAprobacion,
-  NivelAprobacion,
-  SituacionAdministrativaIntegrada,
-  NotificacionPersonasPTA,
-  AuditoriaIntegracion
-} from '../types/integracion-personas-pta';
 import {
+  calcularHorasProgramables,
+  MAPEO_ESTADOS,
   esDocente,
   puedeAprobarPTA,
   obtenerNivelAprobacion,
-  obtenerNombreCompleto,
   obtenerSedePrincipal,
-  calcularHorasProgramables,
-  MAPEO_ESTADOS
+  obtenerNombreCompleto,
+  type DocentePTA,
+  type UserWithSedes,
+  type BusquedaDocente,
+  type RutaAprobacion,
+  type NivelAprobacion,
+  type AprobadorPTA,
+  type ResultadoSincronizacion,
+  type AuditoriaIntegracion,
+  type NotificacionPersonasPTA
 } from '../types/integracion-personas-pta';
 import { MOCK_USERS_WITH_SEDES } from '../data/mockUsersWithSedes';
 import { periodParametersService } from './periodParametersService';

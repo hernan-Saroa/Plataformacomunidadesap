@@ -16,6 +16,7 @@ import {
   FileTypeValidator,
   Res,
   HttpException,
+  Inject,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -25,24 +26,30 @@ import {
   ApiConsumes,
 } from '@nestjs/swagger';
 import { ProcessService } from '../services/process.service';
+import { NewsService } from '../services/news.service';
 import {
   CreateDisciplinaryProcessDto,
   DisciplinaryProcessResponseDto,
 } from '../dtos/create-disciplinary-process.dto';
 import { ChangeStageDto } from '../dtos/change-stage.dto';
 import { UpdateDisciplinaryProcessDto } from '../dtos/update-disciplinary-process.dto';
+import { RemitirPorCompetenciaDto, RemisionPorCompetenciaResponseDto } from '../dtos/remitir-competencia.dto';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { StorageService } from '../services/storage.service';
 import type { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 
 @ApiTags('Procesos Disciplinarios')
 @Controller('disciplinary-processes')
 export class ProcessController {
   constructor(
     private processService: ProcessService,
+    private newsService: NewsService,
     private storageService: StorageService,
+    private httpService: HttpService,
   ) { }
 
   /**
@@ -219,12 +226,17 @@ export class ProcessController {
         );
       }
 
-      // Validar tamaño del archivo si se proporciona
-      if (file && file.size > 50 * 1024 * 1024) {
-        throw new HttpException(
-          'El archivo excede el tamaño máximo permitido de 50MB',
-          HttpStatus.BAD_REQUEST,
-        );
+      // Validar tamaño del archivo si se proporciona (10GB para evidencias, 50MB para otros)
+      if (file) {
+        const isEvidencia = body.tipo?.toUpperCase() === 'EVIDENCIA';
+        const maxSize = isEvidencia ? 10 * 1024 * 1024 * 1024 : 50 * 1024 * 1024;
+        
+        if (file.size > maxSize) {
+          throw new HttpException(
+            `El archivo excede el tamaño máximo permitido de ${isEvidencia ? '10GB' : '50MB'}`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
       }
 
       // Obtener proceso para usar su radicado (sin cargar autos para evitar errores)
@@ -258,6 +270,26 @@ export class ProcessController {
         if (tipoDocumento === 'OFICIO' && file.mimetype !== 'application/pdf') {
           throw new HttpException(
             'Solo se permiten archivos PDF para oficios',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        // Validar tipo de archivo según el tipo de documento
+        const allowedMimeTypes = this.getAllowedMimeTypes(tipoDocumento);
+        if (!allowedMimeTypes.includes(file.mimetype)) {
+          const allowedExtensions = this.getAllowedExtensions(tipoDocumento);
+          throw new HttpException(
+            `Tipo de archivo no permitido para "${tipoDocumento}". Solo se permiten: ${allowedExtensions}`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        // Validar extensión del archivo como respaldo adicional
+        const fileExtension = '.' + file.originalname.split('.').pop()?.toLowerCase();
+        const allowedExtensionsList = this.getAllowedExtensionsList(tipoDocumento);
+        if (!allowedExtensionsList.includes(fileExtension)) {
+          throw new HttpException(
+            `Extensión de archivo no permitida para "${tipoDocumento}". Solo se permiten: ${allowedExtensionsList.join(', ')}`,
             HttpStatus.BAD_REQUEST,
           );
         }
@@ -336,6 +368,207 @@ export class ProcessController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /**
+   * Obtiene los tipos MIME permitidos según el tipo de documento
+   */
+  private getAllowedMimeTypes(tipoDocumento: string): string[] {
+    // Normalizar el tipo a mayúsculas y eliminar acentos
+    const tipoNormalizado = tipoDocumento?.toUpperCase() || '';
+    const tipoSinAcentos = tipoNormalizado
+      .replace(/Á/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I').replace(/Ó/g, 'O').replace(/Ú/g, 'U')
+      .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u');
+    
+    const tiposPermitidos: Record<string, string[]> = {
+      // Evidencias: HTML, PDF, Word, Excel, Imágenes, Videos
+      'EVIDENCIA': [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/html',
+        'image/jpeg',
+        'image/png',
+        'image/jpg',
+        'image/gif',
+        'image/webp',
+        'video/mp4',
+        'video/webm',
+        'video/quicktime',
+        'video/x-msvideo',
+      ],
+      // Evidencia alternativa
+      'PRUEBA DOCUMENTAL': [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/html',
+        'image/jpeg',
+        'image/png',
+        'image/jpg',
+        'image/gif',
+        'image/webp',
+        'video/mp4',
+        'video/webm',
+        'video/quicktime',
+        'video/x-msvideo',
+      ],
+      // Auto: Solo PDF
+      'AUTO': [
+        'application/pdf',
+      ],
+      // Oficio: Solo PDF
+      'OFICIO': [
+        'application/pdf',
+      ],
+      // Notificación: PDF, Word, Excel
+      'NOTIFICACION': [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ],
+      // Acta: PDF, Word, Excel
+      'ACTA': [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ],
+      // Declaración: PDF, Word, Excel
+      'DECLARACION': [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ],
+      // Otros: PDF, Word, Excel
+      'default': [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ],
+    };
+
+    // Mapear tipos del frontend a los tipos de validación
+    if (tipoSinAcentos === 'EVIDENCIA' || tipoSinAcentos === 'PRUEBA DOCUMENTAL') {
+      return tiposPermitidos['EVIDENCIA'];
+    }
+    if (tipoSinAcentos === 'AUTO') {
+      return tiposPermitidos['AUTO'];
+    }
+    if (tipoSinAcentos === 'OFICIO') {
+      return tiposPermitidos['OFICIO'];
+    }
+    if (tipoSinAcentos === 'NOTIFICACION' || tipoSinAcentos === 'NOTIFICACIÓN') {
+      return tiposPermitidos['NOTIFICACION'];
+    }
+    if (tipoSinAcentos === 'ACTA') {
+      return tiposPermitidos['ACTA'];
+    }
+    if (tipoSinAcentos === 'DECLARACION' || tipoSinAcentos === 'DECLARACIÓN') {
+      return tiposPermitidos['DECLARACION'];
+    }
+    
+    return tiposPermitidos['default'];
+  }
+
+  /**
+   * Obtiene las extensiones permitidas según el tipo de documento
+   */
+  private getAllowedExtensions(tipoDocumento: string): string {
+    // Normalizar el tipo
+    const tipoNormalizado = tipoDocumento?.toUpperCase() || '';
+    const tipoSinAcentos = tipoNormalizado
+      .replace(/Á/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I').replace(/Ó/g, 'O').replace(/Ú/g, 'U')
+      .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u');
+
+    const extensiones: Record<string, string> = {
+      'EVIDENCIA': 'PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP), Videos (MP4, WebM, MOV, AVI)',
+      'PRUEBA DOCUMENTAL': 'PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP), Videos (MP4, WebM, MOV, AVI)',
+      'AUTO': 'Solo PDF',
+      'OFICIO': 'Solo PDF',
+      'NOTIFICACION': 'PDF, Word, Excel',
+      'NOTIFICACIÓN': 'PDF, Word, Excel',
+      'ACTA': 'PDF, Word, Excel',
+      'DECLARACION': 'PDF, Word, Excel',
+      'DECLARACIÓN': 'PDF, Word, Excel',
+      'default': 'PDF, Word, Excel',
+    };
+
+    if (tipoSinAcentos === 'EVIDENCIA' || tipoSinAcentos === 'PRUEBA DOCUMENTAL') {
+      return extensiones['EVIDENCIA'];
+    }
+    if (tipoSinAcentos === 'AUTO') {
+      return extensiones['AUTO'];
+    }
+    if (tipoSinAcentos === 'OFICIO') {
+      return extensiones['OFICIO'];
+    }
+    if (tipoSinAcentos === 'NOTIFICACION' || tipoSinAcentos === 'NOTIFICACIÓN') {
+      return extensiones['NOTIFICACION'];
+    }
+    if (tipoSinAcentos === 'ACTA') {
+      return extensiones['ACTA'];
+    }
+    if (tipoSinAcentos === 'DECLARACION' || tipoSinAcentos === 'DECLARACIÓN') {
+      return extensiones['DECLARACION'];
+    }
+    
+    return extensiones['default'];
+  }
+
+  /**
+   * Obtiene la lista de extensiones permitidas como array
+   */
+  private getAllowedExtensionsList(tipoDocumento: string): string[] {
+    const tipoNormalizado = tipoDocumento?.toUpperCase() || '';
+    const tipoSinAcentos = tipoNormalizado
+      .replace(/Á/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I').replace(/Ó/g, 'O').replace(/Ú/g, 'U')
+      .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u');
+
+    const extensionesLista: Record<string, string[]> = {
+      'EVIDENCIA': ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov', '.avi'],
+      'PRUEBA DOCUMENTAL': ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov', '.avi'],
+      'AUTO': ['.pdf'],
+      'OFICIO': ['.pdf'],
+      'NOTIFICACION': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
+      'NOTIFICACIÓN': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
+      'ACTA': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
+      'DECLARACION': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
+      'DECLARACIÓN': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
+      'default': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
+    };
+
+    if (tipoSinAcentos === 'EVIDENCIA' || tipoSinAcentos === 'PRUEBA DOCUMENTAL') {
+      return extensionesLista['EVIDENCIA'];
+    }
+    if (tipoSinAcentos === 'AUTO') {
+      return extensionesLista['AUTO'];
+    }
+    if (tipoSinAcentos === 'OFICIO') {
+      return extensionesLista['OFICIO'];
+    }
+    if (tipoSinAcentos === 'NOTIFICACION' || tipoSinAcentos === 'NOTIFICACIÓN') {
+      return extensionesLista['NOTIFICACION'];
+    }
+    if (tipoSinAcentos === 'ACTA') {
+      return extensionesLista['ACTA'];
+    }
+    if (tipoSinAcentos === 'DECLARACION' || tipoSinAcentos === 'DECLARACIÓN') {
+      return extensionesLista['DECLARACION'];
+    }
+    
+    return extensionesLista['default'];
   }
 
   /**
@@ -547,16 +780,33 @@ export class ProcessController {
       throw new HttpException('Archivo no encontrado en el servidor', HttpStatus.NOT_FOUND);
     }
 
-    // Si es para visualización, enviar con content-type adecuado
+    // Obtener el nombre original del archivo para la cabecera Content-Disposition
+    const nombreArchivo = documento.filename || documento.nombreDocumento || 'documento';
+
+    // Si es para visualización, enviar con content-type adecuado y disposition inline
     if (view === 'true') {
       const mimeType = documento.fileType || 'application/octet-stream';
-      res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', `inline; filename="${documento.filename}"`);
+      
+      // Codificar el nombre del archivo para UTF-8 (RFC 5987)
+      const encodedFilename = encodeURIComponent(nombreArchivo);
+      const filenameStar = `filename*=UTF-8''${encodedFilename}`;
+
+      res.setHeader('Content-Type', `${mimeType}; charset=utf-8`);
+      res.setHeader('Content-Disposition', `inline; filename="${nombreArchivo}"; ${filenameStar}`);
+      
       const fileStream = fs.createReadStream(rutaCompleta);
       fileStream.pipe(res);
     } else {
-      // Descarga normal
-      res.download(rutaCompleta, documento.filename);
+      // Descarga normal con cabecera Content-Disposition attachment
+      // Codificar el nombre del archivo para UTF-8 (RFC 5987)
+      const encodedFilename = encodeURIComponent(nombreArchivo);
+      const filenameStar = `filename*=UTF-8''${encodedFilename}`;
+
+      res.setHeader('Content-Type', 'application/octet-stream; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"; ${filenameStar}`);
+      
+      const fileStream = fs.createReadStream(rutaCompleta);
+      fileStream.pipe(res);
     }
   }
 
@@ -656,5 +906,209 @@ export class ProcessController {
   @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
   async delete(@Param('id') id: string): Promise<void> {
     return await this.processService.delete(id);
+  }
+
+  /**
+   * Remitir noticia por competencia a otra entidad
+   * Envía un correo con toda la información de la noticia a la entidad destinataria
+   */
+  @Post('remitir-competencia')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Remitir por Competencia',
+    description: 'Envía la información de una noticia disciplinaria por correo a otra entidad por falta de competencia',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Correo enviado exitosamente',
+    type: RemisionPorCompetenciaResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Datos inválidos' })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async remitirPorCompetencia(
+    @Body() dto: RemitirPorCompetenciaDto,
+  ): Promise<RemisionPorCompetenciaResponseDto> {
+    try {
+      console.log('📧 [RemitirCompetencia] Iniciando remisión por competencia...');
+      console.log('📧 [RemitirCompetencia] Datos recibidos:', JSON.stringify(dto, null, 2));
+
+      // 1. Obtener la noticia
+      const noticia = await this.newsService.findById(dto.newsId);
+      console.log('📧 [RemitirCompetencia] Noticia encontrada:', noticia.radicado);
+
+      // 2. Usar la descripción proporcionada o construir desde la noticia
+      const descripcionRemision = dto.descripcion || {
+        numeroRadicado: noticia.radicado,
+        origen: noticia.origen,
+        fechaRecepcion: new Date(noticia.fechaRecepcion).toISOString(),
+        territorial: noticia.territorial,
+        dependenciaDenunciado: noticia.dependenciaDenunciado,
+        denunciante: typeof noticia.denunciante === 'string' 
+          ? JSON.parse(noticia.denunciante) 
+          : noticia.denunciante,
+        disciplinable: typeof noticia.disciplinable === 'string' 
+          ? JSON.parse(noticia.disciplinable) 
+          : noticia.disciplinable,
+        hechos: noticia.hechos,
+        conductas: noticia.conductas,
+      };
+
+      // 3. Construir el contenido HTML del correo
+      const emailHtml = this.newsService.buildRemisionEmailContent(
+        noticia,
+        dto.entidadDestino,
+        dto.justificacion,
+        descripcionRemision,
+      );
+      console.log('📧 [RemitirCompetencia] HTML del correo construido');
+
+      // 4. Enviar el correo usando el servicio de notificaciones
+      const notificationsServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
+      console.log('📧 [RemitirCompetencia] URL del servicio de notificaciones:', notificationsServiceUrl);
+
+      const emailPayload = {
+        to: dto.emailDestinatario,
+        subject: `Remisión por Competencia - Noticia Disciplinaria ${dto.radicado || noticia.radicado}`,
+        text: `Se remite la noticia disciplinaria ${dto.radicado || noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
+        html: emailHtml,
+      };
+
+      console.log('📧 [RemitirCompetencia] Enviando correo a:', dto.emailDestinatario);
+
+      const response = await firstValueFrom(
+        this.httpService.post(`${notificationsServiceUrl}/api/v1/emails/send`, emailPayload),
+      );
+
+      console.log('📧 [RemitirCompetencia] Respuesta del servicio de notificaciones:', response.data);
+
+      // 5. Generar número RC
+      const anio = new Date().getFullYear();
+      const consecutivo = String(Math.floor(Math.random() * 9000) + 1000);
+      const numeroRC = `RC-${anio}-${consecutivo}`;
+
+      // 6. Actualizar la noticia con el estado de REMITIDA y los datos de remisión
+      // Incluir la descripción detallada en la misma llamada
+      console.log('📧 [RemitirCompetencia] Actualizando noticia a estado REMITIDA...');
+      await this.newsService.remitirNoticia(
+        dto.newsId,
+        {
+          numeroRC,
+          entidadRemision: dto.entidadDestino,
+          correoEntidadRemision: dto.emailDestinatario,
+          fechaRemision: new Date(),
+          tipoRemision: dto.tipoRemision || 'sin-competencia',
+          justificacionRemision: dto.justificacion,
+        },
+        descripcionRemision,
+      );
+
+      // 8. Registrar la remisión en el historial de la noticia
+      const historyEntry = {
+        id: Date.now().toString(),
+        tipo: 'remision_competencia',
+        usuario: dto.usuarioRemision || 'Sistema',
+        fecha: new Date().toISOString(),
+        observaciones: `Remisión a ${dto.entidadDestino} (${dto.emailDestinatario}). Número RC: ${numeroRC}. Justificación: ${dto.justificacion}`,
+        resultado: 'enviado',
+        descripcion: descripcionRemision,
+      };
+
+      // Actualizar el historial de la noticia
+      await this.newsService.updateHistory(dto.newsId, historyEntry);
+
+      // Actualizar el historial de la noticia
+      await this.newsService.updateHistory(dto.newsId, historyEntry);
+
+      return {
+        success: true,
+        message: 'Correo enviado exitosamente',
+        newsId: dto.newsId,
+        emailEnviado: dto.emailDestinatario,
+        fechaRemision: new Date(),
+      };
+    } catch (error) {
+      console.error('❌ [RemitirCompetencia] Error al enviar correo:', error);
+      console.error('❌ [RemitirCompetencia] Stack:', error.stack);
+
+      // Registrar el intento fallido
+      try {
+        const historyEntry = {
+          id: Date.now().toString(),
+          tipo: 'remision_competencia',
+          usuario: dto.usuarioRemision || 'Sistema',
+          fecha: new Date().toISOString(),
+          observaciones: `Intento de remisión a ${dto.entidadDestino} fallido. Error: ${error.message}`,
+          resultado: 'error',
+        };
+        await this.newsService.updateHistory(dto.newsId, historyEntry);
+      } catch (historyError) {
+        console.error('❌ [RemitirCompetencia] Error al registrar historial:', historyError);
+      }
+
+      throw new HttpException(
+        `Error al remitir por competencia: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * ✅ NUEVO: Asociar un proceso disciplinario a otro proceso
+   */
+  @Post(':id/associate-process')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Asociar Proceso a Otro Proceso',
+    description: 'Asocia un proceso disciplinario a otro proceso existente (conexo, similar o consolidado)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Proceso asociado exitosamente',
+  })
+  @ApiResponse({ status: 400, description: 'Datos inválidos o proceso no puede asociarse a sí mismo' })
+  @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
+  async associateProcess(
+    @Param('id') procesoOrigenId: string,
+    @Body() body: {
+      procesoDestinoId: string;
+      tipoAsociacion: 'conexo' | 'similar' | 'consolidado';
+      justificacion: string;
+    },
+  ) {
+    try {
+      console.log('🔗 [AssociateProcess] Asociando proceso:', {
+        procesoOrigenId,
+        procesoDestinoId: body.procesoDestinoId,
+        tipoAsociacion: body.tipoAsociacion,
+      });
+
+      const proceso = await this.processService.associateProcess(
+        procesoOrigenId,
+        body.procesoDestinoId,
+        body.tipoAsociacion,
+        body.justificacion,
+      );
+
+      console.log('✅ [AssociateProcess] Proceso asociado exitosamente:', proceso.id);
+
+      return {
+        success: true,
+        message: 'Proceso asociado exitosamente',
+        proceso: {
+          id: proceso.id,
+          radicadoProceso: proceso.radicadoProceso,
+          procesoAsociadoId: proceso.procesoAsociadoId,
+          procesoAsociadoNumero: proceso.procesoAsociadoNumero,
+          procesoAsociadoTipo: proceso.procesoAsociadoTipo,
+          procesoAsociadoFecha: proceso.procesoAsociadoFecha,
+        },
+      };
+    } catch (error) {
+      console.error('❌ [AssociateProcess] Error:', error);
+      throw new HttpException(
+        `Error al asociar proceso: ${error.message}`,
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }

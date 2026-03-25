@@ -1,19 +1,19 @@
 /**
- * SISTEMA DE COMENTARIOS - CONTROL INTERNO DISCIPLINARIO
- * Permite agregar comentarios en cada fase del proceso para trazabilidad
+ * SISTEMA DE COMUNICACIONES DEL PROCESO - CONTROL INTERNO DISCIPLINARIO
+ * Diseño actualizado tipo chat alineado con el estándar ESAP (SIGL v5.0)
  */
-
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { legalService } from '../../../services/api/legal.service';
 import {
   MessageCircle, Send, Pin, AlertCircle, Info, CheckCircle,
   User, Clock, X, Edit2, Trash2, Flag, Search, Filter,
   FileText, Scale, Users, Calendar, Tag, ChevronDown, ChevronUp,
-  Paperclip, Download, History
+  Paperclip, Download, History, Smile, AtSign, Hash,
 } from 'lucide-react';
-import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
+import { Card } from '../../ui/card';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -22,7 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogAction,
-  AlertDialogCancel
+  AlertDialogCancel,
 } from '../../ui/alert-dialog';
 import { toast } from 'sonner@2.0.3';
 
@@ -30,6 +30,7 @@ interface Persona {
   nombre: string;
   tipoIdentificacion: 'CC' | 'CE' | 'TI' | 'PA' | 'NIT';
   numeroIdentificacion: string;
+  cargo?: string;
 }
 
 interface ComentarioAdjunto {
@@ -61,40 +62,13 @@ interface SistemaComentariosProps {
   profesionalActual: Persona;
 }
 
-export function SistemaComentarios({ 
+export function SistemaComentarios({
   procesoId,
-  numeroProceso, 
+  numeroProceso,
   etapaActual,
   comentariosIniciales = [],
-  profesionalActual 
+  profesionalActual
 }: SistemaComentariosProps) {
-  const STORAGE_PREFIX = 'disciplinario-comentarios:';
-  const getUserKey = () => {
-    try {
-      const rawSesion = localStorage.getItem('esap-sesion-activa');
-      if (rawSesion) {
-        const sesion = JSON.parse(rawSesion);
-        const usuario = sesion?.usuario || {};
-        return usuario.id || usuario.email || 'anon';
-      }
-    } catch (e) {
-      console.warn('No se pudo leer sesion activa', e);
-    }
-    try {
-      const rawUser = localStorage.getItem('esap_user_data');
-      if (rawUser) {
-        const data = JSON.parse(rawUser);
-        return data.personId || data.email || data.name || 'anon';
-      }
-    } catch (e) {
-      console.warn('No se pudo leer user_data', e);
-    }
-    return 'anon';
-  };
-
-  const userKey = getUserKey();
-  const storageKey = `${STORAGE_PREFIX}${procesoId}:${userKey}`;
-  const legacyStorageKey = `${STORAGE_PREFIX}${procesoId}`;
 
   const getAutorActual = (): Persona => {
     try {
@@ -116,54 +90,8 @@ export function SistemaComentarios({
     return profesionalActual;
   };
 
-  const loadPersistedComments = () => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : [];
-      }
-      const legacyRaw = localStorage.getItem(legacyStorageKey);
-      if (legacyRaw) {
-        const parsedLegacy = JSON.parse(legacyRaw);
-        const legacy = Array.isArray(parsedLegacy) ? parsedLegacy : [];
-        localStorage.setItem(storageKey, JSON.stringify(legacy));
-        return legacy;
-      }
-      return [];
-    } catch (e) {
-      console.warn('No se pudieron leer comentarios persistidos', e);
-      return [];
-    }
-  };
-
-  const [comentarios, setComentarios] = useState<Comentario[]>(() => {
-    const persisted = loadPersistedComments();
-    if (persisted.length > 0) return persisted;
-    return comentariosIniciales;
-  });
-  
-  const [nuevoComentario, setNuevoComentario] = useState('');
-  const [tipoSeleccionado, setTipoSeleccionado] = useState<'normal' | 'importante' | 'guia' | 'alerta' | 'sistema'>('normal');
-  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState<'juridico' | 'administrativo' | 'probatorio' | 'general'>('general');
-  const [mostrarFormulario, setMostrarFormulario] = useState(false);
-  const [filtroEtapa, setFiltroEtapa] = useState<string>('todas');
-  const [filtroTipo, setFiltroTipo] = useState<string>('todos');
-  const [filtroCategoria, setFiltroCategoria] = useState<string>('todas');
-  const [filtroFijados, setFiltroFijados] = useState<'todos' | 'fijados' | 'no-fijados'>('todos');
-  const [comentarioParaEliminar, setComentarioParaEliminar] = useState<Comentario | null>(null);
-  const [mostrarFiltros, setMostrarFiltros] = useState(false);
-  const [busqueda, setBusqueda] = useState('');
-  const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
-  const MAX_FILE_SIZE = 10 * 1024 * 1024;
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(comentarios));
-    } catch (e) {
-      console.warn('No se pudieron guardar comentarios persistidos', e);
-    }
-  }, [comentarios, storageKey]);
+  const [comentarios, setComentarios] = useState<Comentario[]>(comentariosIniciales);
+  const [cargando, setCargando] = useState(false);
 
   const formatFileSize = (size: number) => {
     if (size >= 1024 * 1024) {
@@ -190,16 +118,17 @@ export function SistemaComentarios({
     reader.readAsDataURL(file);
   });
 
-  const etapas = [
-    'Recepción',
-    'Indagación Previa',
-    'Valoración',
-    'Indagación Preliminar',
-    'Investigación',
-    'Pliego de Cargos',
-    'Descargos',
-    'Evaluación'
-  ];
+  const [etiquetaSeleccionada, setEtiquetaSeleccionada] = useState<string | null>(null);
+  const [mostrarAdjuntos, setMostrarAdjuntos] = useState(false);
+
+  // Obtener iniciales del nombre
+  const getInitials = (nombre: string) => {
+    const parts = nombre.split(' ');
+    if (parts.length >= 2) {
+      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    }
+    return nombre.substring(0, 2).toUpperCase();
+  };
 
   const tiposComentario = [
     { id: 'normal', nombre: 'Normal', color: '#6B7280', icon: MessageCircle },
@@ -216,10 +145,53 @@ export function SistemaComentarios({
     { id: 'probatorio', nombre: 'Probatorio', icon: Users }
   ];
 
+  const getAvatarColor = (tipo: string) => {
+    switch (tipo) {
+      case 'importante':
+        return { bg: '#FEE2E2', text: '#DC2626' };
+      case 'alerta':
+        return { bg: '#FEF3C7', text: '#D97706' };
+      case 'guia':
+        return { bg: '#DBEAFE', text: '#2563EB' };
+      default:
+        return { bg: '#E0EDFF', text: '#003DA5' };
+    }
+  };
+
+  // ===== Cargar comentarios del backend =====
+  useEffect(() => {
+    if (!procesoId) return;
+    setCargando(true);
+    legalService.getComentariosExpediente(procesoId)
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          const mapped: Comentario[] = data.map((c: any) => ({
+            id: c.id,
+            autor: {
+              nombre: c.autorNombre || c.autor?.nombre || 'Usuario',
+              tipoIdentificacion: c.autor?.tipoIdentificacion || 'CC',
+              numeroIdentificacion: c.autor?.numeroIdentificacion || c.usuarioId || 'N/A',
+            },
+            fecha: c.createdAt ? new Date(c.createdAt).toLocaleDateString('es-CO') : '',
+            hora: c.createdAt ? new Date(c.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '',
+            etapa: c.etapa || etapaActual,
+            contenido: c.contenido || c.mensaje || '',
+            tipo: c.tipo || 'normal',
+            categoria: c.categoria || 'general',
+          }));
+          setComentarios(mapped);
+        }
+      })
+      .catch(err => {
+        console.warn('No se pudieron cargar comentarios del backend, usando locales', err);
+      })
+      .finally(() => setCargando(false));
+  }, [procesoId]);
+
   const handleAgregarComentario = async () => {
     if (!nuevoComentario.trim()) {
-      toast.error('Error', {
-        description: 'Debes escribir un comentario'
+      toast.error('Comentario vacío', {
+        description: 'Por favor escribe un mensaje antes de enviar'
       });
       return;
     }
@@ -232,49 +204,44 @@ export function SistemaComentarios({
       return;
     }
 
-    const ahora = new Date();
-    let adjuntos: ComentarioAdjunto[] | undefined;
-    if (archivosAdjuntos.length > 0) {
-      try {
-        adjuntos = await Promise.all(archivosAdjuntos.map(async (file) => ({
-          nombre: file.name,
-          size: file.size,
-          type: file.type || 'application/octet-stream',
-          dataUrl: await readFileAsDataUrl(file)
-        })));
-      } catch (error) {
-        console.error('Error leyendo archivos adjuntos', error);
-        toast.error('No se pudieron cargar los archivos adjuntos');
-        return;
+    try {
+      const autor = getAutorActual();
+      await legalService.createComentarioExpediente(procesoId, {
+        contenido: nuevoComentario,
+        tipo: 'normal',
+        autorNombre: autor.nombre,
+      });
+
+      // Refetch from backend
+      const data = await legalService.getComentariosExpediente(procesoId);
+      if (Array.isArray(data)) {
+        const mapped: Comentario[] = data.map((c: any) => ({
+          id: c.id,
+          autor: {
+            nombre: c.autorNombre || c.autor?.nombre || 'Usuario',
+            tipoIdentificacion: c.autor?.tipoIdentificacion || 'CC',
+            numeroIdentificacion: c.autor?.numeroIdentificacion || c.usuarioId || 'N/A',
+          },
+          fecha: c.createdAt ? new Date(c.createdAt).toLocaleDateString('es-CO') : '',
+          hora: c.createdAt ? new Date(c.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '',
+          etapa: c.etapa || etapaActual,
+          contenido: c.contenido || c.mensaje || '',
+          tipo: c.tipo || 'normal',
+          categoria: c.categoria || 'general',
+        }));
+        setComentarios(mapped);
       }
+
+      setNuevoComentario('');
+      setEtiquetaSeleccionada(null);
+
+      toast.success('Comentario agregado', {
+        description: `Se agregó comentario en etapa: ${etapaActual}`
+      });
+    } catch (error) {
+      console.error('Error saving comment:', error);
+      toast.error('Error al guardar el comentario');
     }
-
-    const comentario: Comentario = {
-      id: `c${Date.now()}`,
-      autor: getAutorActual(),
-      fecha: ahora.toISOString().split('T')[0],
-      hora: ahora.toTimeString().split(' ')[0].substring(0, 5),
-      etapa: etapaActual,
-      contenido: nuevoComentario,
-      tipo: tipoSeleccionado,
-      categoria: categoriaSeleccionada,
-      adjuntos,
-      fijado: false,
-      editado: false
-    };
-
-    setComentarios([comentario, ...comentarios]);
-    setNuevoComentario('');
-    setTipoSeleccionado('normal');
-    setCategoriaSeleccionada('general');
-    setArchivosAdjuntos([]);
-    setMostrarFormulario(false);
-
-    toast.success('Comentario agregado', {
-      description: adjuntos 
-        ? `Comentario con ${adjuntos.length} archivo(s) adjunto(s)`
-        : `Se agregó comentario en etapa: ${etapaActual}`
-    });
   };
 
   const handleFijarComentario = (id: string) => {
@@ -290,11 +257,17 @@ export function SistemaComentarios({
   };
 
 
-  const handleEliminarComentario = (id: string) => {
-    setComentarios(comentarios.filter(c => c.id !== id));
-    toast.success('Comentario eliminado', {
-      description: 'El comentario ha sido eliminado permanentemente'
-    });
+  const handleEliminarComentario = async (id: string) => {
+    try {
+      await legalService.deleteComentarioExpediente(id);
+      setComentarios(comentarios.filter(c => c.id !== id));
+      toast.success('Comentario eliminado', {
+        description: 'El comentario ha sido eliminado permanentemente'
+      });
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+      toast.error('Error al eliminar el comentario');
+    }
   };
 
   const handleConfirmarEliminar = () => {
@@ -321,7 +294,7 @@ export function SistemaComentarios({
     return coincideBusqueda && coincideEtapa && coincideTipo && coincideCategoria && coincideFijado;
   });
 
-// Separar fijados y no fijados
+  // Separar fijados y no fijados
   const comentariosFijados = comentariosFiltrados.filter(c => c.fijado);
   const comentariosNormales = comentariosFiltrados.filter(c => !c.fijado);
 
@@ -332,450 +305,242 @@ export function SistemaComentarios({
   function getCategoriaConfig(categoria?: string) {
     return categorias.find(c => c.id === categoria) || categorias[0];
   }
+  const handleResponder = (comentario: Comentario) => {
+    setNuevoComentario(`@${comentario.autor.nombre.split(' ')[0]} `);
+  };
+
+  const handleReaccionar = (comentario: Comentario) => {
+    toast.info('Reacción', {
+      description: 'Función de reacciones disponible próximamente'
+    });
+  };
+
+  const totalComentarios = comentarios.length;
 
   return (
-    <div className="space-y-4">
+    <div className="w-full">
       {/* Header */}
-      <Card className="p-4" style={{ background: 'linear-gradient(135deg, #003DA5 0%, #0056D6 100%)' }}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-white/20">
-              <MessageCircle className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h3 className="font-black text-white">
-                Comentarios del Proceso
-              </h3>
-              <p className="text-xs text-white/80">
-                {numeroProceso} • {comentariosFiltrados.length} comentario(s)
-              </p>
-            </div>
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: '#E0EDFF' }}>
+            <MessageCircle className="w-5 h-5" style={{ color: '#003DA5' }} />
           </div>
-          <Button
-            onClick={() => setMostrarFormulario(!mostrarFormulario)}
-            size="sm"
-            style={{ background: '#FFFFFF', color: '#003DA5' }}
-            className="hover:bg-white/90"
-          >
-            {mostrarFormulario ? (
-              <>
-                <X className="w-4 h-4 mr-2" />
-                Cancelar
-              </>
-            ) : (
-              <>
-                <MessageCircle className="w-4 h-4 mr-2" />
-                Nuevo Comentario
-              </>
-            )}
-          </Button>
-        </div>
-      </Card>
-
-      {/* Formulario de Nuevo Comentario */}
-      <AnimatePresence>
-        {mostrarFormulario && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-          >
-            <Card className="p-4 border-2 border-blue-200 bg-blue-50">
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm font-bold text-gray-700 mb-2 block">
-                    Etapa Actual
-                  </label>
-                  <div className="p-2 bg-white rounded-lg border">
-                    <p className="text-sm font-bold" style={{ color: '#003DA5' }}>
-                      {etapaActual}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm font-bold text-gray-700 mb-2 block">
-                      Tipo de Comentario
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {tiposComentario.map((tipo) => (
-                        <button
-                          key={tipo.id}
-                          onClick={() => setTipoSeleccionado(tipo.id as any)}
-                          className={`p-2 rounded-lg border-2 text-sm font-bold transition-all ${
-                            tipoSeleccionado === tipo.id
-                              ? 'border-current shadow-md'
-                              : 'border-gray-200 hover:border-gray-300'
-                          }`}
-                          style={{
-                            color: tipoSeleccionado === tipo.id ? tipo.color : '#6B7280',
-                            background: tipoSeleccionado === tipo.id ? tipo.color + '10' : '#FFFFFF'
-                          }}
-                        >
-                          <tipo.icon className="w-4 h-4 mx-auto mb-1" />
-                          {tipo.nombre}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-bold text-gray-700 mb-2 block">
-                      Categoría
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {categorias.map((cat) => (
-                        <button
-                          key={cat.id}
-                          onClick={() => setCategoriaSeleccionada(cat.id as any)}
-                          className={`p-2 rounded-lg border-2 text-xs font-bold transition-all ${
-                            categoriaSeleccionada === cat.id
-                              ? 'border-blue-500 bg-blue-50 text-blue-700'
-                              : 'border-gray-200 hover:border-gray-300 text-gray-600'
-                          }`}
-                        >
-                          <cat.icon className="w-3.5 h-3.5 mx-auto mb-1" />
-                          {cat.nombre}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-sm font-bold text-gray-700 mb-2 block">
-                    Contenido del Comentario
-                  </label>
-                  <textarea
-                    value={nuevoComentario}
-                    onChange={(e) => setNuevoComentario(e.target.value)}
-                    placeholder="Escribe tu comentario aquí... Incluye detalles relevantes del proceso, decisiones tomadas, documentos pendientes, términos legales, etc."
-                    className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                    rows={4}
-                  />
-                </div>
-
-                {/* Adjuntar Archivos */}
-                <div>
-                  <label className="text-sm font-bold text-gray-700 mb-2 block">
-                    Archivos Adjuntos (Opcional, max 10 MB c/u)
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="file"
-                      id="file-upload-comentario"
-                      multiple
-                      accept="*/*"
-                      onChange={(e) => {
-                        if (e.target.files) {
-                          const files = Array.from(e.target.files);
-                          const valid: File[] = [];
-                          files.forEach((file) => {
-                            if (file.size > MAX_FILE_SIZE) {
-                              toast.error('Archivo demasiado grande', {
-                                description: `${file.name} supera 10 MB`
-                              });
-                              return;
-                            }
-                            valid.push(file);
-                          });
-                          setArchivosAdjuntos(valid);
-                        }
-                      }}
-                      className="hidden"
-                    />
-                    <label htmlFor="file-upload-comentario">
-                      <div className={`p-4 border-2 border-dashed rounded-lg cursor-pointer transition-all ${
-                        archivosAdjuntos.length > 0
-                          ? 'border-green-500 bg-green-50'
-                          : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
-                      }`}>
-                        <div className="flex items-center gap-3">
-                          {archivosAdjuntos.length > 0 ? (
-                            <>
-                              <Paperclip className="w-5 h-5 text-green-600" />
-                              <div className="flex-1">
-                                <p className="text-sm font-bold text-green-900">
-                                  {archivosAdjuntos.length} archivo(s) seleccionado(s)
-                                </p>
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {archivosAdjuntos.map((file, index) => (
-                                    <Badge 
-                                      key={index}
-                                      variant="outline" 
-                                      className="text-xs bg-white border-green-300 text-green-700"
-                                    >
-                                      {file.name} ({formatFileSize(file.size)})
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </div>
-                              <Button
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setArchivosAdjuntos([]);
-                                  const input = document.getElementById('file-upload-comentario') as HTMLInputElement;
-                                  if (input) input.value = '';
-                                }}
-                                variant="outline"
-                                size="sm"
-                                className="flex-shrink-0"
-                              >
-                                Quitar
-                              </Button>
-                            </>
-                          ) : (
-                            <>
-                              <Paperclip className="w-5 h-5 text-gray-400" />
-                              <div>
-                                <p className="text-sm font-bold text-gray-700">
-                                  Adjuntar documentos
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  Click para seleccionar archivos
-                                </p>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2">
-                  <Button
-                    onClick={() => {
-                      setMostrarFormulario(false);
-                      setNuevoComentario('');
-                      setTipoSeleccionado('normal');
-                      setCategoriaSeleccionada('general');
-                      setArchivosAdjuntos([]);
-                    }}
-                    variant="outline"
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    onClick={handleAgregarComentario}
-                    style={{ background: '#003DA5', color: '#FFFFFF' }}
-                    disabled={!nuevoComentario.trim()}
-                  >
-                    <Send className="w-4 h-4 mr-2" />
-                    Agregar Comentario
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Barra de Búsqueda y Filtros */}
-      <Card className="p-3">
-        <div className="flex gap-2">
-          <div className="flex-1 relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar en comentarios..."
-              className="w-full pl-10 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <Button
-            onClick={() => setMostrarFiltros(!mostrarFiltros)}
-            variant="outline"
-            size="sm"
-          >
-            <Filter className="w-4 h-4 mr-2" />
-            Filtros
-            {mostrarFiltros ? <ChevronUp className="w-4 h-4 ml-2" /> : <ChevronDown className="w-4 h-4 ml-2" />}
-          </Button>
-        </div>
-
-        <AnimatePresence>
-          {mostrarFiltros && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mt-3 pt-3 border-t"
-            >
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-gray-700 mb-2 block">
-                    Filtrar por Etapa
-                  </label>
-                  <select
-                    value={filtroEtapa}
-                    onChange={(e) => setFiltroEtapa(e.target.value)}
-                    className="w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="todas">Todas las etapas</option>
-                    {etapas.map((etapa) => (
-                      <option key={etapa} value={etapa}>{etapa}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-700 mb-2 block">
-                    Filtrar por Tipo
-                  </label>
-                  <select
-                    value={filtroTipo}
-                    onChange={(e) => setFiltroTipo(e.target.value)}
-                    className="w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="todos">Todos los tipos</option>
-                    {tiposComentario.map((tipo) => (
-                      <option key={tipo.id} value={tipo.id}>{tipo.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-700 mb-2 block">
-                    Filtrar por Categoria
-                  </label>
-                  <select
-                    value={filtroCategoria}
-                    onChange={(e) => setFiltroCategoria(e.target.value)}
-                    className="w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="todas">Todas las categorias</option>
-                    {categorias.map((categoria) => (
-                      <option key={categoria.id} value={categoria.id}>{categoria.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-700 mb-2 block">
-                    Filtrar por Fijados
-                  </label>
-                  <select
-                    value={filtroFijados}
-                    onChange={(e) => setFiltroFijados(e.target.value as 'todos' | 'fijados' | 'no-fijados')}
-                    className="w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="todos">Todos</option>
-                    <option value="fijados">Solo fijados</option>
-                    <option value="no-fijados">Sin fijar</option>
-                  </select>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </Card>
-
-      <AlertDialog open={!!comentarioParaEliminar} onOpenChange={(open) => {
-        if (!open) setComentarioParaEliminar(null);
-      }}>
-        <AlertDialogContent className="max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar comentario</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta accion no se puede deshacer. El comentario y sus adjuntos se eliminaran del historial.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {comentarioParaEliminar && (
-            <div className="rounded-lg border bg-gray-50 p-3 text-sm text-gray-700">
-              <p className="font-semibold text-gray-900">{comentarioParaEliminar.autor.nombre}</p>
-              <p className="mt-1 max-h-12 overflow-hidden whitespace-pre-wrap">{comentarioParaEliminar.contenido}</p>
-            </div>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 text-white hover:bg-red-700"
-              onClick={handleConfirmarEliminar}
-            >
-              Eliminar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Lista de Comentarios */}
-      <div className="space-y-3">
-        {/* Comentarios Fijados */}
-        {comentariosFijados.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 px-2">
-              <Pin className="w-4 h-4 text-orange-600" />
-              <p className="text-xs font-bold text-orange-600">COMENTARIOS FIJADOS</p>
-            </div>
-            {comentariosFijados.map((comentario) => (
-              <ComentarioItem
-                key={comentario.id}
-                comentario={comentario}
-                onFijar={handleFijarComentario}
-                onRequestEliminar={setComentarioParaEliminar}
-                getTipoConfig={getTipoConfig}
-                getCategoriaConfig={getCategoriaConfig}
-                getEtapaColor={getEtapaColor}
-                formatFileSize={formatFileSize}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Comentarios Normales */}
-        {comentariosNormales.length > 0 ? (
-          comentariosNormales.map((comentario) => (
-            <ComentarioItem
-              key={comentario.id}
-              comentario={comentario}
-              onFijar={handleFijarComentario}
-              onRequestEliminar={setComentarioParaEliminar}
-              getTipoConfig={getTipoConfig}
-              getCategoriaConfig={getCategoriaConfig}
-              getEtapaColor={getEtapaColor}
-              formatFileSize={formatFileSize}
-            />
-          ))
-        ) : comentariosFijados.length === 0 ? (
-          <Card className="p-8 text-center">
-            <MessageCircle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p className="text-sm text-gray-600">
-              {busqueda || filtroEtapa !== 'todas' || filtroTipo !== 'todos' || filtroCategoria !== 'todas' || filtroFijados !== 'todos'
-                ? 'No se encontraron comentarios con los filtros aplicados'
-                : 'No hay comentarios en este proceso'}
+          <div>
+            <h2 className="text-xl font-bold" style={{ color: '#1F2937' }}>
+              Comunicaciones del Procesoasds
+            </h2>
+            <p className="text-sm" style={{ color: '#6B7280' }}>
+              {numeroProceso}
             </p>
-          </Card>
-        ) : null}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge style={{ background: '#003DA5', color: '#FFFFFF' }}>
+            NOTIFICACIÓN
+          </Badge>
+          <Badge style={{ background: '#E0EDFF', color: '#003DA5' }}>
+            {totalComentarios} {totalComentarios === 1 ? 'mensaje' : 'mensajes'}
+          </Badge>
+        </div>
       </div>
 
-      {/* Resumen por Etapas */}
-      {comentarios.length > 0 && (
-        <Card className="p-4 bg-gray-50">
-          <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <Tag className="w-4 h-4" />
-            Resumen por Etapa
-          </h4>
-          <div className="grid grid-cols-4 gap-2">
-            {etapas.map((etapa) => {
-              const cantidad = comentarios.filter(c => c.etapa === etapa).length;
-              if (cantidad === 0) return null;
-              return (
-                <Badge
-                  key={etapa}
-                  variant="outline"
-                  className="justify-between cursor-pointer hover:bg-white"
-                  onClick={() => setFiltroEtapa(etapa)}
-                >
-                  <span className="text-xs">{etapa}</span>
-                  <span className="text-xs font-black ml-1">{cantidad}</span>
-                </Badge>
-              );
-            })}
+      {/* Información del Demandante/Proceso */}
+      <div className="mb-6 p-4 rounded-xl" style={{ background: '#EFF6FF' }}>
+        <div className="flex items-center gap-3">
+          <User className="w-5 h-5" style={{ color: '#003DA5' }} />
+          <div>
+            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+              Denunciante: María González Pérez
+            </p>
+            <p className="text-xs" style={{ color: '#6B7280' }}>
+              Profesional: Dr. Juan Pérez López
+            </p>
           </div>
-        </Card>
-      )}
+        </div>
+      </div>
+
+      {/* Lista de Comentarios/Mensajes */}
+      <div className="space-y-3 mb-6 max-h-[500px] overflow-y-auto">
+        {comentarios.map((comentario) => {
+          const avatarColor = getAvatarColor(comentario.tipo);
+          const initials = getInitials(comentario.autor.nombre);
+
+          return (
+            <div
+              key={comentario.id}
+              className="p-4 rounded-xl hover:shadow-sm transition-all"
+              style={{ background: '#F8FAFC' }}
+            >
+              <div className="flex items-start gap-3">
+                {/* Avatar */}
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm"
+                  style={{ background: avatarColor.bg, color: avatarColor.text }}
+                >
+                  {initials}
+                </div>
+
+                {/* Contenido */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm" style={{ color: '#1F2937' }}>
+                          {comentario.autor.nombre}
+                        </span>
+                        {comentario.tipo === 'importante' && (
+                          <Flag className="w-4 h-4" style={{ color: '#DC2626' }} />
+                        )}
+                      </div>
+                      <p className="text-xs" style={{ color: '#6B7280' }}>
+                        {comentario.autor.cargo || 'Profesional'} • {comentario.etapa}
+                      </p>
+                    </div>
+                    <span className="text-xs flex-shrink-0" style={{ color: '#9CA3AF' }}>
+                      {comentario.fecha} {comentario.hora}
+                    </span>
+                  </div>
+
+                  <p className="text-sm mb-3" style={{ color: '#374151' }}>
+                    {comentario.contenido}
+                  </p>
+
+                  {/* Adjuntos si los hay */}
+                  {comentario.adjuntos && comentario.adjuntos.length > 0 && (
+                    <div className="flex items-center gap-2 mb-3">
+                      <Paperclip className="w-4 h-4" style={{ color: '#6B7280' }} />
+                      <span className="text-xs font-semibold" style={{ color: '#003DA5' }}>
+                        {comentario.adjuntos.length} {comentario.adjuntos.length === 1 ? 'adjunto' : 'adjuntos'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Botones de acción */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleResponder(comentario)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors hover:bg-white"
+                      style={{ color: '#003DA5' }}
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      Responder
+                    </button>
+                    <button
+                      onClick={() => handleReaccionar(comentario)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors hover:bg-white"
+                      style={{ color: '#F59E0B' }}
+                    >
+                      <Smile className="w-3.5 h-3.5" />
+                      Reaccionar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Etiquetas rápidas */}
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>
+          Respuestas rápidas:
+        </span>
+        <button
+          onClick={() => setEtiquetaSeleccionada('re-saludo')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${etiquetaSeleccionada === 're-saludo' ? 'shadow-sm' : ''
+            }`}
+          style={{
+            background: etiquetaSeleccionada === 're-saludo' ? '#D1FAE5' : '#F3F4F6',
+            color: etiquetaSeleccionada === 're-saludo' ? '#059669' : '#6B7280'
+          }}
+        >
+          ✓ Re-Saludo
+        </button>
+        <button
+          onClick={() => setEtiquetaSeleccionada('me-info')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${etiquetaSeleccionada === 'me-info' ? 'shadow-sm' : ''
+            }`}
+          style={{
+            background: etiquetaSeleccionada === 'me-info' ? '#DBEAFE' : '#F3F4F6',
+            color: etiquetaSeleccionada === 'me-info' ? '#2563EB' : '#6B7280'
+          }}
+        >
+          ? Me info
+        </button>
+        <button
+          onClick={() => setEtiquetaSeleccionada('aplazado')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${etiquetaSeleccionada === 'aplazado' ? 'shadow-sm' : ''
+            }`}
+          style={{
+            background: etiquetaSeleccionada === 'aplazado' ? '#FEF3C7' : '#F3F4F6',
+            color: etiquetaSeleccionada === 'aplazado' ? '#D97706' : '#6B7280'
+          }}
+        >
+          ⚡ Aplazado
+        </button>
+      </div>
+
+      {/* Área de escritura */}
+      <div className="border-2 rounded-xl p-4" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
+        <textarea
+          value={nuevoComentario}
+          onChange={(e) => setNuevoComentario(e.target.value)}
+          placeholder="Escribe un mensaje sobre este proceso judicial..."
+          rows={3}
+          className="w-full px-0 py-0 border-0 focus:outline-none resize-none text-sm"
+          style={{ color: '#1F2937' }}
+        />
+
+        {/* Botones de acción del editor */}
+        <div className="flex items-center justify-between mt-3 pt-3 border-t" style={{ borderColor: '#E5E7EB' }}>
+          <div className="flex items-center gap-2">
+            <button
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              title="Adjuntar archivo"
+            >
+              <Paperclip className="w-4 h-4" style={{ color: '#6B7280' }} />
+            </button>
+            <button
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              title="Emoji"
+            >
+              <Smile className="w-4 h-4" style={{ color: '#6B7280' }} />
+            </button>
+            <button
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              title="Mencionar"
+            >
+              <AtSign className="w-4 h-4" style={{ color: '#6B7280' }} />
+            </button>
+            <button
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              title="Etiqueta"
+            >
+              <Hash className="w-4 h-4" style={{ color: '#6B7280' }} />
+            </button>
+          </div>
+
+          <button
+            onClick={handleAgregarComentario}
+            disabled={!nuevoComentario.trim()}
+            className="px-4 py-2 rounded-lg font-semibold text-white flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: '#003DA5' }}
+          >
+            <Send className="w-4 h-4" />
+            Enviar
+          </button>
+        </div>
+
+        {/* Ayuda */}
+        <div className="mt-3 flex items-start gap-2">
+          <Info className="w-4 h-4 flex-shrink-0" style={{ color: '#F59E0B' }} />
+          <p className="text-xs" style={{ color: '#6B7280' }}>
+            Usa <code className="px-1 py-0.5 rounded bg-gray-100 font-mono">ENTER</code> para enviar o{' '}
+            <code className="px-1 py-0.5 rounded bg-gray-100 font-mono">SHIFT + ENTER</code> para nueva línea
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -791,9 +556,9 @@ interface ComentarioItemProps {
   formatFileSize: (size: number) => string;
 }
 
-function ComentarioItem({ 
-  comentario, 
-  onFijar, 
+function ComentarioItem({
+  comentario,
+  onFijar,
   onRequestEliminar,
   getTipoConfig,
   getCategoriaConfig,
@@ -816,30 +581,29 @@ function ComentarioItem({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
     >
-      <Card 
-        className={`p-4 hover:shadow-md transition-shadow border-l-4 ${
-          comentario.fijado ? 'border-2 border-orange-300 bg-orange-50' : ''
-        }`}
+      <Card
+        className={`p-4 hover:shadow-md transition-shadow border-l-4 ${comentario.fijado ? 'border-2 border-orange-300 bg-orange-50' : ''
+          }`}
         style={{ borderLeftColor: tipoConfig.color }}
       >
         {/* Header del comentario */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-start gap-3 flex-1">
-            <div 
+            <div
               className="p-2 rounded-lg"
               style={{ background: tipoConfig.color + '20' }}
             >
-              <tipoConfig.icon 
-                className="w-4 h-4" 
-                style={{ color: tipoConfig.color }} 
+              <tipoConfig.icon
+                className="w-4 h-4"
+                style={{ color: tipoConfig.color }}
               />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <p className="font-bold text-gray-900">{comentario.autor.nombre}</p>
-                <Badge 
+                <Badge
                   variant="outline"
-                  style={{ 
+                  style={{
                     background: tipoConfig.color + '15',
                     color: tipoConfig.color,
                     borderColor: tipoConfig.color + '40'
@@ -885,7 +649,7 @@ function ComentarioItem({
               </div>
             </div>
           </div>
-          
+
           {/* Acciones */}
           <div className="flex gap-1">
             <Button

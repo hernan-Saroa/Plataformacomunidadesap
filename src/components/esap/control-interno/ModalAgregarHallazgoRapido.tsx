@@ -29,7 +29,7 @@ interface HallazgoFormData {
 }
 
 const CATEGORIAS = [
-  { value: 'borrador', label: 'Borrador', color: 'gray' },
+  { value: 'borrador', label: 'Por clasificar', color: 'gray' },
   { value: 'controversia', label: 'En Controversia', color: 'yellow' },
   { value: 'critico', label: 'Crítico', color: 'red' },
 ];

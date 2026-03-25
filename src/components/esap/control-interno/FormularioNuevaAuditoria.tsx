@@ -204,13 +204,21 @@ TERRITORIALES_ESAP.forEach((territorial, idx) => {
 interface FormularioNuevaAuditoriaProps {
   onVolver?: () => void;
   onClose?: () => void;
-  onGuardar?: (auditoria: Auditoria) => void;
+  onGuardar?: (auditoria: Auditoria) => void | Promise<void>;
   auditoriaExistente?: Auditoria;
+  loading?: boolean;
 }
 
-export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditoriaExistente }: FormularioNuevaAuditoriaProps) {
+export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditoriaExistente, loading: externalLoading }: FormularioNuevaAuditoriaProps) {
   const [paso, setPaso] = useState(1);
   const [errores, setErrores] = useState<Record<string, string>>({});
+  const [guardando, setGuardando] = useState(false);
+  
+  const isLoading = externalLoading || guardando;
+
+  // Estado para auditores cargados del backend
+  const [auditoresBackend, setAuditoresBackend] = useState<typeof USUARIOS_AUDITORES>([]);
+  const [cargandoAuditores, setCargandoAuditores] = useState(false);
   
   // PASO 1: Información General
   const [codigo, setCodigo] = useState(auditoriaExistente?.codigo || '');
@@ -286,6 +294,53 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
       setCodigo(`AUD-${prefijo}-${año}-${random}`);
     }
   }, [tipo, añoPlan]);
+
+  // Cargar auditores desde el backend
+  useEffect(() => {
+    const cargarAuditores = async () => {
+      setCargandoAuditores(true);
+      try {
+        const { auditoriasApi } = await import('./services/api');
+        const response = await auditoriasApi.getPersonasDisponibles();
+        
+        if (response.success && response.data) {
+          const personas = response.data;
+          // Mapear al formato esperado por el formulario
+          const auditores = personas.map((persona: any) => {
+            const nombre = persona.nombre || persona.nom_largo || 'Sin nombre';
+            const partes = nombre.split(' ');
+            const iniciales = partes.length >= 2 
+              ? (partes[0][0] + partes[partes.length - 1][0]).toUpperCase()
+              : nombre.substring(0, 2).toUpperCase();
+            
+            return {
+              id: String(persona.idPersona || persona.id_tercero || persona.id),
+              nombre: nombre,
+              cargo: persona.cargo || 'Auditor',
+              iniciales: iniciales
+            };
+          });
+          
+          setAuditoresBackend(auditores);
+          console.log('[FormularioNuevaAuditoria] Auditores cargados:', auditores.length);
+        } else {
+          console.warn('[FormularioNuevaAuditoria] Error al cargar auditores, usando mock');
+          setAuditoresBackend(USUARIOS_AUDITORES);
+        }
+      } catch (error) {
+        console.error('[FormularioNuevaAuditoria] Error al cargar auditores:', error);
+        // Fallback a datos mock si falla
+        setAuditoresBackend(USUARIOS_AUDITORES);
+      } finally {
+        setCargandoAuditores(false);
+      }
+    };
+    
+    cargarAuditores();
+  }, []);
+
+  // Lista de auditores a usar (backend si están disponibles, sino mock)
+  const usuariosAuditores = auditoresBackend.length > 0 ? auditoresBackend : USUARIOS_AUDITORES;
 
   // ============ FUNCIÓN DE CIERRE ============
 
@@ -460,7 +515,7 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
 
   // ============ ACCIONES ============
 
-  const handleAgregarMiembro = (usuario: typeof USUARIOS_AUDITORES[0], rol: 'Líder' | 'Auditor' | 'Especialista') => {
+  const handleAgregarMiembro = (usuario: { id: string; nombre: string; cargo: string; iniciales: string }, rol: 'Líder' | 'Auditor' | 'Especialista') => {
     const nuevoMiembro: MiembroEquipo = {
       id: usuario.id,
       nombre: usuario.nombre,
@@ -514,7 +569,7 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
     );
   };
 
-  const handleGuardar = () => {
+  const handleGuardar = async () => {
     if (!validarPaso8()) {
       toast.error('Datos incompletos', {
         description: 'Por favor completa todos los campos obligatorios'
@@ -557,15 +612,22 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
     };
 
     if (onGuardar) {
-      onGuardar(nuevaAuditoria);
+      setGuardando(true);
+      try {
+        await onGuardar(nuevaAuditoria);
+        // El toast y cierre se manejan en el componente padre
+      } catch (error) {
+        // El error se maneja en el componente padre
+        console.error('[FormularioNuevaAuditoria] Error en onGuardar:', error);
+      } finally {
+        setGuardando(false);
+      }
+    } else {
+      toast.success('¡Auditoría creada exitosamente!', {
+        description: `${codigo} - ${nombre}`
+      });
+      handleCerrar();
     }
-    
-    toast.success('¡Auditoría creada exitosamente!', {
-      description: `${codigo} - ${nombre}`
-    });
-
-    // Cerrar el modal o volver
-    handleCerrar();
   };
 
   const progreso = (paso / TOTAL_PASOS) * 100;
@@ -1271,9 +1333,15 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
                       <p className="text-xs text-gray-600 mb-3">
                         Selecciona un Auditor Líder o Jefe OCI:
                       </p>
+                      {cargandoAuditores && (
+                        <div className="flex items-center justify-center py-4">
+                          <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                          <span className="ml-2 text-sm text-gray-500">Cargando auditores...</span>
+                        </div>
+                      )}
                       <div className="space-y-2">
-                        {USUARIOS_AUDITORES.filter(u => 
-                          u.cargo.includes('Líder') || u.cargo.includes('Jefe')
+                        {usuariosAuditores.filter(u => 
+                          u.cargo.includes('Líder') || u.cargo.includes('Jefe') || u.cargo.includes('Auditor')
                         ).map((usuario) => (
                           <button
                             key={usuario.id}
@@ -1365,7 +1433,7 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
                       Agregar auditores o especialistas al equipo:
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      {USUARIOS_AUDITORES.filter(u => 
+                      {usuariosAuditores.filter(u => 
                         !u.cargo.includes('Jefe') && 
                         lider?.id !== u.id &&
                         !equipo.some(m => m.id === u.id)
@@ -1909,7 +1977,7 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
           <Button
             variant="outline"
             onClick={handleAnterior}
-            disabled={paso === 1}
+            disabled={paso === 1 || isLoading}
             className="gap-2"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -1921,10 +1989,20 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
               <Button
                 variant="outline"
                 onClick={handleGuardar}
+                disabled={isLoading}
                 className="gap-2"
               >
-                <Save className="w-4 h-4" />
-                Guardar como Borrador
+                {isLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    Guardar como Borrador
+                  </>
+                )}
               </Button>
             )}
             
@@ -1940,11 +2018,21 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
             ) : (
               <Button
                 onClick={handleGuardar}
+                disabled={isLoading}
                 className="gap-2"
                 style={{ background: '#10B981' }}
               >
-                <Check className="w-4 h-4" />
-                Crear Auditoría
+                {isLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    Crear Auditoría
+                  </>
+                )}
               </Button>
             )}
           </div>

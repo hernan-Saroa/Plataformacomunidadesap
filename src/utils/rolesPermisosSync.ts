@@ -171,7 +171,7 @@ export const ROLES_SISTEMA: Rol[] = [
         modulo: 'Control Interno - Universo Auditorías', 
         categoria: 'Control Interno',
         acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], 
-        descripcion: 'Gestión completa del Universo Auditable' 
+        descripcion: 'Gestión completa del Programa de Auditoría' 
       },
       { 
         id: 'perm-jefe-programa', 

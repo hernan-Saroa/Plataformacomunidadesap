@@ -36,17 +36,21 @@ export class UsersService {
   async createPersonAndUser(dto: NewPersonDto): Promise<User> {
     const password_hash = await bcrypt.hash(dto.password, 10);
 
-    const person = this.personRepo.create({
+    const personId = randomUUID();
+
+    const person = await this.personRepo.save(this.personRepo.create({
+      id: personId,
       first_name: dto.firstName,
       last_name: dto.lastName,
       email: dto.email,
       phone: dto.phone,
-    });
+    }));
 
     const user = this.userRepo.create({
       id_user: randomUUID(),
       username: dto.username,
       password_hash,
+      id_person: person.id,
       person,
     });
 
@@ -81,31 +85,64 @@ export class UsersService {
   async findAllPaginated(
     page: number = 1,
     limit: number = 10,
+    filters: { search?: string; status?: 'active' | 'inactive' | 'all'; role?: string } = {},
   ): Promise<{
     users: User[];
     total: number;
     totalActive: number;
     totalBlocked: number;
   }> {
-    // Obtener usuarios paginados con seccional y sede desde persona
-    const [users, total] = await this.userRepo.findAndCount({
-      relations: ['person', 'person.seccional', 'person.seccional.ubicacion', 'person.sede', 'person.sede.geopolitica', 'roles'],
-      skip: (page - 1) * limit,
-      take: limit,
-      order: {
-        created_at: 'DESC',
-      },
-    });
+    const baseQuery = this.userRepo
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.person', 'person')
+      .leftJoinAndSelect('person.seccional', 'seccional')
+      .leftJoinAndSelect('seccional.ubicacion', 'seccionalUbicacion')
+      .leftJoinAndSelect('person.sede', 'sede')
+      .leftJoinAndSelect('sede.geopolitica', 'sedeGeopolitica')
+      .leftJoinAndSelect('user.roles', 'roles')
+      .distinct(true);
 
-    // Contar usuarios activos
-    const totalActive = await this.userRepo.count({
-      where: { is_active: true },
-    });
+    if (filters.search?.trim()) {
+      const search = `%${filters.search.trim()}%`;
+      baseQuery.andWhere(
+        `(
+          person.first_name ILIKE :search OR
+          person.last_name ILIKE :search OR
+          person.full_name ILIKE :search OR
+          person.email ILIKE :search OR
+          person.identification_number ILIKE :search
+        )`,
+        { search },
+      );
+    }
 
-    // Contar usuarios bloqueados
-    const totalBlocked = await this.userRepo.count({
-      where: { is_active: false },
-    });
+    if (filters.status && filters.status !== 'all') {
+      baseQuery.andWhere('user.is_active = :isActive', {
+        isActive: filters.status === 'active',
+      });
+    }
+
+    if (filters.role && filters.role?.trim()) {
+      baseQuery.andWhere('roles.id = :id', { id: filters.role });
+    }
+
+    const pagedQuery = baseQuery
+      .clone()
+      .orderBy('user.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [users, total] = await pagedQuery.getManyAndCount();
+
+    const totalActive = await baseQuery
+      .clone()
+      .andWhere('user.is_active = :activeStatus', { activeStatus: true })
+      .getCount();
+
+    const totalBlocked = await baseQuery
+      .clone()
+      .andWhere('user.is_active = :blockedStatus', { blockedStatus: false })
+      .getCount();
 
     return { users, total, totalActive, totalBlocked };
   }
@@ -124,18 +161,12 @@ export class UsersService {
   }
 
   async createPerson(dto: CreatePersonDto): Promise<User> {
-    // Obtener el próximo id_tercero manualmente (la tabla no usa serial/uuid)
-    const maxIdResult = await this.personRepo
-      .createQueryBuilder('person')
-      .select('MAX(person.id)', 'maxId')
-      .getRawOne();
-    const nextId = parseInt((maxIdResult?.maxId || 0)) + 1;
+    const personId = randomUUID();
 
-
-    // Crear y guardar persona primero
+    // Crear y guardar persona primero (id_person se genera en DB)
     const savedPerson = await this.personRepo.save(
       this.personRepo.create({
-        id: nextId,
+        id: personId,
         first_name: dto.first_name,
         last_name: dto.last_name,
         full_name: `${dto.first_name} ${dto.last_name}`,
@@ -157,6 +188,7 @@ export class UsersService {
       username: dto.email,
       password_hash: passwordHash,
       is_active: false,
+      id_person: savedPerson.id,
       person: savedPerson,
     });
 
@@ -246,7 +278,7 @@ export class UsersService {
     // Ejecutar la actualización si hay campos para actualizar
     if (setClauses.length > 0) {
       values.push(user.person.id); // Para el WHERE
-      const sql = `UPDATE auth.personas SET ${setClauses.join(', ')} WHERE id_tercero = $${paramIndex}`;
+      const sql = `UPDATE auth.personas SET ${setClauses.join(', ')} WHERE id_person = $${paramIndex}`;
       console.log('📝 Executing SQL:', sql);
       console.log('📝 With values:', values);
 

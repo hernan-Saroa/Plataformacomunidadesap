@@ -4,7 +4,7 @@
  * - Formato de TABLA con columnas igual a Casos Pendientes
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -16,6 +16,7 @@ import {
   FileText, 
   Building2, 
   User, 
+  UserCircle,
   Calendar, 
   Mail, 
   Hash,
@@ -38,21 +39,21 @@ import { toast } from 'sonner';
 import type { ReviewRequest, ReviewRequestStats } from '../../types';
 import graduadosService, { SolicitudCertificadoGraduado } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
-import { PROGRAMAS_ESAP } from '../../data/oferta-academica-esap';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '../../enums/permissions';
+import type { Seccional, Sede } from '../../services/api/types';
 
 type ApprovalForm = {
   fullName: string;
   idNumber: string;
   email: string;
-  phone: string;
   programName: string;
-  programType: string;
-  degreeTitle: string;
   graduationDate: string;
   campus: string;
   seccionalName: string;
+  numRegistro: string;
+  numFolio: string;
+  numLibro: string;
 };
 
 export function ReviewRequestsModule() {
@@ -74,17 +75,25 @@ export function ReviewRequestsModule() {
     fullName: '',
     idNumber: '',
     email: '',
-    phone: '',
     programName: '',
-    programType: '',
-    degreeTitle: '',
     graduationDate: '',
     campus: '',
     seccionalName: '',
+    numRegistro: '',
+    numFolio: '',
+    numLibro: '',
+  });
+  const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
+  const [approvalUploadProgress, setApprovalUploadProgress] = useState({
+    totalFiles: 0,
+    processedFiles: 0,
+    currentFileName: '',
+    currentFilePercent: 0,
+    overallPercent: 0,
   });
   const [sedesOptions, setSedesOptions] = useState<string[]>([]);
   const [seccionalesOptions, setSeccionalesOptions] = useState<string[]>([]);
-  const [degreeTitleOptions, setDegreeTitleOptions] = useState<string[]>([]);
+  const [seccionalBySede, setSeccionalBySede] = useState<Record<string, string>>({});
   const [stats, setStats] = useState<ReviewRequestStats>({
     total: 0,
     pending: 0,
@@ -103,6 +112,96 @@ export function ReviewRequestsModule() {
     notes?: string;
     approvalDetails?: ApprovalForm;
   } | null>(null);
+  const currentUser = authService.getCurrentUser();
+  const resolveReviewerName = (user: any): string | undefined => {
+    if (!user) return undefined;
+    const personFullName =
+      typeof user.person?.full_name === 'string' ? user.person.full_name.trim() : '';
+    if (personFullName) return personFullName;
+    const personFirstName =
+      typeof user.person?.first_name === 'string' ? user.person.first_name.trim() : '';
+    const personLastName =
+      typeof user.person?.last_name === 'string' ? user.person.last_name.trim() : '';
+    const personComposed = `${personFirstName} ${personLastName}`.trim();
+    if (personComposed) return personComposed;
+    const directFullName = typeof user.fullName === 'string' ? user.fullName.trim() : '';
+    if (directFullName) return directFullName;
+    const firstName = typeof user.firstName === 'string' ? user.firstName.trim() : '';
+    const lastName = typeof user.lastName === 'string' ? user.lastName.trim() : '';
+    const composedName = `${firstName} ${lastName}`.trim();
+    if (composedName) return composedName;
+    const username = typeof user.username === 'string' ? user.username.trim() : '';
+    if (username) return username;
+    const email = typeof user.email === 'string' ? user.email.trim() : '';
+    if (email) return email;
+    const personEmail = typeof user.person?.email === 'string' ? user.person.email.trim() : '';
+    return personEmail || undefined;
+  };
+  const resolveReviewerId = (user: any): string | undefined =>
+    user?.id || user?.id_user || user?.userId || undefined;
+  const reviewerName = resolveReviewerName(currentUser);
+  const reviewerId = resolveReviewerId(currentUser);
+  const PROGRAMAS_ESAP = [
+    'ADMINISTRACIÓN PÚBLICA',
+    'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
+    'ESPECIALIZACIÓN EN ALTA DIRECCIÓN DEL ESTADO',
+    'ESPECIALIZACIÓN EN DERECHOS HUMANOS',
+    'ESPECIALIZACIÓN EN FINANZAS PÚBLICAS',
+    'ESPECIALIZACIÓN EN GERENCIA SOCIAL',
+    'ESPECIALIZACIÓN EN GESTIÓN PÚBLICA',
+    'ESPECIALIZACIÓN EN GESTIÓN Y PLANIFICACIÓN DEL DESARROLLO URBANO Y REGIONAL',
+    'ESPECIALIZACIÓN EN PROYECTOS DE DESARROLLO',
+    'MAESTRÍA EN ADMINISTRACIÓN PÚBLICA',
+    'MAESTRÍA EN DERECHOS HUMANOS, GESTIÓN DE LA TRANSICIÓN Y POSCONFLICTO',
+  ];
+  const MAX_APPROVAL_FILES = 5;
+  const MAX_APPROVAL_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+  const MAX_APPROVAL_FILE_SIZE_LABEL = '10 MB';
+
+  const normalizeKey = (value?: string) =>
+    (value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
+  const normalizeName = (value?: string) => {
+    const normalized = (value || '').trim();
+    return normalized || '';
+  };
+
+  const getArrayFromUnknown = <T,>(source: unknown): T[] => {
+    if (Array.isArray(source)) return source as T[];
+    if (source && typeof source === 'object' && Array.isArray((source as { data?: unknown }).data)) {
+      return (source as { data?: T[] }).data || [];
+    }
+    return [];
+  };
+
+  const parseEstructuraCatalog = (source: unknown): { sedes: Sede[]; seccionales: Seccional[] } => {
+    if (!source || typeof source !== 'object') {
+      return { sedes: [], seccionales: [] };
+    }
+
+    const root = source as {
+      sedes?: unknown;
+      seccionales?: unknown;
+      data?: {
+        sedes?: unknown;
+        seccionales?: unknown;
+      };
+    };
+
+    const directSedes = getArrayFromUnknown<Sede>(root.sedes);
+    const directSeccionales = getArrayFromUnknown<Seccional>(root.seccionales);
+    const nestedSedes = getArrayFromUnknown<Sede>(root.data?.sedes);
+    const nestedSeccionales = getArrayFromUnknown<Seccional>(root.data?.seccionales);
+
+    return {
+      sedes: directSedes.length ? directSedes : nestedSedes,
+      seccionales: directSeccionales.length ? directSeccionales : nestedSeccionales,
+    };
+  };
 
   // Funciones auxiliares
   const getStatusBadge = (status: string) => {
@@ -157,6 +256,38 @@ export function ReviewRequestsModule() {
     );
   };
 
+  const parseDateSafe = (value?: string | null) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const isBusinessDay = (date: Date) => {
+    const day = date.getDay();
+    return day !== 0 && day !== 6;
+  };
+
+  const calculateBusinessHoursBetween = (start: Date, end: Date) => {
+    if (end.getTime() <= start.getTime()) return 0;
+
+    let totalMs = 0;
+    let cursor = new Date(start.getTime());
+
+    while (cursor.getTime() < end.getTime()) {
+      const nextDay = new Date(cursor.getTime());
+      nextDay.setHours(24, 0, 0, 0);
+      const segmentEnd = nextDay.getTime() < end.getTime() ? nextDay : end;
+
+      if (isBusinessDay(cursor)) {
+        totalMs += segmentEnd.getTime() - cursor.getTime();
+      }
+
+      cursor = segmentEnd;
+    }
+
+    return totalMs / (1000 * 60 * 60);
+  };
+
   const calculateTimeSince = (dateString: string, nowMs: number) => {
     const date = new Date(dateString);
     const dateMs = date.getTime();
@@ -192,8 +323,61 @@ export function ReviewRequestsModule() {
     });
   };
 
-  const normalizePhone = (value?: string) =>
-    (value || '').replace(/\D+/g, '').slice(0, 10);
+  const toDateInputValue = (value?: string | Date | null) => {
+    if (!value) return '';
+
+    if (value instanceof Date) {
+      const year = value.getFullYear();
+      const month = String(value.getMonth() + 1).padStart(2, '0');
+      const day = String(value.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+
+    const isoDateMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoDateMatch) return trimmed;
+
+    const isoDateTimeMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+    if (isoDateTimeMatch) {
+      return `${isoDateTimeMatch[1]}-${isoDateTimeMatch[2]}-${isoDateTimeMatch[3]}`;
+    }
+
+    const slashDateMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (slashDateMatch) {
+      return `${slashDateMatch[3]}-${slashDateMatch[2]}-${slashDateMatch[1]}`;
+    }
+
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+      return '';
+    }
+
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatDateOnly = (value?: string | Date | null) => {
+    const normalized = toDateInputValue(value);
+    if (!normalized) {
+      return 'Sin fecha';
+    }
+
+    const [yearRaw, monthRaw, dayRaw] = normalized.split('-');
+    const year = Number(yearRaw);
+    const month = Number(monthRaw) - 1;
+    const day = Number(dayRaw);
+    const localDate = new Date(year, month, day, 12, 0, 0);
+
+    return localDate.toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
 
   const handleCopyToClipboard = async (text: string, label: string) => {
     const { copyToClipboard } = await import('@/utils/browser');
@@ -203,6 +387,91 @@ export function ReviewRequestsModule() {
     } else {
       toast.error('No se pudo copiar. Por favor, cópialo manualmente.');
     }
+  };
+
+  const allowedFileExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.webp'];
+  const allowedFileMimeTypes = new Set([
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+  ]);
+  const getApprovalFileChipClass = (file: File) => {
+    const name = file.name.toLowerCase();
+    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : '';
+    if (ext === 'pdf') return 'border-red-200 bg-red-50 text-red-700';
+    if (ext === 'doc' || ext === 'docx') return 'border-blue-200 bg-blue-50 text-blue-700';
+    if (ext === 'xls' || ext === 'xlsx') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp') {
+      return 'border-gray-300 bg-gray-100 text-gray-700';
+    }
+    return 'border-gray-300 bg-gray-100 text-gray-700';
+  };
+  const isAllowedFile = (file: File) => {
+    const lowerName = file.name.toLowerCase();
+    const ext = lowerName.includes('.') ? lowerName.slice(lowerName.lastIndexOf('.')) : '';
+    return allowedFileExtensions.includes(ext) || allowedFileMimeTypes.has(file.type);
+  };
+  const isPayloadTooLargeError = (error: unknown) => {
+    const normalizedError = error as {
+      statusCode?: number;
+      message?: string;
+      response?: {
+        status?: number;
+        data?: { message?: string } | string;
+      };
+    };
+    const responseMessage =
+      typeof normalizedError?.response?.data === 'string'
+        ? normalizedError.response.data
+        : normalizedError?.response?.data?.message;
+    const message = responseMessage || normalizedError?.message || '';
+    const statusCode = normalizedError?.statusCode ?? normalizedError?.response?.status;
+    return statusCode === 413 || /413|request entity too large|payload too large/i.test(message);
+  };
+  const handleApprovalFilesChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(event.target.files || []);
+    if (!selected.length) {
+      return;
+    }
+    const nextFiles = [...approvalFiles, ...selected];
+    if (nextFiles.length > MAX_APPROVAL_FILES) {
+      toast.error(`Solo puedes adjuntar máximo ${MAX_APPROVAL_FILES} archivos`);
+      event.target.value = '';
+      return;
+    }
+    const invalidFile = nextFiles.find((file) => !isAllowedFile(file));
+    if (invalidFile) {
+      toast.error('Solo se permiten archivos PDF, Word, Excel o imágenes');
+      event.target.value = '';
+      return;
+    }
+    const oversizedFile = selected.find((file) => file.size > MAX_APPROVAL_FILE_SIZE_BYTES);
+    if (oversizedFile) {
+      toast.error('El archivo es muy pesado', {
+        description: `El archivo "${oversizedFile.name}" supera el límite de ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo.`,
+      });
+      event.target.value = '';
+      return;
+    }
+    setApprovalFiles(nextFiles);
+    event.target.value = '';
+  };
+  const handleRemoveApprovalFile = (index: number) => {
+    setApprovalFiles((prev) => prev.filter((_, idx) => idx !== index));
+  };
+  const resetApprovalUploadProgress = () => {
+    setApprovalUploadProgress({
+      totalFiles: 0,
+      processedFiles: 0,
+      currentFileName: '',
+      currentFilePercent: 0,
+      overallPercent: 0,
+    });
   };
 
   const mapStatus = (status: SolicitudCertificadoGraduado['status']): ReviewRequest['status'] => {
@@ -225,18 +494,35 @@ export function ReviewRequestsModule() {
   ): ReviewRequest['requester']['type'] => (type === 'COMPANY' ? 'empresa' : 'graduado');
 
   const mapRequest = (request: SolicitudCertificadoGraduado): ReviewRequest => {
+    const requesterType = mapRequesterType(request.requesterType);
+    const requesterName = (request.requesterName || '').trim();
+    const companyName = (request.companyName || '').trim();
+    const contactPerson = (request.contactPerson || '').trim();
+    const requesterDisplayName =
+      requesterType === 'empresa'
+        ? companyName || requesterName || 'Solicitante'
+        : requesterName || request.fullName || request.graduateLastName || 'Solicitante';
+    const requesterContactPerson =
+      requesterType === 'empresa'
+        ? contactPerson ||
+          (requesterName && requesterName !== requesterDisplayName ? requesterName : undefined)
+        : undefined;
+
     return {
       id: request.id,
       requestNumber: request.requestNumber,
       graduateDocumentNumber: request.idNumber,
-      graduateDocumentIssueDate:
-        request.idIssueDate || request.graduationDate || request.requestDate,
-      graduationDate: request.graduationDate,
+      graduateDocumentIssueDate: request.idIssueDate || '',
+      graduationDate: toDateInputValue(request.graduationDate) || undefined,
       graduateLastName: request.graduateLastName,
+      graduateEmail: request.graduateEmail,
       requester: {
-        name: request.requesterName || request.companyName || 'Solicitante',
+        name: requesterDisplayName,
         email: request.requesterEmail,
-        type: mapRequesterType(request.requesterType),
+        type: requesterType,
+        companyName: requesterType === 'empresa' ? companyName || requesterDisplayName : undefined,
+        contactPerson: requesterContactPerson,
+        companyNit: request.companyNit,
       },
       status: mapStatus(request.status),
       createdAt: request.requestDate,
@@ -280,11 +566,12 @@ export function ReviewRequestsModule() {
           break;
       }
 
-      if (item.reviewedAt) {
-        const created = new Date(item.createdAt).getTime();
-        const reviewed = new Date(item.reviewedAt).getTime();
-        if (!Number.isNaN(created) && !Number.isNaN(reviewed) && reviewed >= created) {
-          totalHours += (reviewed - created) / (1000 * 60 * 60);
+      const isResolved = item.status === 'approved' || item.status === 'rejected';
+      if (isResolved && item.reviewedAt) {
+        const createdAt = parseDateSafe(item.createdAt);
+        const reviewedAt = parseDateSafe(item.reviewedAt);
+        if (createdAt && reviewedAt && reviewedAt.getTime() >= createdAt.getTime()) {
+          totalHours += calculateBusinessHoursBetween(createdAt, reviewedAt);
           resolvedCount += 1;
         }
       }
@@ -329,7 +616,7 @@ export function ReviewRequestsModule() {
   useEffect(() => {
     const intervalId = setInterval(() => {
       setTimeNow(Date.now());
-    }, 1000);
+    }, 30000);
 
     return () => {
       clearInterval(intervalId);
@@ -341,33 +628,58 @@ export function ReviewRequestsModule() {
 
     const loadCatalogs = async () => {
       try {
-        const [estructuraResponse, graduatesResponse] = await Promise.all([
-          estructuraService.obtenerEstructura().catch(() => null),
-          graduadosService.graduados.listarRegistroAcademico().catch(() => []),
-        ]);
+        const estructuraResponse = await estructuraService.obtenerEstructura().catch(() => null);
 
         if (!isMounted) return;
 
-        const sedes = estructuraResponse?.data?.sedes ?? [];
-        const seccionales = estructuraResponse?.data?.seccionales ?? [];
+        let { sedes, seccionales } = parseEstructuraCatalog(estructuraResponse);
+
+        if (!sedes.length || !seccionales.length) {
+          const [sedesResponse, seccionalesResponse] = await Promise.all([
+            estructuraService.listarSedes().catch(() => null),
+            estructuraService.listarSeccionales().catch(() => null),
+          ]);
+
+          if (!sedes.length) {
+            sedes = getArrayFromUnknown<Sede>(sedesResponse);
+          }
+          if (!seccionales.length) {
+            seccionales = getArrayFromUnknown<Seccional>(seccionalesResponse);
+          }
+        }
 
         const sedesList = sedes
-          .map((sede: any) => sede?.nomSede)
-          .filter((value: string | undefined) => Boolean(value));
+          .map((sede) => normalizeName(sede?.nomSede))
+          .filter(Boolean);
         const seccionalesList = seccionales
-          .map((seccional: any) => seccional?.nomSeccional)
-          .filter((value: string | undefined) => Boolean(value));
+          .map((seccional) => normalizeName(seccional?.nomSeccional))
+          .filter(Boolean);
 
-        setSedesOptions(Array.from(new Set(sedesList)).sort());
-        setSeccionalesOptions(Array.from(new Set(seccionalesList)).sort());
-
-        const degreeTitles = new Set<string>();
-        (graduatesResponse || []).forEach((graduate) => {
-          if (graduate?.degreeTitle) {
-            degreeTitles.add(graduate.degreeTitle);
+        const seccionalNameById = new Map<number, string>();
+        seccionales.forEach((seccional) => {
+          if (!seccional?.idSeccional) return;
+          const name = normalizeName(seccional.nomSeccional);
+          if (name) {
+            seccionalNameById.set(seccional.idSeccional, name);
           }
         });
-        setDegreeTitleOptions(Array.from(degreeTitles).sort());
+
+        const territorialMap: Record<string, string> = {};
+        sedes.forEach((sede) => {
+          const sedeName = normalizeName(sede?.nomSede);
+          if (!sedeName) return;
+          const seccionalName =
+            normalizeName(sede?.seccional?.nomSeccional) ||
+            (sede?.idSeccional ? seccionalNameById.get(sede.idSeccional) || '' : '');
+          if (seccionalName) {
+            territorialMap[normalizeKey(sedeName)] = seccionalName;
+          }
+        });
+
+        setSedesOptions(Array.from(new Set(sedesList)).sort((a, b) => a.localeCompare(b, 'es')));
+        setSeccionalesOptions(Array.from(new Set(seccionalesList)).sort((a, b) => a.localeCompare(b, 'es')));
+        setSeccionalBySede(territorialMap);
+
       } catch (error) {
         console.error('Error cargando catalogos de aprobacion:', error);
       }
@@ -380,68 +692,94 @@ export function ReviewRequestsModule() {
     };
   }, []);
 
-  const programNameOptions = useMemo(() => {
-    const names = new Set<string>();
-    PROGRAMAS_ESAP.forEach((programa) => {
-      if (programa?.nombre) {
-        names.add(programa.nombre);
-      }
-    });
-    if (approvalForm.programName) {
-      names.add(approvalForm.programName);
-    }
-    return Array.from(names);
-  }, [approvalForm.programName]);
-
-  const programTypeOptions = useMemo(() => {
-    const types = new Set<string>();
-    PROGRAMAS_ESAP.forEach((programa) => {
-      if (programa?.nivel) {
-        types.add(programa.nivel);
-      }
-    });
-    if (approvalForm.programType) {
-      types.add(approvalForm.programType);
-    }
-    return Array.from(types);
-  }, [approvalForm.programType]);
-
-  const degreeTitleSelectOptions = useMemo(() => {
-    const titles = new Set<string>(degreeTitleOptions);
-    if (approvalForm.degreeTitle) {
-      titles.add(approvalForm.degreeTitle);
-    }
-    return Array.from(titles);
-  }, [approvalForm.degreeTitle, degreeTitleOptions]);
+  const programNameOptions = useMemo(() => PROGRAMAS_ESAP, []);
 
   const campusOptions = useMemo(() => {
     const options = new Set<string>(sedesOptions);
     if (approvalForm.campus) {
       options.add(approvalForm.campus);
     }
-    return Array.from(options);
+    return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
   }, [approvalForm.campus, sedesOptions]);
 
   const seccionalSelectOptions = useMemo(() => {
     const options = new Set<string>(seccionalesOptions);
+    const matchedSeccionalBySede = approvalForm.campus
+      ? seccionalBySede[normalizeKey(approvalForm.campus)]
+      : '';
+    if (matchedSeccionalBySede) {
+      options.add(matchedSeccionalBySede);
+    }
     if (approvalForm.seccionalName) {
       options.add(approvalForm.seccionalName);
     }
-    return Array.from(options);
-  }, [approvalForm.seccionalName, seccionalesOptions]);
+    const ordered = Array.from(options)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'es'));
+    if (matchedSeccionalBySede) {
+      return [matchedSeccionalBySede, ...ordered.filter((item) => item !== matchedSeccionalBySede)];
+    }
+    return ordered;
+  }, [approvalForm.campus, approvalForm.seccionalName, seccionalBySede, seccionalesOptions]);
+
+  useEffect(() => {
+    if (!approvalForm.campus || approvalForm.seccionalName) {
+      return;
+    }
+
+    const mappedSeccional = seccionalBySede[normalizeKey(approvalForm.campus)] || '';
+    if (!mappedSeccional) {
+      return;
+    }
+
+    setApprovalForm((prev) => {
+      if (prev.seccionalName) {
+        return prev;
+      }
+      return {
+        ...prev,
+        seccionalName: mappedSeccional,
+      };
+    });
+  }, [approvalForm.campus, approvalForm.seccionalName, seccionalBySede]);
+
+  const getRequestSortTime = (request: ReviewRequest) => {
+    const createdAt = parseDateSafe(request.createdAt)?.getTime() ?? 0;
+    const reviewedAt = parseDateSafe(request.reviewedAt)?.getTime() ?? 0;
+    return createdAt || reviewedAt;
+  };
+
+  const orderedRequests = useMemo(
+    () =>
+      [...requests].sort(
+        (a, b) => getRequestSortTime(b) - getRequestSortTime(a),
+      ),
+    [requests],
+  );
 
   // Filtros
-  const filteredRequests = requests.filter(request => {
-    const matchesSearch = 
-      request.requestNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      request.graduateDocumentNumber.includes(searchQuery) ||
-      request.requester.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      request.requester.email.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredRequests = useMemo(
+    () =>
+      orderedRequests.filter((request) => {
+        const matchesSearch =
+          request.requestNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          request.graduateDocumentNumber.includes(searchQuery) ||
+          request.requester.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (request.requester.companyName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (request.requester.contactPerson || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          request.requester.email.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesStatus = statusFilter === 'all' || request.status === statusFilter;
+        const matchesStatus =
+          statusFilter === 'all' || request.status === statusFilter;
 
-    return matchesSearch && matchesStatus;
-  });
+        return matchesSearch && matchesStatus;
+      }),
+    [orderedRequests, searchQuery, statusFilter],
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
 
   // Paginación
   const totalPages = Math.ceil(filteredRequests.length / itemsPerPage);
@@ -468,6 +806,8 @@ export function ReviewRequestsModule() {
     setReviewAction(action);
     setReviewNotes('');
     setShowReviewModal(true);
+    setApprovalFiles([]);
+    resetApprovalUploadProgress();
 
     if (action !== 'approve') {
       return;
@@ -476,21 +816,56 @@ export function ReviewRequestsModule() {
     setIsLoadingApprovalData(true);
     try {
       const detail = await graduadosService.solicitudes.obtenerPorId(request.id);
-      const graduationDate = detail.graduationDate
-        ? detail.graduationDate.toString().slice(0, 10)
-        : '';
+      const graduationDate = toDateInputValue(
+        detail.graduationDate || request.graduationDate
+      );
+      const detailData = detail as SolicitudCertificadoGraduado & {
+        campus?: string;
+        seccionalName?: string;
+        graduate?: {
+          campus?: string;
+          seccionalName?: string;
+        };
+      };
+      const isCompanyRequester =
+        detail.requesterType === 'COMPANY' || request.requester.type === 'empresa';
+      const resolvedFullName =
+        [
+          isCompanyRequester ? detail.graduateLastName : detail.fullName,
+          request.graduateLastName,
+          isCompanyRequester ? detail.fullName : detail.graduateLastName,
+          detail.requesterType === 'GRADUATE' ? detail.requesterName : '',
+          request.requester.type === 'graduado' ? request.requester.name : '',
+        ]
+          .map((value) => (value || '').trim())
+          .find((value) => value.length > 0) || '';
+      const resolvedEmail =
+        (
+          isCompanyRequester
+            ? [detail.graduateEmail, request.graduateEmail]
+            : [
+                detail.graduateEmail,
+                detail.requesterEmail,
+                request.graduateEmail,
+                request.requester.email,
+              ]
+        )
+          .map((value) => (value || '').trim())
+          .find((value) => value.length > 0) || '';
 
       let nextForm: ApprovalForm = {
-        fullName: '',
+        fullName: resolvedFullName,
         idNumber: detail.idNumber || request.graduateDocumentNumber,
-        email: '',
-        phone: '',
-        programName: detail.programName || '',
-        programType: '',
-        degreeTitle: '',
+        email: resolvedEmail,
+        programName: PROGRAMAS_ESAP.includes((detail.programName || '').trim())
+          ? (detail.programName || '').trim()
+          : '',
         graduationDate,
-        campus: '',
-        seccionalName: '',
+        campus: detailData.campus || detailData.graduate?.campus || '',
+        seccionalName: detailData.seccionalName || detailData.graduate?.seccionalName || '',
+        numRegistro: '',
+        numFolio: '',
+        numLibro: '',
       };
 
       if (detail.graduateId) {
@@ -501,15 +876,16 @@ export function ReviewRequestsModule() {
             fullName: graduate.fullName || nextForm.fullName,
             idNumber: graduate.idNumber || nextForm.idNumber,
             email: graduate.email || nextForm.email,
-            phone: normalizePhone(graduate.phone || nextForm.phone),
-            programName: graduate.programName || nextForm.programName,
-            programType: graduate.programType || nextForm.programType,
-            degreeTitle: graduate.degreeTitle || nextForm.degreeTitle,
-            graduationDate: graduate.graduationDate
-              ? graduate.graduationDate.toString().slice(0, 10)
-              : nextForm.graduationDate,
+            programName: PROGRAMAS_ESAP.includes((graduate.programName || '').trim())
+              ? (graduate.programName || '').trim()
+              : nextForm.programName,
+            graduationDate:
+              toDateInputValue(graduate.graduationDate) || nextForm.graduationDate,
             campus: graduate.campus || nextForm.campus,
             seccionalName: graduate.seccionalName || nextForm.seccionalName,
+            numRegistro: graduate.numRegistro || nextForm.numRegistro,
+            numFolio: graduate.numFolio || nextForm.numFolio,
+            numLibro: graduate.numLibro || nextForm.numLibro,
           };
         } catch (error) {
           console.error('Error cargando graduado asociado:', error);
@@ -534,8 +910,10 @@ export function ReviewRequestsModule() {
     if (reviewAction === 'approve') {
       const trimmedFullName = approvalForm.fullName.trim();
       const trimmedEmail = approvalForm.email.trim();
-      const rawPhoneDigits = approvalForm.phone.replace(/\D+/g, '');
-      const phoneDigits = normalizePhone(approvalForm.phone);
+      const trimmedRegistro = approvalForm.numRegistro.trim();
+      const trimmedFolio = approvalForm.numFolio.trim();
+      const trimmedLibro = approvalForm.numLibro.trim();
+      const digitsOnly = /^\d{1,10}$/;
 
       if (!trimmedFullName) {
         toast.error('El nombre del graduado es obligatorio');
@@ -550,24 +928,8 @@ export function ReviewRequestsModule() {
         toast.error('El email no tiene un formato valido');
         return;
       }
-      if (!rawPhoneDigits) {
-        toast.error('El telefono es obligatorio');
-        return;
-      }
-      if (rawPhoneDigits.length > 10) {
-        toast.error('El telefono no puede superar 10 digitos');
-        return;
-      }
       if (!approvalForm.programName) {
         toast.error('Selecciona el programa');
-        return;
-      }
-      if (!approvalForm.programType) {
-        toast.error('Selecciona el tipo de programa');
-        return;
-      }
-      if (!approvalForm.degreeTitle) {
-        toast.error('Selecciona el titulo');
         return;
       }
       if (!approvalForm.graduationDate) {
@@ -582,12 +944,26 @@ export function ReviewRequestsModule() {
         toast.error('Selecciona la seccional');
         return;
       }
+      if (!trimmedRegistro || !digitsOnly.test(trimmedRegistro)) {
+        toast.error('El numero de registro es obligatorio y debe tener maximo 10 digitos');
+        return;
+      }
+      if (!trimmedFolio || !digitsOnly.test(trimmedFolio)) {
+        toast.error('El numero de folio es obligatorio y debe tener maximo 10 digitos');
+        return;
+      }
+      if (!trimmedLibro || !digitsOnly.test(trimmedLibro)) {
+        toast.error('El numero de libro es obligatorio y debe tener maximo 10 digitos');
+        return;
+      }
 
       approvalDetails = {
         ...approvalForm,
         fullName: trimmedFullName,
         email: trimmedEmail,
-        phone: phoneDigits,
+        numRegistro: trimmedRegistro,
+        numFolio: trimmedFolio,
+        numLibro: trimmedLibro,
       };
     }
 
@@ -612,22 +988,89 @@ export function ReviewRequestsModule() {
 
     try {
       if (confirmAction.type === 'start_review') {
-        await graduadosService.solicitudes.marcarEnRevision(confirmAction.request.id);
-        toast.success('Solicitud marcada como en revisión');
+        await graduadosService.solicitudes.marcarEnRevision(
+          confirmAction.request.id,
+          reviewerName,
+          reviewerId,
+        );
+        toast.success('Solicitud marcada como en revision', {
+          description:
+            'Se envio un correo de actualizacion sobre el proceso al solicitante.',
+        });
       } else if (confirmAction.type === 'approve') {
         const approvalPayload = {
           reviewNotes: confirmAction.notes || 'Aprobado por revision manual',
+          reviewerName,
+          reviewerId,
           ...(confirmAction.approvalDetails || {}),
         };
-        await graduadosService.solicitudes.aprobar(
+        const approvalResponse = await graduadosService.solicitudes.aprobar(
           confirmAction.request.id,
           approvalPayload
         );
+        const graduateId =
+          approvalResponse?.request?.graduateId ||
+          (approvalResponse as any)?.request?.graduate?.id;
+        if (graduateId && approvalFiles.length > 0) {
+          const totalFiles = approvalFiles.length;
+          setApprovalUploadProgress({
+            totalFiles,
+            processedFiles: 0,
+            currentFileName: approvalFiles[0]?.name || '',
+            currentFilePercent: 0,
+            overallPercent: 0,
+          });
+          for (const [currentIndex, file] of approvalFiles.entries()) {
+            setApprovalUploadProgress((prev) => ({
+              ...prev,
+              processedFiles: currentIndex,
+              currentFileName: file.name,
+              currentFilePercent: 0,
+              overallPercent: Number(((currentIndex / totalFiles) * 100).toFixed(1)),
+            }));
+            try {
+              // Subir archivo por archivo evita errores 413 por payload acumulado.
+              await graduadosService.graduados.subirArchivos(
+                graduateId,
+                [file],
+                reviewerName,
+                (progress) => {
+                  setApprovalUploadProgress((prev) => ({
+                    ...prev,
+                    currentFileName: file.name,
+                    currentFilePercent: progress,
+                    overallPercent: Number((((currentIndex + progress / 100) / totalFiles) * 100).toFixed(1)),
+                  }));
+                },
+              );
+            } catch (uploadError: any) {
+              console.error('Error subiendo archivo del graduado:', uploadError);
+              if (isPayloadTooLargeError(uploadError)) {
+                toast.error('El archivo es muy pesado', {
+                  description: `El archivo "${file.name}" supera el límite de ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo.`,
+                });
+              } else {
+                toast.error(`No se pudo subir "${file.name}"`, {
+                  description: uploadError?.response?.data?.message || uploadError?.message,
+                });
+              }
+            }
+            const processedFiles = currentIndex + 1;
+            setApprovalUploadProgress((prev) => ({
+              ...prev,
+              processedFiles,
+              currentFilePercent: 100,
+              overallPercent: Number(((processedFiles / totalFiles) * 100).toFixed(1)),
+            }));
+          }
+        }
         toast.success('Solicitud aprobada y certificado generado');
       } else if (confirmAction.type === 'reject') {
         await graduadosService.solicitudes.rechazar(
           confirmAction.request.id,
-          confirmAction.notes || 'Solicitud rechazada'
+          confirmAction.notes || 'Solicitud rechazada',
+          reviewerName,
+          reviewerId,
         );
         toast.success('Solicitud rechazada');
       }
@@ -635,6 +1078,8 @@ export function ReviewRequestsModule() {
       setSelectedRequest(null);
       setConfirmAction(null);
       setShowConfirmModal(false);
+      setApprovalFiles([]);
+      resetApprovalUploadProgress();
       await loadRequests();
     } catch (error: any) {
       console.error('Error actualizando solicitud:', error);
@@ -643,6 +1088,7 @@ export function ReviewRequestsModule() {
       });
     } finally {
       setIsUpdating(false);
+      resetApprovalUploadProgress();
     }
   };
 
@@ -1020,11 +1466,19 @@ export function ReviewRequestsModule() {
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           <h3 className="font-semibold text-sm truncate" style={{ color: '#1F2937' }}>
-                            {request.requester.name}
+                            {request.requester.type === 'empresa' && request.requester.contactPerson
+                              ? request.requester.contactPerson
+                              : request.requester.name}
                           </h3>
                           <p className="text-xs truncate" style={{ color: '#6B7280' }}>
                             {request.requestNumber}
                           </p>
+                          {request.requester.type === 'empresa' && (
+                            <p className="text-xs truncate flex items-center gap-1" style={{ color: '#6B7280' }}>
+                              <Building2 className="w-3 h-3" />
+                              {request.requester.companyName || request.requester.name}
+                            </p>
+                          )}
                           <p className="text-xs truncate flex items-center gap-1" style={{ color: '#6B7280' }}>
                             <Mail className="w-3 h-3" />
                             {request.requester.email}
@@ -1217,15 +1671,65 @@ export function ReviewRequestsModule() {
                                 <div>
                                   <p className="text-xs text-gray-600">Fecha de Grado</p>
                                   <p className="font-semibold text-gray-900">
-                                    {request.graduationDate
-                                      ? new Date(request.graduationDate).toLocaleDateString('es-CO', {
-                                          year: 'numeric',
-                                          month: 'long',
-                                          day: 'numeric',
-                                        })
-                                      : 'Sin fecha'}
+                                    {formatDateOnly(request.graduationDate)}
                                   </p>
                                 </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Info del Solicitante */}
+                          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                            <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                              {getRequesterTypeIcon(request.requester.type)}
+                              Solicitante
+                            </h4>
+                            <div className="space-y-2.5 text-sm">
+                              <div className="flex items-start gap-2">
+                                {request.requester.type === 'empresa' ? <Building2 className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" /> : <User className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />}
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    {request.requester.type === 'empresa' ? 'Empresa' : 'Nombre'}
+                                  </p>
+                                  <p className="font-semibold text-gray-900">
+                                    {request.requester.type === 'empresa'
+                                      ? request.requester.companyName || request.requester.name
+                                      : request.requester.name}
+                                  </p>
+                                </div>
+                              </div>
+                              {request.requester.type === 'empresa' && (
+                                <div className="flex items-start gap-2">
+                                  <UserCircle className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
+                                  <div>
+                                    <p className="text-xs text-gray-600">Persona que Solicita</p>
+                                    <p className="font-semibold text-gray-900">
+                                      {request.requester.contactPerson || 'No registrado'}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                              {request.requester.type === 'empresa' && (
+                                <div className="flex items-start gap-2">
+                                  <Hash className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
+                                  <div>
+                                    <p className="text-xs text-gray-600">NIT</p>
+                                    <p className="font-semibold text-gray-900">
+                                      {request.requester.companyNit || 'No informado'}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                              <div className="flex items-start gap-2">
+                                <Mail className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
+                                <div>
+                                  <p className="text-xs text-gray-600">Email</p>
+                                  <p className="font-semibold text-gray-900">{request.requester.email}</p>
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-600 mb-1">Tipo</p>
+                                {getRequesterTypeBadge(request.requester.type)}
                               </div>
                               <div className="flex items-start gap-2">
                                 <Calendar className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
@@ -1244,33 +1748,67 @@ export function ReviewRequestsModule() {
                               </div>
                             </div>
                           </div>
+                        </div>
 
-                          {/* Info del Solicitante */}
-                          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                              {getRequesterTypeIcon(request.requester.type)}
-                              Solicitante
-                            </h4>
-                            <div className="space-y-2.5 text-sm">
-                              <div className="flex items-start gap-2">
-                                {request.requester.type === 'empresa' ? <Building2 className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" /> : <User className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />}
-                                <div>
-                                  <p className="text-xs text-gray-600">Nombre</p>
-                                  <p className="font-semibold text-gray-900">{request.requester.name}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-start gap-2">
-                                <Mail className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
-                                <div>
-                                  <p className="text-xs text-gray-600">Email</p>
-                                  <p className="font-semibold text-gray-900">{request.requester.email}</p>
-                                </div>
-                              </div>
-                              <div>
-                                <p className="text-xs text-gray-600 mb-1">Tipo</p>
-                                {getRequesterTypeBadge(request.requester.type)}
-                              </div>
-                            </div>
+                        {/* Botones de Acción Rápida */}
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-3">
+                            Acciones Rápidas
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {request.status === 'pending' && (
+                              <button
+                                onClick={() => handleStartReview(request)}
+                                className="px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
+                                style={{
+                                  background: '#F57C00',
+                                  color: '#FFFFFF'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = '#E65100';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = '#F57C00';
+                                }}
+                              >
+                                <Eye className="w-4 h-4" />
+                                Revisar Solicitud
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleCopyToClipboard(request.graduateDocumentNumber, 'Cédula')}
+                              className="px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
+                              style={{
+                                background: '#E0EDFF',
+                                color: '#003DA5'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#C5DDFF';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = '#E0EDFF';
+                              }}
+                            >
+                              <Copy className="w-4 h-4" />
+                              Copiar Cédula
+                            </button>
+                            <button
+                              onClick={() => handleCopyToClipboard(request.requestNumber, 'Número de solicitud')}
+                              className="px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
+                              style={{
+                                background: '#E0EDFF',
+                                color: '#003DA5'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#C5DDFF';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = '#E0EDFF';
+                              }}
+                            >
+                              <Copy className="w-4 h-4" />
+                              Copiar Número de Solicitud
+                            </button>
                           </div>
                         </div>
 
@@ -1366,9 +1904,9 @@ export function ReviewRequestsModule() {
       {/* Modal: Revisar Solicitud */}
       <Dialog open={showReviewModal} onOpenChange={setShowReviewModal}>
         <DialogContent
-          className={`w-[92vw] my-10 max-h-[88vh] overflow-y-auto p-0 pb-8 ${reviewAction === 'reject' ? 'max-w-3xl' : 'max-w-3xl'}`}
+          className="review-approval-dialog w-[92vw] max-w-4xl !p-0 !top-1/2 !-translate-y-1/2 !max-h-[calc(100vh-1.25rem)] !overflow-hidden !flex !flex-col"
         >
-          <DialogHeader className="px-6 pt-4 pb-2">
+          <DialogHeader className="px-6 pt-3 pb-1">
             <DialogTitle className="flex items-center gap-2">
               <Eye className="w-5 h-5 text-blue-600" />
               {reviewActionLabel} Solicitud
@@ -1378,7 +1916,7 @@ export function ReviewRequestsModule() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="px-6 pt-2 pb-8 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-1 pb-6 space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <FileText className="w-5 h-5 mt-0.5 text-blue-600" />
@@ -1389,9 +1927,22 @@ export function ReviewRequestsModule() {
                   <p className="text-sm text-gray-600 mb-2">
                     <strong>Cédula buscada:</strong> {selectedRequest?.graduateDocumentNumber}
                   </p>
-                  <p className="text-sm text-gray-600">
-                    <strong>Solicitante:</strong> {selectedRequest?.requester.name}
-                  </p>
+                  {selectedRequest?.requester.type === 'empresa' ? (
+                    <>
+                      <p className="text-sm text-gray-600">
+                        <strong>Empresa:</strong>{' '}
+                        {selectedRequest?.requester.companyName || selectedRequest?.requester.name}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        <strong>Persona que solicita:</strong>{' '}
+                        {selectedRequest?.requester.contactPerson || 'No registrado'}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-600">
+                      <strong>Solicitante:</strong> {selectedRequest?.requester.name}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1404,13 +1955,13 @@ export function ReviewRequestsModule() {
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value)}
                 placeholder="Describe los hallazgos de la revisión..."
-                className="w-full p-3 border-2 border-gray-300 rounded-lg text-sm resize-none focus:border-[#003DA5]"
+                className="review-approval-input w-full p-3 border-2 border-gray-300 rounded-lg text-sm resize-none focus:border-[#003DA5]"
                 style={{ minHeight: '120px' }}
               />
             </div>
 
             {reviewAction === 'approve' && (
-              <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+              <div className="review-approval-card space-y-3 rounded-lg border border-gray-200 bg-white p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-gray-900">Datos del graduado</p>
                   <span className="text-xs text-gray-500">Acta y diploma se generan automaticamente</span>
@@ -1423,7 +1974,7 @@ export function ReviewRequestsModule() {
                     <input
                       value={approvalForm.fullName}
                       onChange={(e) => setApprovalForm({ ...approvalForm, fullName: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="Nombre completo"
                       disabled={isLoadingApprovalData}
                     />
@@ -1435,7 +1986,7 @@ export function ReviewRequestsModule() {
                     <input
                       value={approvalForm.idNumber || selectedRequest?.graduateDocumentNumber || ''}
                       onChange={(e) => setApprovalForm({ ...approvalForm, idNumber: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       disabled
                     />
                   </div>
@@ -1447,7 +1998,7 @@ export function ReviewRequestsModule() {
                       type="email"
                       value={approvalForm.email}
                       onChange={(e) => setApprovalForm({ ...approvalForm, email: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="correo@ejemplo.com"
                       disabled={isLoadingApprovalData}
                       required
@@ -1455,19 +2006,63 @@ export function ReviewRequestsModule() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Telefono<span className="text-red-500"> *</span>
+                      Numero de registro<span className="text-red-500"> *</span>
                     </label>
                     <input
-                      type="tel"
-                      value={approvalForm.phone}
+                      type="text"
+                      value={approvalForm.numRegistro}
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          phone: normalizePhone(e.target.value),
+                          numRegistro: e.target.value.replace(/\D+/g, ''),
                         })
                       }
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      placeholder="3001234567"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      placeholder="Registro"
+                      disabled={isLoadingApprovalData}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={10}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">
+                      Numero de folio<span className="text-red-500"> *</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={approvalForm.numFolio}
+                      onChange={(e) =>
+                        setApprovalForm({
+                          ...approvalForm,
+                          numFolio: e.target.value.replace(/\D+/g, ''),
+                        })
+                      }
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      placeholder="Folio"
+                      disabled={isLoadingApprovalData}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={10}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">
+                      Numero de libro<span className="text-red-500"> *</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={approvalForm.numLibro}
+                      onChange={(e) =>
+                        setApprovalForm({
+                          ...approvalForm,
+                          numLibro: e.target.value.replace(/\D+/g, ''),
+                        })
+                      }
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      placeholder="Libro"
                       disabled={isLoadingApprovalData}
                       inputMode="numeric"
                       pattern="[0-9]*"
@@ -1482,7 +2077,7 @@ export function ReviewRequestsModule() {
                     <select
                       value={approvalForm.programName}
                       onChange={(e) => setApprovalForm({ ...approvalForm, programName: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       disabled={isLoadingApprovalData}
                     >
                       <option value="">Seleccionar programa</option>
@@ -1495,49 +2090,13 @@ export function ReviewRequestsModule() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Tipo de programa<span className="text-red-500"> *</span>
-                    </label>
-                    <select
-                      value={approvalForm.programType}
-                      onChange={(e) => setApprovalForm({ ...approvalForm, programType: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      disabled={isLoadingApprovalData}
-                    >
-                      <option value="">Seleccionar tipo</option>
-                      {programTypeOptions.map((tipo) => (
-                        <option key={tipo} value={tipo}>
-                          {tipo}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">
-                      Titulo<span className="text-red-500"> *</span>
-                    </label>
-                    <select
-                      value={approvalForm.degreeTitle}
-                      onChange={(e) => setApprovalForm({ ...approvalForm, degreeTitle: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      disabled={isLoadingApprovalData}
-                    >
-                      <option value="">Seleccionar titulo</option>
-                      {degreeTitleSelectOptions.map((titulo) => (
-                        <option key={titulo} value={titulo}>
-                          {titulo}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">
                       Fecha de graduacion<span className="text-red-500"> *</span>
                     </label>
                     <input
                       type="date"
                       value={approvalForm.graduationDate}
                       onChange={(e) => setApprovalForm({ ...approvalForm, graduationDate: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       disabled={isLoadingApprovalData}
                     />
                   </div>
@@ -1547,8 +2106,21 @@ export function ReviewRequestsModule() {
                     </label>
                     <select
                       value={approvalForm.campus}
-                      onChange={(e) => setApprovalForm({ ...approvalForm, campus: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      onChange={(e) => {
+                        const nextCampus = e.target.value;
+                        const mappedSeccional = nextCampus
+                          ? seccionalBySede[normalizeKey(nextCampus)] || ''
+                          : '';
+
+                        setApprovalForm((prev) => ({
+                          ...prev,
+                          campus: nextCampus,
+                          seccionalName: nextCampus
+                            ? mappedSeccional || ''
+                            : '',
+                        }));
+                      }}
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       disabled={isLoadingApprovalData}
                     >
                       <option value="">Seleccionar sede</option>
@@ -1561,14 +2133,14 @@ export function ReviewRequestsModule() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Seccional<span className="text-red-500"> *</span>
+                      Territorial<span className="text-red-500"> *</span>
                     </label>
                     <select
                       value={approvalForm.seccionalName}
                       onChange={(e) =>
                         setApprovalForm({ ...approvalForm, seccionalName: e.target.value })
                       }
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       disabled={isLoadingApprovalData}
                     >
                       <option value="">Seleccionar seccional</option>
@@ -1579,6 +2151,64 @@ export function ReviewRequestsModule() {
                       ))}
                     </select>
                   </div>
+                </div>
+
+                <div className="space-y-2 border-t border-dashed border-gray-200 pt-3">
+                  <div className="review-approval-file-header flex flex-wrap items-center justify-between gap-3">
+                    <div className="review-approval-file-picker flex items-center gap-2">
+                      <input
+                        id="approval-files-input"
+                        type="file"
+                        multiple
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
+                        onChange={handleApprovalFilesChange}
+                        className="sr-only"
+                        disabled={isLoadingApprovalData || approvalFiles.length >= MAX_APPROVAL_FILES}
+                      />
+                      <label
+                        htmlFor="approval-files-input"
+                        className={`inline-flex items-center rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                          isLoadingApprovalData || approvalFiles.length >= MAX_APPROVAL_FILES
+                            ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                            : 'cursor-pointer border-[#003DA5] bg-[#EFF6FF] text-[#003DA5] hover:bg-[#DBEAFE]'
+                        }`}
+                        aria-disabled={isLoadingApprovalData || approvalFiles.length >= MAX_APPROVAL_FILES}
+                      >
+                        Elegir archivos
+                      </label>
+                    </div>
+                    <label className="text-xs font-medium text-gray-700">
+                      {`Archivos del título (opcional, máx. ${MAX_APPROVAL_FILES}, ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo)`}
+                    </label>
+                  </div>
+                  {approvalFiles.length > 0 ? (
+                    <>
+                      <p className="text-xs text-gray-600">
+                        Archivos seleccionados: <span className="font-semibold">{approvalFiles.length}</span>
+                      </p>
+                      <div className="review-approval-files flex flex-wrap gap-2">
+                        {approvalFiles.map((file, index) => (
+                          <div
+                            key={`${file.name}-${index}`}
+                            className={`review-approval-chip flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${getApprovalFileChipClass(file)}`}
+                          >
+                            <span className="review-approval-chip__name">{file.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveApprovalFile(index)}
+                              className="text-gray-400 hover:text-red-500"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs text-gray-500">
+                      {`Adjunta documentos PDF, Word, Excel o imágenes (máx. ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo).`}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -1600,15 +2230,19 @@ export function ReviewRequestsModule() {
 
           <DialogFooter className="px-6 pb-10 pt-4">
             <button
-              onClick={() => setShowReviewModal(false)}
-              className="px-4 py-2 text-sm font-medium rounded-lg border-2"
+              onClick={() => {
+                setShowReviewModal(false);
+                setApprovalFiles([]);
+                resetApprovalUploadProgress();
+              }}
+              className="review-approval-btn review-approval-btn--ghost px-4 py-2 text-sm font-medium rounded-lg border-2"
               style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
             >
               Cancelar
             </button>
             <button
               onClick={handleSubmitReview}
-              className="px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
+              className="review-approval-btn review-approval-btn--primary px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
               style={{ background: '#003DA5', color: '#FFFFFF' }}
               disabled={isLoadingApprovalData}
             >
@@ -1623,13 +2257,28 @@ export function ReviewRequestsModule() {
       <Dialog
         open={showConfirmModal}
         onOpenChange={(open) => {
+          if (!open && isUpdating) {
+            return;
+          }
           setShowConfirmModal(open);
           if (!open) {
             setConfirmAction(null);
           }
         }}
       >
-        <DialogContent className="w-[92vw] max-w-lg">
+        <DialogContent
+          className="w-[92vw] max-w-lg"
+          onEscapeKeyDown={(event) => {
+            if (isUpdating) {
+              event.preventDefault();
+            }
+          }}
+          onInteractOutside={(event) => {
+            if (isUpdating) {
+              event.preventDefault();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-amber-600" />
@@ -1659,6 +2308,28 @@ export function ReviewRequestsModule() {
                   </div>
                 )}
               </div>
+              {confirmAction.type === 'approve' && isUpdating && approvalUploadProgress.totalFiles > 0 && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-semibold text-blue-700">
+                    <span>Subiendo archivos adjuntos del graduado...</span>
+                    <span>
+                      {approvalUploadProgress.processedFiles}/{approvalUploadProgress.totalFiles}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-blue-100">
+                    <div
+                      className="h-full rounded-full bg-blue-600 transition-all duration-300"
+                      style={{ width: `${Math.max(0, Math.min(100, approvalUploadProgress.overallPercent))}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-blue-700">
+                    <span className="truncate pr-3">
+                      {approvalUploadProgress.currentFileName || 'Preparando archivo...'}
+                    </span>
+                    <span>{Math.round(approvalUploadProgress.currentFilePercent)}%</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

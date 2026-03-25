@@ -59,7 +59,15 @@ export class ConsultasJuridicasController {
             abogadoAsignadoId: body.abogadoAsignadoId || null
         };
 
-        return this.consultasService.create(consultaData);
+        const fileData = file ? {
+            filename: file.filename,
+            path: file.path,
+            mimetype: file.mimetype,
+            size: file.size,
+            originalname: file.originalname
+        } : undefined;
+
+        return this.consultasService.create(consultaData, fileData);
     }
 
     @Patch(':id')
@@ -68,8 +76,13 @@ export class ConsultasJuridicasController {
     }
 
     @Patch(':id/estado')
-    async updateEstado(@Param('id') id: string, @Body('estado') estado: string, @Body('usuario') usuario?: string) {
-        return this.consultasService.updateEstado(id, estado, usuario);
+    async updateEstado(
+        @Param('id') id: string,
+        @Body('estado') estado: string,
+        @Body('usuario') usuario?: string,
+        @Body('estadoNombre') estadoNombre?: string
+    ) {
+        return this.consultasService.updateEstado(id, estado, usuario, estadoNombre);
     }
 
     @Patch(':id/respuesta')
@@ -106,6 +119,42 @@ export class ConsultasJuridicasController {
         return this.consultasService.updateRespuesta(id, body.respuesta, enviar, body.usuario);
     }
 
+    // --- Endpoints de Archivo ---
+
+    @Get('archivadas/lista')
+    async getArchivadas() {
+        return this.consultasService.getArchivadas();
+    }
+
+    @Post(':id/archivar')
+    async archivar(
+        @Param('id') id: string,
+        @Body() body: { motivo: string; usuario: string }
+    ) {
+        return this.consultasService.archivar(id, body.motivo, body.usuario);
+    }
+
+    @Post(':id/eliminar')
+    async eliminarSoft(
+        @Param('id') id: string,
+        @Body() body: { motivo: string; usuario: string }
+    ) {
+        return this.consultasService.eliminarSoft(id, body.motivo, body.usuario);
+    }
+
+    @Post(':id/restaurar')
+    async restaurar(
+        @Param('id') id: string,
+        @Body() body: { usuario: string }
+    ) {
+        return this.consultasService.restaurar(id, body.usuario);
+    }
+
+    @Delete(':id/permanente')
+    async eliminarPermanente(@Param('id') id: string) {
+        return this.consultasService.eliminarPermanente(id);
+    }
+
     @Get(':id/historial')
     async getHistorial(@Param('id') id: string) {
         return this.consultasService.getHistorial(id);
@@ -113,8 +162,7 @@ export class ConsultasJuridicasController {
 
     @Delete(':id')
     async delete(@Param('id') id: string) {
-        await this.consultasService.delete(id);
-        return { message: 'Consulta eliminada' };
+        return this.consultasService.eliminarSoft(id, 'Eliminación estándar', 'Usuario Sistema');
     }
 }
 

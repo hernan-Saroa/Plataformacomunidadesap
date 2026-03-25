@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Query, BadRequestException, Param, UseInterceptors, UploadedFiles } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Query, BadRequestException, Param, UseInterceptors, UploadedFiles } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -85,6 +85,71 @@ export class ExpedienteController {
         }
 
         return this.expedienteService.crearExpediente(data);
+    }
+
+    @Delete(':id')
+    async eliminar(@Param('id') id: string): Promise<void> {
+        return this.expedienteService.deleteExpediente(id);
+    }
+
+    // ==================== ENDPOINTS DE ARCHIVO/ELIMINADO ====================
+
+    @Get('estado/archivados')
+    async listarArchivados(): Promise<Expediente[]> {
+        return this.expedienteService.getExpedientesArchivados();
+    }
+
+    @Post(':id/archivar')
+    async archivar(
+        @Param('id') id: string,
+        @Body() body: { motivo?: string; usuario?: string }
+    ): Promise<Expediente> {
+        const motivo = body.motivo || 'Sin motivo especificado';
+        const usuario = body.usuario || 'Sistema';
+        return this.expedienteService.archivarExpediente(id, motivo, usuario);
+    }
+
+    @Post(':id/eliminar')
+    async eliminarSoft(
+        @Param('id') id: string,
+        @Body() body: { motivo?: string; usuario?: string }
+    ): Promise<Expediente> {
+        const motivo = body.motivo || 'Sin motivo especificado';
+        const usuario = body.usuario || 'Sistema';
+        return this.expedienteService.eliminarExpedienteSoft(id, motivo, usuario);
+    }
+
+    @Post(':id/restaurar')
+    async restaurar(@Param('id') id: string): Promise<Expediente> {
+        return this.expedienteService.restaurarExpediente(id);
+    }
+
+    @Delete(':id/permanente')
+    async eliminarPermanente(@Param('id') id: string): Promise<void> {
+        return this.expedienteService.eliminarPermanente(id);
+    }
+
+    // ==================== ENDPOINTS DE PROCESOS ANEXADOS ====================
+
+    @Post(':id/anexar')
+    async anexar(
+        @Param('id') anexadoId: string,
+        @Body() body: { principalId: string; usuario?: string }
+    ): Promise<Expediente> {
+        if (!body.principalId) {
+            throw new BadRequestException('El ID del expediente principal es obligatorio');
+        }
+        const usuario = body.usuario || 'Sistema';
+        return this.expedienteService.anexarExpediente(anexadoId, body.principalId, usuario);
+    }
+
+    @Post(':id/desanexar')
+    async desanexar(
+        @Param('id') id: string,
+        @Body() body: { usuario?: string }
+    ): Promise<Expediente> {
+        const usuario = body.usuario || 'Sistema';
+        return this.expedienteService.desanexarExpediente(id, usuario);
     }
 }
 

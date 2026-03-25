@@ -58,8 +58,7 @@ export function ProfileModal({
     name: role.name,
     permissions: role.permissions || []
   })) || [{ name: 'Sin Rol Activo', permissions: [], code: '' }];
-  console.log('🚀 ProfileModal: rolesActivos:', rolesActivos);
-  
+  const isSuperAdmin = userLogged?.roles?.some((role: any) => role.code === 'SUPER_ADMIN');
   // Mock: Última sesión
   const lastSession = {
     date: new Date().toLocaleDateString('es-CO'),
@@ -366,10 +365,14 @@ export function ProfileModal({
                             </div>
                             <div>
                               <p className="text-[11px] md:text-xs font-bold text-gray-900">{rol.name}</p>
+                              {!isSuperAdmin ? (
                               <p className="text-[9px] md:text-[10px] text-gray-600">{rol.permissions.length} accesos &nbsp;
                                 <button onClick={() => setViewAllPermissions(viewAllPermissions === rol.code ? '' : rol.code)}className="text-blue-600 hover:underline" style={{fontSize: '10px'}}>
                                   {viewAllPermissions === rol.code ? 'ocultar permisos' : 'ver permisos'}
                                 </button></p>
+                              ) : (
+                                <p className="text-[9px] md:text-[10px] text-gray-600">Acceso completo</p>
+                              )}
                             </div>
                           </div>
                           <Badge className="bg-green-100 text-green-700 border-green-200 text-[9px]">

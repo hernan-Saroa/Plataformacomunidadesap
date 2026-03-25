@@ -163,7 +163,7 @@ export function EditorDocumentos({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[300]"
+        className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 p-4 z-[170]"
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >
         <motion.div
@@ -443,7 +443,7 @@ function ModalEnviarRevision({
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[350]"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 p-4 z-[180]"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div

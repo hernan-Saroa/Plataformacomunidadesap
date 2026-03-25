@@ -4,7 +4,7 @@
  */
 
 // Config y cliente
-export { apiClient } from './client';
+export { apiClient } from './apiClient';
 export { API_CONFIG, getBaseURL, STORAGE_KEYS } from './config';
 export type { APIResponse, APIError, PaginatedResponse } from './config';
 export { APIClientError } from './client';

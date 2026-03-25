@@ -1,13 +1,17 @@
-import { Controller, Get, Post, Body, Param, Put, Patch, Query, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Patch, Delete, Query, UseInterceptors, UploadedFile, BadRequestException, NotFoundException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ExpedienteService } from '../services/expediente.service';
 import { Expediente } from '../entities/expediente.entity';
+import { TareasNotasService } from '../services/tareas-notas.service';
 
 @Controller('juzgamiento')
 export class JuzgamientoController {
-    constructor(private readonly expedienteService: ExpedienteService) { }
+    constructor(
+        private readonly expedienteService: ExpedienteService,
+        private readonly tareasNotasService: TareasNotasService
+    ) { }
 
     @Get()
     async findAll(@Query('search') search?: string) {
@@ -39,13 +43,81 @@ export class JuzgamientoController {
                 actuaciones: exp.actuaciones || [],
                 evidencias: exp.evidencias || [],
                 hechos: exp.hechos || '',
+                procesosAnexados: (exp.procesosAnexados || []).map(a => ({
+                    id: a.radicado,
+                    uuid: a.id,
+                    radicado: a.radicado,
+                    investigado: a.demandado,
+                    tipoFalta: a.tipoFalta,
+                    etapa: a.etapa || 'E1_AVOCAMIENTO',
+                    estado: a.estado
+                })),
+                procesoPrincipalId: exp.procesoPrincipalId || null,
                 // Semáforo logic is usually frontend, but we pass necessary data
             };
         });
     }
 
+    @Get(':radicado')
+    async findOne(@Param('radicado') radicado: string) {
+        const exp = await this.expedienteService.findOneByRadicado(radicado);
+        if (!exp) throw new NotFoundException('Expediente disciplinario no encontrado');
+
+        const diasRestantes = this.calculateDiasRestantes(exp.fechaLimiteEtapa);
+
+        return {
+            id: exp.radicado, // Frontend expects "PD-2025-001" as ID
+            uuid: exp.id,
+            radicado: exp.radicado,
+            etapa: exp.etapa || 'E1_AVOCAMIENTO',
+            leyAplicable: exp.leyAplicable || 'Ley 1952/2019',
+            investigado: exp.demandado,
+            cargo: exp.cargoInvestigado,
+            dependencia: exp.dependenciaInvestigado,
+            tipoFalta: exp.tipoFalta,
+            abogadoAsignado: exp.abogadoSustanciador,
+            diasRestantes: diasRestantes,
+            diasDescargos: 15,
+            documentos: [...(exp.actuaciones || []), ...(exp.evidencias || [])],
+            actuaciones: exp.actuaciones || [],
+            evidencias: exp.evidencias || [],
+            hechos: exp.hechos || '',
+            procesosAnexados: (exp.procesosAnexados || []).map((a: any) => ({
+                id: a.radicado,
+                uuid: a.id,
+                radicado: a.radicado,
+                investigado: a.demandado,
+                tipoFalta: a.tipoFalta,
+                etapa: a.etapa || 'E1_AVOCAMIENTO',
+                estado: a.estado
+            })),
+            procesoPrincipalId: exp.procesoPrincipalId || null,
+        };
+    }
+
     @Post()
     async create(@Body() data: Partial<Expediente>) {
+        // Auto-generar radicado PD-YYYY-NNNNN si no viene en el body
+        if (!data.radicado) {
+            const year = new Date().getFullYear();
+            const prefix = `PD-${year}-`;
+            // Buscar último radicado disciplinario del año actual
+            const allExpedientes = await this.expedienteService.listarExpedientes({
+                jurisdiccion: 'DISCIPLINARIO'
+            });
+            let maxSeq = 0;
+            for (const exp of allExpedientes) {
+                if (exp.radicado && exp.radicado.startsWith(prefix)) {
+                    const parts = exp.radicado.split('-');
+                    if (parts.length === 3) {
+                        const seq = parseInt(parts[2], 10);
+                        if (seq > maxSeq) maxSeq = seq;
+                    }
+                }
+            }
+            data.radicado = `${prefix}${String(maxSeq + 1).padStart(5, '0')}`;
+        }
+
         return this.expedienteService.crearExpediente({
             ...data,
             jurisdiccion: 'DISCIPLINARIO',
@@ -189,5 +261,97 @@ export class JuzgamientoController {
     async resolverExcepcion(@Param('id') id: string, @Body() data: any) {
         return this.expedienteService.resolverExcepcion(id, data);
     }
-}
 
+    // ==================== TAREAS DEL EXPEDIENTE ====================
+
+    @Get(':radicado/tareas')
+    async getTareas(@Param('radicado') radicado: string) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        return this.tareasNotasService.findTareasByExpediente(expediente.id);
+    }
+
+    @Post(':radicado/tareas')
+    async createTarea(
+        @Param('radicado') radicado: string,
+        @Body() body: any
+    ) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        return this.tareasNotasService.createTarea({
+            expedienteId: expediente.id,
+            titulo: body.titulo,
+            descripcion: body.descripcion,
+            fechaVencimiento: body.fechaVencimiento ? new Date(body.fechaVencimiento) : undefined,
+            prioridad: body.prioridad || 'media',
+            estado: body.estado || 'pendiente',
+            responsableNombre: body.responsableNombre,
+            creadoPor: body.creadoPor
+        });
+    }
+
+    @Patch(':radicado/tareas/:tareaId')
+    async updateTarea(
+        @Param('tareaId') tareaId: string,
+        @Body() body: any
+    ) {
+        return this.tareasNotasService.updateTarea(tareaId, body);
+    }
+
+    @Delete(':radicado/tareas/:tareaId')
+    async deleteTarea(@Param('tareaId') tareaId: string) {
+        await this.tareasNotasService.deleteTarea(tareaId);
+        return { message: 'Tarea eliminada' };
+    }
+
+    // ==================== NOTAS DEL EXPEDIENTE ====================
+
+    @Get(':radicado/notas')
+    async getNotas(@Param('radicado') radicado: string) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        return this.tareasNotasService.findNotasByExpediente(expediente.id);
+    }
+
+    @Post(':radicado/notas')
+    async createNota(
+        @Param('radicado') radicado: string,
+        @Body() body: any
+    ) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        return this.tareasNotasService.createNota({
+            expedienteId: expediente.id,
+            contenido: body.contenido,
+            tipo: body.tipo || 'general',
+            autorNombre: body.autorNombre
+        });
+    }
+
+    // ==================== ANEXAR / DESANEXAR PROCESOS DISCIPLINARIOS ====================
+
+    @Post(':radicado/anexar')
+    async anexar(
+        @Param('radicado') radicado: string,
+        @Body() body: { principalRadicado: string; usuario?: string }
+    ) {
+        const anexado = await this.expedienteService.findOneByRadicado(radicado);
+        if (!anexado) throw new BadRequestException('Expediente a anexar no encontrado');
+
+        const principal = await this.expedienteService.findOneByRadicado(body.principalRadicado);
+        if (!principal) throw new BadRequestException('Expediente principal no encontrado');
+
+        return this.expedienteService.anexarExpediente(anexado.id, principal.id, body.usuario || 'Sistema');
+    }
+
+    @Post(':radicado/desanexar')
+    async desanexar(
+        @Param('radicado') radicado: string,
+        @Body() body: { usuario?: string }
+    ) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+
+        return this.expedienteService.desanexarExpediente(expediente.id, body.usuario || 'Sistema');
+    }
+}

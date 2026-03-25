@@ -67,10 +67,10 @@ export class EvidenciasService {
             await this.actuacionService.registrarEventoAutomatico(
                 expedienteId,
                 saved.descripcion || 'Evidencia Cargada',
-                `Nueva Evidencia: ${saved.archivoNombre}. Fecha: ${saved.fechaPresentacion ? new Date(saved.fechaPresentacion).toLocaleDateString() : 'N/A'}`,
+                `Nueva Evidencia: "${saved.archivoNombre}". Tipo: ${saved.tipo}. Prioridad: ${saved.prioridad}.`,
                 'EVIDENCIA',
                 saved.id,
-                { archivo: saved.archivoUrl }
+                { archivo: saved.archivoUrl, prioridad: saved.prioridad }
             );
         } catch (error) {
             console.error('Error creando log de actuación automática para Evidencia:', error);
@@ -84,7 +84,21 @@ export class EvidenciasService {
         if (!evidencia) throw new NotFoundException('Evidencia no encontrada');
 
         evidencia.estado = estado;
-        return this.evidenciaRepository.save(evidencia);
+        const saved = await this.evidenciaRepository.save(evidencia);
+
+        // LOG CAMBIO ESTADO
+        try {
+            await this.actuacionService.registrarEventoAutomatico(
+                evidencia.expedienteId,
+                `Evidencia ${estado}`,
+                `La evidencia "${evidencia.archivoNombre}" ha cambiado de estado a: ${estado}.`,
+                'EVIDENCIA',
+                evidencia.id,
+                { nuevoEstado: estado }
+            );
+        } catch (e) { console.error(e); }
+
+        return saved;
     }
 
     async delete(id: string): Promise<{ success: boolean; message: string }> {

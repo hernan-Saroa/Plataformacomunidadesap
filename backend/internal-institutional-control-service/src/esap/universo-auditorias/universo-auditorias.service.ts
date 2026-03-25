@@ -20,19 +20,23 @@ export class UniversoAuditoriasService {
   }
 
   /**
-   * Calcula el riesgo residual (riesgo inherente * nivel de control)
+   * Calcula el riesgo residual = Probabilidad × Impacto ÷ Nivel de Control
+   * (riesgo inherente ÷ nivel de control)
+   * - Nivel control 1 (bajo): riesgo alto → auditoría prioritaria
+   * - Nivel control 3 (alto): riesgo bajo → puede postergarse
    */
   private calcularRiesgoResidual(riesgoInherente: number, nivelControl: number): number {
-    return riesgoInherente * nivelControl;
+    return nivelControl > 0 ? riesgoInherente / nivelControl : riesgoInherente;
   }
 
   /**
-   * Determina el nivel de riesgo según el riesgo residual
+   * Determina el nivel de riesgo según el riesgo residual (rango 0.33-9 con división)
+   * Umbrales alineados con score 0-100: Rojo 90+, Amarillo 50-89, Verde 0-49
    */
   private determinarNivelRiesgo(riesgoResidual: number): NivelRiesgo {
-    if (riesgoResidual >= 19) return NivelRiesgo.ALTO;
-    if (riesgoResidual >= 10) return NivelRiesgo.MEDIO;
-    return NivelRiesgo.BAJO;
+    if (riesgoResidual >= 8) return NivelRiesgo.ALTO;   // score ~89-100
+    if (riesgoResidual >= 4.5) return NivelRiesgo.MEDIO; // score ~50-89
+    return NivelRiesgo.BAJO;                             // score 0-49
   }
 
   /**
@@ -110,7 +114,9 @@ export class UniversoAuditoriasService {
 
     const riesgoInherente = this.calcularRiesgoInherente(probabilidad, impacto);
     const riesgoResidual = this.calcularRiesgoResidual(riesgoInherente, nivelControl);
-    const nivelRiesgo = this.determinarNivelRiesgo(riesgoResidual);
+    
+    // Si viene nivelRiesgo desde DAFP, usarlo; sino calcularlo
+    const nivelRiesgo = evaluacionRiesgo.nivelRiesgo || this.determinarNivelRiesgo(riesgoResidual);
     const priorizacionAnos = this.calcularPriorizacionAnos(nivelRiesgo);
     const prioridad = this.calcularPrioridad(priorizacionAnos);
 
@@ -125,6 +131,19 @@ export class UniversoAuditoriasService {
         madurezControl: evaluacionRiesgo.madurezControl,
         controles: evaluacionRiesgo.controles,
         factoresRiesgo: evaluacionRiesgo.factoresRiesgo || [],
+        // Campos DAFP - preservar si vienen del frontend
+        riesgosExtremos: evaluacionRiesgo.riesgosExtremos,
+        riesgosAltos: evaluacionRiesgo.riesgosAltos,
+        riesgosModerados: evaluacionRiesgo.riesgosModerados,
+        riesgosBajos: evaluacionRiesgo.riesgosBajos,
+        totalRiesgos: evaluacionRiesgo.totalRiesgos,
+        requerimientoComite: evaluacionRiesgo.requerimientoComite,
+        requerimientoEntesReg: evaluacionRiesgo.requerimientoEntesReg,
+        // Score C+E-M (modelo simplificado DAFP) — siempre incluir para persistir en JSONB
+        criticidad: evaluacionRiesgo.criticidad ?? 0,
+        exposicion: evaluacionRiesgo.exposicion ?? 0,
+        mitigantes: evaluacionRiesgo.mitigantes ?? 0,
+        scoreRiesgo: evaluacionRiesgo.scoreRiesgo ?? 0,
       },
       prioridad,
       priorizacionAnos,
@@ -140,10 +159,17 @@ export class UniversoAuditoriasService {
     nivelRiesgo?: string;
     territorial?: string;
     search?: string;
+    soloActivos?: boolean;
   }): Promise<ProcesoAuditable[]> {
     const query = this.procesoRepository.createQueryBuilder('proceso')
       .orderBy('proceso.prioridad', 'DESC')
       .addOrderBy('proceso.createdAt', 'DESC');
+
+    // Por defecto solo procesos activos (catálogo parametrizado)
+    const soloActivos = filters?.soloActivos !== false;
+    if (soloActivos) {
+      query.andWhere('(proceso.activo IS NULL OR proceso.activo = :activo)', { activo: true });
+    }
 
     if (filters?.tipo) {
       query.andWhere('proceso.tipo = :tipo', { tipo: filters.tipo });
@@ -215,24 +241,26 @@ export class UniversoAuditoriasService {
 
     // Si hay ultimaAuditoria pero no proximaAuditoria, calcularla automáticamente
     if (ultimaAuditoria && !proximaAuditoria) {
-      proximaAuditoria = this.calcularProximaAuditoria(ultimaAuditoria, createDto.frecuenciaAuditoria);
+      proximaAuditoria = this.calcularProximaAuditoria(ultimaAuditoria, createDto.frecuenciaAuditoria || 'anual');
     }
 
     const proceso = this.procesoRepository.create({
       codigo: createDto.codigo,
       nombre: createDto.nombre,
-      descripcion: createDto.descripcion,
+      descripcion: createDto.descripcion || createDto.nombre,
       tipo: createDto.tipo,
       macroproceso: createDto.macroproceso,
-      responsable: createDto.responsable,
+      responsable: createDto.responsable || 'Sin asignar',
       dependencia: createDto.dependencia,
       territorial: createDto.territorial,
       evaluacionRiesgo: evaluacionRiesgoCompleta,
-      frecuenciaAuditoria: createDto.frecuenciaAuditoria,
+      frecuenciaAuditoria: createDto.frecuenciaAuditoria || 'anual',
       ultimaAuditoria,
+      resultadoUltimaAuditoria: createDto.resultadoUltimaAuditoria,
       proximaAuditoria,
       prioridad,
       priorizacionAnos,
+      activo: true,
     });
 
     return this.procesoRepository.save(proceso);
@@ -277,6 +305,11 @@ export class UniversoAuditoriasService {
       }
     }
     
+    // Manejar actualización de resultadoUltimaAuditoria
+    if (updateDto.resultadoUltimaAuditoria !== undefined) {
+      proceso.resultadoUltimaAuditoria = updateDto.resultadoUltimaAuditoria;
+    }
+    
     // Si se actualiza frecuenciaAuditoria y hay ultimaAuditoria, recalcular proximaAuditoria
     if (updateDto.frecuenciaAuditoria && proceso.ultimaAuditoria) {
       proceso.proximaAuditoria = this.calcularProximaAuditoria(
@@ -302,9 +335,11 @@ export class UniversoAuditoriasService {
     // Si se actualiza la prioridad directamente (sin cambiar evaluación de riesgo)
     if (updateDto.prioridad !== undefined) {
       proceso.prioridad = updateDto.prioridad;
-      // Recalcular priorizacionAnos basado en la prioridad
-      // prioridad 1 = 4 años, 2 = 3 años, 3 = 2 años, 4 = 1 año
       proceso.priorizacionAnos = 5 - updateDto.prioridad;
+    }
+
+    if (updateDto.activo !== undefined) {
+      proceso.activo = updateDto.activo;
     }
 
     return this.procesoRepository.save(proceso);
@@ -316,6 +351,20 @@ export class UniversoAuditoriasService {
   async delete(id: string): Promise<void> {
     const proceso = await this.findOne(id);
     await this.procesoRepository.remove(proceso);
+  }
+
+  /**
+   * Inactiva un proceso (sin eliminar - mantiene historial)
+   */
+  async inactivar(id: string): Promise<ProcesoAuditable> {
+    return this.update(id, { activo: false });
+  }
+
+  /**
+   * Reactiva un proceso
+   */
+  async activar(id: string): Promise<ProcesoAuditable> {
+    return this.update(id, { activo: true });
   }
 
   /**

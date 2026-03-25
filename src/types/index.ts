@@ -689,6 +689,9 @@ export interface ReviewRequest {
     name: string;
     email: string;
     type: 'empresa' | 'graduado';
+    companyName?: string;
+    contactPerson?: string;
+    companyNit?: string;
   };
   
   // Estado de la solicitud

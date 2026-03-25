@@ -9,7 +9,12 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { Permissions } from '../../auth/decorators/permissions.decorator';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import { NotificacionesService } from './notificaciones.service';
 import { NotificacionesAutomaticasService } from './notificaciones-automaticas.service';
 import { CreateNotificacionDto } from './dto/create-notificacion.dto';
@@ -26,6 +31,8 @@ export class NotificacionesController {
    * Obtiene todas las notificaciones de un usuario
    */
   @Get('usuario/:usuarioId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   findByUsuario(
     @Param('usuarioId') usuarioId: string,
     @Query('estado') estado?: string,
@@ -46,6 +53,8 @@ export class NotificacionesController {
    * Obtiene notificaciones no leídas
    */
   @Get('usuario/:usuarioId/no-leidas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   getNoLeidas(@Param('usuarioId') usuarioId: string) {
     return this.notificacionesService.getNoLeidas(usuarioId);
   }
@@ -55,6 +64,8 @@ export class NotificacionesController {
    * Obtiene el conteo de notificaciones no leídas
    */
   @Get('usuario/:usuarioId/conteo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   getConteoNoLeidas(@Param('usuarioId') usuarioId: string) {
     return this.notificacionesService.getConteoNoLeidas(usuarioId);
   }
@@ -64,6 +75,8 @@ export class NotificacionesController {
    * Crea una nueva notificación
    */
   @Post()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   @HttpCode(HttpStatus.CREATED)
   create(@Body() createDto: CreateNotificacionDto) {
     return this.notificacionesService.create(createDto);
@@ -74,6 +87,8 @@ export class NotificacionesController {
    * Marca una notificación como leída
    */
   @Put(':id/leida')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   marcarLeida(@Param('id') id: string, @Body() body: { usuarioId: string }) {
     return this.notificacionesService.marcarLeida(id, body.usuarioId);
   }
@@ -83,6 +98,8 @@ export class NotificacionesController {
    * Marca todas las notificaciones como leídas
    */
   @Put('usuario/:usuarioId/todas-leidas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   marcarTodasLeidas(@Param('usuarioId') usuarioId: string) {
     return this.notificacionesService.marcarTodasLeidas(usuarioId);
   }
@@ -92,6 +109,8 @@ export class NotificacionesController {
    * Archiva una notificación
    */
   @Put(':id/archivar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   archivar(@Param('id') id: string, @Body() body: { usuarioId: string }) {
     return this.notificacionesService.archivar(id, body.usuarioId);
   }
@@ -101,6 +120,8 @@ export class NotificacionesController {
    * Elimina una notificación
    */
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string, @Body() body: { usuarioId: string }) {
     return this.notificacionesService.delete(id, body.usuarioId);
@@ -111,6 +132,8 @@ export class NotificacionesController {
    * Obtiene las preferencias de notificación
    */
   @Get('preferencias/:usuarioId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   getPreferencias(@Param('usuarioId') usuarioId: string) {
     return this.notificacionesService.getPreferencias(usuarioId);
   }
@@ -120,6 +143,8 @@ export class NotificacionesController {
    * Actualiza las preferencias de notificación
    */
   @Put('preferencias/:usuarioId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   updatePreferencias(
     @Param('usuarioId') usuarioId: string,
     @Body() preferencias: any,
@@ -132,6 +157,8 @@ export class NotificacionesController {
    * Endpoint de debug para verificar conversión de usuarioId
    */
   @Get('debug/:usuarioId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   async debugUsuario(@Param('usuarioId') usuarioId: string) {
     return this.notificacionesService.debugUsuario(usuarioId);
   }
@@ -141,6 +168,8 @@ export class NotificacionesController {
    * Obtiene TODAS las notificaciones (solo para super administradores/admins)
    */
   @Get('todas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   obtenerTodas(
     @Query('estado') estado?: string,
     @Query('tipo') tipo?: string,
@@ -160,6 +189,8 @@ export class NotificacionesController {
    * Ejecuta manualmente el job de notificaciones automáticas (para pruebas)
    */
   @Post('ejecutar-job-automatico')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   @HttpCode(HttpStatus.OK)
   async ejecutarJobAutomatico() {
     try {
@@ -186,6 +217,8 @@ export class NotificacionesController {
    * Endpoint de debug para ver qué datos encuentra el sistema
    */
   @Get('debug-datos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   async debugDatos() {
     try {
       return await this.notificacionesAutomaticasService.debugDatos();

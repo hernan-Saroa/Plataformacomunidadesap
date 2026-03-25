@@ -6,11 +6,11 @@
  * ✅ Diseño limpio ESAP 2025
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
   ArrowRight, AlertTriangle, CheckCircle,
-  FileCheck, Edit, Search, Gavel
+  FileCheck, Edit, Search, Gavel, X
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -18,6 +18,7 @@ import { Button } from '../../ui/button';
 import { Textarea } from '../../ui/textarea';
 import { toast } from 'sonner';
 import { ConfirmationModal } from '../ConfirmationModal';
+import { useConfiguration } from '../../../hooks/useConfiguration';
 
 interface Proceso {
   id: string;
@@ -44,77 +45,190 @@ export function ModalCambiarEtapaProcesoDisciplinario({
 }: ModalCambiarEtapaProcesoDisciplinarioProps) {
   const [etapaSeleccionada, setEtapaSeleccionada] = useState<string>('');
   const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false);
+  
+  // Usar etapas configuradas desde el backend
+  const { etapas: etapasConfiguradas } = useConfiguration();
+  
+  // Helper para normalizar nombres de etapas
+  // IMPORTANTE: Conservamos los guiones bajos para distinguir INDAGACION_PREVIA de INDAGACION
+  // También normalizamos variantes como "INDAGACION PREVIA" -> "INDAGACION_PREVIA"
+  const normalizeEtapa = (valor: string) => {
+    return valor
+      .toString()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Eliminar acentos
+      .replace(/\s+/g, '_') // Convertir espacios a guiones bajos
+      .replace(/[^a-zA-Z0-9_]/g, '') // Eliminar caracteres especiales excepto guiones bajos
+      .toUpperCase();
+  };
 
-  // Definir etapas disponibles - Usando los valores exactos que vienen del backend
-  const etapas = [
-    {
-      valor: 'RECEPCION',
-      label: 'Recepción',
-      descripcion: 'Inicio del proceso disciplinario',
-      icono: <FileCheck className="w-4 h-4" />,
-      color: 'bg-orange-100 text-orange-700 border-orange-300'
-    },
-    {
-      valor: 'VALORACION',
-      label: 'Valoración',
-      descripcion: 'Evaluación inicial del caso',
-      icono: <Edit className="w-4 h-4" />,
-      color: 'bg-yellow-100 text-yellow-700 border-yellow-300'
-    },
-    {
-      valor: 'INDAGACION_PREVIA',
-      label: 'Indagación Previa',
-      descripcion: 'Investigación preliminar',
-      icono: <Search className="w-4 h-4" />,
-      color: 'bg-blue-100 text-blue-700 border-blue-300'
-    },
-    {
-      valor: 'INVESTIGACION',
-      label: 'Investigación',
-      descripcion: 'Investigación completa del caso',
-      icono: <Search className="w-4 h-4" />,
-      color: 'bg-purple-100 text-purple-700 border-purple-300'
-    },
-    {
-      valor: 'JUZGAMIENTO',
-      label: 'Juzgamiento',
-      descripcion: 'Proceso de juzgamiento',
-      icono: <Gavel className="w-4 h-4" />,
-      color: 'bg-green-100 text-green-700 border-green-300'
-    },
-    {
-      valor: 'FALLO',
-      label: 'Fallo',
-      descripcion: 'Emisión del fallo final',
-      icono: <Gavel className="w-4 h-4" />,
-      color: 'bg-red-100 text-red-700 border-red-300'
+  // Helper para obtener icono según la etapa
+  const getStageIcon = (nombre: string) => {
+    const n = normalizeEtapa(nombre);
+    if (n.includes('RECEPCION')) return <FileCheck className="w-4 h-4" />;
+    if (n.includes('VALORACION') || n.includes('EVALUACION')) return <Edit className="w-4 h-4" />;
+    if (n.includes('INDAGACION')) return <Search className="w-4 h-4" />;
+    if (n.includes('INVESTIGACION')) return <Search className="w-4 h-4" />;
+    if (n.includes('JUZGAMIENTO')) return <Gavel className="w-4 h-4" />;
+    if (n.includes('FALLO')) return <Gavel className="w-4 h-4" />;
+    if (n.includes('SEGUNDAINSTANCIA')) return <FileCheck className="w-4 h-4" />;
+    return <FileCheck className="w-4 h-4" />;
+  };
+
+  // Helper para obtener color según la etapa
+  const getStageColor = (nombre: string) => {
+    const n = normalizeEtapa(nombre);
+    if (n.includes('RECEPCION')) return 'bg-orange-100 text-orange-700 border-orange-300';
+    if (n.includes('VALORACION') || n.includes('EVALUACION')) return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+    if (n.includes('INDAGACIONPREVIA')) return 'bg-blue-100 text-blue-700 border-blue-300';
+    if (n.includes('INDAGACION') && !n.includes('PREVIA')) return 'bg-cyan-100 text-cyan-700 border-cyan-300';
+    if (n.includes('INVESTIGACION')) return 'bg-purple-100 text-purple-700 border-purple-300';
+    if (n.includes('JUZGAMIENTO')) return 'bg-green-100 text-green-700 border-green-300';
+    if (n.includes('FALLO')) return 'bg-red-100 text-red-700 border-red-300';
+    if (n.includes('SEGUNDAINSTANCIA')) return 'bg-teal-100 text-teal-700 border-teal-300';
+    return 'bg-gray-100 text-gray-700 border-gray-300';
+  };
+
+  // Convertir etapas del hook al formato del modal
+  const etapas = useMemo(() => {
+    // Si hay etapas configuradas, usarlas; si no, usar las etapas por defecto
+    const sourceEtapas = etapasConfiguradas.length > 0 ? etapasConfiguradas : [
+      { id: '1', nombre: 'RECEPCION', dias: 3, orden: 1 },
+      { id: '2', nombre: 'VALORACION', dias: 10, orden: 2 },
+      { id: '3', nombre: 'INDAGACION PREVIA', dias: 40, orden: 3 },
+      { id: '4', nombre: 'INVESTIGACION', dias: 60, orden: 4 },
+      { id: '5', nombre: 'EVALUACION', dias: 10, orden: 5 },
+      { id: '6', nombre: 'JUZGAMIENTO', dias: 50, orden: 6 },
+      { id: '7', nombre: 'INDAGACION', dias: 30, orden: 7 },
+      { id: '8', nombre: 'FALLO', dias: 10, orden: 8 },
+      { id: '9', nombre: 'SEGUNDA INSTANCIA', dias: 10, orden: 9 }
+    ];
+
+    console.log('=== DEPURACIÓN ETAPAS ===');
+    console.log('Etapas crudas del backend:', sourceEtapas.map(e => `${e.nombre} (orden: ${e.orden})`));
+    
+    // Normalizar y deduplicar etapas
+    // Mapeo de variantes a nombres normalizados
+    const normalizacionEquivalencias: Record<string, string> = {
+      'INDAGACION': 'INDAGACION',  // SIN PREVIA
+      'INDAGACIONPREVIA': 'INDAGACION_PREVIA',
+      'INDAGACION_PREVIA': 'INDAGACION_PREVIA',
+      'SEGUNDAINSTANCIA': 'SEGUNDA_INSTANCIA',
+      'SEGUNDA_INSTANCIA': 'SEGUNDA_INSTANCIA',
+    };
+
+    // Deduplicar etapas por nombre normalizado
+    const etapasMap = new Map<string, typeof sourceEtapas[0]>();
+    
+    sourceEtapas.forEach(etapa => {
+      const normalized = normalizeEtapa(etapa.nombre);
+      
+      // Verificar si hay equivalencias conocidas
+      let key = normalized;
+      if (normalizacionEquivalencias[normalized]) {
+        key = normalizacionEquivalencias[normalized];
+      }
+      
+      // Si la clave ya existe, verificar si la nueva etapa tiene mejor orden
+      if (etapasMap.has(key)) {
+        const existing = etapasMap.get(key)!;
+        if (etapa.orden < existing.orden) {
+          console.log(`  Reemplazando etapa: ${etapa.nombre} (orden ${etapa.orden}) por mejor orden`);
+          etapasMap.set(key, etapa);
+        }
+      } else {
+        etapasMap.set(key, etapa);
+      }
+    });
+
+    console.log('Etapas después de deduplicación:', Array.from(etapasMap.keys()));
+    console.log('========================');
+
+    // Ordenar por orden y mapear al formato del modal
+    const etapasOrdenadas = Array.from(etapasMap.values())
+      .sort((a, b) => a.orden - b.orden);
+
+    return etapasOrdenadas.map(etapa => ({
+      valor: etapa.nombre,
+      label: etapa.nombre,
+      descripcion: `Etapa de ${etapa.nombre}`,
+      orden: etapa.orden,
+      icono: getStageIcon(etapa.nombre),
+      color: getStageColor(etapa.nombre)
+    }));
+  }, [etapasConfiguradas]);
+
+  // Obtener etapa actual usando normalización
+  const etapaActual = etapas.find(e => normalizeEtapa(e.valor) === normalizeEtapa(proceso!.etapaActual));
+
+  // Determinar etapas permitidas según el flujo ESPECÍFICO:
+  // RECEPCION → INDAGACION PREVIA / INVESTIGACION
+  // VALORACION → INDAGACION PREVIA / INVESTIGACION
+  // INDAGACION PREVIA / INVESTIGACION → EVALUACION / JUZGAMIENTO / FALLO
+  // EVALUACION → JUZGAMIENTO / FALLO
+  // JUZGAMIENTO → solo INDAGACION
+  // INDAGACION → solo FALLO
+  // FALLO → solo SEGUNDA INSTANCIA
+  // SEGUNDA INSTANCIA → etapa final
+  //
+  // NOTA: El modal SOLO muestra transiciones hacia adelante (siguiente etapa).
+  // Las devoluciones (movimientos hacia atrás) se hacen desde el arrastre del Kanban.
+  
+  const etapasPermitidas = etapas.filter((etapa, index) => {
+    const etapaActualStr = proceso!.etapaActual;
+    const etapaNormalizada = normalizeEtapa(etapaActualStr);
+    const etapaDestinoNormalizada = normalizeEtapa(etapa.valor);
+    
+    let permitir = false;
+    
+    // SEGUNDA INSTANCIA es etapa final, no puede ir a otras etapas
+    if (etapaNormalizada === 'SEGUNDA_INSTANCIA') {
+      permitir = false;
+    } else if (etapaNormalizada === 'RECEPCION') {
+      // RECEPCION → VALORACION
+      permitir = etapaDestinoNormalizada === 'VALORACION';
+    } else if (etapaNormalizada === 'VALORACION') {
+      // VALORACION → INDAGACION PREVIA / INVESTIGACION
+      permitir = etapaDestinoNormalizada === 'INDAGACION_PREVIA';
+    } else if (etapaNormalizada === 'INDAGACION_PREVIA') {
+      // INDAGACION PREVIA  → INVESTIGACION
+      permitir = etapaDestinoNormalizada === 'INVESTIGACION';
+    } else if (etapaNormalizada === 'INVESTIGACION') {
+      // INDAGACION PREVIA / INVESTIGACION → EVALUACION / JUZGAMIENTO / FALLO
+      permitir = etapaDestinoNormalizada === 'EVALUACION';
+    } else if (etapaNormalizada === 'EVALUACION') {
+      // EVALUACION → JUZGAMIENTO / FALLO
+      permitir = etapaDestinoNormalizada === 'JUZGAMIENTO';
+    } else if (etapaNormalizada === 'JUZGAMIENTO') {
+      // JUZGAMIENTO → solo INDAGACION
+      permitir = etapaDestinoNormalizada === 'INDAGACION';
+    } else if (etapaNormalizada === 'INDAGACION') {
+      // INDAGACION → solo FALLO
+      permitir = etapaDestinoNormalizada === 'FALLO';
+    } else if (etapaNormalizada === 'FALLO') {
+      // FALLO → solo SEGUNDA INSTANCIA
+      permitir = etapaDestinoNormalizada === 'SEGUNDA_INSTANCIA';
     }
-  ];
-
-  // Obtener configuración de etapa actual
-  const etapaActual = etapas.find(e => e.valor === proceso!.etapaActual);
-
-  // Determinar etapas permitidas (no se puede volver a recepción si ya pasó)
-  const etapasPermitidas = etapas.filter(etapa => {
-    if (proceso!.etapaActual === 'RECEPCION') {
-      // Desde recepción puede ir a cualquier etapa
-      return true;
-    } else if (proceso!.etapaActual === 'VALORACION') {
-      // Desde valoración puede ir a indagación previa, investigación, juzgamiento o fallo, pero no volver a recepción
-      return etapa.valor !== 'RECEPCION';
-    } else if (proceso!.etapaActual === 'INDAGACION_PREVIA') {
-      // Desde indagación previa puede ir a investigación, juzgamiento o fallo
-      return ['INVESTIGACION', 'JUZGAMIENTO', 'FALLO'].includes(etapa.valor);
-    } else if (proceso!.etapaActual === 'INVESTIGACION') {
-      // Desde investigación puede ir a juzgamiento o fallo
-      return ['JUZGAMIENTO', 'FALLO'].includes(etapa.valor);
-    } else if (proceso!.etapaActual === 'JUZGAMIENTO') {
-      // Desde juzgamiento solo puede ir a fallo
-      return etapa.valor === 'FALLO';
-    } else {
-      // Desde fallo no puede cambiar (etapa final)
-      return false;
-    }
+    
+    return permitir;
+  }).sort((a, b) => {
+    // Ordenar por índice (menor índice primero)
+    const ordenEtapas: Record<string, number> = {
+      'RECEPCION': 1,
+      'VALORACION': 2,
+      'INDAGACION_PREVIA': 3,
+      'INVESTIGACION': 4,
+      'EVALUACION': 5,
+      'JUZGAMIENTO': 6,
+      'INDAGACION': 7,
+      'FALLO': 8,
+      'SEGUNDA_INSTANCIA': 9,
+    };
+    
+    const indiceA = ordenEtapas[normalizeEtapa(a.valor)] || 0;
+    const indiceB = ordenEtapas[normalizeEtapa(b.valor)] || 0;
+    
+    return indiceA - indiceB;
   });
 
   const handleSeleccionarEtapa = (etapa: string) => {
@@ -158,14 +272,23 @@ export function ModalCambiarEtapaProcesoDisciplinario({
         >
           {/* Header */}
           <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
-            <div className="flex items-center gap-3">
-              <ArrowRight className="w-6 h-6" />
-              <div>
-                <h2 className="text-xl font-bold">Cambiar Etapa del Proceso</h2>
-                <p className="text-blue-100 text-sm">
-                  Proceso {proceso!.numeroProceso} - {proceso!.denunciado?.nombre || 'Sin nombre'}
-                </p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <ArrowRight className="w-6 h-6" />
+                <div>
+                  <h2 className="text-xl font-bold">Cambiar Etapa del Proceso</h2>
+                  <p className="text-blue-100 text-sm">
+                    Proceso {proceso!.numeroProceso} - {proceso!.denunciado?.nombre || 'Sin nombre'}
+                  </p>
+                </div>
               </div>
+              <button
+                onClick={handleCerrar}
+                className="text-white hover:text-blue-200 transition-colors p-1"
+                aria-label="Cerrar modal"
+              >
+                <X className="w-6 h-6" />
+              </button>
             </div>
           </div>
 

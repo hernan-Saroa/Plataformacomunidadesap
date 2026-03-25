@@ -14,6 +14,7 @@ export { SolicitarCertificadoForm } from './SolicitarCertificadoForm';
 export { GenerarCertificadoModal } from './GenerarCertificadoModal';
 export { CertificadoDetalleModal } from './CertificadoDetalleModal';
 export { ConfiguracionPlantilla } from './ConfiguracionPlantilla';
+export { PrimaTecnicaModal } from './PrimaTecnicaModal';
 
 // Sistema QR
 export { QRScannerModal } from './QRScannerModal';
