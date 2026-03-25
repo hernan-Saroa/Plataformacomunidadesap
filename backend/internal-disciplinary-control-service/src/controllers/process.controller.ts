@@ -1101,6 +1101,10 @@ export class ProcessController {
           procesoAsociadoNumero: proceso.procesoAsociadoNumero,
           procesoAsociadoTipo: proceso.procesoAsociadoTipo,
           procesoAsociadoFecha: proceso.procesoAsociadoFecha,
+          // ✅ NUEVO: Incluir información de consolidación
+          procesosConsolidados: proceso.procesosConsolidados,
+          procesoConsolidadoPrincipal: proceso.procesoConsolidadoPrincipal,
+          informacionConsolidada: proceso.informacionConsolidada,
         },
       };
     } catch (error) {

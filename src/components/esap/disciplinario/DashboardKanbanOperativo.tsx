@@ -245,6 +245,15 @@ interface Proceso {
   procesoAsociadoNumero?: string;
   procesoAsociadoTipo?: 'conexo' | 'similar' | 'consolidado';
   procesoAsociadoFecha?: string;
+  // ✅ NUEVO: Campos de consolidación
+  procesoConsolidadoPrincipal?: string;
+  procesosConsolidados?: string[];
+  informacionConsolidada?: {
+    radicado: string;
+    fechaInicio: string;
+    hechos: string;
+    disciplinable: any;
+  };
 }
 
 type Item = Noticia | Proceso;
