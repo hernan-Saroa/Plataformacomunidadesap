@@ -300,14 +300,28 @@ export function ModalGestionDocumentos({
     }
   };
 
-  const handleDescargarTodos = () => {
+  const handleDescargarTodos = async () => {
+    toast.info('Preparando descarga ZIP...');
     try {
       const url = ocService.getDocumentosDownloadUrl(requerimientoId, nombreRequerimiento);
-      window.open(url, '_blank');
-      toast.success('Iniciando descarga de todos los documentos');
+      const token = localStorage.getItem('esap_auth_token');
+      const response = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (!response.ok) throw new Error(`Error ${response.status}`);
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.setAttribute('download', `${nombreRequerimiento || requerimientoId}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      toast.success('Descarga iniciada');
     } catch (e) {
       console.error(e);
-      toast.error('Error al iniciar descarga ZIP');
+      toast.error('Error al descargar ZIP');
     }
   };
 
