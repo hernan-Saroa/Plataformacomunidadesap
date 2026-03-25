@@ -120,7 +120,21 @@ type TabNoticia = 'general' | 'personas' | 'hechos' | 'adjuntos';
 
 export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir }: ModalDetallesNoticiaProps) {
   const [tabActiva, setTabActiva] = useState<TabNoticia>('general');
-  const n = noticia;
+  
+  // ✅ Validación defensiva: asegurar que noticia existe y tiene la estructura esperada
+  const n = noticia || {
+    id: '',
+    numero: '',
+    fechaRecepcion: '',
+    origen: '',
+    denunciante: null,
+    denunciado: null,
+    hechos: '',
+    estado: 'pendiente',
+    prioridad: 'media',
+    diasPendientes: 0,
+    tipo: 'noticia'
+  };
 
   // Extraer datos de persona (compatibilidad con formato string o Persona)
   const getDenuncianteNombre = () => {
@@ -149,15 +163,18 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir }
     media: { bg: '#FEF3C7', text: '#92400E', border: '#FCD34D', label: 'MEDIA' },
     baja:  { bg: '#D1FAE5', text: '#065F46', border: '#6EE7B7', label: 'BAJA' },
   };
-  const pm = prioridadMeta[n.prioridad] || prioridadMeta.media;
+  const prioridadValue = n.prioridad || 'media';
+  const pm = prioridadMeta[prioridadValue] || prioridadMeta.media;
 
   const estadoMeta: Record<string, { bg: string; text: string; label: string }> = {
     'pendiente':      { bg: '#FEF3C7', text: '#92400E', label: 'Pendiente' },
     'en-valoracion':  { bg: '#DBEAFE', text: '#1E40AF', label: 'En Valoración' },
     'asignada':       { bg: '#D1FAE5', text: '#065F46', label: 'Asignada' },
     'archivada':      { bg: '#F3F4F6', text: '#374151', label: 'Archivada' },
+    'remitida':       { bg: '#EDE9FE', text: '#7C3AED', label: 'Remitida' },
   };
-  const em = estadoMeta[n.estado] || estadoMeta.pendiente;
+  const estadoValue = n.estado || 'pendiente';
+  const em = estadoMeta[estadoValue] || estadoMeta.pendiente;
 
   // Conteos para badges en tabs
   const cantDenunciados = n.denunciados?.length || (n.denunciado ? 1 : 0);
