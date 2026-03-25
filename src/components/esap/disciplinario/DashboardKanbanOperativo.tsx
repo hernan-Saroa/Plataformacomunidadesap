@@ -5338,12 +5338,6 @@ export function DashboardKanbanOperativo({
               key="modal-gestion-actas"
               proceso={itemSeleccionado}
               onClose={() => setModalActivo(null)}
-              onActaCreada={() => {
-                toast.success('Acta creada exitosamente', {
-                  description: 'El acta ha sido generada y guardada correctamente'
-                });
-                setModalActivo(null);
-              }}
             />
           )}
 
