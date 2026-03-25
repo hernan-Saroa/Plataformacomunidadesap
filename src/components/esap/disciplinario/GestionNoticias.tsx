@@ -1922,6 +1922,7 @@ export function GestionNoticias() {
                 // Llamar al backend para remitir por competencia
                 await disciplinaryService.remitirPorCompetencia({
                   newsId: noticiaSeleccionada.id,
+                  radicado: noticiaSeleccionada.numeroRadicado || noticiaSeleccionada.radicado,
                   emailDestinatario: data.entidadCorreo,
                   entidadDestino: data.entidadNombre,
                   justificacion: data.justificacion,

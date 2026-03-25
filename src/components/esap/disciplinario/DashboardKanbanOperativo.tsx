@@ -3475,6 +3475,7 @@ export function DashboardKanbanOperativo({
     try {
       await disciplinaryService.remitirPorCompetencia({
         newsId: itemSeleccionado.id,
+        radicado: itemSeleccionado.numero,
         emailDestinatario: datos.entidadCorreo,
         entidadDestino: datos.entidadNombre,
         justificacion: `${datos.numeroRC} — Tipo: ${datos.tipoRemision}. Fundamento: ${datos.fundamentoLegal || 'N/A'}. ${datos.justificacion}`,

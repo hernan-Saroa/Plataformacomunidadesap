@@ -451,6 +451,7 @@ class DisciplinaryService {
      */
     async remitirPorCompetencia(data: {
         newsId: string;
+        radicado?: string;
         emailDestinatario: string;
         entidadDestino: string;
         justificacion: string;

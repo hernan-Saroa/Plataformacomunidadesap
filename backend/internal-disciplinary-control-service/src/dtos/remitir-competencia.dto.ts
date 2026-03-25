@@ -14,10 +14,10 @@ export class RemitirPorCompetenciaDto {
   @IsNotEmpty()
   newsId: string;
 
-  @ApiProperty({ description: 'Radicado de la noticia' })
+  @ApiProperty({ description: 'Radicado de la noticia', required: false })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  radicado: string;
+  radicado?: string;
 
   @ApiProperty({ description: 'Correo electrónico del destinatario' })
   @IsEmail()
