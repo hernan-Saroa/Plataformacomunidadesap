@@ -32,6 +32,19 @@ interface RetryConfig {
   delay: number;
 }
 
+export interface UploadProgressDetail {
+  progress: number;
+  loaded: number;
+  total: number;
+}
+
+export interface UploadRequestOptions {
+  onProgress?: (progress: number) => void;
+  onProgressDetail?: (detail: UploadProgressDetail) => void;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
 // ============================================================================
 // CLASE API CLIENT
 // ============================================================================
@@ -162,9 +175,18 @@ export class ApiClient {
   async upload<T = any>(
     endpoint: string,
     formData: FormData,
-    onProgress?: (progress: number) => void
+    options?: UploadRequestOptions | ((progress: number) => void)
   ): Promise<T> {
     const url = this.buildURL(endpoint);
+    const resolvedOptions: UploadRequestOptions = typeof options === 'function'
+      ? { onProgress: options }
+      : (options || {});
+    const {
+      onProgress,
+      onProgressDetail,
+      signal,
+      timeoutMs,
+    } = resolvedOptions;
 
     // Para upload, no enviamos Content-Type header (el browser lo setea automáticamente con boundary)
     const headers = getDefaultHeaders(true);
@@ -172,14 +194,24 @@ export class ApiClient {
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
+      let abortHandler: (() => void) | null = null;
+
+      if (signal?.aborted) {
+        reject(new DOMException('Carga cancelada por el usuario', 'AbortError'));
+        return;
+      }
 
       // Progress tracking
-      if (onProgress) {
+      if (onProgress || onProgressDetail) {
         xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const progress = Math.round((e.loaded / e.total) * 100);
-            onProgress(progress);
-          }
+          const total = e.lengthComputable ? e.total : 0;
+          const progress = total > 0 ? Math.round((e.loaded / total) * 100) : 0;
+          onProgress?.(progress);
+          onProgressDetail?.({
+            progress,
+            loaded: e.loaded,
+            total,
+          });
         });
       }
 
@@ -213,6 +245,10 @@ export class ApiClient {
         reject(new Error('Error de red al subir archivo'));
       });
 
+      xhr.addEventListener('abort', () => {
+        reject(new DOMException('Carga cancelada por el usuario', 'AbortError'));
+      });
+
       // Timeout
       xhr.addEventListener('timeout', () => {
         reject(new Error('Timeout al subir archivo'));
@@ -225,8 +261,19 @@ export class ApiClient {
         xhr.setRequestHeader(key, value as string);
       });
 
-      xhr.timeout = this.timeout;
+      if (signal) {
+        abortHandler = () => xhr.abort();
+        signal.addEventListener('abort', abortHandler, { once: true });
+      }
+
+      xhr.timeout = timeoutMs ?? this.timeout;
       xhr.send(formData);
+
+      xhr.addEventListener('loadend', () => {
+        if (signal && abortHandler) {
+          signal.removeEventListener('abort', abortHandler);
+        }
+      });
     });
   }
 

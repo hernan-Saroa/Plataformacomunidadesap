@@ -474,14 +474,14 @@ export class NotificacionesService {
     auditoriaId: string,
     auditoriaCodigo: string,
     auditoriaNombre: string,
-    auditorLiderId: number,
+    auditorLiderId: string,
     nuevaFechaFin: string,
     comentarios?: string,
   ): Promise<void> {
-    // Notificar al auditor líder
+    // Notificar al auditor líder (auditorLiderId es UUID)
     if (auditorLiderId) {
       await this.create({
-        usuarioId: auditorLiderId.toString(),
+        usuarioId: auditorLiderId,
         tipoNotificacion: TipoNotificacion.AMPLIACION_PLAZO_APROBADA,
         titulo: `✅ Ampliación de plazo aprobada - ${auditoriaCodigo}`,
         mensaje: `Su solicitud de ampliación de plazo para la auditoría "${auditoriaNombre}" ha sido aprobada.\n\nNueva fecha de finalización: ${nuevaFechaFin}${comentarios ? `\n\nComentarios: ${comentarios}` : ''}`,
@@ -508,13 +508,13 @@ export class NotificacionesService {
     auditoriaId: string,
     auditoriaCodigo: string,
     auditoriaNombre: string,
-    auditorLiderId: number,
+    auditorLiderId: string,
     motivo: string,
   ): Promise<void> {
-    // Notificar al auditor líder
+    // Notificar al auditor líder (auditorLiderId es UUID)
     if (auditorLiderId) {
       await this.create({
-        usuarioId: auditorLiderId.toString(),
+        usuarioId: auditorLiderId,
         tipoNotificacion: TipoNotificacion.AMPLIACION_PLAZO_RECHAZADA,
         titulo: `❌ Ampliación de plazo rechazada - ${auditoriaCodigo}`,
         mensaje: `Su solicitud de ampliación de plazo para la auditoría "${auditoriaNombre}" ha sido rechazada.\n\nMotivo: ${motivo}`,

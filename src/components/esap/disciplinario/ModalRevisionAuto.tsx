@@ -22,6 +22,7 @@ import { toast } from 'sonner@2.0.3';
 
 export interface BorradorPendiente {
   id: string;
+  autoId?: string; // ID real del auto en el backend (si cargado desde API)
   numeroProceso: string;
   titulo: string;
   plantilla: string;
@@ -87,7 +88,7 @@ function ModalAprobacion({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[250] flex items-center justify-center"
+      className="fixed inset-0 z-[9999] flex items-center justify-center"
       style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
@@ -213,12 +214,12 @@ function ModalDevolucion({
     'Otro (especificar en comentarios)'
   ];
 
-  return (
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[250] flex items-center justify-center"
+      className="fixed inset-0 z-[9999] flex items-center justify-center"
       style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
@@ -349,7 +350,8 @@ function ModalDevolucion({
           </button>
         </div>
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }
 
