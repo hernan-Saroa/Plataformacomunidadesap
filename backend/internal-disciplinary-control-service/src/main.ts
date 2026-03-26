@@ -9,6 +9,7 @@ import { join } from 'path';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const requestTimeoutMs = Number(process.env.HTTP_REQUEST_TIMEOUT_MS || 6 * 60 * 60 * 1000);
 
   // Servir archivos estáticos desde la carpeta uploads
   const uploadsPath = join(process.cwd(), 'uploads');
@@ -69,6 +70,10 @@ async function bootstrap() {
   }
 
   await app.listen(port);
+  const server = app.getHttpServer();
+  server.requestTimeout = requestTimeoutMs;
+  server.headersTimeout = requestTimeoutMs + 1000;
+  server.keepAliveTimeout = 65000;
   console.log(`🚀 Internal Disciplinary Control Service running on http://localhost:${port}`);
 }
 bootstrap();
