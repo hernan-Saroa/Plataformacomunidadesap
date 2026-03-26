@@ -2886,6 +2886,11 @@ export function DashboardKanbanOperativo({
     const procesoAsociadoTipo = (proceso as any).procesoAsociadoTipo || undefined;
     const procesoAsociadoFecha = (proceso as any).procesoAsociadoFecha || undefined;
 
+    // ✅ NUEVO: Mapear campos de consolidación
+    const procesoConsolidadoPrincipal = (proceso as any).procesoConsolidadoPrincipal || undefined;
+    const procesosConsolidados = (proceso as any).procesosConsolidados || undefined;
+    const informacionConsolidada = (proceso as any).informacionConsolidada || undefined;
+
     return {
       id: proceso.id,
       numeroProceso: proceso.radicadoProceso,
@@ -2923,6 +2928,10 @@ export function DashboardKanbanOperativo({
       procesoAsociadoNumero,
       procesoAsociadoTipo,
       procesoAsociadoFecha,
+      // ✅ NUEVO: Incluir campos de consolidación
+      procesoConsolidadoPrincipal,
+      procesosConsolidados,
+      informacionConsolidada,
     };
   };
 
