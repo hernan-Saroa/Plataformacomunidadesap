@@ -89,6 +89,32 @@ export class SequenceService {
   }
 
   /**
+   * Genera un consecutivo único para Autos Disciplinarios al momento de su aprobación
+   * Formato: AUTO-{consecutivo}-{YYYY}
+   */
+  async generateAutoConsecutivo(): Promise<string> {
+    const year = new Date().getFullYear();
+    const sequenceName = `DISCIPLINARY_AUTO_${year}`;
+
+    let sequence = await this.sequenceRepository.findOne({
+      where: { name: sequenceName },
+    });
+
+    if (!sequence) {
+      sequence = this.sequenceRepository.create({
+        name: sequenceName,
+        currentValue: 0,
+      });
+    }
+
+    sequence.currentValue++;
+    await this.sequenceRepository.save(sequence);
+
+    const paddedNumber = String(sequence.currentValue).padStart(3, '0');
+    return `AUTO-${paddedNumber}-${year}`;
+  }
+
+  /**
    * Obtiene el próximo consecutivo para Actas Disciplinarias SIN incrementarlo
    * Formato: ACT-{consecutivo}-{YYYY}
    * Útil para previsualización antes de crear el documento

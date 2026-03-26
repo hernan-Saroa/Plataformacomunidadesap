@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
+import { authService } from '../../../services/api';
 import {
   disciplinaryService,
   type CreateDisciplinaryProcessActuacionDto,
@@ -154,6 +155,7 @@ interface NoteItem {
 interface Archivo {
   id: string;
   nombre: string;
+  numero?: string;
   tipo: 'auto' | 'evidencia' | 'oficio' | 'acta';
   fecha: string;
   firmante: string;
@@ -1712,7 +1714,8 @@ export function ModalDetallesProceso({
             : 'aprobado';
           return {
             id: doc.id,
-            nombre: doc.nombre,
+            nombre: doc.metadatos?.tipoAuto || doc.nombre,
+            numero: doc.metadatos?.numero || undefined,
             tipo: tipoValido,
             fecha: doc.fechaCarga ? doc.fechaCarga.split('T')[0] : '',
             firmante: doc.usuarioCarga || 'Sistema',
@@ -2655,21 +2658,34 @@ export function ModalDetallesProceso({
     setAutoEnRevisionModal(borrador);
   }, [proceso]);
 
-  const handleAutoAprobado = useCallback((archivoId: string, comentarios: string) => {
-    // Actualizar estado a aprobado
-    const enReal = archivosReales.find(a => a.id === archivoId);
-    if (enReal) {
-      enReal.estado = 'aprobado';
-      enReal.version = (enReal.version || 1) + 1;
-    } else {
-      setArchivosSubidos(prev => prev.map(a =>
-        a.id === archivoId ? { ...a, estado: 'aprobado' as const, version: (a.version || 1) + 1 } : a
-      ));
+  const handleAutoAprobado = useCallback(async (archivoId: string, _comentarios: string) => {
+    const userId = authService.getCurrentUser()?.id;
+    if (!userId) {
+      toast.error('No se pudo obtener el usuario actual');
+      return;
     }
-    toast.success('Auto aprobado exitosamente', {
-      description: `El auto ha sido aprobado y firmado por el Jefe OCID`,
-      duration: 5000,
-    });
+    try {
+      const autoActualizado = await disciplinaryService.aprobarAuto(archivoId, userId);
+      const numeroAsignado = autoActualizado?.numero;
+      const actualizarArchivo = (prev: Archivo[]) =>
+        prev.map(a => a.id === archivoId
+          ? { ...a, estado: 'aprobado' as const, version: (a.version || 1) + 1, numero: numeroAsignado }
+          : a
+        );
+      setArchivosBackend(actualizarArchivo);
+      setArchivosSubidos(actualizarArchivo);
+      toast.success('Auto aprobado exitosamente', {
+        description: numeroAsignado
+          ? `Consecutivo asignado: ${numeroAsignado}`
+          : 'El auto ha sido aprobado por el Jefe OCID',
+        duration: 5000,
+      });
+    } catch (err: any) {
+      toast.error('Error al aprobar el auto', {
+        description: err?.message || 'Intente de nuevo',
+        duration: 5000,
+      });
+    }
     setAutoEnRevisionModal(null);
   }, []);
 
@@ -2758,12 +2774,21 @@ export function ModalDetallesProceso({
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <p className="text-xs font-semibold text-gray-900 truncate">{archivo.nombre}</p>
+              {esAuto ? (
+                <p className="text-xs font-semibold text-gray-900 truncate">
+                  {archivo.numero || 'Sin número'}
+                </p>
+              ) : (
+                <p className="text-xs font-semibold text-gray-900 truncate">{archivo.nombre}</p>
+              )}
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 flex-shrink-0">.{archivo.extension.toUpperCase()}</span>
               {archivo.version && archivo.version > 1 && (
                 <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-indigo-100 text-indigo-600 flex-shrink-0">v{archivo.version}</span>
               )}
             </div>
+            {esAuto && (
+              <p className="text-[10px] text-gray-600 font-medium truncate">{archivo.nombre.replace(/_/g, ' ')}</p>
+            )}
             <p className="text-[10px] text-gray-500 mt-0.5">{archivo.firmante} · {archivo.fecha} · {archivo.tamaño}</p>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
