@@ -445,6 +445,10 @@ export class ProcessService {
           procesoAsociadoTipo: p.procesoAsociadoTipo,
           procesoAsociadoFecha: p.procesoAsociadoFecha,
           procesoAsociadoJustificacion: p.procesoAsociadoJustificacion,
+          // ✅ Incluir campos de consolidación
+          procesoConsolidadoPrincipal: p.procesoConsolidadoPrincipal,
+          procesosConsolidados: p.procesosConsolidados,
+          informacionConsolidada: p.informacionConsolidada,
           draftsCount,
           documentsCount,
           actuacionesCount: actuaciones?.actuacionesCount || 0,
@@ -558,6 +562,10 @@ export class ProcessService {
       procesoAsociadoTipo: proceso.procesoAsociadoTipo,
       procesoAsociadoFecha: proceso.procesoAsociadoFecha,
       procesoAsociadoJustificacion: proceso.procesoAsociadoJustificacion,
+      // ✅ Incluir campos de consolidación
+      procesoConsolidadoPrincipal: proceso.procesoConsolidadoPrincipal,
+      procesosConsolidados: proceso.procesosConsolidados,
+      informacionConsolidada: proceso.informacionConsolidada,
       draftsCount,
       documentsCount,
       actuacionesCount: actuaciones?.actuacionesCount || 0,
@@ -629,6 +637,10 @@ export class ProcessService {
         procesoAsociadoTipo: p.procesoAsociadoTipo,
         procesoAsociadoFecha: p.procesoAsociadoFecha,
         procesoAsociadoJustificacion: p.procesoAsociadoJustificacion,
+        // ✅ Incluir campos de consolidación
+        procesoConsolidadoPrincipal: p.procesoConsolidadoPrincipal,
+        procesosConsolidados: p.procesosConsolidados,
+        informacionConsolidada: p.informacionConsolidada,
         draftsCount,
         documentsCount,
         actuacionesCount: actuaciones?.actuacionesCount || 0,
@@ -1099,6 +1111,7 @@ export class ProcessService {
 
   /**
    * ✅ NUEVO: Asocia un proceso a otro proceso disciplinario
+   * Para consolidación: toma la información del proceso más antiguo (con más tiempo)
    */
   async associateProcess(
     procesoOrigenId: string,
@@ -1109,6 +1122,7 @@ export class ProcessService {
     // Validar que el proceso origen existe
     const procesoOrigen = await this.processRepository.findOne({
       where: { id: procesoOrigenId },
+      relations: ['news'],
     });
 
     if (!procesoOrigen) {
@@ -1118,6 +1132,7 @@ export class ProcessService {
     // Validar que el proceso destino existe
     const procesoDestino = await this.processRepository.findOne({
       where: { id: procesoDestinoId },
+      relations: ['news'],
     });
 
     if (!procesoDestino) {
@@ -1130,6 +1145,63 @@ export class ProcessService {
         'Un proceso no puede asociarse a sí mismo',
         HttpStatus.BAD_REQUEST,
       );
+    }
+
+    // Determinar el proceso principal (el más antiguo) para consolidación
+    let procesoPrincipal = procesoOrigen;
+    let procesoSecundario = procesoDestino;
+
+    // Comparar por fecha de creación para determinar el más antiguo
+    const fechaOrigen = new Date(procesoOrigen.createdAt).getTime();
+    const fechaDestino = new Date(procesoDestino.createdAt).getTime();
+
+    // El proceso principal es el más antiguo (menor fecha)
+    if (fechaOrigen > fechaDestino) {
+      procesoPrincipal = procesoDestino;
+      procesoSecundario = procesoOrigen;
+    }
+
+    console.log('🔗 [Consolidación] Proceso principal (más antiguo):', {
+      principalId: procesoPrincipal.id,
+      principalRadicado: procesoPrincipal.radicadoProceso,
+      principalFecha: procesoPrincipal.createdAt,
+      secundarioId: procesoSecundario.id,
+      secundarioRadicado: procesoSecundario.radicadoProceso,
+      secundarioFecha: procesoSecundario.createdAt,
+    });
+
+
+    // Si es consolidación, realizar la unificación de información
+    if (tipoAsociacion === 'consolidado') {
+      // Consolidar información del proceso principal (el más antiguo)
+      // Guardar información relevante para trazabilidad
+      procesoOrigen.procesoConsolidadoPrincipal = procesoPrincipal.id;
+      procesoOrigen.procesosConsolidados = [
+        procesoPrincipal.radicadoProceso,
+        procesoSecundario.radicadoProceso,
+      ];
+      procesoOrigen.informacionConsolidada = {
+        radicado: procesoPrincipal.radicadoProceso,
+        fechaInicio: procesoPrincipal.createdAt.toISOString(),
+        hechos: procesoPrincipal.news?.hechos || '',
+        disciplinable: procesoPrincipal.news?.disciplinable || null,
+      };
+
+      // También actualizar el proceso destino como consolidado
+      procesoDestino.procesoConsolidadoPrincipal = procesoPrincipal.id;
+      procesoDestino.procesosConsolidados = [
+        procesoPrincipal.radicadoProceso,
+        procesoSecundario.radicadoProceso,
+      ];
+      procesoDestino.informacionConsolidada = {
+        radicado: procesoPrincipal.radicadoProceso,
+        fechaInicio: procesoPrincipal.createdAt.toISOString(),
+        hechos: procesoPrincipal.news?.hechos || '',
+        disciplinable: procesoPrincipal.news?.disciplinable || null,
+      };
+
+      // Guardar el proceso destino consolidado primero
+      await this.processRepository.save(procesoDestino);
     }
 
     // Actualizar el proceso origen con la información del proceso asociado
@@ -1147,7 +1219,21 @@ export class ProcessService {
       justificacion,
     });
 
-    return await this.processRepository.save(procesoOrigen);
+    // Guardar el proceso origen
+    const procesoOrigenActualizado = await this.processRepository.save(procesoOrigen);
+
+    // Si es consolidación, también actualizar el proceso destino
+    if (tipoAsociacion === 'consolidado') {
+      procesoDestino.procesoAsociadoId = procesoOrigenId;
+      procesoDestino.procesoAsociadoNumero = procesoOrigen.radicadoProceso;
+      procesoDestino.procesoAsociadoTipo = tipoAsociacion;
+      procesoDestino.procesoAsociadoFecha = new Date();
+      procesoDestino.procesoAsociadoJustificacion = justificacion;
+
+      await this.processRepository.save(procesoDestino);
+    }
+
+    return procesoOrigenActualizado;
   }
 }
 

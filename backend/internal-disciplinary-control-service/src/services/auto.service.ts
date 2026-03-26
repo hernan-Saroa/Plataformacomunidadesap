@@ -18,6 +18,7 @@ import { SystemConfiguration } from '../entities/system-configuration.entity';
 import { AlertasService } from './alertas.service';
 import { TipoAlerta } from '../entities/alerta-enviada.entity';
 import { PdfModifierService } from './pdf-modifier.service';
+import { SequenceService } from './sequence.service';
 
 @Injectable()
 export class AutoService {
@@ -31,6 +32,7 @@ export class AutoService {
     private processService: ProcessService,
     private alertasService: AlertasService,
     private pdfModifierService: PdfModifierService,
+    private sequenceService: SequenceService,
   ) { }
 
   /**
@@ -162,6 +164,9 @@ export class AutoService {
 
     if (reviewAutoDto.action === ReviewAction.APPROVE) {
       auto.estado = AutoStatus.APROBADO;
+
+      // Asignar consecutivo global al momento de la aprobación
+      auto.numero = await this.sequenceService.generateAutoConsecutivo();
 
       // Registrar en Histoial (Version)
       await this.versionRepository.save({

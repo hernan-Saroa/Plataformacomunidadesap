@@ -120,4 +120,19 @@ export class DisciplinaryProcess {
 
   @Column({ name: 'proceso_asociado_justificacion', type: 'text', nullable: true })
   procesoAsociadoJustificacion: string | null;
+
+  // ✅ NUEVO: Campos para trazabilidad de consolidación
+  @Column({ name: 'procesos_consolidados', type: 'text', array: true, nullable: true })
+  procesosConsolidados: string[] | null;
+
+  @Column({ name: 'proceso_consolidado_principal', type: 'uuid', nullable: true })
+  procesoConsolidadoPrincipal: string | null;
+
+  @Column({ name: 'informacion_consolidada', type: 'jsonb', nullable: true })
+  informacionConsolidada: {
+    radicado: string;
+    fechaInicio: string;
+    hechos: string;
+    disciplinable: any;
+  } | null;
 }
