@@ -457,7 +457,10 @@ export function WizardOficiosWorldClass({
         });
       }
       
-      onClose();
+      // ✅ Reiniciar el formulario sin cerrar el modal
+      resetearWizard();
+      // Cambiar a la vista de lista para ver el nuevo oficio
+      setVistaActual('lista');
     } catch (error) {
       console.error('Error al crear oficio:', error);
       toast.error('No se pudo crear el oficio', {

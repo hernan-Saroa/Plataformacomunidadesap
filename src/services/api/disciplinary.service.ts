@@ -451,6 +451,7 @@ class DisciplinaryService {
      */
     async remitirPorCompetencia(data: {
         newsId: string;
+        radicado?: string;
         emailDestinatario: string;
         entidadDestino: string;
         justificacion: string;
@@ -632,8 +633,10 @@ class DisciplinaryService {
      * Descargar documento del expediente
      */
     async downloadDocument(processId: string, documentId: string, filename: string): Promise<void> {
-        // Construir URL usando buildApiUrl para respetar el modo de conexion (gateway/direct)
-        const endpoint = `/api/v1/disciplinary-processes/${processId}/documents/${documentId}/download`;
+        const restPath = `/disciplinary-processes/${processId}/documents/${documentId}/download`;
+        const endpoint = API_MODE === 'direct'
+            ? restPath
+            : `/api/v1${restPath}`;
         const url = buildApiUrl('control-disciplinario', endpoint);
 
         // Obtener token de autenticacion
@@ -670,7 +673,6 @@ class DisciplinaryService {
         link.download = filename;
         document.body.appendChild(link);
         link.click();
-        document.body.removeChild(link);
         document.body.removeChild(link);
         window.URL.revokeObjectURL(downloadUrl);
     }
@@ -1088,14 +1090,49 @@ class DisciplinaryService {
     }
 
     async createActa(processId: string, data: any, file: File): Promise<any> {
-        // Build a structured description containing all acta-specific fields
+        const participantesDetalle = Array.isArray(data.participantesDetalle)
+            ? data.participantesDetalle
+            : Array.isArray(data.participantes)
+                ? data.participantes
+                : [];
+
+        const participantesTexto = typeof data.participantes === 'string'
+            ? data.participantes.trim()
+            : '';
+
+        const participantesCount = typeof data.participantes === 'number'
+            ? data.participantes
+            : participantesDetalle.length > 0
+                ? participantesDetalle.length
+                : /^\d+$/.test(participantesTexto)
+                    ? Number(participantesTexto)
+                    : undefined;
+
+        const asistentes = participantesDetalle.length > 0
+            ? participantesDetalle
+                .map((participante: any) => {
+                    const nombre = participante?.nombre?.trim?.() || 'Sin nombre';
+                    const rol = participante?.rol?.trim?.();
+                    const identificacion = participante?.identificacion?.trim?.();
+                    return [nombre, rol ? `(${rol})` : '', identificacion ? `- ${identificacion}` : '']
+                        .filter(Boolean)
+                        .join(' ')
+                        .trim();
+                })
+                .filter(Boolean)
+                .join('; ')
+            : (participantesTexto && !/^\d+$/.test(participantesTexto) ? participantesTexto : '');
+
         const parts: string[] = [];
         if (data.tipo) parts.push(`Tipo: ${data.tipo}`);
+        if (data.fecha) parts.push(`Fecha Acta: ${data.fecha}`);
         if (data.horario) parts.push(`Horario: ${data.horario}`);
-        if (data.duracion) parts.push(`Duración: ${data.duracion}`);
+        if (data.duracion) parts.push(`Duracion: ${data.duracion}`);
         if (data.lugar) parts.push(`Lugar: ${data.lugar}`);
         if (data.presidente) parts.push(`Presidente: ${data.presidente}`);
-        if (data.participantes) parts.push(`Participantes: ${data.participantes}`);
+        if (participantesCount !== undefined) parts.push(`Participantes: ${participantesCount}`);
+        if (asistentes) parts.push(`Asistentes: ${asistentes}`);
+        if (data.observaciones) parts.push(`Observaciones: ${data.observaciones}`);
         if (data.resumen) parts.push(`Resumen: ${data.resumen}`);
         if (data.decisionesTomadas) parts.push(`Decisiones: ${data.decisionesTomadas}`);
         const descripcion = parts.join(' | ');
@@ -1109,6 +1146,10 @@ class DisciplinaryService {
             nombre,
             data.etapa || undefined,
             data.usuarioCarga || 'Sistema',
+            data.categoria || undefined,
+            undefined,
+            undefined,
+            participantesCount,
         );
     }
 

@@ -936,22 +936,40 @@ export class ProcessController {
       const noticia = await this.newsService.findById(dto.newsId);
       console.log('📧 [RemitirCompetencia] Noticia encontrada:', noticia.radicado);
 
-      // 2. Construir el contenido HTML del correo
+      // 2. Usar la descripción proporcionada o construir desde la noticia
+      const descripcionRemision = dto.descripcion || {
+        numeroRadicado: noticia.radicado,
+        origen: noticia.origen,
+        fechaRecepcion: new Date(noticia.fechaRecepcion).toISOString(),
+        territorial: noticia.territorial,
+        dependenciaDenunciado: noticia.dependenciaDenunciado,
+        denunciante: typeof noticia.denunciante === 'string' 
+          ? JSON.parse(noticia.denunciante) 
+          : noticia.denunciante,
+        disciplinable: typeof noticia.disciplinable === 'string' 
+          ? JSON.parse(noticia.disciplinable) 
+          : noticia.disciplinable,
+        hechos: noticia.hechos,
+        conductas: noticia.conductas,
+      };
+
+      // 3. Construir el contenido HTML del correo
       const emailHtml = this.newsService.buildRemisionEmailContent(
         noticia,
         dto.entidadDestino,
         dto.justificacion,
+        descripcionRemision,
       );
       console.log('📧 [RemitirCompetencia] HTML del correo construido');
 
-      // 3. Enviar el correo usando el servicio de notificaciones
+      // 4. Enviar el correo usando el servicio de notificaciones
       const notificationsServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
       console.log('📧 [RemitirCompetencia] URL del servicio de notificaciones:', notificationsServiceUrl);
 
       const emailPayload = {
         to: dto.emailDestinatario,
-        subject: `Remisión por Competencia - Noticia Disciplinaria ${noticia.radicado}`,
-        text: `Se remite la noticia disciplinaria ${noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
+        subject: `Remisión por Competencia - Noticia Disciplinaria ${dto.radicado || noticia.radicado}`,
+        text: `Se remite la noticia disciplinaria ${dto.radicado || noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
         html: emailHtml,
       };
 
@@ -963,15 +981,40 @@ export class ProcessController {
 
       console.log('📧 [RemitirCompetencia] Respuesta del servicio de notificaciones:', response.data);
 
-      // 4. Registrar la remisión en el historial de la noticia
+      // 5. Generar número RC
+      const anio = new Date().getFullYear();
+      const consecutivo = String(Math.floor(Math.random() * 9000) + 1000);
+      const numeroRC = `RC-${anio}-${consecutivo}`;
+
+      // 6. Actualizar la noticia con el estado de REMITIDA y los datos de remisión
+      // Incluir la descripción detallada en la misma llamada
+      console.log('📧 [RemitirCompetencia] Actualizando noticia a estado REMITIDA...');
+      await this.newsService.remitirNoticia(
+        dto.newsId,
+        {
+          numeroRC,
+          entidadRemision: dto.entidadDestino,
+          correoEntidadRemision: dto.emailDestinatario,
+          fechaRemision: new Date(),
+          tipoRemision: dto.tipoRemision || 'sin-competencia',
+          justificacionRemision: dto.justificacion,
+        },
+        descripcionRemision,
+      );
+
+      // 8. Registrar la remisión en el historial de la noticia
       const historyEntry = {
         id: Date.now().toString(),
         tipo: 'remision_competencia',
         usuario: dto.usuarioRemision || 'Sistema',
         fecha: new Date().toISOString(),
-        observaciones: `Remisión a ${dto.entidadDestino} (${dto.emailDestinatario}). Justificación: ${dto.justificacion}`,
+        observaciones: `Remisión a ${dto.entidadDestino} (${dto.emailDestinatario}). Número RC: ${numeroRC}. Justificación: ${dto.justificacion}`,
         resultado: 'enviado',
+        descripcion: descripcionRemision,
       };
+
+      // Actualizar el historial de la noticia
+      await this.newsService.updateHistory(dto.newsId, historyEntry);
 
       // Actualizar el historial de la noticia
       await this.newsService.updateHistory(dto.newsId, historyEntry);
@@ -1058,6 +1101,10 @@ export class ProcessController {
           procesoAsociadoNumero: proceso.procesoAsociadoNumero,
           procesoAsociadoTipo: proceso.procesoAsociadoTipo,
           procesoAsociadoFecha: proceso.procesoAsociadoFecha,
+          // ✅ NUEVO: Incluir información de consolidación
+          procesosConsolidados: proceso.procesosConsolidados,
+          procesoConsolidadoPrincipal: proceso.procesoConsolidadoPrincipal,
+          informacionConsolidada: proceso.informacionConsolidada,
         },
       };
     } catch (error) {

@@ -50,6 +50,7 @@ import { convertirProcesoABorrador } from './utils-aprobacion'; // ✅ NUEVO: Ut
 import { obtenerAccionesPorEtapa, obtenerDescripcionEtapa, type EtapaProceso } from './accionesPorEtapa'; // ✅ NUEVO: Acciones por etapa
 import { useResponsive } from './hooks/useResponsive'; // ✅ Hook responsive simplificado
 import { ModalDetallesProceso } from './ModalDetallesProceso'; // ✅ Modal World Class con pestañas
+import { ModalDetallesAsociacion } from './ModalDetallesAsociacion'; // ✅ Modal para ver detalles de asociación de procesos
 import { WizardConvertirProcesoWorldClass } from './WizardConvertirProcesoWorldClass'; // ✅ Wizard conversión con disponibilidad de profesionales
 import { ModalDetallesNoticia } from './ModalDetallesNoticia'; // ✅ Modal World Class detalles de noticia
 import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProcess as ApiProceso } from '../../../services/api/disciplinary.service';
@@ -136,7 +137,7 @@ interface Noticia {
   denunciante: Persona | string;
   denunciado: Persona | string;
   hechos: string;
-  estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada';
+  estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada' | 'remitida';
   prioridad: 'alta' | 'media' | 'baja';
   diasPendientes: number;
   tipo: 'noticia';
@@ -146,6 +147,13 @@ interface Noticia {
     fechaAsociacion: string;
     justificacion: string;
   };
+  // ═══ Campos de remisión por competencia ═══
+  numeroRC?: string;
+  entidadRemision?: string;
+  tipoRemision?: string;
+  fechaRemision?: string;
+  fundamentoLegalRemision?: string;
+  justificacionRemision?: string;
   // ═══ Campos extendidos de creación ═══
   territorial?: string;
   fechaHechos?: string;
@@ -237,6 +245,15 @@ interface Proceso {
   procesoAsociadoNumero?: string;
   procesoAsociadoTipo?: 'conexo' | 'similar' | 'consolidado';
   procesoAsociadoFecha?: string;
+  // ✅ NUEVO: Campos de consolidación
+  procesoConsolidadoPrincipal?: string;
+  procesosConsolidados?: string[];
+  informacionConsolidada?: {
+    radicado: string;
+    fechaInicio: string;
+    hechos: string;
+    disciplinable: any;
+  };
 }
 
 type Item = Noticia | Proceso;
@@ -246,6 +263,8 @@ type ModalType =
   | 'devolver-noticia'
   | 'devolver-competencia'
   | 'ver-detalles'
+  | 'ver-detalles-remision'  // ✅ NUEVO: Modal para ver detalles de remisión por competencia
+  | 'ver-detalles-asociacion'  // ✅ NUEVO: Modal para ver detalles de asociación de procesos
   | 'aprobar-borrador'
   | 'archivar-noticia'
   | 'editor-documentos'
@@ -276,6 +295,7 @@ interface TarjetaNoticiaProps {
   onDevolverCompetencia: (noticia: Noticia) => void;
   onArchivar: (noticia: Noticia) => void;
   onVerDetalles?: (noticia: Noticia) => void;
+  onVerDetallesRemision?: (noticia: Noticia) => void; // ✅ NUEVO: Ver detalles de remisión
   onAsociarNoticiaProceso?: (noticia: Noticia) => void; // ✅ NUEVO: Asociar noticia a proceso
   onVerProcesoAsociado?: (procesoId: string) => void; // ✅ NUEVO: Ver proceso asociado
   onEditarNoticia?: (noticia: Noticia) => void; // ✅ NUEVO: Editar noticia
@@ -286,7 +306,7 @@ interface TarjetaNoticiaProps {
   etapa?: string; // ✅ NUEVO: Etapa actual para condicionales
 }
 
-function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onAsociarNoticiaProceso, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa }: TarjetaNoticiaProps) {
+function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa }: TarjetaNoticiaProps) {
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
     item: { ...noticia, tipoItem: 'noticia' },
@@ -296,6 +316,9 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
   });
   const dragRef = useRef<HTMLDivElement>(null);
   drag(dragRef);
+
+  // ✅ NUEVO: Determinar si la noticia tiene remisión
+  const tieneRemision = !!(noticia as any).numeroRC || noticia.entidadRemision || noticia.estado === 'remitida';
 
   return (
     <div
@@ -308,20 +331,30 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
         animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
       >
         <KanbanCard
-          accentColor={noticia.procesoAsociado ? '#9333EA' : '#F59E0B'}
-          className={noticia.procesoAsociado ? 'border-purple-300 hover:shadow-purple-100' : ''}
+          accentColor={noticia.procesoAsociado ? '#9333EA' : tieneRemision ? '#7C3AED' : '#F59E0B'}
+          className={`${noticia.procesoAsociado ? 'border-purple-300 hover:shadow-purple-100' : ''} ${tieneRemision ? 'border-l-4' : ''}`}
+          style={tieneRemision ? { borderLeftColor: '#7C3AED' } : undefined}
         >
           {/* Header — KanbanCardHeader */}
           <KanbanCardHeader
-            icon={<FileText className="w-4 h-4 text-orange-600" />}
-            iconBg="#FEF3C7"
+            icon={<FileText className={`w-4 h-4 ${tieneRemision ? 'text-purple-600' : 'text-orange-600'}`} />}
+            iconBg={tieneRemision ? '#EDE9FE' : '#FEF3C7'}
             title={noticia.numero}
             subtitle={noticia.origen}
-            rightContent={noticia.procesoAsociado ? (
-              <span className="flex-shrink-0 p-1 rounded-full bg-purple-100 border border-purple-300" title="Asociada a proceso">
-                <Link2 className="w-2.5 h-2.5 text-purple-700" />
-              </span>
-            ) : undefined}
+            rightContent={
+              <div className="flex items-center gap-1">
+                {noticia.procesoAsociado ? (
+                  <span className="flex-shrink-0 p-1 rounded-full bg-purple-100 border border-purple-300" title="Asociada a proceso">
+                    <Link2 className="w-2.5 h-2.5 text-purple-700" />
+                  </span>
+                ) : null}
+                {tieneRemision ? (
+                  <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-purple-100 border border-purple-300 text-purple-700 text-[10px] font-bold" title="Remitida por competencia">
+                    RC: {(noticia as any).numeroRC || noticia.numeroRC || 'OK'}
+                  </span>
+                ) : null}
+              </div>
+            }
           />
 
           {/* Partes: Denunciante y Denunciado — KanbanCardInfoSection */}
@@ -371,6 +404,33 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                     <ExternalLink className="w-3 h-3 text-purple-600" />
                   </button>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ✅ NUEVO: Remisión por Competencia - Aviso visual clicable */}
+          {tieneRemision && onVerDetallesRemision && (
+            <div 
+              className="bg-purple-50 border border-purple-200 rounded-lg px-2.5 py-1.5 cursor-pointer hover:bg-purple-100 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onVerDetallesRemision(noticia); }}
+              title="Ver detalles de remisión"
+            >
+              <div className="flex items-center justify-between">
+                <div className="min-w-0">
+                  <p className="text-[9px] font-bold text-purple-600 uppercase tracking-wider flex items-center gap-1">
+                    <Send className="w-2.5 h-2.5" />
+                    Remitida por Competencia
+                  </p>
+                  <p className="text-xs font-bold text-purple-900 truncate">
+                    RC: {(noticia as any).numeroRC || noticia.numeroRC || '—'}
+                  </p>
+                  {(noticia as any).entidadRemision || noticia.entidadRemision ? (
+                    <p className="text-[10px] text-purple-700 truncate">
+                      → {(noticia as any).entidadRemision || noticia.entidadRemision}
+                    </p>
+                  ) : null}
+                </div>
+                <ExternalLink className="w-3 h-3 text-purple-500 flex-shrink-0" />
               </div>
             </div>
           )}
@@ -472,6 +532,7 @@ interface TarjetaProcesoProps {
   colapsada?: boolean; // NUEVO: Indica si la tarjeta está colapsada
   onToggleColapso?: () => void; // NUEVO: Toggle para colapsar/expandir
   onEditarProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
+  onVerDetallesAsociacion?: (proceso: Proceso) => void; // ✅ NUEVO: Ver detalles de asociación
 }
 
 function TarjetaProceso({
@@ -488,6 +549,7 @@ function TarjetaProceso({
   onComentarios,
   noticiasAsociadas = [], // ✅ NUEVO
   onVerNoticiaAsociada, // ✅ NUEVO
+  onVerDetallesAsociacion, // ✅ NUEVO: Ver detalles de asociación
   vistaCompacta,
   isMobile,
   colapsada,
@@ -611,12 +673,16 @@ function TarjetaProceso({
                 {noticiasExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
               </button>
             )}
-            {/* ✅ NUEVO: Badge de proceso asociado */}
+            {/* ✅ NUEVO: Badge de proceso asociado - CLICKEABLE */}
             {proceso.procesoAsociadoId && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-300 flex items-center gap-0.5" title={`Asociado a: ${proceso.procesoAsociadoNumero}`}>
+              <button
+                onClick={(e) => { e.stopPropagation(); onVerDetallesAsociacion?.(proceso); }}
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-300 flex items-center gap-0.5 hover:bg-blue-200 transition-colors cursor-pointer"
+                title={`Ver detalles de asociación: ${proceso.procesoAsociadoNumero}`}
+              >
                 <Link2 className="w-2.5 h-2.5" />
                 {proceso.procesoAsociadoTipo === 'conexo' ? 'Conexo' : proceso.procesoAsociadoTipo === 'similar' ? 'Similar' : proceso.procesoAsociadoTipo === 'consolidado' ? 'Consolidado' : 'Asociado'}
-              </span>
+              </button>
             )}
           </div>
 
@@ -647,9 +713,13 @@ function TarjetaProceso({
             </motion.div>
           )}
 
-          {/* Métricas — fila compacta inline */}
+          {/* Métricas — fila compacta inline - CLICKEABLE */}
           {proceso.procesoAsociadoId && (
-            <div className="mt-2 pt-2 border-t border-blue-200 bg-blue-50 p-2 rounded-md">
+            <div 
+              className="mt-2 pt-2 border-t border-blue-200 bg-blue-50 p-2 rounded-md cursor-pointer hover:bg-blue-100 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onVerDetallesAsociacion?.(proceso); }}
+              title="Ver detalles de la asociación"
+            >
               <div className="flex items-center gap-1.5">
                 <Link2 className="w-3 h-3 text-blue-600" />
                 <span className="text-[10px] font-bold text-blue-800">Proceso Asociado:</span>
@@ -1332,6 +1402,7 @@ interface ColumnaKanbanProps {
   onDevolverCompetencia: (noticia: Noticia) => void;
   onArchivarNoticia: (noticia: Noticia) => void;
   onVerDetallesNoticia?: (noticia: Noticia) => void;
+  onVerDetallesRemision?: (noticia: Noticia) => void; // ✅ NUEVO: Ver detalles de remisión
   onAsociarNoticiaProceso?: (noticia: Noticia) => void; // ✅ NUEVO
   onVerProcesoAsociado?: (procesoId: string) => void; // ✅ NUEVO
   onVerNoticiaAsociada?: (noticia: Noticia) => void; // ✅ NUEVO: Ver noticia asociada desde proceso
@@ -1347,6 +1418,7 @@ interface ColumnaKanbanProps {
   onSolicitarReasignacion?: (proceso: Proceso) => void; // ✅ NUEVO: Solicitar reasignación
   onAsociarProcesoProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Asociar proceso a otro proceso (post-Recepción)
   onEditarProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
+  onVerDetallesAsociacion?: (proceso: Proceso) => void; // ✅ NUEVO: Ver detalles de asociación
   vistaCompacta: boolean;
   isMobile?: boolean;
   colapsada?: boolean;
@@ -1368,6 +1440,7 @@ function ColumnaKanban({
   onDevolverCompetencia,
   onArchivarNoticia,
   onVerDetallesNoticia,
+  onVerDetallesRemision, // ✅ NUEVO: Ver detalles de remisión
   onAsociarNoticiaProceso, // ✅ NUEVO
   onVerProcesoAsociado, // ✅ NUEVO
   onVerNoticiaAsociada, // ✅ NUEVO
@@ -1383,6 +1456,7 @@ function ColumnaKanban({
   onSolicitarReasignacion, // ✅ NUEVO
   onAsociarProcesoProceso, // ✅ NUEVO: Asociar proceso a proceso
   onEditarProceso, // ✅ NUEVO: Editar proceso
+  onVerDetallesAsociacion, // ✅ NUEVO: Ver detalles de asociación
   vistaCompacta,
   isMobile,
   colapsada = false,
@@ -1701,6 +1775,7 @@ function ColumnaKanban({
               onDevolverCompetencia={onDevolverCompetencia}
               onArchivar={onArchivarNoticia}
               onVerDetalles={onVerDetallesNoticia}
+              onVerDetallesRemision={onVerDetallesRemision} // ✅ NUEVO: Ver detalles de remisión
               onAsociarNoticiaProceso={onAsociarNoticiaProceso} // ✅ NUEVO
               onVerProcesoAsociado={onVerProcesoAsociado} // ✅ NUEVO
               onEditarNoticia={onEditarNoticia} // ✅ NUEVO: Editar noticia
@@ -1735,6 +1810,7 @@ function ColumnaKanban({
               onGestionActas={onGestionActas}
               onComentarios={onComentarios}
               onSolicitarReasignacion={onSolicitarReasignacion} // ✅ NUEVO: Solicitar reasignación
+              onVerDetallesAsociacion={onVerDetallesAsociacion} // ✅ NUEVO: Ver detalles de asociación
               onAsociarProcesoProceso={onAsociarProcesoProceso} // ✅ NUEVO: Asociar proceso a otro proceso
               onEditarProceso={onEditarProceso} // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
               noticiasAsociadas={getNoticiasAsociadas(proceso.id)} // ✅ NUEVO: Noticias asociadas a este proceso
@@ -2643,6 +2719,8 @@ export function DashboardKanbanOperativo({
         return 'en-valoracion';
       case 'DEVUELTA':
         return 'archivada';
+      case 'REMITIDA':
+        return 'remitida'; // ✅ NUEVO: Mapear estado REMITIDA del backend
       default:
         return 'pendiente';
     }
@@ -2715,7 +2793,14 @@ export function DashboardKanbanOperativo({
       prioridad: (noticia as any).prioridad || 'media',
       diasPendientes: (noticia as any).diasPendientes ?? dias,
       tipo: 'noticia' as const,
-      etapaActual: etapaNormalizada
+      etapaActual: etapaNormalizada,
+      // ✅ NUEVO: Mapear campos de remisión por competencia
+      numeroRC: (noticia as any).numeroRC || (noticia as any).radicadoRemision || undefined,
+      entidadRemision: (noticia as any).entidadRemision || (noticia as any).entidadDestino || undefined,
+      tipoRemision: (noticia as any).tipoRemision || (noticia as any).tipoRemisionPor || undefined,
+      fechaRemision: (noticia as any).fechaRemision || (noticia as any).fechaRemisionPorCompetencia || undefined,
+      fundamentoLegalRemision: (noticia as any).fundamentoLegalRemision || (noticia as any).fundamentoLegal || undefined,
+      justificacionRemision: (noticia as any).justificacionRemision || (noticia as any).observacionesRemision || undefined
     };
   };
 
@@ -2801,6 +2886,11 @@ export function DashboardKanbanOperativo({
     const procesoAsociadoTipo = (proceso as any).procesoAsociadoTipo || undefined;
     const procesoAsociadoFecha = (proceso as any).procesoAsociadoFecha || undefined;
 
+    // ✅ NUEVO: Mapear campos de consolidación
+    const procesoConsolidadoPrincipal = (proceso as any).procesoConsolidadoPrincipal || undefined;
+    const procesosConsolidados = (proceso as any).procesosConsolidados || undefined;
+    const informacionConsolidada = (proceso as any).informacionConsolidada || undefined;
+
     return {
       id: proceso.id,
       numeroProceso: proceso.radicadoProceso,
@@ -2838,6 +2928,10 @@ export function DashboardKanbanOperativo({
       procesoAsociadoNumero,
       procesoAsociadoTipo,
       procesoAsociadoFecha,
+      // ✅ NUEVO: Incluir campos de consolidación
+      procesoConsolidadoPrincipal,
+      procesosConsolidados,
+      informacionConsolidada,
     };
   };
 
@@ -3475,6 +3569,7 @@ export function DashboardKanbanOperativo({
     try {
       await disciplinaryService.remitirPorCompetencia({
         newsId: itemSeleccionado.id,
+        radicado: itemSeleccionado.numero,
         emailDestinatario: datos.entidadCorreo,
         entidadDestino: datos.entidadNombre,
         justificacion: `${datos.numeroRC} — Tipo: ${datos.tipoRemision}. Fundamento: ${datos.fundamentoLegal || 'N/A'}. ${datos.justificacion}`,
@@ -3496,12 +3591,19 @@ export function DashboardKanbanOperativo({
       // Continuar con la actualización local aunque haya error en el backend
     }
 
-    // Actualizar estado de la noticia a 'remitida' antes de eliminar
+    // Actualizar estado de la noticia a 'remitida' pero mantenerla visible en el Kanban
     setItems(prev => prev.map(item => {
       if (item.id === itemSeleccionado.id && item.tipo === 'noticia') {
         return {
           ...item,
           estado: 'remitida' as any,
+          // ✅ NUEVO: Guardar información de remisión en la noticia
+          numeroRC: datos.numeroRC,
+          entidadRemision: datos.entidadNombre,
+          tipoRemision: datos.tipoRemision,
+          fechaRemision: new Date().toISOString(),
+          fundamentoLegalRemision: datos.fundamentoLegal,
+          justificacionRemision: datos.justificacion,
           bitacora: [
             ...(item as any).bitacora || [],
             {
@@ -3515,10 +3617,7 @@ export function DashboardKanbanOperativo({
       }
       return item;
     }));
-    // Remover del Kanban (la noticia remitida sale del flujo activo)
-    setTimeout(() => {
-      setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
-    }, 100);
+    // ✅ NOTA: La noticia ya no se elimina del Kanban - se mantiene visible con indicador de remisión
     setModalActivo(null);
     setItemSeleccionado(null);
   };
@@ -3915,6 +4014,18 @@ export function DashboardKanbanOperativo({
   const handleVerDetallesNoticia = (noticia: Noticia) => {
     setItemSeleccionado(noticia);
     setModalActivo('ver-detalles');
+  };
+
+  // ✅ NUEVO: Handler para ver detalles de remisión (clic en el cuadrito de remisión)
+  const handleVerDetallesRemision = (noticia: Noticia) => {
+    setItemSeleccionado(noticia);
+    setModalActivo('ver-detalles-remision');
+  };
+
+  // ✅ NUEVO: Handler para ver detalles de asociación de procesos (clic en el proceso asociado)
+  const handleVerDetallesAsociacion = (proceso: Proceso) => {
+    setItemSeleccionado(proceso);
+    setModalActivo('ver-detalles-asociacion');
   };
 
   // ✅ NUEVO: Handler para ver noticia asociada desde el proceso
@@ -4583,6 +4694,7 @@ export function DashboardKanbanOperativo({
                         onDevolverCompetencia={handleDevolverCompetencia}
                         onArchivarNoticia={handleArchivarNoticia}
                         onVerDetallesNoticia={handleVerDetallesNoticia}
+                        onVerDetallesRemision={handleVerDetallesRemision} // ✅ NUEVO: Ver detalles de remisión
                         onAsociarNoticiaProceso={handleAsociarNoticiaProceso}
                         onVerProcesoAsociado={handleVerProcesoAsociado}
                         onVerNoticiaAsociada={handleVerNoticiaAsociada}
@@ -4598,6 +4710,7 @@ export function DashboardKanbanOperativo({
                         onSolicitarReasignacion={handleSolicitarReasignacion}
                         onAsociarProcesoProceso={handleAsociarProcesoProceso} // ✅ NUEVO: Asociar proceso a proceso
                         onEditarProceso={handleEditarProceso} // ✅ NUEVO: Editar proceso
+                        onVerDetallesAsociacion={handleVerDetallesAsociacion} // ✅ NUEVO: Ver detalles de asociación
                         vistaCompacta={vistaCompacta}
                         isMobile={isMobile}
                         colapsada={columnasColapsadas.has(etapa.nombre)}
@@ -5243,12 +5356,6 @@ export function DashboardKanbanOperativo({
               key="modal-gestion-actas"
               proceso={itemSeleccionado}
               onClose={() => setModalActivo(null)}
-              onActaCreada={() => {
-                toast.success('Acta creada exitosamente', {
-                  description: 'El acta ha sido generada y guardada correctamente'
-                });
-                setModalActivo(null);
-              }}
             />
           )}
 
@@ -5505,6 +5612,147 @@ export function DashboardKanbanOperativo({
               onNavigateToRevision();
             } : undefined}
           />
+        )}
+
+        {/* ══ DETALLES DE NOTICIA — World Class Completo ══ */}
+        {modalActivo === 'ver-detalles' && itemSeleccionado && itemSeleccionado.tipo === 'noticia' && (
+          <ModalDetallesNoticia
+            noticia={itemSeleccionado as Noticia}
+            onClose={() => setModalActivo(null)}
+            onEditar={(noticia) => handleEditarNoticia(noticia as Noticia)}
+            onConvertir={(noticia) => handleConvertirNoticia(noticia as Noticia)}
+          />
+        )}
+
+        {/* NUEVO: MODAL DETALLES ASOCIACION - Ver detalles de asociacion entre procesos */}
+        {modalActivo === 'ver-detalles-asociacion' && itemSeleccionado && itemSeleccionado.tipo === 'proceso' && (() => {
+          const procesoOrigen = itemSeleccionado as Proceso;
+          const procesoDestino = items.find(item => 
+            item.tipo === 'proceso' && item.id === procesoOrigen.procesoAsociadoId
+          ) as Proceso | undefined;
+          
+          return (
+            <ModalDetallesAsociacion
+              isOpen={modalActivo === 'ver-detalles-asociacion'}
+              onClose={() => {
+                setModalActivo(null);
+                setItemSeleccionado(null);
+              }}
+              procesoOrigen={procesoOrigen}
+              procesoDestino={procesoDestino}
+              tipoAsociacion={procesoOrigen.procesoAsociadoTipo}
+              fechaAsociacion={procesoOrigen.procesoAsociadoFecha}
+              onVerProceso={(proceso) => {
+                setItemSeleccionado(proceso);
+                setModalActivo('ver-detalles');
+              }}
+            />
+          );
+        })()}
+
+        {/* ✅ NUEVO: MODAL DETALLES REMISIÓN — Ver información completa de remisión por competencia */}
+        {modalActivo === 'ver-detalles-remision' && itemSeleccionado && itemSeleccionado.tipo === 'noticia' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setModalActivo(null)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden"
+            >
+              {/* Header */}
+              <div className="bg-purple-600 px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/20 rounded-lg">
+                    <Send className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Remisión por Competencia</h2>
+                    <p className="text-white text-sm">Noticia: {itemSeleccionado.numero}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setModalActivo(null)}
+                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-white" />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+                <div className="space-y-4">
+                  {/* Número RC */}
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <p className="text-xs font-bold text-purple-600 uppercase mb-1">Número de Radicado de Remisión</p>
+                    <p className="text-xl font-bold text-purple-900">{(itemSeleccionado as any).numeroRC || itemSeleccionado.numeroRC || '—'}</p>
+                  </div>
+
+                  {/* Entidad de Remisión */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <p className="text-xs font-bold text-gray-500 uppercase mb-1">Entidad Destino</p>
+                    <p className="text-base font-semibold text-gray-900">{(itemSeleccionado as any).entidadRemision || itemSeleccionado.entidadRemision || '—'}</p>
+                  </div>
+
+                  {/* Tipo de Remisión */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <p className="text-xs font-bold text-gray-500 uppercase mb-1">Tipo de Remisión</p>
+                    <p className="text-base font-semibold text-gray-900">{(itemSeleccionado as any).tipoRemision || itemSeleccionado.tipoRemision || '—'}</p>
+                  </div>
+
+                  {/* Fecha de Remisión */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <p className="text-xs font-bold text-gray-500 uppercase mb-1">Fecha de Remisión</p>
+                    <p className="text-base font-semibold text-gray-900">
+                      {itemSeleccionado.fechaRemision 
+                        ? new Date(itemSeleccionado.fechaRemision).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
+                        : ((itemSeleccionado as any).fechaRemision 
+                            ? new Date((itemSeleccionado as any).fechaRemision).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
+                            : '—')}
+                    </p>
+                  </div>
+
+                  {/* Fundamento Legal */}
+                  {(itemSeleccionado as any).fundamentoLegalRemision || itemSeleccionado.fundamentoLegalRemision ? (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <p className="text-xs font-bold text-gray-500 uppercase mb-1">Fundamento Legal</p>
+                      <p className="text-base text-gray-700">{(itemSeleccionado as any).fundamentoLegalRemision || itemSeleccionado.fundamentoLegalRemision}</p>
+                    </div>
+                  ) : null}
+
+                  {/* Justificación */}
+                  {(itemSeleccionado as any).justificacionRemision || itemSeleccionado.justificacionRemision ? (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <p className="text-xs font-bold text-gray-500 uppercase mb-1">Justificación</p>
+                      <p className="text-base text-gray-700">{(itemSeleccionado as any).justificacionRemision || itemSeleccionado.justificacionRemision}</p>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Actions */}
+                <div className="mt-6 pt-4 border-t border-gray-200 flex gap-3 justify-end">
+                  <Button
+                    variant="outline"
+                    onClick={() => setModalActivo(null)}
+                    className="gap-2"
+                  >
+                    <X className="w-4 h-4" />
+                    Cerrar
+                  </Button>
+                  {/* <Button
+                    onClick={() => {
+                      // Abrir detalles completos de la noticia
+                      setModalActivo('ver-detalles');
+                    }}
+                    className="gap-2 bg-purple-600 hover:bg-purple-700"
+                  >
+                    <Eye className="w-4 h-4" />
+                    Ver Detalles Completos
+                  </Button> */}
+                </div>
+              </div>
+            </motion.div>
+          </div>
         )}
 
         {/* ══ DETALLES DE NOTICIA — World Class Completo ══ */}
