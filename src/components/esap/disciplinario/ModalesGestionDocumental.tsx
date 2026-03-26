@@ -3,7 +3,7 @@
  * Componentes para Gestión de Autos, Evidencias, Oficios, Notificaciones, Actas e Historial
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
@@ -21,6 +21,9 @@ const isUuidLike = (value: string) =>
 
 const formatFileSize = (size?: number) => {
   if (!size && size !== 0) return '';
+  if (size >= 1024 * 1024 * 1024) {
+    return `${(size / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
   if (size >= 1024 * 1024) {
     return `${(size / (1024 * 1024)).toFixed(2)} MB`;
   }
@@ -1758,6 +1761,10 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
   const [cargandoEvidencias, setCargandoEvidencias] = useState(false);
   const [archivo, setArchivo] = useState<File | null>(null);
   const [archivoError, setArchivoError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadLoadedBytes, setUploadLoadedBytes] = useState(0);
+  const [uploadTotalBytes, setUploadTotalBytes] = useState(0);
+  const uploadAbortRef = useRef<AbortController | null>(null);
 
   // Nuevos campos
   const [tipo, setTipo] = useState('');
@@ -1820,10 +1827,19 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
     cargarEvidencias(processId);
   }, [processId]);
 
+  useEffect(() => {
+    return () => {
+      uploadAbortRef.current?.abort();
+    };
+  }, []);
+
   const handleSeleccionArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setArchivoError(null);
+    setUploadProgress(0);
+    setUploadLoadedBytes(0);
+    setUploadTotalBytes(file.size);
 
     // Tipos MIME permitidos para evidencias: HTML, PDF, Word, Excel, Imágenes, Videos, Audio
     const tiposPermitidosEvidencia = [
@@ -1846,6 +1862,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
       'audio/mpeg',
       'audio/mp3',
       'audio/wav',
+      'audio/ogg',
     ];
 
     // Extensiones PROHIBIDAS - nunca se permiten
@@ -1864,11 +1881,11 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
     const mimeValido = tiposPermitidosEvidencia.includes(file.type);
     
     // Validar extensión como respaldo - INCLUYE .heic y .mp3
-    const extensionesValidas = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.mp4', '.webm', '.mov', '.avi', '.mp3', '.wav'];
+    const extensionesValidas = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.mp4', '.webm', '.mov', '.avi', '.mp3', '.wav', '.ogg'];
     const extensionValida = extensionesValidas.includes(extension);
 
     if (!mimeValido && !extensionValida) {
-      setArchivoError('Tipo de archivo no permitido para evidencias. Solo se permiten: PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP, HEIC), Videos (MP4, WebM, MOV, AVI), Audio (MP3, WAV)');
+      setArchivoError('Tipo de archivo no permitido para evidencias. Solo se permiten: PDF, Word, Excel, HTML, Imagenes (JPG, PNG, GIF, WebP, HEIC), Videos (MP4, WebM, MOV, AVI), Audio (MP3, WAV, OGG)');
       setArchivo(null);
       e.target.value = '';
       return;
@@ -1899,6 +1916,10 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
     }
 
     setCargando(true);
+    setUploadProgress(0);
+    setUploadLoadedBytes(0);
+    setUploadTotalBytes(archivo.size);
+    uploadAbortRef.current = new AbortController();
     try {
       await disciplinaryService.createEvidencia(
         processId,
@@ -1908,22 +1929,53 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
           tipo,
           prioridad
         },
-        archivo
+        archivo,
+        {
+          signal: uploadAbortRef.current.signal,
+          timeoutMs: 0,
+          onProgressDetail: ({ progress, loaded, total }) => {
+            setUploadProgress(progress);
+            setUploadLoadedBytes(loaded);
+            setUploadTotalBytes(total || archivo.size);
+          },
+        },
       );
 
+      setUploadProgress(100);
+      setUploadLoadedBytes(archivo.size);
       await cargarEvidencias(processId);
       setArchivo(null);
       setTipo('');
       setDescripcion('');
       setAportadoPor('');
       setPrioridad('Media');
+      setUploadLoadedBytes(0);
+      setUploadTotalBytes(0);
       toast.success('Evidencia cargada correctamente');
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        toast.info('Carga cancelada');
+        return;
+      }
       console.error('Error subiendo evidencia', error);
       toast.error('No se pudo subir la evidencia');
     } finally {
+      uploadAbortRef.current = null;
       setCargando(false);
     }
+  };
+
+  const handleCancelarCarga = () => {
+    uploadAbortRef.current?.abort();
+  };
+
+  const handleCerrarModal = () => {
+    if (cargando) {
+      toast.info('Hay una carga en progreso. Espera a que termine o cancelala antes de cerrar.');
+      return;
+    }
+
+    onClose();
   };
 
   const handleAdmitirEvidencia = async (evidencia: any) => {
@@ -1975,7 +2027,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) handleCerrarModal(); }}
     >
       <motion.div
         initial={{ scale: 0.9, y: 20 }}
@@ -2000,7 +2052,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                 </p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/50 rounded-lg">
+            <button onClick={handleCerrarModal} className="p-2 hover:bg-white/50 rounded-lg">
               <X className="w-6 h-6 text-gray-600" />
             </button>
           </div>
@@ -2167,7 +2219,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
               <input
                 type="file"
                 id="file-upload-evidencias"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.html,.jpg,.jpeg,.png,.gif,.webp,.heic,.mp4,.webm,.mov,.avi,.mp3,.wav"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.html,.jpg,.jpeg,.png,.gif,.webp,.heic,.mp4,.webm,.mov,.avi,.mp3,.wav,.ogg"
                 onChange={handleSeleccionArchivo}
                 className="hidden"
               />
@@ -2184,6 +2236,26 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                     <p className="text-sm text-gray-600">
                       {archivo ? archivo.name : 'Click para seleccionar archivo (máx 10 GB)'}
                     </p>
+                    {cargando && archivo && (
+                      <div className="mt-4 space-y-2">
+                        <div className="h-2 w-full rounded-full bg-orange-100 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-300"
+                            style={{
+                              width: `${Math.max(uploadProgress, 2)}%`,
+                              background: 'linear-gradient(90deg, #F59E0B, #FB923C)',
+                            }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-gray-600">
+                          <span>{uploadProgress}%</span>
+                          <span>{formatFileSize(uploadLoadedBytes)} / {formatFileSize(uploadTotalBytes || archivo.size)}</span>
+                        </div>
+                        <p className="text-[11px] text-orange-700 font-medium">
+                          La carga sigue activa. No cierres esta ventana hasta que termine.
+                        </p>
+                      </div>
+                    )}
                     {archivoError && (
                       <p className="text-xs text-red-600 mt-2">{archivoError}</p>
                     )}
@@ -2195,9 +2267,16 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
         </div>
 
         <div className="p-4 border-t bg-gray-50 flex justify-between">
-          <Button onClick={onClose} variant="outline">
-            Cerrar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleCerrarModal} variant="outline" disabled={cargando}>
+              Cerrar
+            </Button>
+            {cargando && (
+              <Button onClick={handleCancelarCarga} variant="outline">
+                Cancelar carga
+              </Button>
+            )}
+          </div>
           {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_CREATE) && (
             <Button
               onClick={handleSubirEvidencia}

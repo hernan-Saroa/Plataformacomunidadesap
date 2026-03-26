@@ -25,6 +25,7 @@ import { GestionTerminosAlertasWorldClass } from './GestionTerminosAlertasWorldC
 import { DashboardKanbanOperativo } from './DashboardKanbanOperativo'; // ✅ Kanban Operativo Completo
 import type { BorradorPendiente } from './ModalRevisionAuto';
 import { authService } from '../../../services/api/authService';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { Permissions } from '../../../enums/permissions';
 
 export interface ResultadoRevision {
@@ -105,6 +106,49 @@ export function ControlDisciplinarioFull() {
   const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
   const [borradores, setBorradores] = useState<BorradorPendiente[]>(BORRADORES_INICIALES);
   const [revisionLog, setRevisionLog] = useState<ResultadoRevision[]>([]);
+
+  // Cargar autos reales con estado REVISION_JEFE desde el backend
+  useEffect(() => {
+    const cargarAutosEnRevision = async () => {
+      try {
+        const todos = await disciplinaryService.getAllAutos();
+        const enRevision = todos.filter((a: any) => a.estado === 'REVISION_JEFE');
+        if (enRevision.length > 0) {
+          const borradoresReales: BorradorPendiente[] = enRevision.map((auto: any) => ({
+            id: `auto-${auto.id}`,
+            autoId: auto.id,
+            numeroProceso: auto.process?.radicadoProceso || auto.processId,
+            titulo: (auto.tipo || '').replace(/_/g, ' '),
+            plantilla: auto.tipo || '',
+            version: auto.currentVersion || 1,
+            fechaEnvio: auto.createdAt,
+            profesional: {
+              nombre: auto.process?.abogadoAsignadoNombre || 'Profesional',
+              email: '',
+            },
+            observacionesProfesional: auto.comentarios || '',
+            contenido: auto.contenido || '',
+            denunciado: auto.process?.news?.disciplinable?.nombre || 'Sin información',
+            etapa: (auto.process?.etapaActual || '').replace(/_/g, ' '),
+            prioridad: 'media' as const,
+            estado: 'en_revision' as const,
+            historial: [{
+              id: `h-${auto.id}`,
+              tipo: 'revision_iniciada' as const,
+              usuario: auto.process?.abogadoAsignadoNombre || 'Profesional',
+              fecha: auto.createdAt,
+              descripcion: 'Auto enviado a revisión del Jefe OCID',
+            }],
+            tiempoEspera: '',
+          }));
+          setBorradores(borradoresReales);
+        }
+      } catch {
+        // Si falla la carga, conservar los datos de demostración
+      }
+    };
+    cargarAutosEnRevision();
+  }, []);
   
   // ✅ NUEVO: Estado para solicitudes de reasignación
   const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([
@@ -204,8 +248,21 @@ export function ControlDisciplinarioFull() {
     setCurrentSection('aprobacion');
   }, []);
 
-  const handleAprobarBorrador = useCallback((borradorId: string, comentarios: string) => {
+  const handleAprobarBorrador = useCallback(async (borradorId: string, comentarios: string) => {
     const borrador = borradores.find(b => b.id === borradorId);
+
+    if (borrador?.autoId) {
+      try {
+        const userId = authService.getCurrentUser()?.id || '';
+        await disciplinaryService.aprobarAuto(borrador.autoId, userId);
+      } catch {
+        toast.error('Error al aprobar el auto', {
+          description: 'No se pudo conectar con el servidor. Intente nuevamente.',
+        });
+        return;
+      }
+    }
+
     setBorradores(prev => prev.map(b =>
       b.id === borradorId
         ? {
@@ -237,8 +294,22 @@ export function ControlDisciplinarioFull() {
     });
   }, [borradores]);
 
-  const handleDevolverBorrador = useCallback((borradorId: string, motivo: string, comentarios: string, _archivos: File[]) => {
+  const handleDevolverBorrador = useCallback(async (borradorId: string, motivo: string, comentarios: string, _archivos: File[]) => {
     const borrador = borradores.find(b => b.id === borradorId);
+
+    if (borrador?.autoId) {
+      try {
+        const userId = authService.getCurrentUser()?.id || '';
+        const observaciones = `${motivo}${comentarios ? ` — ${comentarios}` : ''}`;
+        await disciplinaryService.devolverAuto(borrador.autoId, userId, observaciones);
+      } catch {
+        toast.error('Error al devolver el auto', {
+          description: 'No se pudo conectar con el servidor. Intente nuevamente.',
+        });
+        return;
+      }
+    }
+
     setBorradores(prev => prev.map(b =>
       b.id === borradorId
         ? {

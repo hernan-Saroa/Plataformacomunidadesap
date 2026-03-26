@@ -6,7 +6,7 @@
  * URL: /control-disciplinario/api/v1/* -> internal-disciplinary-control-service:3005/*
  */
 
-import { apiClient } from './apiClient';
+import { apiClient, type UploadRequestOptions } from './apiClient';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl, getServiceUrl } from '../../config/environment';
 
 // Prefijo del servicio en el API Gateway
@@ -175,7 +175,9 @@ export interface LegalAuto {
     documentType?: string;
     documentSize?: number;
     comentarios?: string;
+    currentVersion?: number;
     processId: string;
+    process?: DisciplinaryProcess;
     createdAt: string;
 }
 
@@ -594,9 +596,9 @@ class DisciplinaryService {
         destinatario?: string,
         asunto?: string,
         participantes?: number,
+        uploadOptions?: UploadRequestOptions,
     ): Promise<{ message: string; url: string; filename: string }> {
         const formData = new FormData();
-        formData.append('file', file);
         // Siempre enviar tipo, usar 'DOCUMENTO' como valor por defecto si no se proporciona
         formData.append('tipo', tipo || 'DOCUMENTO');
         if (descripcion) formData.append('descripcion', descripcion);
@@ -609,10 +611,12 @@ class DisciplinaryService {
         if (participantes !== undefined) {
             formData.append('participantes', String(participantes));
         }
+        formData.append('file', file);
 
         return apiClient.upload<{ message: string; url: string; filename: string }>(
             `${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`,
-            formData
+            formData,
+            uploadOptions,
         );
     }
 
@@ -1019,16 +1023,25 @@ class DisciplinaryService {
         }
     }
 
-    async createEvidencia(processId: string, data: any, file: File): Promise<any> {
+    async createEvidencia(
+        processId: string,
+        data: any,
+        file: File,
+        uploadOptions?: UploadRequestOptions,
+    ): Promise<any> {
         const formData = new FormData();
-        formData.append('file', file);
         formData.append('tipo', 'EVIDENCIA');
         formData.append('descripcion', data.descripcion || '');
         formData.append('nombre', file.name);
         formData.append('etapa', data.tipo || 'Evidencia');
         formData.append('usuarioCarga', data.aportadoPor || 'Sistema');
+        formData.append('file', file);
 
-        return apiClient.upload<any>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`, formData);
+        return apiClient.upload<any>(
+            `${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`,
+            formData,
+            uploadOptions,
+        );
     }
 
     async updateEvidenciaEstado(id: string, estado: string): Promise<any> {
