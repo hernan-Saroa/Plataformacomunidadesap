@@ -2266,6 +2266,7 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
       case 'ASIGNADA': return 'asignada';
       case 'EN_VALORACION': return 'en-valoracion';
       case 'DEVUELTA': return 'archivada';
+      case 'ARCHIVADA': return 'archivada';
       default: return 'pendiente';
     }
   };
@@ -2666,13 +2667,22 @@ export function DashboardKanbanOperativo({
       console.log('[DashboardKanban] Noticias recibidas:', noticiasData.length);
       console.log('[DashboardKanban] Procesos recibidos:', procesosData.length);
 
+      // Separar noticias archivadas de las activas
+      const noticiasActivas = noticiasData.filter(n => (n as any).estado !== 'ARCHIVADA');
+      const noticiasArchivadas = noticiasData.filter(n => (n as any).estado === 'ARCHIVADA');
+
       // Transformar noticias al formato interno
-      const noticiasTransformadas = noticiasData.map(n => toNoticiaFromApi(n, etapasConfig));
+      const noticiasTransformadas = noticiasActivas.map(n => toNoticiaFromApi(n, etapasConfig));
+      const archivadosTransformados = noticiasArchivadas.map(n => ({
+        ...toNoticiaFromApi(n, etapasConfig),
+        fechaArchivo: (n as any).updatedAt || new Date().toISOString(),
+        motivoArchivo: (n as any).motivoArchivo || 'Archivado'
+      }));
 
       // Transformar procesos al formato interno
       const procesosTransformados = procesosData.map(p => toProcesoFromApi(p, etapasConfig));
 
-      // Combinar noticias y procesos
+      // Combinar noticias y procesos activos
       const todosLosItems: Item[] = [
         ...noticiasTransformadas,
         ...procesosTransformados
@@ -2681,6 +2691,7 @@ export function DashboardKanbanOperativo({
       console.log('[DashboardKanban] Total items para Kanban:', todosLosItems.length);
 
       setItems(todosLosItems);
+      setItemsArchivados(archivadosTransformados as any);
       setDatosCargados(true);
     } catch (error: any) {
       console.error('Error al cargar datos:', error);
@@ -5352,7 +5363,7 @@ export function DashboardKanbanOperativo({
                 toast.success('Oficio creado exitosamente', {
                   description: 'El oficio ha sido generado y guardado correctamente'
                 });
-                setModalActivo(null);
+                // No cerrar el modal - el componente cambiará automáticamente a la vista de lista
               }}
             />
           )}

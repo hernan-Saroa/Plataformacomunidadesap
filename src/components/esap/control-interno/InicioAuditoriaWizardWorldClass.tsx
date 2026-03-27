@@ -48,12 +48,17 @@ interface Auditoria {
     nombre: string;
     cargo: string;
   }[];
-  fechaInicio: string;
-  duracionDias: {
-    planeacion: number;
-    ejecucion: number;
-    comunicacion: number;
-  };
+  // Cronograma de 3 etapas
+  fechaInicio: string; // Inicio Planeación
+  fechaFinPlaneacion?: string;
+  fechaInicioEjecucion?: string;
+  fechaFinEjecucion?: string;
+  fechaInicioComunicacion?: string;
+  fechaFin: string; // Fin Comunicación
+  // Campos adicionales
+  objetivos?: any[];
+  criterios?: any[];
+  calificacionRiesgo?: string;
 }
 
 interface InicioAuditoriaWizardProps {
@@ -474,8 +479,63 @@ function Paso3EquipoAuditor({ auditoria }: { auditoria: Auditoria }) {
 
 // ============ PASO 4: CRONOGRAMA ============
 
+// Función para parsear fecha en múltiples formatos (sin problemas de timezone)
+function parsearFecha(fecha?: string): Date | null {
+  if (!fecha || fecha === 'null' || fecha === 'undefined' || fecha === '') return null;
+  
+  // Limpiar la fecha de cualquier parte de tiempo
+  const fechaLimpia = fecha.split('T')[0];
+  
+  // Intentar formato YYYY-MM-DD (ISO sin tiempo) - PRIMERO para evitar timezone issues
+  if (fechaLimpia.includes('-')) {
+    const partesISO = fechaLimpia.split('-');
+    if (partesISO.length === 3) {
+      const [anio, mes, dia] = partesISO.map(Number);
+      if (anio > 1900 && mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31) {
+        // Crear fecha en timezone local (no UTC)
+        const date = new Date(anio, mes - 1, dia, 12, 0, 0); // 12:00 para evitar problemas de día
+        if (!isNaN(date.getTime())) return date;
+      }
+    }
+  }
+  
+  // Intentar formato DD/MM/YYYY
+  if (fechaLimpia.includes('/')) {
+    const partes = fechaLimpia.split('/');
+    if (partes.length === 3) {
+      const [dia, mes, anio] = partes.map(Number);
+      if (anio > 1900 && mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31) {
+        const date = new Date(anio, mes - 1, dia, 12, 0, 0);
+        if (!isNaN(date.getTime())) return date;
+      }
+    }
+  }
+  
+  return null;
+}
+
+// Función para calcular días entre fechas
+function calcularDias(fechaInicio?: string, fechaFin?: string): number {
+  const inicio = parsearFecha(fechaInicio);
+  const fin = parsearFecha(fechaFin);
+  if (!inicio || !fin) return 0;
+  const diffTime = Math.abs(fin.getTime() - inicio.getTime());
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+}
+
+// Función para formatear fecha
+function formatearFecha(fecha?: string): string {
+  const date = parsearFecha(fecha);
+  if (!date) return 'No definida';
+  return date.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 function Paso4Cronograma({ auditoria }: { auditoria: Auditoria }) {
-  const totalDias = auditoria.duracionDias.planeacion + auditoria.duracionDias.ejecucion + auditoria.duracionDias.comunicacion;
+  // Calcular días de cada fase
+  const diasPlaneacion = calcularDias(auditoria.fechaInicio, auditoria.fechaFinPlaneacion);
+  const diasEjecucion = calcularDias(auditoria.fechaInicioEjecucion, auditoria.fechaFinEjecucion);
+  const diasComunicacion = calcularDias(auditoria.fechaInicioComunicacion, auditoria.fechaFin);
+  const totalDias = calcularDias(auditoria.fechaInicio, auditoria.fechaFin);
 
   return (
     <motion.div
@@ -502,30 +562,36 @@ function Paso4Cronograma({ auditoria }: { auditoria: Auditoria }) {
           </div>
           <div>
             <p className="text-xs text-green-600 font-semibold uppercase tracking-wide">Fecha de Inicio</p>
-            <h4 className="text-lg text-gray-900 font-bold">{auditoria.fechaInicio}</h4>
-            <p className="text-sm text-gray-700">Duración total estimada: {totalDias} días hábiles</p>
+            <h4 className="text-lg text-gray-900 font-bold">{formatearFecha(auditoria.fechaInicio)}</h4>
+            <p className="text-sm text-gray-700">Duración total estimada: {totalDias} días</p>
           </div>
         </div>
       </div>
 
-      {/* Fases */}
+      {/* Fases con fechas reales */}
       <div className="space-y-3">
-        <FaseCard
+        <FaseCardConFechas
           numero={1}
           nombre="Planeación"
-          dias={auditoria.duracionDias.planeacion}
+          fechaInicio={auditoria.fechaInicio}
+          fechaFin={auditoria.fechaFinPlaneacion}
+          dias={diasPlaneacion}
           color="blue"
         />
-        <FaseCard
+        <FaseCardConFechas
           numero={2}
           nombre="Ejecución"
-          dias={auditoria.duracionDias.ejecucion}
+          fechaInicio={auditoria.fechaInicioEjecucion}
+          fechaFin={auditoria.fechaFinEjecucion}
+          dias={diasEjecucion}
           color="purple"
         />
-        <FaseCard
+        <FaseCardConFechas
           numero={3}
           nombre="Comunicación"
-          dias={auditoria.duracionDias.comunicacion}
+          fechaInicio={auditoria.fechaInicioComunicacion}
+          fechaFin={auditoria.fechaFin}
+          dias={diasComunicacion}
           color="orange"
         />
       </div>
@@ -582,6 +648,43 @@ function FaseCard({ numero, nombre, dias, color }: { numero: number; nombre: str
         <div className="flex items-center gap-2">
           <Clock className="w-4 h-4" />
           <span className="text-sm font-bold">{dias} días</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FaseCardConFechas({ numero, nombre, fechaInicio, fechaFin, dias, color }: {
+  numero: number;
+  nombre: string;
+  fechaInicio?: string;
+  fechaFin?: string;
+  dias: number;
+  color: string;
+}) {
+  const colorClasses = {
+    blue: 'bg-blue-100 text-blue-800 border-blue-200',
+    purple: 'bg-purple-100 text-purple-800 border-purple-200',
+    orange: 'bg-orange-100 text-orange-800 border-orange-200'
+  };
+
+  return (
+    <div className={`border-2 rounded-lg p-4 ${colorClasses[color as keyof typeof colorClasses]}`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${color === 'blue' ? 'bg-blue-600 text-white' : color === 'purple' ? 'bg-purple-600 text-white' : 'bg-orange-600 text-white'}`}>
+            {numero}
+          </div>
+          <div>
+            <h5 className="text-sm font-medium">{nombre}</h5>
+            <p className="text-xs opacity-80">
+              {formatearFecha(fechaInicio)} - {formatearFecha(fechaFin)}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4" />
+          <span className="text-sm font-bold">{dias > 0 ? `${dias} días` : 'Sin definir'}</span>
         </div>
       </div>
     </div>

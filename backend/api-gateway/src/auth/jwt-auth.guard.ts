@@ -32,6 +32,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/certificados\/api\/v\d+\/certificados\/[^/]+\/reenviar/i,
     // Autoservicio y validacion publica de certificados de grado (registro academico)
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/verificar-graduado/i,
+    /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/buscar-coincidencias/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/solicitar-certificado/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/generar-codigo/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/validar-codigo/i,
@@ -77,9 +78,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
   private matchesPublicPath(req: Request): boolean {
     const method = (req.method || '').toUpperCase();
+    const requestPath = this.normalizePath(req.originalUrl);
     const methodScopedMatch = this.methodScopedPublicPatterns.some(
       ({ method: allowedMethod, pattern }) =>
-        method === allowedMethod && pattern.test(req.originalUrl),
+        method === allowedMethod && pattern.test(requestPath),
     );
 
     if (methodScopedMatch) {
@@ -93,6 +95,14 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       .map((p) => new RegExp(p, 'i'));
 
     const patterns = [...this.defaultPublicPatterns, ...configured];
-    return patterns.some((regex) => regex.test(req.originalUrl));
+    return patterns.some((regex) => regex.test(requestPath));
+  }
+
+  private normalizePath(path: string): string {
+    if (!path) {
+      return '';
+    }
+
+    return path.replace(/^\/services(?=\/)/i, '');
   }
 }
