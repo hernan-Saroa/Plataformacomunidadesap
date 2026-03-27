@@ -5,6 +5,7 @@ import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const requestTimeoutMs = Number(process.env.HTTP_REQUEST_TIMEOUT_MS || 6 * 60 * 60 * 1000);
 
   // Increase body size limit for file uploads (up to 250MB)
   app.use(json({ limit: '250mb' }));
@@ -60,5 +61,9 @@ async function bootstrap() {
   );
 
   await app.listen(process.env.PORT || 3000);
+  const server = app.getHttpServer();
+  server.requestTimeout = requestTimeoutMs;
+  server.headersTimeout = requestTimeoutMs + 1000;
+  server.keepAliveTimeout = 65000;
 }
 bootstrap();

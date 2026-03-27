@@ -2,53 +2,53 @@ import { Injectable } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { randomUUID } from 'crypto';
 
 interface FileData {
   buffer: Buffer;
   originalname: string;
 }
 
-@Injectable()
-export class StorageService {
-  private readonly uploadDir = './uploads';
+export const DEFAULT_UPLOAD_DIR = './uploads';
 
-  constructor() {
-    // Asegurar que el directorio existe
-    if (!existsSync(this.uploadDir)) {
-      mkdirSync(this.uploadDir, { recursive: true });
-    }
+export const ensureUploadDirExists = (uploadDir: string = DEFAULT_UPLOAD_DIR): string => {
+  if (!existsSync(uploadDir)) {
+    mkdirSync(uploadDir, { recursive: true });
   }
 
-  /**
-   * Guarda un archivo en disco local.
-   * Usa el nombre original del archivo con un prefijo de timestamp para evitar colisiones.
-   * SIMPLIFICADO: Guarda en ./uploads/ directamente (igual que otros módulos)
-   */
+  return uploadDir;
+};
+
+export const buildStoredFileName = (originalname: string): string => {
+  const safeOriginalName = path.basename(originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
+  return `${Date.now()}_${randomUUID()}_${safeOriginalName}`;
+};
+
+@Injectable()
+export class StorageService {
+  private readonly uploadDir = DEFAULT_UPLOAD_DIR;
+
+  constructor() {
+    ensureUploadDirExists(this.uploadDir);
+  }
+
   async saveFile(
-    _radicado: string, // Ya no se usa para carpetas
+    _radicado: string,
     file: FileData,
-    _tipoDocumento: string, // Ya no se usa para renombrar
+    _tipoDocumento: string,
   ): Promise<string> {
     try {
-      // Generar nombre único: timestamp + nombre original
-      const timestamp = Date.now();
-      const safeOriginalName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const nuevoNombre = `${timestamp}_${safeOriginalName}`;
+      const nuevoNombre = buildStoredFileName(file.originalname);
       const rutaCompleta = path.join(this.uploadDir, nuevoNombre);
 
-      // Guardar archivo
       await fs.writeFile(rutaCompleta, file.buffer);
 
-      // Retornar SOLO el nombre del archivo (para URL simple /files/{filename})
       return nuevoNombre;
     } catch (error) {
       throw new Error(`Error al guardar archivo: ${error.message}`);
     }
   }
 
-  /**
-   * Guarda múltiples archivos
-   */
   async saveMultipleFiles(
     radicado: string,
     files: FileData[],
@@ -63,16 +63,10 @@ export class StorageService {
     return nombres;
   }
 
-  /**
-   * Obtiene la ruta completa de un archivo
-   */
   getFullPath(filename: string): string {
     return path.join(this.uploadDir, filename);
   }
 
-  /**
-   * Elimina un archivo
-   */
   async deleteFile(filename: string): Promise<void> {
     try {
       const rutaCompleta = this.getFullPath(filename);
@@ -82,12 +76,7 @@ export class StorageService {
     }
   }
 
-  /**
-   * Elimina archivos por patrón (para limpiar archivos de un expediente)
-   */
   async deleteExpediente(_radicado: string): Promise<void> {
-    // Ya no usamos carpetas de expediente, así que este método no hace nada
-    // Los archivos se mantienen en ./uploads/
     console.log('deleteExpediente: Ya no se usa sistema de carpetas por radicado');
   }
 }

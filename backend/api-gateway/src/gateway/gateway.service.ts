@@ -193,6 +193,7 @@ export class GatewayService {
             ? {
               maxContentLength: Infinity,
               maxBodyLength: Infinity,
+              timeout: 0,
             }
             : {}),
           // Si esperamos un archivo binario, usar responseType: 'stream' para no cargar todo en memoria
