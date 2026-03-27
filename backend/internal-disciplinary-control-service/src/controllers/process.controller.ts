@@ -11,12 +11,8 @@ import {
   HttpStatus,
   UseInterceptors,
   UploadedFile,
-  ParseFilePipe,
-  MaxFileSizeValidator,
-  FileTypeValidator,
   Res,
   HttpException,
-  Inject,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -35,12 +31,39 @@ import { ChangeStageDto } from '../dtos/change-stage.dto';
 import { UpdateDisciplinaryProcessDto } from '../dtos/update-disciplinary-process.dto';
 import { RemitirPorCompetenciaDto, RemisionPorCompetenciaResponseDto } from '../dtos/remitir-competencia.dto';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
-import { StorageService } from '../services/storage.service';
+import {
+  DEFAULT_UPLOAD_DIR,
+  StorageService,
+  buildStoredFileName,
+  ensureUploadDirExists,
+} from '../services/storage.service';
 import type { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { diskStorage, MulterError } from 'multer';
+
+const MAX_EVIDENCE_FILE_SIZE = 10 * 1024 * 1024 * 1024;
+const MAX_STANDARD_DOCUMENT_SIZE = 50 * 1024 * 1024;
+const PROCESS_DOCUMENT_UPLOAD_OPTIONS = {
+  storage: diskStorage({
+    destination: (_req, _file, cb) => {
+      try {
+        const uploadDir = path.resolve(process.cwd(), ensureUploadDirExists(DEFAULT_UPLOAD_DIR));
+        cb(null, uploadDir);
+      } catch (error) {
+        cb(error as Error, path.resolve(process.cwd(), DEFAULT_UPLOAD_DIR));
+      }
+    },
+    filename: (_req, file, cb) => {
+      cb(null, buildStoredFileName(file.originalname));
+    },
+  }),
+  limits: {
+    fileSize: MAX_EVIDENCE_FILE_SIZE,
+  },
+};
 
 @ApiTags('Procesos Disciplinarios')
 @Controller('disciplinary-processes')
@@ -197,7 +220,7 @@ export class ProcessController {
    */
   @Post(':id/documents')
   @HttpCode(HttpStatus.CREATED)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', PROCESS_DOCUMENT_UPLOAD_OPTIONS))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Subir documento',
@@ -212,6 +235,7 @@ export class ProcessController {
     @UploadedFile() file: Express.Multer.File | undefined,
     @Body() body: { tipo?: string; descripcion?: string; nombre?: string; etapa?: string; usuarioCarga?: string; categoria?: string; destinatario?: string; asunto?: string; participantes?: string; urlExterna?: string },
   ) {
+    let metadataSaved = false;
     try {
       console.log('📤 Upload Document - Iniciando...');
       console.log('📤 Body recibido:', JSON.stringify(body, null, 2));
@@ -229,9 +253,10 @@ export class ProcessController {
       // Validar tamaño del archivo si se proporciona (10GB para evidencias, 50MB para otros)
       if (file) {
         const isEvidencia = body.tipo?.toUpperCase() === 'EVIDENCIA';
-        const maxSize = isEvidencia ? 10 * 1024 * 1024 * 1024 : 50 * 1024 * 1024;
+        const maxSize = isEvidencia ? MAX_EVIDENCE_FILE_SIZE : MAX_STANDARD_DOCUMENT_SIZE;
         
         if (file.size > maxSize) {
+          await this.removeUploadedFile(file);
           throw new HttpException(
             `El archivo excede el tamaño máximo permitido de ${isEvidencia ? '10GB' : '50MB'}`,
             HttpStatus.BAD_REQUEST,
@@ -268,6 +293,7 @@ export class ProcessController {
         }
 
         if (tipoDocumento === 'OFICIO' && file.mimetype !== 'application/pdf') {
+          await this.removeUploadedFile(file);
           throw new HttpException(
             'Solo se permiten archivos PDF para oficios',
             HttpStatus.BAD_REQUEST,
@@ -278,6 +304,7 @@ export class ProcessController {
         const allowedMimeTypes = this.getAllowedMimeTypes(tipoDocumento);
         if (!allowedMimeTypes.includes(file.mimetype)) {
           const allowedExtensions = this.getAllowedExtensions(tipoDocumento);
+          await this.removeUploadedFile(file);
           throw new HttpException(
             `Tipo de archivo no permitido para "${tipoDocumento}". Solo se permiten: ${allowedExtensions}`,
             HttpStatus.BAD_REQUEST,
@@ -288,21 +315,14 @@ export class ProcessController {
         const fileExtension = '.' + file.originalname.split('.').pop()?.toLowerCase();
         const allowedExtensionsList = this.getAllowedExtensionsList(tipoDocumento);
         if (!allowedExtensionsList.includes(fileExtension)) {
+          await this.removeUploadedFile(file);
           throw new HttpException(
             `Extensión de archivo no permitida para "${tipoDocumento}". Solo se permiten: ${allowedExtensionsList.join(', ')}`,
             HttpStatus.BAD_REQUEST,
           );
         }
 
-        // Guardar archivo usando storage service
-        rutaRelativa = await this.storageService.saveFile(
-          proceso.radicadoProceso,
-          {
-            buffer: file.buffer,
-            originalname: file.originalname,
-          },
-          tipoDocumento,
-        );
+        rutaRelativa = file.filename;
         console.log('✅ Archivo guardado en:', rutaRelativa);
 
         nombreDocumento = body.nombre || file.originalname;
@@ -348,6 +368,8 @@ export class ProcessController {
       );
       console.log('✅ Documento guardado en BD exitosamente');
 
+      metadataSaved = true;
+
       return {
         message: 'Documento subido exitosamente',
         url: rutaRelativa,
@@ -363,6 +385,35 @@ export class ProcessController {
     } catch (error) {
       console.error('❌ ERROR al subir documento:', error);
       console.error('❌ Stack:', error.stack);
+      if (error instanceof MulterError) {
+        await this.removeUploadedFile(file);
+        throw new HttpException(
+          error.code === 'LIMIT_FILE_SIZE'
+            ? 'El archivo excede el tamano maximo permitido de 10GB'
+            : error.message,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      if (!metadataSaved) {
+        await this.removeUploadedFile(file);
+      }
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Error al subir documento: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+      if (error instanceof MulterError) {
+        if (error.code === 'LIMIT_FILE_SIZE') {
+          throw new HttpException(
+            'El archivo excede el tamaÃ±o mÃ¡ximo permitido de 10GB',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+        throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+      }
+      console.error('âŒ Stack:', error.stack);
       throw new HttpException(
         `Error al subir documento: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -394,10 +445,15 @@ export class ProcessController {
         'image/jpg',
         'image/gif',
         'image/webp',
+        'image/heic',
         'video/mp4',
         'video/webm',
         'video/quicktime',
         'video/x-msvideo',
+        'audio/mpeg',
+        'audio/mp3',
+        'audio/wav',
+        'audio/ogg',
       ],
       // Evidencia alternativa
       'PRUEBA DOCUMENTAL': [
@@ -412,10 +468,15 @@ export class ProcessController {
         'image/jpg',
         'image/gif',
         'image/webp',
+        'image/heic',
         'video/mp4',
         'video/webm',
         'video/quicktime',
         'video/x-msvideo',
+        'audio/mpeg',
+        'audio/mp3',
+        'audio/wav',
+        'audio/ogg',
       ],
       // Auto: Solo PDF
       'AUTO': [
@@ -492,6 +553,10 @@ export class ProcessController {
       .replace(/Á/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I').replace(/Ó/g, 'O').replace(/Ú/g, 'U')
       .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u');
 
+    if (tipoSinAcentos === 'EVIDENCIA' || tipoSinAcentos === 'PRUEBA DOCUMENTAL') {
+      return 'PDF, Word, Excel, HTML, Imagenes (JPG, PNG, GIF, WebP, HEIC), Videos (MP4, WebM, MOV, AVI), Audios (MP3, WAV, OGG)';
+    }
+
     const extensiones: Record<string, string> = {
       'EVIDENCIA': 'PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP), Videos (MP4, WebM, MOV, AVI)',
       'PRUEBA DOCUMENTAL': 'PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP), Videos (MP4, WebM, MOV, AVI)',
@@ -536,6 +601,10 @@ export class ProcessController {
       .replace(/Á/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I').replace(/Ó/g, 'O').replace(/Ú/g, 'U')
       .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u');
 
+    if (tipoSinAcentos === 'EVIDENCIA' || tipoSinAcentos === 'PRUEBA DOCUMENTAL') {
+      return ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.mp4', '.webm', '.mov', '.avi', '.mp3', '.wav', '.ogg'];
+    }
+
     const extensionesLista: Record<string, string[]> = {
       'EVIDENCIA': ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov', '.avi'],
       'PRUEBA DOCUMENTAL': ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov', '.avi'],
@@ -569,6 +638,20 @@ export class ProcessController {
     }
     
     return extensionesLista['default'];
+  }
+
+  private async removeUploadedFile(file?: Express.Multer.File): Promise<void> {
+    if (!file?.path) {
+      return;
+    }
+
+    try {
+      if (fs.existsSync(file.path)) {
+        await fs.promises.unlink(file.path);
+      }
+    } catch (cleanupError) {
+      console.error('[ProcessController] No fue posible limpiar archivo temporal:', cleanupError);
+    }
   }
 
   /**
@@ -1101,6 +1184,10 @@ export class ProcessController {
           procesoAsociadoNumero: proceso.procesoAsociadoNumero,
           procesoAsociadoTipo: proceso.procesoAsociadoTipo,
           procesoAsociadoFecha: proceso.procesoAsociadoFecha,
+          // ✅ NUEVO: Incluir información de consolidación
+          procesosConsolidados: proceso.procesosConsolidados,
+          procesoConsolidadoPrincipal: proceso.procesoConsolidadoPrincipal,
+          informacionConsolidada: proceso.informacionConsolidada,
         },
       };
     } catch (error) {

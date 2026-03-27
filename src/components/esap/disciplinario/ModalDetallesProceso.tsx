@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
+import { authService } from '../../../services/api';
 import {
   disciplinaryService,
   type CreateDisciplinaryProcessActuacionDto,
@@ -113,7 +114,27 @@ interface Proceso {
 }
 
 type Tab = 'general' | 'archivos' | 'actuaciones' | 'tareas' | 'notas';
-type Extension = 'pdf' | 'jpg' | 'png' | 'zip' | 'docx' | 'xlsx';
+type Extension =
+  | 'pdf'
+  | 'doc'
+  | 'docx'
+  | 'xls'
+  | 'xlsx'
+  | 'jpg'
+  | 'jpeg'
+  | 'png'
+  | 'gif'
+  | 'webp'
+  | 'heic'
+  | 'mp4'
+  | 'webm'
+  | 'mov'
+  | 'avi'
+  | 'mp3'
+  | 'wav'
+  | 'ogg'
+  | 'html'
+  | 'zip';
 
 interface ActuacionItem {
   id: string;
@@ -154,6 +175,7 @@ interface NoteItem {
 interface Archivo {
   id: string;
   nombre: string;
+  numero?: string;
   tipo: 'auto' | 'evidencia' | 'oficio' | 'acta';
   fecha: string;
   firmante: string;
@@ -230,11 +252,10 @@ function etapaColor(e: string) { return ETAPA_COLOR[e] || { bg: '#F3F4F6', text:
 const LIMITE_CARGA_DIRECTA = 200 * 1024 * 1024; // 200 MB
 const MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024; // 10 GB
 const EXTENSIONES_PERMITIDAS = [
-  'pdf','doc','docx','xls','xlsx','ppt','pptx',
-  'jpg','jpeg','png','gif','bmp','tiff','svg',
-  'zip','rar','7z','tar','gz',
-  'mp4','avi','mov','wmv','mkv',
-  'mp3','wav','ogg','txt','csv','json','xml',
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'html',
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic',
+  'mp4', 'webm', 'mov', 'avi',
+  'mp3', 'wav', 'ogg',
 ];
 
 type EstadoCarga = 'validando' | 'subiendo' | 'procesando' | 'completado' | 'error' | 'cancelado';
@@ -1659,6 +1680,11 @@ export function ModalDetallesProceso({
   const inputRecargarRef = useRef<HTMLInputElement>(null);
   const cargasRef = useRef<CargaActiva[]>([]);
   cargasRef.current = cargasActivas;
+  const currentUser = authService.getCurrentUser();
+  const usuarioCargaActual = currentUser?.fullName
+    || [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ').trim()
+    || currentUser?.email
+    || 'Sistema';
 
   // ═══ Persistencia de filtros en localStorage ═══
   const STORAGE_KEY = `mdp_filtros_${proceso.numeroProceso}`;
@@ -1693,40 +1719,51 @@ export function ModalDetallesProceso({
     } catch { /* quota excedida — ignorar */ }
   }, [filtro, filtroEtapa, vistaAgrupada, filtroEtapaAct, vistaAgrupadaAct, filtroEtapaTar, vistaAgrupadaTar, filtroEtapaNota, vistaAgrupadaNota, tabActiva, STORAGE_KEY]);
 
+  const cargarDocumentosExpediente = useCallback(async () => {
+    if (!proceso?.id) {
+      setArchivosBackend([]);
+      return;
+    }
+
+    try {
+      const res = await disciplinaryService.getDocumentosExpediente(proceso.id);
+      const mapped: Archivo[] = (res.documentos || []).map((doc: any) => {
+        const ext = (doc.archivoNombre || doc.nombre || '').split('.').pop()?.toLowerCase() || 'pdf';
+        const tipoValido = (['auto', 'evidencia', 'oficio', 'acta'] as const).includes(doc.tipo)
+          ? doc.tipo as 'auto' | 'evidencia' | 'oficio' | 'acta'
+          : 'evidencia';
+        const estadoAuto = doc.metadatos?.estado;
+        const estado: Archivo['estado'] = estadoAuto === 'FIRMADO' || estadoAuto === 'NOTIFICADO' || estadoAuto === 'APROBADO'
+          ? 'aprobado'
+          : estadoAuto === 'EN_REVISION' ? 'en_revision'
+          : estadoAuto === 'DEVUELTO' ? 'devuelto'
+          : estadoAuto === 'BORRADOR' ? 'borrador'
+          : 'aprobado';
+        return {
+          id: doc.id,
+          nombre: doc.metadatos?.tipoAuto || doc.nombre,
+          numero: doc.metadatos?.numero || undefined,
+          tipo: tipoValido,
+          fecha: doc.fechaCarga ? doc.fechaCarga.split('T')[0] : '',
+          firmante: doc.usuarioCarga || 'Sistema',
+          estado,
+          tamaño: doc.tamano || formatBytes(doc.fileSize || 0),
+          extension: ext as Extension,
+          version: doc.version || 1,
+          etapaProceso: doc.etapa,
+        };
+      });
+      setArchivosBackend(mapped);
+    } catch (err) {
+      console.error('[ModalDetallesProceso] Error cargando documentos:', err);
+      setArchivosBackend([]);
+    }
+  }, [proceso?.id]);
+
   // ═══ Cargar documentos del expediente desde el backend ═══
   useEffect(() => {
-    if (!proceso?.id) return;
-    disciplinaryService.getDocumentosExpediente(proceso.id)
-      .then(res => {
-        const mapped: Archivo[] = (res.documentos || []).map((doc: any) => {
-          const ext = (doc.archivoNombre || doc.nombre || '').split('.').pop()?.toLowerCase() || 'pdf';
-          const tipoValido = (['auto', 'evidencia', 'oficio', 'acta'] as const).includes(doc.tipo)
-            ? doc.tipo as 'auto' | 'evidencia' | 'oficio' | 'acta'
-            : 'evidencia';
-          const estadoAuto = doc.metadatos?.estado;
-          const estado: Archivo['estado'] = estadoAuto === 'FIRMADO' || estadoAuto === 'NOTIFICADO' || estadoAuto === 'APROBADO'
-            ? 'aprobado'
-            : estadoAuto === 'EN_REVISION' ? 'en_revision'
-            : estadoAuto === 'DEVUELTO' ? 'devuelto'
-            : estadoAuto === 'BORRADOR' ? 'borrador'
-            : 'aprobado';
-          return {
-            id: doc.id,
-            nombre: doc.nombre,
-            tipo: tipoValido,
-            fecha: doc.fechaCarga ? doc.fechaCarga.split('T')[0] : '',
-            firmante: doc.usuarioCarga || 'Sistema',
-            estado,
-            tamaño: doc.tamaño || '0 KB',
-            extension: ext as any,
-            version: doc.version || 1,
-            etapaProceso: doc.etapa,
-          };
-        });
-        setArchivosBackend(mapped);
-      })
-      .catch(err => console.error('[ModalDetallesProceso] Error cargando documentos:', err));
-  }, [proceso?.id]);
+    void cargarDocumentosExpediente();
+  }, [cargarDocumentosExpediente]);
 
   useEffect(() => {
     if (!proceso?.id) return;
@@ -2119,6 +2156,191 @@ export function ModalDetallesProceso({
   }, []);
 
   // ═══ Handler de selección de archivos ═══
+  const subirArchivoReal = useCallback((archivo: File) => {
+    if (!proceso?.id) {
+      toast.error('No se pudo identificar el proceso para cargar el archivo');
+      return;
+    }
+
+    const id = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const esGrande = archivo.size > LIMITE_CARGA_DIRECTA;
+    const ac = new AbortController();
+    const cargaInicial: CargaActiva = {
+      id,
+      archivo,
+      nombre: archivo.name,
+      tamano: archivo.size,
+      progreso: 0,
+      estado: 'validando',
+      velocidad: 'Calculando...',
+      tiempoRestante: 'Calculando...',
+      abortController: ac,
+      iniciadoEn: Date.now(),
+      bytesSubidos: 0,
+      esGrande,
+    };
+
+    setCargasActivas(prev => [...prev, cargaInicial]);
+
+    const toastId = `toast-upload-${id}`;
+    if (esGrande) {
+      toast.loading(<ToastProgresoCarga carga={cargaInicial} />, {
+        id: toastId,
+        duration: Infinity,
+        position: 'bottom-right',
+      });
+    }
+
+    const uploadStartTime = Date.now();
+    const actualizarCarga = (transform: (actual: CargaActiva) => CargaActiva) => {
+      let siguiente: CargaActiva | null = null;
+      setCargasActivas(prev => prev.map(c => {
+        if (c.id !== id) return c;
+        siguiente = transform(c);
+        return siguiente;
+      }));
+      return siguiente;
+    };
+
+    actualizarCarga(actual => ({
+      ...actual,
+      estado: 'subiendo',
+      iniciadoEn: uploadStartTime,
+    }));
+
+    void disciplinaryService.uploadDocumento(
+      proceso.id,
+      archivo,
+      'EVIDENCIA',
+      undefined,
+      archivo.name,
+      proceso.etapaActual || undefined,
+      usuarioCargaActual,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        signal: ac.signal,
+        timeoutMs: 0,
+        onProgressDetail: ({ progress, loaded, total }) => {
+          const totalBytes = total || archivo.size;
+          const elapsed = Math.max((Date.now() - uploadStartTime) / 1000, 0.1);
+          const bps = loaded / elapsed;
+          const restante = Math.max(totalBytes - loaded, 0);
+          const segsRestante = bps > 0 ? restante / bps : 0;
+          const tiempoRestante = segsRestante <= 0
+            ? 'Calculando...'
+            : segsRestante < 60
+              ? `~${Math.ceil(segsRestante)}s`
+              : segsRestante < 3600
+                ? `~${Math.ceil(segsRestante / 60)} min`
+                : `~${(segsRestante / 3600).toFixed(1)}h`;
+          const cargaActualizada = actualizarCarga(actual => ({
+            ...actual,
+            estado: 'subiendo',
+            progreso: Math.min(progress, 99),
+            bytesSubidos: loaded,
+            velocidad: bps > 0 ? `${formatBytes(bps)}/s` : 'Calculando...',
+            tiempoRestante,
+          }));
+
+          if (esGrande && cargaActualizada) {
+            toast.loading(<ToastProgresoCarga carga={cargaActualizada} />, {
+              id: toastId,
+              duration: Infinity,
+              position: 'bottom-right',
+            });
+          }
+        },
+      },
+    )
+      .then(async () => {
+        const procesamiento = actualizarCarga(actual => ({
+          ...actual,
+          estado: 'procesando',
+          progreso: 99,
+          bytesSubidos: archivo.size,
+          velocidad: 'Completado',
+          tiempoRestante: 'Finalizando...',
+        }));
+
+        if (esGrande && procesamiento) {
+          toast.loading(<ToastProgresoCarga carga={procesamiento} />, {
+            id: toastId,
+            duration: Infinity,
+            position: 'bottom-right',
+          });
+        }
+
+        await cargarDocumentosExpediente();
+
+        const finalCarga = actualizarCarga(actual => ({
+          ...actual,
+          estado: 'completado',
+          progreso: 100,
+          bytesSubidos: archivo.size,
+          velocidad: 'Completado',
+          tiempoRestante: '0s',
+        }));
+
+        if (esGrande && finalCarga) {
+          toast.success(<ToastProgresoCarga carga={finalCarga} />, {
+            id: toastId,
+            duration: 6000,
+            position: 'bottom-right',
+          });
+        } else {
+          toast.success(`${archivo.name} subido correctamente`, {
+            description: `${formatBytes(archivo.size)} · Disponible en el expediente`,
+            duration: 4000,
+          });
+        }
+      })
+      .catch((error: any) => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          const cancelada = actualizarCarga(actual => ({
+            ...actual,
+            estado: 'cancelado',
+          }));
+
+          if (esGrande && cancelada) {
+            toast.error('Carga cancelada', {
+              id: toastId,
+              duration: 4000,
+              description: `${archivo.name} · Cancelado por el usuario`,
+            });
+          }
+          return;
+        }
+
+        const mensaje = error?.message || 'No fue posible subir el archivo';
+        const conError = actualizarCarga(actual => ({
+          ...actual,
+          estado: 'error',
+          error: mensaje,
+        }));
+
+        if (esGrande && conError) {
+          toast.error(<ToastProgresoCarga carga={conError} />, {
+            id: toastId,
+            duration: 6000,
+            position: 'bottom-right',
+          });
+        } else {
+          toast.error(`Error subiendo ${archivo.name}`, {
+            description: mensaje,
+            duration: 6000,
+          });
+        }
+      })
+      .finally(() => {
+        setTimeout(() => {
+          setCargasActivas(prev => prev.filter(c => c.id !== id));
+        }, 8000);
+      });
+  }, [cargarDocumentosExpediente, proceso?.etapaActual, proceso?.id, usuarioCargaActual]);
+
   const handleFilesSelected = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return;
     const archivos = Array.from(files);
@@ -2153,11 +2375,11 @@ export function ModalDetallesProceso({
       });
     }
 
-    validos.forEach(archivo => simularCargaArchivo(archivo));
+    validos.forEach(archivo => subirArchivoReal(archivo));
 
     // Reset input
     if (inputArchivoRef.current) inputArchivoRef.current.value = '';
-  }, [simularCargaArchivo]);
+  }, [subirArchivoReal]);
 
   // ═══ Cancelar una carga individual ═══
   const cancelarCarga = useCallback((id: string) => {
@@ -2534,20 +2756,31 @@ export function ModalDetallesProceso({
     console.log('[DEBUG] autoEnviarRevision establecido, valor actual:', archivo);
   }, []);
 
-  const confirmarEnvioRevision = useCallback(() => {
+  const confirmarEnvioRevision = useCallback(async () => {
     if (!autoEnviarRevision) return;
     const id = autoEnviarRevision.id;
     const ahora = new Date().toISOString();
 
-    // Actualizar estado del archivo a "en_revision"
+    // Llamar al backend para cambiar estado a REVISION_JEFE
+    try {
+      await disciplinaryService.sendToReview(id);
+    } catch (error) {
+      console.error('[EFDS-702] Error al enviar auto a revisión:', error);
+      toast.error('No se pudo enviar a revisión', {
+        description: 'Error al comunicarse con el servidor. Intente nuevamente.',
+      });
+      setAutoEnviarRevision(null);
+      setObservacionesEnvio('');
+      return;
+    }
+
+    // Actualizar estado local del archivo
     const actualizarArchivo = (prev: Archivo[]) =>
       prev.map(a => a.id === id ? { ...a, estado: 'en_revision' as const, fechaEnvioRevision: ahora } : a);
 
-    // Verificar si el archivo está en archivos reales o subidos
-    const enReal = archivosReales.find(a => a.id === id);
+    const enReal = archivosBackend.find(a => a.id === id);
     if (enReal) {
-      enReal.estado = 'en_revision';
-      enReal.fechaEnvioRevision = ahora;
+      setArchivosBackend(actualizarArchivo);
     } else {
       setArchivosSubidos(actualizarArchivo);
     }
@@ -2610,7 +2843,7 @@ export function ModalDetallesProceso({
 
     setAutoEnviarRevision(null);
     setObservacionesEnvio('');
-  }, [autoEnviarRevision, observacionesEnvio, proceso, onEnviarARevision, onNavigateToRevision]);
+  }, [autoEnviarRevision, observacionesEnvio, proceso, archivosBackend, onEnviarARevision, onNavigateToRevision]);
 
   // Abrir el modal de revisión (conectado a ModalRevisionAuto)
   const handleAbrirRevision = useCallback((archivo: Archivo) => {
@@ -2655,21 +2888,34 @@ export function ModalDetallesProceso({
     setAutoEnRevisionModal(borrador);
   }, [proceso]);
 
-  const handleAutoAprobado = useCallback((archivoId: string, comentarios: string) => {
-    // Actualizar estado a aprobado
-    const enReal = archivosReales.find(a => a.id === archivoId);
-    if (enReal) {
-      enReal.estado = 'aprobado';
-      enReal.version = (enReal.version || 1) + 1;
-    } else {
-      setArchivosSubidos(prev => prev.map(a =>
-        a.id === archivoId ? { ...a, estado: 'aprobado' as const, version: (a.version || 1) + 1 } : a
-      ));
+  const handleAutoAprobado = useCallback(async (archivoId: string, _comentarios: string) => {
+    const userId = authService.getCurrentUser()?.id;
+    if (!userId) {
+      toast.error('No se pudo obtener el usuario actual');
+      return;
     }
-    toast.success('Auto aprobado exitosamente', {
-      description: `El auto ha sido aprobado y firmado por el Jefe OCID`,
-      duration: 5000,
-    });
+    try {
+      const autoActualizado = await disciplinaryService.aprobarAuto(archivoId, userId);
+      const numeroAsignado = autoActualizado?.numero;
+      const actualizarArchivo = (prev: Archivo[]) =>
+        prev.map(a => a.id === archivoId
+          ? { ...a, estado: 'aprobado' as const, version: (a.version || 1) + 1, numero: numeroAsignado }
+          : a
+        );
+      setArchivosBackend(actualizarArchivo);
+      setArchivosSubidos(actualizarArchivo);
+      toast.success('Auto aprobado exitosamente', {
+        description: numeroAsignado
+          ? `Consecutivo asignado: ${numeroAsignado}`
+          : 'El auto ha sido aprobado por el Jefe OCID',
+        duration: 5000,
+      });
+    } catch (err: any) {
+      toast.error('Error al aprobar el auto', {
+        description: err?.message || 'Intente de nuevo',
+        duration: 5000,
+      });
+    }
     setAutoEnRevisionModal(null);
   }, []);
 
@@ -2758,12 +3004,21 @@ export function ModalDetallesProceso({
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <p className="text-xs font-semibold text-gray-900 truncate">{archivo.nombre}</p>
+              {esAuto ? (
+                <p className="text-xs font-semibold text-gray-900 truncate">
+                  {archivo.numero || 'Sin número'}
+                </p>
+              ) : (
+                <p className="text-xs font-semibold text-gray-900 truncate">{archivo.nombre}</p>
+              )}
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 flex-shrink-0">.{archivo.extension.toUpperCase()}</span>
               {archivo.version && archivo.version > 1 && (
                 <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-indigo-100 text-indigo-600 flex-shrink-0">v{archivo.version}</span>
               )}
             </div>
+            {esAuto && (
+              <p className="text-[10px] text-gray-600 font-medium truncate">{archivo.nombre.replace(/_/g, ' ')}</p>
+            )}
             <p className="text-[10px] text-gray-500 mt-0.5">{archivo.firmante} · {archivo.fecha} · {archivo.tamaño}</p>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">

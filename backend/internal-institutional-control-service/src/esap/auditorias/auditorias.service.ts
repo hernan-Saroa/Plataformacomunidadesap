@@ -57,6 +57,36 @@ export class AuditoriasService {
   }
 
   /**
+   * Mapea id_tercero (bigint) a id_person (UUID) de auth.personas
+   * La migración 159 cambió las FKs de control_interno a usar id_person
+   */
+  private async mapIdTerceroToIdPerson(idTercero: number | string): Promise<string | null> {
+    try {
+      const idTerceroNum = typeof idTercero === 'string' ? parseInt(idTercero, 10) : idTercero;
+      if (isNaN(idTerceroNum) || idTerceroNum <= 0) {
+        console.warn('[mapIdTerceroToIdPerson] id_tercero inválido:', idTercero);
+        return null;
+      }
+      
+      const result = await this.auditoriaRepository.query(
+        `SELECT id_person FROM auth.personas WHERE id_tercero = $1`,
+        [idTerceroNum]
+      );
+      
+      if (result && result.length > 0 && result[0].id_person) {
+        console.log(`[mapIdTerceroToIdPerson] ${idTerceroNum} → ${result[0].id_person}`);
+        return result[0].id_person;
+      }
+      
+      console.warn(`[mapIdTerceroToIdPerson] No se encontró id_person para id_tercero=${idTerceroNum}`);
+      return null;
+    } catch (error) {
+      console.error('[mapIdTerceroToIdPerson] Error:', error);
+      return null;
+    }
+  }
+
+  /**
    * Parsea una fecha string (YYYY-MM-DD) o Date a Date sin conversión de zona horaria
    * Esto evita que las fechas se desplacen por diferencias de zona horaria
    */
@@ -289,6 +319,7 @@ export class AuditoriasService {
     }
 
     // Obtener información de personas desde auth.personas
+    // Nota: auditorLiderId ahora es UUID (id_person) después de migración 159
     let auditorLider: any | undefined;
     let auditorAsignado: any | undefined;
 
@@ -297,7 +328,7 @@ export class AuditoriasService {
         const lider = await this.auditoriaRepository.query(
           `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
            FROM auth.personas 
-           WHERE id_tercero = $1`,
+           WHERE id_person = $1`,
           [auditoria.auditorLiderId]
         );
         if (lider && lider.length > 0 && lider[0]) {
@@ -323,7 +354,7 @@ export class AuditoriasService {
         const asignado = await this.auditoriaRepository.query(
           `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
            FROM auth.personas 
-           WHERE id_tercero = $1`,
+           WHERE id_person = $1`,
           [auditoria.auditorAsignadoId]
         );
         if (asignado && asignado.length > 0 && asignado[0]) {
@@ -464,44 +495,40 @@ export class AuditoriasService {
     }
     if (createDto.nivelRiesgo) auditoriaData.calificacionRiesgo = createDto.nivelRiesgo;
     if (createDto.calificacionRiesgo) auditoriaData.calificacionRiesgo = createDto.calificacionRiesgo;
-    // Asignar IDs de auditores (son números BIGINT que referencian auth.personas.id_tercero)
+    // Asignar IDs de auditores (convertir id_tercero → id_person UUID)
+    // La migración 159 cambió las columnas a UUID referenciando auth.personas(id_person)
     console.log('[AuditoriasService.create] IDs recibidos:', {
       auditorLiderId: createDto.auditorLiderId,
       auditorAsignadoId: createDto.auditorAsignadoId,
       supervisorAsignadoId: createDto.supervisorAsignadoId
     });
+    
+    // Mapear id_tercero → id_person (UUID) para cada auditor
     if (createDto.auditorLiderId !== undefined && createDto.auditorLiderId !== null) {
-      // Convertir a número si viene como string
-      const auditorLiderIdNum = typeof createDto.auditorLiderId === 'string' 
-        ? parseInt(createDto.auditorLiderId, 10) 
-        : Number(createDto.auditorLiderId);
-      if (!isNaN(auditorLiderIdNum) && auditorLiderIdNum > 0) {
-        auditoriaData.auditorLiderId = auditorLiderIdNum;
-        console.log('[AuditoriasService.create] auditorLiderId asignado:', auditorLiderIdNum);
+      const idPerson = await this.mapIdTerceroToIdPerson(createDto.auditorLiderId);
+      if (idPerson) {
+        auditoriaData.auditorLiderId = idPerson;
+        console.log('[AuditoriasService.create] auditorLiderId asignado (UUID):', idPerson);
       } else {
-        console.warn('[AuditoriasService.create] auditorLiderId inválido:', createDto.auditorLiderId);
+        console.warn('[AuditoriasService.create] auditorLiderId no mapeado:', createDto.auditorLiderId);
       }
     }
     if (createDto.auditorAsignadoId !== undefined && createDto.auditorAsignadoId !== null) {
-      const auditorAsignadoIdNum = typeof createDto.auditorAsignadoId === 'string' 
-        ? parseInt(createDto.auditorAsignadoId, 10) 
-        : Number(createDto.auditorAsignadoId);
-      if (!isNaN(auditorAsignadoIdNum) && auditorAsignadoIdNum > 0) {
-        auditoriaData.auditorAsignadoId = auditorAsignadoIdNum;
-        console.log('[AuditoriasService.create] auditorAsignadoId asignado:', auditorAsignadoIdNum);
+      const idPerson = await this.mapIdTerceroToIdPerson(createDto.auditorAsignadoId);
+      if (idPerson) {
+        auditoriaData.auditorAsignadoId = idPerson;
+        console.log('[AuditoriasService.create] auditorAsignadoId asignado (UUID):', idPerson);
       } else {
-        console.warn('[AuditoriasService.create] auditorAsignadoId inválido:', createDto.auditorAsignadoId);
+        console.warn('[AuditoriasService.create] auditorAsignadoId no mapeado:', createDto.auditorAsignadoId);
       }
     }
     if (createDto.supervisorAsignadoId !== undefined && createDto.supervisorAsignadoId !== null) {
-      const supervisorAsignadoIdNum = typeof createDto.supervisorAsignadoId === 'string' 
-        ? parseInt(createDto.supervisorAsignadoId, 10) 
-        : Number(createDto.supervisorAsignadoId);
-      if (!isNaN(supervisorAsignadoIdNum) && supervisorAsignadoIdNum > 0) {
-        auditoriaData.supervisorAsignadoId = supervisorAsignadoIdNum;
-        console.log('[AuditoriasService.create] supervisorAsignadoId asignado:', supervisorAsignadoIdNum);
+      const idPerson = await this.mapIdTerceroToIdPerson(createDto.supervisorAsignadoId);
+      if (idPerson) {
+        auditoriaData.supervisorAsignadoId = idPerson;
+        console.log('[AuditoriasService.create] supervisorAsignadoId asignado (UUID):', idPerson);
       } else {
-        console.warn('[AuditoriasService.create] supervisorAsignadoId inválido:', createDto.supervisorAsignadoId);
+        console.warn('[AuditoriasService.create] supervisorAsignadoId no mapeado:', createDto.supervisorAsignadoId);
       }
     }
     console.log('[AuditoriasService.create] IDs finales en auditoriaData:', {
@@ -749,45 +776,27 @@ export class AuditoriasService {
     if (updateDto.totalTareas !== undefined) auditoria.totalTareas = updateDto.totalTareas;
     if (updateDto.actividadesCompletas !== undefined) auditoria.actividadesCompletas = updateDto.actividadesCompletas;
     if (updateDto.actividadesPendientes !== undefined) auditoria.actividadesPendientes = updateDto.actividadesPendientes;
-    // Asignar IDs de auditores (son números BIGINT que referencian auth.personas.id_tercero)
+    // Asignar IDs de auditores (convertir id_tercero → id_person UUID)
     if (updateDto.auditorLiderId !== undefined) {
       if (updateDto.auditorLiderId !== null) {
-        const auditorLiderIdNum = typeof updateDto.auditorLiderId === 'string' 
-          ? parseInt(updateDto.auditorLiderId, 10) 
-          : Number(updateDto.auditorLiderId);
-        if (!isNaN(auditorLiderIdNum) && auditorLiderIdNum > 0) {
-          auditoria.auditorLiderId = auditorLiderIdNum;
-        } else {
-          auditoria.auditorLiderId = null;
-        }
+        const idPerson = await this.mapIdTerceroToIdPerson(updateDto.auditorLiderId);
+        auditoria.auditorLiderId = idPerson;
       } else {
         auditoria.auditorLiderId = null;
       }
     }
     if (updateDto.auditorAsignadoId !== undefined) {
       if (updateDto.auditorAsignadoId !== null) {
-        const auditorAsignadoIdNum = typeof updateDto.auditorAsignadoId === 'string' 
-          ? parseInt(updateDto.auditorAsignadoId, 10) 
-          : Number(updateDto.auditorAsignadoId);
-        if (!isNaN(auditorAsignadoIdNum) && auditorAsignadoIdNum > 0) {
-          auditoria.auditorAsignadoId = auditorAsignadoIdNum;
-        } else {
-          auditoria.auditorAsignadoId = null;
-        }
+        const idPerson = await this.mapIdTerceroToIdPerson(updateDto.auditorAsignadoId);
+        auditoria.auditorAsignadoId = idPerson;
       } else {
         auditoria.auditorAsignadoId = null;
       }
     }
     if (updateDto.supervisorAsignadoId !== undefined) {
       if (updateDto.supervisorAsignadoId !== null) {
-        const supervisorAsignadoIdNum = typeof updateDto.supervisorAsignadoId === 'string' 
-          ? parseInt(updateDto.supervisorAsignadoId, 10) 
-          : Number(updateDto.supervisorAsignadoId);
-        if (!isNaN(supervisorAsignadoIdNum) && supervisorAsignadoIdNum > 0) {
-          auditoria.supervisorAsignadoId = supervisorAsignadoIdNum;
-        } else {
-          auditoria.supervisorAsignadoId = null;
-        }
+        const idPerson = await this.mapIdTerceroToIdPerson(updateDto.supervisorAsignadoId);
+        auditoria.supervisorAsignadoId = idPerson;
       } else {
         auditoria.supervisorAsignadoId = null;
       }
@@ -1505,7 +1514,7 @@ export class AuditoriasService {
                 const lider = await this.auditoriaRepository.query(
                   `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
                    FROM auth.personas 
-                   WHERE id_tercero = $1`,
+                   WHERE id_person = $1`,
                   [auditoria.auditorLiderId]
                 );
                 if (lider && lider.length > 0 && lider[0]) {
@@ -1531,7 +1540,7 @@ export class AuditoriasService {
                 const asignado = await this.auditoriaRepository.query(
                   `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
                    FROM auth.personas 
-                   WHERE id_tercero = $1`,
+                   WHERE id_person = $1`,
                   [auditoria.auditorAsignadoId]
                 );
                 if (asignado && asignado.length > 0 && asignado[0]) {
@@ -1757,7 +1766,7 @@ export class AuditoriasService {
           const lider = await this.auditoriaRepository.query(
             `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
              FROM auth.personas 
-             WHERE id_tercero = $1`,
+             WHERE id_person = $1`,
             [auditoria.auditorLiderId]
           );
           if (lider && lider.length > 0) {
@@ -1777,7 +1786,7 @@ export class AuditoriasService {
           const asignado = await this.auditoriaRepository.query(
             `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
              FROM auth.personas 
-             WHERE id_tercero = $1`,
+             WHERE id_person = $1`,
             [auditoria.auditorAsignadoId]
           );
           if (asignado && asignado.length > 0) {
@@ -2440,7 +2449,9 @@ export class AuditoriasService {
       }
       
       // Verificar que el auditor líder esté asignado a esta auditoría
-      if (auditoria.auditorLiderId !== usuarioIdTercero) {
+      // Comparar convirtiendo id_tercero a id_person (UUID)
+      const usuarioIdPerson = await this.mapIdTerceroToIdPerson(usuarioIdTercero);
+      if (auditoria.auditorLiderId !== usuarioIdPerson) {
         throw new ForbiddenException('Solo el Auditor Líder asignado a esta auditoría puede solicitar ampliación de plazo');
       }
     }

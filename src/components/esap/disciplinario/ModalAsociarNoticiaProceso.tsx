@@ -95,10 +95,10 @@ export function ModalAsociarNoticiaProceso({
     const term = searchTerm.toLowerCase();
     return procesosDisponibles.filter(proceso => 
       proceso.numeroProceso.toLowerCase().includes(term) ||
-      proceso.denunciado.nombre.toLowerCase().includes(term) ||
-      proceso.denunciado.numeroIdentificacion.includes(term) ||
-      proceso.profesionalAsignado.nombre.toLowerCase().includes(term) ||
-      proceso.etapaActual.toLowerCase().includes(term)
+      proceso.denunciado?.nombre?.toLowerCase().includes(term) ||
+      proceso.denunciado?.numeroIdentificacion?.includes(term) ||
+      proceso.profesionalAsignado?.nombre?.toLowerCase().includes(term) ||
+      proceso.etapaActual?.toLowerCase().includes(term)
     );
   }, [procesosDisponibles, searchTerm]);
 
@@ -375,12 +375,12 @@ export function ModalAsociarNoticiaProceso({
                           <div className="sm:col-span-2">
                             <span className="text-gray-500">Denunciado:</span>{' '}
                             <span className="font-semibold text-gray-900">
-                              {proceso.denunciado.nombre} ({proceso.denunciado.tipoIdentificacion} {proceso.denunciado.numeroIdentificacion})
+                              {proceso.denunciado?.nombre || 'No disponible'} ({proceso.denunciado?.tipoIdentificacion || 'N/A'} {proceso.denunciado?.numeroIdentificacion || 'N/A'})
                             </span>
                           </div>
                           <div className="sm:col-span-2">
                             <span className="text-gray-500">Profesional:</span>{' '}
-                            <span className="font-semibold text-gray-900">{proceso.profesionalAsignado.nombre}</span>
+                            <span className="font-semibold text-gray-900">{proceso.profesionalAsignado?.nombre || 'No disponible'}</span>
                           </div>
                         </div>
                       </div>
