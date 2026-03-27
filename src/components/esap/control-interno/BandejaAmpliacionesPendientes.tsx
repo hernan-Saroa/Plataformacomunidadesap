@@ -36,7 +36,7 @@ interface SolicitudAmpliacion {
   justificacion: string;
   fechaFinAnterior: string;
   fechaFinNueva: string;
-  solicitanteId: number;
+  solicitanteId: string | null;
 }
 
 interface BandejaAmpliacionesPendientesProps {
