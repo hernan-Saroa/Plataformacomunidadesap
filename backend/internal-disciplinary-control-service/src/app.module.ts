@@ -84,6 +84,9 @@ import { CompartirExpedienteService } from './services/compartir-expediente.serv
 import { ExpedienteCompartido } from './entities/expediente-compartido.entity';
 import { EntidadRemisionController } from './controllers/entidad-remision.controller';
 import { EntidadRemisionService } from './services/entidad-remision.service';
+import { TipoRemision } from './entities/tipo-remision.entity';
+import { TipoRemisionController } from './controllers/tipo-remision.controller';
+import { TipoRemisionService } from './services/tipo-remision.service';
 import { DisciplinaryProcessActuacionesService } from './services/disciplinary-process-actuaciones.service';
 import { DisciplinaryProcessTasksService } from './services/disciplinary-process-tasks.service';
 import { DisciplinaryProcessNotesService } from './services/disciplinary-process-notes.service';
@@ -120,6 +123,7 @@ import { DisciplinaryProcessNotesService } from './services/disciplinary-process
       ActaConfiguration,
       ExpedienteCompartido,
       EntidadRemision,
+      TipoRemision,
       DisciplinaryProcessActuacion,
       DisciplinaryProcessTask,
       DisciplinaryProcessNote,
@@ -148,6 +152,7 @@ import { DisciplinaryProcessNotesService } from './services/disciplinary-process
     ActasConfigurationController,
     CompartirExpedienteController,
     EntidadRemisionController,
+    TipoRemisionController,
   ],
   providers: [
     AppService,
@@ -172,6 +177,7 @@ import { DisciplinaryProcessNotesService } from './services/disciplinary-process
     ActasConfigurationService,
     CompartirExpedienteService,
     EntidadRemisionService,
+    TipoRemisionService,
     DisciplinaryProcessActuacionesService,
     DisciplinaryProcessTasksService,
     DisciplinaryProcessNotesService,

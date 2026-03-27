@@ -8,7 +8,7 @@
  * pasa de Recepción a Valoración en el Kanban.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, User, Users, TrendingUp, AlertTriangle, CheckCircle,
@@ -16,6 +16,7 @@ import {
   AlertCircle, Shield, ChevronRight, Search, Star
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
 // ==================== INTERFACES ====================
 interface Persona {
@@ -56,72 +57,72 @@ interface ModalAsignarProfesionalProps {
 }
 
 // ==================== MOCK DATA - PROFESIONALES ====================
-const PROFESIONALES_DISPONIBLES: Profesional[] = [
-  {
-    id: '1',
-    nombre: 'Juan Pérez Rodríguez',
-    cargo: 'Profesional Especializado',
-    especialidad: 'Derecho Disciplinario',
-    email: 'juan.perez@esap.edu.co',
-    telefono: '3001234567',
-    procesosAsignados: 8,
-    capacidadMaxima: 12,
-    procesosVencidos: 1,
-    procesosEnRiesgo: 2,
-    procesosAlDia: 5,
-    estado: 'activo',
-    tipoContrato: 'Planta',
-    territorial: 'Dirección Nacional'
-  },
-  {
-    id: '2',
-    nombre: 'María Torres Gómez',
-    cargo: 'Profesional Universitario',
-    especialidad: 'Derecho Administrativo',
-    email: 'maria.torres@esap.edu.co',
-    telefono: '3109876543',
-    procesosAsignados: 6,
-    capacidadMaxima: 10,
-    procesosVencidos: 0,
-    procesosEnRiesgo: 1,
-    procesosAlDia: 5,
-    estado: 'activo',
-    tipoContrato: 'Contratista',
-    territorial: 'Territorial Bogotá'
-  },
-  {
-    id: '3',
-    nombre: 'Carlos Mendoza Silva',
-    cargo: 'Profesional Especializado',
-    especialidad: 'Derecho Disciplinario',
-    email: 'carlos.mendoza@esap.edu.co',
-    telefono: '3205551234',
-    procesosAsignados: 11,
-    capacidadMaxima: 12,
-    procesosVencidos: 2,
-    procesosEnRiesgo: 3,
-    procesosAlDia: 6,
-    estado: 'activo',
-    tipoContrato: 'Planta',
-    territorial: 'Dirección Nacional'
-  },
-  {
-    id: '4',
-    nombre: 'Ana González López',
-    cargo: 'Profesional Universitario',
-    especialidad: 'Derecho Público',
-    email: 'ana.gonzalez@esap.edu.co',
-    telefono: '3157778899',
-    procesosAsignados: 5,
-    capacidadMaxima: 10,
-    procesosVencidos: 0,
-    procesosEnRiesgo: 0,
-    procesosAlDia: 5,
-    estado: 'activo',
-    tipoContrato: 'Contratista',
-    territorial: 'Territorial Antioquia'
-  }
-];
+// const PROFESIONALES_DISPONIBLES: Profesional[] = [
+//   {
+//     id: '1',
+//     nombre: 'Juan Pérez Rodríguez',
+//     cargo: 'Profesional Especializado',
+//     especialidad: 'Derecho Disciplinario',
+//     email: 'juan.perez@esap.edu.co',
+//     telefono: '3001234567',
+//     procesosAsignados: 8,
+//     capacidadMaxima: 12,
+//     procesosVencidos: 1,
+//     procesosEnRiesgo: 2,
+//     procesosAlDia: 5,
+//     estado: 'activo',
+//     tipoContrato: 'Planta',
+//     territorial: 'Dirección Nacional'
+//   },
+//   {
+//     id: '2',
+//     nombre: 'María Torres Gómez',
+//     cargo: 'Profesional Universitario',
+//     especialidad: 'Derecho Administrativo',
+//     email: 'maria.torres@esap.edu.co',
+//     telefono: '3109876543',
+//     procesosAsignados: 6,
+//     capacidadMaxima: 10,
+//     procesosVencidos: 0,
+//     procesosEnRiesgo: 1,
+//     procesosAlDia: 5,
+//     estado: 'activo',
+//     tipoContrato: 'Contratista',
+//     territorial: 'Territorial Bogotá'
+//   },
+//   {
+//     id: '3',
+//     nombre: 'Carlos Mendoza Silva',
+//     cargo: 'Profesional Especializado',
+//     especialidad: 'Derecho Disciplinario',
+//     email: 'carlos.mendoza@esap.edu.co',
+//     telefono: '3205551234',
+//     procesosAsignados: 11,
+//     capacidadMaxima: 12,
+//     procesosVencidos: 2,
+//     procesosEnRiesgo: 3,
+//     procesosAlDia: 6,
+//     estado: 'activo',
+//     tipoContrato: 'Planta',
+//     territorial: 'Dirección Nacional'
+//   },
+//   {
+//     id: '4',
+//     nombre: 'Ana González López',
+//     cargo: 'Profesional Universitario',
+//     especialidad: 'Derecho Público',
+//     email: 'ana.gonzalez@esap.edu.co',
+//     telefono: '3157778899',
+//     procesosAsignados: 5,
+//     capacidadMaxima: 10,
+//     procesosVencidos: 0,
+//     procesosEnRiesgo: 0,
+//     procesosAlDia: 5,
+//     estado: 'activo',
+//     tipoContrato: 'Contratista',
+//     territorial: 'Territorial Antioquia'
+//   }
+// ];
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ModalAsignarProfesional({
@@ -132,9 +133,48 @@ export function ModalAsignarProfesional({
   const [profesionalSeleccionado, setProfesionalSeleccionado] = useState<string>('');
   const [observaciones, setObservaciones] = useState('');
   const [busqueda, setBusqueda] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [profesionales, setProfesionales] = useState<Profesional[]>([]);
+
+  // Cargar profesionales desde el backend
+  useEffect(() => {
+    const fetchProfesionales = async () => {
+      try {
+        setLoading(true);
+        const data = await disciplinaryService.getProfesionales();
+        // Mapear los datos del backend al formato del componente
+        const mappedProfesionales: Profesional[] = data.map((p: any) => ({
+          id: p.id,
+          nombre: p.nombreCompleto || p.nombre || '',
+          cargo: p.cargo || 'Profesional',
+          especialidad: p.especialidad || 'General',
+          email: p.email || '',
+          telefono: p.telefono || 'N/A',
+          procesosAsignados: p.procesosAsignados || 0,
+          capacidadMaxima: p.capacidadMaxima || 10,
+          procesosVencidos: p.procesosVencidos || 0,
+          procesosEnRiesgo: p.procesosEnRiesgo || 0,
+          procesosAlDia: p.procesosAlDia || p.procesosAsignados || 0,
+          estado: ((p.estado || 'ACTIVO').toLowerCase() === 'activo' ? 'activo' : (p.estado || 'ACTIVO').toLowerCase() === 'vacaciones' ? 'vacaciones' : 'inactivo') as 'activo' | 'inactivo' | 'vacaciones',
+          tipoContrato: (p.tipoContrato || 'Contratista') as 'Planta' | 'Contratista',
+          territorial: p.territorial || 'Nacional'
+        }));
+        setProfesionales(mappedProfesionales);
+      } catch (error) {
+        console.error('Error fetching professionals:', error);
+        toast.error('Error al cargar profesionales');
+        // No hay fallback - mostrar mensaje de error
+        setProfesionales([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfesionales();
+  }, []);
 
   // Filtrar solo profesionales activos
-  const profesionalesActivos = PROFESIONALES_DISPONIBLES
+  const profesionalesActivos = profesionales
     .filter(p => p.estado === 'activo')
     .filter(p => 
       p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -150,7 +190,7 @@ export function ModalAsignarProfesional({
       return;
     }
 
-    const profesional = PROFESIONALES_DISPONIBLES.find(p => p.id === profesionalSeleccionado);
+    const profesional = profesionales.find(p => p.id === profesionalSeleccionado);
     if (!profesional) return;
 
     onAsignar(profesional.id, profesional.nombre, observaciones);
@@ -270,7 +310,12 @@ export function ModalAsignarProfesional({
 
             {/* Lista de Profesionales */}
             <div className="space-y-3">
-              {profesionalesActivos.length === 0 ? (
+              {loading ? (
+                <div className="text-center py-12">
+                  <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-gray-500 font-medium">Cargando profesionales...</p>
+                </div>
+              ) : profesionalesActivos.length === 0 ? (
                 <div className="text-center py-12">
                   <AlertTriangle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                   <p className="text-gray-500 font-medium">No se encontraron profesionales disponibles</p>
