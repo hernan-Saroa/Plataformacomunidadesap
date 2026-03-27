@@ -5352,7 +5352,7 @@ export function DashboardKanbanOperativo({
                 toast.success('Oficio creado exitosamente', {
                   description: 'El oficio ha sido generado y guardado correctamente'
                 });
-                setModalActivo(null);
+                // No cerrar el modal - el componente cambiará automáticamente a la vista de lista
               }}
             />
           )}
