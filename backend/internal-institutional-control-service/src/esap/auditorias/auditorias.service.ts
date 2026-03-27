@@ -58,10 +58,23 @@ export class AuditoriasService {
 
   /**
    * Mapea id_tercero (bigint) a id_person (UUID) de auth.personas
+   * Si ya viene id_person (UUID), se valida y se devuelve tal cual.
    * La migración 159 cambió las FKs de control_interno a usar id_person
    */
   private async mapIdTerceroToIdPerson(idTercero: number | string): Promise<string | null> {
     try {
+      if (typeof idTercero === 'string' && this.isValidUUID(idTercero)) {
+        const check = await this.auditoriaRepository.query(
+          `SELECT id_person FROM auth.personas WHERE id_person = $1::uuid`,
+          [idTercero],
+        );
+        if (check?.length > 0 && check[0].id_person) {
+          return String(check[0].id_person);
+        }
+        console.warn('[mapIdTerceroToIdPerson] UUID no encontrado en auth.personas:', idTercero);
+        return null;
+      }
+
       const idTerceroNum = typeof idTercero === 'string' ? parseInt(idTercero, 10) : idTercero;
       if (isNaN(idTerceroNum) || idTerceroNum <= 0) {
         console.warn('[mapIdTerceroToIdPerson] id_tercero inválido:', idTercero);
@@ -204,7 +217,9 @@ export class AuditoriasService {
       fechaInicio: this.serializeDate(auditoria.fechaInicio),
       fechaFin: this.serializeDate(auditoria.fechaFin),
       fechaFinPlaneacion: auditoria.fechaFinPlaneacion ? this.serializeDate(auditoria.fechaFinPlaneacion) : null,
+      fechaInicioEjecucion: auditoria.fechaInicioEjecucion ? this.serializeDate(auditoria.fechaInicioEjecucion) : null,
       fechaFinEjecucion: auditoria.fechaFinEjecucion ? this.serializeDate(auditoria.fechaFinEjecucion) : null,
+      fechaInicioComunicacion: auditoria.fechaInicioComunicacion ? this.serializeDate(auditoria.fechaInicioComunicacion) : null,
       // Asegurar que checklistCompletados se devuelva como objeto (no string)
       checklistCompletados: auditoria.checklistCompletados 
         ? (typeof auditoria.checklistCompletados === 'string' 
@@ -213,15 +228,18 @@ export class AuditoriasService {
         : {},
     };
 
-    // Los IDs son números (BIGINT) que referencian auth.personas.id_tercero
+    // Columnas UUID (id_person) — devolver string; compatibilidad numérica si legacy
     if (auditoria.auditorLiderId !== null && auditoria.auditorLiderId !== undefined) {
-      serialized.auditorLiderId = Number(auditoria.auditorLiderId);
+      const v = auditoria.auditorLiderId as string;
+      serialized.auditorLiderId = this.isValidUUID(String(v)) ? String(v) : Number(v);
     }
     if (auditoria.auditorAsignadoId !== null && auditoria.auditorAsignadoId !== undefined) {
-      serialized.auditorAsignadoId = Number(auditoria.auditorAsignadoId);
+      const v = auditoria.auditorAsignadoId as string;
+      serialized.auditorAsignadoId = this.isValidUUID(String(v)) ? String(v) : Number(v);
     }
     if (auditoria.supervisorAsignadoId !== null && auditoria.supervisorAsignadoId !== undefined) {
-      serialized.supervisorAsignadoId = Number(auditoria.supervisorAsignadoId);
+      const v = auditoria.supervisorAsignadoId as string;
+      serialized.supervisorAsignadoId = this.isValidUUID(String(v)) ? String(v) : Number(v);
     }
 
     // Serializar objetivos, criterios y equipoAuditores con IDs numéricos
@@ -417,8 +435,15 @@ export class AuditoriasService {
     const fechaFinPlaneacion = createDto.fechaFinPlaneacion 
       ? this.parseDateOnly(createDto.fechaFinPlaneacion) 
       : undefined;
+    // ✅ FIX: Parsear fechaInicioEjecucion y fechaInicioComunicacion
+    const fechaInicioEjecucion = createDto.fechaInicioEjecucion
+      ? this.parseDateOnly(createDto.fechaInicioEjecucion)
+      : undefined;
     const fechaFinEjecucion = createDto.fechaFinEjecucion 
       ? this.parseDateOnly(createDto.fechaFinEjecucion) 
+      : undefined;
+    const fechaInicioComunicacion = createDto.fechaInicioComunicacion
+      ? this.parseDateOnly(createDto.fechaInicioComunicacion)
       : undefined;
 
     // Validar que fechaFin sea posterior a fechaInicio
@@ -466,7 +491,10 @@ export class AuditoriasService {
       fechaInicio: fechaInicio,
       fechaFin: fechaFin,
       fechaFinPlaneacion: fechaFinPlaneacion,
+      // ✅ FIX: Guardar fechas de inicio/fin de las 3 etapas
+      fechaInicioEjecucion: fechaInicioEjecucion,
       fechaFinEjecucion: fechaFinEjecucion,
+      fechaInicioComunicacion: fechaInicioComunicacion,
       fase: createDto.fase || FaseAuditoria.PLANEACION,
       prioridad: createDto.prioridad || PrioridadAuditoria.MEDIA,
       progreso: createDto.progreso ?? 0,
@@ -655,7 +683,7 @@ export class AuditoriasService {
       historialCreacion.tipoEvento = TipoEvento.CREACION;
       historialCreacion.fecha = new Date(fecha);
       historialCreacion.hora = hora;
-      historialCreacion.usuarioId = Number(createDto.auditorLiderId) || 1;
+      historialCreacion.usuarioId = null; // UUID - usar null (auditorLiderId ya no es compatible)
       historialCreacion.accion = 'Auditoría creada';
       historialCreacion.descripcion = `Se creó la auditoría ${auditoriaGuardada.codigo} - ${auditoriaGuardada.nombre}`;
       historialCreacion.estadoNuevo = auditoriaGuardada.estadoKanban || auditoriaGuardada.fase || 'Planeación';
@@ -950,7 +978,7 @@ export class AuditoriasService {
         historialActualizacion.tipoEvento = TipoEvento.ACTUALIZACION;
         historialActualizacion.fecha = new Date(fecha);
         historialActualizacion.hora = hora;
-        historialActualizacion.usuarioId = 1; // TODO: Obtener del contexto de autenticación
+        historialActualizacion.usuarioId = null; // UUID - usar null hasta implementar contexto de autenticación
         historialActualizacion.accion = 'Auditoría actualizada';
         historialActualizacion.descripcion = `Cambios realizados: ${cambios.join(', ')}`;
         historialActualizacion.estadoAnterior = estadoAnterior || undefined;
@@ -1112,7 +1140,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = 1; // TODO: Obtener del contexto de autenticación
+    historial.usuarioId = null; // UUID - usar null hasta implementar autenticación
     historial.accion = 'Cambio de estado';
     historial.descripcion = `Auditoría ${auditoria.codigo} cambió de ${estadoAnterior || faseAnterior} a ${estadoNuevo}`;
     historial.estadoAnterior = estadoAnterior || faseAnterior || undefined;
@@ -1195,7 +1223,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = 1; // TODO: Obtener del contexto de autenticación
+    historial.usuarioId = null; // UUID - usar null hasta implementar contexto de autenticación
     historial.accion = 'Cambio de estado (Kanban)';
     historial.descripcion = `Auditoría ${auditoria.codigo} cambió de "${estadoAnterior}" a "${nuevoEstadoKanban}"`;
     historial.estadoAnterior = estadoAnterior || undefined;
@@ -1264,7 +1292,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = finalizadaPorId || 1;
+    historial.usuarioId = null; // UUID - no compatible con finalizadaPorId numérico
     historial.accion = 'Finalización de auditoría';
     historial.descripcion = `Auditoría ${auditoria.codigo} finalizada. Documento de cierre: ${file.originalname}`;
     historial.estadoAnterior = estadoAnterior || undefined;
@@ -1322,7 +1350,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = finalizarDto.finalizadaPorId || 1;
+    historial.usuarioId = null; // UUID - no compatible con finalizadaPorId numérico
     historial.accion = 'Finalización de auditoría';
     historial.descripcion = `Auditoría ${auditoria.codigo} finalizada. Documento de cierre: ${finalizarDto.documentoCierre.nombre}`;
     historial.estadoAnterior = estadoAnterior || undefined;
@@ -1432,7 +1460,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
     historial.fecha = new Date();
     historial.hora = new Date().toTimeString().slice(0, 5);
-    historial.usuarioId = idTercero ?? 1;
+    historial.usuarioId = null; // UUID - no compatible con idTercero numérico
     historial.accion = 'Aprobación Informe de Cierre';
     historial.descripcion = `Informe de cierre aprobado por Jefe OCI. Auditoría ${auditoria.codigo} cerrada.`;
     historial.estadoAnterior = estadoAnterior;
@@ -1678,6 +1706,11 @@ export class AuditoriasService {
               fechaAprobacion: auditoria.fechaAprobacion ? this.serializeDate(auditoria.fechaAprobacion) : undefined,
               aprobadaPor: auditoria.aprobadaPor,
               aprobadaPorId: auditoria.aprobadaPorId ? Number(auditoria.aprobadaPorId) : undefined,
+              // ✅ CAMPOS DE CRONOGRAMA PARA WIZARD
+              fechaFinPlaneacion: auditoria.fechaFinPlaneacion ? this.serializeDate(auditoria.fechaFinPlaneacion) : undefined,
+              fechaInicioEjecucion: auditoria.fechaInicioEjecucion ? this.serializeDate(auditoria.fechaInicioEjecucion) : undefined,
+              fechaFinEjecucion: auditoria.fechaFinEjecucion ? this.serializeDate(auditoria.fechaFinEjecucion) : undefined,
+              fechaInicioComunicacion: auditoria.fechaInicioComunicacion ? this.serializeDate(auditoria.fechaInicioComunicacion) : undefined,
             };
           } catch (error) {
             console.error(`Error al procesar auditoría ${auditoria.id}:`, error);
@@ -1722,6 +1755,11 @@ export class AuditoriasService {
               fechaAprobacion: auditoria.fechaAprobacion ? this.serializeDate(auditoria.fechaAprobacion) : undefined,
               aprobadaPor: auditoria.aprobadaPor,
               aprobadaPorId: auditoria.aprobadaPorId ? Number(auditoria.aprobadaPorId) : undefined,
+              // ✅ CAMPOS DE CRONOGRAMA EN FALLBACK
+              fechaFinPlaneacion: auditoria.fechaFinPlaneacion ? this.serializeDate(auditoria.fechaFinPlaneacion) : undefined,
+              fechaInicioEjecucion: auditoria.fechaInicioEjecucion ? this.serializeDate(auditoria.fechaInicioEjecucion) : undefined,
+              fechaFinEjecucion: auditoria.fechaFinEjecucion ? this.serializeDate(auditoria.fechaFinEjecucion) : undefined,
+              fechaInicioComunicacion: auditoria.fechaInicioComunicacion ? this.serializeDate(auditoria.fechaInicioComunicacion) : undefined,
             };
           }
         })
@@ -2297,7 +2335,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.APROBACION;
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = usuarioId || 1; // TODO: Obtener del contexto de autenticación
+    historial.usuarioId = null; // UUID - usar null hasta implementar autenticación
     historial.accion = 'Aprobación de auditoría';
     historial.descripcion = `Auditoría ${auditoria.codigo} aprobada${estadoNuevo !== estadoAnterior ? ` y avanzada a ${estadoNuevo}` : ''}`;
     historial.observaciones = comentarios || undefined;
@@ -2339,7 +2377,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.ACTUALIZACION; // Usamos actualizacion para rechazo
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = usuarioId || 1; // TODO: Obtener del contexto de autenticación
+    historial.usuarioId = null; // UUID - usar null hasta implementar autenticación
     historial.accion = 'Rechazo de auditoría';
     historial.descripcion = `Auditoría ${auditoria.codigo} rechazada`;
     historial.observaciones = justificacion;
@@ -2381,7 +2419,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.ACTUALIZACION;
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = usuarioId || 1; // TODO: Obtener del contexto de autenticación
+    historial.usuarioId = null; // UUID - usar null hasta implementar autenticación
     historial.accion = 'Solicitud de modificación';
     historial.descripcion = `Solicitud de modificación para auditoría ${auditoria.codigo}`;
     historial.observaciones = observaciones;
@@ -2510,7 +2548,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = usuarioIdTercero || 1;
+    historial.usuarioId = null; // UUID - usar null
     historial.accion = 'Solicitud de ampliación de plazo';
     historial.descripcion = `Solicitud de ampliación de plazo para auditoría ${auditoria.codigo}`;
     // Guardar estado y justificación en observaciones: "ESTADO:pendiente|JUSTIFICACION:..."
@@ -2583,6 +2621,12 @@ export class AuditoriasService {
     } else {
       usuarioIdTercero = 1; // Fallback
     }
+
+    /** UUID de persona (auth.personas) para historial_auditoria.usuario_id */
+    const historialUsuarioUuid: string | null =
+      typeof usuarioIdOrUUID === 'string'
+        ? usuarioIdOrUUID
+        : await this.mapIdTerceroToIdPerson(usuarioIdTercero);
     
     // RN-031.3: Validar que el usuario tenga rol SUPER_ADMIN o JEFE_CONTROL_INTERNO
     // Los roles pueden venir como strings o como objetos con propiedad 'code'
@@ -2659,7 +2703,7 @@ export class AuditoriasService {
     historialAprobacion.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
     historialAprobacion.fecha = new Date(fecha);
     historialAprobacion.hora = hora;
-    historialAprobacion.usuarioId = usuarioIdTercero;
+    historialAprobacion.usuarioId = historialUsuarioUuid;
     historialAprobacion.accion = 'Aprobación de ampliación de plazo';
     historialAprobacion.descripcion = `Ampliación de plazo aprobada para auditoría ${auditoria.codigo}`;
     historialAprobacion.observaciones = `ESTADO:aprobada${aprobarDto.comentarios ? `|COMENTARIOS:${aprobarDto.comentarios}` : ''}`;
@@ -2722,6 +2766,11 @@ export class AuditoriasService {
     } else {
       usuarioIdTercero = 1; // Fallback
     }
+
+    const historialUsuarioUuidRechazo: string | null =
+      typeof usuarioIdOrUUID === 'string'
+        ? usuarioIdOrUUID
+        : await this.mapIdTerceroToIdPerson(usuarioIdTercero);
     
     // RN-031.3: Validar que el usuario tenga rol SUPER_ADMIN o JEFE_CONTROL_INTERNO
     // Los roles pueden venir como strings o como objetos con propiedad 'code'
@@ -2782,7 +2831,7 @@ export class AuditoriasService {
     historialRechazo.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
     historialRechazo.fecha = new Date(fecha);
     historialRechazo.hora = hora;
-    historialRechazo.usuarioId = usuarioIdTercero;
+    historialRechazo.usuarioId = historialUsuarioUuidRechazo;
     historialRechazo.accion = 'Rechazo de ampliación de plazo';
     historialRechazo.descripcion = `Ampliación de plazo rechazada para auditoría ${auditoria.codigo}`;
     historialRechazo.observaciones = `ESTADO:rechazada|JUSTIFICACION:${rechazarDto.justificacion}`;
@@ -2824,7 +2873,7 @@ export class AuditoriasService {
     justificacion: string;
     fechaFinAnterior: string;
     fechaFinNueva: string;
-    solicitanteId: number;
+    solicitanteId: string | null;
   }>> {
     // Buscar todos los registros de ampliación con estado pendiente
     const solicitudesPendientes = await this.historialRepository.find({

@@ -400,6 +400,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
           onClose={() => setMostrarFormulario(false)}
           onSubmit={async (data: AuditoriaUnificadaFormData) => {
             // Convertir datos del formulario al formato del hook
+            // ✅ Mapeo correcto de fechas: usar fechaInicioPlaneacion como fechaInicio
             const auditoriaData: AuditoriaCreateData = {
               tipoAuditoria: data.tipoAuditoria,
               titulo: data.titulo,
@@ -412,11 +413,13 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
               auditorAsignado: data.auditorAsignado,
               equipoAuditores: data.equipoAuditores,
               supervisorAsignado: data.supervisorAsignado,
-              fechaInicio: data.fechaInicio,
+              // ✅ FECHAS: Usar los campos correctos del formulario con valores por defecto
+              fechaInicio: data.fechaInicioPlaneacion || data.fechaInicio || new Date().toISOString().split('T')[0],
               fechaFinPlaneacion: data.fechaFinPlaneacion,
+              fechaInicioEjecucion: data.fechaInicioEjecucion,
               fechaFinEjecucion: data.fechaFinEjecucion,
-              fechaFin: data.fechaFin,
-              periodicidad: data.periodicidad,
+              fechaInicioComunicacion: data.fechaInicioComunicacion,
+              fechaFin: data.fechaFinComunicacion || data.fechaFin || new Date().toISOString().split('T')[0],
               objetivos: data.objetivos,
               criteriosAuditoria: data.criteriosAuditoria,
               normatividadAplicable: data.normatividadAplicable,
