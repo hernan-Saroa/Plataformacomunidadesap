@@ -43,6 +43,8 @@ export interface AuditoriaProgramadaUI {
   auditorLider: string;
   equipo: string[];
   estado: EstadoAuditoria;
+  // ✅ Estado Kanban original del backend para filtros (Planeación, Ejecución, Comunicación, Finalizada)
+  estadoKanban?: string;
   avance: number;
   horasEstimadas: number;
   horasReales: number;
@@ -98,13 +100,37 @@ function mapTipoAuditoria(tipo: string): TipoAuditoria {
   return map[tipo?.toLowerCase()] || 'GESTION';
 }
 
-/** Mapea estado de auditoría del backend al UI */
-function mapEstadoAuditoria(estado: string): EstadoAuditoria {
+/** 
+ * Mapea estado de auditoría del backend al UI
+ * Reconoce tanto valores legacy como estadoKanban real
+ * 
+ * Estados Kanban reales: 'Planeación', 'Ejecución', 'Comunicación', 'Finalizada'
+ * Estados legacy: 'planeada', 'en_curso', 'completada', 'cancelada'
+ */
+function mapEstadoAuditoria(estado: string, estadoKanban?: string): EstadoAuditoria {
+  // ✅ PRIORIDAD 1: usar estadoKanban si está presente (valor real del backend)
+  if (estadoKanban) {
+    const kanbanNorm = estadoKanban.toLowerCase().trim();
+    if (kanbanNorm === 'planeación' || kanbanNorm === 'planeacion' || kanbanNorm === 'plan anual') return 'PROGRAMADA';
+    if (kanbanNorm === 'ejecución' || kanbanNorm === 'ejecucion') return 'EN_EJECUCION';
+    if (kanbanNorm === 'comunicación' || kanbanNorm === 'comunicacion') return 'COMPLETADA';
+    if (kanbanNorm === 'finalizada') return 'COMPLETADA'; // Finalizadas mapean a COMPLETADA
+  }
+  
+  // PRIORIDAD 2: usar estado legacy
   const map: Record<string, EstadoAuditoria> = {
     'planeada': 'PROGRAMADA',
     'en_curso': 'EN_EJECUCION',
     'completada': 'COMPLETADA',
     'cancelada': 'CANCELADA',
+    // También mapear valores directos
+    'planeación': 'PROGRAMADA',
+    'planeacion': 'PROGRAMADA',
+    'ejecución': 'EN_EJECUCION',
+    'ejecucion': 'EN_EJECUCION',
+    'comunicación': 'COMPLETADA',
+    'comunicacion': 'COMPLETADA',
+    'finalizada': 'COMPLETADA',
   };
   return map[estado?.toLowerCase()] || 'PROGRAMADA';
 }
@@ -198,7 +224,10 @@ function mapAuditoriaBackendToUI(
     trimestre: calcularTrimestre(fechaInicio),
     auditorLider: auditoria.auditorLider || '',
     equipo,
-    estado: mapEstadoAuditoria(auditoria.estado),
+    // ✅ Usar estadoKanban del backend para mapeo correcto
+    estado: mapEstadoAuditoria(auditoria.estado, auditoria.estadoKanban),
+    // ✅ Conservar estadoKanban original para filtros
+    estadoKanban: auditoria.estadoKanban,
     avance: auditoria.avance || 0,
     horasEstimadas: (auditoria.duracionDias || 0) * 8,
     horasReales: auditoria.horasReales || 0,
@@ -399,6 +428,8 @@ export function useProgramaAnualData(
             auditorLider: a.auditorLider,
             equipo: a.equipo,
             estado: a.estado,
+            // ✅ Propagar estadoKanban original para filtros del cronograma
+            estadoKanban: a.estadoKanban,
             avance: a.avance,
             horasEstimadas: a.horasEstimadas,
             horasReales: a.horasReales || 0,

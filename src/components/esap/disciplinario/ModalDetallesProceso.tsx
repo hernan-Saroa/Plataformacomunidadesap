@@ -1679,6 +1679,9 @@ export function ModalDetallesProceso({
   const inputArchivoRef = useRef<HTMLInputElement>(null);
   const inputRecargarRef = useRef<HTMLInputElement>(null);
   const cargasRef = useRef<CargaActiva[]>([]);
+  const colaCargasRef = useRef<Promise<void>>(Promise.resolve());
+  const cancelarPendientesRef = useRef(false);
+  const [archivosEnColaCount, setArchivosEnColaCount] = useState(0);
   cargasRef.current = cargasActivas;
   const currentUser = authService.getCurrentUser();
   const usuarioCargaActual = currentUser?.fullName
@@ -1984,7 +1987,7 @@ export function ModalDetallesProceso({
   // ═══ Protección beforeunload ═══
   useEffect(() => {
     const cargasEnCurso = cargasActivas.filter(c => c.estado === 'subiendo' || c.estado === 'procesando' || c.estado === 'validando');
-    if (cargasEnCurso.length === 0) return;
+    if (cargasEnCurso.length === 0 && archivosEnColaCount === 0) return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = 'Hay archivos en proceso de carga. Si cierra la ventana, se perderán.';
@@ -1992,20 +1995,23 @@ export function ModalDetallesProceso({
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [cargasActivas]);
+  }, [archivosEnColaCount, cargasActivas]);
 
   // ═══ Cierre protegido ═══
   const cargasEnCursoCount = cargasActivas.filter(c => c.estado === 'subiendo' || c.estado === 'procesando' || c.estado === 'validando').length;
+  const cargasPendientesCount = cargasEnCursoCount + archivosEnColaCount;
 
   const handleIntentoCerrar = useCallback(() => {
-    if (cargasEnCursoCount > 0) {
+    if (cargasPendientesCount > 0) {
       setMostrarAlertaCierre(true);
     } else {
       onClose();
     }
-  }, [cargasEnCursoCount, onClose]);
+  }, [cargasPendientesCount, onClose]);
 
   const handleCancelarYCerrar = useCallback(() => {
+    cancelarPendientesRef.current = true;
+    setArchivosEnColaCount(0);
     // Cancelar todas las cargas activas
     cargasRef.current.forEach(c => {
       if (c.estado === 'subiendo' || c.estado === 'procesando' || c.estado === 'validando') {
@@ -2156,10 +2162,10 @@ export function ModalDetallesProceso({
   }, []);
 
   // ═══ Handler de selección de archivos ═══
-  const subirArchivoReal = useCallback((archivo: File) => {
+  const subirArchivoReal = useCallback((archivo: File): Promise<void> => {
     if (!proceso?.id) {
       toast.error('No se pudo identificar el proceso para cargar el archivo');
-      return;
+      return Promise.resolve();
     }
 
     const id = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -2208,7 +2214,7 @@ export function ModalDetallesProceso({
       iniciadoEn: uploadStartTime,
     }));
 
-    void disciplinaryService.uploadDocumento(
+    return disciplinaryService.uploadDocumento(
       proceso.id,
       archivo,
       'EVIDENCIA',
@@ -2341,6 +2347,25 @@ export function ModalDetallesProceso({
       });
   }, [cargarDocumentosExpediente, proceso?.etapaActual, proceso?.id, usuarioCargaActual]);
 
+  const encolarCargaArchivo = useCallback((archivo: File) => {
+    setArchivosEnColaCount(prev => prev + 1);
+
+    const siguiente = colaCargasRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (cancelarPendientesRef.current) {
+          setArchivosEnColaCount(prev => Math.max(prev - 1, 0));
+          return;
+        }
+
+        setArchivosEnColaCount(prev => Math.max(prev - 1, 0));
+        await subirArchivoReal(archivo);
+      });
+
+    colaCargasRef.current = siguiente.catch(() => undefined);
+    return siguiente;
+  }, [subirArchivoReal]);
+
   const handleFilesSelected = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return;
     const archivos = Array.from(files);
@@ -2365,6 +2390,7 @@ export function ModalDetallesProceso({
     }
 
     if (validos.length === 0) return;
+    cancelarPendientesRef.current = false;
 
     // Notificar y comenzar carga
     const grandes = validos.filter(f => f.size > LIMITE_CARGA_DIRECTA);
@@ -2375,11 +2401,20 @@ export function ModalDetallesProceso({
       });
     }
 
-    validos.forEach(archivo => subirArchivoReal(archivo));
+    if (validos.length > 1) {
+      toast.info(`${validos.length} archivos agregados a la cola`, {
+        description: 'Se subirÃ¡n uno por uno para respetar el patrÃ³n estable de carga del servidor.',
+        duration: 5000,
+      });
+    }
+
+    validos.forEach(archivo => {
+      void encolarCargaArchivo(archivo);
+    });
 
     // Reset input
     if (inputArchivoRef.current) inputArchivoRef.current.value = '';
-  }, [subirArchivoReal]);
+  }, [encolarCargaArchivo]);
 
   // ═══ Cancelar una carga individual ═══
   const cancelarCarga = useCallback((id: string) => {
@@ -3964,13 +3999,18 @@ export function ModalDetallesProceso({
                     </div>
 
                     {/* Cargas activas */}
-                    {cargasActivas.length > 0 && (
+                    {(cargasActivas.length > 0 || archivosEnColaCount > 0) && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-1.5">
                           <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#003DA5' }} />
                           <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#003DA5' }}>
                             Cargas en progreso ({cargasActivas.filter(c => c.estado === 'subiendo' || c.estado === 'procesando' || c.estado === 'validando').length})
                           </span>
+                          {archivosEnColaCount > 0 && (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide bg-amber-100 text-amber-700">
+                              En cola: {archivosEnColaCount}
+                            </span>
+                          )}
                         </div>
                         {cargasActivas.map(carga => {
                           const activo = carga.estado === 'subiendo' || carga.estado === 'procesando' || carga.estado === 'validando';
