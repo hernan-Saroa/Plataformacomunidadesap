@@ -424,6 +424,10 @@ class DisciplinaryService {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news`);
     }
 
+    async archiveNews(id: string, reason: string): Promise<DisciplinaryNews> {
+        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/archive`, { reason });
+    }
+
     /**
      * Obtiene las noticias asociadas a los procesos de un profesional específico
      */

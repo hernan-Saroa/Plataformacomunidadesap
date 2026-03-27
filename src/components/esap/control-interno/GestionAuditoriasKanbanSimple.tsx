@@ -1903,8 +1903,10 @@ export function GestionAuditoriasKanbanSimple() {
         auditorAsignado: aud.auditorAsignado,
         auditorLiderId: aud.auditorLiderId, // ✅ Preservar ID del auditor líder
         fechaInicio: aud.fechaInicio,
-        fechaFinPlaneacion: aud.fechaFinPlaneacion, // ✅ Fecha fin de Planeación / Inicio Ejecución
-        fechaFinEjecucion: aud.fechaFinEjecucion, // ✅ Fecha fin de Ejecución / Inicio Comunicación
+        fechaFinPlaneacion: aud.fechaFinPlaneacion, // ✅ Fecha fin de Planeación
+        fechaInicioEjecucion: aud.fechaInicioEjecucion, // ✅ Fecha inicio de Ejecución
+        fechaFinEjecucion: aud.fechaFinEjecucion, // ✅ Fecha fin de Ejecución
+        fechaInicioComunicacion: aud.fechaInicioComunicacion, // ✅ Fecha inicio de Comunicación
         fechaFin: aud.fechaFin,
         progreso: aud.progreso,
         hallazgos: aud.hallazgos,
@@ -2276,22 +2278,30 @@ export function GestionAuditoriasKanbanSimple() {
       console.log('   fechaInicioEjecucionCalculada:', fechaInicioEjecucionCalculada);
       console.log('   fechaInicioComunicacionCalculada:', fechaInicioComunicacionCalculada);
       
-      // Preparar datos para el backend
+      // Preparar datos para el backend (incluir equipo auditor y riesgos — antes no se enviaban)
       const datosBackend = {
         nombre: data.titulo,
         descripcion: data.descripcion || '',
         tipo: data.tipoAuditoria || 'Regular',
         territorial: data.territorial || 'Nacional',
         sede: data.territorial || 'Nacional',
-        responsable: 'aud-001', // TODO: Obtener del usuario logueado
+        responsable: data.auditorLider || data.supervisorAsignado || 'Por asignar',
         fechaInicio: data.fechaInicio || data.fechaInicioPlaneacion,
         fechaFin: data.fechaFin || data.fechaFinComunicacion,
         areaObjetivo: data.areaObjetivo || 'Control Interno',
         procesoAuditado: data.procesoAuditado || 'General',
         calificacionRiesgo: data.nivelRiesgo || 'Medio',
+        nivelRiesgo: data.nivelRiesgo || 'Medio',
         alcance: data.alcance || data.descripcion || '',
+        presupuestoEstimado: data.presupuestoEstimado,
         objetivos: data.objetivos || [],
         criteriosAuditoria: data.criteriosAuditoria || [], // El backend usa criteriosAuditoria
+        normatividadAplicable: data.normatividadAplicable || [],
+        riesgosIdentificados: data.riesgosIdentificados || [],
+        controlesAplicar: data.controlesAplicar || [],
+        auditorLiderId: data.auditorLider || undefined,
+        auditorAsignadoId: data.auditorAsignado || undefined,
+        supervisorAsignadoId: data.supervisorAsignado || undefined,
         equipoAuditores: data.equipoAuditores || [],
         // ✅ Incluir TODAS las fechas del cronograma de 3 etapas
         // Etapa 1: Planeación
@@ -4274,41 +4284,53 @@ export function GestionAuditoriasKanbanSimple() {
         {modalInicioAuditoriaOpen && auditoriaSeleccionada && (
           <InicioAuditoriaWizardWorldClass
             isOpen={modalInicioAuditoriaOpen}
-            auditoria={{
-              id: auditoriaSeleccionada.id,
-              codigo: auditoriaSeleccionada.codigo,
-              titulo: auditoriaSeleccionada.titulo,
-              descripcion: auditoriaSeleccionada.descripcion || 'Auditoría de Gestión Administrativa',
-              territorial: auditoriaSeleccionada.territorial,
-              areaAuditable: auditoriaSeleccionada.areaObjetivo || 'Control Interno',
-              procesoNombre: auditoriaSeleccionada.areaObjetivo || auditoriaSeleccionada.titulo,
-              responsableArea: {
-                nombre: 'Responsable del Área',
-                cargo: 'Director',
-                email: 'responsable@esap.edu.co'
-              },
-              auditorLider: {
-                nombre: auditoriaSeleccionada.auditorLider?.nombre || 'Sin asignar',
-                cargo: auditoriaSeleccionada.auditorLider?.cargo || 'Auditor',
-                email: auditoriaSeleccionada.auditorLider?.nombre?.toLowerCase().replace(' ', '.') + '@esap.edu.co' || 'auditor@esap.edu.co'
-              },
-              equipoAuditores: auditoriaSeleccionada.auditorAsignado ? [
-                {
-                  nombre: auditoriaSeleccionada.auditorAsignado?.nombre || 'Sin asignar',
-                  cargo: auditoriaSeleccionada.auditorAsignado?.cargo || 'Auditor'
-                }
-              ] : [],
-              fechaInicio: auditoriaSeleccionada.fechaInicio,
-              fechaFin: auditoriaSeleccionada.fechaFin,
-              objetivos: auditoriaSeleccionada.objetivos || [],
-              criterios: auditoriaSeleccionada.criterios || [],
-              calificacionRiesgo: auditoriaSeleccionada.calificacionRiesgo,
-              duracionDias: {
-                planeacion: 7,
-                ejecucion: 20,
-                comunicacion: 12
-              }
-            }}
+            auditoria={(() => {
+              // DEBUG: Ver TODA la auditoría seleccionada (no solo fechas)
+              console.log('[InicioAuditoriaWizard] TODA auditoriaSeleccionada:', JSON.stringify(auditoriaSeleccionada, null, 2));
+              console.log('[InicioAuditoriaWizard] Fechas específicas:', {
+                fechaInicio: auditoriaSeleccionada.fechaInicio,
+                fechaFinPlaneacion: auditoriaSeleccionada.fechaFinPlaneacion,
+                fechaInicioEjecucion: auditoriaSeleccionada.fechaInicioEjecucion,
+                fechaFinEjecucion: auditoriaSeleccionada.fechaFinEjecucion,
+                fechaInicioComunicacion: auditoriaSeleccionada.fechaInicioComunicacion,
+                fechaFin: auditoriaSeleccionada.fechaFin,
+              });
+              return {
+                id: auditoriaSeleccionada.id,
+                codigo: auditoriaSeleccionada.codigo,
+                titulo: auditoriaSeleccionada.titulo,
+                descripcion: auditoriaSeleccionada.descripcion || 'Auditoría de Gestión Administrativa',
+                territorial: auditoriaSeleccionada.territorial,
+                areaAuditable: auditoriaSeleccionada.areaObjetivo || 'Control Interno',
+                procesoNombre: auditoriaSeleccionada.areaObjetivo || auditoriaSeleccionada.titulo,
+                responsableArea: {
+                  nombre: 'Responsable del Área',
+                  cargo: 'Director',
+                  email: 'responsable@esap.edu.co'
+                },
+                auditorLider: {
+                  nombre: auditoriaSeleccionada.auditorLider?.nombre || 'Sin asignar',
+                  cargo: auditoriaSeleccionada.auditorLider?.cargo || 'Auditor',
+                  email: auditoriaSeleccionada.auditorLider?.nombre?.toLowerCase().replace(' ', '.') + '@esap.edu.co' || 'auditor@esap.edu.co'
+                },
+                equipoAuditores: auditoriaSeleccionada.auditorAsignado ? [
+                  {
+                    nombre: auditoriaSeleccionada.auditorAsignado?.nombre || 'Sin asignar',
+                    cargo: auditoriaSeleccionada.auditorAsignado?.cargo || 'Auditor'
+                  }
+                ] : [],
+                // Cronograma de 3 etapas - fechas reales
+                fechaInicio: auditoriaSeleccionada.fechaInicio,
+                fechaFinPlaneacion: auditoriaSeleccionada.fechaFinPlaneacion,
+                fechaInicioEjecucion: auditoriaSeleccionada.fechaInicioEjecucion,
+                fechaFinEjecucion: auditoriaSeleccionada.fechaFinEjecucion,
+                fechaInicioComunicacion: auditoriaSeleccionada.fechaInicioComunicacion,
+                fechaFin: auditoriaSeleccionada.fechaFin,
+                objetivos: auditoriaSeleccionada.objetivos || [],
+                criterios: auditoriaSeleccionada.criterios || [],
+                calificacionRiesgo: auditoriaSeleccionada.calificacionRiesgo,
+              };
+            })()}
             onClose={() => {
               setModalInicioAuditoriaOpen(false);
               setAuditoriaSeleccionada(null);
