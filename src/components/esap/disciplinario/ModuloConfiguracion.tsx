@@ -62,6 +62,7 @@ interface Cargo {
   nombre: string;
   capacidad: number;
   activo: boolean;
+  rolId?: string; // Opcional - clave normalizada del cargo para guardado
 }
 
 interface ConfiguracionNotificaciones {
@@ -148,45 +149,33 @@ export function ModuloConfiguracion() {
   const loadConfiguration = async () => {
     try {
       setLoading(true);
-      const [globalConfig, stagesConfig, availableRoles] = await Promise.all([
+      const [globalConfig, stagesConfig] = await Promise.all([
         disciplinaryService.getGlobalConfig(),
-        disciplinaryService.getStageConfiguration(),
-        disciplinaryService.getAvailableRoles().catch(() => []) // Fallback to empty if endpoint fails
+        disciplinaryService.getStageConfiguration()
       ]);
 
       // 1. Mapear Global Config (Capacidades, Notificaciones, Alertas)
       if (globalConfig) {
-        // Capacidades
+        // Capacidades - usar roleCapacities del globalConfig como fuente única de verdad
         const roleCapacities = globalConfig.roleCapacities || {};
 
-        // Merge DB roles with Configured capacities
-        // Source of truth for EXISTENCE is availableRoles (from DB professionals)
-        // Source of truth for CAPACITY is globalConfig
-
-        // If availableRoles is empty (e.g. no professionals yet), we might want to show defaults or nothing.
-        // Let's assume we show what's in DB + what's in Config (legacy support)
-        // or strictly what's in DB. The requirement says "basado en la composición actual".
-
-        // Let's normalize keys
+        // Fuente de verdad para CARGOS es roleCapacities del globalConfig
+        // Esto asegura coherencia entre configuración y asignación de procesos
         const normalizeKey = (name: string) => name.toLowerCase().replace(/ /g, '_');
 
         let mergedCargos: Cargo[] = [];
 
-        if (availableRoles && availableRoles.length > 0) {
-          mergedCargos = availableRoles.map((roleName: string, index: number) => {
-            const key = normalizeKey(roleName);
-            // Try to find capacity by exact key or normalized key
-            // Note: roleCapacities might have keys like 'asesor_juridico'
-            let capacity = roleCapacities[key] || roleCapacities[roleName];
-
-            // If not found, default to 10
-            if (capacity === undefined) capacity = 10;
-
+        // Usar roleCapacities del globalConfig directamente para mostrar los cargos configurados
+        if (roleCapacities && Object.keys(roleCapacities).length > 0) {
+          mergedCargos = Object.entries(roleCapacities).map(([key, value], index) => {
+            // Convertir clave a nombre legible
+            const name = key.replace(/_/g, ' ').toUpperCase();
             return {
               id: (index + 1).toString(),
-              nombre: roleName, // Use the name from DB directly
-              capacidad: Number(capacity),
-              rolId: key // Store normalized key for saving
+              nombre: name,
+              capacidad: Number(value),
+              rolId: key,
+              activo: true // Todos los cargos de config están activos por defecto
             };
           });
         } else {
@@ -204,7 +193,8 @@ export function ModuloConfiguracion() {
               id: (index + 1).toString(),
               nombre: name,
               capacidad: Number(value),
-              rolId: key
+              rolId: key,
+              activo: true // Default activo para backwards compatibility
             };
           });
         }
@@ -643,7 +633,6 @@ export function ModuloConfiguracion() {
         cargos,
         notificaciones,
         alertas,
-        alertasProgramadas,
         fechaActualizacion: new Date().toISOString()
       };
       
