@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { LayoutGrid, Users, FileText, Mail, Bell, ClipboardList, Clock } from 'lucide-react';
+import { LayoutGrid, Users, FileText, Mail, Bell, ClipboardList, Clock, ArrowRightLeft } from 'lucide-react';
 
 // Importar secciones individuales
 import { ConfiguracionEstadosKanban } from './configuracion/ConfiguracionEstadosKanban';
@@ -16,10 +16,11 @@ import { ConfiguracionPlantillasAutos } from './configuracion/ConfiguracionPlant
 import { ConfiguracionPlantillasOficios } from './configuracion/ConfiguracionPlantillasOficios';
 import { ConfiguracionPlantillasActas } from './configuracion/ConfiguracionPlantillasActas';
 import { ConfiguracionEntidadesRemision } from './configuracion/ConfiguracionEntidadesRemision';
+import { ConfiguracionTiposRemision } from './configuracion/ConfiguracionTiposRemision';
 import { ConfiguracionNotificacionesAlertas } from './configuracion/ConfiguracionNotificacionesAlertas';
 import { ConfiguracionPrescripcion } from './configuracion/ConfiguracionPrescripcion';
 
-type TabActiva = 'ESTADOS_KANBAN' | 'CARGOS' | 'PLANTILLAS_AUTOS' | 'PLANTILLAS_OFICIOS' | 'PLANTILLAS_ACTAS' | 'ENTIDADES' | 'NOTIFICACIONES' | 'PRESCRIPCION';
+type TabActiva = 'ESTADOS_KANBAN' | 'CARGOS' | 'PLANTILLAS_AUTOS' | 'PLANTILLAS_OFICIOS' | 'PLANTILLAS_ACTAS' | 'ENTIDADES' | 'TIPOS_REMISION' | 'NOTIFICACIONES' | 'PRESCRIPCION';
 
 export function ModuloConfiguracionPremium() {
   const [tabActiva, setTabActiva] = useState<TabActiva>('PLANTILLAS_AUTOS'); // Por defecto en Plantillas
@@ -82,6 +83,12 @@ export function ModuloConfiguracionPremium() {
               label="Entidades de Remisión"
             />
             <TabButton
+              active={tabActiva === 'TIPOS_REMISION'}
+              onClick={() => setTabActiva('TIPOS_REMISION')}
+              icon={<ArrowRightLeft className="w-4 h-4" />}
+              label="Tipos de Remisión"
+            />
+            <TabButton
               active={tabActiva === 'NOTIFICACIONES'}
               onClick={() => setTabActiva('NOTIFICACIONES')}
               icon={<Bell className="w-4 h-4" />}
@@ -112,6 +119,7 @@ export function ModuloConfiguracionPremium() {
           {tabActiva === 'PLANTILLAS_OFICIOS' && <ConfiguracionPlantillasOficios />}
           {tabActiva === 'PLANTILLAS_ACTAS' && <ConfiguracionPlantillasActas />}
           {tabActiva === 'ENTIDADES' && <ConfiguracionEntidadesRemision />}
+          {tabActiva === 'TIPOS_REMISION' && <ConfiguracionTiposRemision />}
           {tabActiva === 'NOTIFICACIONES' && <ConfiguracionNotificacionesAlertas />}
           {tabActiva === 'PRESCRIPCION' && <ConfiguracionPrescripcion />}
         </motion.div>

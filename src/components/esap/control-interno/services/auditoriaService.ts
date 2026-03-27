@@ -220,6 +220,9 @@ export function mapBackendToUI(auditoria: AuditoriaResponse): AuditoriaUI {
       ? (tipoOperativoNormalizado as 'regular' | 'territorial' | 'especial')
       : undefined;
 
+  // ✅ Extraer estadoKanban del backend
+  const estadoKanban = (auditoria as any).estadoKanban as string | undefined;
+
   return {
     id: auditoria.id,
     nombre: auditoria.nombre,
@@ -230,7 +233,10 @@ export function mapBackendToUI(auditoria: AuditoriaResponse): AuditoriaUI {
     },
     fechaInicio: auditoria.fechaInicio,
     fechaFin: auditoria.fechaFin,
-    estado: mapearEstadoUI(auditoria.fase, auditoria.progreso),
+    // ✅ Pasar estadoKanban para mapeo correcto
+    estado: mapearEstadoUI(auditoria.fase, auditoria.progreso, estadoKanban),
+    // ✅ Conservar estadoKanban original para filtros
+    estadoKanban: estadoKanban,
     auditorLider: auditoria.responsable,
     equipo: auditoria.equipoAuditores || [],
     avance: auditoria.progreso || 0,
@@ -257,6 +263,8 @@ export interface AuditoriaUI {
   fechaInicio: string;
   fechaFin: string;
   estado: 'PROGRAMADA' | 'EN_EJECUCION' | 'COMPLETADA' | 'CANCELADA';
+  // ✅ Estado Kanban original del backend (Planeación, Ejecución, Comunicación, Finalizada)
+  estadoKanban?: string;
   auditorLider: string;
   equipo: string[];
   avance: number;
@@ -349,15 +357,33 @@ function mapearTipoUI(tipo: string): AuditoriaUI['tipo'] {
   return map[tipo?.toLowerCase()] || 'GESTION';
 }
 
-function mapearEstadoUI(fase?: string, progreso?: number): AuditoriaUI['estado'] {
-  if (!fase) {
-    if (progreso && progreso > 0) return 'EN_EJECUCION';
-    return 'PROGRAMADA';
+/**
+ * Mapea estadoKanban del backend al estado UI
+ * PRIORIDAD: estadoKanban > fase > progreso
+ * 
+ * Estados Kanban backend: 'Planeación', 'Ejecución', 'Comunicación', 'Finalizada'
+ * Estados UI: PROGRAMADA, EN_EJECUCION, COMPLETADA, CANCELADA
+ */
+function mapearEstadoUI(fase?: string, progreso?: number, estadoKanban?: string): AuditoriaUI['estado'] {
+  // ✅ PRIORIDAD 1: usar estadoKanban si está presente
+  if (estadoKanban) {
+    const kanbanNorm = estadoKanban.toLowerCase().trim();
+    if (kanbanNorm === 'planeación' || kanbanNorm === 'planeacion' || kanbanNorm === 'plan anual') return 'PROGRAMADA';
+    if (kanbanNorm === 'ejecución' || kanbanNorm === 'ejecucion') return 'EN_EJECUCION';
+    if (kanbanNorm === 'comunicación' || kanbanNorm === 'comunicacion') return 'COMPLETADA';
+    if (kanbanNorm === 'finalizada') return 'COMPLETADA'; // Finalizadas mapean a COMPLETADA
   }
   
-  const faseNorm = fase.toLowerCase();
-  if (faseNorm === 'cierre' || (progreso && progreso >= 100)) return 'COMPLETADA';
-  if (faseNorm === 'ejecucion' || faseNorm === 'informe') return 'EN_EJECUCION';
+  // PRIORIDAD 2: usar fase
+  if (fase) {
+    const faseNorm = fase.toLowerCase();
+    if (faseNorm === 'cierre' || faseNorm === 'completada' || (progreso && progreso >= 100)) return 'COMPLETADA';
+    if (faseNorm === 'ejecucion' || faseNorm === 'en-curso' || faseNorm === 'informe') return 'EN_EJECUCION';
+    if (faseNorm === 'planeacion' || faseNorm === 'planeación') return 'PROGRAMADA';
+  }
+  
+  // PRIORIDAD 3: usar progreso
+  if (progreso && progreso > 0) return 'EN_EJECUCION';
   return 'PROGRAMADA';
 }
 

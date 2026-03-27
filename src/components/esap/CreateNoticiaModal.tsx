@@ -16,7 +16,8 @@ import {
   Plus,
   Trash2,
   MapPin,
-  UserCheck
+  UserCheck,
+  Pencil
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { toast } from 'sonner@2.0.3';
@@ -236,6 +237,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     cargo: '',
     lugarHechos: '' // ✅ Cambiado de 'dependencia' a 'lugarHechos'
   });
+  const [editingDenunciadoId, setEditingDenunciadoId] = useState<string | null>(null);
 
   const [denunciantes, setDenunciantes] = useState<Denunciante[]>(() => {
     if (!isEditMode || !noticiaToEdit) return [];
@@ -267,6 +269,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     entidad: '',
     tipo: 'Denunciante' // ✅ NUEVO: Tipo de denunciante
   });
+  const [editingDenuncianteId, setEditingDenuncianteId] = useState<string | null>(null);
 
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -407,40 +410,38 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       return;
     }
 
-    const nuevoDenunciante: Denunciante = {
+    const denuncianteData: Denunciante = {
       ...currentDenunciante,
-      id: Date.now().toString(),
+      id: editingDenuncianteId || Date.now().toString(),
       apoderado: mostrarApoderadoDenunciante && apoderadoDenunciante.nombre ? apoderadoDenunciante : undefined
     };
 
-    setDenunciantes([...denunciantes, nuevoDenunciante]);
-    setCurrentDenunciante({
-      id: '',
-      nombre: '',
-      identificacion: '',
-      direccion: '',
-      telefono: '',
-      correo: '',
-      cargo: '',
-      entidad: '',
-      tipo: 'Denunciante' // ✅ NUEVO: Tipo de denunciante
-    });
-    
-    // Limpiar apoderado
-    setMostrarApoderadoDenunciante(false);
-    setApoderadoDenunciante({
-      nombre: '',
-      cedula: '',
-      correo: '',
-      celular: '',
-      direccion: '' // ✅ NUEVO: Limpiar dirección
-    });
+    if (editingDenuncianteId) {
+      setDenunciantes(denunciantes.map(d => d.id === editingDenuncianteId ? denuncianteData : d));
+      setEditingDenuncianteId(null);
+      toast.success('Denunciante actualizado');
+    } else {
+      setDenunciantes([...denunciantes, denuncianteData]);
+      toast.success('Denunciante agregado');
+    }
 
-    toast.success('Denunciante agregado');
+    setCurrentDenunciante({ id: '', nombre: '', identificacion: '', direccion: '', telefono: '', correo: '', cargo: '', entidad: '', tipo: 'Denunciante' });
+    setMostrarApoderadoDenunciante(false);
+    setApoderadoDenunciante({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
+  };
+
+  const handleEditarDenunciante = (denunciante: Denunciante) => {
+    setCurrentDenunciante({ ...denunciante });
+    setEditingDenuncianteId(denunciante.id);
+    if (denunciante.apoderado) {
+      setMostrarApoderadoDenunciante(true);
+      setApoderadoDenunciante(denunciante.apoderado);
+    }
   };
 
   const handleEliminarDenunciante = (id: string) => {
     setDenunciantes(denunciantes.filter(d => d.id !== id));
+    if (editingDenuncianteId === id) setEditingDenuncianteId(null);
   };
 
   // ✅ NUEVO: Funciones para manejar denunciados
@@ -452,36 +453,38 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       return;
     }
 
-    const nuevoDenunciado: Denunciado = {
+    const denunciadoData: Denunciado = {
       ...currentDenunciado,
-      id: Date.now().toString(),
+      id: editingDenunciadoId || Date.now().toString(),
       apoderado: mostrarApoderadoDenunciado && apoderadoDenunciado.nombre ? apoderadoDenunciado : undefined
     };
 
-    setDenunciados([...denunciados, nuevoDenunciado]);
-    setCurrentDenunciado({
-      id: '',
-      nombre: '',
-      identificacion: '',
-      cargo: '',
-      lugarHechos: '' // ✅ Cambiado de 'dependencia' a 'lugarHechos'
-    });
-    
-    // Limpiar apoderado
-    setMostrarApoderadoDenunciado(false);
-    setApoderadoDenunciado({
-      nombre: '',
-      cedula: '',
-      correo: '',
-      celular: '',
-      direccion: '' // ✅ NUEVO: Limpiar dirección
-    });
+    if (editingDenunciadoId) {
+      setDenunciados(denunciados.map(d => d.id === editingDenunciadoId ? denunciadoData : d));
+      setEditingDenunciadoId(null);
+      toast.success('Denunciado actualizado');
+    } else {
+      setDenunciados([...denunciados, denunciadoData]);
+      toast.success('Denunciado agregado');
+    }
 
-    toast.success('Denunciado agregado');
+    setCurrentDenunciado({ id: '', nombre: '', identificacion: '', cargo: '', lugarHechos: '' });
+    setMostrarApoderadoDenunciado(false);
+    setApoderadoDenunciado({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
+  };
+
+  const handleEditarDenunciado = (denunciado: Denunciado) => {
+    setCurrentDenunciado({ ...denunciado });
+    setEditingDenunciadoId(denunciado.id);
+    if (denunciado.apoderado) {
+      setMostrarApoderadoDenunciado(true);
+      setApoderadoDenunciado(denunciado.apoderado);
+    }
   };
 
   const handleEliminarDenunciado = (id: string) => {
     setDenunciados(denunciados.filter(d => d.id !== id));
+    if (editingDenunciadoId === id) setEditingDenunciadoId(null);
   };
 
   // ✅ NUEVO: Funciones para manejar hechos separados
@@ -1160,8 +1163,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     variant="outline"
                     className="w-full border-blue-600 text-blue-700 hover:bg-blue-50"
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Agregar Denunciado
+                    {editingDenunciadoId ? <Pencil className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                    {editingDenunciadoId ? 'Actualizar Denunciado' : 'Agregar Denunciado'}
                   </Button>
                 </div>
               </div>
@@ -1241,6 +1244,13 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                               </div>
                             )}
                           </div>
+                          <button
+                            onClick={() => handleEditarDenunciado(denunciado)}
+                            className="flex-shrink-0 p-2 rounded-lg hover:bg-blue-50 text-blue-600 hover:text-blue-700 transition-colors"
+                            title="Editar denunciado"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => handleEliminarDenunciado(denunciado.id)}
                             className="flex-shrink-0 p-2 rounded-lg hover:bg-red-50 text-red-600 hover:text-red-700 transition-colors"
@@ -1638,8 +1648,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     variant="outline"
                     className="w-full border-blue-600 text-blue-700 hover:bg-blue-50"
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Agregar Denunciante
+                    {editingDenuncianteId ? <Pencil className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                    {editingDenuncianteId ? 'Actualizar Denunciante' : 'Agregar Denunciante'}
                   </Button>
                 </div>
               </div>
@@ -1697,6 +1707,13 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                               </div>
                             )}
                           </div>
+                          <button
+                            onClick={() => handleEditarDenunciante(denunciante)}
+                            className="flex-shrink-0 p-2 rounded-lg hover:bg-blue-50 text-blue-600 hover:text-blue-700 transition-colors"
+                            title="Editar denunciante"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => handleEliminarDenunciante(denunciante.id)}
                             className="flex-shrink-0 p-2 rounded-lg hover:bg-red-50 text-red-600 hover:text-red-700 transition-colors"
