@@ -142,6 +142,12 @@ export function CronogramaAuditoriasPremium({
   // Filtrar auditorías con TODOS los criterios
   const auditoriasFiltradas = useMemo(() => {
     return auditorias.filter(aud => {
+      // ✅ EXCLUIR FINALIZADAS: Solo mostrar auditorías activas (Planeación, Ejecución, Comunicación)
+      const estadoKanban = (aud as any).estadoKanban as string | undefined;
+      if (estadoKanban && estadoKanban.toLowerCase() === 'finalizada') {
+        return false; // No mostrar finalizadas en cronograma activo
+      }
+      
       // Filtro de búsqueda por nombre
       const cumpleBusqueda = busqueda === '' || 
         aud.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
