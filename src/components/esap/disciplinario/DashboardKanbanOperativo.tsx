@@ -2800,7 +2800,8 @@ export function DashboardKanbanOperativo({
       tipoRemision: (noticia as any).tipoRemision || (noticia as any).tipoRemisionPor || undefined,
       fechaRemision: (noticia as any).fechaRemision || (noticia as any).fechaRemisionPorCompetencia || undefined,
       fundamentoLegalRemision: (noticia as any).fundamentoLegalRemision || (noticia as any).fundamentoLegal || undefined,
-      justificacionRemision: (noticia as any).justificacionRemision || (noticia as any).observacionesRemision || undefined
+      justificacionRemision: (noticia as any).justificacionRemision || (noticia as any).observacionesRemision || undefined,
+      conductaSeleccionada: (noticia as any).conductas?.[0] || (noticia as any).conductaSeleccionada || ''
     };
   };
 
@@ -3168,7 +3169,9 @@ export function DashboardKanbanOperativo({
         dependenciaDenunciado: primerDenunciado?.dependencia || primerDenunciado?.lugarHechos || data.denunciado?.dependencia || '',
         fechaQueja: data.fechaQueja || new Date().toISOString().split('T')[0],
         fechaHechos: data.fechaHechos || undefined,
-        hechos: data.descripcionHechos || '',
+        hechos: data.hechosSeparados?.length > 0
+          ? data.hechosSeparados.map((h: any, idx: number) => `Hecho ${idx + 1}: ${h.descripcion}`).join('\n\n')
+          : (data.descripcionHechos || ''),
         conductas: data.conductaSeleccionada ? [data.conductaSeleccionada] : [],
         prioridad: (data.prioridad || 'media').toUpperCase(),
         // Denunciante
@@ -3304,24 +3307,27 @@ export function DashboardKanbanOperativo({
         };
       }
       if (item.tipo === 'noticia' && item.id === noticiaAEditar.id) {
+        const primerDenunciadoEdit = data.denunciados?.[0] || data.denunciado;
         return {
           ...item,
           origen: data.origen,
           fechaRecepcion: data.fechaQueja,
           fechaHechos: data.fechaHechos,
           territorial: data.territorial,
-          denunciado: data.denunciado ? {
-            nombre: data.denunciado.nombre || 'Sin nombre',
+          denunciado: primerDenunciadoEdit ? {
+            nombre: primerDenunciadoEdit.nombre || 'Sin nombre',
             tipoIdentificacion: 'CC' as const,
-            numeroIdentificacion: data.denunciado.identificacion || 'Sin identificación'
+            numeroIdentificacion: primerDenunciadoEdit.identificacion || primerDenunciadoEdit.numeroIdentificacion || 'Sin identificación'
           } : 'Sin información',
-          hechos: data.hechosSeparados?.map((h: any, idx: number) =>
-            `Hecho ${idx + 1}: ${h.descripcion}`
-          ).join('\n\n') || data.descripcionHechos,
+          denunciados: data.denunciados || item.denunciados || [],
+          denunciantes: data.denunciantes || item.denunciantes || [],
+          hechos: data.hechosSeparados?.length > 0
+            ? data.hechosSeparados.map((h: any, idx: number) => `Hecho ${idx + 1}: ${h.descripcion}`).join('\n\n')
+            : (data.descripcionHechos || (item as any).hechos || ''),
           hechosSeparados: data.hechosSeparados,
-          conductasSeleccionadas: data.conductasSeleccionadas,
-          cargo: data.denunciado.cargo,
-          dependencia: data.denunciado.dependencia
+          conductaSeleccionada: data.conductaSeleccionada,
+          cargo: primerDenunciadoEdit?.cargo,
+          dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos
         };
       }
       return item;

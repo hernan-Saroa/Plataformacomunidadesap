@@ -2449,7 +2449,9 @@ export class AuditoriasService {
       }
       
       // Verificar que el auditor líder esté asignado a esta auditoría
-      if (auditoria.auditorLiderId !== usuarioIdTercero) {
+      // Comparar convirtiendo id_tercero a id_person (UUID)
+      const usuarioIdPerson = await this.mapIdTerceroToIdPerson(usuarioIdTercero);
+      if (auditoria.auditorLiderId !== usuarioIdPerson) {
         throw new ForbiddenException('Solo el Auditor Líder asignado a esta auditoría puede solicitar ampliación de plazo');
       }
     }

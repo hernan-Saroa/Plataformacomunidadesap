@@ -478,8 +478,8 @@ export class NotificacionesAutomaticasService {
   /**
    * Obtiene los usuarios a notificar para una auditoría
    */
-  private async obtenerUsuariosAuditoria(auditoria: Auditoria): Promise<number[]> {
-    const usuarios: number[] = [];
+  private async obtenerUsuariosAuditoria(auditoria: Auditoria): Promise<string[]> {
+    const usuarios: string[] = [];
 
     if (auditoria.auditorLiderId) {
       usuarios.push(auditoria.auditorLiderId);

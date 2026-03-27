@@ -175,7 +175,9 @@ export interface LegalAuto {
     documentType?: string;
     documentSize?: number;
     comentarios?: string;
+    currentVersion?: number;
     processId: string;
+    process?: DisciplinaryProcess;
     createdAt: string;
 }
 

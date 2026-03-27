@@ -2791,20 +2791,31 @@ export function ModalDetallesProceso({
     console.log('[DEBUG] autoEnviarRevision establecido, valor actual:', archivo);
   }, []);
 
-  const confirmarEnvioRevision = useCallback(() => {
+  const confirmarEnvioRevision = useCallback(async () => {
     if (!autoEnviarRevision) return;
     const id = autoEnviarRevision.id;
     const ahora = new Date().toISOString();
 
-    // Actualizar estado del archivo a "en_revision"
+    // Llamar al backend para cambiar estado a REVISION_JEFE
+    try {
+      await disciplinaryService.sendToReview(id);
+    } catch (error) {
+      console.error('[EFDS-702] Error al enviar auto a revisión:', error);
+      toast.error('No se pudo enviar a revisión', {
+        description: 'Error al comunicarse con el servidor. Intente nuevamente.',
+      });
+      setAutoEnviarRevision(null);
+      setObservacionesEnvio('');
+      return;
+    }
+
+    // Actualizar estado local del archivo
     const actualizarArchivo = (prev: Archivo[]) =>
       prev.map(a => a.id === id ? { ...a, estado: 'en_revision' as const, fechaEnvioRevision: ahora } : a);
 
-    // Verificar si el archivo está en archivos reales o subidos
-    const enReal = archivosReales.find(a => a.id === id);
+    const enReal = archivosBackend.find(a => a.id === id);
     if (enReal) {
-      enReal.estado = 'en_revision';
-      enReal.fechaEnvioRevision = ahora;
+      setArchivosBackend(actualizarArchivo);
     } else {
       setArchivosSubidos(actualizarArchivo);
     }
@@ -2867,7 +2878,7 @@ export function ModalDetallesProceso({
 
     setAutoEnviarRevision(null);
     setObservacionesEnvio('');
-  }, [autoEnviarRevision, observacionesEnvio, proceso, onEnviarARevision, onNavigateToRevision]);
+  }, [autoEnviarRevision, observacionesEnvio, proceso, archivosBackend, onEnviarARevision, onNavigateToRevision]);
 
   // Abrir el modal de revisión (conectado a ModalRevisionAuto)
   const handleAbrirRevision = useCallback((archivo: Archivo) => {

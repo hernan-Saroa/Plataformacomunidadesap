@@ -99,6 +99,44 @@ const LABELS_ESTADO: Record<keyof typeof COLORES_ESTADO, string> = {
   'CANCELADA': 'Cancelada'
 };
 
+// ✅ COLORES BASADOS EN estadoKanban REAL (Planeación, Ejecución, Comunicación, Finalizada)
+const COLORES_KANBAN: Record<string, { bg: string; border: string; text: string }> = {
+  'planeación': { bg: '#DBEAFE', border: '#3B82F6', text: '#1E40AF' },
+  'planeacion': { bg: '#DBEAFE', border: '#3B82F6', text: '#1E40AF' },
+  'plan anual': { bg: '#DBEAFE', border: '#3B82F6', text: '#1E40AF' },
+  'ejecución': { bg: '#FEF08A', border: '#F59E0B', text: '#854D0E' },
+  'ejecucion': { bg: '#FEF08A', border: '#F59E0B', text: '#854D0E' },
+  'comunicación': { bg: '#D1FAE5', border: '#10B981', text: '#065F46' },
+  'comunicacion': { bg: '#D1FAE5', border: '#10B981', text: '#065F46' },
+  'finalizada': { bg: '#E0E7FF', border: '#6366F1', text: '#4338CA' }, // Índigo para finalizada
+};
+
+/**
+ * Obtiene el color y label visual basado en el estadoKanban real del backend.
+ * Prioriza el valor original de estadoKanban sobre el estado mapeado.
+ */
+function obtenerEstadoVisual(auditoria: any): { colores: typeof COLORES_ESTADO['PROGRAMADA']; label: string } {
+  const estadoKanban = auditoria.estadoKanban as string | undefined;
+  
+  if (estadoKanban) {
+    const kanbanNorm = estadoKanban.toLowerCase().trim();
+    const coloresKanban = COLORES_KANBAN[kanbanNorm];
+    
+    if (coloresKanban) {
+      // Capitalizar primera letra para el label
+      const label = estadoKanban.charAt(0).toUpperCase() + estadoKanban.slice(1);
+      return { colores: coloresKanban, label };
+    }
+  }
+  
+  // Fallback al sistema anterior si no hay estadoKanban válido
+  const estadoUI = auditoria.estado as keyof typeof COLORES_ESTADO;
+  return {
+    colores: COLORES_ESTADO[estadoUI] || COLORES_ESTADO['PROGRAMADA'],
+    label: LABELS_ESTADO[estadoUI] || estadoUI?.replace('_', ' ') || 'Desconocido'
+  };
+}
+
 const COLORES_TIPO: Record<string, string> = {
   // Tipos legacy
   'regular': '#3B82F6',
@@ -142,6 +180,12 @@ export function CronogramaAuditoriasPremium({
   // Filtrar auditorías con TODOS los criterios
   const auditoriasFiltradas = useMemo(() => {
     return auditorias.filter(aud => {
+      // ✅ EXCLUIR FINALIZADAS: Solo mostrar auditorías activas (Planeación, Ejecución, Comunicación)
+      const estadoKanban = (aud as any).estadoKanban as string | undefined;
+      if (estadoKanban && estadoKanban.toLowerCase() === 'finalizada') {
+        return false; // No mostrar finalizadas en cronograma activo
+      }
+      
       // Filtro de búsqueda por nombre
       const cumpleBusqueda = busqueda === '' || 
         aud.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -561,20 +605,23 @@ function VistaSemana({ fecha, auditorias, onSeleccionar }: VistaSemanaProps) {
               </div>
 
               <div className="space-y-2">
-                {auditoriasDelDia.slice(0, 3).map((aud) => (
-                  <button
-                    key={aud.id}
-                    onClick={() => onSeleccionar(aud)}
-                    className="w-full p-2 rounded-lg text-left text-xs font-bold transition-all hover:scale-105"
-                    style={{
-                      backgroundColor: COLORES_ESTADO[aud.estado].bg,
-                      color: COLORES_ESTADO[aud.estado].text,
-                      borderLeft: `3px solid ${COLORES_TIPO[aud.tipo]}`
-                    }}
-                  >
-                    <div className="truncate">{aud.nombre}</div>
-                  </button>
-                ))}
+                {auditoriasDelDia.slice(0, 3).map((aud) => {
+                  const { colores } = obtenerEstadoVisual(aud);
+                  return (
+                    <button
+                      key={aud.id}
+                      onClick={() => onSeleccionar(aud)}
+                      className="w-full p-2 rounded-lg text-left text-xs font-bold transition-all hover:scale-105"
+                      style={{
+                        backgroundColor: colores.bg,
+                        color: colores.text,
+                        borderLeft: `3px solid ${COLORES_TIPO[aud.tipo]}`
+                      }}
+                    >
+                      <div className="truncate">{aud.nombre}</div>
+                    </button>
+                  );
+                })}
                 {auditoriasDelDia.length > 3 && (
                   <div className="text-xs text-center text-gray-500 font-semibold">
                     +{auditoriasDelDia.length - 3} más
@@ -660,20 +707,23 @@ function VistaMes({ fecha, auditorias, onSeleccionar }: VistaMesProps) {
               </div>
 
               <div className="space-y-1">
-                {auditoriasDelDia.slice(0, 2).map((aud) => (
-                  <button
-                    key={aud.id}
-                    onClick={() => onSeleccionar(aud)}
-                    className="w-full p-1.5 rounded text-left text-[10px] font-bold transition-all hover:scale-105"
-                    style={{
-                      backgroundColor: COLORES_ESTADO[aud.estado].bg,
-                      color: COLORES_ESTADO[aud.estado].text,
-                      borderLeft: `2px solid ${COLORES_TIPO[aud.tipo]}`
-                    }}
-                  >
-                    <div className="truncate">{aud.nombre}</div>
-                  </button>
-                ))}
+                {auditoriasDelDia.slice(0, 2).map((aud) => {
+                  const { colores } = obtenerEstadoVisual(aud);
+                  return (
+                    <button
+                      key={aud.id}
+                      onClick={() => onSeleccionar(aud)}
+                      className="w-full p-1.5 rounded text-left text-[10px] font-bold transition-all hover:scale-105"
+                      style={{
+                        backgroundColor: colores.bg,
+                        color: colores.text,
+                        borderLeft: `2px solid ${COLORES_TIPO[aud.tipo]}`
+                      }}
+                    >
+                      <div className="truncate">{aud.nombre}</div>
+                    </button>
+                  );
+                })}
                 {auditoriasDelDia.length > 2 && (
                   <div className="text-[10px] text-center text-gray-500 font-semibold">
                     +{auditoriasDelDia.length - 2}
@@ -777,7 +827,7 @@ function VistaAño({ fecha, auditorias, onSeleccionar }: VistaAñoProps) {
           {auditorias.length > 0 ? (
             auditorias.map((auditoria) => {
               const { left, width } = getBarraAuditoria(auditoria);
-              const colores = COLORES_ESTADO[auditoria.estado];
+              const { colores, label } = obtenerEstadoVisual(auditoria);
 
               return (
                 <div
@@ -807,7 +857,7 @@ function VistaAño({ fecha, auditorias, onSeleccionar }: VistaAñoProps) {
                           className="px-2 py-0.5 rounded text-[10px] font-bold"
                           style={{ backgroundColor: colores.bg, color: colores.text }}
                         >
-                          {LABELS_ESTADO[auditoria.estado] || auditoria.estado.replace('_', ' ')}
+                          {label}
                         </span>
                         <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px] font-bold">
                           Q{auditoria.trimestre}
@@ -995,7 +1045,7 @@ interface CardAuditoriaProps {
 }
 
 function CardAuditoria({ auditoria, onClick, compact = false }: CardAuditoriaProps) {
-  const colores = COLORES_ESTADO[auditoria.estado];
+  const { colores, label } = obtenerEstadoVisual(auditoria);
 
   return (
     <button
@@ -1040,7 +1090,7 @@ function CardAuditoria({ auditoria, onClick, compact = false }: CardAuditoriaPro
             }`}
             style={{ backgroundColor: colores.bg, color: colores.text }}
           >
-            {LABELS_ESTADO[auditoria.estado] || auditoria.estado.replace('_', ' ')}
+            {label}
           </span>
           <span className="text-lg font-black text-[#003DA5]">
             {auditoria.avance}%
@@ -1058,7 +1108,7 @@ interface ModalDetalleAuditoriaProps {
 }
 
 function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaProps) {
-  const colores = COLORES_ESTADO[auditoria.estado];
+  const { colores, label } = obtenerEstadoVisual(auditoria);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
@@ -1103,7 +1153,7 @@ function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaPro
                 className="text-sm font-black"
                 style={{ color: colores.text }}
               >
-                {LABELS_ESTADO[auditoria.estado] || auditoria.estado.replace('_', ' ')}
+                {label}
               </div>
             </div>
             <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
