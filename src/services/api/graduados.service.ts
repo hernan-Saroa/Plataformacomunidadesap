@@ -284,6 +284,7 @@ const graduadosService = {
           ...(graduationDate ? { graduationDate } : {}),
           ...(lastName ? { lastName } : {}),
         },
+        { skipAuth: true },
       );
       return response;
     },
@@ -305,6 +306,7 @@ const graduadosService = {
           ...(graduationDate ? { graduationDate } : {}),
           ...(lastName ? { lastName } : {}),
         },
+        { skipAuth: true },
       );
       return response;
     },
@@ -323,6 +325,7 @@ const graduadosService = {
           ...(graduationDate ? { graduationDate } : {}),
           ...(lastName ? { lastName } : {}),
         },
+        { skipAuth: true },
       );
       return response;
     },
@@ -345,6 +348,7 @@ const graduadosService = {
           ...(idIssueDate ? { idIssueDate } : {}),
           codigo,
         },
+        { skipAuth: true },
       );
       return response;
     },
@@ -369,6 +373,7 @@ const graduadosService = {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/certificates/autoservicio/solicitar-certificado`,
         payload,
+        { skipAuth: true },
       );
       return response;
     },
@@ -380,6 +385,7 @@ const graduadosService = {
       const response = await apiClient.get(
         `${SERVICE_PREFIX}/certificates/autoservicio/empresa`,
         { nit },
+        { skipAuth: true },
       );
       return response;
     },
@@ -401,6 +407,7 @@ const graduadosService = {
         {
           verificationCode,
         },
+        { skipAuth: true },
       );
       return response;
     },
@@ -417,6 +424,7 @@ const graduadosService = {
         {
           certificateNumber,
         },
+        { skipAuth: true },
       );
       return response;
     },
@@ -427,6 +435,8 @@ const graduadosService = {
     estadisticas: async (): Promise<any> => {
       const response = await apiClient.get(
         `${SERVICE_PREFIX}/certificates/validacion/estadisticas`,
+        undefined,
+        { skipAuth: true },
       );
       return response;
     },
@@ -462,7 +472,7 @@ const graduadosService = {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/certificates/descargas`,
         { certificateId },
-        options,
+        { ...options, skipAuth: options?.skipAuth ?? true },
       );
       return response;
     },
@@ -610,7 +620,7 @@ const graduadosService = {
       return apiClient.getBlob(
         `${SERVICE_PREFIX}/certificates/${id}/pdf`,
         undefined,
-        options,
+        { ...options, skipAuth: options?.skipAuth ?? true },
       );
     },
 
