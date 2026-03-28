@@ -614,117 +614,124 @@ function ModalConfirmarEnvioRevision({
   onConfirmar: () => void;
   onCancelar: () => void;
 }) {
+  console.log('[DEBUG] ModalConfirmarEnvioRevision render archivo:', archivo);
   return createPortal(
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className="fixed inset-0 z-[500] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
-      onClick={(e) => e.target === e.currentTarget && onCancelar()}>
-      <motion.div
-        initial={{ opacity: 0, scale: 0.97, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.97, y: 12 }} transition={{ duration: 0.2 }}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ width: '92vw', maxWidth: 540, minHeight: 320 }}>
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 pt-5 pb-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ backgroundColor: '#EFF6FF', border: '2px solid #93C5FD' }}>
-            <Send className="w-5 h-5" style={{ color: '#003DA5' }} />
+    archivo ? (
+      <div
+        className="fixed inset-0 z-[9999] flex items-center justify-center"
+        style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+        onClick={(e) => e.target === e.currentTarget && onCancelar()}
+      >
+        <motion.div
+          key={`modal-confirmar-envio-revision-${archivo.id}`}
+          initial={{ opacity: 0, scale: 0.97, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.97, y: 12 }}
+          transition={{ duration: 0.2 }}
+          onClick={(e) => e.stopPropagation()}
+          className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+          style={{ width: '92vw', maxWidth: 540, minHeight: 320 }}
+        >
+          {/* Header */}
+          <div className="flex items-center gap-3 px-5 pt-5 pb-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: '#EFF6FF', border: '2px solid #93C5FD' }}>
+              <Send className="w-5 h-5" style={{ color: '#003DA5' }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-base font-black text-gray-900">Enviar a Revisión y Aprobación</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                El documento será enviado al Jefe OCID para revisión
+              </p>
+            </div>
+            <button onClick={onCancelar}
+              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+              <X className="w-4 h-4 text-gray-400" />
+            </button>
           </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-base font-black text-gray-900">Enviar a Revisión y Aprobación</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              El documento será enviado al Jefe OCID para revisión
-            </p>
-          </div>
-          <button onClick={onCancelar}
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
-            <X className="w-4 h-4 text-gray-400" />
-          </button>
-        </div>
 
-        {/* Información del auto */}
-        <div className="px-5 py-3">
-          <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
-            <div className="flex items-start gap-2.5">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: '#F5F3FF' }}>
-                <Scale className="w-4 h-4" style={{ color: '#7C3AED' }} />
+          {/* Información del auto */}
+          <div className="px-5 py-3">
+            <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
+              <div className="flex items-start gap-2.5">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ backgroundColor: '#F5F3FF' }}>
+                  <Scale className="w-4 h-4" style={{ color: '#7C3AED' }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-gray-900 truncate">{archivo.nombre}</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">
+                    {archivo.firmante} · {archivo.fecha} · {archivo.tamaño}
+                    {archivo.version && archivo.version > 1 && ` · Versión ${archivo.version}`}
+                  </p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-gray-900 truncate">{archivo.nombre}</p>
-                <p className="text-[10px] text-gray-500 mt-0.5">
-                  {archivo.firmante} · {archivo.fecha} · {archivo.tamaño}
-                  {archivo.version && archivo.version > 1 && ` · Versión ${archivo.version}`}
+            </div>
+
+            {/* Flujo visual */}
+            <div className="flex items-center gap-2 mt-3 px-1">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold" style={{ color: '#7C3AED' }}>
+                <FileText className="w-3 h-3" />
+                <span>Auto</span>
+              </div>
+              <div className="flex-1 h-px bg-gray-200 relative">
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-0.5 bg-gradient-to-r from-purple-300 to-blue-400" />
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] font-bold" style={{ color: '#003DA5' }}>
+                <Shield className="w-3 h-3" />
+                <span>Revisión Jefe OCID</span>
+              </div>
+              <div className="flex-1 h-px bg-gray-200 relative">
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-0.5 bg-gradient-to-r from-blue-300 to-green-300" />
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] font-bold text-green-600">
+                <CheckCircle className="w-3 h-3" />
+                <span>Aprobado</span>
+              </div>
+            </div>
+
+            {/* Observaciones opcionales */}
+            <div className="mt-3">
+              <label className="text-[11px] font-bold text-gray-700 mb-1.5 block">
+                Observaciones para el revisor <span className="text-gray-400 font-normal">(opcional)</span>
+              </label>
+              <textarea
+                value={observaciones}
+                onChange={(e) => onObservacionesChange(e.target.value)}
+                rows={3}
+                placeholder="Ej: Se adjuntan todos los documentos soporte. La conducta presunta está claramente configurada..."
+                className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 resize-none"
+              />
+            </div>
+
+            {/* Info box */}
+            <div className="mt-3 p-2.5 rounded-lg border" style={{ background: '#FFFBEB', borderColor: '#FCD34D' }}>
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] text-amber-800 leading-relaxed">
+                  Una vez enviado, el documento no podrá ser modificado hasta que el Jefe OCID lo apruebe o devuelva.
+                  El estado cambiará a <strong>"En Revisión"</strong> y aparecerá en el módulo <strong>Revisión y Aprobación</strong>.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Flujo visual */}
-          <div className="flex items-center gap-2 mt-3 px-1">
-            <div className="flex items-center gap-1.5 text-[10px] font-bold" style={{ color: '#7C3AED' }}>
-              <FileText className="w-3 h-3" />
-              <span>Auto</span>
-            </div>
-            <div className="flex-1 h-px bg-gray-200 relative">
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-0.5 bg-gradient-to-r from-purple-300 to-blue-400" />
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px] font-bold" style={{ color: '#003DA5' }}>
-              <Shield className="w-3 h-3" />
-              <span>Revisión Jefe OCID</span>
-            </div>
-            <div className="flex-1 h-px bg-gray-200 relative">
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-0.5 bg-gradient-to-r from-blue-300 to-green-300" />
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px] font-bold text-green-600">
-              <CheckCircle className="w-3 h-3" />
-              <span>Aprobado</span>
-            </div>
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 px-5 pb-5 pt-2 border-t border-gray-100 mt-auto">
+            <button onClick={onCancelar}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-all">
+              Cancelar
+            </button>
+            <button onClick={onConfirmar}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg text-white transition-all hover:opacity-90"
+              style={{ background: '#003DA5' }}>
+              <Send className="w-3.5 h-3.5" />
+              Enviar a Revisión y Aprobación
+            </button>
           </div>
-
-          {/* Observaciones opcionales */}
-          <div className="mt-3">
-            <label className="text-[11px] font-bold text-gray-700 mb-1.5 block">
-              Observaciones para el revisor <span className="text-gray-400 font-normal">(opcional)</span>
-            </label>
-            <textarea
-              value={observaciones}
-              onChange={(e) => onObservacionesChange(e.target.value)}
-              rows={3}
-              placeholder="Ej: Se adjuntan todos los documentos soporte. La conducta presunta está claramente configurada..."
-              className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 resize-none"
-            />
-          </div>
-
-          {/* Info box */}
-          <div className="mt-3 p-2.5 rounded-lg border" style={{ background: '#FFFBEB', borderColor: '#FCD34D' }}>
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-              <p className="text-[10px] text-amber-800 leading-relaxed">
-                Una vez enviado, el documento no podrá ser modificado hasta que el Jefe OCID lo apruebe o devuelva.
-                El estado cambiará a <strong>"En Revisión"</strong> y aparecerá en el módulo <strong>Revisión y Aprobación</strong>.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 pb-5 pt-2 border-t border-gray-100 mt-auto">
-          <button onClick={onCancelar}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-all">
-            Cancelar
-          </button>
-          <button onClick={onConfirmar}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg text-white transition-all hover:opacity-90"
-            style={{ background: '#003DA5' }}>
-            <Send className="w-3.5 h-3.5" />
-            Enviar a Revisión y Aprobación
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>,
+        </motion.div>
+      </div>
+    ) : null,
     document.body
   );
 }
@@ -2783,13 +2790,16 @@ export function ModalDetallesProceso({
   const [debeReabrir, setDebeReabrir] = useState(false);
 
   const handleEnviarARevision = useCallback((archivo: Archivo) => {
-    console.log('[DEBUG] handleEnviarARevision llamado con archivo:', archivo);
+    console.log('[DEBUG] handleEnviarARevision recibido archivo:', archivo);
     // Primero mostrar el modal de confirmación SIN cerrar el modal principal
     // Esto evita que el componente se desmonte antes de mostrar la confirmación
     setAutoEnviarRevision(archivo);
     setObservacionesEnvio('');
-    console.log('[DEBUG] autoEnviarRevision establecido, valor actual:', archivo);
   }, []);
+
+  useEffect(() => {
+    console.log('[DEBUG] autoEnviarRevision cambió:', autoEnviarRevision);
+  }, [autoEnviarRevision]);
 
   const confirmarEnvioRevision = useCallback(async () => {
     if (!autoEnviarRevision) return;
@@ -5011,34 +5021,32 @@ export function ModalDetallesProceso({
       {/* ═══ Sub-modal: Confirmar envío a Revisión y Aprobación (z-[600]) ═══ */}
       <AnimatePresence>
         {autoEnviarRevision && (
-          createPortal(
-            <ModalConfirmarEnvioRevision
+          <ModalConfirmarEnvioRevision
+              key={`confirmar-envio-revision-${autoEnviarRevision.id}`}
               archivo={autoEnviarRevision}
               proceso={{
-                numeroProceso: proceso.numeroProceso,
-                etapaActual: proceso.etapaActual,
-                profesionalAsignado: typeof proceso.profesionalAsignado === 'object' && proceso.profesionalAsignado
-                  ? { nombre: (proceso.profesionalAsignado as any)?.nombre || '' }
-                  : typeof proceso.profesionalAsignado === 'string'
-                    ? { nombre: proceso.profesionalAsignado }
-                    : undefined
-              }}
-              observaciones={observacionesEnvio}
-              onObservacionesChange={setObservacionesEnvio}
-              onConfirmar={() => {
-                confirmarEnvioRevision();
-                // Cerrar el modal principal después de confirmar
-                onClose();
-              }}
-              onCancelar={() => {
-                setAutoEnviarRevision(null);
-                setObservacionesEnvio('');
-                // Cerrar el modal principal cuando se cancela
-                onClose();
-              }}
-            />,
-            document.body
-          )
+              numeroProceso: proceso.numeroProceso,
+              etapaActual: proceso.etapaActual,
+              profesionalAsignado: typeof proceso.profesionalAsignado === 'object' && proceso.profesionalAsignado
+                ? { nombre: (proceso.profesionalAsignado as any)?.nombre || '' }
+                : typeof proceso.profesionalAsignado === 'string'
+                  ? { nombre: proceso.profesionalAsignado }
+                  : undefined
+            }}
+            observaciones={observacionesEnvio}
+            onObservacionesChange={setObservacionesEnvio}
+            onConfirmar={() => {
+              confirmarEnvioRevision();
+              // Cerrar el modal principal después de confirmar
+              onClose();
+            }}
+            onCancelar={() => {
+              setAutoEnviarRevision(null);
+              setObservacionesEnvio('');
+              // Cerrar el modal principal cuando se cancela
+              onClose();
+            }}
+          />
         )}
       </AnimatePresence>
 
