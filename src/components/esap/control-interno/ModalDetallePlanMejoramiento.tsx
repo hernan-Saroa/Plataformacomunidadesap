@@ -25,7 +25,8 @@ import {
   X, Calendar, User, Clock, AlertTriangle, CheckCircle2, FileText,
   TrendingUp, Activity, Target, Flag, Plus, Upload, Download,
   Edit2, Trash2, Eye, MessageSquare, Paperclip, History,
-  BarChart3, Users, Building2, AlertCircle, Check, XCircle, Loader2, RefreshCw, ChevronDown
+  BarChart3, Users, Building2, AlertCircle, Check, XCircle, Loader2, RefreshCw, ChevronDown,
+  Lock, Lightbulb, ClipboardList, ArrowRight, BarChart2, GitBranch
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 
@@ -149,7 +150,7 @@ interface SeguimientoTrimestral {
   createdAt: string;
 }
 
-type TabActiva = 'resumen' | 'hallazgos' | 'acciones' | 'documentos' | 'seguimiento';
+type TabActiva = 'resumen' | 'hallazgos' | 'acciones' | 'documentos' | 'seguimiento' | 'cierre';
 
 // ════════════════════════════════════════════════════════════════════════════
 // DATOS MOCK
@@ -991,6 +992,14 @@ export function ModalDetallePlanMejoramiento({ planId, onClose, onPlanActualizad
               icon={<History className="w-4 h-4" />}
               label="Seguimiento"
             />
+            {plan.estado === 'CUMPLIDO' && (
+              <TabButton
+                active={tabActiva === 'cierre'}
+                onClick={() => setTabActiva('cierre')}
+                icon={<Lock className="w-4 h-4" />}
+                label="Estado Final"
+              />
+            )}
           </div>
         </div>
 
@@ -1029,6 +1038,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose, onPlanActualizad
                 />
               )}
               {tabActiva === 'seguimiento' && <TabSeguimiento plan={plan} />}
+              {tabActiva === 'cierre' && <TabCierre plan={plan} />}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -2294,6 +2304,311 @@ function TabSeguimiento({ plan }: { plan: PlanMejoramientoDetalle }) {
     </div>
   );
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// TAB: CIERRE (ESTADO FINAL DEL EXPEDIENTE)
+// ════════════════════════════════════════════════════════════════════════════
+
+function TabCierre({ plan }: { plan: PlanMejoramientoDetalle }) {
+  // Conteo de hallazgos por resultado (simulado basado en datos existentes)
+  const hallazgosRatificados = plan.hallazgos.filter(h => h.progreso === 100).length;
+  const hallazgosAceptados = plan.hallazgos.filter(h => h.progreso > 0 && h.progreso < 100).length;
+  const hallazgosRetirados = plan.hallazgos.filter(h => h.progreso === 0).length;
+  
+  // Conteo de acciones por estado
+  const accionesCompletadas = plan.acciones.filter(a => a.estado === 'COMPLETADA').length;
+  const accionesEnEjecucion = plan.acciones.filter(a => a.estado === 'EN_EJECUCION').length;
+  const accionesVencidas = plan.acciones.filter(a => a.estado === 'VENCIDA').length;
+  const accionesPendientes = plan.acciones.filter(a => a.estado === 'PENDIENTE').length;
+
+  return (
+    <div className="space-y-6">
+      {/* Banner de Estado Final */}
+      <div className="bg-gradient-to-r from-gray-700 to-gray-800 rounded-xl p-5 text-white">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+            <Lock className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold">Expediente Cerrado</h3>
+            <p className="text-gray-300 text-sm">Estado final e inmutable del expediente</p>
+          </div>
+        </div>
+        <p className="text-sm text-gray-300 border-t border-white/20 pt-3 mt-2">
+          Este plan de mejoramiento ha sido cerrado y su información es de solo lectura. 
+          No se pueden realizar modificaciones a los hallazgos, acciones o documentos.
+        </p>
+      </div>
+
+      {/* Resumen Ejecutivo */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-4 bg-gray-50 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <FileText className="w-5 h-5 text-gray-600" />
+            Resumen Ejecutivo
+          </h3>
+        </div>
+        <div className="p-5">
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            <div>
+              <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Auditoría Vinculada</div>
+              <div className="text-sm font-medium text-gray-900">{plan.auditoria}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Plan de Mejoramiento</div>
+              <div className="text-sm font-medium text-gray-900">{plan.codigo} - {plan.nombre}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Área Responsable</div>
+              <div className="text-sm font-medium text-gray-900">{plan.area}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Responsable General</div>
+              <div className="text-sm font-medium text-gray-900">{plan.responsableGeneral}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Fecha de Cierre</div>
+              <div className="text-sm font-medium text-gray-900">{plan.fechaVencimiento}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Progreso Final</div>
+              <div className="text-sm font-medium text-green-600">{plan.progresoGlobal}%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Conteo de Hallazgos por Tipo */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-4 bg-gray-50 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-gray-600" />
+            Resultado de Hallazgos
+          </h3>
+        </div>
+        <div className="p-5">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-green-50 rounded-lg p-4 text-center border border-green-200">
+              <div className="text-3xl font-bold text-green-600">{hallazgosRatificados}</div>
+              <div className="text-sm text-green-700 font-medium">Ratificados</div>
+              <div className="text-xs text-green-600 mt-1">Hallazgos cerrados al 100%</div>
+            </div>
+            <div className="bg-blue-50 rounded-lg p-4 text-center border border-blue-200">
+              <div className="text-3xl font-bold text-blue-600">{hallazgosAceptados}</div>
+              <div className="text-sm text-blue-700 font-medium">Aceptados</div>
+              <div className="text-xs text-blue-600 mt-1">Hallazgos en proceso</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4 text-center border border-gray-200">
+              <div className="text-3xl font-bold text-gray-600">{hallazgosRetirados}</div>
+              <div className="text-sm text-gray-700 font-medium">Retirados</div>
+              <div className="text-xs text-gray-600 mt-1">Hallazgos sin avance</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Resultado de Acciones de Mejora */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-4 bg-gray-50 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <Target className="w-5 h-5 text-gray-600" />
+            Resultado de Acciones de Mejora
+          </h3>
+        </div>
+        <div className="p-5">
+          <div className="grid grid-cols-4 gap-3 mb-6">
+            <div className="bg-green-50 rounded-lg p-3 text-center border border-green-200">
+              <div className="text-2xl font-bold text-green-600">{accionesCompletadas}</div>
+              <div className="text-xs text-green-700">Completadas</div>
+            </div>
+            <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-200">
+              <div className="text-2xl font-bold text-blue-600">{accionesEnEjecucion}</div>
+              <div className="text-xs text-blue-700">En Ejecución</div>
+            </div>
+            <div className="bg-yellow-50 rounded-lg p-3 text-center border border-yellow-200">
+              <div className="text-2xl font-bold text-yellow-600">{accionesPendientes}</div>
+              <div className="text-xs text-yellow-700">Pendientes</div>
+            </div>
+            <div className="bg-red-50 rounded-lg p-3 text-center border border-red-200">
+              <div className="text-2xl font-bold text-red-600">{accionesVencidas}</div>
+              <div className="text-xs text-red-700">Vencidas</div>
+            </div>
+          </div>
+
+          {/* Detalle de cada acción con verificación final */}
+          <div className="space-y-3">
+            {plan.acciones.map((accion) => (
+              <div 
+                key={accion.id}
+                className="border border-gray-200 rounded-lg p-4 bg-gray-50"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        accion.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
+                        accion.estado === 'EN_EJECUCION' ? 'bg-blue-100 text-blue-700' :
+                        accion.estado === 'VENCIDA' ? 'bg-red-100 text-red-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {accion.estado === 'COMPLETADA' ? 'Verificada' : 
+                         accion.estado === 'EN_EJECUCION' ? 'En Proceso' :
+                         accion.estado === 'VENCIDA' ? 'Vencida' : 'Pendiente'}
+                      </span>
+                      <span className="text-xs text-gray-500">• {accion.responsable}</span>
+                    </div>
+                    <p className="text-sm text-gray-900">{accion.descripcion}</p>
+                    {accion.observaciones && (
+                      <div className="mt-2 p-2 bg-white rounded border border-gray-200">
+                        <div className="text-xs text-gray-500 mb-1">Observación OCI:</div>
+                        <p className="text-xs text-gray-700">{accion.observaciones}</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-lg font-bold text-gray-900">{accion.progreso}%</div>
+                    <div className="text-xs text-gray-500">Avance Final</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Lecciones Aprendidas y Recomendaciones */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-4 bg-amber-50 border-b border-amber-200">
+            <h3 className="font-semibold text-amber-800 flex items-center gap-2">
+              <Lightbulb className="w-5 h-5" />
+              Lecciones Aprendidas
+            </h3>
+          </div>
+          <div className="p-5">
+            <ul className="space-y-2 text-sm text-gray-700">
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                <span>Se identificó la necesidad de fortalecer los controles preventivos antes de las auditorías.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                <span>La comunicación temprana entre áreas facilitó la resolución de hallazgos.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                <span>El seguimiento periódico permitió cumplir con los plazos establecidos.</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-4 bg-blue-50 border-b border-blue-200">
+            <h3 className="font-semibold text-blue-800 flex items-center gap-2">
+              <ClipboardList className="w-5 h-5" />
+              Recomendaciones Jefe OCI
+            </h3>
+          </div>
+          <div className="p-5">
+            <ul className="space-y-2 text-sm text-gray-700">
+              <li className="flex items-start gap-2">
+                <ArrowRight className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                <span>Implementar revisiones trimestrales de los procesos críticos identificados.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <ArrowRight className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                <span>Capacitar al personal en las nuevas políticas y procedimientos adoptados.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <ArrowRight className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                <span>Mantener la trazabilidad documental para futuras auditorías.</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Botones de Descarga */}
+      <div className="bg-gray-50 rounded-xl border border-gray-200 p-5">
+        <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <Download className="w-5 h-5 text-gray-600" />
+          Documentos de Cierre
+        </h3>
+        <div className="flex gap-4">
+          <button className="flex-1 flex items-center justify-center gap-3 px-4 py-3 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-colors">
+            <FileText className="w-5 h-5" />
+            <div className="text-left">
+              <div className="font-medium">Informe de Cierre</div>
+              <div className="text-xs text-blue-200">Documento completo PDF</div>
+            </div>
+          </button>
+          <button className="flex-1 flex items-center justify-center gap-3 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors">
+            <BarChart2 className="w-5 h-5" />
+            <div className="text-left">
+              <div className="font-medium">Informe Ejecutivo</div>
+              <div className="text-xs text-emerald-200">Resumen para directivos</div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* Trazabilidad de Decisiones */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-4 bg-gray-50 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <GitBranch className="w-5 h-5 text-gray-600" />
+            Trazabilidad de Decisiones (Etapa de Comunicación)
+          </h3>
+        </div>
+        <div className="p-5">
+          <div className="space-y-3">
+            {plan.hallazgos.map((hallazgo, index) => (
+              <div key={hallazgo.id} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  hallazgo.progreso === 100 ? 'bg-green-100' : 
+                  hallazgo.progreso > 0 ? 'bg-blue-100' : 'bg-gray-100'
+                }`}>
+                  {hallazgo.progreso === 100 ? (
+                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                  ) : hallazgo.progreso > 0 ? (
+                    <Clock className="w-5 h-5 text-blue-600" />
+                  ) : (
+                    <XCircle className="w-5 h-5 text-gray-500" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-900">{hallazgo.codigo}</span>
+                    <span className={`px-2 py-0.5 rounded text-xs ${
+                      hallazgo.criticidad === 'ALTA' ? 'bg-red-100 text-red-700' :
+                      hallazgo.criticidad === 'MEDIA' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
+                      {hallazgo.criticidad}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600 truncate">{hallazgo.descripcion}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <div className={`text-sm font-medium ${
+                    hallazgo.progreso === 100 ? 'text-green-600' : 
+                    hallazgo.progreso > 0 ? 'text-blue-600' : 'text-gray-500'
+                  }`}>
+                    {hallazgo.progreso === 100 ? 'Ratificado' : 
+                     hallazgo.progreso > 0 ? 'Aceptado' : 'Retirado'}
+                  </div>
+                  <div className="text-xs text-gray-500">{hallazgo.progreso}% completado</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPONENTE: ITEM DEL TIMELINE DE EVENTOS
 // ═══════════════════════════════════════════════════════════════════════════
