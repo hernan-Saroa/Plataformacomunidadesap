@@ -90,6 +90,16 @@ interface ActividadTimeline {
   fecha: string;
 }
 
+// Tipo para eventos del timeline (historial) que viene del backend
+interface EventoTimeline {
+  id: string;
+  tipo: string;
+  descripcion: string;
+  usuarioNombre?: string;
+  fecha: string;
+  metadata?: Record<string, any>;
+}
+
 interface PlanMejoramientoDetalle {
   id: string;
   codigo: string;
@@ -102,8 +112,8 @@ interface PlanMejoramientoDetalle {
   progresoGlobal: number;
   hallazgos: Hallazgo[];
   acciones: AccionCorrectiva[];
-  documentos: DocumentoPlan[];
-  timeline: ActividadTimeline[];
+  documentos?: DocumentoPlan[];
+  timeline: EventoTimeline[];
   seguimientos: SeguimientoTrimestral[];
   auditoria: string;
   observaciones?: string;
@@ -344,38 +354,40 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
       id: 't1',
       tipo: 'CREACION',
       descripcion: 'Plan de mejoramiento creado',
-      usuario: 'Jorge Silva',
+      usuarioNombre: 'Jorge Silva',
       fecha: '2024-10-15 09:30'
     },
     {
       id: 't2',
       tipo: 'COMPLETADA',
       descripcion: 'Acción A1 completada: Manual de Políticas elaborado',
-      usuario: 'Jorge Silva',
+      usuarioNombre: 'Jorge Silva',
       fecha: '2024-12-15 16:45'
     },
     {
       id: 't3',
       tipo: 'EVIDENCIA',
       descripcion: 'Cargada evidencia de implementación de backups',
-      usuario: 'María González',
+      usuarioNombre: 'María González',
       fecha: '2024-12-31 11:20'
     },
     {
       id: 't4',
       tipo: 'COMPLETADA',
       descripcion: 'Hallazgo H-003 completado al 100%',
-      usuario: 'Carlos Méndez',
+      usuarioNombre: 'Carlos Méndez',
       fecha: '2025-01-31 14:30'
     },
     {
       id: 't5',
       tipo: 'ACTUALIZACION',
       descripcion: 'Actualizado progreso de acción A2 al 60%',
-      usuario: 'Jorge Silva',
+      usuarioNombre: 'Jorge Silva',
       fecha: '2025-02-10 10:15'
     }
-  ]
+  ],
+
+  seguimientos: []
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2236,235 +2248,128 @@ function TabDocumentos({ plan, evidenciasPorAccion, setEvidenciasPorAccion, carg
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// TAB: SEGUIMIENTO (TIMELINE)
+// TAB: SEGUIMIENTO
 // ════════════════════════════════════════════════════════════════════════════
 
 function TabSeguimiento({ plan }: { plan: PlanMejoramientoDetalle }) {
-  const [seguimientoExpandido, setSeguimientoExpandido] = useState<string | null>(null);
+  return (
+    <div className="space-y-4">
+      {/* ═══════════════════════════════════════════════════════════════════════════
+          HISTORIAL DE SEGUIMIENTO
+          ═══════════════════════════════════════════════════════════════════════════ */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-base font-medium text-gray-900">Historial de Seguimiento</h3>
+            <p className="text-sm text-gray-600">
+              {plan.timeline && plan.timeline.length > 0 
+                ? `Historial de cambios - ${plan.timeline.length} evento${plan.timeline.length > 1 ? 's' : ''}`
+                : 'Historial de cambios del plan'}
+            </p>
+          </div>
+        </div>
 
-  const seguimientos = plan.seguimientos || [];
-  const haySeguimientos = seguimientos.length > 0;
+        {(!plan.timeline || plan.timeline.length === 0) ? (
+          <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+            <Activity className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+            <p className="font-medium text-sm">Sin eventos registrados</p>
+            <p className="text-xs mt-1">
+              El historial de cambios aparecerá aquí automáticamente
+            </p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="space-y-0">
+              {plan.timeline.map((evento, index) => (
+                <TimelineEventoItem 
+                  key={evento.id} 
+                  evento={evento} 
+                  isLast={index === plan.timeline.length - 1}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPONENTE: ITEM DEL TIMELINE DE EVENTOS
+// ═══════════════════════════════════════════════════════════════════════════
 
-  // Ordenar por fecha más reciente primero
-  const seguimientosOrdenados = [...seguimientos].sort((a, b) => {
-    const fechaA = new Date(`${a.año}-${String(a.trimestre * 3).padStart(2, '0')}-01`);
-    const fechaB = new Date(`${b.año}-${String(b.trimestre * 3).padStart(2, '0')}-01`);
-    return fechaB.getTime() - fechaA.getTime();
-  });
+interface EventoTimelineItemProps {
+  id: string;
+  tipo: string;
+  descripcion: string;
+  usuarioNombre?: string;
+  fecha: string;
+  metadata?: Record<string, any>;
+}
 
-  const getNombreTrimestre = (trimestre: number) => {
-    const nombres: Record<number, string> = {
-      1: 'Primer Trimestre',
-      2: 'Segundo Trimestre',
-      3: 'Tercer Trimestre',
-      4: 'Cuarto Trimestre'
-    };
-    return nombres[trimestre] || `Trimestre ${trimestre}`;
+function TimelineEventoItem({ evento, isLast }: { evento: EventoTimelineItemProps; isLast: boolean }) {
+  const tipoConfig: Record<string, { bg: string; text: string; icon: any; label: string }> = {
+    CREACION: { bg: 'bg-blue-100', text: 'text-blue-700', icon: Plus, label: 'Creación' },
+    ACTUALIZACION: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: Edit2, label: 'Actualización' },
+    APROBACION: { bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle2, label: 'Aprobación' },
+    COMPLETADA: { bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle2, label: 'Completada' },
+    EVIDENCIA: { bg: 'bg-purple-100', text: 'text-purple-700', icon: Paperclip, label: 'Evidencia' },
+    COMENTARIO: { bg: 'bg-gray-100', text: 'text-gray-700', icon: MessageSquare, label: 'Comentario' },
+    PROGRESO: { bg: 'bg-cyan-100', text: 'text-cyan-700', icon: TrendingUp, label: 'Progreso' },
+    ESTADO: { bg: 'bg-orange-100', text: 'text-orange-700', icon: RefreshCw, label: 'Cambio Estado' },
+    HALLAZGO_COMPLETADO: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: Flag, label: 'Hallazgo Cerrado' },
   };
 
-  const getColorCumplimiento = (porcentaje: number) => {
-    if (porcentaje >= 80) return 'text-green-600 bg-green-100';
-    if (porcentaje >= 50) return 'text-yellow-600 bg-yellow-100';
-    return 'text-red-600 bg-red-100';
-  };
+  const config = tipoConfig[evento.tipo] || { bg: 'bg-gray-100', text: 'text-gray-700', icon: Activity, label: evento.tipo };
+  const Icon = config.icon;
 
-  const getColorEfectividad = (porcentaje: number) => {
-    if (porcentaje >= 70) return 'text-green-600';
-    if (porcentaje >= 40) return 'text-yellow-600';
-    return 'text-red-600';
+  // Formatear fecha
+  const formatearFecha = (fechaStr: string) => {
+    try {
+      const fecha = new Date(fechaStr);
+      return fecha.toLocaleDateString('es-CO', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return fechaStr;
+    }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-base font-medium text-gray-900">Seguimientos Trimestrales</h3>
-          <p className="text-sm text-gray-600">
-            {haySeguimientos 
-              ? `${seguimientos.length} seguimiento${seguimientos.length > 1 ? 's' : ''} registrado${seguimientos.length > 1 ? 's' : ''}`
-              : 'Historial de seguimiento del plan'}
-          </p>
+    <div className="flex gap-4">
+      <div className="flex flex-col items-center">
+        <div className={`w-9 h-9 rounded-full ${config.bg} flex items-center justify-center flex-shrink-0`}>
+          <Icon className={`w-4 h-4 ${config.text}`} />
         </div>
+        {!isLast && <div className="flex-1 w-0.5 bg-gray-200 mt-1" style={{ minHeight: '30px' }} />}
       </div>
 
-      {!haySeguimientos ? (
-        <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-          <History className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-          <p className="font-medium">Sin seguimientos registrados</p>
-          <p className="text-sm mt-1">
-            Los seguimientos trimestrales aparecerán aquí cuando se registren avances
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {seguimientosOrdenados.map((seguimiento, index) => (
-            <div 
-              key={seguimiento.id} 
-              className="bg-white border border-gray-200 rounded-lg overflow-hidden"
-            >
-              {/* Header del seguimiento */}
-              <button
-                onClick={() => setSeguimientoExpandido(
-                  seguimientoExpandido === seguimiento.id ? null : seguimiento.id
-                )}
-                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <span className="text-blue-700 font-semibold text-sm">T{seguimiento.trimestre}</span>
-                  </div>
-                  <div className="text-left">
-                    <div className="font-medium text-gray-900">
-                      {getNombreTrimestre(seguimiento.trimestre)} - {seguimiento.año}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {seguimiento.fechaInicio && seguimiento.fechaFin 
-                        ? `${seguimiento.fechaInicio} al ${seguimiento.fechaFin}`
-                        : seguimiento.fechaSeguimiento 
-                          ? `Realizado: ${seguimiento.fechaSeguimiento}`
-                          : 'Sin fechas'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  {/* Indicadores */}
-                  <div className="flex items-center gap-3">
-                    <div className="text-center">
-                      <div className={`text-lg font-bold ${getColorCumplimiento(seguimiento.porcentajeCumplimiento).split(' ')[0]}`}>
-                        {seguimiento.porcentajeCumplimiento}%
-                      </div>
-                      <div className="text-xs text-gray-500">Cumplimiento</div>
-                    </div>
-                    <div className="text-center">
-                      <div className={`text-lg font-bold ${getColorEfectividad(seguimiento.porcentajeEfectividad)}`}>
-                        {seguimiento.porcentajeEfectividad}%
-                      </div>
-                      <div className="text-xs text-gray-500">Efectividad</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-gray-700">
-                        {seguimiento.accionesRevisadas}/{seguimiento.accionesTotales}
-                      </div>
-                      <div className="text-xs text-gray-500">Acciones</div>
-                    </div>
-                  </div>
-
-                  <ChevronDown 
-                    className={`w-5 h-5 text-gray-400 transition-transform ${
-                      seguimientoExpandido === seguimiento.id ? 'rotate-180' : ''
-                    }`}
-                  />
-                </div>
-              </button>
-
-              {/* Detalle expandible */}
-              {seguimientoExpandido === seguimiento.id && (
-                <div className="border-t border-gray-200 px-5 py-4 bg-gray-50">
-                  {/* Barras de progreso */}
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <div className="text-xs text-gray-600 mb-1">Cumplimiento</div>
-                      <div className="bg-gray-200 rounded-full h-2">
-                        <div 
-                          className={`h-full rounded-full transition-all ${
-                            seguimiento.porcentajeCumplimiento >= 80 ? 'bg-green-500' :
-                            seguimiento.porcentajeCumplimiento >= 50 ? 'bg-yellow-500' :
-                            'bg-red-500'
-                          }`}
-                          style={{ width: `${seguimiento.porcentajeCumplimiento}%` }}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-600 mb-1">Efectividad</div>
-                      <div className="bg-gray-200 rounded-full h-2">
-                        <div 
-                          className={`h-full rounded-full transition-all ${
-                            seguimiento.porcentajeEfectividad >= 70 ? 'bg-green-500' :
-                            seguimiento.porcentajeEfectividad >= 40 ? 'bg-yellow-500' :
-                            'bg-red-500'
-                          }`}
-                          style={{ width: `${seguimiento.porcentajeEfectividad}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Observaciones generales */}
-                  {seguimiento.observacionesGenerales && (
-                    <div className="mb-4">
-                      <div className="text-xs font-medium text-gray-700 mb-1">Observaciones Generales</div>
-                      <div className="text-sm text-gray-600 bg-white p-3 rounded border border-gray-200">
-                        {seguimiento.observacionesGenerales}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Registros de acciones */}
-                  {seguimiento.registros && seguimiento.registros.length > 0 && (
-                    <div>
-                      <div className="text-xs font-medium text-gray-700 mb-2">
-                        Detalle por Acción ({seguimiento.registros.length})
-                      </div>
-                      <div className="space-y-2">
-                        {seguimiento.registros.map((registro) => (
-                          <div 
-                            key={registro.id}
-                            className="bg-white p-3 rounded border border-gray-200"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1">
-                                <p className="text-sm text-gray-900">{registro.accionDescripcion}</p>
-                                <div className="flex items-center gap-4 mt-2 text-xs">
-                                  <span className="text-gray-500">
-                                    Implementadas: {registro.accionesImplementadas}/{registro.accionesProgramadas}
-                                  </span>
-                                  <span className={`px-2 py-0.5 rounded ${
-                                    registro.controlesImplementados === 'SI' ? 'bg-green-100 text-green-700' :
-                                    registro.controlesImplementados === 'PARCIAL' ? 'bg-yellow-100 text-yellow-700' :
-                                    'bg-red-100 text-red-700'
-                                  }`}>
-                                    Controles: {registro.controlesImplementados}
-                                  </span>
-                                  <span className={`px-2 py-0.5 rounded ${
-                                    registro.hallazgoSeRepite === 'NO' ? 'bg-green-100 text-green-700' :
-                                    'bg-red-100 text-red-700'
-                                  }`}>
-                                    {registro.hallazgoSeRepite === 'NO' ? 'No se repite' : 'Se repite'}
-                                  </span>
-                                </div>
-                                {registro.observaciones && (
-                                  <p className="text-xs text-gray-500 mt-2 italic">
-                                    {registro.observaciones}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="text-right">
-                                <div className="text-xs text-gray-500">Puntajes</div>
-                                <div className="text-sm font-medium">
-                                  C: {registro.puntajeCumplimiento} | E: {registro.puntajeEfectividad}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Sin registros detallados */}
-                  {(!seguimiento.registros || seguimiento.registros.length === 0) && (
-                    <div className="text-center py-4 text-gray-400 text-sm">
-                      Sin detalle de acciones para este seguimiento
-                    </div>
-                  )}
-                </div>
-              )}
+      <div className="flex-1 pb-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`px-2 py-0.5 rounded text-xs font-medium ${config.bg} ${config.text}`}>
+                {config.label}
+              </span>
             </div>
-          ))}
+            <p className="text-sm text-gray-900">{evento.descripcion}</p>
+            <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
+              <div className="flex items-center gap-1">
+                <User className="w-3 h-3" />
+                {evento.usuarioNombre || 'Sistema'}
+              </div>
+              <div className="flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {formatearFecha(evento.fecha)}
+              </div>
+            </div>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

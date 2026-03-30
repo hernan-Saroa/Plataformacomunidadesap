@@ -111,6 +111,30 @@ export interface EvidenciaDocumento {
   auditoriaId?: string;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// EVENTOS TIMELINE - HISTORIAL
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type TipoEventoTimeline = 
+  | 'CREACION' 
+  | 'ACTUALIZACION' 
+  | 'APROBACION' 
+  | 'COMPLETADA' 
+  | 'EVIDENCIA' 
+  | 'COMENTARIO'
+  | 'PROGRESO'
+  | 'ESTADO'
+  | 'HALLAZGO_COMPLETADO';
+
+export interface EventoTimeline {
+  id: string;
+  tipo: TipoEventoTimeline;
+  descripcion: string;
+  usuarioNombre?: string;
+  fecha: string;
+  metadata?: Record<string, any>;
+}
+
 export interface PlanMejoramientoDetalle {
   id: string;
   codigo: string;
@@ -124,6 +148,7 @@ export interface PlanMejoramientoDetalle {
   hallazgos: HallazgoDetalle[];
   acciones: AccionCorrectiva[];
   seguimientos: SeguimientoTrimestral[];
+  timeline: EventoTimeline[];
   auditoria: string;
   auditoriaId?: string;
   observaciones?: string;
@@ -355,6 +380,7 @@ function transformarPlanDetalle(planBackend: any): PlanMejoramientoDetalle {
     hallazgos,
     acciones,
     seguimientos,
+    timeline: [], // Se cargará por separado
     auditoria: nombreAuditoria,
     auditoriaId: planBackend.auditoriaId || planBackend.auditoria_id || (typeof auditoriaObj === 'object' ? auditoriaObj?.id : undefined),
     observaciones: planBackend.observaciones || planBackend.descripcion || ''
@@ -414,6 +440,31 @@ export function usePlanMejoramientoDetalle(planId: string) {
         
         const planTransformado = transformarPlanDetalle(responseConHallazgos);
         console.log('🔄 [usePlanMejoramientoDetalle] Plan transformado:', planTransformado);
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Cargar eventos del timeline (historial de cambios)
+        // ═══════════════════════════════════════════════════════════════════
+        try {
+          console.log('📜 [usePlanMejoramientoDetalle] Cargando eventos del timeline...');
+          const eventosBackend = await controlInternoService.getEventosTimelinePlan(planId);
+          console.log('📜 [usePlanMejoramientoDetalle] Eventos cargados:', eventosBackend?.length || 0);
+          
+          if (Array.isArray(eventosBackend) && eventosBackend.length > 0) {
+            const eventosFormateados: EventoTimeline[] = eventosBackend.map((e: any) => ({
+              id: e.id,
+              tipo: e.tipo as TipoEventoTimeline,
+              descripcion: e.descripcion,
+              usuarioNombre: e.usuarioNombre || e.usuario_nombre || 'Sistema',
+              fecha: e.fecha || e.createdAt,
+              metadata: e.metadata
+            }));
+            planTransformado.timeline = eventosFormateados;
+          }
+        } catch (timelineError) {
+          console.warn('[usePlanMejoramientoDetalle] No se pudieron cargar eventos del timeline:', timelineError);
+          // No fallar la carga del plan si no se pueden cargar los eventos
+        }
+
         setPlan(planTransformado);
       } else {
         setError('Plan no encontrado');

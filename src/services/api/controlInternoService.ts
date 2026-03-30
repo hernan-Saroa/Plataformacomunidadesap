@@ -1127,6 +1127,19 @@ class ControlInternoService {
   }
 
   /**
+   * Obtiene los eventos del timeline (historial) de un plan de mejoramiento
+   */
+  async getEventosTimelinePlan(planId: string): Promise<any[]> {
+    try {
+      const response = await client.get<{ success: boolean; eventos: any[] }>(`/planes-mejoramiento/${planId}/eventos`);
+      return response.eventos || [];
+    } catch (error) {
+      console.error('[controlInternoService.getEventosTimelinePlan] Error:', error);
+      return [];
+    }
+  }
+
+  /**
    * Obtiene el plan de mejoramiento de un hallazgo
    */
   async getPlanMejoramientoByHallazgo(hallazgoId: string): Promise<any> {
