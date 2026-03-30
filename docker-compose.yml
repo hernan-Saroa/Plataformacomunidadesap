@@ -73,7 +73,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASS: 
+      DB_PASS: password
       DB_NAME: esap_db
       DB_SCHEMA: auth
 
@@ -104,7 +104,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASS:
+      DB_PASS: password
       DB_NAME: esap_db
       DB_SCHEMA: academic_registration
 
@@ -135,7 +135,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASS: 
+      DB_PASS: password
       DB_NAME: esap_db
       DB_SCHEMA: academic_work_plan
 
@@ -164,7 +164,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASS: 
+      DB_PASS: password
       DB_NAME: esap_db
       DB_SCHEMA: certification
 
@@ -197,7 +197,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASS: 
+      DB_PASS: password
       DB_NAME: esap_db
       DB_SCHEMA: internal_disciplinary_control
 
@@ -227,7 +227,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASS: 
+      DB_PASS: password
       DB_NAME: esap_db
       DB_SCHEMA: interoperability
 
@@ -256,7 +256,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASS: 
+      DB_PASS: password
       DB_NAME: esap_db
       DB_SCHEMA: internal_institutional_control
 
@@ -289,7 +289,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASS: 
+      DB_PASS: password
       DB_NAME: esap_db
       DB_SCHEMA: legal_management
 
@@ -318,7 +318,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASS: 
+      DB_PASS: password
       DB_NAME: esap_db
       DB_SCHEMA: notifications
 
@@ -347,7 +347,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASS: 
+      DB_PASS: password
       DB_NAME: esap_db
       DB_SCHEMA: travel_expenses
 
@@ -376,7 +376,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASSWORD: 
+      DB_PASSWORD: password
       DB_NAME: esap_db
     ports:
       - "3011:3011"
@@ -396,7 +396,7 @@ services:
       # Para poder usarla sin contraseña dentro del contenedor:
       # POSTGRES_HOST_AUTH_METHOD: trust
       # O, si quieres password:
-      POSTGRES_PASSWORD: "postgres"   # y que DB_PASS coincida
+      POSTGRES_PASSWORD: "password" # y que DB_PASS coincida
     ports:
       - "8080:5432"
     volumes:
@@ -416,6 +416,7 @@ services:
 
 networks:
   superapp-net:
+
 
 volumes:
   pgdata:
