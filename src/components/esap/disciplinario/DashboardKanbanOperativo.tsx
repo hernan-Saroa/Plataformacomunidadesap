@@ -2351,7 +2351,7 @@ export const normalizeNoticia = (raw: any): Noticia => {
 };
 
 export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
-  const stageLabelMap: Record<string, string> = { EVALUACION: 'Valoración', INDAGACION_PREVIA: 'Indagación', INVESTIGACION: 'Investigación', JUZGAMIENTO: 'Juzgamiento' };
+  const stageLabelMap: Record<string, string> = { RECEPCION: 'Recepción', VALORACION: 'Valoración', INDAGACION_PREVIA: 'Indagación', INVESTIGACION: 'Investigación', EVALUACION: 'Evaluación', JUZGAMIENTO: 'Juzgamiento', INDAGACION: 'Indagación', FALLO: 'Fallo', SEGUNDA_INSTANCIA: 'Segunda Instancia' };
   let etapa = proceso.kanbanStage || proceso.etapaActual;
 
   const match = currentStages.find(s => s.etapa === etapa || s.etapa.toUpperCase() === etapa.toUpperCase());
@@ -2667,8 +2667,11 @@ export function DashboardKanbanOperativo({
       console.log('[DashboardKanban] Noticias recibidas:', noticiasData.length);
       console.log('[DashboardKanban] Procesos recibidos:', procesosData.length);
 
-      // Separar noticias archivadas de las activas
-      const noticiasActivas = noticiasData.filter(n => (n as any).estado !== 'ARCHIVADA');
+      // Separar noticias archivadas de las activas. Excluir ASIGNADA porque ya tienen proceso asociado
+      const noticiasActivas = noticiasData.filter(n => {
+        const estado = (n as any).estado;
+        return estado !== 'ARCHIVADA' && estado !== 'ASIGNADA';
+      });
       const noticiasArchivadas = noticiasData.filter(n => (n as any).estado === 'ARCHIVADA');
 
       // Transformar noticias al formato interno
@@ -2715,10 +2718,15 @@ export function DashboardKanbanOperativo({
 
   // ==================== TRANSFORMADORES DE DATOS DESDE API ====================
   const stageLabelMap: Record<string, string> = {
-    EVALUACION: 'Valoración',
+    RECEPCION: 'Recepción',
+    VALORACION: 'Valoración',
     INDAGACION_PREVIA: 'Indagación',
     INVESTIGACION: 'Investigación',
-    JUZGAMIENTO: 'Juzgamiento'
+    EVALUACION: 'Evaluación',
+    JUZGAMIENTO: 'Juzgamiento',
+    INDAGACION: 'Indagación',
+    FALLO: 'Fallo',
+    SEGUNDA_INSTANCIA: 'Segunda Instancia'
   };
 
   // Normalizar estado de noticia
@@ -3069,15 +3077,15 @@ export function DashboardKanbanOperativo({
           // Mapear el nombre de la etapa al formato del backend
           const stageMap: Record<string, string> = {
             'Recepción': 'RECEPCION',
-            'Valoración': 'EVALUACION',
-            'Indagación': 'INDAGACION',
+            'Valoración': 'VALORACION',
+            'Indagación': 'INDAGACION_PREVIA',
             'Investigación': 'INVESTIGACION',
             'Juzgamiento': 'JUZGAMIENTO',
             'Fallo': 'FALLO',
             'Archivo': 'ARCHIVO'
           };
           const backendStage = stageMap[nuevaEtapa] || nuevaEtapa.toUpperCase();
-          
+
           // Llamar al backend para cambiar la etapa
           await disciplinaryService.cambiarEtapa(item.id, backendStage, nuevaEtapa);
           
@@ -3411,7 +3419,7 @@ export function DashboardKanbanOperativo({
         abogadoNombre: nombreProfesional
       });
 
-      const nuevoProceso = toProcesoFromApi(procesoApi);
+      const nuevoProceso = toProcesoFromApi(procesoApi, etapasConfig);
 
       setItems(prev => [
         ...prev.filter(i => i.id !== itemSeleccionado.id),
@@ -3505,7 +3513,7 @@ export function DashboardKanbanOperativo({
       });
 
       // ✅ Mapear la respuesta de la API al formato que usa la UI
-      const nuevoProceso = toProcesoFromApi(procesoApi);
+      const nuevoProceso = toProcesoFromApi(procesoApi, etapasConfig);
 
       // ✅ Actualizar el tablón sin necesidad de recargar la página completa
       setItems(prev => [
@@ -3716,8 +3724,8 @@ export function DashboardKanbanOperativo({
     // Mapear el nombre de la etapa al formato del backend
     const stageMap: Record<string, string> = {
       'Recepción': 'RECEPCION',
-      'Valoración': 'EVALUACION',
-      'Indagación': 'INDAGACION',
+      'Valoración': 'VALORACION',
+      'Indagación': 'INDAGACION_PREVIA',
       'Investigación': 'INVESTIGACION',
       'Juzgamiento': 'JUZGAMIENTO',
       'Fallo': 'FALLO',
