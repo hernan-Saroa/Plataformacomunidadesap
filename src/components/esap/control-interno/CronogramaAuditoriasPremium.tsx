@@ -46,13 +46,45 @@ import { toast } from 'sonner@2.0.3';
 // 🆕 Importar datos de territoriales y CETAP
 import { TERRITORIALES_ESAP } from '../../../data/territoriales-cetap-completo';
 // ✅ Importar tipos del hook para compatibilidad
-import type { AuditoriaProgramadaUI, TipoAuditoria as TipoAuditoriaHook, EstadoAuditoria as EstadoAuditoriaHook } from './hooks/useProgramaAnualData';
+import {
+  resolverColumnaKanban,
+  type AuditoriaProgramadaUI,
+  type ColumnaKanban,
+  type TipoAuditoria as TipoAuditoriaHook,
+  type EstadoAuditoria as EstadoAuditoriaHook,
+} from './hooks/useProgramaAnualData';
+
+/** Colores por columna del tablero (misma semántica que `resolverColumnaKanban`) */
+const COLORES_POR_COLUMNA_KANBAN: Record<
+  ColumnaKanban,
+  { bg: string; border: string; text: string }
+> = {
+  plan_anual: { bg: '#DBEAFE', border: '#3B82F6', text: '#1E40AF' },
+  planeacion: { bg: '#DBEAFE', border: '#3B82F6', text: '#1E40AF' },
+  ejecucion: { bg: '#FEF08A', border: '#F59E0B', text: '#854D0E' },
+  comunicacion: { bg: '#D1FAE5', border: '#10B981', text: '#065F46' },
+  seguimiento: { bg: '#EDE9FE', border: '#7C3AED', text: '#5B21B6' },
+  finalizada: { bg: '#E0E7FF', border: '#6366F1', text: '#4338CA' },
+  desconocido: { bg: '#F3F4F6', border: '#6B7280', text: '#374151' },
+};
+
+const ETIQUETA_COLUMNA_KANBAN: Record<ColumnaKanban, string> = {
+  plan_anual: 'Plan Anual',
+  planeacion: 'Planeación',
+  ejecucion: 'Ejecución',
+  comunicacion: 'Comunicación',
+  seguimiento: 'Seguimiento',
+  finalizada: 'Finalizada',
+  desconocido: 'Desconocido',
+};
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
 type VistaCalendario = 'dia' | 'semana' | 'mes' | 'año';
+/** Solo las 3 columnas del flujo principal; Plan Anual, Seguimiento y Finalizada se ven en «Todas» */
+type FiltroColumnaCronograma = 'TODOS' | 'planeacion' | 'ejecucion' | 'comunicacion';
 type EstadoAuditoria = EstadoAuditoriaHook; // Usar tipo del hook
 // Tipo técnico de auditoría (del hook): GESTION, CUMPLIMIENTO, etc.
 type TipoAuditoria = TipoAuditoriaHook;
@@ -67,6 +99,10 @@ interface AuditoriaProgramada {
   fechaInicio: string;
   fechaFin: string;
   estado: EstadoAuditoria;
+  /** Columna Kanban del backend (misma que en `AuditoriaProgramadaUI`) */
+  estadoKanban?: string;
+  /** Fase backend — usada por `resolverColumnaKanban` si falta estadoKanban */
+  fase?: string;
   auditorLider: string;
   equipo: string[];
   avance: number;
@@ -99,41 +135,27 @@ const LABELS_ESTADO: Record<keyof typeof COLORES_ESTADO, string> = {
   'CANCELADA': 'Cancelada'
 };
 
-// ✅ COLORES BASADOS EN estadoKanban REAL (Planeación, Ejecución, Comunicación, Finalizada)
-const COLORES_KANBAN: Record<string, { bg: string; border: string; text: string }> = {
-  'planeación': { bg: '#DBEAFE', border: '#3B82F6', text: '#1E40AF' },
-  'planeacion': { bg: '#DBEAFE', border: '#3B82F6', text: '#1E40AF' },
-  'plan anual': { bg: '#DBEAFE', border: '#3B82F6', text: '#1E40AF' },
-  'ejecución': { bg: '#FEF08A', border: '#F59E0B', text: '#854D0E' },
-  'ejecucion': { bg: '#FEF08A', border: '#F59E0B', text: '#854D0E' },
-  'comunicación': { bg: '#D1FAE5', border: '#10B981', text: '#065F46' },
-  'comunicacion': { bg: '#D1FAE5', border: '#10B981', text: '#065F46' },
-  'finalizada': { bg: '#E0E7FF', border: '#6366F1', text: '#4338CA' }, // Índigo para finalizada
-};
-
 /**
- * Obtiene el color y label visual basado en el estadoKanban real del backend.
- * Prioriza el valor original de estadoKanban sobre el estado mapeado.
+ * Color y etiqueta de lista/cards: misma regla que filtros y tablero (`resolverColumnaKanban`).
+ * Evita que columnas como Seguimiento o Plan Anual caigan en COMPLETADA → "Comunicación".
  */
 function obtenerEstadoVisual(auditoria: any): { colores: typeof COLORES_ESTADO['PROGRAMADA']; label: string } {
   const estadoKanban = auditoria.estadoKanban as string | undefined;
-  
-  if (estadoKanban) {
-    const kanbanNorm = estadoKanban.toLowerCase().trim();
-    const coloresKanban = COLORES_KANBAN[kanbanNorm];
-    
-    if (coloresKanban) {
-      // Capitalizar primera letra para el label
-      const label = estadoKanban.charAt(0).toUpperCase() + estadoKanban.slice(1);
-      return { colores: coloresKanban, label };
-    }
+  const fase = auditoria.fase as string | undefined;
+  const estado = auditoria.estado as EstadoAuditoriaHook | undefined;
+
+  const columna = resolverColumnaKanban(estadoKanban, fase, estado);
+  if (columna !== 'desconocido') {
+    return {
+      colores: COLORES_POR_COLUMNA_KANBAN[columna],
+      label: ETIQUETA_COLUMNA_KANBAN[columna],
+    };
   }
-  
-  // Fallback al sistema anterior si no hay estadoKanban válido
+
   const estadoUI = auditoria.estado as keyof typeof COLORES_ESTADO;
   return {
     colores: COLORES_ESTADO[estadoUI] || COLORES_ESTADO['PROGRAMADA'],
-    label: LABELS_ESTADO[estadoUI] || estadoUI?.replace('_', ' ') || 'Desconocido'
+    label: LABELS_ESTADO[estadoUI] || String(estadoUI ?? '').replace(/_/g, ' ') || 'Desconocido',
   };
 }
 
@@ -169,9 +191,9 @@ export function CronogramaAuditoriasPremium({
   const [vista, setVista] = useState<VistaCalendario>('mes');
   const [fechaActual, setFechaActual] = useState(new Date());
   
-  // 🆕 FILTROS COMPLETOS DEL KANBAN
+  // Filtro por columna: solo Planeación / Ejecución / Comunicación (el resto de columnas Kanban se listan en «Todas»)
   const [busqueda, setBusqueda] = useState('');
-  const [filtroEstado, setFiltroEstado] = useState<EstadoAuditoria | 'TODOS'>('TODOS');
+  const [filtroColumna, setFiltroColumna] = useState<FiltroColumnaCronograma>('TODOS');
   // Filtro por tipo operativo (Regular / Territorial / Especial)
   const [filtroTipo, setFiltroTipo] = useState<TipoFiltroOperativo | 'TODOS'>('TODOS');
   const [filtroTerritorial, setFiltroTerritorial] = useState<string>('Todas las Territoriales');
@@ -180,19 +202,17 @@ export function CronogramaAuditoriasPremium({
   // Filtrar auditorías con TODOS los criterios
   const auditoriasFiltradas = useMemo(() => {
     return auditorias.filter(aud => {
-      // ✅ EXCLUIR FINALIZADAS: Solo mostrar auditorías activas (Planeación, Ejecución, Comunicación)
-      const estadoKanban = (aud as any).estadoKanban as string | undefined;
-      if (estadoKanban && estadoKanban.toLowerCase() === 'finalizada') {
-        return false; // No mostrar finalizadas en cronograma activo
+      const ui = aud as AuditoriaProgramadaUI;
+      const col = resolverColumnaKanban(ui.estadoKanban, ui.fase, ui.estado);
+
+      if (filtroColumna !== 'TODOS' && col !== filtroColumna) {
+        return false;
       }
       
       // Filtro de búsqueda por nombre
       const cumpleBusqueda = busqueda === '' || 
         aud.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
         aud.proceso.codigo.toLowerCase().includes(busqueda.toLowerCase());
-      
-      // Filtro de estado
-      const cumpleEstado = filtroEstado === 'TODOS' || aud.estado === filtroEstado;
       
       // Filtro de tipo (usamos el tipo operativo mapeado en el hook:
       // 'regular' | 'territorial' | 'especial')
@@ -231,11 +251,13 @@ export function CronogramaAuditoriasPremium({
       
       // Filtro territorial (aquí asumimos que las auditorías tienen una propiedad territorial)
       // Si no existe en el tipo, esto se puede ignorar o adaptar
-      const cumpleTerritorial = filtroTerritorial === 'Todas las Territoriales';
+      const cumpleTerritorial =
+        filtroTerritorial === 'Todas las Territoriales' ||
+        (typeof aud.territorial === 'string' && aud.territorial === filtroTerritorial);
       
-      return cumpleBusqueda && cumpleEstado && cumpleTipo && cumpleTerritorial;
+      return cumpleBusqueda && cumpleTipo && cumpleTerritorial;
     });
-  }, [auditorias, busqueda, filtroEstado, filtroTipo, filtroTerritorial]);
+  }, [auditorias, busqueda, filtroColumna, filtroTipo, filtroTerritorial]);
 
   // Navegación de fechas
   const navegarFecha = (direccion: 'anterior' | 'siguiente') => {
@@ -360,14 +382,17 @@ export function CronogramaAuditoriasPremium({
           <div className="flex items-center gap-2">
             {/* Filtro Estado */}
             <select
-              value={filtroEstado}
-              onChange={(e) => setFiltroEstado(e.target.value as EstadoAuditoria | 'TODOS')}
+              value={filtroColumna}
+              onChange={(e) =>
+                setFiltroColumna(e.target.value as FiltroColumnaCronograma)
+              }
               className="px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-xs font-bold focus:border-[#2962FF] outline-none"
+              title="Plan Anual, Seguimiento y Finalizada solo aparecen al elegir «Todas las etapas»"
             >
-              <option value="TODOS">Todos los estados</option>
-              <option value="PROGRAMADA">Planeación</option>
-              <option value="EN_EJECUCION">Ejecución</option>
-              <option value="COMPLETADA">Comunicación</option>
+              <option value="TODOS">Todas las etapas</option>
+              <option value="planeacion">Planeación</option>
+              <option value="ejecucion">Ejecución</option>
+              <option value="comunicacion">Comunicación</option>
             </select>
 
             {/* Filtro Tipo (operativo: Regular / Territorial / Especial) */}
@@ -979,9 +1004,15 @@ function VistaAño({ fecha, auditorias, onSeleccionar }: VistaAñoProps) {
       <div className="grid grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((trimestre) => {
           const auditoriasTrimestre = auditorias.filter(a => a.trimestre === trimestre);
-          const completadas = auditoriasTrimestre.filter(a => a.estado === 'COMPLETADA').length;
-          const enEjecucion = auditoriasTrimestre.filter(a => a.estado === 'EN_EJECUCION').length;
-          const programadas = auditoriasTrimestre.filter(a => a.estado === 'PROGRAMADA').length;
+          const colQ = (a: (typeof auditorias)[0]) => {
+            const ui = a as AuditoriaProgramadaUI;
+            return resolverColumnaKanban(ui.estadoKanban, ui.fase, ui.estado);
+          };
+          const enComunicacion = auditoriasTrimestre.filter(a => colQ(a) === 'comunicacion').length;
+          const enEjecucion = auditoriasTrimestre.filter(a => colQ(a) === 'ejecucion').length;
+          const enPlaneacion = auditoriasTrimestre.filter(
+            a => colQ(a) === 'plan_anual' || colQ(a) === 'planeacion'
+          ).length;
 
           return (
             <div
@@ -998,13 +1029,13 @@ function VistaAño({ fecha, auditorias, onSeleccionar }: VistaAñoProps) {
                   <span className="text-gray-600">Total</span>
                   <span className="font-black text-gray-900">{auditoriasTrimestre.length}</span>
                 </div>
-                {completadas > 0 && (
+                {enComunicacion > 0 && (
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1">
                       <div className="w-2 h-2 rounded-full bg-green-500" />
                       <span className="text-gray-600">Comunicación</span>
                     </div>
-                    <span className="font-bold text-green-700">{completadas}</span>
+                    <span className="font-bold text-green-700">{enComunicacion}</span>
                   </div>
                 )}
                 {enEjecucion > 0 && (
@@ -1016,13 +1047,13 @@ function VistaAño({ fecha, auditorias, onSeleccionar }: VistaAñoProps) {
                     <span className="font-bold text-yellow-700">{enEjecucion}</span>
                   </div>
                 )}
-                {programadas > 0 && (
+                {enPlaneacion > 0 && (
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1">
                       <div className="w-2 h-2 rounded-full bg-blue-500" />
                       <span className="text-gray-600">Planeación</span>
                     </div>
-                    <span className="font-bold text-blue-700">{programadas}</span>
+                    <span className="font-bold text-blue-700">{enPlaneacion}</span>
                   </div>
                 )}
               </div>

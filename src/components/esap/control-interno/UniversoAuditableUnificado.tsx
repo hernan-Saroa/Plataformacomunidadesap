@@ -753,16 +753,24 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-xl border-2 border-blue-200 p-6">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-blue-700">Total Programadas</span>
+            <span className="text-sm font-semibold text-blue-700">Total de auditorías</span>
             <CalendarIcon className="w-5 h-5 text-blue-600" />
           </div>
           <p className="text-3xl font-black text-blue-700">{estadisticas.totalProgramadas}</p>
-          <div className="mt-2 flex items-center gap-2 text-xs">
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-green-500"></div>
-              <span className="text-gray-600">{estadisticas.completadas} completadas</span>
-            </div>
-          </div>
+          <p className="mt-2 text-xs text-gray-600 leading-relaxed">
+            Mismo universo que el tablero Kanban:{' '}
+            <span className="font-semibold text-gray-800">
+              {estadisticas.enPlanAnual + estadisticas.enPlaneacion} planeación
+            </span>
+            {' · '}
+            <span className="font-semibold text-gray-800">{estadisticas.enEjecucion} ejecución</span>
+            {' · '}
+            <span className="font-semibold text-gray-800">{estadisticas.enComunicacion} comunicación</span>
+            {' · '}
+            <span className="font-semibold text-gray-800">{estadisticas.enSeguimiento} seguimiento</span>
+            {' · '}
+            <span className="font-semibold text-gray-800">{estadisticas.completadas} finalizadas</span>
+          </p>
         </div>
 
         <div className="bg-white rounded-xl border-2 border-yellow-200 p-6">
