@@ -129,14 +129,6 @@ export function ModuloTerminosInformesV3() {
 
 
 
-  const handleOpenDocumentos = (solicitud?: SolicitudInforme) => {
-    if (solicitud) {
-      setSelectedSolicitud(solicitud);
-      setModalDocsOpen(true);
-    } else {
-      toast.info('Selecciona un término para ver sus documentos');
-    }
-  };
 
   const fetchData = async () => {
     try {
@@ -445,9 +437,9 @@ export function ModuloTerminosInformesV3() {
       />
 
       {/* Contenido principal */}
-      {vistaActual === 'timeline' && <VistaTimeline solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onVerDocumentos={handleOpenDocumentos} onArchivar={handleArchivar} onEliminar={handleEliminar} />}
+      {vistaActual === 'timeline' && <VistaTimeline solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onArchivar={handleArchivar} onEliminar={handleEliminar} />}
       {vistaActual === 'calendario' && <VistaCalendario solicitudes={solicitudesFiltradas} mesActual={mesActual} setMesActual={setMesActual} onVerDetalle={handleVerDetalle} />}
-      {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onVerDocumentos={handleOpenDocumentos} onArchivar={handleArchivar} onEliminar={handleEliminar} />}
+      {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onArchivar={handleArchivar} onEliminar={handleEliminar} />}
       {vistaActual === 'archivados' && (
         <VistaArchivados
           items={itemsArchivados}
@@ -531,12 +523,11 @@ export function ModuloTerminosInformesV3() {
 interface VistaTimelineProps {
   solicitudes: SolicitudInforme[];
   onVerDetalle: (s: SolicitudInforme) => void;
-  onVerDocumentos: (s: SolicitudInforme) => void;
   onArchivar: (id: string) => void;
   onEliminar: (id: string) => void;
 }
 
-function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos, onArchivar, onEliminar }: VistaTimelineProps) {
+function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaTimelineProps) {
   // Ordenar por fecha límite
   const solicitudesOrdenadas = [...solicitudes].sort((a, b) =>
     new Date(a.fechaVencimiento).getTime() - new Date(b.fechaVencimiento).getTime()
@@ -631,28 +622,6 @@ function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos, onArchivar,
                   >
                     <Eye className="w-3.5 h-3.5" />
                     Ver Detalle
-                  </button>
-                  <button
-                    onClick={() => onVerDocumentos(solicitud)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95"
-                    style={{
-                      background: '#FFFFFF',
-                      color: '#003DA5',
-                      border: '1.5px solid #003DA5'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#E0EDFF';
-                      e.currentTarget.style.borderColor = '#2962FF';
-                      e.currentTarget.style.color = '#2962FF';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#FFFFFF';
-                      e.currentTarget.style.borderColor = '#003DA5';
-                      e.currentTarget.style.color = '#003DA5';
-                    }}
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                    Documentos
                   </button>
                   <button
                     onClick={() => onArchivar(solicitud.id)}
@@ -790,13 +759,12 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
 
 interface VistaListaProps {
   solicitudes: SolicitudInforme[];
-  onVerDocumentos: (s: SolicitudInforme) => void;
   onVerDetalle: (solicitud: SolicitudInforme) => void;
   onArchivar: (id: string) => void;
   onEliminar: (id: string) => void;
 }
 
-function VistaLista({ solicitudes, onVerDetalle, onVerDocumentos, onArchivar, onEliminar }: VistaListaProps) {
+function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaListaProps) {
   return (
     <CardSIGL className="bg-white border border-gray-200">
       <div className="overflow-x-auto">
@@ -851,14 +819,6 @@ function VistaLista({ solicitudes, onVerDetalle, onVerDocumentos, onArchivar, on
                         <Eye className="w-3.5 h-3.5" />
                         Ver
                       </button>
-                      <Button
-                        onClick={() => onVerDocumentos(solicitud)}
-                        size="sm"
-                        variant="outline"
-                        title="Ver Documentos"
-                      >
-                        <FileText className="w-3 h-3" />
-                      </Button>
                       <Button
                         onClick={() => onArchivar(solicitud.id)}
                         size="sm"
