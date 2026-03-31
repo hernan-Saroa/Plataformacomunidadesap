@@ -419,11 +419,11 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                     </button>
 
                     {/* Contenido */}
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <h4
-                            className={`font-bold text-sm mb-1 ${
+                            className={`font-bold text-sm mb-1 wrap-anywhere whitespace-pre-wrap ${
                               tarea.estado === 'Completada'
                                 ? 'line-through text-gray-500'
                                 : 'text-gray-900'
@@ -432,7 +432,7 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                             {tarea.titulo}
                           </h4>
                           {tarea.descripcion && (
-                            <p className="text-xs text-gray-600 mb-2">
+                            <p className="text-xs text-gray-600 mb-2 wrap-anywhere whitespace-pre-wrap">
                               {tarea.descripcion}
                             </p>
                           )}
@@ -492,7 +492,7 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                       <div className="grid grid-cols-2 gap-3 text-xs">
                         <div>
                           <p className="text-gray-500">Responsable:</p>
-                          <p className="font-semibold text-gray-900">
+                          <p className="font-semibold text-gray-900 wrap-anywhere">
                             {tarea.responsableNombre}
                           </p>
                         </div>
@@ -550,9 +550,14 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                   type="text"
                   value={formData.titulo}
                   onChange={(e) => setFormData(prev => ({ ...prev, titulo: e.target.value }))}
+                  maxLength={255}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Ej: Revisar documentación del proceso"
                 />
+                <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
+                  <span>Máximo 255 caracteres</span>
+                  <span>{formData.titulo.length}/255</span>
+                </div>
               </div>
 
               {/* Descripción */}

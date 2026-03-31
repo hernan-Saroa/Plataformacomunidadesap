@@ -1298,8 +1298,8 @@ function TarjetaAuditoria({
               )}
             </div>
 
-            {/* Botón Crear Plan: solo en Comunicación/Seguimiento. En Finalizada el plan ya se creó en Comunicación. */}
-            {auditoria.estado !== 'Finalizada' && auditoria.hallazgos > 0 && onCrearPlan && (
+            {/* Botón Crear Plan: exclusivo de la etapa Comunicación */}
+            {auditoria.estado === 'Comunicación' && auditoria.hallazgos > 0 && onCrearPlan && (
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -2872,6 +2872,11 @@ export function GestionAuditoriasKanbanSimple() {
   
   const handleCrearPlan = async (auditoria: Auditoria) => {
     try {
+      if (auditoria.estado !== 'Comunicación') {
+        toast.error('El Plan de Mejoramiento solo se puede crear en la etapa Comunicación');
+        return;
+      }
+
       // 1. Obtener hallazgos reales del backend si existen
       let hallazgosReales: HallazgoAuditoria[] = [];
       try {
@@ -4064,8 +4069,8 @@ export function GestionAuditoriasKanbanSimple() {
                         Proceso de Auditoría
                       </Button>
                       
-                      {/* Crear Plan: solo en Comunicación/Seguimiento. En Finalizada el plan se creó en Comunicación. */}
-                      {auditoria.estado !== 'Finalizada' && auditoria.hallazgos > 0 && (
+                      {/* Crear Plan: exclusivo de la etapa Comunicación */}
+                      {auditoria.estado === 'Comunicación' && auditoria.hallazgos > 0 && (
                         <Button 
                           size="sm" 
                           className="gap-2 flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white" 

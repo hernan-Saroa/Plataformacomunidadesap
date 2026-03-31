@@ -49,6 +49,35 @@ export class PlanesMejoramientoService {
     private readonly dataSource: DataSource,
   ) {}
 
+  private normalizarTexto(valor?: string | null): string {
+    return String(valor || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  private async validarCreacionSoloEnComunicacion(auditoriaId?: string | null): Promise<void> {
+    if (!auditoriaId) return;
+
+    const auditoria = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+      select: ['id', 'estadoKanban', 'fase'],
+    });
+
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${auditoriaId} no encontrada`);
+    }
+
+    const estadoKanban = this.normalizarTexto(String(auditoria.estadoKanban || ''));
+    const fase = this.normalizarTexto(String(auditoria.fase || ''));
+    const enComunicacion = estadoKanban === 'comunicacion' || fase === 'comunicacion';
+
+    if (!enComunicacion) {
+      throw new BadRequestException('El Plan de Mejoramiento solo puede crearse cuando la auditoría está en la etapa Comunicación');
+    }
+  }
+
   /**
    * Parsea una fecha string (YYYY-MM-DD) a Date sin conversión de zona horaria
    * Esto evita que las fechas se desplacen por diferencias de zona horaria
@@ -461,6 +490,8 @@ export class PlanesMejoramientoService {
         auditoriaId = hallazgo.auditoriaEntity.id;
       }
     }
+
+    await this.validarCreacionSoloEnComunicacion(auditoriaId);
 
     const plan = this.planRepository.create({
       codigo,
