@@ -1,0 +1,149 @@
+﻿COMMIT: f904f66 | Date: 2026-02-05 | Msg: Merge remote-tracking branch 'origin/integrate-frontend-02-feb' into integrate-frontend-02-feb
+COMMIT: 9506fd1 | Date: 2026-02-05 | Msg: restauracion de los modulos defensa judicial, asesoria juridica, riegos y configuracion despeus del merge, junto con solucion de bugs de dichos modulos
+ .../controllers/consultas-juridicas.controller.ts  |   39 +-
+ .../src/controllers/expediente.controller.ts       |   37 +
+ .../src/controllers/riesgos.controller.ts          |   22 +-
+ .../src/dtos/create-expediente.dto.ts              |    4 +
+ .../src/entities/consulta-juridica.entity.ts       |   13 +
+ .../src/entities/expediente.entity.ts              |   16 +
+ .../src/entities/riesgo.entity.ts                  |    4 +
+ .../src/services/consultas-juridicas.service.ts    |   88 +
+ .../src/services/expediente.service.ts             |   89 +-
+ .../src/services/riesgos.service.ts                |   47 +-
+ db/migrations/117_add_tipo_conteo_termino.sql      |    8 +
+ .../118_add_estado_archivo_expedientes.sql         |   39 +
+ db/migrations/119_add_estado_archivo_consultas.sql |    6 +
+ db/migrations/120_add_motivo_archivo_riesgos.sql   |    2 +
+ src/App.tsx                                        |  130 +-
+ .../esap/gestion-legal/KanbanDefensaJudicial.tsx   |   66 +-
+ .../esap/gestion-legal/ModuloDefensaJudicial.tsx   |  567 ++++--
+ .../config/ConfiguracionesSIGLContext.tsx          |    5 +-
+ .../esap/gestion-legal/config/terminosLegales.ts   |   66 +-
+ src/components/esap/gestion-legal/core/types.ts    |    7 +
+ .../FormularioExpedienteJudicial.tsx               |   32 +-
+ .../esap/gestion-legal/design-system/FormField.tsx |   90 +-
+ .../design-system/VistaArchivados.tsx              |   32 +-
+ .../gestion-legal/modulos/ConfiguracionesSIGL.tsx  |  538 +++---
+ .../esap/gestion-legal/modulos/ModalActas.tsx      |   64 +-
+ .../esap/gestion-legal/modulos/ModalAutos.tsx      |   61 +-
+ .../gestion-legal/modulos/ModalDetalleRiesgo.tsx   |  973 ++++++----
+ .../esap/gestion-legal/modulos/ModalEvidencias.tsx |   61 +-
+ .../esap/gestion-legal/modulos/ModalExpediente.tsx |  312 ++-
+ .../modulos/ModalExpedienteConsulta.tsx            |  118 +-
+ .../gestion-legal/modulos/ModalNuevaConsulta.tsx   |  306 ++-
+ .../gestion-legal/modulos/ModalNuevaDemanda.tsx    | 2036 ++++++++++++--------
+ .../gestion-legal/modulos/ModalNuevoRiesgo.tsx     |   35 +-
+ .../modulos/ModuloAsesoriaJuridicaV3.tsx           |  282 +--
+ .../modulos/ModuloDefensaJudicialV3.tsx            |  534 ++---
+ .../esap/gestion-legal/modulos/Riesgos.tsx         |  111 +-
+ src/components/ui/confirmation-dialog.tsx          |  226 ++-
+ src/components/ui/dialog.tsx                       |    4 +-
+ src/components/ui/select.tsx                       |   10 +-
+ src/services/api/legal.service.ts                  |   63 +-
+ 40 files changed, 4536 insertions(+), 2607 deletions(-)
+
+COMMIT: c9945c4 | Date: 2026-02-03 | Msg: Merge remote-tracking branch 'origin/integrate-frontend-02-feb' into integrate-frontend-02-feb
+COMMIT: af8140a | Date: 2026-02-03 | Msg: solucion bug de asesoria juridica, dias por consulta
+ .../src/services/dias-habiles.service.ts           |   2 +-
+ .../src/services/expediente.service.ts             |  14 +-
+ package-lock.json                                  | 276 +++++++++++++++++++--
+ 3 files changed, 264 insertions(+), 28 deletions(-)
+
+COMMIT: 36a9a52 | Date: 2026-01-31 | Msg: tareas de defensajudicial hecha
+ .../esap/gestion-legal/modulos/ModalCrearTarea.tsx | 70 ++++++++++++----------
+ .../esap/gestion-legal/modulos/ModalExpediente.tsx | 15 ++++-
+ 2 files changed, 53 insertions(+), 32 deletions(-)
+
+COMMIT: 0305906 | Date: 2026-01-30 | Msg: Merge remote-tracking branch 'origin/integrate-frontend-22-ene' into integrate-frontend-22-ene
+COMMIT: 373cbb1 | Date: 2026-01-30 | Msg: modulos gestion legal Alex completos
+ backend/legal-management-service/src/app.module.ts |   2 +
+ .../controllers/consultas-juridicas.controller.ts  |   9 +-
+ .../controllers/requerimientos-oc.controller.ts    |   9 +
+ .../src/database.config.ts                         |   3 +-
+ .../src/entities/requerimiento-oc.entity.ts        |  16 +-
+ .../src/entities/tipo-requerimiento-oc.entity.ts   |  25 +
+ .../src/services/consultas-juridicas.service.ts    |  29 +-
+ .../src/services/requerimientos-oc.service.ts      |  14 +-
+ .../114_create_cat_tipos_requerimiento.sql         |  78 +++
+ .../115_alter_requerimientos_oc_organismo_id.sql   |   9 +
+ db/migrations/116_fix_borrador_schema.sql          |  28 ++
+ .../config/ConfiguracionesSIGLContext.tsx          | 102 +++-
+ .../esap/gestion-legal/design-system/ModalSIGL.tsx |  15 +-
+ .../gestion-legal/modulos/ConfiguracionesSIGL.tsx  | 297 +++++++-----
+ .../modulos/ModalComentariosOrgano.tsx             |  26 +-
+ .../gestion-legal/modulos/ModalDetalleRiesgo.tsx   |  66 +--
+ .../modulos/ModalExpedienteConsulta.tsx            |  90 ++--
+ .../modulos/ModalGestionDocumentos.tsx             |  57 +--
+ .../modulos/ModalNuevoRequerimiento.tsx            |  88 +++-
+ .../gestion-legal/modulos/ModalNuevoRiesgo.tsx     |  72 +--
+ .../gestion-legal/modulos/ModalRespuestaOrgano.tsx | 247 +++++-----
+ .../modulos/ModalVerRequerimientoOrgano.tsx        |  76 +--
+ .../modulos/ModuloAsesoriaJuridicaV3.tsx           |  34 +-
+ .../esap/gestion-legal/modulos/OrganosControl.tsx  | 532 +++------------------
+ .../gestion-legal/modulos/ProcesosCoactivosV3.tsx  | 187 +++++---
+ .../esap/gestion-legal/modulos/Riesgos.tsx         |  34 +-
+ .../ModalCrearProcesoCoactivo.tsx                  |  61 ++-
+ .../procesos-coactivos/ModalGestionarPagos.tsx     |   9 +-
+ src/services/api/legal.service.ts                  |  13 +-
+ 29 files changed, 1081 insertions(+), 1147 deletions(-)
+
+COMMIT: bd8c783 | Date: 2026-01-29 | Msg: Merge origin/integrate-frontend-22-ene, keeping local changes
+COMMIT: 51e972c | Date: 2026-01-29 | Msg: defensa judicial casi que completa, faltaria lo de las tareas y elr esponsable asignado de dichas, y asesoria juridica funcional denuevo
+ backend/legal-management-service/run_migration.js  |  23 +
+ .../src/controllers/actuacion.controller.ts        |   2 +-
+ .../src/controllers/audiencia.controller.ts        |  21 +-
+ .../src/controllers/evidencias.controller.ts       |   2 +-
+ .../src/dtos/create-expediente.dto.ts              |   1 +
+ .../src/entities/actor.entity.ts                   |   3 +
+ .../src/entities/audiencia.entity.ts               |   3 +
+ .../src/entities/evidencia.entity.ts               |   2 +-
+ .../src/services/actas.service.ts                  |  28 +-
+ .../src/services/actuacion.service.ts              |   2 +-
+ .../src/services/audiencia.service.ts              |  88 +++-
+ .../src/services/autos.service.ts                  |  18 +-
+ .../src/services/evidencias.service.ts             |  20 +-
+ .../src/services/expediente.service.ts             |  29 +-
+ .../111_update_evidencias_status_check.sql         |  11 +
+ db/migrations/112_add_audiencia_historial.sql      |   2 +
+ db/migrations/113_add_apoderado_to_actors.sql      |   1 +
+ .../config/ConfiguracionesSIGLContext.tsx          |  26 +-
+ src/components/esap/gestion-legal/core/types.ts    |   5 +
+ .../gestion-legal/modulos/ConfiguracionesSIGL.tsx  | 296 ++++++-----
+ .../modulos/ExpedientesModuloSIGL.tsx              |  37 +-
+ .../esap/gestion-legal/modulos/ModalActas.tsx      |  78 +--
+ .../gestion-legal/modulos/ModalAgregarNota.tsx     |  10 +-
+ .../esap/gestion-legal/modulos/ModalAutos.tsx      | 158 ++----
+ .../esap/gestion-legal/modulos/ModalEvidencias.tsx |  65 +--
+ .../esap/gestion-legal/modulos/ModalExpediente.tsx | 564 ++++++++++++++-------
+ .../gestion-legal/modulos/ModalNuevaConsulta.tsx   | 500 ++++++++++--------
+ .../gestion-legal/modulos/ModalNuevaDemanda.tsx    | 324 ++++++++++--
+ .../esap/gestion-legal/modulos/ModalNuevoAuto.tsx  |  64 +--
+ .../modulos/ModalProgramarAudiencia.tsx            | 195 ++++---
+ .../modulos/ModalRegistrarActuacion.tsx            | 138 +++--
+ .../modulos/ModuloAsesoriaJuridicaV3.tsx           |  44 +-
+ .../modulos/ModuloDefensaJudicialV3.tsx            | 186 ++++---
+ .../gestion-legal/modulos/VisorDocumentoModal.tsx  |  21 +-
+ src/services/api/client.ts                         |  28 +
+ src/services/api/legal.service.ts                  |  10 +-
+ src/utils/fileUtils.ts                             | 107 ++++
+ 37 files changed, 1996 insertions(+), 1116 deletions(-)
+
+COMMIT: f3a4093 | Date: 2026-01-29 | Msg: Merge remote-tracking branch 'origin/integrate-frontend-22-ene' into integrate-frontend-22-ene
+COMMIT: 0b739b8 | Date: 2026-01-29 | Msg: Defensa judicial en proceso
+ backend/legal-management-service/package-lock.json |   42 +-
+ .../src/controllers/expediente.controller.ts       |    7 +-
+ .../src/database.config.ts                         |    3 +
+ .../src/dtos/create-expediente.dto.ts              |   13 +
+ .../src/entities/actor.entity.ts                   |   46 +
+ .../src/entities/expediente.entity.ts              |    4 +
+ .../src/services/expediente.service.ts             |    8 +
+ db/migrations/110_add_actors_table.sql             |   25 +
+ package-lock.json                                  |   16 +-
+ src/components/esap/gestion-legal/core/types.ts    |   40 +-
+ .../gestion-legal/modulos/ModalAgregarNota.tsx     |   61 +-
+ .../esap/gestion-legal/modulos/ModalCrearTarea.tsx |   93 +-
+ .../esap/gestion-legal/modulos/ModalExpediente.tsx | 2980 ++++++++------------
+ .../gestion-legal/modulos/ModalNuevaDemanda.tsx    | 1700 +++++------
+ .../modulos/ModuloDefensaJudicialV3.tsx            |  178 +-
+ src/services/api/legal.service.ts                  |    6 +
+ 16 files changed, 2344 insertions(+), 2878 deletions(-)

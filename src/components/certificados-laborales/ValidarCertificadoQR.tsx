@@ -23,7 +23,8 @@ import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { QRScannerModal } from './QRScannerModal';
 import { certificadosService } from '../../services/api/certificados.service';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogo } from '../assets/ESAPLogo';
+import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 
 interface ValidacionResult {
   isValid: boolean;
@@ -131,13 +132,40 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
         return;
       }
 
+      const cargoCalculado = formatCargoDisplay({
+        cargoSource:
+          response?.career_category ||
+          response?.careerCategory ||
+          response?.career_category_name ||
+          response?.position_category ||
+          response?.positionCategory ||
+          response?.cargo,
+        codCargo: selectPreferredCargoCode(
+          response?.request?.cod_cargo,
+          response?.request?.codCargo,
+          response?.cod_cargo,
+          response?.codCargo,
+        ),
+        codGrade:
+          response?.cod_grade ||
+          response?.codGrade ||
+          response?.request?.cod_grade ||
+          response?.request?.codGrade,
+        observations:
+          response?.request?.observations ||
+          response?.observations,
+        templateType: response?.template_type || response?.templateType,
+        includeCodeLabel: true,
+        codeLabel: 'Codigo',
+      });
+
       const certificado = {
         consecutivo,
         codigoQR: response?.verification_code || codigoNormalizado,
         empleado: {
           nombre: nombreEmpleado,
           documento: getVal(response?.id_number, response?.documento, response?.idNumber),
-          cargo: getVal(
+          cargo: cargoCalculado || getVal(
             response?.career_category,
             response?.careerCategory,
             response?.cargo,
@@ -181,27 +209,26 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F0F6FF] to-[#E0EEFF] py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#F0F6FF] to-[#E0EEFF] py-6 sm:py-12 px-3 sm:px-4">
       {/* Navbar Superior Flotante - Solo si tiene onBack */}
       {onBack && (
         <motion.nav 
           initial={{ y: -100, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.6, delay: 0.2 }}
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] w-[95%] max-w-6xl"
+          className="fixed top-2 sm:top-4 left-1/2 -translate-x-1/2 z-[200] w-[95%] sm:w-[92%] max-w-6xl"
         >
-          <div className="bg-[#1e5da8] rounded-2xl shadow-2xl px-4 sm:px-6 py-3 border border-blue-400/30 backdrop-blur-xl"
+          <div className="bg-[#1e5da8] rounded-xl sm:rounded-2xl shadow-2xl px-3 sm:px-6 py-2.5 sm:py-3 border border-blue-400/30 backdrop-blur-xl"
             style={{
               boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)'
             }}
           >
             <div className="flex items-center justify-between">
               {/* Logo */}
-              <div className="flex items-center gap-3">
-                <img 
-                  src={esapLogoWhite} 
-                  alt="ESAP Logo" 
-                  className="h-8 sm:h-10 w-auto object-contain brightness-0 invert"
+              <div className="flex items-center gap-2 sm:gap-3">
+                <ESAPLogo 
+                  variant="white"
+                  className="h-7 sm:h-10 w-auto"
                 />
                 <div className="hidden sm:block">
                   <p className="text-xs font-semibold text-white">Validador de Certificados</p>
@@ -212,40 +239,38 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
               {/* Botón Volver */}
               <button
                 onClick={onBack}
-                className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 rounded-full font-semibold text-xs sm:text-sm transition-all duration-300 bg-white text-[#003DA5] hover:bg-blue-50 hover:scale-105 shadow-lg"
+                className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-full font-semibold text-xs sm:text-sm transition-all duration-300 bg-white text-[#003DA5] hover:bg-blue-50 hover:scale-105 shadow-lg min-h-[40px] sm:min-h-[44px]"
               >
                 <ArrowLeft className="w-4 h-4" />
-                <span className="hidden sm:inline">Volver</span>
-                <span className="sm:hidden">Atrás</span>
+                <span>Volver</span>
               </button>
             </div>
           </div>
         </motion.nav>
       )}
       
-      <div className={`max-w-4xl mx-auto ${onBack ? 'pt-20' : ''}`}>
+      <div className={`max-w-4xl mx-auto ${onBack ? 'pt-16 sm:pt-20' : ''}`}>
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="text-center mb-8"
+          className="text-center mb-6 sm:mb-8"
         >
           <div 
-            className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6"
+            className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl flex items-center justify-center mx-auto mb-4 sm:mb-6"
             style={{
               background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
               boxShadow: '0 8px 24px rgba(0, 61, 165, 0.25)'
             }}
           >
-            <QrCode className="w-10 h-10 text-white" strokeWidth={2.5} />
+            <QrCode className="w-8 h-8 sm:w-10 sm:h-10 text-white" strokeWidth={2.5} />
           </div>
           
           <h1 
-            className="font-bold mb-3"
+            className="font-bold mb-2 sm:mb-3 text-2xl sm:text-3xl lg:text-4xl px-4"
             style={{
-              fontSize: '36px',
-              lineHeight: '44px',
+              lineHeight: '1.2',
               letterSpacing: '-0.5px',
               color: '#1F2937'
             }}
@@ -254,10 +279,9 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
           </h1>
           
           <p 
-            className="font-normal max-w-2xl mx-auto"
+            className="font-normal max-w-2xl mx-auto px-4 text-sm sm:text-base"
             style={{
-              fontSize: '16px',
-              lineHeight: '24px',
+              lineHeight: '1.5',
               color: '#6B7280'
             }}
           >
@@ -271,17 +295,16 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
         >
-          <Card className="bg-white rounded-2xl p-8 shadow-xl border-2 border-[#E5E7EB]">
+          <Card className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 shadow-xl border-2 border-[#E5E7EB]">
             {/* Formulario de Validación */}
             {!validationResult && (
-              <div className="space-y-6">
+              <div className="space-y-4 sm:space-y-6">
                 <div>
                   <label 
                     htmlFor="codigoQR"
-                    className="block font-semibold mb-3"
+                    className="block font-semibold mb-2 sm:mb-3 text-sm sm:text-base"
                     style={{
-                      fontSize: '14px',
-                      lineHeight: '20px',
+                      lineHeight: '1.4',
                       color: '#1F2937'
                     }}
                   >
@@ -289,30 +312,31 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                   </label>
                   <div className="relative">
                     <QrCode 
-                      className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5"
+                      className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-5 h-5"
                       style={{ color: '#9CA3AF' }}
                     />
                     <Input
                       id="codigoQR"
                       type="text"
-                      placeholder="Ej: QR-CERT-2025-ABC123XYZ o 12_620_700_20_CD 010"
+                      placeholder="Ej: ESAP-CERT-2025-ABC123"
                       value={codigoQR}
                       onChange={(e) => setCodigoQR(e.target.value.toUpperCase())}
-                      className="pl-12 pr-14 py-6 text-base border-2"
+                      className="pl-10 sm:pl-12 pr-12 sm:pr-14 py-5 sm:py-6 text-sm sm:text-base border-2"
+                      style={{ minHeight: '48px' }}
                       disabled={isValidating}
                       onKeyPress={(e) => e.key === 'Enter' && handleValidar()}
                     />
                     <button
                       type="button"
                       onClick={() => setIsScannerOpen(true)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#003DA5] transition-colors"
+                      className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#003DA5] transition-colors p-1"
                       title="Escanear con cámara"
                     >
                       <Camera className="w-5 h-5" />
                     </button>
                   </div>
                   <p 
-                    className="mt-2 text-sm"
+                    className="mt-2 text-xs sm:text-sm"
                     style={{ color: '#6B7280' }}
                   >
                     Puedes usar el codigo QR o el consecutivo que aparece en el certificado
@@ -320,22 +344,22 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                 </div>
 
                 {/* Info Card */}
-                <Card className="p-4 bg-blue-50 border-2 border-blue-200">
-                  <div className="flex items-start gap-3">
+                <Card className="p-3 sm:p-4 bg-blue-50 border-2 border-blue-200">
+                  <div className="flex items-start gap-2 sm:gap-3">
                     <Shield className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div>
+                    <div className="min-w-0">
                       <h4 
-                        className="font-semibold mb-1"
+                        className="font-semibold mb-1 text-sm sm:text-base"
                         style={{
-                          fontSize: '14px',
+                          lineHeight: '1.4',
                           color: '#1F2937'
                         }}
                       >
                         Sistema de verificacion seguro
                       </h4>
                       <p 
-                        className="text-sm"
-                        style={{ color: '#6B7280' }}
+                        className="text-xs sm:text-sm"
+                        style={{ color: '#6B7280', lineHeight: '1.5' }}
                       >
                         Todos los certificados laborales emitidos por la ESAP incluyen un codigo QR unico y un consecutivo que permiten verificar su autenticidad en tiempo real. Este sistema garantiza la integridad y validez del documento.
                       </p>
@@ -347,16 +371,17 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                 <Button
                   onClick={handleValidar}
                   disabled={isValidating || !codigoQR.trim()}
-                  className="w-full py-6 text-base font-semibold transition-all"
+                  className="w-full py-5 sm:py-6 text-sm sm:text-base font-semibold transition-all"
                   style={{
                     background: isValidating || !codigoQR.trim() ? '#D1D5DB' : '#003DA5',
-                    color: '#FFFFFF'
+                    color: '#FFFFFF',
+                    minHeight: '48px'
                   }}
                 >
                   {isValidating ? (
                     <>
                       <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Validando certificado...
+                      Validando...
                     </>
                   ) : (
                     <>
@@ -373,8 +398,16 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
               <div className="space-y-6">
                 {validationResult.isValid && validationResult.certificado ? (
                   <>
+                    {/* Logo ESAP en Header del Certificado */}
+                    <div className="flex justify-center">
+                      <ESAPLogo 
+                        variant="color"
+                        className="h-16 sm:h-20 w-auto"
+                      />
+                    </div>
+
                     {/* Header de Éxito */}
-                    <div className="text-center py-6">
+                    <div className="text-center">
                       <div 
                         className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
                         style={{
@@ -386,11 +419,11 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                         }}
                       >
                         {validationResult.certificado.estado === 'VIGENTE' ? (
-                          <CheckCircle className="w-8 h-8 text-green-600" strokeWidth={2.5} />
+                          <CheckCircle className="w-12 h-12 text-green-600" strokeWidth={2.5} />
                         ) : validationResult.certificado.estado === 'VENCIDO' ? (
-                          <AlertCircle className="w-8 h-8 text-yellow-600" strokeWidth={2.5} />
+                          <AlertCircle className="w-12 h-12 text-yellow-600" strokeWidth={2.5} />
                         ) : (
-                          <XCircle className="w-8 h-8 text-red-600" strokeWidth={2.5} />
+                          <XCircle className="w-12 h-12 text-red-600" strokeWidth={2.5} />
                         )}
                       </div>
                       
@@ -787,4 +820,3 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
     </div>
   );
 }
-

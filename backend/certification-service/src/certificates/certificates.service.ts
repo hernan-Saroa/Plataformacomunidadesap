@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Raw, Repository } from 'typeorm';
 import { CertificateRequest } from './certificate-request.entity';
 import { Certificate } from './certificate.entity';
 import { Signer } from './signer.entity';
@@ -8,17 +8,77 @@ import { CertificateTemplate } from './certificate-template.entity';
 import { CertificateValidation } from './certificate-validation.entity';
 import { CertificateGeneratorService } from './certificate-generator.service';
 import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
+import { TemplateConfigService } from './template-config.service';
+import {
+  TechnicalBonusAssignment,
+  type TechnicalBonusCategory,
+} from './technical-bonus-assignment.entity';
+
+type TemplateType = 'docente' | 'administrador';
 
 type SendLaborCertificateOptions = {
   includeSalary?: boolean;
   includeTechnicalBonus?: boolean;
   templateType?: 'docente' | 'administrador';
+  publicBaseUrl?: string;
   to?: string;
+};
+
+type GeoLookupResult = {
+  city?: string;
+  region?: string;
+  country?: string;
+  latitude?: number;
+  longitude?: number;
+  isp?: string;
+};
+
+type ValidationGeoContext = {
+  geoCountry?: string;
+  geoRegion?: string;
+  geoCity?: string;
+  geoTimezone?: string;
+};
+
+type SearchTechnicalBonusCandidate = {
+  requestId: string;
+  fullName: string;
+  idNumber: string;
+};
+
+type UpsertTechnicalBonusPayload = {
+  category: string;
+  idNumber: string;
+  fullName?: string;
+  requestId?: string;
+  percentage: number;
+  updatedBy?: string;
+};
+
+type UpdateTechnicalBonusPayload = {
+  percentage: number;
+  updatedBy?: string;
+};
+
+type BulkTechnicalBonusRowPayload = {
+  rowNumber?: number;
+  fullName?: string;
+  idNumber?: string;
+  percentage?: number | string;
+};
+
+type BulkTechnicalBonusPayload = {
+  category: string;
+  rows: BulkTechnicalBonusRowPayload[];
+  updatedBy?: string;
 };
 
 @Injectable()
 export class CertificatesService {
   private readonly logger = new Logger(CertificatesService.name);
+  private readonly geoCache = new Map<string, { expiresAt: number; value: GeoLookupResult | null }>();
+  private readonly geoCacheTtlMs = 1000 * 60 * 60 * 6;
+  private readonly geoCacheMissTtlMs = 1000 * 60 * 15;
 
   private resolveNotificationsBaseUrl() {
     const direct =
@@ -29,6 +89,608 @@ export class CertificatesService {
     // Acceso directo dentro de la red Docker; si corres local sin Docker puedes
     // sobreescribir con NOTIFICATION(S)_SERVICE_URL
     return 'http://notifications-service:3009';
+  }
+
+  private normalizeTemplateText(value: string): string {
+    const base = String(value || '').toLowerCase();
+    const normalized = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
+    return normalized
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private normalizeBoolean(value: unknown, fallback: boolean): boolean {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['true', '1', 'si', 'yes', 'y'].includes(normalized)) return true;
+      if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+    }
+    return fallback;
+  }
+
+  private sanitizeIdNumber(value?: string | null): string {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const digits = raw.replace(/\D+/g, '');
+    if (digits) return digits;
+    return raw.replace(/\s+/g, '').toUpperCase();
+  }
+
+  private parseTechnicalBonusCategory(value?: string | null): TechnicalBonusCategory {
+    const normalized = this.normalizeTemplateText(value || '').replace(/\s+/g, '');
+    if (normalized === 'directivos' || normalized === 'directivo') {
+      return 'DIRECTIVOS';
+    }
+    if (normalized === 'coordinadores' || normalized === 'coordinador') {
+      return 'COORDINADORES';
+    }
+    throw new BadRequestException('Categoria invalida. Usa Directivos o Coordinadores.');
+  }
+
+  private mapTechnicalBonusAssignment(item: TechnicalBonusAssignment) {
+    return {
+      id: item.id,
+      category: item.category,
+      request_id: item.request_id,
+      full_name: item.full_name,
+      id_number: item.id_number,
+      percentage: Number(item.percentage || 0),
+      created_by: item.created_by,
+      updated_by: item.updated_by,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+    };
+  }
+
+  private parseNumericValue(value?: string | number | null): number {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : 0;
+    }
+
+    const normalized = String(value)
+      .trim()
+      .replace(/\s+/g, '')
+      .replace(',', '.');
+    if (!normalized) return 0;
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private roundToTwoDecimals(value: number): number {
+    return Number(value.toFixed(2));
+  }
+
+  private resolveTechnicalBonusAmount(monthlySalaryRaw: string | number | null | undefined, percentageRaw: string | number | null | undefined): number {
+    const monthlySalary = this.parseNumericValue(monthlySalaryRaw);
+    const percentage = this.parseNumericValue(percentageRaw);
+
+    if (monthlySalary <= 0 || percentage <= 0) {
+      return 0;
+    }
+
+    return this.roundToTwoDecimals(monthlySalary * (percentage / 100));
+  }
+
+  private async resolveTechnicalBonusForRequest(
+    request?: Pick<CertificateRequest, 'id_number' | 'monthly_salary'> | null,
+  ): Promise<{
+    available: boolean;
+    percentage: number;
+    value: number;
+    category: TechnicalBonusCategory | null;
+    assignmentId: string | null;
+  }> {
+    const idNumber = this.sanitizeIdNumber(request?.id_number || '');
+    if (!idNumber) {
+      return {
+        available: false,
+        percentage: 0,
+        value: 0,
+        category: null,
+        assignmentId: null,
+      };
+    }
+
+    const assignment = await this.technicalBonusRepo.findOne({
+      where: {
+        id_number: Raw(
+          (alias) =>
+            `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+          { idNumber },
+        ),
+      },
+      order: { updated_at: 'DESC' },
+    });
+
+    if (!assignment) {
+      return {
+        available: false,
+        percentage: 0,
+        value: 0,
+        category: null,
+        assignmentId: null,
+      };
+    }
+
+    const percentage = this.roundToTwoDecimals(this.parseNumericValue(assignment.percentage));
+    const value = this.resolveTechnicalBonusAmount(request?.monthly_salary, percentage);
+    const available = percentage > 0;
+
+    return {
+      available,
+      percentage: available ? percentage : 0,
+      value,
+      category: assignment.category,
+      assignmentId: assignment.id,
+    };
+  }
+
+  private extractExceptionMessage(error: any, fallback: string): string {
+    const response =
+      error && typeof error.getResponse === 'function' ? error.getResponse() : undefined;
+
+    if (typeof response === 'string' && response.trim()) {
+      return response.trim();
+    }
+
+    if (response && typeof response === 'object') {
+      const message = (response as any).message;
+      if (Array.isArray(message) && message.length) {
+        const first = String(message[0] || '').trim();
+        if (first) return first;
+      }
+      if (typeof message === 'string' && message.trim()) {
+        return message.trim();
+      }
+    }
+
+    const message = String(error?.message || '').trim();
+    return message || fallback;
+  }
+
+  private resolveTemplateTypeFromText(value: string): TemplateType {
+    const text = this.normalizeTemplateText(value);
+    if (!text) {
+      return 'administrador';
+    }
+    return /\bdocen\w*\b|\bdoc\b/.test(text) ? 'docente' : 'administrador';
+  }
+
+  private resolveTemplateTypeFromRequest(request: CertificateRequest): TemplateType {
+    const raw = `${request?.position_category || ''} ${request?.career_category || ''}`;
+    return this.resolveTemplateTypeFromText(raw);
+  }
+
+  private resolveTemplateTypeFromCertificate(certificate: Certificate): TemplateType {
+    const raw = `${certificate?.position_category || ''} ${certificate?.career_category || ''}`;
+    return this.resolveTemplateTypeFromText(raw);
+  }
+
+  private normalizePersistedCodeValue(
+    value?: string | number | null,
+    relatedGrade?: string | number | null,
+  ): string | undefined {
+    if (value === undefined) return undefined;
+    if (value === null) return undefined;
+
+    const raw = String(value).trim();
+    if (!raw) return '';
+
+    const digits = raw.replace(/\D+/g, '');
+    if (!digits) return raw;
+
+    if (typeof value === 'number') {
+      const gradeDigits = String(relatedGrade ?? '').replace(/\D+/g, '');
+      const compactTargetLength = 4 + gradeDigits.length;
+      if (
+        gradeDigits &&
+        digits.endsWith(gradeDigits) &&
+        digits.length < compactTargetLength
+      ) {
+        return digits.padStart(compactTargetLength, '0');
+      }
+    }
+
+    return digits;
+  }
+
+  private selectPreferredNormalizedCodeValue(
+    ...pairs: Array<{
+      value?: string | number | null;
+      relatedGrade?: string | number | null;
+    }>
+  ): string | undefined {
+    const normalized = pairs
+      .map(({ value, relatedGrade }) => this.normalizePersistedCodeValue(value, relatedGrade) || '')
+      .filter(Boolean);
+
+    if (!normalized.length) {
+      return undefined;
+    }
+
+    return normalized.sort((left, right) => {
+      if (left.length !== right.length) {
+        return right.length - left.length;
+      }
+      const leftHasLeadingZero = left.startsWith('0') ? 1 : 0;
+      const rightHasLeadingZero = right.startsWith('0') ? 1 : 0;
+      return rightHasLeadingZero - leftHasLeadingZero;
+    })[0];
+  }
+
+  private selectCompatibleRequestsForCodeSelection(
+    selectedRequest: CertificateRequest,
+    requests: CertificateRequest[],
+  ): CertificateRequest[] {
+    const selectedCareer = this.normalizeTemplateText(selectedRequest.career_category || '');
+    const selectedPosition = this.normalizeTemplateText(selectedRequest.position_category || '');
+    const selectedGrade = this.normalizePersistedCodeValue(selectedRequest.cod_grade);
+
+    const compatible = requests.filter((request) => {
+      if (request.id === selectedRequest.id) {
+        return true;
+      }
+
+      const sameCareer =
+        !!selectedCareer &&
+        this.normalizeTemplateText(request.career_category || '') === selectedCareer;
+      const samePosition =
+        !!selectedPosition &&
+        this.normalizeTemplateText(request.position_category || '') === selectedPosition;
+      const requestGrade = this.normalizePersistedCodeValue(request.cod_grade);
+      const sameGrade = !selectedGrade || !requestGrade || requestGrade === selectedGrade;
+
+      return sameCareer && samePosition && sameGrade;
+    });
+
+    return compatible.length ? compatible : [selectedRequest];
+  }
+
+  private normalizeDateOnly(value?: Date | string | null): Date | null {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    if (isNaN(date.getTime())) return null;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  private resolveEmploymentStatusByDates(
+    hiringDate?: Date | string | null,
+    endDate?: Date | string | null,
+  ): 'ACTIVO' | 'INACTIVO' {
+    const start = this.normalizeDateOnly(hiringDate);
+    const end = this.normalizeDateOnly(endDate);
+    const today = this.normalizeDateOnly(new Date());
+
+    if (!start || !today) return 'INACTIVO';
+    if (today < start) return 'INACTIVO';
+    if (!end) return 'ACTIVO';
+    return today <= end ? 'ACTIVO' : 'INACTIVO';
+  }
+
+  private normalizeEmploymentStatus(statusRaw?: string | null): 'ACTIVO' | 'INACTIVO' | null {
+    const status = String(statusRaw || '').trim().toUpperCase();
+    if (!status) return null;
+    if (status === 'A' || status === 'ACTIVO' || status === 'ACTIVE') return 'ACTIVO';
+    if (status === 'I' || status === 'INACTIVO' || status === 'INACTIVE') return 'INACTIVO';
+    return null;
+  }
+
+  private resolveEmploymentStatus(
+    hiringDate?: Date | string | null,
+    endDate?: Date | string | null,
+    statusRaw?: string | null,
+  ): 'ACTIVO' | 'INACTIVO' {
+    const statusByDate = this.resolveEmploymentStatusByDates(hiringDate, endDate);
+    const statusByCode = this.normalizeEmploymentStatus(statusRaw);
+
+    // Regla de negocio: status (A/I) es la fuente principal y la fecha valida como respaldo.
+    if (statusByCode) {
+      return statusByCode;
+    }
+
+    return statusByDate;
+  }
+
+  private resolveStatusForPersistence(
+    statusRaw?: string | null,
+    hiringDate?: Date | string | null,
+    endDate?: Date | string | null,
+  ): string {
+    const explicitStatus = String(statusRaw || '').trim();
+    if (explicitStatus) {
+      return explicitStatus.toUpperCase();
+    }
+    return this.resolveEmploymentStatusByDates(hiringDate, endDate) === 'ACTIVO' ? 'A' : 'I';
+  }
+
+  private normalizeEncargoType(value?: string | null): 'E' | 'N' | null {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized) {
+      return null;
+    }
+
+    // La data puede venir como "E", "N" o textos como "Encargo".
+    if (normalized === 'E' || normalized.startsWith('E')) {
+      return 'E';
+    }
+    if (normalized === 'N' || normalized.startsWith('N')) {
+      return 'N';
+    }
+    return null;
+  }
+
+  private selectPreferredRequestForCertificate(requests: CertificateRequest[]): CertificateRequest | null {
+    if (!requests.length) {
+      return null;
+    }
+
+    // Prioridad 1: contratos activos.
+    const activeRequests = requests.filter(
+      (request) =>
+        this.resolveEmploymentStatus(request.hiring_date, request.request_date, request.status) === 'ACTIVO',
+    );
+
+    // Prioridad 2 dentro de activos: contrato base (no encargo).
+    const activeWithoutEncargo = activeRequests.filter(
+      (request) => this.normalizeEncargoType(request.observations) !== 'E',
+    );
+
+    if (activeWithoutEncargo.length) {
+      return activeWithoutEncargo[0];
+    }
+
+    if (activeRequests.length) {
+      return activeRequests[0];
+    }
+
+    // Fallback: mantener comportamiento previo tomando el registro mas reciente.
+    return requests[0];
+  }
+
+  private selectSalarySourceForCertificate(
+    selectedRequest: CertificateRequest | null,
+    requests: CertificateRequest[],
+  ): CertificateRequest | null {
+    if (!selectedRequest || !requests.length) {
+      return null;
+    }
+
+    const selectedIsActive =
+      this.resolveEmploymentStatus(
+        selectedRequest.hiring_date,
+        selectedRequest.request_date,
+        selectedRequest.status,
+      ) === 'ACTIVO';
+    const selectedIsEncargo = this.normalizeEncargoType(selectedRequest.observations) === 'E';
+
+    // Solo aplicar salario de encargo cuando el contrato principal es activo y no encargo.
+    if (!selectedIsActive || selectedIsEncargo) {
+      return null;
+    }
+
+    const activeEncargo = requests.filter((request) => {
+      if (request.id === selectedRequest.id) {
+        return false;
+      }
+      const isActive =
+        this.resolveEmploymentStatus(request.hiring_date, request.request_date, request.status) === 'ACTIVO';
+      const isEncargo = this.normalizeEncargoType(request.observations) === 'E';
+      return isActive && isEncargo;
+    });
+
+    if (!activeEncargo.length) {
+      return null;
+    }
+
+    return activeEncargo[0];
+  }
+
+  private mergeRequestWithSalarySource(
+    selectedRequest: CertificateRequest,
+    salarySource: CertificateRequest | null,
+    relatedRequests: CertificateRequest[] = [selectedRequest],
+  ): CertificateRequest {
+    const mergedBase =
+      !salarySource || salarySource.id === selectedRequest.id
+        ? selectedRequest
+        : {
+            ...selectedRequest,
+            monthly_salary: salarySource.monthly_salary,
+            salary_text: salarySource.salary_text ?? selectedRequest.salary_text,
+          };
+
+    const compatibleRequests = this.selectCompatibleRequestsForCodeSelection(
+      mergedBase,
+      relatedRequests,
+    );
+    const preferredCodGrade = this.selectPreferredNormalizedCodeValue(
+      ...compatibleRequests.map((request) => ({
+        value: request.cod_grade,
+      })),
+    );
+    const preferredCodCargo = this.selectPreferredNormalizedCodeValue(
+      ...compatibleRequests.map((request) => ({
+        value: request.cod_cargo,
+        relatedGrade: request.cod_grade || preferredCodGrade,
+      })),
+    );
+
+    return {
+      ...mergedBase,
+      cod_cargo: preferredCodCargo ?? mergedBase.cod_cargo,
+      cod_grade: preferredCodGrade ?? mergedBase.cod_grade,
+    };
+  }
+
+  private applyRequestContextToCertificate(
+    certificate: Certificate,
+    requests: CertificateRequest[],
+  ): Certificate {
+    if (!requests.length) {
+      return certificate;
+    }
+
+    const cert = certificate as Certificate & { request?: CertificateRequest | null };
+    const baseRequest =
+      cert.request ||
+      requests.find((request) => request.id === certificate.request_id) ||
+      this.selectPreferredRequestForCertificate(requests);
+
+    if (!baseRequest) {
+      return certificate;
+    }
+
+    const salarySource = this.selectSalarySourceForCertificate(baseRequest, requests);
+    const requestContext = this.mergeRequestWithSalarySource(baseRequest, salarySource, requests);
+
+    cert.request = cert.request
+      ? ({ ...cert.request, ...requestContext } as CertificateRequest)
+      : requestContext;
+
+    if (requestContext.cod_cargo) {
+      cert.cod_cargo = requestContext.cod_cargo;
+    }
+    if (requestContext.cod_grade) {
+      cert.cod_grade = requestContext.cod_grade;
+    }
+
+    return cert;
+  }
+
+  private async hydrateCertificatesRequestContext(certificates: Certificate[]): Promise<void> {
+    if (!certificates.length) {
+      return;
+    }
+
+    const idNumbers = Array.from(
+      new Set(
+        certificates
+          .map((certificate) =>
+            this.sanitizeIdNumber(
+              (certificate as Certificate & { request?: { id_number?: string } }).request?.id_number ||
+                certificate.id_number,
+            ),
+          )
+          .filter(Boolean),
+      ),
+    );
+
+    if (!idNumbers.length) {
+      return;
+    }
+
+    const requests = await this.requestRepo
+      .createQueryBuilder('request')
+      .where(
+        `REPLACE(REPLACE(REPLACE(request.id_number, '.', ''), '-', ''), ' ', '') IN (:...idNumbers)`,
+        { idNumbers },
+      )
+      .orderBy('COALESCE(request.hiring_date, request.request_date, request.created_at)', 'DESC')
+      .addOrderBy('request.request_date', 'DESC')
+      .addOrderBy('request.created_at', 'DESC')
+      .getMany();
+
+    if (!requests.length) {
+      return;
+    }
+
+    const requestsByIdNumber = new Map<string, CertificateRequest[]>();
+    for (const request of requests) {
+      const idNumber = this.sanitizeIdNumber(request.id_number);
+      if (!idNumber) {
+        continue;
+      }
+      const bucket = requestsByIdNumber.get(idNumber);
+      if (bucket) {
+        bucket.push(request);
+      } else {
+        requestsByIdNumber.set(idNumber, [request]);
+      }
+    }
+
+    for (const certificate of certificates) {
+      const idNumber = this.sanitizeIdNumber(
+        (certificate as Certificate & { request?: { id_number?: string } }).request?.id_number ||
+          certificate.id_number,
+      );
+      if (!idNumber) {
+        continue;
+      }
+      const relatedRequests = requestsByIdNumber.get(idNumber) || [];
+      this.applyRequestContextToCertificate(certificate, relatedRequests);
+    }
+  }
+
+  private async ensureTemplateSnapshotForCertificate(certificate: Certificate): Promise<Certificate> {
+    const cert = certificate as Certificate & {
+      template_snapshot?: any;
+      template_type?: string;
+      template_version?: string;
+    };
+
+    if (cert.template_snapshot) {
+      return certificate;
+    }
+
+    const templateType = (cert.template_type as TemplateType) || this.resolveTemplateTypeFromCertificate(certificate);
+    const config = await this.templateConfigService.getActiveConfig(templateType);
+    if (!config) {
+      return certificate;
+    }
+
+    const patch = {
+      template_snapshot: config,
+      template_type: templateType,
+      template_version: config.version || null,
+    };
+
+    await this.certificateRepo.update(certificate.id, patch);
+    Object.assign(certificate, patch);
+    return certificate;
+  }
+
+  private async ensureTemplateSnapshots(certificates: Certificate[]): Promise<void> {
+    const missing = certificates.filter((cert) => !(cert as any)?.template_snapshot);
+    if (!missing.length) {
+      return;
+    }
+
+    const typesNeeded = new Set<TemplateType>();
+    for (const cert of missing) {
+      const templateType =
+        ((cert as any)?.template_type as TemplateType) || this.resolveTemplateTypeFromCertificate(cert);
+      typesNeeded.add(templateType);
+    }
+
+    const configByType = new Map<TemplateType, any>();
+    for (const type of typesNeeded) {
+      const config = await this.templateConfigService.getActiveConfig(type);
+      if (config) {
+        configByType.set(type, config);
+      }
+    }
+
+    await Promise.all(
+      missing.map(async (cert) => {
+        const templateType =
+          ((cert as any)?.template_type as TemplateType) || this.resolveTemplateTypeFromCertificate(cert);
+        const config = configByType.get(templateType);
+        if (!config) return;
+        const patch = {
+          template_snapshot: config,
+          template_type: templateType,
+          template_version: config.version || null,
+        };
+        await this.certificateRepo.update(cert.id, patch);
+        Object.assign(cert, patch);
+      }),
+    );
   }
 
   constructor(
@@ -42,8 +704,11 @@ export class CertificatesService {
     private templateRepo: Repository<CertificateTemplate>,
     @InjectRepository(CertificateValidation)
     private validationRepo: Repository<CertificateValidation>,
+    @InjectRepository(TechnicalBonusAssignment)
+    private technicalBonusRepo: Repository<TechnicalBonusAssignment>,
     private certificateGenerator: CertificateGeneratorService,
     private laborPdfService: LaborCertificatePdfService,
+    private templateConfigService: TemplateConfigService,
   ) {}
 
   // ============================================
@@ -127,10 +792,24 @@ export class CertificatesService {
       throw new BadRequestException('No hay un email registrado para enviar el certificado');
     }
 
+    const includeSalaryPersisted = this.normalizeBoolean(
+      (certificate as Certificate & { include_salary?: boolean | null }).include_salary,
+      true,
+    );
+    const includeTechnicalBonusPersisted = this.normalizeBoolean(
+      (certificate as Certificate & { include_technical_bonus?: boolean | null }).include_technical_bonus,
+      false,
+    );
+    const includeSalary = this.normalizeBoolean(options.includeSalary, includeSalaryPersisted);
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(options.includeTechnicalBonus, includeTechnicalBonusPersisted)
+      : false;
+
     const attachment = await this.laborPdfService.generateCertificatePdf(certificate, {
-      includeSalary: options.includeSalary,
-      includeTechnicalBonus: options.includeTechnicalBonus,
+      includeSalary,
+      includeTechnicalBonus,
       templateType: options.templateType,
+      publicBaseUrl: options.publicBaseUrl,
     });
 
     const baseUrl = this.resolveNotificationsBaseUrl();
@@ -176,6 +855,9 @@ export class CertificatesService {
       throw new NotFoundException(`Certificado con ID ${id} no encontrado`);
     }
 
+    await this.hydrateCertificatesRequestContext([certificate]);
+    await this.ensureTemplateSnapshotForCertificate(certificate);
+
     const result = await this.enviarCertificadoLaboralPorEmail(certificate, options);
 
     return {
@@ -202,13 +884,403 @@ export class CertificatesService {
   }
 
   async createSolicitud(data: Partial<CertificateRequest>) {
-    const request = this.requestRepo.create(data);
+    const rawIdNumber = (data.id_number || '').trim();
+    if (rawIdNumber) {
+      const normalizedIdNumber = rawIdNumber.replace(/\D+/g, '');
+      const existing = await this.requestRepo.findOne({
+        where: normalizedIdNumber
+          ? {
+              id_number: Raw(
+                (alias) =>
+                  `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+                { idNumber: normalizedIdNumber },
+              ),
+            }
+          : { id_number: rawIdNumber },
+        order: { request_date: 'DESC' },
+      });
+
+      if (existing) {
+        const incomingName = this.normalizeTemplateText(data.full_name || '');
+        const existingName = this.normalizeTemplateText(existing.full_name || '');
+        if (incomingName && existingName && incomingName !== existingName) {
+          throw new BadRequestException(
+            `El documento ${rawIdNumber} ya está registrado a nombre de ${existing.full_name}. Verifica el número de documento.`,
+          );
+        }
+      }
+    }
+
+    const status = this.resolveStatusForPersistence(data.status, data.hiring_date, data.request_date);
+    const requestPayload: Partial<CertificateRequest> = {
+      ...data,
+      cod_cargo: this.normalizePersistedCodeValue(data.cod_cargo, data.cod_grade),
+      cod_grade: this.normalizePersistedCodeValue(data.cod_grade),
+      status,
+    };
+    const request = this.requestRepo.create(requestPayload);
     return await this.requestRepo.save(request);
   }
 
   async updateSolicitud(id: string, data: Partial<CertificateRequest>) {
-    await this.requestRepo.update(id, data);
+    const patch: Partial<CertificateRequest> = { ...data };
+    if ('cod_cargo' in data) {
+      patch.cod_cargo = this.normalizePersistedCodeValue(data.cod_cargo, data.cod_grade);
+    }
+    if ('cod_grade' in data) {
+      patch.cod_grade = this.normalizePersistedCodeValue(data.cod_grade);
+    }
+    if ('status' in data) {
+      const existing = await this.requestRepo.findOne({ where: { id } });
+      const hiringDate = data.hiring_date ?? existing?.hiring_date ?? null;
+      const requestDate = data.request_date ?? existing?.request_date ?? null;
+      patch.status = this.resolveStatusForPersistence(data.status, hiringDate, requestDate);
+    } else if ('hiring_date' in data || 'request_date' in data) {
+      const existing = await this.requestRepo.findOne({ where: { id } });
+      const currentStatus = String(existing?.status || '').trim();
+      if (!currentStatus) {
+        const hiringDate = data.hiring_date ?? existing?.hiring_date ?? null;
+        const requestDate = data.request_date ?? existing?.request_date ?? null;
+        patch.status = this.resolveStatusForPersistence(undefined, hiringDate, requestDate);
+      }
+    }
+    await this.requestRepo.update(id, patch);
     return await this.findSolicitudById(id);
+  }
+
+  // ============================================
+  // TECHNICAL BONUS (PRIMA TECNICA)
+  // ============================================
+
+  async searchTechnicalBonusCandidates(query: string, limit = 10): Promise<SearchTechnicalBonusCandidate[]> {
+    const normalizedQuery = String(query || '').trim();
+    if (!normalizedQuery || normalizedQuery.length < 2) {
+      return [];
+    }
+
+    const safeLimit = Math.min(Math.max(limit || 10, 1), 200);
+    const searchTerm = `%${normalizedQuery.toLowerCase()}%`;
+    const idNeedle = normalizedQuery.replace(/\D+/g, '');
+
+    const qb = this.requestRepo.createQueryBuilder('request');
+    qb
+      .orderBy('COALESCE(request.request_date, request.updated_at, request.created_at)', 'DESC')
+      .addOrderBy('request.updated_at', 'DESC')
+      .addOrderBy('request.created_at', 'DESC')
+      .take(safeLimit * 4);
+
+    if (idNeedle) {
+      qb.where('LOWER(request.full_name) LIKE :searchTerm', { searchTerm }).orWhere(
+        `REPLACE(REPLACE(REPLACE(request.id_number, '.', ''), '-', ''), ' ', '') LIKE :idNeedle`,
+        {
+          idNeedle: `%${idNeedle}%`,
+        },
+      );
+    } else {
+      qb.where('LOWER(request.full_name) LIKE :searchTerm', { searchTerm });
+    }
+
+    const matches = await qb.getMany();
+
+    const uniqueByDoc = new Map<string, CertificateRequest>();
+    for (const request of matches) {
+      const normalizedId = this.sanitizeIdNumber(request.id_number);
+      const key = normalizedId || String(request.id_number || '').trim();
+      if (!key || uniqueByDoc.has(key)) {
+        continue;
+      }
+      uniqueByDoc.set(key, request);
+    }
+
+    return Array.from(uniqueByDoc.values())
+      .slice(0, safeLimit)
+      .map((request) => ({
+        requestId: request.id,
+        fullName: request.full_name,
+        idNumber: this.sanitizeIdNumber(request.id_number) || request.id_number,
+      }));
+  }
+
+  async listTechnicalBonusAssignments(categoryRaw: string) {
+    const category = this.parseTechnicalBonusCategory(categoryRaw);
+    const assignments = await this.technicalBonusRepo.find({
+      where: { category },
+      order: {
+        updated_at: 'DESC',
+        full_name: 'ASC',
+      },
+    });
+
+    return assignments.map((item) => this.mapTechnicalBonusAssignment(item));
+  }
+
+  async upsertTechnicalBonusAssignment(payload: UpsertTechnicalBonusPayload) {
+    const category = this.parseTechnicalBonusCategory(payload.category);
+    const idNumber = this.sanitizeIdNumber(payload.idNumber);
+    const percentageRaw = Number(payload.percentage);
+
+    if (!idNumber) {
+      throw new BadRequestException('El numero de identificacion es obligatorio.');
+    }
+
+    if (!Number.isFinite(percentageRaw) || percentageRaw <= 0 || percentageRaw > 100) {
+      throw new BadRequestException('El porcentaje debe ser mayor a 0 y menor o igual a 100.');
+    }
+
+    const existingGlobalAssignment = await this.technicalBonusRepo.findOne({
+      where: { id_number: idNumber },
+      order: { updated_at: 'DESC' },
+    });
+    if (existingGlobalAssignment && existingGlobalAssignment.category !== category) {
+      const categoryLabel =
+        existingGlobalAssignment.category === 'DIRECTIVOS'
+          ? 'Directivos'
+          : 'Coordinadores';
+      throw new BadRequestException(
+        `La persona ya tiene Prima Tecnica registrada en ${categoryLabel}.`,
+      );
+    }
+
+    const percentage = Number(percentageRaw.toFixed(2));
+
+    let request: CertificateRequest | null = null;
+    if (payload.requestId) {
+      request = await this.requestRepo.findOne({ where: { id: payload.requestId } });
+    }
+
+    if (!request) {
+      request = await this.requestRepo.findOne({
+        where: {
+          id_number: Raw(
+            (alias) =>
+              `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+            { idNumber },
+          ),
+        },
+        order: {
+          request_date: 'DESC',
+          updated_at: 'DESC',
+          created_at: 'DESC',
+        },
+      });
+    }
+
+    if (!request) {
+      throw new NotFoundException(
+        'No se encontro la persona en la base de datos de solicitudes laborales (usuarios con contrato laboral).',
+      );
+    }
+
+    const fullName = String(payload.fullName || request.full_name || '').trim();
+    if (!fullName) {
+      throw new BadRequestException('El nombre completo es obligatorio.');
+    }
+
+    const updatedBy = String(payload.updatedBy || '').trim() || null;
+    let assignment = await this.technicalBonusRepo.findOne({
+      where: { category, id_number: idNumber },
+    });
+    const isUpdate = Boolean(assignment);
+
+    if (!assignment) {
+      assignment = this.technicalBonusRepo.create({
+        category,
+        request_id: request.id,
+        full_name: fullName,
+        id_number: idNumber,
+        percentage,
+        created_by: updatedBy,
+        updated_by: updatedBy,
+      });
+    } else {
+      assignment.request_id = request.id;
+      assignment.full_name = fullName;
+      assignment.percentage = percentage;
+      assignment.updated_by = updatedBy;
+      if (!assignment.created_by && updatedBy) {
+        assignment.created_by = updatedBy;
+      }
+    }
+
+    const saved = await this.technicalBonusRepo.save(assignment);
+
+    return {
+      ...this.mapTechnicalBonusAssignment(saved),
+      action: isUpdate ? 'updated' : 'created',
+    };
+  }
+
+  async bulkUpsertTechnicalBonusAssignments(payload: BulkTechnicalBonusPayload) {
+    const category = this.parseTechnicalBonusCategory(payload.category);
+    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    const updatedBy = String(payload.updatedBy || '').trim() || undefined;
+
+    if (!rows.length) {
+      throw new BadRequestException('Debes enviar al menos una fila para la carga masiva.');
+    }
+
+    if (rows.length > 1000) {
+      throw new BadRequestException('La carga masiva permite maximo 1000 filas por archivo.');
+    }
+
+    const seenDocumentRows = new Map<string, number>();
+    const results: Array<{
+      rowNumber: number;
+      status: 'success' | 'error';
+      id_number?: string;
+      full_name?: string;
+      percentage?: number;
+      action?: 'created' | 'updated';
+      message: string;
+      record?: any;
+    }> = [];
+
+    let created = 0;
+    let updated = 0;
+    let failed = 0;
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index] || {};
+      const parsedRowNumber = Number(row.rowNumber);
+      const rowNumber =
+        Number.isFinite(parsedRowNumber) && parsedRowNumber > 0
+          ? Math.trunc(parsedRowNumber)
+          : index + 2;
+
+      const idNumber = this.sanitizeIdNumber(row.idNumber);
+      const fullName = String(row.fullName || '').trim() || undefined;
+      const percentageValue = String(row.percentage ?? '').replace(',', '.').trim();
+      const percentage = Number(percentageValue);
+
+      try {
+        if (!idNumber) {
+          throw new BadRequestException('Numero de documento vacio o invalido.');
+        }
+
+        const duplicateRowNumber = seenDocumentRows.get(idNumber);
+        if (duplicateRowNumber) {
+          throw new BadRequestException(
+            `Documento repetido en el archivo. Ya fue incluido en la fila ${duplicateRowNumber}.`,
+          );
+        }
+        seenDocumentRows.set(idNumber, rowNumber);
+
+        if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100) {
+          throw new BadRequestException('El porcentaje debe ser mayor a 0 y menor o igual a 100.');
+        }
+
+        const record = await this.upsertTechnicalBonusAssignment({
+          category,
+          idNumber,
+          percentage,
+          updatedBy,
+        });
+
+        if (record.action === 'created') {
+          created += 1;
+        } else {
+          updated += 1;
+        }
+
+        results.push({
+          rowNumber,
+          status: 'success',
+          id_number: record.id_number,
+          full_name: record.full_name,
+          percentage: record.percentage,
+          action: record.action === 'created' ? 'created' : 'updated',
+          message:
+            record.action === 'created'
+              ? 'Registro creado correctamente.'
+              : 'Registro actualizado correctamente.',
+          record,
+        });
+      } catch (error: any) {
+        failed += 1;
+        results.push({
+          rowNumber,
+          status: 'error',
+          id_number: idNumber || undefined,
+          full_name: fullName,
+          message: this.extractExceptionMessage(
+            error,
+            'Error inesperado al procesar la fila.',
+          ),
+        });
+      }
+    }
+
+    const success = rows.length - failed;
+    return {
+      category,
+      summary: {
+        total: rows.length,
+        success,
+        failed,
+        created,
+        updated,
+      },
+      results,
+    };
+  }
+
+  async updateTechnicalBonusAssignment(id: string, payload: UpdateTechnicalBonusPayload) {
+    const recordId = String(id || '').trim();
+    if (!recordId) {
+      throw new BadRequestException('El id del registro es obligatorio.');
+    }
+
+    const percentageRaw = Number(payload.percentage);
+    if (!Number.isFinite(percentageRaw) || percentageRaw <= 0 || percentageRaw > 100) {
+      throw new BadRequestException('El porcentaje debe ser mayor a 0 y menor o igual a 100.');
+    }
+    const percentage = Number(percentageRaw.toFixed(2));
+
+    const assignment = await this.technicalBonusRepo.findOne({
+      where: { id: recordId },
+    });
+
+    if (!assignment) {
+      throw new NotFoundException('No se encontro el registro de Prima Tecnica.');
+    }
+
+    const updatedBy = String(payload.updatedBy || '').trim() || null;
+    assignment.percentage = percentage;
+    assignment.updated_by = updatedBy;
+    if (!assignment.created_by && updatedBy) {
+      assignment.created_by = updatedBy;
+    }
+
+    const saved = await this.technicalBonusRepo.save(assignment);
+    return {
+      ...this.mapTechnicalBonusAssignment(saved),
+      action: 'updated' as const,
+    };
+  }
+
+  async deleteTechnicalBonusAssignment(id: string) {
+    const recordId = String(id || '').trim();
+    if (!recordId) {
+      throw new BadRequestException('El id del registro es obligatorio.');
+    }
+
+    const assignment = await this.technicalBonusRepo.findOne({
+      where: { id: recordId },
+    });
+
+    if (!assignment) {
+      throw new NotFoundException('No se encontro el registro de Prima Tecnica.');
+    }
+
+    await this.technicalBonusRepo.remove(assignment);
+
+    return {
+      id: assignment.id,
+      category: assignment.category,
+      full_name: assignment.full_name,
+      id_number: assignment.id_number,
+      deleted: true as const,
+    };
   }
 
   // ============================================
@@ -221,9 +1293,17 @@ export class CertificatesService {
       order: { issue_date: 'DESC' },
     });
 
+    await this.hydrateCertificatesRequestContext(certificates);
+    await this.ensureTemplateSnapshots(certificates);
+
     // Agregar el conteo de validaciones para cada certificado
     const certificatesWithCount = await Promise.all(
       certificates.map(async (cert) => {
+        const employmentStatus = this.resolveEmploymentStatus(
+          cert.request?.hiring_date || cert.hiring_date,
+          cert.request?.request_date,
+          cert.request?.status,
+        );
         const validationCount = await this.validationRepo.count({
           where: { certificate_id: cert.id },
         });
@@ -231,6 +1311,7 @@ export class CertificatesService {
           ...cert,
           email: cert.request?.email,
           validation_count: validationCount,
+          employment_status: employmentStatus,
         };
       }),
     );
@@ -245,6 +1326,8 @@ export class CertificatesService {
     status?: string;
     cargo?: string;
     tipoVinculacion?: string;
+    fechaDesde?: string;
+    fechaHasta?: string;
   }) {
     const safePage = Math.max(params.page || 1, 1);
     const safeLimit = Math.min(Math.max(params.limit || 10, 1), 10);
@@ -285,12 +1368,45 @@ export class CertificatesService {
       qb.andWhere('cert.career_category = :tipo', { tipo: params.tipoVinculacion });
     }
 
-    qb.orderBy('cert.issue_date', 'DESC');
+    if (params.fechaDesde) {
+      const desde = new Date(params.fechaDesde);
+      if (!isNaN(desde.getTime())) {
+        desde.setHours(0, 0, 0, 0);
+        qb.andWhere('COALESCE(cert.issue_date, cert.created_at) >= :fechaDesde', {
+          fechaDesde: desde,
+        });
+      }
+    }
+
+    if (params.fechaHasta) {
+      const hasta = new Date(params.fechaHasta);
+      if (!isNaN(hasta.getTime())) {
+        hasta.setHours(23, 59, 59, 999);
+        qb.andWhere('COALESCE(cert.issue_date, cert.created_at) <= :fechaHasta', {
+          fechaHasta: hasta,
+        });
+      }
+    }
+
+    qb
+      .addSelect('COALESCE(cert.issuance_timestamp, cert.created_at)', 'sort_issuance_date')
+      .addSelect('COALESCE(cert.issue_date, cert.created_at)', 'sort_issue_date')
+      .orderBy('sort_issuance_date', 'DESC')
+      .addOrderBy('sort_issue_date', 'DESC')
+      .addOrderBy('cert.created_at', 'DESC');
 
     const [certificates, total] = await qb.skip(skip).take(safeLimit).getManyAndCount();
 
+    await this.hydrateCertificatesRequestContext(certificates);
+    await this.ensureTemplateSnapshots(certificates);
+
     const certificatesWithCount = await Promise.all(
       certificates.map(async (cert) => {
+        const employmentStatus = this.resolveEmploymentStatus(
+          cert.request?.hiring_date || cert.hiring_date,
+          cert.request?.request_date,
+          cert.request?.status,
+        );
         const validationCount = await this.validationRepo.count({
           where: { certificate_id: cert.id },
         });
@@ -298,6 +1414,7 @@ export class CertificatesService {
           ...cert,
           email: cert.request?.email,
           validation_count: validationCount,
+          employment_status: employmentStatus,
         };
       }),
     );
@@ -328,10 +1445,13 @@ export class CertificatesService {
   async findCertificadoById(id: string) {
     const certificate = await this.certificateRepo.findOne({
       where: { id },
+      relations: ['request'],
     });
     if (!certificate) {
       throw new NotFoundException(`Certificado con ID ${id} no encontrado`);
     }
+    await this.hydrateCertificatesRequestContext([certificate]);
+    await this.ensureTemplateSnapshotForCertificate(certificate);
     return certificate;
   }
 
@@ -349,11 +1469,34 @@ export class CertificatesService {
     if (!certificate) {
       throw new NotFoundException(`Certificado con codigo ${codigoTrim} no encontrado`);
     }
+    await this.hydrateCertificatesRequestContext([certificate]);
     return certificate;
   }
 
-  async createCertificado(solicitudId: string) {
-    const request = await this.findSolicitudById(solicitudId);
+  async createCertificado(
+    solicitudId: string,
+    options: {
+      includeSalary?: boolean;
+      includeTechnicalBonus?: boolean;
+    } = {},
+  ) {
+    const requestById = await this.findSolicitudById(solicitudId);
+    const relatedRequests = await this.requestRepo
+      .createQueryBuilder('request')
+      .where('request.id_number = :documento', { documento: requestById.id_number })
+      .orderBy('COALESCE(request.hiring_date, request.request_date, request.created_at)', 'DESC')
+      .addOrderBy('request.request_date', 'DESC')
+      .addOrderBy('request.created_at', 'DESC')
+      .getMany();
+
+    const preferredRequest =
+      this.selectPreferredRequestForCertificate(relatedRequests) || requestById;
+    const salarySource = this.selectSalarySourceForCertificate(preferredRequest, relatedRequests);
+    const request = this.mergeRequestWithSalarySource(
+      preferredRequest,
+      salarySource,
+      relatedRequests,
+    );
     const signer = await this.signerRepo.findOne({
       where: { is_primary: true, is_active: true },
     });
@@ -371,6 +1514,31 @@ export class CertificatesService {
     const count = await this.certificateRepo.count();
     const certificate_number = `12_620_700_20_CD ${String(count + 1).padStart(3, '0')}`;
 
+    const templateType = this.resolveTemplateTypeFromRequest(request);
+    let templateSnapshot: any = null;
+    let templateVersion: string | null = null;
+    try {
+      const config = await this.templateConfigService.getActiveConfig(templateType);
+      if (config) {
+        templateSnapshot = config;
+        templateVersion = config.version || null;
+      }
+    } catch (error) {
+      this.logger.warn(`No se pudo cargar la plantilla activa (${templateType}): ${error?.message || error}`);
+    }
+
+    const includeSalary = this.normalizeBoolean(options.includeSalary, true);
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(options.includeTechnicalBonus, false)
+      : false;
+    const technicalBonus = await this.resolveTechnicalBonusForRequest(request);
+
+    if (includeTechnicalBonus && !technicalBonus.available) {
+      throw new BadRequestException(
+        'No tienes Prima Tecnica registrada en este momento. No es posible incluirla en el certificado.',
+      );
+    }
+
     const certificate = this.certificateRepo.create({
       verification_code,
       certificate_number,
@@ -382,72 +1550,217 @@ export class CertificatesService {
       position_category: request.position_category,
       position_location: request.position_location,
       monthly_salary: request.monthly_salary,
-      technical_bonus: Number(request.monthly_salary || 0) * 0.2,
+      technical_bonus: technicalBonus.value,
+      include_salary: includeSalary,
+      include_technical_bonus: includeTechnicalBonus,
       salary_text: request.salary_text,
       department: request.department,
-      department_parent: request.department_parent,
-      department_son: request.department_son || undefined,
+      cod_cargo: request.cod_cargo,
+      cod_grade: request.cod_grade || undefined,
       campus: request.campus,
       issue_date: new Date(),
       issuance_timestamp: new Date(),
       signer_name: signer.full_name,
       signer_position: signer.position,
       signer_department: signer.department,
+      template_snapshot: templateSnapshot,
+      template_type: templateType,
+      template_version: templateVersion,
       status: 'VALID',
     });
 
     const saved = await this.certificateRepo.save(certificate);
-
-    // Update request status
-    await this.updateSolicitud(request.id, { status: 'COMPLETED' });
-
-    return saved;
+    const savedWithRequest = await this.certificateRepo.findOne({
+      where: { id: saved.id },
+      relations: ['request'],
+    });
+    return savedWithRequest || saved;
   }
 
   // ============================================
   // VALIDATIONS
   // ============================================
 
-  private mapValidationToDTO(validation: CertificateValidation) {
-    const ua = (validation.user_agent || '').toLowerCase();
-    const isMobile = ua.includes('mobile') || ua.includes('android') || ua.includes('iphone');
-    const isTablet = ua.includes('ipad') || ua.includes('tablet');
-    const deviceType = isTablet ? 'tablet' : isMobile ? 'mobile' : 'desktop';
+  private parseUserAgentInfo(userAgent?: string | null): {
+    deviceType: 'desktop' | 'mobile' | 'tablet';
+    sistemaOperativo: string;
+    navegador: string;
+    version: string;
+  } {
+    const ua = String(userAgent || '').trim();
+    const uaLower = ua.toLowerCase();
+
+    const isTablet = /(ipad|tablet)/i.test(ua);
+    const isMobile = /(mobile|iphone|android)/i.test(ua);
+    const deviceType: 'desktop' | 'mobile' | 'tablet' = isTablet
+      ? 'tablet'
+      : isMobile
+        ? 'mobile'
+        : 'desktop';
 
     let sistemaOperativo = 'Desconocido';
-    if (ua.includes('windows')) sistemaOperativo = 'Windows';
-    else if (ua.includes('android')) sistemaOperativo = 'Android';
-    else if (ua.includes('mac os') || ua.includes('macos')) sistemaOperativo = 'macOS';
-    else if (ua.includes('ios') || ua.includes('iphone') || ua.includes('ipad')) sistemaOperativo = 'iOS';
-    else if (ua.includes('linux')) sistemaOperativo = 'Linux';
+    if (/(iphone|ipad|ipod|ios)/i.test(ua)) sistemaOperativo = 'iOS';
+    else if (/android/i.test(ua)) sistemaOperativo = 'Android';
+    else if (/windows/i.test(ua)) sistemaOperativo = 'Windows';
+    else if (/(mac os|macos|macintosh)/i.test(ua)) sistemaOperativo = 'macOS';
+    else if (/linux/i.test(ua)) sistemaOperativo = 'Linux';
 
     let navegador = 'Desconocido';
-    if (ua.includes('chrome')) navegador = 'Chrome';
-    else if (ua.includes('safari')) navegador = 'Safari';
-    else if (ua.includes('firefox')) navegador = 'Firefox';
-    else if (ua.includes('edge')) navegador = 'Edge';
+    let version = '';
+
+    const browserPatterns: Array<{ regex: RegExp; name: string }> = [
+      { regex: /(edg|edge|edgios|edga)\/([\d.]+)/i, name: 'Edge' },
+      { regex: /(opr|opera)\/([\d.]+)/i, name: 'Opera' },
+      { regex: /firefox\/([\d.]+)/i, name: 'Firefox' },
+      { regex: /fxios\/([\d.]+)/i, name: 'Firefox' },
+      { regex: /crios\/([\d.]+)/i, name: 'Chrome' },
+      { regex: /chrome\/([\d.]+)/i, name: 'Chrome' },
+      { regex: /version\/([\d.]+).*safari/i, name: 'Safari' },
+      { regex: /safari\/([\d.]+)/i, name: 'Safari' },
+    ];
+
+    for (const pattern of browserPatterns) {
+      const match = ua.match(pattern.regex);
+      if (match) {
+        navegador = pattern.name;
+        version = (match[2] || match[1] || '').trim();
+        break;
+      }
+    }
+
+    // Fallback defensivo para UAs no estandar.
+    if (navegador === 'Desconocido') {
+      if (uaLower.includes('postman')) {
+        navegador = 'Postman';
+      } else if (uaLower.includes('insomnia')) {
+        navegador = 'Insomnia';
+      }
+    }
+
+    return {
+      deviceType,
+      sistemaOperativo,
+      navegador,
+      version,
+    };
+  }
+
+  private normalizeGeoText(value?: string | null): string | undefined {
+    const normalized = String(value || '').trim();
+    if (!normalized) return undefined;
+    if (/^(unknown|desconocido|n\/a|na|null|undefined|localhost|local)$/i.test(normalized)) {
+      return undefined;
+    }
+    if (/^(xx|t1)$/i.test(normalized)) {
+      return undefined;
+    }
+    return normalized;
+  }
+
+  private normalizeGeoPayload(geo?: GeoLookupResult | null): GeoLookupResult | null {
+    if (!geo) return null;
+
+    const city = this.normalizeGeoText(geo.city);
+    const region = this.normalizeGeoText(geo.region);
+    const country = this.normalizeGeoText(geo.country);
+    const isp = this.normalizeGeoText(geo.isp);
+    const latitude =
+      typeof geo.latitude === 'number' && Number.isFinite(geo.latitude)
+        ? geo.latitude
+        : undefined;
+    const longitude =
+      typeof geo.longitude === 'number' && Number.isFinite(geo.longitude)
+        ? geo.longitude
+        : undefined;
+
+    if (!city && !region && !country && latitude === undefined && longitude === undefined) {
+      return null;
+    }
+
+    return {
+      city,
+      region,
+      country,
+      latitude,
+      longitude,
+      isp,
+    };
+  }
+
+  private resolveGeoFromContext(context?: ValidationGeoContext): GeoLookupResult | null {
+    if (!context) return null;
+    return this.normalizeGeoPayload({
+      city: context.geoCity,
+      region: context.geoRegion,
+      country: context.geoCountry,
+    });
+  }
+
+  private mergeGeoSources(primary?: GeoLookupResult | null, fallback?: GeoLookupResult | null): GeoLookupResult | null {
+    return this.normalizeGeoPayload({
+      city: primary?.city || fallback?.city,
+      region: primary?.region || fallback?.region,
+      country: primary?.country || fallback?.country,
+      latitude: primary?.latitude ?? fallback?.latitude,
+      longitude: primary?.longitude ?? fallback?.longitude,
+      isp: primary?.isp || fallback?.isp,
+    });
+  }
+
+  private getGeoLookupTimeoutMs(): number {
+    const raw = Number(process.env.GEOLOOKUP_TIMEOUT_MS || process.env.GEO_LOOKUP_TIMEOUT_MS || 3500);
+    if (!Number.isFinite(raw)) return 3500;
+    return Math.min(10000, Math.max(1200, Math.round(raw)));
+  }
+
+  private mapValidationToDTO(validation: CertificateValidation) {
+    const uaInfo = this.parseUserAgentInfo(validation.user_agent);
 
     const resultado = (validation.result || 'VALID').toUpperCase();
     const resultadoNormalizado =
       resultado === 'REVOKED' || resultado === 'EXPIRED' || resultado === 'INVALID'
         ? 'fallida'
-        : 'exitosa';
+        : resultado === 'SUSPICIOUS' || resultado === 'WARNING'
+          ? 'sospechosa'
+          : 'exitosa';
 
-    const ciudad = validation.city || validation.location || 'Desconocido';
-    const pais = validation.country || 'Desconocido';
+    const locationRaw = String(validation.location || '').trim();
+    const locationParts = locationRaw
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const locationSingle = locationParts.length === 1 ? locationParts[0] : undefined;
+    const cityFromLocation = locationParts.length > 1 ? locationParts[0] : undefined;
+    const countryFromLocation =
+      locationParts.length > 1 ? locationParts.slice(1).join(', ') : undefined;
+    const locationLooksLikeCountryCode =
+      Boolean(locationSingle) && /^[A-Za-z]{2,3}$/.test(String(locationSingle));
+    const ciudad =
+      validation.city ||
+      validation.region ||
+      cityFromLocation ||
+      (!locationLooksLikeCountryCode ? locationSingle : undefined) ||
+      'Desconocido';
+    const pais =
+      validation.country ||
+      countryFromLocation ||
+      (locationLooksLikeCountryCode ? String(locationSingle).toUpperCase() : '') ||
+      'Desconocido';
+
+    const normalizedIp = this.normalizeIp(validation.ip_address || '') || validation.ip_address || '0.0.0.0';
 
     return {
       id: validation.id,
       timestamp: validation.validation_date,
       resultado: resultadoNormalizado,
       dispositivo: {
-        tipo: deviceType,
-        sistemaOperativo,
-        navegador,
-        version: '',
+        tipo: uaInfo.deviceType,
+        sistemaOperativo: uaInfo.sistemaOperativo,
+        navegador: uaInfo.navegador,
+        version: uaInfo.version,
       },
       ubicacion: {
-        ip: validation.ip_address || '0.0.0.0',
+        ip: normalizedIp,
         pais,
         ciudad,
         latitud: validation.latitude ?? undefined,
@@ -458,11 +1771,23 @@ export class CertificatesService {
     };
   }
 
-  private normalizeIp(ip?: string): string | null {
-    if (!ip) return null;
-    const trimmed = ip.split(',')[0]?.trim();
-    if (!trimmed) return null;
-    let normalized = trimmed;
+  private isIpLike(value: string): boolean {
+    if (!value) return false;
+    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(value)) return true;
+    return value.includes(':');
+  }
+
+  private normalizeSingleIp(raw?: string): string | null {
+    if (!raw) return null;
+    let normalized = String(raw).trim();
+    if (!normalized) return null;
+
+    if (normalized.toLowerCase().startsWith('for=')) {
+      normalized = normalized.slice(4).trim();
+    }
+
+    normalized = normalized.replace(/^"+|"+$/g, '');
+    normalized = normalized.split(';')[0]?.trim() || normalized;
 
     if (normalized.startsWith('[') && normalized.includes(']')) {
       normalized = normalized.slice(1, normalized.indexOf(']'));
@@ -470,17 +1795,38 @@ export class CertificatesService {
 
     normalized = normalized.replace(/^::ffff:/i, '');
 
-    if (/^\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+$/.test(normalized)) {
+    if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(normalized)) {
       normalized = normalized.split(':')[0];
     }
 
+    if (!this.isIpLike(normalized)) return null;
     return normalized || null;
+  }
+
+  private normalizeIp(ip?: string): string | null {
+    if (!ip) return null;
+
+    const candidates = String(ip)
+      .split(',')
+      .map((item) => this.normalizeSingleIp(item))
+      .filter((item): item is string => Boolean(item));
+
+    if (!candidates.length) return null;
+
+    const publicIp = candidates.find((candidate) => !this.isPrivateIp(candidate));
+    return publicIp || candidates[0];
   }
 
   private isPrivateIp(ip: string): boolean {
     if (!ip) return true;
     const lower = ip.toLowerCase();
-    if (lower === '::1' || lower.startsWith('fc') || lower.startsWith('fd') || lower.startsWith('fe80')) {
+    if (
+      lower === '::1' ||
+      lower === '::' ||
+      lower.startsWith('fc') ||
+      lower.startsWith('fd') ||
+      lower.startsWith('fe80')
+    ) {
       return true;
     }
 
@@ -491,10 +1837,33 @@ export class CertificatesService {
 
     const [a, b] = parts;
     if (a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
     if (a === 192 && b === 168) return true;
     if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    if (a === 198 && (b === 18 || b === 19)) return true;
 
     return false;
+  }
+
+  private async fetchJsonWithTimeout(url: string, timeoutMs = 3500): Promise<any | null> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'esap-certification-service/1.0',
+        },
+      });
+      if (!response.ok) return null;
+      return await response.json();
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   private async resolveGeoFromIp(ip?: string): Promise<{
@@ -508,28 +1877,111 @@ export class CertificatesService {
     const normalizedIp = this.normalizeIp(ip || '');
     if (!normalizedIp || this.isPrivateIp(normalizedIp)) return null;
 
+    const now = Date.now();
+    const cached = this.geoCache.get(normalizedIp);
+    if (cached && cached.expiresAt > now) {
+      return cached.value;
+    }
+    if (cached) {
+      this.geoCache.delete(normalizedIp);
+    }
+
+    const timeoutMs = this.getGeoLookupTimeoutMs();
+
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2500);
-      const response = await fetch(`https://ipwho.is/${encodeURIComponent(normalizedIp)}`, {
-        signal: controller.signal,
+      const ipWho = await this.fetchJsonWithTimeout(
+        `https://ipwho.is/${encodeURIComponent(normalizedIp)}`,
+        timeoutMs,
+      );
+      const fromIpWho = this.normalizeGeoPayload(
+        ipWho && ipWho.success !== false
+          ? {
+              city: ipWho.city || undefined,
+              region: ipWho.region || undefined,
+              country: ipWho.country || undefined,
+              latitude: typeof ipWho.latitude === 'number' ? ipWho.latitude : undefined,
+              longitude: typeof ipWho.longitude === 'number' ? ipWho.longitude : undefined,
+              isp: ipWho.connection?.isp || undefined,
+            }
+          : null,
+      );
+      if (fromIpWho) {
+        this.geoCache.set(normalizedIp, {
+          expiresAt: now + this.geoCacheTtlMs,
+          value: fromIpWho,
+        });
+        return fromIpWho;
+      }
+
+      const ipApiCo = await this.fetchJsonWithTimeout(
+        `https://ipapi.co/${encodeURIComponent(normalizedIp)}/json/`,
+        timeoutMs,
+      );
+      const fromIpApiCo = this.normalizeGeoPayload(
+        ipApiCo && !ipApiCo.error
+          ? {
+              city: ipApiCo.city || undefined,
+              region: ipApiCo.region || undefined,
+              country: ipApiCo.country_name || ipApiCo.country || undefined,
+              latitude:
+                typeof ipApiCo.latitude === 'number'
+                  ? ipApiCo.latitude
+                  : Number(ipApiCo.latitude) || undefined,
+              longitude:
+                typeof ipApiCo.longitude === 'number'
+                  ? ipApiCo.longitude
+                  : Number(ipApiCo.longitude) || undefined,
+              isp: ipApiCo.org || undefined,
+            }
+          : null,
+      );
+      if (fromIpApiCo) {
+        this.geoCache.set(normalizedIp, {
+          expiresAt: now + this.geoCacheTtlMs,
+          value: fromIpApiCo,
+        });
+        return fromIpApiCo;
+      }
+
+      const ipInfo = await this.fetchJsonWithTimeout(
+        `https://ipinfo.io/${encodeURIComponent(normalizedIp)}/json`,
+        timeoutMs,
+      );
+      const [rawLat, rawLng] = String(ipInfo?.loc || '')
+        .split(',')
+        .map((part) => part.trim());
+      const fromIpInfo = this.normalizeGeoPayload(
+        ipInfo
+          ? {
+              city: ipInfo.city || undefined,
+              region: ipInfo.region || undefined,
+              country: ipInfo.country || undefined,
+              latitude: rawLat ? Number(rawLat) : undefined,
+              longitude: rawLng ? Number(rawLng) : undefined,
+              isp: ipInfo.org || undefined,
+            }
+          : null,
+      );
+      if (fromIpInfo) {
+        this.geoCache.set(normalizedIp, {
+          expiresAt: now + this.geoCacheTtlMs,
+          value: fromIpInfo,
+        });
+        return fromIpInfo;
+      }
+
+      const geoFallback = this.normalizeGeoPayload(null);
+      this.geoCache.set(normalizedIp, {
+        expiresAt: now + this.geoCacheMissTtlMs,
+        value: geoFallback,
       });
-      clearTimeout(timeout);
-
-      if (!response.ok) return null;
-      const data = await response.json();
-      if (!data || data.success === false) return null;
-
-      return {
-        city: data.city || undefined,
-        region: data.region || undefined,
-        country: data.country || undefined,
-        latitude: typeof data.latitude === 'number' ? data.latitude : undefined,
-        longitude: typeof data.longitude === 'number' ? data.longitude : undefined,
-        isp: data.connection?.isp || undefined,
-      };
+      return geoFallback;
     } catch (error) {
       this.logger.warn(`No se pudo resolver geolocalizacion para IP ${ip}: ${error?.message || error}`);
+      this.geoCache.set(normalizedIp, {
+        expiresAt: now + this.geoCacheMissTtlMs,
+        value: null,
+      });
       return null;
     }
   }
@@ -542,7 +1994,7 @@ export class CertificatesService {
 
     const mapped = await Promise.all(
       validaciones.map(async (validation) => {
-        if (!validation.city && !validation.country && validation.ip_address) {
+        if ((!validation.city || !validation.country) && validation.ip_address) {
           const geo = await this.resolveGeoFromIp(validation.ip_address);
           if (geo) {
             validation.city = geo.city || validation.city;
@@ -565,7 +2017,12 @@ export class CertificatesService {
     return mapped;
   }
 
-  async registrarValidacion(codigoVerificacion: string, ip?: string, userAgent?: string) {
+  async registrarValidacion(
+    codigoVerificacion: string,
+    ip?: string,
+    userAgent?: string,
+    geoContext?: ValidationGeoContext,
+  ) {
     const certificate = await this.findCertificadoByCodigoVerificacion(codigoVerificacion);
 
     // Determine validation result based on certificate status
@@ -576,16 +2033,28 @@ export class CertificatesService {
       result = 'EXPIRED';
     }
 
-    const geo = await this.resolveGeoFromIp(ip);
+    const normalizedIp =
+      this.normalizeIp(ip || '') ||
+      this.normalizeSingleIp(ip || '') ||
+      String(ip || '').trim() ||
+      undefined;
+    const geoFromHeader = this.resolveGeoFromContext(geoContext);
+    const geoFromIp = await this.resolveGeoFromIp(normalizedIp);
+    const geo = this.mergeGeoSources(geoFromIp, geoFromHeader);
+    if (!geo && normalizedIp && !this.isPrivateIp(normalizedIp)) {
+      this.logger.warn(`Validacion sin geolocalizacion para IP publica ${normalizedIp}`);
+    }
     const location =
       geo?.city && geo?.country
         ? `${geo.city}, ${geo.country}`
-        : geo?.city || geo?.country || undefined;
+        : geo?.region && geo?.country
+          ? `${geo.region}, ${geo.country}`
+          : geo?.city || geo?.region || geo?.country || undefined;
 
     const validation = this.validationRepo.create({
       certificate_id: certificate.id,
       validation_date: new Date(),
-      ip_address: this.normalizeIp(ip || '') || ip,
+      ip_address: normalizedIp,
       user_agent: userAgent,
       location,
       country: geo?.country,
@@ -600,9 +2069,23 @@ export class CertificatesService {
     await this.validationRepo.save(validation);
 
     const historial = await this.obtenerHistorialValidacionesPorCertificado(certificate.id);
+    const requestContext = certificate.request_id
+      ? await this.requestRepo.findOne({ where: { id: certificate.request_id } })
+      : null;
+    const requestPayload = requestContext
+      ? {
+          observations: requestContext.observations,
+          cod_cargo: requestContext.cod_cargo,
+          cod_grade: requestContext.cod_grade,
+          department: requestContext.department,
+          position_location: requestContext.position_location,
+        }
+      : undefined;
 
     return {
       ...certificate,
+      observations: requestContext?.observations || undefined,
+      request: requestPayload,
       validation_history: historial,
       validation_count: historial.length,
     };
@@ -698,9 +2181,24 @@ export class CertificatesService {
       fechaExpedicionDate || new Date(),
     );
 
+    const normalizarMonto = (value?: string | number | null) => {
+      if (value === null || value === undefined) return 0;
+      const raw = typeof value === 'string' ? value.replace(/[^\d.-]/g, '') : String(value);
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed)) return 0;
+      return Math.round(parsed);
+    };
+
+    const formatearMonto = (value?: string | number | null) =>
+      normalizarMonto(value).toLocaleString('es-CO', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      });
+
     // Formatear salario
-    const salarioNumero = `($${certificado.monthly_salary.toLocaleString('es-CO')})`;
-    const salarioTexto = this.certificateGenerator.numeroATexto(certificado.monthly_salary);
+    const salarioBase = normalizarMonto(certificado.monthly_salary);
+    const salarioNumero = `($${formatearMonto(salarioBase)})`;
+    const salarioTexto = this.certificateGenerator.numeroATexto(salarioBase);
 
     // Generar el documento DOCX
     const buffer = await this.certificateGenerator.generateCertificate({
@@ -731,33 +2229,58 @@ export class CertificatesService {
   async verificarDocumentoPorSolicitud(documento: string) {
     // Buscar la solicitud por numero de documento
     const documentoTrim = (documento || '').trim();
-    const solicitud = await this.requestRepo
+    const solicitudes = await this.requestRepo
       .createQueryBuilder('request')
       .where('request.id_number = :documento', { documento: documentoTrim })
       .orderBy('COALESCE(request.hiring_date, request.request_date, request.created_at)', 'DESC')
       .addOrderBy('request.request_date', 'DESC')
       .addOrderBy('request.created_at', 'DESC')
-      .getOne();
+      .getMany();
 
-    if (!solicitud) {
+    const solicitudBase = this.selectPreferredRequestForCertificate(solicitudes);
+
+    if (!solicitudBase) {
       return {
         existe: false,
         mensaje: 'No se encontro ningun registro con este documento',
       };
     }
 
+    const salarySource = this.selectSalarySourceForCertificate(solicitudBase, solicitudes);
+    const solicitud = this.mergeRequestWithSalarySource(
+      solicitudBase,
+      salarySource,
+      solicitudes,
+    );
+
+    const technicalBonus = await this.resolveTechnicalBonusForRequest(solicitud);
+    const solicitudResponse = {
+      ...solicitud,
+      technical_bonus_available: technicalBonus.available,
+      technical_bonus_percentage: technicalBonus.percentage,
+      technical_bonus_value: technicalBonus.value,
+      technical_bonus_category: technicalBonus.category,
+      technical_bonus_assignment_id: technicalBonus.assignmentId,
+    };
+
     // Verificar si ya tiene un certificado generado
     const certificadoExistente = await this.certificateRepo.findOne({
       where: { request_id: solicitud.id },
+      relations: ['request'],
     });
 
     if (certificadoExistente) {
+      await this.ensureTemplateSnapshotForCertificate(certificadoExistente);
       return {
         existe: true,
         tieneCertificado: true,
         mensaje: 'Ya tienes un certificado generado',
-        solicitud: solicitud,
+        solicitud: solicitudResponse,
         certificado: certificadoExistente,
+        technical_bonus_available: technicalBonus.available,
+        technical_bonus_percentage: technicalBonus.percentage,
+        technical_bonus_value: technicalBonus.value,
+        technical_bonus_category: technicalBonus.category,
       };
     }
 
@@ -765,7 +2288,11 @@ export class CertificatesService {
       existe: true,
       tieneCertificado: false,
       mensaje: 'Documento encontrado, puedes solicitar tu certificado',
-      solicitud: solicitud,
+      solicitud: solicitudResponse,
+      technical_bonus_available: technicalBonus.available,
+      technical_bonus_percentage: technicalBonus.percentage,
+      technical_bonus_value: technicalBonus.value,
+      technical_bonus_category: technicalBonus.category,
     };
   }
 
@@ -784,6 +2311,17 @@ export class CertificatesService {
     // Verificar que solicitud existe
     if (!verificacion.solicitud) {
       throw new BadRequestException('Error al recuperar informacion de la solicitud');
+    }
+
+    const employmentStatus = this.resolveEmploymentStatus(
+      verificacion.solicitud.hiring_date,
+      verificacion.solicitud.request_date,
+      verificacion.solicitud.status,
+    );
+    if (employmentStatus === 'INACTIVO') {
+      throw new BadRequestException(
+        'Si tu certificado no se encuentra disponible o tienes inquietudes, escribenos a talento.humano@esap.edu.co.',
+      );
     }
 
     // Generar codigo de 6 digitos
@@ -811,13 +2349,29 @@ export class CertificatesService {
         full_name: verificacion.solicitud.full_name,
         id_number: verificacion.solicitud.id_number,
         email: verificacion.solicitud.email,
+        status: verificacion.solicitud.status,
+        employment_status: employmentStatus,
         career_category: verificacion.solicitud.career_category,
         hiring_date: verificacion.solicitud.hiring_date,
         position_category: verificacion.solicitud.position_category,
         position_location: verificacion.solicitud.position_location,
         monthly_salary: verificacion.solicitud.monthly_salary,
         department: verificacion.solicitud.department,
+        cod_cargo: verificacion.solicitud.cod_cargo,
+        cod_grade: verificacion.solicitud.cod_grade,
         campus: verificacion.solicitud.campus,
+        observations: verificacion.solicitud.observations,
+        technical_bonus_available: this.normalizeBoolean(
+          (verificacion.solicitud as any).technical_bonus_available,
+          false,
+        ),
+        technical_bonus_percentage: this.roundToTwoDecimals(
+          this.parseNumericValue((verificacion.solicitud as any).technical_bonus_percentage),
+        ),
+        technical_bonus_value: this.roundToTwoDecimals(
+          this.parseNumericValue((verificacion.solicitud as any).technical_bonus_value),
+        ),
+        technical_bonus_category: (verificacion.solicitud as any).technical_bonus_category || null,
       },
     };
   }
@@ -825,7 +2379,14 @@ export class CertificatesService {
   /**
    * Validar codigo y generar certificado
    */
-  async validarCodigoYGenerarCertificado(documento: string, codigo: string) {
+  async validarCodigoYGenerarCertificado(
+    documento: string,
+    codigo: string,
+    options: {
+      includeSalary?: boolean;
+      includeTechnicalBonus?: boolean;
+    } = {},
+  ) {
     const documentoTrim = (documento || '').trim();
     const codigoTrim = (codigo || '').trim();
     // Buscar la solicitud por documento + codigo para evitar conflictos con multiples solicitudes
@@ -847,8 +2408,26 @@ export class CertificatesService {
       throw new BadRequestException('El codigo de validacion ha expirado. Solicita uno nuevo.');
     }
 
+    const employmentStatus = this.resolveEmploymentStatus(
+      solicitud.hiring_date,
+      solicitud.request_date,
+      solicitud.status,
+    );
+    if (employmentStatus === 'INACTIVO') {
+      throw new BadRequestException(
+        'Si tu certificado no se encuentra disponible o tienes inquietudes, escribenos a talento.humano@esap.edu.co.',
+      );
+    }
+
     // Generar el certificado
-    const nuevoCertificado = await this.createCertificado(solicitud.id);
+    const includeSalary = this.normalizeBoolean(options.includeSalary, true);
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(options.includeTechnicalBonus, false)
+      : false;
+    const nuevoCertificado = await this.createCertificado(solicitud.id, {
+      includeSalary,
+      includeTechnicalBonus,
+    });
 
     // Limpia el codigo y expiracion en la solicitud
     await this.requestRepo.update(solicitud.id, {

@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { X, Plus, User, Building2, DollarSign, Calendar, FileText, CheckCircle, AlertTriangle, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalHeaderClean } from '../modulos/ModalHeaderClean';
 
 interface ModalCrearProcesoCoactivoProps {
@@ -21,7 +21,7 @@ export function ModalCrearProcesoCoactivo({
   onCrear
 }: ModalCrearProcesoCoactivoProps) {
   const [paso, setPaso] = useState<1 | 2 | 3>(1);
-  
+
   // Paso 1: Tipo y datos del deudor
   const [tipoDeudor, setTipoDeudor] = useState<'PERSONA' | 'EMPRESA'>('PERSONA');
   const [nombreDeudor, setNombreDeudor] = useState('');
@@ -29,17 +29,19 @@ export function ModalCrearProcesoCoactivo({
   const [correoDeudor, setCorreoDeudor] = useState('');
   const [telefonoDeudor, setTelefonoDeudor] = useState('');
   const [direccionDeudor, setDireccionDeudor] = useState('');
-  
+
   // Paso 2: Obligaciones
   const [obligaciones, setObligaciones] = useState<{
     concepto: string;
     valor: string;
     periodo: string;
   }[]>([{ concepto: '', valor: '', periodo: '' }]);
-  
+
   // Paso 3: Información del proceso
   const [responsable, setResponsable] = useState('');
   const [fechaLimite, setFechaLimite] = useState('');
+  const [fechaEjecutoria, setFechaEjecutoria] = useState('');
+  const [tipoInteresAplicable, setTipoInteresAplicable] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -94,17 +96,17 @@ export function ModalCrearProcesoCoactivo({
     const obligacionesValidas = obligaciones.filter(
       obl => obl.concepto.trim() && obl.valor.trim() && parseFloat(obl.valor) > 0
     );
-    
+
     if (obligacionesValidas.length === 0) {
       toast.error('Debe agregar al menos una obligación válida');
       return false;
     }
-    
+
     if (calcularValorTotal() === 0) {
       toast.error('El valor total debe ser mayor a cero');
       return false;
     }
-    
+
     return true;
   };
 
@@ -118,7 +120,7 @@ export function ModalCrearProcesoCoactivo({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!responsable) {
       toast.error('Seleccione un responsable');
       return;
@@ -126,6 +128,16 @@ export function ModalCrearProcesoCoactivo({
 
     if (!fechaLimite) {
       toast.error('Ingrese la fecha límite');
+      return;
+    }
+
+    if (!fechaEjecutoria) {
+      toast.error('Ingrese la fecha de ejecutoria del título');
+      return;
+    }
+
+    if (!tipoInteresAplicable) {
+      toast.error('Seleccione el tipo de interés aplicable');
       return;
     }
 
@@ -150,8 +162,10 @@ export function ModalCrearProcesoCoactivo({
         valorTotal: calcularValorTotal(),
         responsable,
         fechaLimite: new Date(fechaLimite),
+        fechaEjecutoria: new Date(fechaEjecutoria),
+        tipoInteresAplicable,
         observaciones,
-        etapa: 'IDENTIFICADO',
+        etapa: 'PERSUASIVA',
         fechaCreacion: new Date()
       };
 
@@ -186,7 +200,7 @@ export function ModalCrearProcesoCoactivo({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-[108]"
+            className="fixed inset-0 bg-black/50 z-[9998]"
             onClick={onClose}
           />
 
@@ -197,7 +211,7 @@ export function ModalCrearProcesoCoactivo({
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
             onClick={(e) => e.stopPropagation()}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl bg-white rounded-2xl shadow-2xl z-[109] max-h-[90vh] overflow-y-auto"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl bg-white rounded-2xl shadow-2xl z-[9999] max-h-[90vh] overflow-y-auto"
           >
             {/* Header ESAP 2025 - Limpio */}
             <div className="px-6 py-5 bg-white border-b flex items-center justify-between">
@@ -222,9 +236,8 @@ export function ModalCrearProcesoCoactivo({
             <div className="px-6 py-4 border-b bg-gray-50">
               <div className="flex items-center justify-center gap-4">
                 <div className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
-                    paso === 1 ? 'bg-red-600 text-white' : paso > 1 ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-600'
-                  }`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${paso === 1 ? 'bg-red-600 text-white' : paso > 1 ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-600'
+                    }`}>
                     {paso > 1 ? <CheckCircle className="w-5 h-5" /> : '1'}
                   </div>
                   <span className={`text-sm font-semibold ${paso === 1 ? 'text-red-600' : paso > 1 ? 'text-green-600' : 'text-gray-500'}`}>
@@ -233,9 +246,8 @@ export function ModalCrearProcesoCoactivo({
                 </div>
                 <div className="w-16 h-0.5 bg-gray-300" />
                 <div className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
-                    paso === 2 ? 'bg-red-600 text-white' : paso > 2 ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-600'
-                  }`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${paso === 2 ? 'bg-red-600 text-white' : paso > 2 ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-600'
+                    }`}>
                     {paso > 2 ? <CheckCircle className="w-5 h-5" /> : '2'}
                   </div>
                   <span className={`text-sm font-semibold ${paso === 2 ? 'text-red-600' : paso > 2 ? 'text-green-600' : 'text-gray-500'}`}>
@@ -244,9 +256,8 @@ export function ModalCrearProcesoCoactivo({
                 </div>
                 <div className="w-16 h-0.5 bg-gray-300" />
                 <div className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
-                    paso === 3 ? 'bg-red-600 text-white' : 'bg-gray-300 text-gray-600'
-                  }`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${paso === 3 ? 'bg-red-600 text-white' : 'bg-gray-300 text-gray-600'
+                    }`}>
                     3
                   </div>
                   <span className={`text-sm font-semibold ${paso === 3 ? 'text-red-600' : 'text-gray-500'}`}>
@@ -258,11 +269,11 @@ export function ModalCrearProcesoCoactivo({
 
             {/* Contenido */}
             <form onSubmit={handleSubmit} className="p-6">
-              
+
               {/* PASO 1: Información del Deudor */}
               {paso === 1 && (
                 <div className="space-y-6">
-                  
+
                   {/* Tipo de Deudor */}
                   <div>
                     <label className="block text-sm font-bold text-gray-900 mb-3">
@@ -272,11 +283,10 @@ export function ModalCrearProcesoCoactivo({
                       <button
                         type="button"
                         onClick={() => setTipoDeudor('PERSONA')}
-                        className={`p-6 rounded-lg border-2 transition-all ${
-                          tipoDeudor === 'PERSONA'
-                            ? 'border-red-600 bg-red-50'
-                            : 'border-gray-300 bg-white hover:border-gray-400'
-                        }`}
+                        className={`p-6 rounded-lg border-2 transition-all ${tipoDeudor === 'PERSONA'
+                          ? 'border-red-600 bg-red-50'
+                          : 'border-gray-300 bg-white hover:border-gray-400'
+                          }`}
                       >
                         <User className="w-8 h-8 mx-auto mb-2 text-red-600" />
                         <p className="text-sm font-bold text-gray-900">Persona Natural</p>
@@ -285,11 +295,10 @@ export function ModalCrearProcesoCoactivo({
                       <button
                         type="button"
                         onClick={() => setTipoDeudor('EMPRESA')}
-                        className={`p-6 rounded-lg border-2 transition-all ${
-                          tipoDeudor === 'EMPRESA'
-                            ? 'border-red-600 bg-red-50'
-                            : 'border-gray-300 bg-white hover:border-gray-400'
-                        }`}
+                        className={`p-6 rounded-lg border-2 transition-all ${tipoDeudor === 'EMPRESA'
+                          ? 'border-red-600 bg-red-50'
+                          : 'border-gray-300 bg-white hover:border-gray-400'
+                          }`}
                       >
                         <Building2 className="w-8 h-8 mx-auto mb-2 text-red-600" />
                         <p className="text-sm font-bold text-gray-900">Persona Jurídica</p>
@@ -382,7 +391,7 @@ export function ModalCrearProcesoCoactivo({
               {/* PASO 2: Obligaciones */}
               {paso === 2 && (
                 <div className="space-y-6">
-                  
+
                   <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
                     <p className="text-sm font-bold text-blue-900">💰 Registro de Obligaciones</p>
                     <p className="text-xs text-blue-700 mt-1">
@@ -485,7 +494,7 @@ export function ModalCrearProcesoCoactivo({
               {/* PASO 3: Información del Proceso */}
               {paso === 3 && (
                 <div className="space-y-6">
-                  
+
                   {/* Resumen */}
                   <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
                     <p className="text-xs text-gray-600 font-bold mb-2">Resumen del Proceso</p>
@@ -538,6 +547,33 @@ export function ModalCrearProcesoCoactivo({
                         className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 outline-none"
                         required
                       />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-900 mb-2">
+                        Fecha de Ejecutoria (Título) *
+                      </label>
+                      <input
+                        type="date"
+                        value={fechaEjecutoria}
+                        onChange={(e) => setFechaEjecutoria(e.target.value)}
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-900 mb-2">
+                        Tipo de Interés Aplicable *
+                      </label>
+                      <select
+                        value={tipoInteresAplicable}
+                        onChange={(e) => setTipoInteresAplicable(e.target.value)}
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 outline-none"
+                        required
+                      >
+                        <option value="">Seleccione un tipo de interés</option>
+                        <option value="USURA">Tasa de Usura Vigente</option>
+                        <option value="DIAN">Interés DIAN</option>
+                      </select>
                     </div>
                   </div>
 

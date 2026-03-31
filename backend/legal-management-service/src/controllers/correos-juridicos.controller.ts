@@ -37,6 +37,15 @@ export class CorreosJuridicosController {
     }
 
     /**
+     * Reclassify ALL emails with updated heuristics
+     */
+    @Post('reclassify-all')
+    @HttpCode(HttpStatus.OK)
+    async reclassifyAll(): Promise<{ processed: number; updated: number; unchanged: number }> {
+        return this.correosService.reclassifyAll();
+    }
+
+    /**
      * Test Microsoft Graph connection
      */
     @Get('test-connection')
@@ -53,7 +62,9 @@ export class CorreosJuridicosController {
         @Query('leido') leido?: string,
         @Query('urgente') urgente?: string,
         @Query('archivado') archivado?: string,
+        @Query('direccion') direccion?: string,
         @Query('search') search?: string,
+        @Query('expedienteId') expedienteId?: string,
     ): Promise<CorreoJuridico[]> {
         const filters: EmailFilters = {};
 
@@ -61,7 +72,9 @@ export class CorreosJuridicosController {
         if (leido !== undefined) filters.leido = leido === 'true';
         if (urgente !== undefined) filters.urgente = urgente === 'true';
         if (archivado !== undefined) filters.archivado = archivado === 'true';
+        if (direccion) filters.direccion = direccion;
         if (search) filters.search = search;
+        if (expedienteId) filters.expedienteId = expedienteId;
 
         return this.correosService.getAll(filters);
     }
@@ -72,6 +85,14 @@ export class CorreosJuridicosController {
     @Get(':id')
     async getById(@Param('id') id: string): Promise<CorreoJuridico> {
         return this.correosService.getById(id);
+    }
+
+    /**
+     * Get email history / traceability
+     */
+    @Get(':id/historial')
+    async getHistorial(@Param('id') id: string) {
+        return this.correosService.getHistorial(id);
     }
 
     /**
@@ -91,13 +112,21 @@ export class CorreosJuridicosController {
     }
 
     /**
+     * Unarchive email - restore to original location
+     */
+    @Patch(':id/unarchive')
+    async unarchive(@Param('id') id: string): Promise<CorreoJuridico> {
+        return this.correosService.unarchive(id);
+    }
+
+    /**
      * Send email via Microsoft Graph
      */
     @Post('send')
     @HttpCode(HttpStatus.OK)
     async sendEmail(@Body() dto: SendEmailDto): Promise<{ success: boolean }> {
-        const success = await this.correosService.sendEmail(dto);
-        return { success };
+        const result = await this.correosService.sendEmail(dto);
+        return { success: result.success };
     }
 
     /**
@@ -119,14 +148,55 @@ export class CorreosJuridicosController {
     ) {
         const attachment = await this.correosService.downloadAttachment(adjuntoId);
 
-        // Set headers for file download
-        res.setHeader('Content-Type', attachment.contentType);
-        res.setHeader('Content-Disposition', `attachment; filename="${attachment.name}"`);
-        res.setHeader('Content-Length', attachment.size);
-
-        // Convert base64 to buffer and send
+        // Convert base64 to buffer
         const buffer = Buffer.from(attachment.contentBytes, 'base64');
+
+        // Determinar si es un archivo visualizable en el navegador (PDF, imágenes)
+        const isViewable = attachment.contentType === 'application/pdf' || attachment.contentType.startsWith('image/');
+        const disposition = isViewable ? 'inline' : 'attachment';
+
+        // Set headers for file download/view
+        res.setHeader('Content-Type', attachment.contentType);
+        res.setHeader('Content-Disposition', `${disposition}; filename="${attachment.name}"`);
+        res.setHeader('Content-Length', buffer.length); // Use actual buffer length
+
         res.send(buffer);
+    }
+
+    /**
+     * Download a local sent attachment (for heavy attachments)
+     */
+    @Get('adjuntos/local/:filename/download')
+    async downloadLocalAttachment(
+        @Param('filename') filename: string,
+        @Res() res: any,
+    ) {
+        const fs = require('fs');
+        const path = require('path');
+        const filepath = path.join(process.cwd(), 'uploads', 'adjuntos', filename);
+
+        if (!fs.existsSync(filepath)) {
+            return res.status(HttpStatus.NOT_FOUND).json({ message: 'Attachment not found' });
+        }
+
+        const ext = path.extname(filename).toLowerCase();
+        const MIME_TYPES: Record<string, string> = {
+            '.pdf': 'application/pdf',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp'
+        };
+
+        const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+        const isViewable = contentType === 'application/pdf' || contentType.startsWith('image/');
+        const disposition = isViewable ? 'inline' : 'attachment';
+
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `${disposition}; filename="${filename}"`);
+        
+        res.sendFile(filepath);
     }
 
     /**
@@ -140,6 +210,62 @@ export class CorreosJuridicosController {
             'Content-Disposition': `attachment; filename="correo_${id}.zip"`,
         });
         archive.pipe(res);
+    }
+    /**
+     * Update classification manually (Feedback Loop)
+     */
+    @Patch(':id/classify')
+    async updateClassification(
+        @Param('id') id: string,
+        @Body() body: { category: string }
+    ): Promise<CorreoJuridico> {
+        return this.correosService.updateClassification(id, body.category);
+    }
+
+    /**
+     * Link email to legal process
+     */
+    @Patch(':id/link-process')
+    async linkProcess(
+        @Param('id') id: string,
+        @Body() body: { expedienteId: string; targetModule?: string }
+    ): Promise<CorreoJuridico> {
+        return this.correosService.linkToProcess(id, body.expedienteId, body.targetModule);
+    }
+
+    /**
+     * Reply to an email — maintains thread via Graph API
+     */
+    @Post(':id/reply')
+    @HttpCode(HttpStatus.OK)
+    async replyEmail(
+        @Param('id') id: string,
+        @Body() body: { body: string; attachments?: { name: string; contentBytes: string; contentType: string }[] }
+    ): Promise<{ success: boolean }> {
+        const result = await this.correosService.replyEmail(id, body.body, body.attachments);
+        return { success: result.success };
+    }
+
+    /**
+     * Forward an email — maintains thread via Graph API natively
+     */
+    @Post(':id/forward')
+    @HttpCode(HttpStatus.OK)
+    async forwardEmail(
+        @Param('id') id: string,
+        @Body() body: { to: string; comment: string }
+    ): Promise<{ success: boolean; correo?: CorreoJuridico }> {
+        const result = await this.correosService.forwardEmail(id, body.to || '', body.comment || '');
+        return { success: result.success, correo: result.correo };
+    }
+
+    /**
+     * Trigger Batch Backfill for unclassified emails
+     */
+    @Post('batch-classify')
+    @HttpCode(HttpStatus.OK)
+    async batchClassify(@Body() body: { limit?: number }): Promise<{ processed: number; updated: number }> {
+        return this.correosService.batchClassifyBackfill(body.limit || 50);
     }
 }
 

@@ -37,6 +37,9 @@ export class DocumentoConsulta {
     @Column({ name: 'subido_por', type: 'varchar', length: 200, nullable: true })
     subidoPor?: string;
 
+    @Column({ type: 'boolean', default: false })
+    firmado: boolean;
+
     @Column({ name: 'fecha_documento', type: 'date', nullable: true })
     fechaDocumento?: Date;
 

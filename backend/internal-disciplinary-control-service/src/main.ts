@@ -4,9 +4,20 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ResponseInterceptor } from './common/response.interceptor';
 import { AppModule } from './app.module';
 import { SeedService } from './seed.service';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const requestTimeoutMs = Number(process.env.HTTP_REQUEST_TIMEOUT_MS || 6 * 60 * 60 * 1000);
+
+  // Servir archivos estáticos desde la carpeta uploads
+  const uploadsPath = join(process.cwd(), 'uploads');
+  app.useStaticAssets(uploadsPath, {
+    prefix: '/uploads/', // URL prefix para acceder a los archivos
+  });
+
+  console.log('📁 Serving static files from:', uploadsPath);
 
   // Validación global de DTOs
   app.useGlobalPipes(
@@ -59,6 +70,10 @@ async function bootstrap() {
   }
 
   await app.listen(port);
+  const server = app.getHttpServer();
+  server.requestTimeout = requestTimeoutMs;
+  server.headersTimeout = requestTimeoutMs + 1000;
+  server.keepAliveTimeout = 65000;
   console.log(`🚀 Internal Disciplinary Control Service running on http://localhost:${port}`);
 }
 bootstrap();

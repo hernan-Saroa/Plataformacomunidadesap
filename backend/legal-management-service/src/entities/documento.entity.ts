@@ -46,6 +46,12 @@ export class Documento {
     @Column({ name: 'subido_por', length: 255, nullable: true })
     subidoPor: string;
 
+    @Column({ length: 50, default: 'documentos' })
+    categoria: string;
+
+    @Column({ length: 100, nullable: true })
+    etapa: string;
+
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 

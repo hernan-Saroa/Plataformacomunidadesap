@@ -4,11 +4,13 @@ import { AprobacionesService } from './aprobaciones.service';
 import { AprobacionesController } from './aprobaciones.controller';
 import { Aprobacion } from './entities/aprobacion.entity';
 import { PlanesMejoramientoModule } from '../planes-mejoramiento/planes-mejoramiento.module';
+import { AuthModule } from '../../auth/auth.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Aprobacion]),
     forwardRef(() => PlanesMejoramientoModule),
+    AuthModule,
   ],
   controllers: [AprobacionesController],
   providers: [AprobacionesService],

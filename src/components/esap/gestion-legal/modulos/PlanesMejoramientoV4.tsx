@@ -17,7 +17,7 @@ import {
   FileText, AlertTriangle, Target, Calendar, Eye, Plus, Search, Filter,
   Download, MoreVertical, Edit, Trash2, CheckCircle, AlertCircle, Clock,
   TrendingUp, BarChart3, FileCheck, Building2, User, ChevronDown, ChevronRight,
-  List, LayoutGrid, Activity, Flag, Circle, XCircle
+  List, LayoutGrid, Activity, Flag, Circle, XCircle, Upload, File, X, Archive
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
@@ -43,6 +43,9 @@ import {
   DropdownMenuSeparator
 } from '../../../ui/dropdown-menu';
 import { add } from '@dnd-kit/utilities';
+import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // ==================== TIPOS ====================
 type EstadoPlan = 'FORMULACION' | 'EN_EJECUCION' | 'COMPLETADO' | 'SUSPENDIDO';
@@ -91,7 +94,7 @@ interface PlanMejoramiento {
   ultimaActualizacion: Date;
 }
 
-type VistaModulo = 'dashboard' | 'lista' | 'timeline';
+type VistaModulo = 'dashboard' | 'lista' | 'timeline' | 'archivados';
 
 // ==================== HELPERS ====================
 const getEnteConfig = (ente: EnteControl) => {
@@ -220,6 +223,10 @@ const formatearFecha = (fecha: Date | string): string => {
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ModuloPlanesMejoramientoV4() {
+  const { entesControlPM } = useConfiguracionesSIGL();
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+
   const [tipoVista, setTipoVista] = useState<VistaModulo>('dashboard');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEnte, setFiltroEnte] = useState<string>('TODOS');
@@ -319,6 +326,72 @@ export function ModuloPlanesMejoramientoV4() {
     } catch (error) {
       console.error("Error creating plan", error);
       toast.error("Error al crear plan");
+    }
+  };
+  const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
+
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
+
+  // Cargar archivados desde backend
+  useEffect(() => {
+    legalService.getPlanesMejoramientoArchivados()
+      .then((data: any[]) => {
+        if (Array.isArray(data)) {
+          const mapped: ItemArchivado[] = data.map((p: any) => ({
+            id: p.id,
+            codigo: p.codigo || p.id,
+            nombre: p.titulo || p.nombre || 'Sin nombre',
+            tipo: 'Plan de Mejoramiento',
+            estado: 'ARCHIVADO' as EstadoArchivado,
+            fechaArchivado: p.updatedAt ? new Date(p.updatedAt) : new Date(),
+            usuarioArchivo: p.responsableNombre || 'Sistema',
+            motivoArchivo: 'Archivado por usuario',
+            metadatos: {
+              'Origen': p.origen || 'N/A',
+              'Responsable': p.responsableNombre || 'N/A',
+              'Avance': `${p.avancePorcentaje || 0}%`,
+            },
+          }));
+          setItemsArchivados(mapped);
+        }
+      })
+      .catch(() => { });
+  }, []);
+
+  // Restaurar un plan archivado
+  const handleRestaurar = async (itemId: string) => {
+    try {
+      await legalService.restaurarPlanMejoramiento(itemId);
+      setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+      toast.success('Plan restaurado exitosamente');
+      fetchPlanes();
+    } catch (error) {
+      console.error('Error restoring plan:', error);
+      toast.error('Error al restaurar el plan');
+    }
+  };
+
+  // Eliminar permanentemente un plan
+  const handleEliminarPermanente = async (itemId: string) => {
+    try {
+      await legalService.eliminarPlanMejoramiento(itemId);
+      setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+      toast.success('Plan eliminado permanentemente');
+    } catch (error) {
+      console.error('Error deleting plan:', error);
+      toast.error('Error al eliminar el plan');
+    }
+  };
+
+  const handleArchivar = async (planId: string) => {
+    try {
+      await legalService.archivarPlanMejoramiento(planId);
+      toast.success('Plan archivado exitosamente');
+      fetchPlanes(); // Refresh list
+    } catch (error) {
+      console.error('Error archiving plan:', error);
+      toast.error('Error al archivar el plan');
     }
   };
 
@@ -490,7 +563,8 @@ export function ModuloPlanesMejoramientoV4() {
           options: [
             { label: 'Dashboard', icon: '📊', value: 'dashboard' },
             { label: 'Lista', icon: '📋', value: 'lista' },
-            { label: 'Timeline', icon: '📅', value: 'timeline' }
+            { label: 'Timeline', icon: '📅', value: 'timeline' },
+            { label: 'Archivados', icon: '📦', value: 'archivados' }
           ]
         }}
         buttons={addBtnsPermission()}
@@ -583,10 +657,10 @@ export function ModuloPlanesMejoramientoV4() {
             onChange: setFiltroEnte,
             options: [
               { label: 'Todos', value: 'TODOS' },
-              { label: '🏛️ Contraloría', value: 'CONTRALORIA' },
-              { label: '⚖️ Procuraduría', value: 'PROCURADURIA' },
-              { label: '🔍 OCI', value: 'OCI' },
-              { label: '📊 Auditoría Externa', value: 'AUDITORIA_EXTERNA' }
+              ...entesControlPM.filter(o => o.activo).map(o => ({
+                label: o.nombre,
+                value: o.id
+              }))
             ]
           },
           {
@@ -625,6 +699,7 @@ export function ModuloPlanesMejoramientoV4() {
                 expandedPlans={expandedPlans}
                 onTogglePlan={togglePlan}
                 onVerDetalle={handleVerDetalle}
+                onArchivar={handleArchivar}
               />
             )}
             {tipoVista === 'timeline' && (
@@ -632,11 +707,19 @@ export function ModuloPlanesMejoramientoV4() {
             )}
           </>
         )}
+        {tipoVista === 'archivados' && (
+          <VistaArchivados
+            items={itemsArchivados}
+            moduloNombre="Planes de Mejoramiento"
+            onRestaurar={handleRestaurar}
+            onEliminarPermanente={handleEliminarPermanente}
+          />
+        )}
       </motion.div>
 
       {/* Modal Nuevo Plan */}
       <Dialog open={modalNuevoPlanAbierto} onOpenChange={setModalNuevoPlanAbierto}>
-        <DialogContent hideCloseButton className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent hideCloseButton className="!max-w-[600px] !max-h-[90vh] overflow-y-auto flex flex-col p-0 gap-0">
           {/* Componentes de accesibilidad requeridos */}
           <DialogTitle className="sr-only">Crear Nuevo Plan de Mejoramiento</DialogTitle>
           <DialogDescription className="sr-only">
@@ -644,14 +727,14 @@ export function ModuloPlanesMejoramientoV4() {
           </DialogDescription>
 
           <ModalHeaderClean
-            titulo="Crear Nuevo Plan de Mejoramiento"
-            subtitulo="Registra un nuevo plan de mejoramiento derivado de auditoría o hallazgo de órgano de control"
+            titulo="Nuevo Plan de Mejoramiento"
+            subtitulo="Registrar plan derivado de auditoría"
             icono={FileCheck}
             colorIcono="blue"
             onClose={() => setModalNuevoPlanAbierto(false)}
           />
 
-          <div className="px-6 pb-6">
+          <div className="px-6 pb-6 overflow-y-auto flex-1">
             <form
               onSubmit={handleCreatePlan}
               className="space-y-5"
@@ -684,11 +767,10 @@ export function ModuloPlanesMejoramientoV4() {
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Seleccionar ente" />
                       </SelectTrigger>
-                      <SelectContent className="z-[9999]" align="start">
-                        <SelectItem value="CONTRALORIA">🏛️ Contraloría General</SelectItem>
-                        <SelectItem value="PROCURADURIA">⚖️ Procuraduría General</SelectItem>
-                        <SelectItem value="OCI">🔍 Oficina Control Interno</SelectItem>
-                        <SelectItem value="AUDITORIA_EXTERNA">📊 Auditoría Externa</SelectItem>
+                      <SelectContent className="z-[9999]">
+                        {entesControlPM.filter(o => o.activo).map(o => (
+                          <SelectItem key={o.id} value={o.id}>{o.nombre}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -835,7 +917,83 @@ export function ModuloPlanesMejoramientoV4() {
                 </div>
               </div>
 
-              {/* Sección 5: Observaciones */}
+              {/* Sección 5: Documentos de Soporte */}
+              <div className="border-t pt-5">
+                <h3 className="text-sm font-black text-gray-900 mb-3 flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-blue-600" />
+                  Documentos de Soporte
+                </h3>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Adjuntar Archivos (Opcional)
+                  </label>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-blue-400 transition-colors">
+                    <input
+                      type="file"
+                      id="file-upload"
+                      multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          const newFiles = Array.from(e.target.files);
+                          setArchivosAdjuntos(prev => [...prev, ...newFiles]);
+                          toast.success(`${newFiles.length} archivo(s) agregado(s)`);
+                        }
+                      }}
+                    />
+                    <label
+                      htmlFor="file-upload"
+                      className="flex flex-col items-center justify-center cursor-pointer"
+                    >
+                      <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                      <span className="text-sm font-medium text-gray-700">
+                        Haz clic para seleccionar archivos
+                      </span>
+                      <span className="text-xs text-gray-500 mt-1">
+                        PDF, Word, Excel, Imágenes (máx. 10MB por archivo)
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Lista de archivos seleccionados */}
+                  {archivosAdjuntos.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs font-semibold text-gray-700">
+                        Archivos seleccionados ({archivosAdjuntos.length}):
+                      </p>
+                      {archivosAdjuntos.map((archivo, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between p-2 bg-blue-50 border border-blue-200 rounded"
+                        >
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <File className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                            <span className="text-sm text-gray-900 truncate">
+                              {archivo.name}
+                            </span>
+                            <span className="text-xs text-gray-500 flex-shrink-0">
+                              ({(archivo.size / 1024).toFixed(1)} KB)
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setArchivosAdjuntos(prev => prev.filter((_, i) => i !== index));
+                              toast.info('Archivo eliminado');
+                            }}
+                            className="ml-2 p-1 hover:bg-red-100 rounded transition-colors flex-shrink-0"
+                          >
+                            <X className="w-4 h-4 text-red-600" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Sección 6: Observaciones */}
               <div className="border-t pt-5">
                 <h3 className="text-sm font-black text-gray-900 mb-3 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-blue-600" />
@@ -899,22 +1057,16 @@ export function ModuloPlanesMejoramientoV4() {
 
 // ==================== VISTA: DASHBOARD ====================
 function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; onVerDetalle?: (id: string) => void }) {
+  // const { entesControl } = useConfiguracionesSIGL();
+
   // Agrupar por ente de control
   const planesPorEnte = useMemo(() => {
     const grupos = {
-      // Inicializar
-      CONTRALORIA: [],
-      PROCURADURIA: [],
-      OCI: [],
-      AUDITORIA_EXTERNA: []
-    } as any;
-
-    planes.forEach(p => {
-      const key = p.enteControl;
-      if (!grupos[key]) grupos[key] = [];
-      grupos[key].push(p);
-    });
-
+      CONTRALORIA: planes.filter(p => p.enteControl === 'CONTRALORIA'),
+      PROCURADURIA: planes.filter(p => p.enteControl === 'PROCURADURIA'),
+      OCI: planes.filter(p => p.enteControl === 'OCI'),
+      AUDITORIA_EXTERNA: planes.filter(p => p.enteControl === 'AUDITORIA_EXTERNA')
+    };
     return grupos;
   }, [planes]);
 
@@ -948,13 +1100,10 @@ function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; 
       <Card className="p-6">
         <h3 className="font-black text-gray-900 mb-4">Planes por Ente de Control</h3>
         <div className="space-y-3">
-          {Object.entries(planesPorEnte).map(([ente, planesEnte]: any) => {
-            // Only show those with config
-            if (!['CONTRALORIA', 'PROCURADURIA', 'OCI', 'AUDITORIA_EXTERNA'].includes(ente) && planesEnte.length === 0) return null;
-
+          {Object.entries(planesPorEnte).map(([ente, planesEnte]) => {
             const config = getEnteConfig(ente as EnteControl);
             const avancePromedio = planesEnte.length > 0
-              ? Math.round(planesEnte.reduce((sum: number, p: any) => sum + p.avanceGeneral, 0) / planesEnte.length)
+              ? Math.round(planesEnte.reduce((sum, p) => sum + p.avanceGeneral, 0) / planesEnte.length)
               : 0;
 
             return (
@@ -973,15 +1122,6 @@ function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; 
               </div>
             );
           })}
-          {/* Show 'Otros' if exist */}
-          {planesPorEnte['OTRO'] && planesPorEnte['OTRO'].length > 0 && (
-            <div className="border rounded-lg p-4 bg-gray-50">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-gray-700">Otros / Riesgos</span>
-                <Badge className="bg-gray-200 text-gray-700">{planesPorEnte['OTRO'].length}</Badge>
-              </div>
-            </div>
-          )}
         </div>
       </Card>
 
@@ -1069,12 +1209,15 @@ function VistaLista({
   planes,
   expandedPlans,
   onTogglePlan,
-  onVerDetalle
+
+  onVerDetalle,
+  onArchivar
 }: {
   planes: PlanMejoramiento[];
   expandedPlans: Set<string>;
   onTogglePlan: (id: string) => void;
   onVerDetalle?: (id: string) => void;
+  onArchivar?: (id: string) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -1145,21 +1288,36 @@ function VistaLista({
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); onVerDetalle?.(plan.id); }}>
-                      <Eye className="w-3 h-3" />
-                    </Button>
-                    {isExpanded ? (
-                      <ChevronDown className="w-5 h-5 text-gray-400" />
-                    ) : (
-                      <ChevronRight className="w-5 h-5 text-gray-400" />
-                    )}
+                    <div className="flex items-center gap-1">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={(e) => e.stopPropagation()}>
+                            <MoreVertical className="w-4 h-4 text-gray-500" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onVerDetalle?.(plan.id); }}>
+                            <Eye className="w-4 h-4 mr-2" /> Ver Detalle
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onArchivar?.(plan.id); }} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                            <Archive className="w-4 h-4 mr-2" /> Archivar
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      {isExpanded ? (
+                        <ChevronDown className="w-5 h-5 text-gray-400" />
+                      ) : (
+                        <ChevronRight className="w-5 h-5 text-gray-400" />
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Barra de Progreso */}
-              <div className="mt-3">
-                <Progress value={plan.avanceGeneral} className="h-2" />
+                {/* Barra de Progreso */}
+                <div className="mt-3">
+                  <Progress value={plan.avanceGeneral} className="h-2" />
+                </div>
               </div>
             </div>
 

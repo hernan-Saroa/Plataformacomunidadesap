@@ -5,7 +5,7 @@
  * ✅ Tabs funcionales con lógica de negocio profesional
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { legalService, correosJuridicosService } from '../../../../services/api/legal.service';
@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { useConfirmation } from '../../../ui/confirmation-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
@@ -32,11 +33,13 @@ import { Textarea } from '../../../ui/textarea';
 
 import type { ConsultaJuridica } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { ModalNuevaConsulta } from './ModalNuevaConsulta';
 import { ModalCompartir } from './ModalCompartir';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 interface ModalExpedienteConsultaProps {
   isOpen: boolean;
@@ -49,6 +52,14 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   const { user } = useAuth();
   // ✅ Obtener etapas activas desde configuración
   const { estadosActivos } = useConfiguracionModulo('asesoria-juridica');
+  console.log('📋 estadosActivos en modal:', estadosActivos);
+
+  // Hook de confirmación personalizado
+  const { confirm, ConfirmationComponent } = useConfirmation();
+
+  // Estado para visor de documentos inline
+  const [visorAbierto, setVisorAbierto] = useState(false);
+  const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string } | null>(null);
 
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
@@ -57,6 +68,10 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   // Estados para modales
   const [modalCompartirAbierto, setModalCompartirAbierto] = useState(false);
   const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
+  const [showArchivarModal, setShowArchivarModal] = useState(false);
+  const [motivoArchivo, setMotivoArchivo] = useState('');
+  const [showEditarModal, setShowEditarModal] = useState(false);
+
 
   // Estados para documentos
   const [documentos, setDocumentos] = useState<any[]>([]);
@@ -64,6 +79,12 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [respuestaTexto, setRespuestaTexto] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Estados para workflow firmado/sin firmar
+  const [showFirmadoModal, setShowFirmadoModal] = useState(false);
+  const [firmadoSelection, setFirmadoSelection] = useState<boolean | null>(null);
+  const [replacingDocId, setReplacingDocId] = useState<string | null>(null);
+  const replaceFileInputRef = useRef<HTMLInputElement>(null);
 
   // Cargar documentos al abrir o cambiar de consulta
   useEffect(() => {
@@ -120,9 +141,16 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       return;
     }
 
-    if (!confirm(`¿Está seguro de enviar esta respuesta por correo a ${consulta.emailSolicitante}?`)) {
-      return;
-    }
+    // Reemplazo de confirmación nativa por personalizada
+    const confirmado = await confirm({
+      title: 'Plataforma ESAP',
+      description: `¿Está seguro de enviar esta respuesta por correo a ${consulta.emailSolicitante}?`,
+      variant: 'info',
+      confirmText: 'Aceptar',
+      cancelText: 'Cancelar'
+    });
+
+    if (!confirmado) return;
 
     try {
       toast.loading('Enviando respuesta por correo...', { id: 'send-response' });
@@ -255,17 +283,30 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       setLoadingEtapa(true);
       toast.loading('Cambiando etapa...', { id: 'change-stage' });
 
-      const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
+      // Construir nombre de usuario, evitando undefined
+      const firstName = user?.firstName || '';
+      const lastName = user?.lastName || '';
+      const usuarioNombre = (firstName || lastName)
+        ? `${firstName} ${lastName}`.trim()
+        : (user?.email || 'Usuario Sistema');
+
+      // Obtener el nombre legible de la etapa para el timeline
+      const estadoInfo = estadosActivos.find(e => e.id === etapaSeleccionada);
+      const estadoNombre = estadoInfo?.nombre || etapaSeleccionada;
 
       if (consulta.uuid) {
-        await legalService.updateEstadoConsulta(consulta.uuid, etapaSeleccionada, usuarioNombre);
+        await legalService.updateEstadoConsulta(consulta.uuid, etapaSeleccionada, usuarioNombre, estadoNombre);
       } else {
-        await legalService.updateEstadoConsulta(consulta.id, etapaSeleccionada, usuarioNombre);
+        await legalService.updateEstadoConsulta(consulta.id, etapaSeleccionada, usuarioNombre, estadoNombre);
       }
 
-      toast.success(`Etapa actualizada`, { id: 'change-stage' });
+      toast.success(`Etapa actualizada correctamente`, { id: 'change-stage' });
       setEditandoEtapa(false);
 
+      // Cerrar el modal principal para que al reabrir muestre datos frescos
+      onClose();
+
+      // Notificar al padre para recargar la lista
       if (onUpdate) {
         onUpdate();
       }
@@ -306,25 +347,17 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       toast.loading('Asignando abogado...', { id: 'assign-lawyer' });
       await legalService.updateConsultaJuridica(consulta.uuid || '', { abogadoAsignadoId: abogadoSeleccionado });
 
-      // Actualizar UI localmente (idealmente recargar consulta completa)
       const abogado = abogados.find(a => a.id === abogadoSeleccionado);
-
-      // Notificar al padre para recargar si es necesario, o forzar reload
-      // Por ahora simulamos la actualización visual
-      // (Nota: La prop consulta es readonly, idealmente deberíamos tener un onUpdate o reloadConsulta)
-
-      // Hack: Forzar visualización temporal o pedir recarga
-      toast.success(`Abogado reasignado a: ${abogado?.nombreCompleto || 'Desconocido'}`, { id: 'assign-lawyer' });
       toast.success(`Abogado reasignado a: ${abogado?.nombreCompleto || 'Desconocido'}`, { id: 'assign-lawyer' });
       setEditandoAbogado(false);
 
+      // Cerrar el modal principal para que al reabrir muestre datos frescos
+      onClose();
+
+      // Notificar al padre para recargar la lista
       if (onUpdate) {
         onUpdate();
       }
-
-      // Si onClose dispara recarga en padre, bien. Si no, quizá debamos inyectar onRefresh.
-      // Como no tengo onRefresh en props, solo cierro edición.
-      // El usuario verá el cambio real al reabrir o si el padre se actualiza.
     } catch (error) {
       console.error(error);
       toast.error('Error al reasignar abogado', { id: 'assign-lawyer' });
@@ -359,7 +392,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       toast.loading('Agregando comentario...');
       await legalService.crearComentarioConsulta(consulta.uuid, {
         mensaje: nuevoComentario,
-        usuario: 'Usuario Actual', // Idealmente obtener del contexto de auth
+        usuario: user ? (user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Usuario') : 'Usuario',
         cargo: 'Funcionario'
       });
       setNuevoComentario('');
@@ -370,6 +403,32 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       console.error('Error creando comentario:', error);
       toast.dismiss();
       toast.error('Error al agregar comentario');
+    }
+  };
+
+
+
+  const handleArchivar = async () => {
+    if (!consulta?.uuid) return;
+    if (!motivoArchivo.trim()) {
+      toast.error('Debe ingresar un motivo para archivar');
+      return;
+    }
+
+    try {
+      toast.loading('Archivando consulta...');
+      const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
+
+      await legalService.archivarConsulta(consulta.uuid || consulta.id, motivoArchivo, usuarioNombre);
+      toast.dismiss();
+      toast.success('Consulta archivada exitosamente');
+      setShowArchivarModal(false);
+      onClose();
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error archivando:', error);
+      toast.dismiss();
+      toast.error('Error al archivar la consulta');
     }
   };
 
@@ -424,7 +483,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   };
 
   const handleEliminarDocumento = async (doc: any) => {
-    if (!confirm(`¿Estás seguro de eliminar el documento "${doc.nombre}"?`)) return;
+    // Eliminación inmediata sin confirmación
+    // const confirmado = await confirm({ ... }); 
+    // if (!confirmado) return;
 
     try {
       toast.loading('Eliminando documento...', { id: 'delete-doc' });
@@ -448,6 +509,29 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     if (url.startsWith('http')) return url;
 
     const baseUrl = getServiceUrl('legal');
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
+
+    // ✨ FIXED: Rutas de adjuntos de correos/oficios (usar /api/v1 para que gateway rutee correctamente)
+    if (url.includes('/correos/adjuntos/')) {
+      const regex = /\/adjuntos\/([^/]+)/;
+      const match = url.match(regex);
+      if (match) {
+        let adjuntoId = match[1];
+        if (adjuntoId.endsWith('/download')) adjuntoId = adjuntoId.replace('/download', '');
+
+        const adjuntoPrefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        return `${baseUrl}${adjuntoPrefix}/correos/adjuntos/${adjuntoId}/download`;
+      }
+    }
+
+    // Manejar otras rutas directas de API evitando /files/
+    if (url.includes('/api/') || url.includes('/download')) {
+      let cleanUrl = url.startsWith('/legal') ? url.replace('/legal', '') : url;
+      if (API_MODE === 'direct') {
+        cleanUrl = cleanUrl.replace('/api/v1', ''); // remove /api/v1 since port 3008 doesn't use it
+      }
+      return `${baseUrl}${prefix}${cleanUrl}`;
+    }
 
     // Extraer nombre del archivo
     let filename = url;
@@ -458,7 +542,6 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
 
     // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
-    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -472,8 +555,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       return;
     }
     const fullUrl = getFullUrl(url);
-    window.open(fullUrl, '_blank');
-    toast.success('Documento abierto en nueva pestaña', { description: doc.nombre });
+    // Abrir en el visor inline en lugar de una nueva pestaña
+    setDocParaVisor({ url: fullUrl, nombre: doc.nombre || doc.archivoNombreOriginal || 'Documento', asunto: doc.tipoDocumento || '' });
+    setVisorAbierto(true);
   };
 
   /**
@@ -492,7 +576,18 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       const baseUrl = getServiceUrl('legal');
       const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/consultas-juridicas/${consulta.uuid}/documentos/download-zip`;
-      const response = await fetch(url);
+
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
 
       if (!response.ok) {
         throw new Error('Error al descargar los documentos');
@@ -573,29 +668,90 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   };
 
   /**
-   * Subir nuevo documento al expediente
+   * Abrir modal para seleccionar si el documento está firmado o no
+   */
+  const handleIniciarSubida = () => {
+    setFirmadoSelection(null);
+    setShowFirmadoModal(true);
+  };
+
+  /**
+   * Confirmar selección de firmado y abrir selector de archivo
+   */
+  const handleConfirmarFirmado = () => {
+    if (firmadoSelection === null) {
+      toast.warning('Seleccione si el documento está firmado o sin firmar');
+      return;
+    }
+    setShowFirmadoModal(false);
+    fileInputRef.current?.click();
+  };
+
+  /**
+   * Subir nuevo documento al expediente con indicador de firmado
    */
   const handleSubirDocumento = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !consulta?.uuid) return;
+
+    if (file.type !== 'application/pdf') {
+      toast.error('Solo se permiten archivos PDF en este módulo');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
 
     setUploadingDoc(true);
     const formData = new FormData();
     formData.append('archivo', file);
     formData.append('nombre', file.name);
     formData.append('tipoDocumento', 'adjunto');
+    formData.append('firmado', firmadoSelection ? 'true' : 'false');
 
     try {
       await legalService.uploadDocumentoConsulta(consulta.uuid, formData);
-      toast.success('✅ Documento subido exitosamente');
+      toast.success(firmadoSelection ? '✅ Documento firmado subido exitosamente' : '✅ Documento sin firmar subido exitosamente');
       await loadDocumentos();
     } catch (error) {
       console.error('Error subiendo documento:', error);
       toast.error('Error al subir el documento');
     } finally {
       setUploadingDoc(false);
+      setFirmadoSelection(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  /**
+   * Reemplazar documento sin firmar con versión firmada
+   */
+  const handleReemplazarConFirmado = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !replacingDocId) return;
+
+    if (file.type !== 'application/pdf') {
+      toast.error('Solo se permiten archivos PDF');
+      if (replaceFileInputRef.current) replaceFileInputRef.current.value = '';
+      return;
+    }
+
+    setUploadingDoc(true);
+    const formData = new FormData();
+    formData.append('archivo', file);
+
+    try {
+      await legalService.replaceDocumentoConsulta(replacingDocId, formData);
+      toast.success('✅ Documento reemplazado con versión firmada');
+      await loadDocumentos();
+    } catch (error) {
+      console.error('Error reemplazando documento:', error);
+      toast.error('Error al reemplazar el documento');
+    } finally {
+      setUploadingDoc(false);
+      setReplacingDocId(null);
+      if (replaceFileInputRef.current) {
+        replaceFileInputRef.current.value = '';
       }
     }
   };
@@ -613,7 +769,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent hideCloseButton className="max-w-5xl h-[95vh] flex flex-col p-0">
+        <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl h-[95vh] flex flex-col p-0">
+          <ConfirmationComponent />
           <DialogTitle className="sr-only">Expediente Consulta Jurídica {consulta.id}</DialogTitle>
           <DialogDescription className="sr-only">
             Visualización completa del expediente de consulta jurídica
@@ -626,6 +783,17 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
             titulo={`Consulta ${consulta.id}`}
             subtitulo={consulta.temaJuridico}
             badgePrincipal={`${semaforo.icon} ${semaforo.label}`}
+            actions={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowEditarModal(true)}
+                className="flex items-center gap-1.5 text-blue-700 border-blue-300 hover:bg-blue-50"
+              >
+                <Edit className="w-3.5 h-3.5" />
+                Editar
+              </Button>
+            }
             badges={
               <>
                 <span className="inline-flex items-center rounded-md px-2 py-0.5 bg-blue-100 text-blue-700 border-blue-300 font-semibold text-xs border gap-1">
@@ -757,10 +925,11 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                         disabled={loadingEtapa}
                       >
                         <option value="">Seleccionar...</option>
-                        <option value="en_radicacion">RADICADA</option>
-                        <option value="en_analisis">ANÁLISIS</option>
-                        <option value="en_revision">REVISIÓN</option>
-                        {/* Excluyendo ENVIADA / RESPONDIDO según solicitud */}
+                        {estadosActivos.map(estado => (
+                          <option key={estado.id} value={estado.id}>
+                            {estado.nombre}
+                          </option>
+                        ))}
                       </select>
                       <Button size="icon" variant="ghost" className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={handleGuardarEtapa}>
                         <CheckCircle className="w-4 h-4" />
@@ -837,12 +1006,24 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                           <p className="text-xs text-gray-600">Funcionario</p>
                           <p className="text-sm font-bold text-gray-900">{consulta.funcionarioSolicitante}</p>
                         </div>
+                        {(consulta as any).cargoSolicitante && (
+                          <div>
+                            <p className="text-xs text-gray-600">Cargo</p>
+                            <p className="text-sm font-bold text-gray-900">{(consulta as any).cargoSolicitante}</p>
+                          </div>
+                        )}
                         <div className="pt-2 border-t border-gray-200">
                           <p className="text-xs text-gray-600 mb-2">Contacto</p>
                           <div className="flex items-center gap-2 text-sm text-gray-700">
                             <Mail className="w-4 h-4" />
                             <span>{consulta.emailSolicitante || 'No especificado'}</span>
                           </div>
+                          {(consulta as any).telefonoSolicitante && (
+                            <div className="flex items-center gap-2 text-sm text-gray-700 mt-1">
+                              <Phone className="w-4 h-4" />
+                              <span>{(consulta as any).telefonoSolicitante}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </Card>
@@ -898,6 +1079,21 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                     </div>
                   </Card>
 
+                  {/* Antecedentes (si existen) */}
+                  {(consulta as any).antecedentes && (
+                    <Card className="p-4 bg-gray-50 border-gray-200">
+                      <div className="flex items-center gap-3 mb-4">
+                        <BookOpen className="w-5 h-5 text-gray-600" />
+                        <h3 className="font-bold text-gray-900">Antecedentes</h3>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg border border-gray-200">
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                          {(consulta as any).antecedentes}
+                        </p>
+                      </div>
+                    </Card>
+                  )}
+
                   {/* Respuesta (si existe) */}
                   {consulta.respuesta && (
                     <Card className="p-4 bg-green-50 border-green-200">
@@ -927,7 +1123,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                     ref={fileInputRef}
                     onChange={handleSubirDocumento}
                     className="hidden"
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                    accept=".pdf"
                   />
 
                   <div className="flex items-center justify-between gap-4 mb-4">
@@ -950,23 +1146,91 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                         Descargar Todos (ZIP)
                       </Button>
                       {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
-                      <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDoc}>
-                        <Upload className="w-4 h-4 mr-2" />
-                        {uploadingDoc ? 'Subiendo...' : 'Subir Documento'}
-                      </Button>
+                        <Button variant="outline" size="sm" onClick={handleIniciarSubida} disabled={uploadingDoc}>
+                          <Upload className="w-4 h-4 mr-2" />
+                          {uploadingDoc ? 'Subiendo...' : 'Subir Documento'}
+                        </Button>
                       )}
                     </div>
                   </div>
 
+                  {/* Input oculto para reemplazar con firmado */}
+                  <input
+                    ref={replaceFileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={handleReemplazarConFirmado}
+                    accept=".pdf"
+                  />
+
+                  {/* Modal de selección firmado/sin firmar */}
+                  {showFirmadoModal && (
+                    <Card className="p-5 border-2 border-blue-200 bg-blue-50/50 mb-4">
+                      <h4 className="font-bold text-sm text-gray-900 mb-3 flex items-center gap-2">
+                        <FileCheck className="w-5 h-5 text-blue-600" />
+                        ¿El documento está firmado?
+                      </h4>
+                      <div className="flex gap-3 mb-4">
+                        <button
+                          onClick={() => setFirmadoSelection(true)}
+                          className={`flex-1 p-4 rounded-xl border-2 transition-all text-center ${firmadoSelection === true
+                            ? 'border-green-500 bg-green-50 shadow-md'
+                            : 'border-gray-200 bg-white hover:border-green-300'
+                            }`}
+                        >
+                          <CheckCircle className={`w-8 h-8 mx-auto mb-2 ${firmadoSelection === true ? 'text-green-600' : 'text-gray-400'}`} />
+                          <p className="font-bold text-sm">Firmado</p>
+                          <p className="text-xs text-gray-500 mt-1">El documento ya tiene firma</p>
+                        </button>
+                        <button
+                          onClick={() => setFirmadoSelection(false)}
+                          className={`flex-1 p-4 rounded-xl border-2 transition-all text-center ${firmadoSelection === false
+                            ? 'border-amber-500 bg-amber-50 shadow-md'
+                            : 'border-gray-200 bg-white hover:border-amber-300'
+                            }`}
+                        >
+                          <AlertCircle className={`w-8 h-8 mx-auto mb-2 ${firmadoSelection === false ? 'text-amber-600' : 'text-gray-400'}`} />
+                          <p className="font-bold text-sm">Sin Firmar</p>
+                          <p className="text-xs text-gray-500 mt-1">Pendiente de firma — podrá reemplazarlo después</p>
+                        </button>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setShowFirmadoModal(false)}>
+                          Cancelar
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleConfirmarFirmado}
+                          disabled={firmadoSelection === null}
+                          className="bg-[#003DA5] hover:bg-[#002d7a] text-white"
+                        >
+                          <Upload className="w-4 h-4 mr-2" />
+                          Seleccionar Archivo
+                        </Button>
+                      </div>
+                    </Card>
+                  )}
+
                   <div className="space-y-2">
                     {documentos.map((doc) => (
-                      <Card key={doc.id} className="p-4 hover:shadow-md transition-shadow">
+                      <Card key={doc.id} className={`p-4 hover:shadow-md transition-shadow ${!doc.firmado ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-green-400'}`}>
                         <div className="flex items-center gap-4">
-                          <div className="p-3 rounded-lg bg-blue-50">
-                            <FileText className="w-6 h-6 text-blue-600" />
+                          <div className={`p-3 rounded-lg ${doc.firmado ? 'bg-green-50' : 'bg-amber-50'}`}>
+                            <FileText className={`w-6 h-6 ${doc.firmado ? 'text-green-600' : 'text-amber-600'}`} />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-bold text-sm truncate">{doc.nombre}</p>
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <p className="font-bold text-sm truncate">{doc.nombre}</p>
+                              {doc.firmado ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white bg-green-500 flex items-center gap-1 flex-shrink-0">
+                                  <CheckCircle className="w-3 h-3" /> Firmado
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white bg-amber-500 flex items-center gap-1 flex-shrink-0">
+                                  <AlertCircle className="w-3 h-3" /> Sin Firmar
+                                </span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-2 text-xs text-gray-500">
                               {doc.tamanoBytes ? (
                                 <span>{(Number(doc.tamanoBytes) / (1024 * 1024)).toFixed(2)} MB</span>
@@ -980,7 +1244,23 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                             </div>
                           </div>
                           <div className="flex-shrink-0 flex items-center gap-2">
-                            {/* Botón Ver - Abrir en nueva pestaña directamente */}
+                            {/* Botón Subir Firmado — solo para docs sin firmar */}
+                            {!doc.firmado && authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-300 font-bold"
+                                onClick={() => {
+                                  setReplacingDocId(doc.id);
+                                  replaceFileInputRef.current?.click();
+                                }}
+                                disabled={uploadingDoc}
+                              >
+                                <Upload className="w-4 h-4 mr-1" />
+                                Subir Firmado
+                              </Button>
+                            )}
+                            {/* Botón Ver */}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -1002,15 +1282,15 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                               Descargar
                             </Button>
                             {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_DELETE) && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                              onClick={() => handleEliminarDocumento(doc)}
-                            >
-                              <Trash2 className="w-4 h-4 mr-1" />
-                              Eliminar
-                            </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                onClick={() => handleEliminarDocumento(doc)}
+                              >
+                                <Trash2 className="w-4 h-4 mr-1" />
+                                Eliminar
+                              </Button>
                             )}
                           </div>
                         </div>
@@ -1218,8 +1498,21 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
           {/* FOOTER CON ACCIONES */}
           <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
-            <div className="flex items-center justify-end">
-              <Button onClick={onClose}>
+            <div className="flex items-center justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+                onClick={(e: React.MouseEvent) => {
+                  e.preventDefault();
+                  console.log('Click en Archivar');
+                  setShowArchivarModal(true);
+                }}
+              >
+                <Archive className="w-4 h-4 mr-2" />
+                Archivar
+              </Button>
+              <Button type="button" onClick={onClose}>
                 Cerrar
               </Button>
             </div>
@@ -1228,7 +1521,13 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       </Dialog>
 
       {/* Modal Cambio de Etapa */}
-      <Dialog open={editandoEtapa} onOpenChange={setEditandoEtapa}>
+      <Dialog open={editandoEtapa} onOpenChange={(open: boolean) => {
+        setEditandoEtapa(open);
+        if (open) {
+          // Preseleccionar valor actual
+          setEtapaSeleccionada(consulta.estado || '');
+        }
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Cambiar Etapa del Caso</DialogTitle>
@@ -1238,12 +1537,17 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           </DialogHeader>
 
           <div className="py-4">
-            <label className="text-sm font-medium text-gray-700 mb-2 block">Nueva Etapa</label>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">
+              Nueva Etapa
+            </label>
+            {estadosActivos.length === 0 && (
+              <p className="text-xs text-red-500 mb-2">⚠️ No se cargaron las etapas desde configuración</p>
+            )}
             <Select value={etapaSeleccionada} onValueChange={setEtapaSeleccionada}>
               <SelectTrigger>
                 <SelectValue placeholder="Seleccione una etapa" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[9999]">
                 {estadosActivos.map((estado) => (
                   <SelectItem key={estado.id} value={estado.id}>
                     <div className="flex items-center gap-2">
@@ -1270,8 +1574,54 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Archivar */}
+      <Dialog open={showArchivarModal} onOpenChange={setShowArchivarModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Archivar Consulta</DialogTitle>
+            <DialogDescription>
+              ¿Está seguro de archivar esta consulta? Desaparecerá de la lista activa y se moverá a la pestaña de Archivados.
+            </DialogDescription>
+          </DialogHeader>
+
+
+          <div className="py-4">
+            <label className="text-sm font-medium text-gray-700 mb-2 block">
+              Motivo del Archivo
+            </label>
+            <Textarea
+              placeholder="Indique la razón por la cual se archiva este expediente..."
+              value={motivoArchivo}
+              onChange={(e) => setMotivoArchivo(e.target.value)}
+              className="min-h-[100px]"
+            />
+          </div>
+
+
+
+          <div className="flex justify-end gap-3 mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowArchivarModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="bg-orange-600 hover:bg-orange-700 text-white border-none"
+              onClick={handleArchivar}
+            >
+              <Archive className="w-4 h-4 mr-2" />
+              Confirmar Archivo
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* MODALES SECUNDARIOS */}
-      {/* 
+      {/*
       {modalCompartirAbierto && (
         <ModalCompartir
           isOpen={modalCompartirAbierto}
@@ -1280,6 +1630,29 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
         />
       )}
       */}
+
+      {/* MODAL EDITAR CONSULTA */}
+      <ModalNuevaConsulta
+        isOpen={showEditarModal}
+        onClose={() => setShowEditarModal(false)}
+        modoEdicion={true}
+        consultaInicial={consulta}
+        onSuccess={() => {
+          setShowEditarModal(false);
+          if (onUpdate) onUpdate();
+        }}
+      />
+
+      {/* VISOR INLINE DE DOCUMENTOS */}
+      {docParaVisor && (
+        <VisorDocumentoModal
+          isOpen={visorAbierto}
+          onClose={() => { setVisorAbierto(false); setDocParaVisor(null); }}
+          archivo={docParaVisor.url}
+          numero={docParaVisor.nombre}
+          asunto={docParaVisor.asunto}
+        />
+      )}
     </>
   );
 }

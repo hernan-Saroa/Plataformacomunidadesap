@@ -18,9 +18,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
-import { controlInternoService } from '../../../services/api/controlInternoService';
-import { useCrearNotificacion } from './hooks/useCrearNotificacion';
-import { useAuth } from '../../../hooks/useAuth';
 
 // ============ TIPOS ============
 
@@ -32,19 +29,20 @@ interface DocumentoExpediente {
   descripcion?: string;
 }
 
+// ✅ Tipo extendido que incluye el archivo
+export interface DocumentoConArchivo extends Partial<DocumentoExpediente> {
+  archivo?: File;
+}
+
 interface ModalCargarDocumentoProps {
   onClose: () => void;
-  onGuardar: (documento: Partial<DocumentoExpediente>, documentoCompleto?: any) => void;
-  auditoriaId?: string;
-  codigoAuditoria?: string;
+  onGuardar: (documento: DocumentoConArchivo) => void;
+  loading?: boolean; // Para indicar que el padre está procesando
 }
 
 // ============ COMPONENTE ============
 
-export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId, codigoAuditoria }: ModalCargarDocumentoProps) {
-  const { notificarDocumentoSubidoAuditoria } = useCrearNotificacion();
-  const { user } = useAuth();
-  
+export function ModalCargarDocumento({ onClose, onGuardar, loading }: ModalCargarDocumentoProps) {
   const [nombreDocumento, setNombreDocumento] = useState('');
   const [tipoDocumento, setTipoDocumento] = useState<DocumentoExpediente['tipo']>('Oficio');
   const [faseDocumento, setFaseDocumento] = useState<DocumentoExpediente['fase']>('planeacion');
@@ -52,42 +50,17 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId, codigoAu
   const [archivoSeleccionado, setArchivoSeleccionado] = useState<File | null>(null);
   const [progresoCarga, setProgresoCarga] = useState(0);
   const [cargando, setCargando] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
+  // ✅ CORREGIDO: Usar useRef en lugar de useState para la referencia del input
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const validarArchivo = (file: File): boolean => {
-      // Validar tamaño (máx 50 MB)
-      if (file.size > 50 * 1024 * 1024) {
+  const handleSeleccionarArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validar tamaño (máx 10 MB)
+      if (file.size > 10 * 1024 * 1024) {
         toast.error('Archivo demasiado grande', {
-          description: 'El tamaño máximo permitido es 50 MB',
+          description: 'El tamaño máximo permitido es 10 MB',
         });
-      return false;
-    }
-
-    // Validar tipo de archivo
-    const tiposPermitidos = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'image/jpeg',
-      'image/jpg',
-      'image/png',
-    ];
-
-    if (!tiposPermitidos.includes(file.type) && !file.name.match(/\.(pdf|doc|docx|xls|xlsx|jpg|jpeg|png)$/i)) {
-      toast.error('Tipo de archivo no permitido', {
-        description: 'Solo se permiten: PDF, Word, Excel, JPG, PNG',
-      });
-      return false;
-    }
-
-    return true;
-  };
-
-  const procesarArchivo = (file: File) => {
-    if (!validarArchivo(file)) {
         return;
       }
 
@@ -96,67 +69,13 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId, codigoAu
         // Auto-completar nombre del documento sin extensión
         setNombreDocumento(file.name.replace(/\.[^/.]+$/, ''));
       }
+    }
   };
 
-  const handleSeleccionarArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      procesarArchivo(file);
-    }
-    // Limpiar el input para permitir seleccionar el mismo archivo de nuevo
+  const handleClickSeleccionar = () => {
+    // ✅ CORREGIDO: Acceder a .current del useRef
     if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleClickSeleccionar = (e?: React.MouseEvent) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    if (fileInputRef.current && !cargando) {
       fileInputRef.current.click();
-    }
-  };
-
-  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!cargando && e.dataTransfer.types.includes('Files')) {
-      setIsDragging(true);
-    }
-  };
-
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Solo cambiar el estado si realmente salimos del área (no de un hijo)
-    if (e.currentTarget === e.target) {
-      setIsDragging(false);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Cambiar el cursor para indicar que se puede soltar
-    if (e.dataTransfer.types.includes('Files')) {
-      e.dataTransfer.dropEffect = 'copy';
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    
-    if (cargando) return;
-
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      procesarArchivo(file);
-    } else {
-      toast.error('No se pudo obtener el archivo', {
-        description: 'Por favor, intente nuevamente',
-      });
     }
   };
 
@@ -185,20 +104,6 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId, codigoAu
     });
   };
 
-  // Mapear tipo de documento del frontend al backend
-  const mapearTipoDocumento = (tipo: DocumentoExpediente['tipo']): string => {
-    const mapeo: Record<string, string> = {
-      'Oficio': 'oficio_anuncio',
-      'Carta': 'carta_compromiso',
-      'Acta': 'acta_reunion_apertura',
-      'Informe': 'informe_final',
-      'Evidencia': 'evidencia_hallazgo',
-      'Lista-Chequeo': 'lista_chequeo',
-      'Otro': 'otro',
-    };
-    return mapeo[tipo] || 'otro';
-  };
-
   const handleGuardar = async () => {
     if (!archivoSeleccionado || !nombreDocumento) {
       toast.error('Faltan datos requeridos', {
@@ -207,72 +112,18 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId, codigoAu
       return;
     }
 
-    if (!auditoriaId) {
-      toast.error('Error', {
-        description: 'No se ha especificado la auditoría',
-      });
-      return;
-    }
+    // ✅ CONECTADO AL BACKEND: Pasar el archivo real junto con los metadatos
+    const nuevoDocumento: DocumentoConArchivo = {
+      nombre: nombreDocumento,
+      tipo: tipoDocumento,
+      fase: faseDocumento,
+      size: formatFileSize(archivoSeleccionado.size),
+      descripcion,
+      archivo: archivoSeleccionado, // ✅ Incluir el archivo para subir al backend
+    };
 
-    setCargando(true);
-    setProgresoCarga(0);
-
-    try {
-      // Subir documento a la base de datos con progreso
-      const documentoSubido = await controlInternoService.createDocumento(
-        archivoSeleccionado,
-        {
-          nombre: nombreDocumento,
-          descripcion: descripcion || undefined,
-          tipoDocumento: mapearTipoDocumento(tipoDocumento),
-          etapa: faseDocumento,
-          auditoriaId: auditoriaId,
-          subidoPor: 'Usuario Actual', // TODO: Obtener del contexto de autenticación
-        },
-        (progress) => {
-          setProgresoCarga(progress);
-        }
-      );
-
-      // El documento ya viene del backend con todos los datos
-      const nuevoDocumento: Partial<DocumentoExpediente> = {
-        nombre: documentoSubido.nombre || nombreDocumento,
-        tipo: tipoDocumento,
-        fase: faseDocumento,
-        size: formatFileSize(archivoSeleccionado.size),
-        descripcion: documentoSubido.descripcion || descripcion,
-      };
-
-      toast.success('Documento cargado exitosamente', {
-        description: `${nombreDocumento} agregado al expediente`,
-      });
-
-      // ============ NOTIFICACIONES: Documento Subido ============
-      if (auditoriaId && codigoAuditoria && documentoSubido?.id && user?.id) {
-        try {
-          await notificarDocumentoSubidoAuditoria(
-            documentoSubido.id,
-            nombreDocumento,
-            auditoriaId,
-            codigoAuditoria,
-            user.id
-          );
-        } catch (notifError) {
-          // No fallar la carga si las notificaciones fallan
-          console.error('Error al enviar notificaciones:', notifError);
-        }
-      }
-
-      onGuardar(nuevoDocumento, documentoSubido);
-      setCargando(false);
-    } catch (error) {
-      console.error('Error al cargar documento:', error);
-      toast.error('Error al cargar el documento', {
-        description: error instanceof Error ? error.message : 'Por favor, intente nuevamente',
-      });
-      setCargando(false);
-      setProgresoCarga(0);
-    }
+    // La carga real se maneja en el componente padre
+    onGuardar(nuevoDocumento);
   };
 
   return (
@@ -291,6 +142,10 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId, codigoAu
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+        onClick={(e) => {
+          // Solo detener propagación al backdrop, no bloquear clicks internos
+          e.stopPropagation();
+        }}
       >
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between">
@@ -326,32 +181,29 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId, codigoAu
               accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
               className="hidden"
               disabled={cargando}
-              id="file-input-documento"
             />
             <div
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragEnter={handleDragEnter}
-              onDragLeave={handleDragLeave}
-              onClick={(e) => {
-                // Si no hay archivo seleccionado y no está cargando, activar el input
-                if (!archivoSeleccionado && !cargando) {
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                console.log('[ModalCargarDocumento] Click en área de selección');
+                if (fileInputRef.current && !cargando) {
+                  fileInputRef.current.click();
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  e.stopPropagation();
-                  if (fileInputRef.current) {
+                  if (fileInputRef.current && !cargando) {
                     fileInputRef.current.click();
                   }
                 }
               }}
               className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
-                cargando
-                  ? 'opacity-50 cursor-not-allowed border-gray-300 bg-gray-50'
-                  : archivoSeleccionado
+                archivoSeleccionado
                   ? 'border-green-300 bg-green-50'
-                  : isDragging
-                  ? 'border-blue-500 bg-blue-100 scale-105'
                   : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50'
-              }`}
+              } ${cargando ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {archivoSeleccionado ? (
                 <div className="space-y-2">
@@ -366,14 +218,10 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId, codigoAu
                     <button
                       type="button"
                       onClick={(e) => {
-                        e.preventDefault();
                         e.stopPropagation();
                         setArchivoSeleccionado(null);
-                        if (fileInputRef.current) {
-                          fileInputRef.current.value = '';
-                        }
                       }}
-                      className="text-xs text-blue-600 hover:text-blue-700 mt-2"
+                      className="text-xs text-blue-600 hover:text-blue-700"
                     >
                       Cambiar archivo
                     </button>
@@ -381,22 +229,14 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId, codigoAu
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto transition-colors ${
-                    isDragging ? 'bg-blue-200' : 'bg-gray-200'
-                  }`}>
-                    <Upload className={`w-8 h-8 transition-colors ${
-                      isDragging ? 'text-blue-600' : 'text-gray-400'
-                    }`} />
+                  <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto">
+                    <Upload className="w-8 h-8 text-gray-400" />
                   </div>
-                  <p className={`text-sm transition-colors ${
-                    isDragging ? 'text-blue-700 font-medium' : 'text-gray-700'
-                  }`}>
-                    {isDragging 
-                      ? 'Suelta el archivo aquí' 
-                      : 'Haz clic para seleccionar o arrastra el archivo aquí'}
+                  <p className="text-sm text-gray-700">
+                    Haz clic para seleccionar o arrastra el archivo aquí
                   </p>
                   <p className="text-xs text-gray-500">
-                    PDF, Word, Excel, Imágenes (Máx. 50 MB)
+                    PDF, Word, Excel, Imágenes (Máx. 10 MB)
                   </p>
                 </div>
               )}
@@ -529,17 +369,17 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId, codigoAu
 
         {/* Footer */}
         <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 flex justify-end gap-3">
-          <ButtonSIGL variant="ghost" onClick={onClose} disabled={cargando}>
+          <ButtonSIGL variant="ghost" onClick={onClose} disabled={cargando || loading}>
             Cancelar
           </ButtonSIGL>
           <ButtonSIGL
             variant="primary"
             onClick={handleGuardar}
-            disabled={!archivoSeleccionado || !nombreDocumento || cargando}
-            icon={cargando ? <Clock className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            disabled={!archivoSeleccionado || !nombreDocumento || cargando || loading}
+            icon={(cargando || loading) ? <Clock className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
             iconPosition="left"
           >
-            {cargando ? 'Cargando...' : 'Cargar Documento'}
+            {(cargando || loading) ? 'Subiendo...' : 'Cargar Documento'}
           </ButtonSIGL>
         </div>
       </motion.div>

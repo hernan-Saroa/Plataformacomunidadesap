@@ -307,16 +307,9 @@ export default function ValidarCertificadoGraduado({
                   </span>
                 </div>
 
-                {certificado.diplomaNumber && (
-                  <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
-                    <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Diploma No:</span>
-                    <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">{certificado.diplomaNumber}</span>
-                  </div>
-                )}
-
                 {certificado.actaNumber && (
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
-                    <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Acta No:</span>
+                    <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Registro/Folio/Libro:</span>
                     <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">{certificado.actaNumber}</span>
                   </div>
                 )}

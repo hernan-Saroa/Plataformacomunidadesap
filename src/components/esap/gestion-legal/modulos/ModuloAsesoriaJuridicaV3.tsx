@@ -19,7 +19,9 @@ import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import { Input } from '../../../ui/input';
 import { Textarea } from '../../../ui/textarea';
 import { Label } from '../../../ui/label';
+import { ConsultaJuridica } from '../core/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { useConfirmation } from '../../../ui/confirmation-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
@@ -27,20 +29,27 @@ import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { legalService } from '../../../../services/api/legal.service';
-import { ModalNuevaConsulta, NuevaConsultaData } from './ModalNuevaConsulta';
+import { ModalNuevaConsulta } from './ModalNuevaConsulta';
 import { ModalExpedienteConsulta } from './ModalExpedienteConsulta';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
 
 // ✅ Importar configuraciones centralizadas
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
-type VistaModulo = 'tabla' | 'tarjetas';
+type VistaModulo = 'tabla' | 'tarjetas' | 'archivados';
 type OrdenColumna = 'id' | 'fecha' | 'dias' | 'tema' | 'etapa';
 
 export function ModuloAsesoriaJuridicaV3() {
   // ✅ Obtener configuraciones desde el Context API
   const { estadosActivos } = useConfiguracionModulo('asesoria-juridica');
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+
+  // ✅ Estado para cambiar entre vista normal y archivados
+  const [vistaActual, setVistaActual] = useState<'activos' | 'archivados'>('activos');
 
   const [tipoVista, setTipoVista] = useState<VistaModulo>('tabla');
   const [busqueda, setBusqueda] = useState('');
@@ -135,13 +144,16 @@ export function ModuloAsesoriaJuridicaV3() {
         solicitante: c.dependenciaSolicitante || 'Sin dependencia',
         funcionarioSolicitante: c.nombreSolicitante || 'Sin asignar',
         emailSolicitante: c.emailSolicitante || '',
+        cargoSolicitante: c.cargoSolicitante || '',
+        telefonoSolicitante: c.telefonoSolicitante || '',
+        antecedentes: c.antecedentes || '',
         consulta: c.descripcion || '',
         fechaRadicacion: new Date(c.fechaRecepcion),
         diasTotales: c.terminoLegalDias || 30,
         diasRestantes: c.diasRestantes || 30,
         abogadoAsignado: c.abogadoAsignado?.nombreCompleto || 'Sin asignar',
         abogadoAsignadoId: c.abogadoAsignadoId || c.abogadoAsignado?.id || '', // ID needed for Select
-        prioridad: c.prioridad || 'media',
+        prioridad: (c.prioridad || 'media').toUpperCase(),
         normativaAplicable: [],
         documentosAdjuntos: [],
         respuesta: c.respuesta || '', // Preservar respuesta/borrador guardado
@@ -159,20 +171,21 @@ export function ModuloAsesoriaJuridicaV3() {
   };
 
   const mapEstadoToEtapa = (estado: string): string => {
-    // 1. Try to find exact match in configured states (by ID)
+    // Config estados now use backend IDs, so find exact match
     const exactMatch = estadosActivos.find(e => e.id === estado);
-    if (exactMatch) return exactMatch.nombre.toUpperCase();
+    if (exactMatch) return exactMatch.nombre;
 
-    const map: Record<string, string> = {
-      'en_radicacion': 'RADICADA',
-      'asignado': 'ANÁLISIS',
-      'en_analisis': 'ANÁLISIS',
-      'en_revision': 'RESPUESTA',
-      'respondido': 'ENVIADA',
-      'cerrado': 'ENVIADA',
-      'vencido': 'VENCIDA'
+    // Fallback map for any edge cases
+    const fallbackMap: Record<string, string> = {
+      'en_radicacion': 'Radicada',
+      'asignado': 'Asignado',
+      'en_analisis': 'En Análisis',
+      'en_revision': 'En Revisión',
+      'respondido': 'Respondido',
+      'cerrado': 'Respondido',
+      'vencido': 'Vencida'
     };
-    return map[estado] || 'RADICADA';
+    return fallbackMap[estado] || estado || 'Radicada';
   };
 
   const formatMateriaJuridica = (materia: string): string => {
@@ -206,7 +219,7 @@ export function ModuloAsesoriaJuridicaV3() {
       return;
     }
     // ✅ Validación de formato de email
-    if (newConsultaData.emailSolicitante && !isValidEmail(newConsultaData.emailSolicitante)) {
+    if (newConsultaData.emailSolicitante && !isValidEmail(newConsultaData.emailSolicitante || '')) {
       toast.error('El correo debe contener @ y un dominio válido (.com, .co, etc.)');
       return;
     }
@@ -240,11 +253,46 @@ export function ModuloAsesoriaJuridicaV3() {
     }
   };
 
-  const handleDeleteConsulta = async (uuid: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta consulta? Esta acción no se puede deshacer.')) return;
+  const handleArchivarConsulta = async (uuid: string) => {
+    const confirmado = await confirm({
+      title: 'Archivar Consulta',
+      description: '¿Estás seguro de archivar esta consulta? Se moverá a la pestaña de Archivados y podrá ser consultada allí.',
+      variant: 'warning',
+      confirmText: 'Archivar',
+      cancelText: 'Cancelar'
+    });
+
+    if (!confirmado) return;
+
+    const toastId = toast.loading('Archivando consulta...');
+    try {
+      const usuarioNombre = usuario ? usuario.nombre : 'Usuario Sistema';
+      await legalService.archivarConsulta(uuid, 'Archivado desde listado', usuarioNombre);
+      toast.success('Consulta archivada exitosamente', { id: toastId });
+      setModalExpedienteOpen(false);
+      setConsultaSeleccionada(null);
+      loadConsultas();
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al archivar', { id: toastId });
+    }
+  };
+
+  const handleEliminarConsulta = async (uuid: string) => {
+    const confirmado = await confirm({
+      title: 'Eliminar Consulta',
+      description: '¿Estás seguro de eliminar esta consulta? Se marcará como eliminada y podrá ser restaurada desde Archivados.',
+      variant: 'danger',
+      confirmText: 'Eliminar',
+      cancelText: 'Cancelar'
+    });
+
+    if (!confirmado) return;
+
     const toastId = toast.loading('Eliminando consulta...');
     try {
-      await legalService.deleteConsultaJuridica(uuid);
+      const usuarioNombre = usuario ? usuario.nombre : 'Usuario Sistema';
+      await legalService.eliminarConsultaSoft(uuid, 'Eliminado desde listado', usuarioNombre);
       toast.success('Consulta eliminada', { id: toastId });
       setModalExpedienteOpen(false);
       setConsultaSeleccionada(null);
@@ -252,6 +300,86 @@ export function ModuloAsesoriaJuridicaV3() {
     } catch (error) {
       console.error(error);
       toast.error('Error al eliminar', { id: toastId });
+    }
+  };
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
+  const [loadingArchivados, setLoadingArchivados] = useState(false);
+
+  // Hook de confirmación
+  const { confirm, ConfirmationComponent } = useConfirmation();
+
+  const loadArchivados = async () => {
+    try {
+      setLoadingArchivados(true);
+      const data = await legalService.getConsultasArchivadas();
+
+      // Mapear a formato ItemArchivado
+      const mappedItems: ItemArchivado[] = data.map((c: any) => ({
+        id: c.id,
+        codigo: c.radicado || c.numeroRadicado || 'S/N',
+        nombre: c.materiaJuridica ? `Consulta sobre ${c.materiaJuridica} - ${c.dependenciaSolicitante}` : 'Consulta Jurídica',
+        tipo: 'Consulta Jurídica',
+        estado: c.estadoArchivo || 'ARCHIVADO',
+        fechaArchivado: c.fechaArchivo ? new Date(c.fechaArchivo) : new Date(),
+        usuarioArchivo: c.usuarioArchivo || 'Desconocido',
+        motivoArchivo: c.motivoArchivo || 'Sin motivo registrado',
+        metadatos: {
+          'Tema Jurídico': c.materiaJuridica || 'No registrado',
+          'Solicitante': c.nombreSolicitante || 'Desconocido',
+          'Dependencia': c.dependenciaSolicitante || 'Desconocida',
+          'Abogado': c.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+          'Fecha Radicación': c.fechaRecepcion ? new Date(c.fechaRecepcion).toLocaleDateString() : 'N/A'
+        }
+      }));
+
+      setItemsArchivados(mappedItems);
+    } catch (error) {
+      console.error('Error cargando archivados:', error);
+      toast.error('Error al cargar consultas archivadas');
+    } finally {
+      setLoadingArchivados(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tipoVista === 'archivados') {
+      loadArchivados();
+    }
+  }, [tipoVista]);
+
+  // ✅ Función para restaurar una consulta archivada
+  const handleRestaurar = async (itemId: string) => {
+    try {
+      toast.loading('Restaurando consulta...');
+      const usuarioNombre = usuario ? usuario.nombre : 'Usuario Sistema';
+      await legalService.restaurarConsulta(itemId, usuarioNombre);
+      toast.dismiss();
+      toast.success('Consulta restaurada exitosamente');
+      toast.success('Consulta restaurada exitosamente');
+      loadArchivados(); // Recargar lista
+      loadConsultas(); // Actualizar lista principal
+    } catch (error) {
+      console.error('Error restaurando:', error);
+      toast.dismiss();
+      toast.error('Error al restaurar consulta');
+    }
+  };
+
+  // ✅ Función para eliminar permanentemente una consulta
+  const handleEliminarPermanente = async (itemId: string) => {
+    // No pedir confirmación aquí porque VistaArchivados ya lo hace
+    try {
+      toast.loading('Eliminando permanentemente...');
+      await legalService.eliminarConsultaPermanente(itemId);
+      toast.dismiss();
+      toast.success('Consulta eliminada permanentemente');
+      loadArchivados(); // Recargar lista
+      loadConsultas(); // Actualizar lista principal
+    } catch (error) {
+      console.error('Error eliminando permanente:', error);
+      toast.dismiss();
+      toast.error('Error al eliminar permanentemente');
     }
   };
 
@@ -268,9 +396,9 @@ export function ModuloAsesoriaJuridicaV3() {
       );
     }
 
-    // Filtro por etapa
+    // Filtro por etapa - usando estado del backend (no el displayName)
     if (filtroEtapa !== 'TODAS') {
-      resultado = resultado.filter(c => c.etapa === filtroEtapa);
+      resultado = resultado.filter(c => c.estado === filtroEtapa);
     }
 
     // Filtro por semáforo
@@ -318,30 +446,6 @@ export function ModuloAsesoriaJuridicaV3() {
     }
   };
 
-  const handleNuevaConsulta = async (data: NuevaConsultaData) => {
-    try {
-      const response = await legalService.createConsultaJuridica({
-        materiaJuridica: data.temaJuridico.toLowerCase(),
-        dependenciaSolicitante: data.solicitante,
-        nombreSolicitante: data.funcionarioSolicitante,
-        emailSolicitante: data.emailSolicitante,
-        cargoSolicitante: data.cargo,
-        descripcion: data.consulta,
-        prioridad: data.prioridad.toLowerCase(),
-        terminoLegalDias: 30
-      });
-
-      // Recargar listado de consultas
-      await loadConsultas();
-
-      toast.success('✅ Consulta creada exitosamente', {
-        description: `${response.numeroRadicado} - ${data.temaJuridico}`
-      });
-    } catch (error) {
-      console.error('Error al crear consulta:', error);
-      toast.error('Error al crear la consulta');
-    }
-  };
 
   const handleAbrirExpediente = (consulta: ConsultaJuridica) => {
     setConsultaSeleccionada(consulta);
@@ -354,9 +458,9 @@ export function ModuloAsesoriaJuridicaV3() {
         label: 'Nueva Consulta',
         labelMobile: 'Nueva',
         icon: <Plus className="w-4 h-4" />,
-        onClick: () => setIsCreateOpen(true),
-        // onClick: () => setModalNuevaConsultaOpen(true),
-        variant: 'primary'
+        // onClick: () => setIsCreateOpen(true),
+        onClick: () => setModalNuevaConsultaOpen(true),
+        variant: 'outline' as const
       }]
     }
     return []
@@ -368,6 +472,15 @@ export function ModuloAsesoriaJuridicaV3() {
       <ModuleHeader
         title="Asesoría Jurídica"
         subtitle="Seguimiento a consultas y términos de respuesta"
+        toggleView={{
+          current: tipoVista,
+          onChange: (view) => setTipoVista(view as VistaModulo),
+          options: [
+            { label: 'Tabla', icon: <Columns3 className="w-4 h-4" />, value: 'tabla' },
+            { label: 'Tarjetas', icon: <List className="w-4 h-4" />, value: 'tarjetas' },
+            { label: 'Archivados', icon: <Archive className="w-4 h-4" />, value: 'archivados' }
+          ]
+        }}
         buttons={addBtnsPermission()}
         infoTooltip={
           <ModuleInfoTooltip
@@ -430,17 +543,20 @@ export function ModuloAsesoriaJuridicaV3() {
           {
             icon: <FileQuestion className="w-5 h-5 text-purple-600" />,
             value: consultas.length,
-            label: 'Consultas Totales'
+            label: 'Consultas Totales',
+            color: 'purple'
           },
           {
             icon: <AlertCircle className="w-5 h-5 text-red-600" />,
             value: consultasFiltradas.filter(c => c.diasRestantes <= 3).length,
-            label: 'Críticas'
+            label: 'Críticas',
+            color: 'red'
           },
           {
             icon: <CheckCircle className="w-5 h-5 text-green-600" />,
             value: consultasFiltradas.filter(c => c.diasRestantes > 5).length,
-            label: 'En Término'
+            label: 'En Término',
+            color: 'green'
           }
         ]}
       />
@@ -458,10 +574,7 @@ export function ModuloAsesoriaJuridicaV3() {
             options: [
               { value: 'TODAS', label: 'Todas las etapas' },
               ...estadosActivos.map(estado => ({
-                value: estado.nombre.toUpperCase(), // Assuming mapped strings are UPPERCASE (RADICADA, etc) 
-                // OR better: use ID if we change map logic. 
-                // Current mapEstadoToEtapa returns 'RADICADA', 'ANÁLISIS' etc.
-                // Let's rely on the Configured Name but check casing.
+                value: estado.id, // Usar ID del backend (en_radicacion, asignado, etc.)
                 label: estado.nombre
               }))
             ]
@@ -489,20 +602,31 @@ export function ModuloAsesoriaJuridicaV3() {
       />
 
       {/* Tabla o Tarjetas */}
-      {tipoVista === 'tabla' ? (
+      {tipoVista === 'tabla' && (
         <TablaConsultas
           consultas={consultasFiltradas}
           orden={orden}
           direccionOrden={direccionOrden}
           onOrdenar={handleOrdenar}
           onAbrirExpediente={handleAbrirExpediente}
-          onEliminar={handleDeleteConsulta}
+          onArchivar={handleArchivarConsulta}
+          onEliminar={handleEliminarConsulta}
         />
-      ) : (
+      )}
+      {tipoVista === 'tarjetas' && (
         <TarjetasConsultas
           consultas={consultasFiltradas}
           onAbrirExpediente={handleAbrirExpediente}
-          onEliminar={handleDeleteConsulta}
+          onArchivar={handleArchivarConsulta}
+          onEliminar={handleEliminarConsulta}
+        />
+      )}
+      {tipoVista === 'archivados' && (
+        <VistaArchivados
+          items={itemsArchivados}
+          moduloNombre="Asesoría Jurídica"
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
         />
       )}
 
@@ -511,7 +635,7 @@ export function ModuloAsesoriaJuridicaV3() {
         <ModalNuevaConsulta
           isOpen={modalNuevaConsultaOpen}
           onClose={() => setModalNuevaConsultaOpen(false)}
-          onSubmit={handleNuevaConsulta}
+          onSuccess={loadConsultas}
         />
       )}
 
@@ -685,7 +809,10 @@ export function ModuloAsesoriaJuridicaV3() {
         </DialogContent>
       </Dialog>
 
-    </div>
+
+
+      <ConfirmationComponent />
+    </div >
   );
 }
 
@@ -695,10 +822,11 @@ interface TablaConsultasProps {
   direccionOrden: 'asc' | 'desc';
   onOrdenar: (columna: OrdenColumna) => void;
   onAbrirExpediente: (consulta: ConsultaJuridica) => void;
+  onArchivar: (uuid: string) => void;
   onEliminar: (uuid: string) => void;
 }
 
-function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirExpediente, onEliminar }: TablaConsultasProps) {
+function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirExpediente, onArchivar, onEliminar }: TablaConsultasProps) {
   return (
     <Card className="bg-white border border-gray-200">
       <table className="w-full">
@@ -771,7 +899,7 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
             </th>
             <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Solicitante</th>
             <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Abogado Asignado</th>
-            <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Acciones</th>
+            <th className="px-4 py-3 text-center text-sm font-bold text-gray-500">Acciones</th>
           </tr>
         </thead>
         <tbody>
@@ -800,29 +928,49 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
               <td className="px-4 py-3 text-sm text-gray-500">{consulta.temaJuridico}</td>
               <td className="px-4 py-3 text-sm text-gray-500">{consulta.solicitante}</td>
               <td className="px-4 py-3 text-sm text-gray-500">{consulta.abogadoAsignado}</td>
-              <td className="px-4 py-3 text-sm text-gray-500">
-                <Button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); onAbrirExpediente(consulta); }}
-                  // onClick={(e: React.MouseEvent) => { 
-                  //   e.stopPropagation(); 
-                  //   onAbrirExpediente(consulta);
-                  // }}
-                  size="sm"
-                  className="w-full text-xs font-bold truncate"
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
-                >
-                  <Archive className="w-3 h-3 mr-1 flex-shrink-0" /><span className="truncate">Expediente</span>
-                </Button>
-                {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_DELETE) && (
-                <Button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid); }}
-                  size="sm"
-                  variant="outline"
-                  className="mt-1 w-full text-xs text-red-600 bg-red-50 hover:bg-red-100 border-red-200"
-                >
-                  <Trash2 className="w-3 h-3 mr-1" /> Eliminar
-                </Button>
-                )}
+              <td className="px-4 py-3 text-center">
+                <div className="flex items-center gap-1 justify-center">
+                  <button
+                    onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      onAbrirExpediente(consulta);
+                    }}
+                    className="relative group p-2 rounded-lg text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
+                  >
+                    <FolderOpen className="w-4 h-4" />
+                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-50">
+                      Expediente
+                    </span>
+                  </button>
+                  {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_DELETE) && (
+                    <>
+                      <button
+                        onClick={(e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          onArchivar(consulta.uuid || consulta.id);
+                        }}
+                        className="relative group p-2 rounded-lg text-orange-500 hover:bg-orange-50 transition-all"
+                      >
+                        <Archive className="w-4 h-4" />
+                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-50">
+                          Archivar
+                        </span>
+                      </button>
+                      <button
+                        onClick={(e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          onEliminar(consulta.uuid || consulta.id);
+                        }}
+                        className="relative group p-2 rounded-lg text-red-500 hover:bg-red-50 transition-all"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-50">
+                          Eliminar
+                        </span>
+                      </button>
+                    </>
+                  )}
+                </div>
               </td>
             </tr>
           ))}
@@ -835,14 +983,15 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
 interface TarjetasConsultasProps {
   consultas: ConsultaJuridica[];
   onAbrirExpediente: (consulta: ConsultaJuridica) => void;
+  onArchivar: (uuid: string) => void;
   onEliminar: (uuid: string) => void;
 }
 
-function TarjetasConsultas({ consultas, onAbrirExpediente, onEliminar }: TarjetasConsultasProps) {
+function TarjetasConsultas({ consultas, onAbrirExpediente, onArchivar, onEliminar }: TarjetasConsultasProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {consultas.map((consulta) => (
-        <Card key={consulta.id} className="bg-white border border-gray-200 hover:shadow-md transition-all flex flex-col w-full" style={{ height: '680px', minHeight: '680px', maxHeight: '680px' }}>
+        <Card key={consulta.id} className="bg-white border border-gray-200 hover:shadow-md transition-all flex flex-col w-full" style={{ height: '520px', minHeight: '520px', maxHeight: '520px' }}>
           <div className="h-1 flex-shrink-0" style={{ background: '#003DA5' }} />
 
           <div className="p-2.5 flex-1 flex flex-col overflow-y-auto min-h-0">
@@ -918,75 +1067,41 @@ function TarjetasConsultas({ consultas, onAbrirExpediente, onEliminar }: Tarjeta
               <p className="text-xs text-gray-700 line-clamp-1">{consulta.normativaAplicable?.[0] || 'N/A'}</p>
             </div>
 
-            <div className="space-y-1 pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
-              <div className="flex gap-2">
-                <Button
+            <div className="flex items-center justify-between pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
+              <div className="flex items-center gap-0.5">
+                <button
                   onClick={(e: React.MouseEvent) => { e.stopPropagation(); onAbrirExpediente(consulta); }}
-                  size="sm"
-                  className="flex-1 text-xs font-bold truncate"
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
+                  className="relative group p-2 rounded-lg text-[#003DA5] hover:bg-[#E0EDFF] transition-all"
                 >
-                  <Archive className="w-3 h-3 mr-1 flex-shrink-0" /><span className="truncate">Expediente</span>
-                </Button>
-                <Button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid); }}
-                  size="sm"
-                  variant="outline"
-                  className="px-2 bg-red-50 hover:bg-red-100 text-red-600 border-red-200"
-                  title="Eliminar Consulta"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                  <FolderOpen className="w-4 h-4" />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
+                    Expediente
+                  </span>
+                </button>
               </div>
-
-              <div className="space-y-1">
-                <div className="grid grid-cols-2 gap-1">
-                  <Button
-                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Documentos Soporte', { description: consulta.id }); }}
-                    size="sm"
-                    variant="outline"
-                    className="text-[11px] px-2 justify-start truncate min-w-0"
-                  >
-                    <FileText className="w-3 h-3 mr-0.5 flex-shrink-0" /><span className="truncate">Soporte</span>
-                  </Button>
-                  <Button
-                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Normativa Aplicable', { description: consulta.id }); }}
-                    size="sm"
-                    variant="outline"
-                    className="text-[11px] px-2 justify-start truncate min-w-0"
-                  >
-                    <Archive className="w-3 h-3 mr-0.5 flex-shrink-0" /><span className="truncate">Normativa</span>
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-1">
-                  <Button
-                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Oficios', { description: consulta.id }); }}
-                    size="sm"
-                    variant="outline"
-                    className="text-[11px] px-2 justify-start truncate min-w-0"
-                  >
-                    <Mail className="w-3 h-3 mr-0.5 flex-shrink-0" /><span className="truncate">Oficios</span>
-                  </Button>
-                  <Button
-                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Respuesta', { description: consulta.id }); }}
-                    size="sm"
-                    variant="outline"
-                    className="text-[11px] px-2 justify-start truncate min-w-0"
-                  >
-                    <Send className="w-3 h-3 mr-0.5 flex-shrink-0" /><span className="truncate">Respuesta</span>
-                  </Button>
-                </div>
-
-                <Button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Comentarios de la Consulta', { description: consulta.id }); }}
-                  size="sm"
-                  className="w-full text-[11px] py-2 font-bold"
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
-                >
-                  <MessageSquare className="w-3.5 h-3.5 mr-1 flex-shrink-0" />
-                  <span className="truncate">💬 Comentarios de la Consulta</span>
-                </Button>
+              <div className="flex items-center gap-0.5 pl-1 ml-1 border-l border-gray-200">
+                {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_DELETE) && (
+                  <>
+                    <button
+                      onClick={(e: React.MouseEvent) => { e.stopPropagation(); onArchivar(consulta.uuid || consulta.id); }}
+                      className="relative group p-2 rounded-lg text-orange-500 hover:bg-orange-50 transition-all"
+                    >
+                      <Archive className="w-4 h-4" />
+                      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
+                        Archivar
+                      </span>
+                    </button>
+                    <button
+                      onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid || consulta.id); }}
+                      className="relative group p-2 rounded-lg text-red-500 hover:bg-red-50 transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[11px] font-semibold text-white bg-gray-800 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-10">
+                        Eliminar
+                      </span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>

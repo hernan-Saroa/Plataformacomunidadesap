@@ -29,5 +29,9 @@ export class UpdateDocumentoDto {
   @IsOptional()
   @IsUUID()
   planMejoramientoId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  visibleAuditoriaId?: string | null;
 }
 

@@ -18,27 +18,30 @@
  * - Integración con auditorías
  */
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Folder, FolderOpen, FileText, Upload, Download, Search, Eye,
   ChevronRight, ChevronDown, Plus, Filter, Calendar, User,
   Archive, CheckCircle2, AlertCircle, Clock,
-  File, FolderCheck, FileCheck, Loader2
+  File, FolderCheck, FileCheck, Loader2, X
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+// Servicio API
+import { controlInternoService } from '../../../services/api/controlInternoService';
+import { getServiceUrl, API_MODE } from '../../../config/environment';
 
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
 
-// API Services
-import { auditoriasApi } from './services/api';
-import { controlInternoService } from '../../../services/api/controlInternoService';
-import { LoadingSpinner } from '../../ui/loading-spinner';
-import { EmptyState } from '../../ui/empty-state';
-import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
+// ✅ FASE 1 DÍA 3: Componentes responsive
+import { Container4K } from '../../ui/container-4k';
+import { ResponsiveGrid } from '../../ui/responsive-grid';
+
+// ✅ Descarga de Expedientes en ZIP
+import { BotonDescargarExpedienteZip } from './DescargarExpedienteZip';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -55,11 +58,57 @@ type FaseAuditoria =
 interface Documento {
   id: string;
   nombre: string;
-  tipo: string;
-  tamanio: string;
+  nombreArchivo: string;
+  tipo: string;            // tipoDocumento (categoria)
+  tipoMime: string;        // application/pdf, image/png, etc.
+  tamanio: string;         // formateado para UI
+  tamanioBytes: number;    // bytes reales
   fechaCreacion: string;
   autor: string;
   fase: FaseAuditoria;
+  rutaArchivo?: string;
+  descripcion?: string;
+}
+
+// Mapeo de MIME types a etiquetas legibles
+const TIPO_MIME_LABELS: Record<string, string> = {
+  'application/pdf': 'PDF',
+  'application/vnd.ms-excel': 'Excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'Excel',
+  'application/msword': 'Word',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word',
+  'application/vnd.ms-powerpoint': 'PowerPoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PowerPoint',
+  'image/png': 'Imagen PNG',
+  'image/jpeg': 'Imagen JPEG',
+  'image/gif': 'Imagen GIF',
+  'text/plain': 'Texto',
+  'text/csv': 'CSV',
+};
+
+function getMimeTypeLabel(mimeType: string): string {
+  if (TIPO_MIME_LABELS[mimeType]) return TIPO_MIME_LABELS[mimeType];
+  if (mimeType.startsWith('image/')) return 'Imagen';
+  if (mimeType.startsWith('video/')) return 'Video';
+  if (mimeType.startsWith('audio/')) return 'Audio';
+  return 'Archivo';
+}
+
+// Formatear tamaño de archivo
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Obtener URL base para archivos
+function getFilesBaseUrl(): string {
+  const serviceUrl = getServiceUrl('control-institucional');
+  return API_MODE === 'gateway' 
+    ? `${serviceUrl}/control-institucional/api/v1`
+    : serviceUrl;
 }
 
 interface Expediente {
@@ -74,8 +123,6 @@ interface Expediente {
   totalDocumentos: number;
   documentos: Documento[];
 }
-
-type VistaActual = 'expedientes' | 'estadisticas';
 
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN DE FASES
@@ -127,154 +174,85 @@ const FASES_AUDITORIA = [
 ];
 
 // ════════════════════════════════════════════════════════════════════════════
-// FUNCIONES AUXILIARES PARA MAPEO DE DATOS
+// MAPEO DE FASE BACKEND A FRONTEND
 // ════════════════════════════════════════════════════════════════════════════
 
-/**
- * Mapea el estado de auditoría al estado del expediente
- */
-const mapearEstadoExpediente = (estadoAuditoria: string): 'ABIERTO' | 'EN_PROCESO' | 'CERRADO' => {
-  const estadoLower = estadoAuditoria.toLowerCase();
-  if (estadoLower === 'planeación' || estadoLower === 'planeacion') {
-    return 'ABIERTO';
-  }
-  if (estadoLower === 'finalizada' || estadoLower === 'finalizado') {
+// Mapea los estados del backend a los estados de expediente
+function mapEstadoAuditoria(fase: string, estadoKanban?: string): 'ABIERTO' | 'EN_PROCESO' | 'CERRADO' {
+  if (estadoKanban === 'Finalizada' || fase === 'CIERRE' || fase === 'cierre') {
     return 'CERRADO';
   }
+  if (fase === 'PLANIFICACION' || fase === 'planificacion' || estadoKanban === 'Plan Anual' || estadoKanban === 'Planeación') {
+    return 'ABIERTO';
+  }
   return 'EN_PROCESO';
-};
+}
 
-/**
- * Mapea la etapa del documento a la fase del expediente
- */
-const mapearFaseDocumento = (etapa: string | undefined): FaseAuditoria => {
-  if (!etapa) return 'PLANIFICACION';
-  
-  const etapaLower = etapa.toLowerCase();
-  if (etapaLower.includes('planificacion') || etapaLower.includes('planeacion')) {
-    return 'PLANIFICACION';
-  }
-  if (etapaLower.includes('ejecucion') || etapaLower.includes('ejecución')) {
-    return 'EJECUCION';
-  }
-  if (etapaLower.includes('hallazgo')) {
-    return 'HALLAZGOS';
-  }
-  if (etapaLower.includes('comunicacion') || etapaLower.includes('comunicación')) {
-    return 'COMUNICACION_RESULTADOS';
-  }
-  if (etapaLower.includes('seguimiento')) {
-    return 'SEGUIMIENTO';
-  }
-  if (etapaLower.includes('cierre')) {
-    return 'CIERRE';
-  }
-  return 'PLANIFICACION';
-};
+// Mapea la etapa del documento del backend a FaseAuditoria
+function mapEtapaToFase(etapa: string): FaseAuditoria {
+  const mapa: Record<string, FaseAuditoria> = {
+    'planificacion': 'PLANIFICACION',
+    'PLANIFICACION': 'PLANIFICACION',
+    'Planeación': 'PLANIFICACION',
+    'Plan Anual': 'PLANIFICACION',
+    'ejecucion': 'EJECUCION',
+    'EJECUCION': 'EJECUCION',
+    'Ejecución': 'EJECUCION',
+    'hallazgos': 'HALLAZGOS',
+    'HALLAZGOS': 'HALLAZGOS',
+    'comunicacion': 'COMUNICACION_RESULTADOS',
+    'COMUNICACION_RESULTADOS': 'COMUNICACION_RESULTADOS',
+    'Comunicación': 'COMUNICACION_RESULTADOS',
+    'seguimiento': 'SEGUIMIENTO',
+    'SEGUIMIENTO': 'SEGUIMIENTO',
+    'Seguimiento': 'SEGUIMIENTO',
+    'cierre': 'CIERRE',
+    'CIERRE': 'CIERRE',
+    'Finalizada': 'CIERRE'
+  };
+  return mapa[etapa] || 'PLANIFICACION';
+}
 
-/**
- * Formatea el tamaño del archivo
- */
-const formatearTamanio = (bytes: number | undefined): string => {
-  if (!bytes) return '0 KB';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
+// Convierte datos del backend a la interfaz Documento
+function mapDocumentoBackend(doc: any): Documento {
+  const tamanioBytes = doc.tamanio || doc.size || 0;
+  return {
+    id: doc.id,
+    nombre: doc.nombre || doc.nombreArchivo || 'Sin nombre',
+    nombreArchivo: doc.nombreArchivo || doc.nombre || 'archivo',
+    tipo: doc.tipoDocumento || doc.tipo || 'otro',
+    tipoMime: doc.tipoMime || doc.mimeType || 'application/octet-stream',
+    tamanio: formatFileSize(tamanioBytes),
+    tamanioBytes: tamanioBytes,
+    fechaCreacion: doc.fechaCreacion?.split('T')[0] || doc.createdAt?.split('T')[0] || '',
+    autor: doc.subidoPor || doc.creadoPor || 'Sistema',
+    fase: mapEtapaToFase(doc.etapa || 'PLANIFICACION'),
+    rutaArchivo: doc.ruta || doc.rutaArchivo,
+    descripcion: doc.descripcion
+  };
+}
+
+// Convierte datos del backend de auditoría a la interfaz Expediente
+function mapAuditoriaToExpediente(auditoria: any, documentos: Documento[]): Expediente {
+  return {
+    id: auditoria.id,
+    codigoAuditoria: auditoria.codigo || `AU-${auditoria.id.slice(0, 8).toUpperCase()}`,
+    nombreAuditoria: auditoria.nombre || auditoria.objetivoGeneral || 'Sin nombre',
+    tipoAuditoria: auditoria.tipoAuditoria || auditoria.tipo || 'Auditoría',
+    fechaInicio: auditoria.fechaInicio?.split('T')[0] || auditoria.createdAt?.split('T')[0] || '',
+    fechaFin: auditoria.fechaFin?.split('T')[0],
+    estado: mapEstadoAuditoria(auditoria.fase, auditoria.estadoKanban),
+    responsable: auditoria.responsable || auditoria.auditorLider || 'Sin asignar',
+    totalDocumentos: documentos.length,
+    documentos: documentos
+  };
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
 export function ExpedientesModulePremium() {
-  const [vistaActiva, setVistaActiva] = useState<VistaActual>('expedientes');
-  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Función para cargar expedientes desde la API
-  const cargarExpedientes = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Obtener todas las auditorías
-      const response = await auditoriasApi.getAllKanban();
-      
-      if (!response.success || !response.data) {
-        throw new Error(response.message || 'Error al cargar auditorías');
-      }
-
-      const auditorias = response.data;
-
-      // Para cada auditoría, obtener sus documentos y construir el expediente
-      const expedientesPromises = auditorias.map(async (auditoria: any) => {
-        try {
-          // Obtener documentos de la auditoría
-          const documentos = await controlInternoService.getDocumentosByAuditoria(auditoria.id);
-
-          // Mapear documentos al formato esperado
-          const documentosMapeados: Documento[] = documentos.map((doc: any) => ({
-            id: doc.id || doc.documentoId || String(Math.random()),
-            nombre: doc.nombre || doc.nombreArchivo || 'Sin nombre',
-            tipo: doc.tipo || doc.tipoArchivo || 'PDF',
-            tamanio: formatearTamanio(doc.tamanio || doc.size),
-            fechaCreacion: doc.fechaCreacion || doc.createdAt || new Date().toISOString().split('T')[0],
-            autor: doc.autor || doc.creadoPor || doc.usuarioNombre || 'Sistema',
-            fase: mapearFaseDocumento(doc.etapa || doc.fase)
-          }));
-
-          // Construir el expediente
-          const expediente: Expediente = {
-            id: auditoria.id,
-            codigoAuditoria: auditoria.codigo || auditoria.codigoAuditoria || `AUD-${auditoria.id}`,
-            nombreAuditoria: auditoria.titulo || auditoria.nombre || 'Sin título',
-            tipoAuditoria: auditoria.tipo || 'Auditoría de Gestión',
-            fechaInicio: auditoria.fechaInicio || auditoria.fechaCreacion || new Date().toISOString().split('T')[0],
-            fechaFin: auditoria.fechaFin,
-            estado: mapearEstadoExpediente(auditoria.estado || 'Planeación'),
-            responsable: auditoria.auditorLider?.nombre || auditoria.responsable || 'Sin asignar',
-            totalDocumentos: documentosMapeados.length,
-            documentos: documentosMapeados
-          };
-
-          return expediente;
-        } catch (err) {
-          console.error(`Error al cargar documentos de auditoría ${auditoria.id}:`, err);
-          // Retornar expediente sin documentos si hay error
-          return {
-            id: auditoria.id,
-            codigoAuditoria: auditoria.codigo || auditoria.codigoAuditoria || `AUD-${auditoria.id}`,
-            nombreAuditoria: auditoria.titulo || auditoria.nombre || 'Sin título',
-            tipoAuditoria: auditoria.tipo || 'Auditoría de Gestión',
-            fechaInicio: auditoria.fechaInicio || auditoria.fechaCreacion || new Date().toISOString().split('T')[0],
-            fechaFin: auditoria.fechaFin,
-            estado: mapearEstadoExpediente(auditoria.estado || 'Planeación'),
-            responsable: auditoria.auditorLider?.nombre || auditoria.responsable || 'Sin asignar',
-            totalDocumentos: 0,
-            documentos: []
-          };
-        }
-      });
-
-      const expedientesData = await Promise.all(expedientesPromises);
-      setExpedientes(expedientesData);
-    } catch (err: any) {
-      console.error('Error al cargar expedientes:', err);
-      setError(err.message || 'Error al cargar los expedientes');
-      toast.error('Error al cargar expedientes', {
-        description: err.message || 'No se pudieron cargar los expedientes desde el servidor'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Cargar expedientes al montar el componente
-  useEffect(() => {
-    cargarExpedientes();
-  }, []);
-
   return (
     <div className="min-h-screen bg-gray-50">
       <HeaderModuloCIG
@@ -282,98 +260,9 @@ export function ExpedientesModulePremium() {
         subtitulo="Control Interno de Gestión"
       />
 
-      {/* Navegación */}
-      <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
-        <div className="mx-auto px-8 max-w-[1920px]">
-          <div className="flex gap-1">
-            <TabButton
-              active={vistaActiva === 'expedientes'}
-              onClick={() => setVistaActiva('expedientes')}
-              icon={<Folder className="w-4 h-4" />}
-              label="Expedientes por Auditoría"
-              badge={expedientes.length.toString()}
-            />
-            <TabButton
-              active={vistaActiva === 'estadisticas'}
-              onClick={() => setVistaActiva('estadisticas')}
-              icon={<Archive className="w-4 h-4" />}
-              label="Estadísticas"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Contenido */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={vistaActiva}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ duration: 0.2 }}
-        >
-          {loading ? (
-            <div className="flex items-center justify-center min-h-[400px]">
-              <LoadingSpinner />
-            </div>
-          ) : error ? (
-            <div className="mx-auto px-8 py-6 max-w-[1920px]">
-              <EmptyState
-                icon={AlertCircle}
-                title="Error al cargar expedientes"
-                description={error}
-                action={{
-                  label: "Reintentar",
-                  onClick: () => window.location.reload()
-                }}
-              />
-            </div>
-          ) : (
-            <>
-              {vistaActiva === 'expedientes' && <VistaExpedientes expedientes={expedientes} onRefresh={cargarExpedientes} />}
-              {vistaActiva === 'estadisticas' && <VistaEstadisticas expedientes={expedientes} />}
-            </>
-          )}
-        </motion.div>
-      </AnimatePresence>
+      {/* Contenido directo sin navegación por tabs */}
+      <VistaExpedientes />
     </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// TAB BUTTON
-// ════════════════════════════════════════════════════════════════════════════
-
-interface TabButtonProps {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-  badge?: string;
-}
-
-function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      className={`
-        relative px-6 py-4 flex items-center gap-2 text-sm font-medium border-b-2 transition-all
-        ${active 
-          ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50/50' 
-          : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-        }
-      `}
-    >
-      {icon}
-      {label}
-      {badge && (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-          active ? 'bg-[#1e5da8] text-white' : 'bg-gray-200 text-gray-700'
-        }`}>
-          {badge}
-        </span>
-      )}
-    </button>
   );
 }
 
@@ -381,15 +270,76 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
 // VISTA: EXPEDIENTES POR AUDITORÍA
 // ════════════════════════════════════════════════════════════════════════════
 
-interface VistaExpedientesProps {
-  expedientes: Expediente[];
-  onRefresh?: () => void;
-}
-
-function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
+function VistaExpedientes() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'TODOS' | 'ABIERTO' | 'EN_PROCESO' | 'CERRADO'>('TODOS');
   const [expedienteExpandido, setExpedienteExpandido] = useState<string | null>(null);
+  
+  // ✅ Estado para datos reales del backend
+  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // ✅ Cargar auditorías del backend
+  const cargarExpedientes = useCallback(async () => {
+    setCargando(true);
+    setError(null);
+    
+    try {
+      // 1. Obtener todas las auditorías
+      const auditorias = await controlInternoService.getAuditorias();
+      
+      // 2. Para cada auditoría, cargar sus documentos
+      const expedientesConDocs = await Promise.all(
+        auditorias.map(async (auditoria: any) => {
+          const documentos: Documento[] = [];
+
+          try {
+            const docsBackend = await controlInternoService.getDocumentosByAuditoria(auditoria.id);
+            documentos.push(...docsBackend.map(mapDocumentoBackend));
+          } catch {
+            // Si falla el endpoint de docs, continuar sin ellos
+          }
+
+          // ✅ Inyectar documento de cierre desde el campo JSONB de la auditoría
+          // (no está en la tabla documentos — se guarda aparte en /finalizar)
+          const dc = auditoria.documentoCierre || auditoria.documento_cierre;
+          if (dc?.url) {
+            const baseUrl = getFilesBaseUrl();
+            documentos.unshift({
+              id: 'doc-cierre-' + auditoria.id,
+              nombre: dc.nombre || 'Documento de Cierre',
+              nombreArchivo: dc.nombre || 'documento_cierre',
+              tipo: 'cierre',
+              tipoMime: dc.tipo || 'application/pdf',
+              tamanio: dc.tamano ? formatFileSize(dc.tamano) : 'N/A',
+              tamanioBytes: dc.tamano || 0,
+              fechaCreacion: (dc.fechaCarga || auditoria.fechaFinalizacion || auditoria.updatedAt || '')
+                .split('T')[0],
+              autor: dc.cargadoPor || auditoria.finalizadaPor || 'Sistema',
+              fase: 'CIERRE' as FaseAuditoria,
+              rutaArchivo: dc.url?.startsWith('http') ? dc.url : `${baseUrl}${dc.url}`,
+              descripcion: `📌 Documento de cierre oficial${auditoria.observacionesCierre ? ': ' + auditoria.observacionesCierre : ''}`,
+            });
+          }
+
+          return mapAuditoriaToExpediente(auditoria, documentos);
+        })
+      );
+      
+      setExpedientes(expedientesConDocs);
+    } catch (err: any) {
+      console.error('Error cargando expedientes:', err);
+      setError(err.message || 'Error al cargar los expedientes');
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  // Cargar al montar
+  useEffect(() => {
+    cargarExpedientes();
+  }, [cargarExpedientes]);
 
   const expedientesFiltrados = useMemo(() => {
     let resultado = expedientes;
@@ -407,7 +357,7 @@ function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
     }
 
     return resultado;
-  }, [busqueda, filtroEstado, expedientes]);
+  }, [expedientes, busqueda, filtroEstado]);
 
   const estadisticas = useMemo(() => {
     const total = expedientes.length;
@@ -420,7 +370,7 @@ function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
   }, [expedientes]);
 
   return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
+    <Container4K className="py-6">
       {/* Dashboard */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
         <div className="flex items-center justify-between mb-6">
@@ -431,7 +381,7 @@ function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-5 gap-4">
+        <ResponsiveGrid cols="5" gap="4">
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
             <div className="text-xs text-blue-700 mb-1">Total Expedientes</div>
             <div className="text-2xl font-semibold text-blue-900">{estadisticas.total}</div>
@@ -461,7 +411,7 @@ function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
             <div className="text-2xl font-semibold text-purple-900">{estadisticas.totalDocs}</div>
             <div className="text-xs text-purple-600 mt-1">Total archivados</div>
           </div>
-        </div>
+        </ResponsiveGrid>
       </div>
 
       {/* Búsqueda y Filtros */}
@@ -511,34 +461,64 @@ function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
       </div>
 
       {/* Lista de Expedientes */}
-      {expedientesFiltrados.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12">
-          <EmptyState
-            icon={Folder}
-            title="No se encontraron expedientes"
-            description={
-              busqueda || filtroEstado !== 'TODOS'
-                ? 'Intenta ajustar los filtros de búsqueda'
-                : 'No hay expedientes disponibles en este momento'
-            }
+      <div className="space-y-4">
+        {/* Estado de carga */}
+        {cargando && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12">
+            <div className="flex flex-col items-center justify-center">
+              <Loader2 className="w-10 h-10 text-[#1e5da8] animate-spin mb-4" />
+              <p className="text-gray-600">Cargando expedientes...</p>
+            </div>
+          </div>
+        )}
+
+        {/* Estado de error */}
+        {error && !cargando && (
+          <div className="bg-white rounded-xl shadow-sm border border-red-200 p-8">
+            <div className="flex flex-col items-center justify-center">
+              <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+              <p className="text-gray-900 font-medium mb-2">Error al cargar expedientes</p>
+              <p className="text-gray-600 text-sm mb-4">{error}</p>
+              <button
+                onClick={cargarExpedientes}
+                className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-colors text-sm"
+              >
+                Reintentar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Sin expedientes */}
+        {!cargando && !error && expedientesFiltrados.length === 0 && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12">
+            <div className="flex flex-col items-center justify-center">
+              <Folder className="w-16 h-16 text-gray-300 mb-4" />
+              <p className="text-gray-900 font-medium mb-2">No hay expedientes</p>
+              <p className="text-gray-600 text-sm">
+                {busqueda || filtroEstado !== 'TODOS' 
+                  ? 'No se encontraron expedientes con los filtros aplicados' 
+                  : 'No hay auditorías registradas aún'
+                }
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Lista de expedientes */}
+        {!cargando && !error && expedientesFiltrados.map((expediente) => (
+          <CardExpediente
+            key={expediente.id}
+            expediente={expediente}
+            expandido={expedienteExpandido === expediente.id}
+            onToggleExpand={() => setExpedienteExpandido(
+              expedienteExpandido === expediente.id ? null : expediente.id
+            )}
+            onRefresh={cargarExpedientes}
           />
-        </div>
-      ) : (
-        <div className="space-y-4">
-            {expedientesFiltrados.map((expediente) => (
-            <CardExpediente
-              key={expediente.id}
-              expediente={expediente}
-              expandido={expedienteExpandido === expediente.id}
-              onToggleExpand={() => setExpedienteExpandido(
-                expedienteExpandido === expediente.id ? null : expediente.id
-              )}
-              onRefresh={onRefresh}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+        ))}
+      </div>
+    </Container4K>
   );
 }
 
@@ -647,7 +627,6 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onRefresh }: Ca
             </div>
 
             <div className="flex gap-2">
-              {authService.hasPermission(Permissions.CONTROL_INTERNO_EXPEDIENTES_UPLOAD) && (
               <button 
                 onClick={handleCargarDocumento}
                 className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
@@ -655,7 +634,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onRefresh }: Ca
                 <Upload className="w-4 h-4" />
                 Cargar
               </button>
-              )}
+              <BotonDescargarExpedienteZip expediente={expediente} />
               <button
                 onClick={onToggleExpand}
                 className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
@@ -718,10 +697,8 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onRefresh }: Ca
           onCargar={() => {
             setModalCargar(false);
             toast.success('Documento cargado exitosamente');
-            // Refrescar la lista de expedientes después de cargar
-            if (onRefresh) {
-              onRefresh();
-            }
+            // Refrescar la lista para mostrar el nuevo documento
+            onRefresh?.();
           }}
         />
       )}
@@ -756,51 +733,22 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
 
   const handleVerDocumento = (doc: Documento) => {
     setDocumentoVisualizando(doc);
-    
-    toast.info('Visualizar documento', {
-      description: doc.nombre,
-      duration: 2000,
-    });
-
-    console.log('👁️ Ver documento:', {
-      documentoId: doc.id,
-      nombre: doc.nombre,
-      tipo: doc.tipo,
-      tamanio: doc.tamanio,
-      fase: doc.fase,
-      faseNombre: fase.nombre,
-      autor: doc.autor,
-      fechaCreacion: doc.fechaCreacion,
-      accion: 'visualizar',
-      timestamp: new Date().toISOString()
-    });
-
-    // En producción: abrir visor de documentos o nueva pestaña
-    // window.open(`/api/expedientes/documentos/${doc.id}/preview`, '_blank');
   };
 
   const handleDescargarDocumento = (doc: Documento, e: React.MouseEvent) => {
     e.stopPropagation();
     
+    // Para doc de cierre usar la URL directa guardada en rutaArchivo
+    const baseUrl = getFilesBaseUrl();
+    const downloadUrl = doc.rutaArchivo || `${baseUrl}/documentos/${doc.id}/download`;
+    
+    // Abrir descarga en nueva ventana
+    window.open(downloadUrl, '_blank');
+    
     toast.success('Descargando documento', {
-      description: `${doc.nombre} (${doc.tamanio})`,
+      description: `${doc.nombre || doc.nombreArchivo}`,
       duration: 3000,
     });
-
-    console.log('⬇️ Descargar documento:', {
-      documentoId: doc.id,
-      nombre: doc.nombre,
-      tipo: doc.tipo,
-      tamanio: doc.tamanio,
-      fase: doc.fase,
-      faseNombre: fase.nombre,
-      autor: doc.autor,
-      fechaCreacion: doc.fechaCreacion,
-      accion: 'descargar',
-      urlDescarga: `/api/expedientes/documentos/${doc.id}/download`,
-      timestamp: new Date().toISOString()
-    });
-
   };
 
   return (
@@ -850,9 +798,10 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
                         <div className="flex items-center gap-3 flex-1">
                           <FileText className="w-4 h-4 text-gray-400" />
                           <div className="flex-1">
-                            <div className="text-sm text-gray-900">{doc.nombre}</div>
+                            <div className="text-sm text-gray-900">{doc.nombre || doc.nombreArchivo}</div>
                             <div className="text-xs text-gray-600">
-                              {doc.tamanio} • {doc.fechaCreacion} • {doc.autor}
+                              <span className="text-blue-600 font-medium">{getMimeTypeLabel(doc.tipoMime)}</span>
+                              {' • '}{doc.tamanio} • {doc.fechaCreacion} • {doc.autor}
                             </div>
                           </div>
                         </div>
@@ -892,82 +841,6 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
         />
       )}
     </>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// VISTA: ESTADÍSTICAS
-// ════════════════════════════════════════════════════════════════════════════
-
-interface VistaEstadisticasProps {
-  expedientes: Expediente[];
-}
-
-function VistaEstadisticas({ expedientes }: VistaEstadisticasProps) {
-  const stats = useMemo(() => {
-    const totalDocs = expedientes.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
-    const docsPorFase: Record<FaseAuditoria, number> = {
-      PLANIFICACION: 0,
-      EJECUCION: 0,
-      HALLAZGOS: 0,
-      COMUNICACION_RESULTADOS: 0,
-      SEGUIMIENTO: 0,
-      CIERRE: 0
-    };
-
-    expedientes.forEach(exp => {
-      exp.documentos.forEach(doc => {
-        docsPorFase[doc.fase]++;
-      });
-    });
-
-    return { totalDocs, docsPorFase };
-  }, [expedientes]);
-
-  return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-        <h2 className="text-xl text-gray-900 font-medium mb-6">Estadísticas de Expedientes</h2>
-
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
-            <div className="text-xs text-blue-700 mb-1">Total Documentos</div>
-            <div className="text-2xl font-semibold text-blue-900">{stats.totalDocs}</div>
-          </div>
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
-            <div className="text-xs text-green-700 mb-1">Expedientes Activos</div>
-            <div className="text-2xl font-semibold text-green-900">{expedientes.filter(e => e.estado !== 'CERRADO').length}</div>
-          </div>
-          <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 border border-purple-200">
-            <div className="text-xs text-purple-700 mb-1">Promedio Docs/Expediente</div>
-            <div className="text-2xl font-semibold text-purple-900">
-              {expedientes.length > 0 ? Math.round(stats.totalDocs / expedientes.length) : 0}
-            </div>
-          </div>
-        </div>
-
-        <h3 className="text-sm font-medium text-gray-900 mb-4">Documentos por Fase</h3>
-        <div className="space-y-3">
-          {FASES_AUDITORIA.map(fase => {
-            const count = stats.docsPorFase[fase.id];
-            const porcentaje = stats.totalDocs > 0 ? Math.round((count / stats.totalDocs) * 100) : 0;
-
-            return (
-              <div key={fase.id} className="flex items-center gap-4">
-                <div className="w-48 text-sm text-gray-700">{fase.nombre}</div>
-                <div className="flex-1 bg-gray-200 rounded-full h-3 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] h-full transition-all"
-                    style={{ width: `${porcentaje}%` }}
-                  />
-                </div>
-                <div className="w-20 text-sm text-gray-900 text-right font-medium">{count} ({porcentaje}%)</div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1014,139 +887,63 @@ function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocu
   const [fase, setFase] = useState<FaseAuditoria>('PLANIFICACION');
   const [nombreDocumento, setNombreDocumento] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [archivoSeleccionado, setArchivoSeleccionado] = useState<File | null>(null);
+  const [archivo, setArchivo] = useState<File | null>(null);
   const [cargando, setCargando] = useState(false);
-  const [progresoCarga, setProgresoCarga] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
+  const [progreso, setProgreso] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  /**
-   * Mapea la fase del expediente a la etapa del backend
-   */
-  const mapearFaseAEtapa = (fase: FaseAuditoria): string => {
-    const mapeo: Record<FaseAuditoria, string> = {
-      PLANIFICACION: 'planeacion',
-      EJECUCION: 'ejecucion',
-      HALLAZGOS: 'ejecucion', // Los hallazgos están en la fase de ejecución
-      COMUNICACION_RESULTADOS: 'comunicacion',
-      SEGUIMIENTO: 'seguimiento',
-      CIERRE: 'comunicacion' // El cierre está en comunicación
-    };
-    return mapeo[fase] || 'planeacion';
-  };
-
-  /**
-   * Valida el archivo seleccionado
-   */
-  const validarArchivo = (file: File): boolean => {
-    // Validar tamaño (máx 50 MB)
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error('Archivo demasiado grande', {
-        description: 'El tamaño máximo permitido es 50 MB',
-      });
-      return false;
-    }
-
-    // Validar tipo de archivo
-    const tiposPermitidos = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'image/jpeg',
-      'image/jpg',
-      'image/png',
-    ];
-
-    const extensionesPermitidas = /\.(pdf|doc|docx|xls|xlsx|jpg|jpeg|png)$/i;
-
-    if (!tiposPermitidos.includes(file.type) && !extensionesPermitidas.test(file.name)) {
-      toast.error('Tipo de archivo no permitido', {
-        description: 'Solo se permiten: PDF, Word, Excel, JPG, PNG',
-      });
-      return false;
-    }
-
-    return true;
-  };
-
-  /**
-   * Maneja la selección de archivo
-   */
-  const handleSeleccionarArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (validarArchivo(file)) {
-        setArchivoSeleccionado(file);
-        // Auto-completar nombre si está vacío
-        if (!nombreDocumento.trim()) {
-          setNombreDocumento(file.name.replace(/\.[^/.]+$/, ''));
-        }
+      setArchivo(file);
+      // Auto-completar nombre si está vacío
+      if (!nombreDocumento.trim()) {
+        setNombreDocumento(file.name.replace(/\.[^/.]+$/, '')); // Sin extensión
       }
     }
-  };
-
-  /**
-   * Maneja el drag & drop
-   */
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragging(false);
-    
     const file = e.dataTransfer.files[0];
     if (file) {
-      if (validarArchivo(file)) {
-        setArchivoSeleccionado(file);
-        if (!nombreDocumento.trim()) {
-          setNombreDocumento(file.name.replace(/\.[^/.]+$/, ''));
-        }
+      setArchivo(file);
+      if (!nombreDocumento.trim()) {
+        setNombreDocumento(file.name.replace(/\.[^/.]+$/, ''));
       }
     }
   };
 
-  /**
-   * Maneja la carga del documento
-   */
   const handleCargar = async () => {
     // Validaciones
-    if (!archivoSeleccionado) {
-      toast.error('Debe seleccionar un archivo');
+    if (!archivo) {
+      toast.error('Selecciona un archivo para cargar');
       return;
     }
-
     if (!nombreDocumento.trim()) {
       toast.error('El nombre del documento es obligatorio');
       return;
     }
 
     setCargando(true);
-    setProgresoCarga(0);
+    setProgreso(0);
 
     try {
-      // Subir documento a la base de datos
+      // Llamar al backend real
+      // Convertir fase a minúsculas para el backend
+      const etapaBackend = fase.toLowerCase();
+      
       await controlInternoService.createDocumento(
-        archivoSeleccionado,
+        archivo,
         {
           nombre: nombreDocumento.trim(),
           descripcion: descripcion.trim() || undefined,
-          tipoDocumento: 'otro', // Valor válido según constraint de BD (minúsculas)
-          etapa: mapearFaseAEtapa(fase),
+          tipoDocumento: 'documento_auditoria',
+          etapa: etapaBackend,
           auditoriaId: expediente.id,
-          subidoPor: expediente.responsable || 'Usuario',
+          subidoPor: expediente.responsable,
         },
-        (progress) => {
-          setProgresoCarga(progress);
-        }
+        (progress) => setProgreso(progress)
       );
 
       toast.success('Documento Cargado Exitosamente', {
@@ -1154,18 +951,11 @@ function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocu
         duration: 4000,
       });
 
-      // Limpiar formulario
-      setArchivoSeleccionado(null);
-      setNombreDocumento('');
-      setDescripcion('');
-      setProgresoCarga(0);
-
-      // Cerrar modal y refrescar
       onCargar();
     } catch (error: any) {
       console.error('Error al cargar documento:', error);
       toast.error('Error al cargar el documento', {
-        description: error.message || 'Por favor, intente nuevamente',
+        description: error.message || 'Intenta de nuevo',
       });
     } finally {
       setCargando(false);
@@ -1258,87 +1048,72 @@ function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocu
               />
             </div>
 
-            {/* Selector de Archivo */}
+            {/* Selector de Archivo REAL */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Archivo <span className="text-red-500">*</span>
               </label>
               <input
+                ref={fileInputRef}
                 type="file"
-                ref={(el) => {
-                  if (el) {
-                    (fileInputRef as any).current = el;
-                  }
-                }}
-                onChange={handleSeleccionarArchivo}
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                onChange={handleFileChange}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.txt,.csv"
                 className="hidden"
-                disabled={cargando}
               />
-              <div
-                onClick={() => !cargando && (fileInputRef as any).current?.click()}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
+              <div 
+                onClick={() => fileInputRef.current?.click()}
                 onDrop={handleDrop}
-                className={`
-                  border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer
-                  ${isDragging 
-                    ? 'border-[#1e5da8] bg-blue-50' 
-                    : archivoSeleccionado 
-                      ? 'border-green-400 bg-green-50' 
-                      : 'border-gray-300 hover:border-[#1e5da8] hover:bg-gray-50'
-                  }
-                  ${cargando ? 'opacity-50 cursor-not-allowed' : ''}
-                `}
+                onDragOver={(e) => e.preventDefault()}
+                className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer ${
+                  archivo 
+                    ? 'border-green-400 bg-green-50' 
+                    : 'border-gray-300 hover:border-[#1e5da8]'
+                }`}
               >
-                {archivoSeleccionado ? (
-                  <div className="space-y-2">
-                    <FileText className="w-8 h-8 text-green-600 mx-auto" />
-                    <p className="text-sm font-medium text-gray-900">{archivoSeleccionado.name}</p>
-                    <p className="text-xs text-gray-600">
-                      {(archivoSeleccionado.size / (1024 * 1024)).toFixed(2)} MB
-                    </p>
-                    {!cargando && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setArchivoSeleccionado(null);
-                          if (fileInputRef.current) {
-                            fileInputRef.current.value = '';
-                          }
-                        }}
-                        className="text-xs text-red-600 hover:text-red-700 mt-2"
-                      >
-                        Eliminar archivo
-                      </button>
-                    )}
+                {archivo ? (
+                  <div className="flex items-center justify-center gap-3">
+                    <FileCheck className="w-8 h-8 text-green-600" />
+                    <div className="text-left">
+                      <p className="text-sm text-gray-900 font-medium">{archivo.name}</p>
+                      <p className="text-xs text-gray-600">{formatFileSize(archivo.size)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setArchivo(null);
+                      }}
+                      className="ml-2 p-1 text-gray-400 hover:text-red-500 rounded"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
                 ) : (
                   <>
-                    <Upload className={`w-8 h-8 mx-auto mb-2 ${isDragging ? 'text-[#1e5da8]' : 'text-gray-400'}`} />
+                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
                     <p className="text-sm text-gray-600 mb-1">
-                      {isDragging ? 'Suelta el archivo aquí' : 'Haz clic para seleccionar o arrastra el archivo aquí'}
+                      Haz clic para seleccionar o arrastra el archivo aquí
                     </p>
                     <p className="text-xs text-gray-500">
-                      PDF, DOCX, XLSX, JPG, PNG hasta 50MB
+                      PDF, Word, Excel, PowerPoint, imágenes - hasta 50MB
                     </p>
                   </>
                 )}
               </div>
               
               {/* Barra de progreso */}
-              {cargando && progresoCarga > 0 && (
-                <div className="mt-2">
+              {cargando && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                    <span>Subiendo archivo...</span>
+                    <span>{progreso}%</span>
+                  </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
+                    <div 
                       className="bg-[#1e5da8] h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${progresoCarga}%` }}
+                      style={{ width: `${progreso}%` }}
                     />
                   </div>
-                  <p className="text-xs text-gray-600 mt-1 text-center">
-                    Cargando... {progresoCarga}%
-                  </p>
                 </div>
               )}
             </div>
@@ -1351,13 +1126,13 @@ function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocu
             <button
               onClick={onClose}
               disabled={cargando}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               onClick={handleCargar}
-              disabled={cargando || !archivoSeleccionado || !nombreDocumento.trim()}
+              disabled={cargando || !archivo}
               className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {cargando ? (
@@ -1390,83 +1165,211 @@ interface ModalVerDocumentoProps {
 }
 
 function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps) {
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Construir URLs del backend
+  // Para documento de cierre, la URL real está en rutaArchivo (campo JSONB)
+  const baseUrl = getFilesBaseUrl();
+  const previewUrl = documento.rutaArchivo || `${baseUrl}/documentos/${documento.id}/preview`;
+  const downloadUrl = documento.rutaArchivo || `${baseUrl}/documentos/${documento.id}/download`;
+
+  // Verificar si el documento se puede previsualizar
+  const tipoMime = documento.tipoMime || 'application/octet-stream';
+  const canPreview = tipoMime.startsWith('application/pdf') || 
+                     tipoMime.startsWith('image/');
+  
+  // Para archivos Office, usar Office Online Viewer
+  const isOfficeDoc = tipoMime.includes('word') || 
+                      tipoMime.includes('excel') || 
+                      tipoMime.includes('spreadsheet') ||
+                      tipoMime.includes('powerpoint') ||
+                      tipoMime.includes('presentation');
+
+  const handleDownload = () => {
+    // Abrir URL de descarga en nueva ventana
+    window.open(downloadUrl, '_blank');
+    toast.success('Descargando documento', {
+      description: `${documento.nombre || documento.nombreArchivo}`,
+      duration: 3000,
+    });
+  };
+
+  const handleOpenInNewTab = () => {
+    window.open(previewUrl, '_blank');
+  };
+
   return (
-    <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 overflow-y-auto">
       <div 
         className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
         onClick={onClose}
       />
       
-      <div className="relative w-full max-w-4xl bg-white rounded-xl shadow-2xl z-10">
+      <div className="relative w-full max-w-5xl bg-white rounded-xl shadow-2xl z-10 my-8 max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
-          <h3 className="text-xl font-medium">Vista Previa del Documento</h3>
-          <p className="text-sm text-blue-100 mt-1">{documento.nombre}</p>
-        </div>
-
-        {/* Contenido */}
-        <div className="px-6 py-6">
-          <div className="space-y-4">
-            {/* Información del Documento */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="text-xs text-blue-700 mb-1">Fase del Proceso</div>
-                <div className="text-sm text-blue-900 font-medium">{fase.nombre}</div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="text-xs text-blue-700 mb-1">Tipo de Documento</div>
-                <div className="text-sm text-blue-900 font-medium">{documento.tipo}</div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="text-xs text-blue-700 mb-1">Tamaño</div>
-                <div className="text-sm text-blue-900 font-medium">{documento.tamanio}</div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="text-xs text-blue-700 mb-1">Fecha de Creación</div>
-                <div className="text-sm text-blue-900 font-medium">{documento.fechaCreacion}</div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 col-span-2">
-                <div className="text-xs text-blue-700 mb-1">Autor</div>
-                <div className="text-sm text-blue-900 font-medium">{documento.autor}</div>
-              </div>
+        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-medium">Vista Previa del Documento</h3>
+              <p className="text-sm text-blue-100 mt-1">{documento.nombre || documento.nombreArchivo}</p>
             </div>
-
-            {/* Simulación de Vista Previa */}
-            <div className="border-2 border-gray-200 rounded-lg bg-gray-50 p-12 text-center min-h-[400px] flex flex-col items-center justify-center">
-              <FileText className="w-20 h-20 text-gray-400 mb-4" />
-              <h4 className="text-lg text-gray-900 font-medium mb-2">Vista Previa del Documento</h4>
-              <p className="text-sm text-gray-600 mb-4 max-w-md">
-                En producción, aquí se mostrará el visor de documentos integrado para visualizar PDFs, Word, Excel, etc.
-              </p>
-              <div className="bg-white border border-gray-200 rounded-lg p-4 text-left max-w-md">
-                <p className="text-xs text-gray-600 mb-2">Endpoint de integración:</p>
-                <code className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">
-                  GET /api/expedientes/documentos/{documento.id}/preview
-                </code>
-              </div>
-            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
+        {/* Info del documento */}
+        <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+          <div className="flex flex-wrap gap-4 text-sm">
+            <div>
+              <span className="text-gray-600">Fase:</span>
+              <span className="ml-2 text-gray-900 font-medium">{fase.nombre}</span>
+            </div>
+            <div>
+              <span className="text-gray-600">Tipo:</span>
+              <span className="ml-2 text-gray-900 font-medium">{getMimeTypeLabel(tipoMime)}</span>
+            </div>
+            <div>
+              <span className="text-gray-600">Tamaño:</span>
+              <span className="ml-2 text-gray-900 font-medium">{documento.tamanio}</span>
+            </div>
+            <div>
+              <span className="text-gray-600">Fecha:</span>
+              <span className="ml-2 text-gray-900 font-medium">{documento.fechaCreacion}</span>
+            </div>
+            {documento.autor && (
+              <div>
+                <span className="text-gray-600">Autor:</span>
+                <span className="ml-2 text-gray-900 font-medium">{documento.autor}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Vista Previa */}
+        <div className="flex-1 overflow-hidden min-h-[500px]">
+          {canPreview ? (
+            // PDF o Imagen: usar iframe/embed
+            <div className="w-full h-full relative">
+              {cargando && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+                  <div className="text-center">
+                    <Loader2 className="w-8 h-8 text-[#1e5da8] mx-auto animate-spin mb-2" />
+                    <p className="text-sm text-gray-600">Cargando documento...</p>
+                  </div>
+                </div>
+              )}
+              {error && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+                  <div className="text-center p-6">
+                    <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-3" />
+                    <p className="text-sm text-gray-700 mb-4">{error}</p>
+                    <button
+                      onClick={handleDownload}
+                      className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-colors text-sm"
+                    >
+                      Descargar archivo
+                    </button>
+                  </div>
+                </div>
+              )}
+              {tipoMime.startsWith('image/') ? (
+                <img
+                  src={previewUrl}
+                  alt={documento.nombre}
+                  className="w-full h-full object-contain p-4"
+                  onLoad={() => setCargando(false)}
+                  onError={() => {
+                    setCargando(false);
+                    setError('No se pudo cargar la imagen');
+                  }}
+                />
+              ) : (
+                <iframe
+                  src={previewUrl}
+                  className="w-full h-full border-0"
+                  onLoad={() => setCargando(false)}
+                  onError={() => {
+                    setCargando(false);
+                    setError('No se pudo cargar el documento');
+                  }}
+                  title={`Vista previa: ${documento.nombre}`}
+                />
+              )}
+            </div>
+          ) : isOfficeDoc ? (
+            // Archivos Office: mostrar info y opciones
+            <div className="flex flex-col items-center justify-center h-full p-8 bg-gray-50">
+              <FileText className="w-20 h-20 text-[#1e5da8] mb-4" />
+              <h4 className="text-lg text-gray-900 font-medium mb-2">
+                Documento de {getMimeTypeLabel(tipoMime)}
+              </h4>
+              <p className="text-sm text-amber-700 font-medium mb-6 text-center max-w-md">
+                Este tipo no se puede visualizar. Descargue el archivo o ábralo en Office Online.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleDownload}
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Descargar
+                </button>
+                <a
+                  href={`https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(previewUrl)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-colors text-sm flex items-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  Abrir en Office Online
+                </a>
+              </div>
+            </div>
+          ) : (
+            // Otros archivos: solo descargar
+            <div className="flex flex-col items-center justify-center h-full p-8 bg-gray-50">
+              <File className="w-20 h-20 text-gray-400 mb-4" />
+              <h4 className="text-lg text-gray-900 font-medium mb-2">
+                {getMimeTypeLabel(tipoMime)}
+              </h4>
+              <p className="text-sm text-amber-700 font-medium mb-6 text-center max-w-md">
+                Este tipo no se puede visualizar. Descargue el archivo para verlo.
+              </p>
+              <button
+                onClick={handleDownload}
+                className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-colors text-sm flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Descargar archivo
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Footer */}
-        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl flex-shrink-0">
           <div className="flex justify-between items-center">
             <div className="text-xs text-gray-600">
               ID: {documento.id}
             </div>
             <div className="flex gap-3">
+              {canPreview && (
+                <button
+                  onClick={handleOpenInNewTab}
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  Abrir en nueva pestaña
+                </button>
+              )}
               <button
-                onClick={() => {
-                  toast.success('Descargando documento', {
-                    description: `${documento.nombre} (${documento.tamanio})`,
-                    duration: 3000,
-                  });
-                  console.log('⬇️ Descargar desde modal:', {
-                    documentoId: documento.id,
-                    nombre: documento.nombre,
-                    timestamp: new Date().toISOString()
-                  });
-                }}
+                onClick={handleDownload}
                 className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
               >
                 <Download className="w-4 h-4" />
@@ -1485,3 +1388,8 @@ function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps)
     </div>
   );
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// BOTÓN DESCARGAR ZIP - Importado desde DescargarExpedienteZip.tsx
+// ════════════════════════════════════════════════════════════════════════════
+// El componente BotonDescargarExpedienteZip está importado arriba ↑

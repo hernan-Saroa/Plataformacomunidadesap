@@ -24,6 +24,12 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
+
+// ✅ DÍA 5: ResponsiveHeader para headers adaptativos
+import { ResponsiveHeader } from '@/components/ui';
+
 type ViewMode = 'folders' | 'documents';
 
 type DocumentCategory = 'personal' | 'academico' | 'certificador' | 'laboral' | 'otros';
@@ -243,7 +249,7 @@ export function CarpetaDigitalModule() {
   // VISTA: Lista de Carpetas
   if (viewMode === 'folders') {
     return (
-      <div className="w-full max-w-full">
+      <Container4K>
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-6">
@@ -371,13 +377,13 @@ export function CarpetaDigitalModule() {
             </table>
           </div>
         </div>
-      </div>
+      </Container4K>
     );
   }
 
   // VISTA: Documentos del Usuario
   return (
-    <div className="w-full max-w-full">
+    <Container4K>
       {/* Breadcrumb y Header */}
       <div className="mb-6">
         <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
@@ -589,6 +595,6 @@ export function CarpetaDigitalModule() {
           </table>
         </div>
       </div>
-    </div>
+    </Container4K>
   );
 }

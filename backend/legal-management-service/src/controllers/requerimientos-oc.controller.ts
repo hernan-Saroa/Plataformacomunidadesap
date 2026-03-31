@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus } from '@nestjs/common';
 import { RequerimientosOCService } from '../services/requerimientos-oc.service';
 import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
 import type { EstadoRequerimiento } from '../entities/requerimiento-oc.entity';
 import { OrganismoControlOC } from '../entities/organismo-control-legal.entity';
 import { SolicitudInsumo } from '../entities/solicitud-insumo.entity';
 import { RespuestaBorradorOC } from '../entities/respuesta-borrador-oc.entity';
+import { TipoRequerimientoOC } from '../entities/tipo-requerimiento-oc.entity';
 
 @Controller('requerimientos-oc')
 export class RequerimientosOCController {
@@ -16,6 +17,14 @@ export class RequerimientosOCController {
     @Get('organismos')
     async getOrganismos(): Promise<OrganismoControlOC[]> {
         return this.service.findAllOrganismos();
+    }
+
+    // ============================================
+    // TIPOS DE REQUERIMIENTO (Catálogo)
+    // ============================================
+    @Get('tipos-requerimiento')
+    async getTiposRequerimiento(): Promise<TipoRequerimientoOC[]> {
+        return this.service.findAllTiposRequerimiento();
     }
 
     // ============================================
@@ -119,6 +128,40 @@ export class RequerimientosOCController {
         @Body() data: Partial<RespuestaBorradorOC>
     ): Promise<RespuestaBorradorOC> {
         return this.service.upsertBorrador(id, data);
+    }
+
+    // ============================================
+    // SISTEMA DE ARCHIVO
+    // ============================================
+    @Get('archivados/list')
+    async findAllArchivados(): Promise<RequerimientoOC[]> {
+        return this.service.findAllArchivados();
+    }
+
+    @Patch(':id/archivar')
+    async archivar(
+        @Param('id') id: string,
+        @Body() body: { motivo: string; usuario: string }
+    ): Promise<RequerimientoOC> {
+        return this.service.archivar(id, body);
+    }
+
+    @Patch(':id/restaurar')
+    async restaurar(
+        @Param('id') id: string,
+        @Body() body: { usuario: string }
+    ): Promise<RequerimientoOC> {
+        return this.service.restaurar(id, body.usuario);
+    }
+
+    @Delete(':id/permanente')
+    @HttpCode(HttpStatus.NO_CONTENT)
+    async eliminarPermanente(
+        @Param('id') id: string,
+        @Query('usuario') usuario: string,
+        @Query('motivo') motivo: string
+    ): Promise<void> {
+        return this.service.eliminarPermanente(id, usuario, motivo);
     }
 }
 

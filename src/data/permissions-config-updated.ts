@@ -138,7 +138,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   },
 
   // ==========================================================================
-  // 2. CONTROL DISCIPLINARIO (45 permisos)
+  // 2. CONTROL DISCIPLINARIO (95+ permisos granulares parametrizables)
   // ==========================================================================
   {
     id: 'control_disciplinario',
@@ -147,53 +147,127 @@ export const PERMISSION_MODULES: PermissionModule[] = [
     color: 'text-red-700',
     bgColor: 'bg-red-50',
     permissions: [
-      // Dashboard y General
-      { id: 'cd.dashboard.view', name: 'Ver Dashboard', description: 'Panel principal de Control Disciplinario', module: 'control_disciplinario', criticidad: 'baja' },
+      // ============ DASHBOARD Y VISUALIZACIÓN ============
+      { id: 'cd.dashboard.view', name: 'Ver Dashboard', description: 'Acceso al panel principal de Control Disciplinario', module: 'control_disciplinario', criticidad: 'baja' },
+      { id: 'cd.dashboard.view_stats', name: 'Ver Estadísticas Generales', description: 'Visualizar KPIs y métricas del módulo', module: 'control_disciplinario', criticidad: 'baja' },
+      { id: 'cd.dashboard.view_kanban', name: 'Ver Vista Kanban', description: 'Acceso a dashboard operativo Kanban', module: 'control_disciplinario', criticidad: 'baja' },
+      { id: 'cd.dashboard.view_executive', name: 'Ver Dashboard Ejecutivo', description: 'Acceso a dashboard ejecutivo integrado', module: 'control_disciplinario', criticidad: 'media' },
       
-      // Quejas y Denuncias
-      { id: 'cd.complaint.view', name: 'Ver Quejas', description: 'Consultar quejas y denuncias', module: 'control_disciplinario', criticidad: 'media' },
-      { id: 'cd.complaint.create', name: 'Crear Queja', description: 'Registrar nueva queja', module: 'control_disciplinario', criticidad: 'alta' },
-      { id: 'cd.complaint.edit', name: 'Editar Queja', description: 'Modificar queja existente', module: 'control_disciplinario', criticidad: 'media' },
-      { id: 'cd.complaint.classify', name: 'Clasificar Queja', description: 'Categorizar tipo de queja', module: 'control_disciplinario', criticidad: 'alta' },
+      // ============ NOTICIAS/QUEJAS (Recepción) ============
+      { id: 'cd.noticia.view', name: 'Ver Noticias/Quejas', description: 'Consultar quejas y denuncias recibidas', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.noticia.view_all', name: 'Ver Todas las Noticias', description: 'Acceso a todas las noticias (sin filtro territorial)', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.noticia.view_own', name: 'Ver Noticias Propias', description: 'Ver solo noticias asignadas al usuario', module: 'control_disciplinario', criticidad: 'baja' },
+      { id: 'cd.noticia.create', name: 'Crear Noticia', description: 'Registrar nueva queja o denuncia', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.noticia.edit', name: 'Editar Noticia', description: 'Modificar datos de noticia existente', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.noticia.delete', name: 'Eliminar Noticia', description: 'Borrar noticia del sistema', module: 'control_disciplinario', criticidad: 'critica' },
+      { id: 'cd.noticia.classify', name: 'Clasificar Noticia', description: 'Categorizar tipo y gravedad de noticia', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.noticia.archive', name: 'Archivar Noticia', description: 'Archivar noticia sin iniciar proceso', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.noticia.assign', name: 'Asignar Noticia', description: 'Asignar noticia a profesional', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.noticia.convert_to_process', name: 'Convertir a Proceso', description: 'Iniciar proceso disciplinario desde noticia', module: 'control_disciplinario', criticidad: 'critica' },
+      { id: 'cd.noticia.remit_competence', name: 'Remitir por Competencia', description: 'Remitir noticia a otra entidad competente', module: 'control_disciplinario', criticidad: 'alta' },
       
-      // Procesos Disciplinarios
+      // ============ PROCESOS DISCIPLINARIOS ============
       { id: 'cd.process.view', name: 'Ver Procesos', description: 'Consultar procesos disciplinarios', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.process.view_all', name: 'Ver Todos los Procesos', description: 'Acceso a todos los procesos (sin filtro)', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.process.view_own', name: 'Ver Procesos Propios', description: 'Ver solo procesos asignados al usuario', module: 'control_disciplinario', criticidad: 'baja' },
+      { id: 'cd.process.view_details', name: 'Ver Detalles Completos', description: 'Acceder a información detallada del proceso', module: 'control_disciplinario', criticidad: 'media' },
       { id: 'cd.process.create', name: 'Iniciar Proceso', description: 'Abrir nuevo proceso disciplinario', module: 'control_disciplinario', criticidad: 'critica' },
       { id: 'cd.process.edit', name: 'Editar Proceso', description: 'Modificar datos del proceso', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.process.delete', name: 'Eliminar Proceso', description: 'Borrar proceso del sistema', module: 'control_disciplinario', criticidad: 'critica' },
+      { id: 'cd.process.assign', name: 'Asignar Profesional', description: 'Asignar o reasignar proceso a profesional', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.process.change_stage', name: 'Cambiar Etapa', description: 'Mover proceso a siguiente etapa procesal', module: 'control_disciplinario', criticidad: 'critica' },
       { id: 'cd.process.close', name: 'Cerrar Proceso', description: 'Finalizar proceso disciplinario', module: 'control_disciplinario', criticidad: 'critica' },
       { id: 'cd.process.archive', name: 'Archivar Proceso', description: 'Archivar proceso sin sanción', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.process.reopen', name: 'Reabrir Proceso', description: 'Reactivar proceso cerrado', module: 'control_disciplinario', criticidad: 'critica' },
       
-      // Autos y Resoluciones
-      { id: 'cd.document.view', name: 'Ver Documentos', description: 'Consultar autos y resoluciones', module: 'control_disciplinario', criticidad: 'baja' },
-      { id: 'cd.document.create_auto', name: 'Crear Auto', description: 'Generar auto disciplinario', module: 'control_disciplinario', criticidad: 'critica' },
-      { id: 'cd.document.create_resolution', name: 'Crear Resolución', description: 'Generar resolución sancionatoria', module: 'control_disciplinario', criticidad: 'critica' },
-      { id: 'cd.document.edit', name: 'Editar Documento', description: 'Modificar auto/resolución', module: 'control_disciplinario', criticidad: 'alta' },
-      { id: 'cd.document.sign', name: 'Firmar Documento', description: 'Firmar digitalmente documentos', module: 'control_disciplinario', criticidad: 'critica' },
-      { id: 'cd.document.notify', name: 'Notificar Acto', description: 'Notificar formalmente al investigado', module: 'control_disciplinario', criticidad: 'alta' },
+      // ============ ETAPAS PROCESALES ============
+      { id: 'cd.stage.valoracion', name: 'Gestionar Valoración', description: 'Administrar etapa de valoración inicial', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.stage.indagacion', name: 'Gestionar Indagación', description: 'Administrar indagación preliminar', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.stage.investigacion', name: 'Gestionar Investigación', description: 'Administrar investigación formal', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.stage.juzgamiento', name: 'Gestionar Juzgamiento', description: 'Administrar etapa de juzgamiento', module: 'control_disciplinario', criticidad: 'critica' },
+      { id: 'cd.stage.fallo', name: 'Gestionar Fallo', description: 'Administrar emisión de fallo', module: 'control_disciplinario', criticidad: 'critica' },
       
-      // Sanciones
-      { id: 'cd.sanction.view', name: 'Ver Sanciones', description: 'Consultar sanciones impuestas', module: 'control_disciplinario', criticidad: 'baja' },
+      // ============ AUTOS Y PROVIDENCIAS ============
+      { id: 'cd.auto.view', name: 'Ver Autos', description: 'Consultar autos emitidos', module: 'control_disciplinario', criticidad: 'baja' },
+      { id: 'cd.auto.create', name: 'Crear Auto', description: 'Generar auto disciplinario', module: 'control_disciplinario', criticidad: 'critica' },
+      { id: 'cd.auto.edit', name: 'Editar Auto', description: 'Modificar auto antes de firma', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.auto.delete', name: 'Eliminar Auto', description: 'Borrar auto no firmado', module: 'control_disciplinario', criticidad: 'critica' },
+      { id: 'cd.auto.sign', name: 'Firmar Auto', description: 'Firmar digitalmente auto', module: 'control_disciplinario', criticidad: 'critica' },
+      { id: 'cd.auto.notify', name: 'Notificar Auto', description: 'Notificar formalmente al investigado', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.auto.download', name: 'Descargar Auto', description: 'Descargar auto en PDF', module: 'control_disciplinario', criticidad: 'baja' },
+      
+      // ============ RESOLUCIONES Y FALLOS ============
+      { id: 'cd.resolution.view', name: 'Ver Resoluciones', description: 'Consultar resoluciones emitidas', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.resolution.create', name: 'Crear Resolución', description: 'Generar resolución sancionatoria', module: 'control_disciplinario', criticidad: 'critica' },
+      { id: 'cd.resolution.edit', name: 'Editar Resolución', description: 'Modificar resolución antes de firma', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.resolution.sign', name: 'Firmar Resolución', description: 'Firmar digitalmente resolución', module: 'control_disciplinario', criticidad: 'critica' },
+      { id: 'cd.resolution.notify', name: 'Notificar Resolución', description: 'Notificar formalmente resolución', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.fallo.sancionatorio', name: 'Emitir Fallo Sancionatorio', description: 'Generar fallo con sanción', module: 'control_disciplinario', criticidad: 'critica' },
+      { id: 'cd.fallo.absolutorio', name: 'Emitir Fallo Absolutorio', description: 'Generar fallo absolutorio', module: 'control_disciplinario', criticidad: 'critica' },
+      
+      // ============ SANCIONES ============
+      { id: 'cd.sanction.view', name: 'Ver Sanciones', description: 'Consultar sanciones impuestas', module: 'control_disciplinario', criticidad: 'media' },
       { id: 'cd.sanction.apply', name: 'Aplicar Sanción', description: 'Imponer sanción disciplinaria', module: 'control_disciplinario', criticidad: 'critica' },
+      { id: 'cd.sanction.modify', name: 'Modificar Sanción', description: 'Ajustar términos de sanción', module: 'control_disciplinario', criticidad: 'critica' },
       { id: 'cd.sanction.track', name: 'Hacer Seguimiento', description: 'Monitorear cumplimiento de sanción', module: 'control_disciplinario', criticidad: 'media' },
       { id: 'cd.sanction.close', name: 'Cerrar Sanción', description: 'Finalizar sanción cumplida', module: 'control_disciplinario', criticidad: 'alta' },
       
-      // Etapas Procesales
-      { id: 'cd.stage.indagacion', name: 'Indagación Preliminar', description: 'Gestionar etapa de indagación', module: 'control_disciplinario', criticidad: 'alta' },
-      { id: 'cd.stage.investigacion', name: 'Investigación Formal', description: 'Gestionar investigación disciplinaria', module: 'control_disciplinario', criticidad: 'alta' },
-      { id: 'cd.stage.juzgamiento', name: 'Etapa de Juzgamiento', description: 'Gestionar juzgamiento disciplinario', module: 'control_disciplinario', criticidad: 'critica' },
+      // ============ EXPEDIENTE ELECTRÓNICO ============
+      { id: 'cd.expediente.view', name: 'Ver Expediente', description: 'Consultar expediente electrónico', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.expediente.upload', name: 'Cargar Documentos', description: 'Subir documentos al expediente', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.expediente.download', name: 'Descargar Documentos', description: 'Descargar documentos del expediente', module: 'control_disciplinario', criticidad: 'baja' },
+      { id: 'cd.expediente.delete', name: 'Eliminar Documentos', description: 'Borrar documentos del expediente', module: 'control_disciplinario', criticidad: 'critica' },
+      { id: 'cd.expediente.organize', name: 'Organizar Expediente', description: 'Gestionar estructura del expediente', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.expediente.export', name: 'Exportar Expediente', description: 'Descargar expediente completo', module: 'control_disciplinario', criticidad: 'media' },
       
-      // Gestión Documental
-      { id: 'cd.docs.upload', name: 'Cargar Documentos', description: 'Subir documentos al expediente', module: 'control_disciplinario', criticidad: 'media' },
-      { id: 'cd.docs.download', name: 'Descargar Documentos', description: 'Descargar documentos del expediente', module: 'control_disciplinario', criticidad: 'baja' },
-      { id: 'cd.docs.delete', name: 'Eliminar Documentos', description: 'Borrar documentos del expediente', module: 'control_disciplinario', criticidad: 'critica' },
+      // ============ EDITOR DE DOCUMENTOS ============
+      { id: 'cd.editor.access', name: 'Acceder a Editor', description: 'Usar editor de documentos procesales', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.editor.create', name: 'Crear Documento', description: 'Generar nuevo documento procesal', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.editor.edit', name: 'Editar Documento', description: 'Modificar documento existente', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.editor.use_templates', name: 'Usar Plantillas', description: 'Acceder a plantillas predefinidas', module: 'control_disciplinario', criticidad: 'baja' },
+      { id: 'cd.editor.save_template', name: 'Guardar como Plantilla', description: 'Crear plantilla desde documento', module: 'control_disciplinario', criticidad: 'media' },
       
-      // Reportes y Exportación
-      { id: 'cd.export.report', name: 'Exportar Reportes', description: 'Generar informes en PDF/Excel', module: 'control_disciplinario', criticidad: 'media' },
+      // ============ GESTIÓN DE PROFESIONALES ============
+      { id: 'cd.professional.view', name: 'Ver Profesionales', description: 'Consultar equipo disciplinario', module: 'control_disciplinario', criticidad: 'baja' },
+      { id: 'cd.professional.add', name: 'Agregar Profesional', description: 'Vincular profesional al equipo', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.professional.remove', name: 'Remover Profesional', description: 'Desvincular profesional del equipo', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.professional.edit_capacity', name: 'Editar Capacidad', description: 'Modificar capacidad máxima de procesos', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.professional.view_load', name: 'Ver Carga de Trabajo', description: 'Consultar carga de procesos asignados', module: 'control_disciplinario', criticidad: 'baja' },
+      
+      // ============ TÉRMINOS Y ALERTAS ============
+      { id: 'cd.terms.view', name: 'Ver Términos', description: 'Consultar calendario de términos', module: 'control_disciplinario', criticidad: 'baja' },
+      { id: 'cd.terms.create', name: 'Crear Término', description: 'Registrar nuevo término procesal', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.terms.edit', name: 'Editar Término', description: 'Modificar término existente', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.terms.delete', name: 'Eliminar Término', description: 'Borrar término registrado', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.alerts.view', name: 'Ver Alertas', description: 'Consultar alertas de vencimiento', module: 'control_disciplinario', criticidad: 'baja' },
+      { id: 'cd.alerts.configure', name: 'Configurar Alertas', description: 'Ajustar parámetros de alertas', module: 'control_disciplinario', criticidad: 'media' },
+      
+      // ============ REVISIÓN Y APROBACIÓN DE JEFE ============
+      { id: 'cd.review.access', name: 'Acceder a Revisión', description: 'Acceso al módulo de revisión de jefe', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.review.approve', name: 'Aprobar Documento', description: 'Aprobar documento para firma', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.review.reject', name: 'Rechazar Documento', description: 'Devolver documento con observaciones', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.review.add_comments', name: 'Agregar Comentarios', description: 'Añadir observaciones de revisión', module: 'control_disciplinario', criticidad: 'media' },
+      
+      // ============ REPORTES Y EXPORTACIÓN ============
+      { id: 'cd.export.general', name: 'Exportar Reportes Generales', description: 'Generar informes en PDF/Excel', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.export.statistics', name: 'Exportar Estadísticas', description: 'Descargar datos estadísticos', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.export.processes', name: 'Exportar Procesos', description: 'Descargar listado de procesos', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.export.advanced', name: 'Reportes Avanzados', description: 'Generar reportes con filtros avanzados', module: 'control_disciplinario', criticidad: 'alta' },
       { id: 'cd.stats.view', name: 'Ver Estadísticas', description: 'Consultar métricas del módulo', module: 'control_disciplinario', criticidad: 'baja' },
+      { id: 'cd.stats.executive', name: 'Estadísticas Ejecutivas', description: 'Acceso a métricas de alta gerencia', module: 'control_disciplinario', criticidad: 'alta' },
       
-      // Configuración
-      { id: 'cd.config.view', name: 'Ver Configuraciones', description: 'Consultar configuraciones', module: 'control_disciplinario', criticidad: 'baja' },
+      // ============ AUDITORÍA Y TRAZABILIDAD ============
+      { id: 'cd.audit.view', name: 'Ver Auditoría', description: 'Consultar log de auditoría de cambios', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.audit.export', name: 'Exportar Auditoría', description: 'Descargar registros de auditoría', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.tracking.view', name: 'Ver Trazabilidad', description: 'Consultar historial de acciones', module: 'control_disciplinario', criticidad: 'baja' },
+      
+      // ============ CONFIGURACIÓN DEL MÓDULO ============
+      { id: 'cd.config.view', name: 'Ver Configuraciones', description: 'Consultar configuraciones del módulo', module: 'control_disciplinario', criticidad: 'baja' },
       { id: 'cd.config.edit', name: 'Editar Configuraciones', description: 'Modificar parámetros del sistema', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.config.stages', name: 'Configurar Etapas', description: 'Administrar etapas procesales y tiempos', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.config.capacity', name: 'Configurar Capacidades', description: 'Ajustar capacidades por cargo', module: 'control_disciplinario', criticidad: 'alta' },
+      { id: 'cd.config.notifications', name: 'Configurar Notificaciones', description: 'Ajustar alertas y notificaciones', module: 'control_disciplinario', criticidad: 'media' },
+      { id: 'cd.config.templates', name: 'Gestionar Plantillas', description: 'Administrar plantillas de documentos', module: 'control_disciplinario', criticidad: 'alta' },
     ]
   },
 

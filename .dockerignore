@@ -1,0 +1,41 @@
+# Reduce drásticamente el contexto de build del frontend (context: .)
+# Mantener solo lo necesario para `npm install` + `vite build`.
+
+# VCS / editor
+.git
+.github
+.vscode
+.idea
+
+# Dependencias y artefactos locales
+node_modules
+**/node_modules
+build
+dist
+coverage
+tmp
+temp
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Archivos de entorno / secretos
+.env
+.env.*
+!.env.example
+
+# Backend y datos no usados por el build del frontend
+backend
+db
+tests
+
+# Artefactos Docker no requeridos por Dockerfile.frontend.dev
+docker-compose*.yml
+Dockerfile
+Dockerfile.frontend.pre
+Dockerfile.frontend.prod
+Dockerfile.frontend.qa
+deploy*.sh
+

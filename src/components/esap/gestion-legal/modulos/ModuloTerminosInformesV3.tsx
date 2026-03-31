@@ -8,7 +8,7 @@ import { motion } from 'motion/react';
 import {
   Calendar, Search, Filter, FileText, AlertTriangle, Clock, CheckCircle,
   List, Calendar as CalendarIcon, TrendingUp, Link, Plus, Eye,
-  ChevronLeft, ChevronRight, CalendarDays
+  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2
 } from 'lucide-react';
 import { CardSIGL } from '../design-system/CardSIGL';
 import { ButtonSIGL } from '../design-system/ButtonSIGL';
@@ -16,6 +16,7 @@ import { BadgeSIGL } from '../design-system/BadgeSIGL';
 import { Input } from '../../../ui/input';
 import { Button } from '../../../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { SolicitudInforme, EtapaSolicitudInforme } from '../core/types';
 import { solicitudesConsolidadas, estadisticasTerminosInformes } from '../data/datosSolicitudesInformes';
 import { ModalDetalleSolicitudInforme } from './ModalDetalleSolicitudInforme';
@@ -24,18 +25,23 @@ import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalNuevoTermino } from './ModalNuevoTermino';
 import { ModalDetalleTermino } from './ModalDetalleTermino';
 import { ModalDocumentosTermino } from './ModalDocumentosTermino';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // Tipos necesarios
-type VistaModulo = 'timeline' | 'calendario' | 'lista';
+type VistaModulo = 'timeline' | 'calendario' | 'lista' | 'archivados';
 
 
 
 export function ModuloTerminosInformesV3() {
+  // ========== PERMISOS ==========
+  const { usuario } = usePermisos();
+
   // ========== ESTADO ==========
   const [solicitudes, setSolicitudes] = useState<SolicitudInforme[]>(solicitudesConsolidadas);
   const [vistaActual, setVistaActual] = useState<VistaModulo>('timeline');
@@ -50,8 +56,13 @@ export function ModuloTerminosInformesV3() {
   const [selectedSolicitud, setSelectedSolicitud] = useState<SolicitudInforme | null>(null);
 
   // Estados para modales
+  const [modalNuevaSolicitudOpen, setModalNuevaSolicitudOpen] = useState(false);
   const [modalDetalleOpen, setModalDetalleOpen] = useState(false);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudInforme | null>(null);
+
+  // Estados para Modal de Eliminar
+  const [modalEliminarOpen, setModalEliminarOpen] = useState(false);
+  const [terminoAEliminar, setTerminoAEliminar] = useState<{ id: string, permanente: boolean } | null>(null);
 
   const [loading, setLoading] = useState(true);
 
@@ -63,14 +74,61 @@ export function ModuloTerminosInformesV3() {
     setModalDetalleOpen(true);
   };
 
-  const handleOpenDocumentos = (solicitud?: SolicitudInforme) => {
-    if (solicitud) {
-      setSelectedSolicitud(solicitud);
-      setModalDocsOpen(true);
-    } else {
-      toast.info('Selecciona un término para ver sus documentos');
+  // ✅ Estado para items archivados/eliminados derivados de las solicitudes reales
+  const itemsArchivados = useMemo(() => {
+    return solicitudes
+      .filter(s => s.etapa === 'CUMPLIDO')
+      .map(s => ({
+        id: s.id,
+        codigo: s.id,
+        nombre: s.asunto || 'Sin título',
+        tipo: s.tipoInforme || 'Término',
+        estado: 'ARCHIVADO',
+        fechaArchivado: s.fechaVencimiento ? new Date(s.fechaVencimiento) : new Date(),
+        usuarioArchivo: s.responsable || 'Sistema',
+        motivoArchivo: s.descripcion || 'Término cumplido y archivado.',
+        metadatos: {
+          'Módulo': s.moduloOrigen || 'N/A',
+          'Responsable': s.responsable,
+        }
+      }));
+  }, [solicitudes]);
+
+  // ✅ Función para restaurar una solicitud archivada
+  const handleRestaurar = async (itemId: string) => {
+    try {
+      const backendId = solicitudes.find(s => s.id === itemId)?.metadata?.uuid || itemId;
+      await legalService.updateTermino(backendId, { estado: 'PENDIENTE', closedAt: null });
+      toast.success('Término restaurado exitosamente');
+      fetchData();
+    } catch (e) {
+      toast.error('Error al restaurar término');
     }
   };
+
+  // ✅ Función para eliminar permanentemente una solicitud desde "Archivados"
+  const handleEliminarPermanente = async (itemId: string) => {
+    setTerminoAEliminar({ id: itemId, permanente: true });
+    setModalEliminarOpen(true);
+  };
+
+  const ejecutarEliminacion = async () => {
+    if (!terminoAEliminar) return;
+    try {
+      const { id, permanente } = terminoAEliminar;
+      const backendId = solicitudes.find(s => s.id === id)?.metadata?.uuid || id;
+      await legalService.eliminarTermino(backendId);
+      toast.success(permanente ? 'Término eliminado permanentemente' : 'Término eliminado');
+      setModalDetalleOpen(false);
+      setModalEliminarOpen(false);
+      fetchData();
+    } catch (e) {
+      toast.error('Error al eliminar término');
+    }
+  };
+
+
+
 
   const fetchData = async () => {
     try {
@@ -85,7 +143,8 @@ export function ModuloTerminosInformesV3() {
         enteSolicitante: t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema',
         radicadoExterno: t.numeroRadicado || 'N/A',
         asunto: t.nombreActuacion,
-        descripcion: t.observaciones || '', // Now contains Facts
+        descripcion: t.observaciones ? t.observaciones.split('\n').filter((l: string) => !l.startsWith('[ARCHIVO_ADJUNTO]')).join('\n').trim() : '', 
+
         responsable: t.responsableNombre || t.responsableId || 'Sin asignar',
         fechaSolicitud: new Date(t.fechaBase),
         fechaVencimiento: new Date(t.fechaVencimiento),
@@ -169,13 +228,60 @@ export function ModuloTerminosInformesV3() {
     });
   };
 
-  const handleAgregarComentario = (id: string, comentario: string) => {
-    console.log('💬 Comentario agregado a:', id, '→', comentario);
-    // En una app real, esto actualizaría el timeline de la solicitud
+  const handleAgregarComentario = async (id: string, comentario: string) => {
+    try {
+      const solicitud = solicitudes.find(s => s.id === id);
+      if (!solicitud) return;
+
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      const userName = user?.nombre || 'Usuario';
+      
+      const newCommentText = `[${new Date().toLocaleDateString('es-CO')} ${new Date().toLocaleTimeString('es-CO')}] ${userName}:\n${comentario}`;
+      const updatedDescripcion = solicitud.descripcion 
+        ? `${solicitud.descripcion}\n\n---\n${newCommentText}`
+        : newCommentText;
+
+      const backendId = solicitud.metadata?.uuid || solicitud.id;
+
+      // Actualización optimista inmediata en UI
+      setSolicitudes(prev => prev.map(sol => sol.id === id ? { ...sol, descripcion: updatedDescripcion } : sol));
+      if (solicitudSeleccionada?.id === id) {
+        setSolicitudSeleccionada(prev => prev ? { ...prev, descripcion: updatedDescripcion } : null);
+      }
+
+      // IMPORTANTE: Se envía como "nuevoComentario" para que el backend lo concatene de forma segura sin borrar metadatos [ARCHIVO_ADJUNTO]
+      await legalService.updateTermino(backendId, { nuevoComentario: newCommentText });
+      toast.success('Comentario guardado correctamente');
+    } catch (error) {
+      console.error('Error guardando comentario:', error);
+      toast.error('Error al guardar el comentario. Intente nuevamente.');
+      // Revertir en caso de error
+      fetchData();
+    }
+  };
+
+  const handleArchivar = async (id: string) => {
+    try {
+      const solicitud = solicitudes.find(s => s.id === id);
+      if (!solicitud) return;
+      const backendId = solicitud.metadata?.uuid || solicitud.id;
+      await legalService.updateTermino(backendId, { estado: 'CUMPLIDO', closedAt: new Date() });
+      toast.success('El término ha sido archivado (CUMPLIDO)');
+      setModalDetalleOpen(false);
+      fetchData();
+    } catch (e) {
+      toast.error('Error al archivar el término');
+    }
+  };
+
+  const handleEliminar = async (id: string) => {
+    setTerminoAEliminar({ id: id, permanente: false });
+    setModalEliminarOpen(true);
   };
 
   const solicitudesFiltradas = useMemo(() => {
-    let resultado = [...solicitudes];
+    let resultado = [...solicitudes].filter(s => s.etapa !== 'CUMPLIDO' && s.etapa !== 'ELIMINADO');
 
     if (busqueda) {
       resultado = resultado.filter(s =>
@@ -205,7 +311,7 @@ export function ModuloTerminosInformesV3() {
 
     // Always sort by urgency (less days remaining first)
     return resultado.sort((a, b) => a.diasRestantes - b.diasRestantes);
-  }, [solicitudes, busqueda, filtroSemaforo, solicitudes, filtroEtapa, filtroModuloOrigen]);
+  }, [solicitudes, busqueda, filtroSemaforo, filtroEtapa, filtroModuloOrigen]);
 
   const solicitudesCriticas = solicitudesFiltradas.filter(s => s.diasRestantes <= 2).length;
   const solicitudesUrgentes = solicitudesFiltradas.filter(s => s.diasRestantes > 2 && s.diasRestantes <= 5).length;
@@ -223,10 +329,19 @@ export function ModuloTerminosInformesV3() {
           options: [
             { label: 'Timeline', icon: <TrendingUp className="w-4 h-4" />, value: 'timeline' },
             { label: 'Calendario', icon: <CalendarDays className="w-4 h-4" />, value: 'calendario' },
-            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
+            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' },
+            { label: 'Archivados', icon: <FileText className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
-        buttons={[]}
+        buttons={[
+          {
+            label: 'Nueva Solicitud',
+            labelMobile: 'Nuevo',
+            icon: <Plus className="w-4 h-4" />,
+            onClick: () => setModalNuevaSolicitudOpen(true),
+            variant: 'primary'
+          }
+        ]}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Términos e Informes"
@@ -305,7 +420,8 @@ export function ModuloTerminosInformesV3() {
               { value: 'JUZGAMIENTO', label: 'Juzgamiento' },
               { value: 'ASESORIA', label: 'Asesoría' },
               { value: 'ORGANOS_CONTROL', label: 'Órganos de Control' },
-              { value: 'PROCESOS_COACTIVOS', label: 'Procesos Coactivos' }
+              { value: 'PROCESOS_COACTIVOS', label: 'Procesos Coactivos' },
+              { value: 'MANUAL', label: 'Manual' }
             ]
           }
         ]}
@@ -321,41 +437,23 @@ export function ModuloTerminosInformesV3() {
       />
 
       {/* Contenido principal */}
-      {loading ? (
-        <div className="flex justify-center p-8">Cargando términos...</div>
-      ) : (
-        <>
-          {vistaActual === 'timeline' && (
-            <VistaTimeline
-              solicitudes={solicitudesFiltradas}
-              onVerDetalle={handleVerDetalle}
-              onVerDocumentos={handleOpenDocumentos}
-            />
-          )}
-          {vistaActual === 'calendario' && (
-            <VistaCalendario
-              solicitudes={solicitudesFiltradas}
-              mesActual={mesActual}
-              setMesActual={setMesActual}
-              onVerDetalle={handleVerDetalle}
-            />
-          )}
-          {vistaActual === 'lista' && (
-            <VistaLista
-              solicitudes={solicitudesFiltradas}
-              onVerDetalle={handleVerDetalle}
-              onVerDocumentos={handleOpenDocumentos}
-            />
-          )}
-        </>
+      {vistaActual === 'timeline' && <VistaTimeline solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onArchivar={handleArchivar} onEliminar={handleEliminar} />}
+      {vistaActual === 'calendario' && <VistaCalendario solicitudes={solicitudesFiltradas} mesActual={mesActual} setMesActual={setMesActual} onVerDetalle={handleVerDetalle} />}
+      {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onArchivar={handleArchivar} onEliminar={handleEliminar} />}
+      {vistaActual === 'archivados' && (
+        <VistaArchivados
+          items={itemsArchivados}
+          moduloNombre="Términos e Informes"
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
+        />
       )}
 
-      {/* ModalNuevoTermino removed */}
-
-      <ModalDetalleTermino
-        open={modalDetalleOpen}
-        onOpenChange={setModalDetalleOpen}
-        solicitud={selectedSolicitud}
+      {/* Modal Nueva Solicitud */}
+      <ModalNuevoTermino
+        open={modalNuevaSolicitudOpen}
+        onOpenChange={setModalNuevaSolicitudOpen}
+        onSuccess={fetchData}
       />
 
       {/* We can use this modal for specific calls if we lift state later */}
@@ -375,7 +473,49 @@ export function ModuloTerminosInformesV3() {
         solicitud={solicitudSeleccionada}
         onCambiarEtapa={handleCambiarEtapa}
         onAgregarComentario={handleAgregarComentario}
+        onArchivar={handleArchivar}
+        onEliminar={handleEliminar}
       />
+
+      {/* Modal Confirmar Eliminar */}
+      {modalEliminarOpen && (
+        <Dialog open={modalEliminarOpen} onOpenChange={() => setModalEliminarOpen(false)}>
+          <DialogContent hideCloseButton className="max-w-md">
+            <DialogTitle className="sr-only">Confirmar Eliminación</DialogTitle>
+            <DialogDescription className="sr-only">
+              ¿Está seguro que desea eliminar este término?
+            </DialogDescription>
+            
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-4 bg-red-50 rounded-lg border-2 border-red-200">
+                <Trash2 className="w-8 h-8 text-red-600" />
+                <div>
+                  <h3 className="font-bold text-gray-900">Eliminar Término</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Confirma que desea eliminar este término? Esta acción no se puede deshacer.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setModalEliminarOpen(false)}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={ejecutarEliminacion}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Sí, Eliminar
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
@@ -383,13 +523,14 @@ export function ModuloTerminosInformesV3() {
 interface VistaTimelineProps {
   solicitudes: SolicitudInforme[];
   onVerDetalle: (s: SolicitudInforme) => void;
-  onVerDocumentos: (s: SolicitudInforme) => void;
+  onArchivar: (id: string) => void;
+  onEliminar: (id: string) => void;
 }
 
-function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos }: VistaTimelineProps) {
+function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaTimelineProps) {
   // Ordenar por fecha límite
   const solicitudesOrdenadas = [...solicitudes].sort((a, b) =>
-    new Date(a.fechaLimite).getTime() - new Date(b.fechaLimite).getTime()
+    new Date(a.fechaVencimiento).getTime() - new Date(b.fechaVencimiento).getTime()
   );
 
   return (
@@ -419,7 +560,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos }: VistaTime
 
           return (
             <motion.div
-              key={solicitud.id}
+              key={solicitud.metadata?.uuid || `${solicitud.id}-${index}`}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.05 }}
@@ -467,25 +608,36 @@ function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos }: VistaTime
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <ButtonSIGL
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
                     onClick={() => onVerDetalle(solicitud)}
-                    size="sm"
-                    className="text-xs"
-                    style={{ background: '#003DA5', color: '#FFFFFF' }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95"
+                    style={{
+                      background: '#003DA5',
+                      color: '#FFFFFF',
+                      border: 'none'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#2962FF'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = '#003DA5'}
                   >
-                    <Eye className="w-3 h-3 mr-1" />
+                    <Eye className="w-3.5 h-3.5" />
                     Ver Detalle
-                  </ButtonSIGL>
-                  <ButtonSIGL
-                    onClick={() => toast.info('Documentos', { description: solicitud.id })}
-                    size="sm"
-                    variant="outline"
-                    className="text-xs"
+                  </button>
+                  <button
+                    onClick={() => onArchivar(solicitud.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95 bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100"
+                    title="Archivar (marcar como Cumplido)"
                   >
-                    <FileText className="w-3 h-3 mr-1" />
-                    Documentos
-                  </ButtonSIGL>
+                    <Archive className="w-3.5 h-3.5" />
+                    Archivar
+                  </button>
+                  <button
+                    onClick={() => onEliminar(solicitud.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95 bg-red-50 text-red-600 border border-red-300 hover:bg-red-100"
+                    title="Eliminar término"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -532,10 +684,10 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
           {nombreMes}
         </h3>
         <div className="flex items-center gap-2">
-          <ButtonSIGL onClick={mesAnterior} size="sm" variant="outline">
+          <ButtonSIGL onClick={mesAnterior} size="sm" variant="secondary">
             <ChevronLeft className="w-4 h-4" />
           </ButtonSIGL>
-          <ButtonSIGL onClick={mesSiguiente} size="sm" variant="outline">
+          <ButtonSIGL onClick={mesSiguiente} size="sm" variant="secondary">
             <ChevronRight className="w-4 h-4" />
           </ButtonSIGL>
         </div>
@@ -556,8 +708,10 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
         {/* Días del mes */}
         {dias.map(dia => {
           const fecha = new Date(mesActual.getFullYear(), mesActual.getMonth(), dia);
-          const solicitudesDia = solicitudes.filter(s => {
+          const solicitudesDia = (solicitudes || []).filter(s => {
+            if (!s.fechaVencimiento) return false;
             const fechaVencimiento = new Date(s.fechaVencimiento);
+            if (isNaN(fechaVencimiento.getTime())) return false;
             return fechaVencimiento.getDate() === dia &&
               fechaVencimiento.getMonth() === mesActual.getMonth() &&
               fechaVencimiento.getFullYear() === mesActual.getFullYear();
@@ -575,9 +729,9 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
               <div className="font-semibold text-gray-700 mb-1">{dia}</div>
               {solicitudesDia.length > 0 && (
                 <div className="space-y-0.5 cursor-pointer">
-                  {solicitudesDia.slice(0, 2).map(s => (
+                  {solicitudesDia.slice(0, 2).map((s, idx) => (
                     <div
-                      key={s.id}
+                      key={`cal-${s.metadata?.uuid || s.id}-${idx}`}
                       className="text-[9px] px-1 py-0.5 rounded truncate"
                       style={{
                         backgroundColor: s.diasRestantes <= 2 ? '#DC2626' : s.diasRestantes <= 5 ? '#F59E0B' : '#10B981',
@@ -605,11 +759,12 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
 
 interface VistaListaProps {
   solicitudes: SolicitudInforme[];
-  onVerDocumentos: (s: SolicitudInforme) => void;
   onVerDetalle: (solicitud: SolicitudInforme) => void;
+  onArchivar: (id: string) => void;
+  onEliminar: (id: string) => void;
 }
 
-function VistaLista({ solicitudes, onVerDetalle, onVerDocumentos }: VistaListaProps) {
+function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaListaProps) {
   return (
     <CardSIGL className="bg-white border border-gray-200">
       <div className="overflow-x-auto">
@@ -626,11 +781,11 @@ function VistaLista({ solicitudes, onVerDetalle, onVerDocumentos }: VistaListaPr
             </tr>
           </thead>
           <tbody>
-            {solicitudes.map((solicitud) => {
+            {solicitudes.map((solicitud, index) => {
               const semaforoColor = solicitud.diasRestantes <= 2 ? '#DC2626' : solicitud.diasRestantes <= 5 ? '#F59E0B' : '#10B981';
 
               return (
-                <tr key={solicitud.id} className="border-t border-gray-200 hover:bg-gray-50">
+                <tr key={solicitud.metadata?.uuid || `${solicitud.id}-${index}`} className="border-t border-gray-200 hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm text-gray-900 font-semibold">{solicitud.id}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">
                     <div className="line-clamp-2">{solicitud.asunto || 'Sin asunto'}</div>
@@ -649,22 +804,40 @@ function VistaLista({ solicitudes, onVerDetalle, onVerDocumentos }: VistaListaPr
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{solicitud.etapa}</td>
                   <td className="px-4 py-3">
-                    <ButtonSIGL
-                      onClick={() => onVerDetalle(solicitud)}
-                      size="sm"
-                      style={{ background: '#003DA5', color: '#FFFFFF' }}
-                    >
-                      <Eye className="w-3 h-3 mr-1" />
-                      Ver
-                    </ButtonSIGL>
-                    <Button
-                      onClick={() => onVerDocumentos(solicitud)}
-                      size="sm"
-                      variant="outline"
-                      title="Ver Documentos"
-                    >
-                      <FileText className="w-3 h-3" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => onVerDetalle(solicitud)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95"
+                        style={{
+                          background: '#003DA5',
+                          color: '#FFFFFF',
+                          border: 'none'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#2962FF'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = '#003DA5'}
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        Ver
+                      </button>
+                      <Button
+                        onClick={() => onArchivar(solicitud.id)}
+                        size="sm"
+                        variant="outline"
+                        title="Archivar (Cumplido)"
+                        className="text-amber-600 border-amber-300 hover:bg-amber-50"
+                      >
+                        <Archive className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        onClick={() => onEliminar(solicitud.id)}
+                        size="sm"
+                        variant="outline"
+                        title="Eliminar"
+                        className="text-red-600 border-red-300 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               );

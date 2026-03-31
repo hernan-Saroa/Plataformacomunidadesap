@@ -21,6 +21,9 @@ import { NewsService } from './news.service';
 import { DisciplinaryNews, NewsStatus } from '../entities/disciplinary-news.entity';
 import { Evidence } from '../entities/evidence.entity';
 import { DisciplinaryProfessional } from '../entities/disciplinary-professional.entity';
+import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-actuacion.entity';
+import { DisciplinaryProcessTask } from '../entities/disciplinary-process-task.entity';
+import { DisciplinaryProcessNote } from '../entities/disciplinary-process-note.entity';
 
 @Injectable()
 export class ProcessService {
@@ -33,10 +36,138 @@ export class ProcessService {
     private professionalRepository: Repository<DisciplinaryProfessional>,
     @InjectRepository(DisciplinaryNews)
     private newsRepository: Repository<DisciplinaryNews>,
+    @InjectRepository(DisciplinaryProcessActuacion)
+    private actuacionesRepository: Repository<DisciplinaryProcessActuacion>,
+    @InjectRepository(DisciplinaryProcessTask)
+    private tasksRepository: Repository<DisciplinaryProcessTask>,
+    @InjectRepository(DisciplinaryProcessNote)
+    private notesRepository: Repository<DisciplinaryProcessNote>,
     private sequenceService: SequenceService,
     private terminosService: TerminosCalculatorService,
     private newsService: NewsService,
   ) { }
+
+  private async buildActuacionesResumen(processIds: string[]): Promise<Map<string, {
+    actuacionesCount: number;
+    ultimaActuacion: string | null;
+    ultimaActuacionFecha: string | null;
+  }>> {
+    const resumen = new Map<string, {
+      actuacionesCount: number;
+      ultimaActuacion: string | null;
+      ultimaActuacionFecha: string | null;
+    }>();
+
+    if (processIds.length === 0) {
+      return resumen;
+    }
+
+    const actuaciones = await this.actuacionesRepository.find({
+      where: { processId: In(processIds) },
+      order: {
+        fechaActuacion: 'DESC',
+        createdAt: 'DESC',
+      },
+    });
+
+    actuaciones.forEach((actuacion) => {
+      const actual = resumen.get(actuacion.processId);
+
+      if (!actual) {
+        resumen.set(actuacion.processId, {
+          actuacionesCount: 1,
+          ultimaActuacion: actuacion.descripcion,
+          ultimaActuacionFecha: actuacion.fechaActuacion
+            ? actuacion.fechaActuacion.toISOString()
+            : null,
+        });
+        return;
+      }
+
+      actual.actuacionesCount += 1;
+    });
+
+    return resumen;
+  }
+
+  private async buildTasksResumen(processIds: string[]): Promise<Map<string, {
+    tasksCount: number;
+    completedTasksCount: number;
+    pendingTasksCount: number;
+  }>> {
+    const resumen = new Map<string, {
+      tasksCount: number;
+      completedTasksCount: number;
+      pendingTasksCount: number;
+    }>();
+
+    if (processIds.length === 0) {
+      return resumen;
+    }
+
+    const tasks = await this.tasksRepository.find({
+      where: { processId: In(processIds) },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+
+    tasks.forEach((task) => {
+      const actual = resumen.get(task.processId);
+
+      if (!actual) {
+        resumen.set(task.processId, {
+          tasksCount: 1,
+          completedTasksCount: task.completada ? 1 : 0,
+          pendingTasksCount: task.completada ? 0 : 1,
+        });
+        return;
+      }
+
+      actual.tasksCount += 1;
+      if (task.completada) {
+        actual.completedTasksCount += 1;
+      } else {
+        actual.pendingTasksCount += 1;
+      }
+    });
+
+    return resumen;
+  }
+
+  private async buildNotesResumen(processIds: string[]): Promise<Map<string, {
+    notesCount: number;
+  }>> {
+    const resumen = new Map<string, {
+      notesCount: number;
+    }>();
+
+    if (processIds.length === 0) {
+      return resumen;
+    }
+
+    const notes = await this.notesRepository.find({
+      where: { processId: In(processIds) },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+
+    notes.forEach((note) => {
+      const actual = resumen.get(note.processId);
+
+      if (!actual) {
+        resumen.set(note.processId, {
+          notesCount: 1,
+        });
+        return;
+      }
+
+      actual.notesCount += 1;
+    });
+
+    return resumen;
+  }
 
   /**
    * Crea un nuevo proceso disciplinario (asigna profesional a una noticia)
@@ -51,6 +182,19 @@ export class ProcessService {
 
       // DEBUG LOGGING
       console.log(`[ProcessService] Assigning process to news ${noticia.id}. Status: ${noticia.estado}`);
+
+      // ✅ NUEVO: Verificar que no existe ya un proceso para esta noticia
+      const existingProcess = await this.processRepository.findOne({
+        where: { newsId: createProcessDto.newsId }
+      });
+
+      if (existingProcess) {
+        console.error(`[ProcessService] Ya existe un proceso para esta noticia: ${createProcessDto.newsId}`);
+        throw new HttpException(
+          'Ya existe un proceso disciplinario para esta noticia. No se puede crear otro.',
+          HttpStatus.CONFLICT,
+        );
+      }
 
       // DEBUG LOGGING
       console.log(`[ProcessService] Assigning process to news ${noticia.id}. Status: ${noticia.estado}`);
@@ -113,41 +257,13 @@ export class ProcessService {
       const radicadoProceso =
         await this.sequenceService.generateProcessRadicado();
 
-      // Calcular fecha de prescripción (15 años desde los hechos)
-      const fechaPrescripcion =
-        this.terminosService.calculateFechaPrescripcion(noticia.fechaRecepcion);
+      // Calcular fecha de prescripción (15 años desde la comisión del hecho)
+      const fechaPrescripcion = this.terminosService.calculateFechaPrescripcion(
+        noticia.fechaRecepcion
+      );
 
-      // Determinar etapa inicial basada en la columna kanban de la noticia
-      let etapaInicial = ProcessStage.EVALUACION; // Default
-      if (noticia.kanbanStage) {
-        // Mapear kanbanStage a ProcessStage
-        switch (noticia.kanbanStage.toUpperCase()) {
-          case 'EVALUACION':
-          case 'EVALUACIÓN':
-            etapaInicial = ProcessStage.EVALUACION;
-            break;
-          case 'INDAGACION':
-          case 'INDAGACION_PREVIA':
-          case 'INDAGACIÓN':
-          case 'INDAGACIÓN_PREVIA':
-            etapaInicial = ProcessStage.INDAGACION_PREVIA;
-            break;
-          case 'INVESTIGACION':
-          case 'INVESTIGACIÓN':
-            etapaInicial = ProcessStage.INVESTIGACION;
-            break;
-          case 'JUZGAMIENTO':
-            etapaInicial = ProcessStage.JUZGAMIENTO;
-            break;
-          case 'FALLO':
-          case 'SEGUNDA_INSTANCIA':
-          case 'SEGUNDA INSTANCIA':
-            etapaInicial = ProcessStage.SEGUNDA_INSTANCIA;
-            break;
-          default:
-            etapaInicial = ProcessStage.EVALUACION;
-        }
-      }
+      // Los procesos siempre inician en Valoración al ser creados desde una noticia
+      const etapaInicial = ProcessStage.VALORACION;
 
       // Calcular fecha de vencimiento de la etapa inicial
       const { fechaVencimiento } =
@@ -160,7 +276,7 @@ export class ProcessService {
         abogadoAsignado: abogado, // Establecer la relación directamente
         abogadoAsignadoId: abogado.id,
         etapaActual: etapaInicial,
-        kanbanStage: noticia.kanbanStage, // ✅ Mantener la misma columna kanban de la noticia
+        kanbanStage: 'Valoración', // El proceso inicia siempre en la columna Valoración del Kanban
         estado: ProcessStatus.ACTIVO,
         fechaPrescripcion,
         fechaVencimientoEtapa: fechaVencimiento,
@@ -172,7 +288,7 @@ export class ProcessService {
         abogadoNombre: abogado.nombreCompleto,
         abogadoCargo: abogado.cargo,
         etapaActual: etapaInicial,
-        kanbanStage: noticia.kanbanStage
+        kanbanStage: 'Valoración'
       });
 
       const procesoConcreado = await this.processRepository.save(proceso);
@@ -241,7 +357,20 @@ export class ProcessService {
       });
 
       // Map to include professional name and calculate dynamic statistics
+      const actuacionesResumen = await this.buildActuacionesResumen(
+        processes.map((process) => process.id),
+      );
+      const tasksResumen = await this.buildTasksResumen(
+        processes.map((process) => process.id),
+      );
+      const notesResumen = await this.buildNotesResumen(
+        processes.map((process) => process.id),
+      );
+
       return processes.map(p => {
+        const actuaciones = actuacionesResumen.get(p.id);
+        const tasks = tasksResumen.get(p.id);
+        const notes = notesResumen.get(p.id);
         // Calcular estadísticas dinámicas
         const draftsCount = p.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
         const documentsCount = p.evidence?.length || 0;
@@ -272,9 +401,34 @@ export class ProcessService {
 
         return {
           ...p,
+          // ✅ Transformar campos planos a objeto anidado para el frontend
+          procesoAsociado: p.procesoAsociadoId ? {
+            id: p.procesoAsociadoId,
+            numeroProceso: p.procesoAsociadoNumero || '',
+            tipoAsociacion: p.procesoAsociadoTipo || 'similar',
+            fechaAsociacion: p.procesoAsociadoFecha ? new Date(p.procesoAsociadoFecha).toISOString() : new Date().toISOString(),
+            justificacion: p.procesoAsociadoJustificacion || ''
+          } : undefined,
           abogadoAsignadoNombre: p.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+          // ✅ Incluir campos de proceso asociado (planos para compatibilidad)
+          procesoAsociadoId: p.procesoAsociadoId,
+          procesoAsociadoNumero: p.procesoAsociadoNumero,
+          procesoAsociadoTipo: p.procesoAsociadoTipo,
+          procesoAsociadoFecha: p.procesoAsociadoFecha,
+          procesoAsociadoJustificacion: p.procesoAsociadoJustificacion,
+          // ✅ Incluir campos de consolidación
+          procesoConsolidadoPrincipal: p.procesoConsolidadoPrincipal,
+          procesosConsolidados: p.procesosConsolidados,
+          informacionConsolidada: p.informacionConsolidada,
           draftsCount,
           documentsCount,
+          actuacionesCount: actuaciones?.actuacionesCount || 0,
+          ultimaActuacion: actuaciones?.ultimaActuacion || null,
+          ultimaActuacionFecha: actuaciones?.ultimaActuacionFecha || null,
+          tasksCount: tasks?.tasksCount || 0,
+          completedTasksCount: tasks?.completedTasksCount || 0,
+          pendingTasksCount: tasks?.pendingTasksCount || 0,
+          notesCount: notes?.notesCount || 0,
           timePercentage: Math.round(timePercentage * 100) / 100
         };
       });
@@ -340,6 +494,10 @@ export class ProcessService {
       throw new HttpException('Proceso no encontrado', HttpStatus.NOT_FOUND);
     }
 
+    const actuaciones = (await this.buildActuacionesResumen([proceso.id])).get(proceso.id);
+    const tasks = (await this.buildTasksResumen([proceso.id])).get(proceso.id);
+    const notes = (await this.buildNotesResumen([proceso.id])).get(proceso.id);
+
     // Calcular estadísticas dinámicas
     const draftsCount = proceso.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
     const documentsCount = proceso.evidence?.length || 0;
@@ -361,8 +519,33 @@ export class ProcessService {
 
     return {
       ...proceso,
+      // ✅ Transformar campos planos a objeto anidado para el frontend
+      procesoAsociado: proceso.procesoAsociadoId ? {
+        id: proceso.procesoAsociadoId,
+        numeroProceso: proceso.procesoAsociadoNumero || '',
+        tipoAsociacion: proceso.procesoAsociadoTipo || 'similar',
+        fechaAsociacion: proceso.procesoAsociadoFecha ? new Date(proceso.procesoAsociadoFecha).toISOString() : new Date().toISOString(),
+        justificacion: proceso.procesoAsociadoJustificacion || ''
+      } : undefined,
+      // ✅ Incluir campos de proceso asociado (planos para compatibilidad)
+      procesoAsociadoId: proceso.procesoAsociadoId,
+      procesoAsociadoNumero: proceso.procesoAsociadoNumero,
+      procesoAsociadoTipo: proceso.procesoAsociadoTipo,
+      procesoAsociadoFecha: proceso.procesoAsociadoFecha,
+      procesoAsociadoJustificacion: proceso.procesoAsociadoJustificacion,
+      // ✅ Incluir campos de consolidación
+      procesoConsolidadoPrincipal: proceso.procesoConsolidadoPrincipal,
+      procesosConsolidados: proceso.procesosConsolidados,
+      informacionConsolidada: proceso.informacionConsolidada,
       draftsCount,
       documentsCount,
+      actuacionesCount: actuaciones?.actuacionesCount || 0,
+      ultimaActuacion: actuaciones?.ultimaActuacion || null,
+      ultimaActuacionFecha: actuaciones?.ultimaActuacionFecha || null,
+      tasksCount: tasks?.tasksCount || 0,
+      completedTasksCount: tasks?.completedTasksCount || 0,
+      pendingTasksCount: tasks?.pendingTasksCount || 0,
+      notesCount: notes?.notesCount || 0,
       timePercentage: Math.round(timePercentage * 100) / 100
     };
   }
@@ -378,7 +561,20 @@ export class ProcessService {
     });
 
     // Calcular estadísticas dinámicas para cada proceso
+    const actuacionesResumen = await this.buildActuacionesResumen(
+      processes.map((process) => process.id),
+    );
+    const tasksResumen = await this.buildTasksResumen(
+      processes.map((process) => process.id),
+    );
+    const notesResumen = await this.buildNotesResumen(
+      processes.map((process) => process.id),
+    );
+
     return processes.map(p => {
+      const actuaciones = actuacionesResumen.get(p.id);
+      const tasks = tasksResumen.get(p.id);
+      const notes = notesResumen.get(p.id);
       const draftsCount = p.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
       const documentsCount = p.evidence?.length || 0;
 
@@ -398,8 +594,33 @@ export class ProcessService {
 
       return {
         ...p,
+        // ✅ Transformar campos planos a objeto anidado para el frontend
+        procesoAsociado: p.procesoAsociadoId ? {
+          id: p.procesoAsociadoId,
+          numeroProceso: p.procesoAsociadoNumero || '',
+          tipoAsociacion: p.procesoAsociadoTipo || 'similar',
+          fechaAsociacion: p.procesoAsociadoFecha ? new Date(p.procesoAsociadoFecha).toISOString() : new Date().toISOString(),
+          justificacion: p.procesoAsociadoJustificacion || ''
+        } : undefined,
+        // ✅ Incluir campos de proceso asociado (planos para compatibilidad)
+        procesoAsociadoId: p.procesoAsociadoId,
+        procesoAsociadoNumero: p.procesoAsociadoNumero,
+        procesoAsociadoTipo: p.procesoAsociadoTipo,
+        procesoAsociadoFecha: p.procesoAsociadoFecha,
+        procesoAsociadoJustificacion: p.procesoAsociadoJustificacion,
+        // ✅ Incluir campos de consolidación
+        procesoConsolidadoPrincipal: p.procesoConsolidadoPrincipal,
+        procesosConsolidados: p.procesosConsolidados,
+        informacionConsolidada: p.informacionConsolidada,
         draftsCount,
         documentsCount,
+        actuacionesCount: actuaciones?.actuacionesCount || 0,
+        ultimaActuacion: actuaciones?.ultimaActuacion || null,
+        ultimaActuacionFecha: actuaciones?.ultimaActuacionFecha || null,
+        tasksCount: tasks?.tasksCount || 0,
+        completedTasksCount: tasks?.completedTasksCount || 0,
+        pendingTasksCount: tasks?.pendingTasksCount || 0,
+        notesCount: notes?.notesCount || 0,
         timePercentage: Math.round(timePercentage * 100) / 100
       };
     });
@@ -414,31 +635,36 @@ export class ProcessService {
     kanbanStage?: string,
     kanbanNotice?: string
   ): Promise<DisciplinaryProcess> {
-    const proceso = await this.findById(id, false);
+    try {
+      const proceso = await this.findById(id, false);
 
-    if (kanbanStage) {
-      proceso.kanbanStage = kanbanStage;
+      if (kanbanStage) {
+        proceso.kanbanStage = kanbanStage;
+      }
+
+      if (kanbanNotice !== undefined) {
+        proceso.kanbanNotice = kanbanNotice || null;
+      }
+
+      if (proceso.etapaActual !== stage) {
+        // Validar transicion de etapa
+        this.validarTransicionEtapa(proceso.etapaActual as ProcessStage, stage);
+
+        // Calcular nuevo vencimiento
+        const { fechaVencimiento } =
+          await this.terminosService.calculateVencimientoEtapa(stage);
+
+        console.log('Changing stage for process', id, 'from', proceso.etapaActual, 'to', stage, 'new deadline', fechaVencimiento);
+
+        proceso.etapaActual = stage;
+        proceso.fechaVencimientoEtapa = fechaVencimiento;
+      }
+
+      return await this.processRepository.save(proceso);
+    } catch (error) {
+      console.error('Error in changeStage:', error);
+      throw error;
     }
-
-    if (kanbanNotice !== undefined) {
-      proceso.kanbanNotice = kanbanNotice || null;
-    }
-
-    if (proceso.etapaActual !== stage) {
-      // Validar transicion de etapa
-      this.validarTransicionEtapa(proceso.etapaActual as ProcessStage, stage);
-
-      // Calcular nuevo vencimiento
-      const { fechaVencimiento } =
-        await this.terminosService.calculateVencimientoEtapa(stage);
-
-      console.log('Changing stage for process', id, 'from', proceso.etapaActual, 'to', stage, 'new deadline', fechaVencimiento);
-
-      proceso.etapaActual = stage;
-      proceso.fechaVencimientoEtapa = fechaVencimiento;
-    }
-
-    return await this.processRepository.save(proceso);
   }
 
   /**
@@ -523,7 +749,7 @@ export class ProcessService {
   async findByRadicado(radicadoProceso: string): Promise<DisciplinaryProcess> {
     const proceso = await this.processRepository.findOne({
       where: { radicadoProceso },
-      relations: ['news'],
+      relations: ['news', 'abogadoAsignado'],
     });
 
     if (!proceso) {
@@ -533,7 +759,21 @@ export class ProcessService {
       );
     }
 
-    return proceso;
+    const actuaciones = (await this.buildActuacionesResumen([proceso.id])).get(proceso.id);
+    const tasks = (await this.buildTasksResumen([proceso.id])).get(proceso.id);
+    const notes = (await this.buildNotesResumen([proceso.id])).get(proceso.id);
+
+    return {
+      ...proceso,
+      abogadoAsignadoNombre: proceso.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+      actuacionesCount: actuaciones?.actuacionesCount || 0,
+      ultimaActuacion: actuaciones?.ultimaActuacion || null,
+      ultimaActuacionFecha: actuaciones?.ultimaActuacionFecha || null,
+      tasksCount: tasks?.tasksCount || 0,
+      completedTasksCount: tasks?.completedTasksCount || 0,
+      pendingTasksCount: tasks?.pendingTasksCount || 0,
+      notesCount: notes?.notesCount || 0,
+    } as any;
   }
 
   /**
@@ -652,16 +892,131 @@ export class ProcessService {
 
   /**
    * Valida las transiciones permitidas entre etapas
+   * Flujo ESPECÍFICO:
+   * - RECEPCION → INDAGACION_PREVIA / INVESTIGACION
+   * - VALORACION → INDAGACION_PREVIA / INVESTIGACION
+   * - INDAGACION_PREVIA / INVESTIGACION → EVALUACION / JUZGAMIENTO / FALLO
+   * - EVALUACION → JUZGAMIENTO / FALLO
+   * - JUZGAMIENTO → INDAGACION
+   * - INDAGACION → FALLO
+   * - FALLO → SEGUNDA_INSTANCIA
+   * - SEGUNDA_INSTANCIA → etapa final (no permite transiciones)
+   *
+   * NOTA: Se permiten movimientos hacia ATRÁS (a etapas anteriores) para dar flexibilidad.
+   * Los movimientos hacia adelante deben seguir el flujo específico definido.
    */
   private validarTransicionEtapa(etapaActual: ProcessStage, nuevaEtapa: ProcessStage): void {
     console.log('Validating transition from', etapaActual, 'to', nuevaEtapa);
+
+    // No puede pasar a la misma etapa
     if (etapaActual === nuevaEtapa) {
       throw new HttpException(
         `No se puede pasar de ${etapaActual} a ${nuevaEtapa}`,
         HttpStatus.BAD_REQUEST,
       );
     }
-    return;
+
+    // SEGUNDA_INSTANCIA es etapa final, no puede salir de aquí
+    if (etapaActual === ProcessStage.SEGUNDA_INSTANCIA) {
+      throw new HttpException(
+        'No se puede cambiar la etapa desde Segunda Instancia',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Definir el orden de etapas (índice numérico para cada etapa)
+    const ordenEtapas: Record<ProcessStage, number> = {
+      [ProcessStage.RECEPCION]: 1,
+      [ProcessStage.VALORACION]: 2,
+      [ProcessStage.INDAGACION_PREVIA]: 3,
+      [ProcessStage.INVESTIGACION]: 4,
+      [ProcessStage.EVALUACION]: 5,
+      [ProcessStage.JUZGAMIENTO]: 6,
+      [ProcessStage.INDAGACION]: 7,
+      [ProcessStage.FALLO]: 8,
+      [ProcessStage.SEGUNDA_INSTANCIA]: 9,
+    };
+
+    const indiceActual = ordenEtapas[etapaActual];
+    const indiceNueva = ordenEtapas[nuevaEtapa];
+
+    // Movimiento hacia ATRÁS: siempre permitido
+    if (indiceNueva < indiceActual) {
+      console.log(`Movimiento hacia atrás permitido: de ${etapaActual} a ${nuevaEtapa}`);
+      return; // Permitir sin validación adicional
+    }
+
+    // Movimiento hacia ADELANTE: seguir el flujo ESPECÍFICO
+    if (etapaActual === ProcessStage.RECEPCION) {
+      // RECEPCION → INDAGACION_PREVIA / INVESTIGACION
+      if (nuevaEtapa !== ProcessStage.INDAGACION_PREVIA && nuevaEtapa !== ProcessStage.INVESTIGACION) {
+        throw new HttpException(
+          `Desde RECEPCION solo puede ir a INDAGACION_PREVIA o INVESTIGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+    else if (etapaActual === ProcessStage.VALORACION) {
+      // VALORACION → INDAGACION_PREVIA / INVESTIGACION
+      if (nuevaEtapa !== ProcessStage.INDAGACION_PREVIA && nuevaEtapa !== ProcessStage.INVESTIGACION) {
+        throw new HttpException(
+          `Desde VALORACION solo puede ir a INDAGACION_PREVIA o INVESTIGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+    else if (etapaActual === ProcessStage.INDAGACION_PREVIA || etapaActual === ProcessStage.INVESTIGACION) {
+      // INDAGACION_PREVIA / INVESTIGACION → EVALUACION / JUZGAMIENTO / FALLO
+      // También permite cambiar entre INDAGACION_PREVIA e INVESTIGACION (mismo nivel)
+      const esCambioMismoNivel = (etapaActual === ProcessStage.INDAGACION_PREVIA && nuevaEtapa === ProcessStage.INVESTIGACION) ||
+        (etapaActual === ProcessStage.INVESTIGACION && nuevaEtapa === ProcessStage.INDAGACION_PREVIA);
+
+      if (!esCambioMismoNivel &&
+        nuevaEtapa !== ProcessStage.EVALUACION &&
+        nuevaEtapa !== ProcessStage.JUZGAMIENTO &&
+        nuevaEtapa !== ProcessStage.FALLO) {
+        throw new HttpException(
+          `Desde INDAGACION_PREVIA o INVESTIGACION solo puede ir a EVALUACION, JUZGAMIENTO, FALLO o cambiar entre INDAGACION_PREVIA/INVESTIGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+    else if (etapaActual === ProcessStage.EVALUACION) {
+      // EVALUACION → JUZGAMIENTO / FALLO
+      if (nuevaEtapa !== ProcessStage.JUZGAMIENTO && nuevaEtapa !== ProcessStage.FALLO) {
+        throw new HttpException(
+          `Desde EVALUACION solo puede ir a JUZGAMIENTO o FALLO. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+    else if (etapaActual === ProcessStage.JUZGAMIENTO) {
+      // JUZGAMIENTO → solo INDAGACION
+      if (nuevaEtapa !== ProcessStage.INDAGACION) {
+        throw new HttpException(
+          `Desde JUZGAMIENTO solo puede ir a INDAGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+    else if (etapaActual === ProcessStage.INDAGACION) {
+      // INDAGACION → solo FALLO
+      if (nuevaEtapa !== ProcessStage.FALLO) {
+        throw new HttpException(
+          `Desde INDAGACION solo puede ir a FALLO. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+    else if (etapaActual === ProcessStage.FALLO) {
+      // FALLO → solo SEGUNDA_INSTANCIA
+      if (nuevaEtapa !== ProcessStage.SEGUNDA_INSTANCIA) {
+        throw new HttpException(
+          `Desde FALLO solo puede ir a SEGUNDA_INSTANCIA. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
   }
 
   /**
@@ -723,6 +1078,133 @@ export class ProcessService {
     if (result.affected === 0) {
       throw new HttpException('Proceso no encontrado', HttpStatus.NOT_FOUND);
     }
+  }
+
+  /**
+   * ✅ NUEVO: Asocia un proceso a otro proceso disciplinario
+   * Para consolidación: toma la información del proceso más antiguo (con más tiempo)
+   */
+  async associateProcess(
+    procesoOrigenId: string,
+    procesoDestinoId: string,
+    tipoAsociacion: 'conexo' | 'similar' | 'consolidado',
+    justificacion: string,
+  ): Promise<DisciplinaryProcess> {
+    // Validar que el proceso origen existe
+    const procesoOrigen = await this.processRepository.findOne({
+      where: { id: procesoOrigenId },
+      relations: ['news'],
+    });
+
+    if (!procesoOrigen) {
+      throw new HttpException('Proceso origen no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    // Validar que el proceso destino existe
+    const procesoDestino = await this.processRepository.findOne({
+      where: { id: procesoDestinoId },
+      relations: ['news'],
+    });
+
+    if (!procesoDestino) {
+      throw new HttpException('Proceso destino no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    // Validar que no se intente asociar a sí mismo
+    if (procesoOrigenId === procesoDestinoId) {
+      throw new HttpException(
+        'Un proceso no puede asociarse a sí mismo',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Determinar el proceso principal (el más antiguo) para consolidación
+    let procesoPrincipal = procesoOrigen;
+    let procesoSecundario = procesoDestino;
+
+    // Comparar por fecha de creación para determinar el más antiguo
+    const fechaOrigen = new Date(procesoOrigen.createdAt).getTime();
+    const fechaDestino = new Date(procesoDestino.createdAt).getTime();
+
+    // El proceso principal es el más antiguo (menor fecha)
+    if (fechaOrigen > fechaDestino) {
+      procesoPrincipal = procesoDestino;
+      procesoSecundario = procesoOrigen;
+    }
+
+    console.log('🔗 [Consolidación] Proceso principal (más antiguo):', {
+      principalId: procesoPrincipal.id,
+      principalRadicado: procesoPrincipal.radicadoProceso,
+      principalFecha: procesoPrincipal.createdAt,
+      secundarioId: procesoSecundario.id,
+      secundarioRadicado: procesoSecundario.radicadoProceso,
+      secundarioFecha: procesoSecundario.createdAt,
+    });
+
+
+    // Si es consolidación, realizar la unificación de información
+    if (tipoAsociacion === 'consolidado') {
+      // Consolidar información del proceso principal (el más antiguo)
+      // Guardar información relevante para trazabilidad
+      procesoOrigen.procesoConsolidadoPrincipal = procesoPrincipal.id;
+      procesoOrigen.procesosConsolidados = [
+        procesoPrincipal.radicadoProceso,
+        procesoSecundario.radicadoProceso,
+      ];
+      procesoOrigen.informacionConsolidada = {
+        radicado: procesoPrincipal.radicadoProceso,
+        fechaInicio: procesoPrincipal.createdAt.toISOString(),
+        hechos: procesoPrincipal.news?.hechos || '',
+        disciplinable: procesoPrincipal.news?.disciplinable || null,
+      };
+
+      // También actualizar el proceso destino como consolidado
+      procesoDestino.procesoConsolidadoPrincipal = procesoPrincipal.id;
+      procesoDestino.procesosConsolidados = [
+        procesoPrincipal.radicadoProceso,
+        procesoSecundario.radicadoProceso,
+      ];
+      procesoDestino.informacionConsolidada = {
+        radicado: procesoPrincipal.radicadoProceso,
+        fechaInicio: procesoPrincipal.createdAt.toISOString(),
+        hechos: procesoPrincipal.news?.hechos || '',
+        disciplinable: procesoPrincipal.news?.disciplinable || null,
+      };
+
+      // Guardar el proceso destino consolidado primero
+      await this.processRepository.save(procesoDestino);
+    }
+
+    // Actualizar el proceso origen con la información del proceso asociado
+    procesoOrigen.procesoAsociadoId = procesoDestinoId;
+    procesoOrigen.procesoAsociadoNumero = procesoDestino.radicadoProceso;
+    procesoOrigen.procesoAsociadoTipo = tipoAsociacion;
+    procesoOrigen.procesoAsociadoFecha = new Date();
+    procesoOrigen.procesoAsociadoJustificacion = justificacion;
+
+    console.log('✅ Asociando proceso:', {
+      procesoOrigenId,
+      procesoDestinoId,
+      radicadoDestino: procesoDestino.radicadoProceso,
+      tipoAsociacion,
+      justificacion,
+    });
+
+    // Guardar el proceso origen
+    const procesoOrigenActualizado = await this.processRepository.save(procesoOrigen);
+
+    // Si es consolidación, también actualizar el proceso destino
+    if (tipoAsociacion === 'consolidado') {
+      procesoDestino.procesoAsociadoId = procesoOrigenId;
+      procesoDestino.procesoAsociadoNumero = procesoOrigen.radicadoProceso;
+      procesoDestino.procesoAsociadoTipo = tipoAsociacion;
+      procesoDestino.procesoAsociadoFecha = new Date();
+      procesoDestino.procesoAsociadoJustificacion = justificacion;
+
+      await this.processRepository.save(procesoDestino);
+    }
+
+    return procesoOrigenActualizado;
   }
 }
 

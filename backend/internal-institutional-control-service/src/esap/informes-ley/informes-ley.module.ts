@@ -19,6 +19,7 @@ import { PlanMejoramiento } from '../planes-mejoramiento/entities/plan-mejoramie
 import { Hallazgo } from '../hallazgos/entities/hallazgo.entity';
 import { PlanAnual5RolesModule } from '../plan-anual-5-roles/plan-anual-5-roles.module';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
+import { AuthModule } from '../../auth/auth.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { NotificacionesModule } from '../notificaciones/notificaciones.module';
     ]),
     PlanAnual5RolesModule, // Importar módulo del Plan Anual para vincular informes
     NotificacionesModule,
+    AuthModule,
   ],
   controllers: [InformesLeyController],
   providers: [

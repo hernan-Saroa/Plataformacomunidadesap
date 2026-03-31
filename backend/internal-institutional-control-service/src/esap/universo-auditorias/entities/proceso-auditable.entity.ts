@@ -67,7 +67,7 @@ export class ProcesoAuditable {
     impacto: number; // 1-3
     nivelControl: number; // 1-3
     riesgoInherente: number; // probabilidad * impacto
-    riesgoResidual: number; // riesgoInherente * nivelControl
+    riesgoResidual: number; // riesgoInherente ÷ nivelControl (prioridad 0-100)
     nivelRiesgo: NivelRiesgo; // bajo, medio, alto
     madurezControl?: string;
     controles?: {
@@ -76,6 +76,31 @@ export class ProcesoAuditable {
       correctivos: number;
     };
     factoresRiesgo?: string[];
+    // Distribución de riesgos DAFP
+    riesgosExtremos?: number;
+    riesgosAltos?: number;
+    riesgosModerados?: number;
+    riesgosBajos?: number;
+    totalRiesgos?: number;
+    // Requerimientos especiales
+    requerimientoComite?: boolean;
+    requerimientoEntesReg?: boolean;
+    // ═══════════════════════════════════════════════════════════════════════
+    // CAMPOS DAFP CALCULADOS Y DECISIÓN (agregados 2026-02-20)
+    // ═══════════════════════════════════════════════════════════════════════
+    vigencia?: number;                    // Año de la evaluación
+    fechaCorte?: string;                  // Fecha de corte de la evaluación
+    ponderacionRiesgo?: string;           // 'EXTREMO' | 'ALTO' | 'MODERADO' | 'BAJO' (calculado)
+    diasRotacion?: number;                // Días de rotación según plan
+    decisionRotacion?: string;            // 'INCLUIR' | 'OMITIR' | 'PENDIENTE'
+    decisionFinal?: string;               // 'INCLUIR PLAN ANUAL' | 'AUDITORÍA POSTERIOR'
+    motivoDecision?: string;              // Justificación de la decisión
+    prioridadRegla?: number;              // 1-5, qué regla DAFP aplicó
+    // Score C+E-M (modelo simplificado 0-15)
+    criticidad?: number;
+    exposicion?: number;
+    mitigantes?: number;
+    scoreRiesgo?: number;
   };
 
   @Column({ name: 'frecuencia_auditoria', type: 'varchar', length: 255, nullable: false })
@@ -83,6 +108,9 @@ export class ProcesoAuditable {
 
   @Column({ name: 'ultima_auditoria', type: 'date', nullable: true })
   ultimaAuditoria?: Date;
+
+  @Column({ name: 'resultado_ultima_auditoria', type: 'varchar', length: 255, nullable: true })
+  resultadoUltimaAuditoria?: string;
 
   @Column({ name: 'proxima_auditoria', type: 'date', nullable: true })
   proximaAuditoria?: Date;
@@ -92,6 +120,9 @@ export class ProcesoAuditable {
 
   @Column({ name: 'priorizacion_anos', type: 'integer', nullable: false })
   priorizacionAnos: number; // 1-4 años según nivel de riesgo
+
+  @Column({ type: 'boolean', default: true })
+  activo: boolean;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

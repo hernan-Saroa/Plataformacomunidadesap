@@ -11,15 +11,14 @@ import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
-import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { 
-  X, Target, Calendar, User, Flag, 
-  AlertCircle, CheckCircle, Clock, Plus
+import { Card } from '../../../ui/card';
+import {
+  X, Target, Calendar, User, Flag,
+  AlertCircle, CheckCircle, Clock
 } from 'lucide-react';
-import { useState } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
 
@@ -30,57 +29,81 @@ interface ModalCrearTareaProps {
   tareaInicial?: any;
   onGuardar?: (tarea: any) => void;
   modoEdicion?: boolean;
+  abogadosDisponibles?: { nombre: string; rol: string }[];
 }
 
-export function ModalCrearTarea({ 
-  isOpen, 
-  onClose, 
-  expediente, 
-  tareaInicial, 
+export function ModalCrearTarea({
+  isOpen,
+  onClose,
+  expediente,
+  tareaInicial,
   onGuardar,
-  modoEdicion = false 
+  modoEdicion = false,
+  abogadosDisponibles = []
 }: ModalCrearTareaProps) {
-  const [titulo, setTitulo] = useState(tareaInicial?.titulo || '');
-  const [descripcion, setDescripcion] = useState(tareaInicial?.descripcion || '');
-  const [fechaVencimiento, setFechaVencimiento] = useState(tareaInicial?.vencimiento || '');
-  const [prioridad, setPrioridad] = useState<'Alta' | 'Media' | 'Baja'>(tareaInicial?.prioridad || 'Media');
-  const [responsableSeleccionado, setResponsableSeleccionado] = useState(tareaInicial?.responsable || '');
-  const [estado, setEstado] = useState<'Pendiente' | 'En proceso' | 'Completado'>(tareaInicial?.estado || 'Pendiente');
+  const [titulo, setTitulo] = useState('');
+  const [descripcion, setDescripcion] = useState('');
+  const [fechaVencimiento, setFechaVencimiento] = useState('');
+  const [prioridad, setPrioridad] = useState<'Alta' | 'Media' | 'Baja'>('Media');
+  const [responsableSeleccionado, setResponsableSeleccionado] = useState('');
+  const [estado, setEstado] = useState<'Pendiente' | 'En proceso'>('Pendiente');
   const [enviandoTarea, setEnviandoTarea] = useState(false);
+
+  // Limpiar campos al abrir el modal (o cargar datos si es edición)
+  useEffect(() => {
+    if (isOpen) {
+      if (modoEdicion && tareaInicial) {
+        setTitulo(tareaInicial.titulo || '');
+        setDescripcion(tareaInicial.descripcion || '');
+        setFechaVencimiento(tareaInicial.vencimiento || '');
+        setPrioridad(tareaInicial.prioridad || 'Media');
+        setResponsableSeleccionado(tareaInicial.responsable || '');
+        setEstado(tareaInicial.estado === 'Completado' ? 'Pendiente' : (tareaInicial.estado || 'Pendiente'));
+      } else {
+        setTitulo('');
+        setDescripcion('');
+        setFechaVencimiento('');
+        setPrioridad('Media');
+        setResponsableSeleccionado('');
+        setEstado('Pendiente');
+      }
+      setEnviandoTarea(false);
+    }
+  }, [isOpen, modoEdicion, tareaInicial]);
 
   // Usuarios disponibles para asignar
   const usuariosDisponibles = [
-    { 
-      id: '1', 
-      nombre: expediente.abogadoAsignado, 
+    {
+      id: '1',
+      nombre: expediente.abogadoAsignado,
       cargo: 'Abogado Defensor',
       avatar: expediente.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2),
       email: `${expediente.abogadoAsignado.toLowerCase().replace(/ /g, '.')}@esap.edu.co`
     },
-    { 
-      id: '2', 
-      nombre: 'María Fernanda Rodríguez', 
+    {
+      id: '2',
+      nombre: 'María Fernanda Rodríguez',
       cargo: 'Auxiliar Jurídico',
       avatar: 'MR',
       email: 'maria.rodriguez@esap.edu.co'
     },
-    { 
-      id: '3', 
-      nombre: 'Carlos Eduardo Méndez', 
+    {
+      id: '3',
+      nombre: 'Carlos Eduardo Méndez',
       cargo: 'Coordinador Jurídico',
       avatar: 'CM',
       email: 'carlos.mendez@esap.edu.co'
     },
-    { 
-      id: '4', 
-      nombre: 'Ana Patricia López', 
+    {
+      id: '4',
+      nombre: 'Ana Patricia López',
       cargo: 'Abogada Defensa',
       avatar: 'AL',
       email: 'ana.lopez@esap.edu.co'
     }
   ];
 
-  const handleCrear = () => {
+  const handleCrear = async () => {
     // Validación
     if (!titulo.trim()) {
       toast.error('❌ Campo requerido', {
@@ -110,15 +133,12 @@ export function ModalCrearTarea({
       return;
     }
 
-    // Simular creación o edición
+    // Enviar datos reales
     setEnviandoTarea(true);
 
-    setTimeout(() => {
-      const responsable = usuariosDisponibles.find(u => u.id === responsableSeleccionado) || 
-                         usuariosDisponibles.find(u => u.nombre === responsableSeleccionado);
-      
+    try {
       const diasCalc = calcularDiasRestantes(fechaVencimiento);
-      
+
       const tareaData = {
         id: tareaInicial?.id || Date.now(),
         titulo: titulo.trim(),
@@ -126,35 +146,38 @@ export function ModalCrearTarea({
         vencimiento: fechaVencimiento,
         diasRestantes: diasCalc || 0,
         prioridad,
-        responsable: responsable?.nombre || responsableSeleccionado,
+        responsable: responsableSeleccionado, // Usar valor directo del input text
         estado
       };
 
-      if (modoEdicion && onGuardar) {
-        // Modo edición
-        onGuardar(tareaData);
-      } else {
-        // Modo creación
-        toast.success('✅ Tarea creada exitosamente', {
-          description: `Se asignó a ${responsable?.nombre || responsableSeleccionado}`,
-          duration: 4000
-        });
-
-        // Limpiar formulario
-        setTitulo('');
-        setDescripcion('');
-        setFechaVencimiento('');
-        setPrioridad('Media');
-        setResponsableSeleccionado('');
-        setEstado('Pendiente');
-        setEnviandoTarea(false);
-        
-        onClose();
+      if (onGuardar) {
+        await onGuardar(tareaData);
       }
 
-      setEnviandoTarea(false);
-    }, 1500);
+      // No necesitamos limpiar ni cerrar manualmente si el padre maneja el estado
+      // y cierra el modal al completar.
+      // Si el padre falla (throw), el catch atrapará el error y no cerraremos.
+
+    } catch (error) {
+      console.error('Error al guardar tarea', error);
+      // El padre ya debería haber mostrado toast de error si falló la API
+      // Pero por si acaso:
+      // toast.error('Error al guardar tarea'); 
+      // Mejor dejamos que el padre maneje errores de API.
+    } finally {
+      if (mounted) setEnviandoTarea(false);
+    }
   };
+
+  // Helper para manejar el estado de montaje y evitar updates en componente desmontado
+  // (Aunque si el padre cierra el modal, este componente se desmonta)
+  // Workaround simple
+  let mounted = true;
+  /* useEffect(() => { return () => { mounted = false; }; }, []); */
+  // En function component, usar useRef es mejor, pero aquí simplificamos dado que
+  // si se desmonta, el estado local ya no importa.
+
+
 
   const calcularDiasRestantes = (fecha: string) => {
     if (!fecha) return null;
@@ -178,7 +201,7 @@ export function ModalCrearTarea({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-2xl max-h-[90vh] flex flex-col p-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[650px] lg:max-w-2xl max-h-[90vh] flex flex-col p-0 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
         <DialogTitle className="sr-only">
           {modoEdicion ? 'Editar Tarea' : 'Crear Nueva Tarea'} - Expediente {expediente.id}
         </DialogTitle>
@@ -277,10 +300,10 @@ export function ModalCrearTarea({
               />
               {semaforo && diasRestantes !== null && (
                 <div className="mt-2 flex items-center gap-2">
-                  <Badge 
+                  <Badge
                     className="text-xs font-bold"
-                    style={{ 
-                      background: semaforo.bg, 
+                    style={{
+                      background: semaforo.bg,
                       color: semaforo.color,
                       border: `1px solid ${semaforo.color}`
                     }}
@@ -311,13 +334,13 @@ export function ModalCrearTarea({
                     style={
                       prioridad === nivel
                         ? {
-                            background: nivel === 'Alta' ? '#DC2626' : nivel === 'Media' ? '#F59E0B' : '#10B981',
-                            color: '#FFFFFF'
-                          }
+                          background: nivel === 'Alta' ? '#DC2626' : nivel === 'Media' ? '#F59E0B' : '#10B981',
+                          color: '#FFFFFF'
+                        }
                         : {
-                            borderColor: nivel === 'Alta' ? '#DC2626' : nivel === 'Media' ? '#F59E0B' : '#10B981',
-                            color: nivel === 'Alta' ? '#DC2626' : nivel === 'Media' ? '#F59E0B' : '#10B981'
-                          }
+                          borderColor: nivel === 'Alta' ? '#DC2626' : nivel === 'Media' ? '#F59E0B' : '#10B981',
+                          color: nivel === 'Alta' ? '#DC2626' : nivel === 'Media' ? '#F59E0B' : '#10B981'
+                        }
                     }
                   >
                     <Flag className="w-3 h-3 mr-1" />
@@ -335,7 +358,7 @@ export function ModalCrearTarea({
                 📊 Estado de la tarea
               </Label>
               <div className="flex gap-2">
-                {(['Pendiente', 'En proceso', 'Completado'] as const).map((estadoOpcion) => (
+                {(['Pendiente', 'En proceso'] as const).map((estadoOpcion) => (
                   <Button
                     key={estadoOpcion}
                     type="button"
@@ -346,13 +369,13 @@ export function ModalCrearTarea({
                     style={
                       estado === estadoOpcion
                         ? {
-                            background: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B',
-                            color: '#FFFFFF'
-                          }
+                          background: estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B',
+                          color: '#FFFFFF'
+                        }
                         : {
-                            borderColor: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B',
-                            color: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B'
-                          }
+                          borderColor: estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B',
+                          color: estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B'
+                        }
                     }
                   >
                     <CheckCircle className="w-3 h-3 mr-1" />
@@ -363,74 +386,69 @@ export function ModalCrearTarea({
             </div>
           )}
 
-          {/* Estado */}
-          <div>
-            <Label className="text-sm font-bold text-gray-700 mb-2 block">
-              ⚡ Estado inicial
-            </Label>
-            <div className="flex gap-2">
-              {(['Pendiente', 'En proceso', 'Completada'] as const).map((estadoOpt) => (
-                <Button
-                  key={estadoOpt}
-                  type="button"
-                  variant={estado === estadoOpt ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setEstado(estadoOpt)}
-                  className="flex-1 font-bold text-xs"
-                  style={
-                    estado === estadoOpt
-                      ? { background: '#2962FF', color: '#FFFFFF' }
-                      : { borderColor: '#2962FF', color: '#2962FF' }
-                  }
-                >
-                  {estadoOpt}
-                </Button>
-              ))}
+          {/* Estado (solo en creación) */}
+          {!modoEdicion && (
+            <div>
+              <Label className="text-sm font-bold text-gray-700 mb-2 block">
+                ⚡ Estado inicial
+              </Label>
+              <div className="flex gap-2">
+                {(['Pendiente', 'En proceso'] as const).map((estadoOpt) => (
+                  <Button
+                    key={estadoOpt}
+                    type="button"
+                    variant={estado === estadoOpt ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setEstado(estadoOpt)}
+                    className="flex-1 font-bold text-xs"
+                    style={
+                      estado === estadoOpt
+                        ? { background: '#2962FF', color: '#FFFFFF' }
+                        : { borderColor: '#2962FF', color: '#2962FF' }
+                    }
+                  >
+                    {estadoOpt}
+                  </Button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Asignar responsable */}
           <div>
             <Label className="text-sm font-bold text-gray-700 mb-3 block">
               👤 Asignar responsable <span className="text-red-500">*</span>
             </Label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {usuariosDisponibles.map((usuario) => {
-                const isSelected = responsableSeleccionado === usuario.id;
-                return (
-                  <Card
-                    key={usuario.id}
-                    className={`p-3 cursor-pointer transition-all hover:shadow-md ${
-                      isSelected ? 'border-2 bg-blue-50' : 'border-2 border-transparent'
-                    }`}
-                    style={isSelected ? { borderColor: '#2962FF' } : {}}
-                    onClick={() => setResponsableSeleccionado(usuario.id)}
+            <div className="w-full">
+              {abogadosDisponibles.length > 0 ? (
+                <>
+                  <select
+                    value={responsableSeleccionado}
+                    onChange={(e) => setResponsableSeleccionado(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
-                    <div className="flex items-center gap-3">
-                      <Avatar className="w-12 h-12">
-                        <AvatarFallback
-                          className="font-black"
-                          style={
-                            isSelected
-                              ? { background: '#2962FF', color: '#FFFFFF' }
-                              : { background: '#E0EDFF', color: '#2962FF' }
-                          }
-                        >
-                          {usuario.avatar}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-black text-gray-900 truncate flex items-center gap-2">
-                          {usuario.nombre}
-                          {isSelected && <CheckCircle className="w-4 h-4 text-green-600" />}
-                        </p>
-                        <p className="text-xs text-gray-600 truncate">{usuario.cargo}</p>
-                        <p className="text-xs text-gray-500 truncate">{usuario.email}</p>
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })}
+                    <option value="">Selecciona un responsable...</option>
+                    {abogadosDisponibles.map((abogado, idx) => (
+                      <option key={`${abogado.nombre}-${idx}`} value={abogado.nombre}>
+                        {abogado.nombre} — {abogado.rol}
+                      </option>
+                    ))}
+                  </select>
+                  {responsableSeleccionado && (
+                    <p className="text-xs text-green-600 mt-1.5 flex items-center gap-1">
+                      <CheckCircle className="w-3 h-3" />
+                      {abogadosDisponibles.find(a => a.nombre === responsableSeleccionado)?.rol || 'Responsable seleccionado'}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <Input
+                  value={responsableSeleccionado}
+                  onChange={(e) => setResponsableSeleccionado(e.target.value)}
+                  placeholder="Escribe el nombre del responsable..."
+                  className="text-sm"
+                />
+              )}
             </div>
           </div>
 
@@ -444,9 +462,9 @@ export function ModalCrearTarea({
         </div>
 
         {/* ==================== FOOTER STICKY CON BOTONES ==================== */}
-        <div 
+        <div
           className="flex-shrink-0 bg-white border-t-2 px-6 py-4"
-          style={{ 
+          style={{
             borderTopColor: '#2962FF',
             boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.05)'
           }}

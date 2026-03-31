@@ -34,6 +34,7 @@ import { DocumentoConsulta } from './entities/documento-consulta.entity';
 import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity';
 import { CorreoJuridico } from './entities/correo-juridico.entity';
 import { AdjuntoCorreo } from './entities/adjunto-correo.entity';
+import { CorreoJuridicoHistorial } from './entities/correo-juridico-historial.entity';
 import { ExcepcionProcesal } from './entities/excepcion-procesal.entity';
 import { ProcesoCoactivo } from './entities/proceso-coactivo.entity';
 import { ProcesoCoactivoAdjunto } from './entities/proceso-coactivo-adjunto.entity';
@@ -41,6 +42,10 @@ import { PagoCoactivo } from './entities/pago-coactivo.entity';
 import { CoactivoHistorial } from './entities/coactivo-historial.entity';
 import { ConsultaJuridicaHistorial } from './entities/consulta-juridica-historial.entity';
 import { SystemConfiguration } from './entities/system-configuration.entity';
+import { TipoRequerimientoOC } from './entities/tipo-requerimiento-oc.entity';
+import { OficioEnviado } from './entities/oficio-enviado.entity';
+import { TasaReferencia } from './entities/tasa-referencia.entity';
+import { PlantillaDocumento } from './entities/plantilla-documento.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
@@ -67,6 +72,9 @@ import { DocumentosConsultaController } from './controllers/documentos-consulta.
 import { CorreosJuridicosController } from './controllers/correos-juridicos.controller';
 import { ProcesoCoactivoController } from './controllers/proceso-coactivo.controller';
 import { ConfigurationsController } from './controllers/configurations.controller';
+import { OficiosController } from './controllers/oficios.controller';
+import { TasaReferenciaController } from './controllers/tasa-referencia.controller';
+import { PlantillasController } from './controllers/plantillas.controller';
 
 // Services
 import { ExpedienteService } from './services/expediente.service';
@@ -97,6 +105,10 @@ import { ProcesoCoactivoService } from './services/proceso-coactivo.service';
 import { ConfigurationsService } from './services/configurations.service';
 import { DiasHabilesService } from './services/dias-habiles.service';
 import { AlertasVencimientoService } from './services/alertas-vencimiento.service';
+import { SmartClassificationService } from './services/smart-classification.service';
+import { OficiosService } from './services/oficios.service';
+import { TasaReferenciaService } from './services/tasa-referencia.service';
+import { PlantillasService } from './services/plantillas.service';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -126,6 +138,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       RespuestaBorradorOC,
       SolicitudInsumo,
       Hallazgo,
+      TipoRequerimientoOC,
       // Tareas y Notas
       TareaExpediente,
       NotaExpediente,
@@ -143,6 +156,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // Correos Jurídicos (Microsoft Graph)
       CorreoJuridico,
       AdjuntoCorreo,
+      CorreoJuridicoHistorial,
       // Excepciones Procesales
       ExcepcionProcesal,
       // Procesos Coactivos
@@ -153,7 +167,13 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // Historial Consultas
       ConsultaJuridicaHistorial,
       // System Configurations
-      SystemConfiguration
+      SystemConfiguration,
+      // Oficios Enviados
+      OficioEnviado,
+      // Tasas de Referencia
+      TasaReferencia,
+      // Plantillas de Documentos
+      PlantillaDocumento
     ]),
     PeiModule,
     PlanesMejoramientoModule
@@ -187,11 +207,11 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     // Procesos Coactivos
     ProcesoCoactivoController,
     // Configurations
-    ConfigurationsController
-    // PlanesMejoramientoController is usually inside PlanesMejoramientoModule, 
-    // but if it was here in HEAD, I should check. 
-    // HEAD didn't have it in controllers array explicitly (it had PlanesMejoramientoModule in imports).
-    // I won't add it to controllers array if it's in the module.
+    ConfigurationsController,
+    // Oficios
+    OficiosController,
+    TasaReferenciaController,
+    PlantillasController
   ],
   providers: [
     AppService,
@@ -218,13 +238,18 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     MicrosoftGraphService,
     CorreosJuridicosService,
     CorreosSyncScheduler,
+    SmartClassificationService,
     // Procesos Coactivos
     ProcesoCoactivoService,
     // Configurations
     ConfigurationsService,
     // Días Hábiles y Alertas
     DiasHabilesService,
-    AlertasVencimientoService
+    AlertasVencimientoService,
+    // Oficios
+    OficiosService,
+    TasaReferenciaService,
+    PlantillasService
   ],
 })
 export class AppModule { }

@@ -73,7 +73,23 @@ export class AutosService {
             auto.fechaNotificacion = new Date();
         }
 
-        return this.autoRepository.save(auto);
+        const saved = await this.autoRepository.save(auto);
+
+        // LOG AUTOMÁTICO DE CAMBIO DE ESTADO
+        try {
+            await this.actuacionService.registrarEventoAutomatico(
+                auto.expedienteId,
+                `Auto ${estado}`,
+                `El auto ${auto.numero} (${auto.tipo}) ha cambiado de estado a: ${estado}. ${estado === 'Notificado' ? 'Notificado el: ' + new Date().toLocaleDateString() : ''}`,
+                'AUTO',
+                auto.id,
+                { nuevoEstado: estado }
+            );
+        } catch (error) {
+            console.error('Error log auto update:', error);
+        }
+
+        return saved;
     }
 
     async delete(id: string): Promise<{ success: boolean; message: string }> {

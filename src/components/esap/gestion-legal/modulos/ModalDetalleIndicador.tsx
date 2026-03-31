@@ -3,7 +3,7 @@
  * Modal para ver detalles completos y seguimiento de un indicador
  */
 
-import { Eye, Target, Calendar, User, TrendingUp, Activity, FileText, Clock, Award, AlertCircle, CheckCircle } from 'lucide-react';
+import { Eye, Target, Calendar, User, TrendingUp, Activity, FileText, Clock, Award, AlertCircle, CheckCircle, Archive } from 'lucide-react';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
 import { Progress } from '../../../ui/progress';
@@ -36,9 +36,10 @@ interface ModalDetalleIndicadorProps {
   indicador: Indicador | null;
   onEditar?: () => void;
   onCargarAvance?: () => void;
+  onArchivar?: () => void;
 }
 
-export function ModalDetalleIndicador({ isOpen, onClose, indicador, onEditar, onCargarAvance }: ModalDetalleIndicadorProps) {
+export function ModalDetalleIndicador({ isOpen, onClose, indicador, onEditar, onCargarAvance, onArchivar }: ModalDetalleIndicadorProps) {
   if (!isOpen || !indicador) return null;
 
   const ejeConfig = {
@@ -160,47 +161,74 @@ export function ModalDetalleIndicador({ isOpen, onClose, indicador, onEditar, on
 
           {/* Contenido del Modal */}
           <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-            {/* Sección: Resumen Ejecutivo */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Meta */}
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Target className="w-5 h-5 text-blue-600" />
-                  <p className="text-sm font-semibold text-gray-700">Meta Definida</p>
+            {/* Sección: Resumen Ejecutivo — Visualización Intuitiva */}
+            <div className="bg-white border-2 border-gray-200 rounded-xl p-5 space-y-4">
+              {/* Fila superior: meta vs actual */}
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Target className="w-4 h-4 text-blue-600" />
+                    <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">Meta</p>
+                  </div>
+                  <p className="text-2xl font-black text-blue-700">
+                    {indicador.meta}<span className="text-sm font-semibold ml-0.5">{indicador.unidadMedida === 'PORCENTAJE' ? '%' : indicador.unidadMedida === 'NUMERO' ? '' : indicador.unidadMedida}</span>
+                  </p>
                 </div>
-                <p className="text-3xl font-bold text-blue-600">
-                  {indicador.meta}{indicador.unidadMedida}
-                </p>
-                <p className="text-xs text-gray-600 mt-1">{indicador.tipoIndicador}</p>
-              </div>
 
-              {/* Valor Actual */}
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Activity className="w-5 h-5 text-green-600" />
-                  <p className="text-sm font-semibold text-gray-700">Valor Actual</p>
-                </div>
-                <p className="text-3xl font-bold text-green-600">
-                  {indicador.valorActual}{indicador.unidadMedida}
-                </p>
-                <p className="text-xs text-gray-600 mt-1">
-                  Actualizado: {indicador.ultimaActualizacion.toLocaleDateString('es-CO')}
-                </p>
-              </div>
-
-              {/* % Cumplimiento */}
-              <div className="bg-gradient-to-br from-purple-50 to-fuchsia-50 border-2 border-purple-200 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Award className="w-5 h-5 text-purple-600" />
-                  <p className="text-sm font-semibold text-gray-700">% Cumplimiento</p>
-                </div>
-                <p
-                  className="text-3xl font-bold"
-                  style={{ color: getSemaforoColor(indicador.avance) }}
+                {/* Cumplimiento central — más prominente */}
+                <div
+                  className="border-2 rounded-xl p-3 flex flex-col items-center justify-center shadow-sm"
+                  style={{
+                    borderColor: getSemaforoColor(indicador.avance),
+                    backgroundColor: `${getSemaforoColor(indicador.avance)}15`,
+                  }}
                 >
-                  {indicador.avance}%
-                </p>
-                <Progress value={indicador.avance} className="h-2 mt-2" />
+                  <Award className="w-5 h-5 mb-1" style={{ color: getSemaforoColor(indicador.avance) }} />
+                  <p className="text-xs font-bold uppercase tracking-wide" style={{ color: getSemaforoColor(indicador.avance) }}>Cumplimiento</p>
+                  <p className="text-3xl font-black" style={{ color: getSemaforoColor(indicador.avance) }}>
+                    {indicador.avance}%
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {indicador.avance >= 90 ? '✅ En meta' : indicador.avance >= 50 ? '⚠️ En riesgo' : '🔴 Requiere acción'}
+                  </p>
+                </div>
+
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Activity className="w-4 h-4 text-green-600" />
+                    <p className="text-xs font-bold text-green-700 uppercase tracking-wide">Actual</p>
+                  </div>
+                  <p className="text-2xl font-black text-green-700">
+                    {indicador.valorActual}<span className="text-sm font-semibold ml-0.5">{indicador.unidadMedida === 'PORCENTAJE' ? '%' : indicador.unidadMedida === 'NUMERO' ? '' : indicador.unidadMedida}</span>
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">{indicador.ultimaActualizacion.toLocaleDateString('es-CO')}</p>
+                </div>
+              </div>
+
+              {/* Barra de progreso visual: muestra avance sobre la meta */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>0{indicador.unidadMedida === 'PORCENTAJE' ? '%' : ''}</span>
+                  <span className="font-semibold text-gray-700">
+                    {indicador.valorActual} de {indicador.meta}{indicador.unidadMedida === 'PORCENTAJE' ? '%' : ''}
+                  </span>
+                  <span>{indicador.meta}{indicador.unidadMedida === 'PORCENTAJE' ? '%' : ''}</span>
+                </div>
+                <div className="relative h-5 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.min(indicador.avance, 100)}%`,
+                      backgroundColor: getSemaforoColor(indicador.avance),
+                    }}
+                  />
+                  <span
+                    className="absolute inset-0 flex items-center justify-center text-xs font-bold"
+                    style={{ color: indicador.avance > 40 ? '#fff' : getSemaforoColor(indicador.avance) }}
+                  >
+                    {indicador.avance}% completado
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -374,7 +402,7 @@ export function ModalDetalleIndicador({ isOpen, onClose, indicador, onEditar, on
             </div>
 
             {/* Acciones Rápidas */}
-            <div className="flex items-center gap-3 pt-4 border-t-2 border-gray-200">
+            <div className="flex items-center gap-3 pt-4 border-t-2 border-gray-200 flex-wrap">
               <Button
                 onClick={onCargarAvance}
                 className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold"
@@ -389,6 +417,16 @@ export function ModalDetalleIndicador({ isOpen, onClose, indicador, onEditar, on
               >
                 Editar Indicador
               </Button>
+              {onArchivar && (
+                <Button
+                  onClick={() => { onArchivar(); onClose(); }}
+                  variant="outline"
+                  className="border-2 border-orange-400 text-orange-600 hover:bg-orange-50 font-semibold"
+                >
+                  <Archive className="w-4 h-4 mr-2" />
+                  Archivar
+                </Button>
+              )}
             </div>
           </div>
         </div>

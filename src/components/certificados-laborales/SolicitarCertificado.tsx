@@ -24,6 +24,7 @@ import { Card } from '../ui/card';
 import { Input } from '../ui/input';
 import { certificadosService } from '../../services/api/certificados.service';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
+import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 
 type Paso = 'documento' | 'codigo' | 'completado';
 
@@ -37,6 +38,14 @@ export function SolicitarCertificado() {
   const [isLoading, setIsLoading] = useState(false);
   const [certificadoGenerado, setCertificadoGenerado] = useState<any | null>(null);
   const [mostrarVisor, setMostrarVisor] = useState(false);
+
+  const normalizarMonto = (value?: string | number | null) => {
+    if (value === null || value === undefined) return 0;
+    const raw = typeof value === 'string' ? value.replace(/[^\d.-]/g, '') : value;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.round(parsed);
+  };
 
   // ============================================
   // PASO 1: Verificar Documento
@@ -143,20 +152,46 @@ export function SolicitarCertificado() {
   // Convertir certificado del backend al formato del visor
   // ============================================
   const convertirCertificadoParaVisor = (cert: any) => {
+    const templateSnapshot = cert?.template_snapshot || cert?.templateSnapshot || null;
+    const templateType =
+      cert?.template_type ||
+      cert?.templateType ||
+      templateSnapshot?.templateType ||
+      templateSnapshot?.template_type ||
+      undefined;
+    const cargoFormateado = formatCargoDisplay({
+      cargoSource: cert.career_category || cert.position_category,
+      codCargo: selectPreferredCargoCode(
+        cert.request?.cod_cargo,
+        cert.request?.codCargo,
+        cert.cod_cargo,
+        cert.codCargo,
+      ),
+      codGrade: cert.cod_grade || cert.codGrade,
+      observations: cert.request?.observations || cert.observations,
+      templateType,
+      includeCodeLabel: true,
+      codeLabel: 'Codigo',
+    });
+
     return {
       consecutivo: cert.certificate_number || cert.consecutivo || 'N/A',
       certificateHash: cert.verification_code,
       qrCode: cert.verification_code,
+      observations: cert.request?.observations || cert.observations,
+      request: cert.request,
+      templateSnapshot,
+      templateType,
       empleado: {
         nombre: cert.full_name,
         documento: cert.id_number,
         email: email || 'No disponible',
-        tipoVinculacion: cert.career_category,
+        tipoVinculacion: cert.position_category || cert.career_category,
         fechaVinculacion: cert.hiring_date,
-        cargo: cert.position_category,
-        grado: cert.position_category,
+        cargo: cargoFormateado,
+        grado: cert.department || cert.position_location || 'N/A',
         dependencia: cert.department || 'No especificado',
-        salario: cert.monthly_salary,
+        salario: normalizarMonto(cert.monthly_salary),
         salarioTexto: cert.salary_text,
       },
       fechaSolicitud: cert.issue_date || cert.issuance_timestamp,

@@ -36,6 +36,7 @@ export enum PrioridadAuditoria {
 }
 
 export enum EstadoKanban {
+  PLAN_ANUAL = 'Plan Anual',
   PLANEACION = 'Planeación',
   EJECUCION = 'Ejecución',
   COMUNICACION = 'Comunicación',
@@ -115,11 +116,30 @@ export class Auditoria {
   @Column({ type: 'varchar', length: 255, nullable: false })
   responsable: string;
 
+  // ═══════════════════════════════════════════════════════════════════
+  // CRONOGRAMA DE 3 ETAPAS: Planeación → Ejecución → Comunicación
+  // ═══════════════════════════════════════════════════════════════════
+  
+  // ETAPA 1: PLANEACIÓN
   @Column({ type: 'date', name: 'fecha_inicio', nullable: false })
-  fechaInicio: Date;
+  fechaInicio: Date; // Inicio de la etapa de Planeación (fechaInicioPlaneacion)
+
+  @Column({ type: 'date', name: 'fecha_fin_planeacion', nullable: true })
+  fechaFinPlaneacion?: Date; // Fin de Planeación
+
+  // ETAPA 2: EJECUCIÓN
+  @Column({ type: 'date', name: 'fecha_inicio_ejecucion', nullable: true })
+  fechaInicioEjecucion?: Date; // Inicio de Ejecución
+
+  @Column({ type: 'date', name: 'fecha_fin_ejecucion', nullable: true })
+  fechaFinEjecucion?: Date; // Fin de Ejecución
+
+  // ETAPA 3: COMUNICACIÓN
+  @Column({ type: 'date', name: 'fecha_inicio_comunicacion', nullable: true })
+  fechaInicioComunicacion?: Date; // Inicio de Comunicación
 
   @Column({ type: 'date', name: 'fecha_fin', nullable: false })
-  fechaFin: Date;
+  fechaFin: Date; // Fin de Comunicación (fin de auditoría) = fechaFinComunicacion
 
   @Column({ type: 'integer', default: 0 })
   progreso: number; // 0-100
@@ -185,15 +205,19 @@ export class Auditoria {
   @Column({ name: 'actividades_pendientes', type: 'integer', default: 0 })
   actividadesPendientes: number;
 
-  // Foreign Keys a auth.personas (ID_TERCERO es NUMERIC/BIGINT, no UUID)
-  @Column({ name: 'auditor_lider_id', type: 'bigint', nullable: true })
-  auditorLiderId?: number | null;
+  // Vinculación con la actividad del Plan Anual (Rol 4 - Evaluación y Seguimiento)
+  @Column({ name: 'actividad_plan_anual_id', type: 'uuid', nullable: true })
+  actividadPlanAnualId?: string;
 
-  @Column({ name: 'auditor_asignado_id', type: 'bigint', nullable: true })
-  auditorAsignadoId?: number | null;
+  // Foreign Keys a auth.personas (id_person es UUID después de migración 159)
+  @Column({ name: 'auditor_lider_id', type: 'uuid', nullable: true })
+  auditorLiderId?: string | null;
 
-  @Column({ name: 'supervisor_asignado_id', type: 'bigint', nullable: true })
-  supervisorAsignadoId?: number | null;
+  @Column({ name: 'auditor_asignado_id', type: 'uuid', nullable: true })
+  auditorAsignadoId?: string | null;
+
+  @Column({ name: 'supervisor_asignado_id', type: 'uuid', nullable: true })
+  supervisorAsignadoId?: string | null;
 
   // Campos adicionales del formulario
   @Column({ type: 'text', nullable: true })
@@ -259,6 +283,50 @@ export class Auditoria {
 
   @Column({ name: 'aprobada_por_id', type: 'bigint', nullable: true })
   aprobadaPorId?: number; // ID del usuario que aprobó
+
+  // ============ CAMPOS DE FINALIZACIÓN ============
+  
+  @Column({ name: 'fecha_finalizacion', type: 'timestamp', nullable: true })
+  fechaFinalizacion?: Date;
+
+  @Column({ name: 'finalizada_por', type: 'varchar', length: 255, nullable: true })
+  finalizadaPor?: string; // Nombre del usuario que finalizó
+
+  @Column({ name: 'finalizada_por_id', type: 'bigint', nullable: true })
+  finalizadaPorId?: number; // ID del usuario que finalizó
+
+  // Documento de cierre (matriz/formato de cierre obligatorio)
+  @Column({ name: 'documento_cierre', type: 'jsonb', nullable: true })
+  documentoCierre?: {
+    nombre: string;
+    url: string;
+    tipo: string;
+    tamano: number;
+    fechaCarga: string;
+    cargadoPor?: string;
+  };
+
+  @Column({ name: 'observaciones_cierre', type: 'text', nullable: true })
+  observacionesCierre?: string;
+
+  /** Informe de cierre (Sección 2): lecciones y recomendaciones */
+  @Column({ name: 'lecciones_aprendidas', type: 'text', nullable: true })
+  leccionesAprendidas?: string | null;
+
+  @Column({ name: 'recomendaciones_futuras_auditorias', type: 'text', nullable: true })
+  recomendacionesFuturasAuditorias?: string | null;
+
+  @Column({ name: 'informe_cierre_aprobado', type: 'boolean', default: false })
+  informeCierreAprobado: boolean;
+
+  @Column({ name: 'informe_cierre_aprobado_por', type: 'varchar', length: 255, nullable: true })
+  informeCierreAprobadoPor?: string | null;
+
+  @Column({ name: 'informe_cierre_aprobado_por_id', type: 'bigint', nullable: true })
+  informeCierreAprobadoPorId?: number | null;
+
+  @Column({ name: 'informe_cierre_aprobado_at', type: 'timestamp', nullable: true })
+  informeCierreAprobadoAt?: Date | null;
 
   // Relaciones
   @OneToMany(() => ObjetivoAuditoria, (objetivo) => objetivo.auditoria)

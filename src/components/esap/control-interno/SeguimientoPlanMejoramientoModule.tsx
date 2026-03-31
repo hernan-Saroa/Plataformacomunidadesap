@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   TrendingUp,
@@ -18,7 +18,8 @@ import {
   Send,
   MessageSquare,
   Activity,
-  BarChart3
+  BarChart3,
+  Loader2
 } from 'lucide-react';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/Button';
@@ -27,6 +28,7 @@ import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { InputSIGL } from '../gestion-legal/design-system/Input';
 import { TextareaSIGL } from '../gestion-legal/design-system/TextareaSIGL';
 import { toast } from 'sonner';
+import { controlInternoService } from '@/services/api/controlInternoService';
 
 // ====================================
 // TIPOS Y DATOS
@@ -643,6 +645,7 @@ const PortalAreaAuditada: React.FC<{
         <ModalCargarEvidencia
           accion={modalCargarEvidencia.accion}
           accionSeguimiento={modalCargarEvidencia.accionSeguimiento}
+          planId={plan.id}
           onClose={() => setModalCargarEvidencia({ abierto: false })}
           onCargar={(data) => handleCargarEvidencia(modalCargarEvidencia.accion!.id, data)}
         />
@@ -1055,18 +1058,22 @@ const DashboardJefeOCI: React.FC<{ plan: PlanMejoramiento }> = ({ plan }) => {
 const ModalCargarEvidencia: React.FC<{
   accion: AccionCorrectiva;
   accionSeguimiento?: AccionSeguimiento;
+  planId: string;
   onClose: () => void;
   onCargar: (data: { cantidadImplementada: number; observaciones: string; archivo: File }) => void;
-}> = ({ accion, accionSeguimiento, onClose, onCargar }) => {
+  onDocumentoSubido?: (documento: any) => void;
+}> = ({ accion, accionSeguimiento, planId, onClose, onCargar, onDocumentoSubido }) => {
   const [cantidadImplementada, setCantidadImplementada] = useState(accionSeguimiento?.cantidadImplementada || 0);
   const [observaciones, setObservaciones] = useState(accionSeguimiento?.observaciones || '');
   const [archivo, setArchivo] = useState<File | null>(null);
+  const [subiendo, setSubiendo] = useState(false);
+  const [progreso, setProgreso] = useState(0);
 
   const cumplimiento = useMemo(() => {
     return calcularCumplimientoEMFO002(cantidadImplementada, accion.cantidadProgramada);
   }, [cantidadImplementada, accion.cantidadProgramada]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (cantidadImplementada < 0) {
       toast.error('La cantidad implementada no puede ser negativa');
       return;
@@ -1082,7 +1089,46 @@ const ModalCargarEvidencia: React.FC<{
       return;
     }
 
-    onCargar({ cantidadImplementada, observaciones, archivo });
+    setSubiendo(true);
+    setProgreso(0);
+
+    try {
+      // Subir documento al backend asociado a la acción
+      const documento = await controlInternoService.subirDocumentoAccion(
+        planId,
+        accion.id,
+        archivo,
+        {
+          nombre: archivo.name,
+          descripcion: observaciones || `Evidencia para: ${accion.hallazgoTitulo}`,
+          tipoDocumento: 'evidencia_accion',
+          subidoPor: 'Usuario actual', // TODO: Obtener del contexto de auth
+        },
+        (progress) => setProgreso(progress)
+      );
+
+      console.log('✅ Documento subido exitosamente:', documento);
+
+      // Notificar al componente padre
+      if (onDocumentoSubido) {
+        onDocumentoSubido(documento);
+      }
+
+      // Llamar onCargar para actualizar el estado local
+      onCargar({ cantidadImplementada, observaciones, archivo });
+      
+      toast.success('Evidencia cargada exitosamente', {
+        description: 'El documento ha sido asociado a la acción correctiva.'
+      });
+    } catch (error: any) {
+      console.error('❌ Error al subir documento:', error);
+      toast.error('Error al cargar la evidencia', {
+        description: error.message || 'Intente nuevamente'
+      });
+    } finally {
+      setSubiendo(false);
+      setProgreso(0);
+    }
   };
 
   return (
@@ -1113,6 +1159,7 @@ const ModalCargarEvidencia: React.FC<{
             onChange={(e) => setCantidadImplementada(parseInt(e.target.value) || 0)}
             min="0"
             max={accion.cantidadProgramada}
+            disabled={subiendo}
           />
           <p className="text-xs text-gray-500 mt-1">
             ¿Cuántas veces se ejecutó esta acción en este trimestre?
@@ -1149,12 +1196,14 @@ const ModalCargarEvidencia: React.FC<{
             type="file"
             accept=".pdf,.xlsx,.xls,.docx,.jpg,.jpeg,.png"
             onChange={(e) => setArchivo(e.target.files?.[0] || null)}
+            disabled={subiendo}
             className="block w-full text-sm text-gray-500
               file:mr-4 file:py-2 file:px-4
               file:rounded-lg file:border-0
               file:text-sm file:font-semibold
               file:bg-blue-50 file:text-blue-700
-              hover:file:bg-blue-100"
+              hover:file:bg-blue-100
+              disabled:opacity-50"
           />
           <p className="text-xs text-gray-500 mt-1">
             Formatos permitidos: PDF, Excel, Word, imágenes (máx. 50MB)
@@ -1166,6 +1215,24 @@ const ModalCargarEvidencia: React.FC<{
           )}
         </div>
 
+        {/* Barra de Progreso */}
+        {subiendo && (
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center gap-3 mb-2">
+              <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+              <span className="text-sm font-medium text-blue-900">
+                Subiendo archivo... {Math.round(progreso)}%
+              </span>
+            </div>
+            <div className="w-full bg-blue-200 rounded-full h-2">
+              <div 
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progreso}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Observaciones */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1176,17 +1243,27 @@ const ModalCargarEvidencia: React.FC<{
             onChange={(e) => setObservaciones(e.target.value)}
             placeholder="Agregue comentarios adicionales sobre la evidencia..."
             rows={3}
+            disabled={subiendo}
           />
         </div>
 
         {/* Botones */}
         <div className="flex justify-end gap-3 pt-4 border-t">
-          <ButtonSIGL variant="default" onClick={onClose}>
+          <ButtonSIGL variant="default" onClick={onClose} disabled={subiendo}>
             Cancelar
           </ButtonSIGL>
-          <ButtonSIGL variant="primary" onClick={handleSubmit}>
-            <Upload className="w-4 h-4" />
-            Cargar Evidencia
+          <ButtonSIGL variant="primary" onClick={handleSubmit} disabled={subiendo || !archivo}>
+            {subiendo ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Subiendo...
+              </>
+            ) : (
+              <>
+                <Upload className="w-4 h-4" />
+                Cargar Evidencia
+              </>
+            )}
           </ButtonSIGL>
         </div>
       </div>

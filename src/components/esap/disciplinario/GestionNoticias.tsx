@@ -99,20 +99,24 @@ interface NoticiaDisciplinaria {
     dependencia?: string;
     entidad?: string;
   }>;
-  state?: string; // Add state optional for compatibility if needed
-  estado: 'pendiente' | 'en-valoracion' | 'devuelto' | 'asignado' | 'convertido-proceso' | 'archivado';
-  estadoLabel: 'Pendiente' | 'En Valoración' | 'Devuelto' | 'Asignado' | 'Convertido a Proceso';
+  state?: string;
+  estado: 'pendiente' | 'en-valoracion' | 'devuelto' | 'asignado' | 'convertido-proceso' | 'archivado' | 'remitido';
+  estadoLabel: 'Pendiente' | 'En Valoración' | 'Devuelto' | 'Asignado' | 'Convertido a Proceso' | 'Archivado' | 'Remitido';
   etapa: string;
   diasTranscurridos: number;
   radicador: string;
   fechaRegistro: string;
   conductas?: string[];
   descripcion?: string;
-  hechos?: string; // Mapped from backend
-  dependenciaDenunciado?: string; // Mapped from backend
+  hechos?: string;
+  dependenciaDenunciado?: string;
   adjuntos?: string[];
   profesionalAsignado?: string;
-  procesoAsociado?: string; // PD-YYYY-####
+  procesoAsociado?: string;
+  // Campos de remision por competencia
+  numeroRC?: string;
+  entidadRemision?: string;
+  fechaRemision?: string;
   historialAuditoria: AccionAuditoria[];
 }
 
@@ -892,6 +896,10 @@ export function GestionNoticias() {
           adjuntos: news.adjuntos || [],
           estado: getFrontendStatus(rawStatus),
           estadoLabel: getFrontendStatusLabels(rawStatus),
+          // Campos de remision por competencia
+          numeroRC: (news as any).numeroRC || undefined,
+          entidadRemision: (news as any).entidadRemision || undefined,
+          fechaRemision: (news as any).fechaRemision || undefined,
           etapa: news.kanbanStage || 'Recepcion',
           diasTranscurridos: getDiasTranscurridos(news.fechaRecepcion),
           radicador: (Array.isArray(news.historialAuditoria) ? news.historialAuditoria.find((h: any) => h.tipo === 'creacion')?.usuario : null) || 'Sistema',
@@ -981,7 +989,9 @@ export function GestionNoticias() {
           noticia.estado === 'DEVUELTA' ? 'devuelto' :
             noticia.estado === 'ASIGNADA' ? 'asignado' :
               noticia.estado === 'CONVERTIDO_PROCESO' ? 'convertido-proceso' :
-                noticia.estado === 'ARCHIVADA' ? 'archivado' : noticia.estado;
+                noticia.estado === 'ARCHIVADA' ? 'archivado' :
+                  noticia.estado === 'REMITIDA' ? 'remitido' :
+                    noticia.estado;
       matchesEstado = (normalizedState === filterEstado);
     }
     const matchesOrigen = filterOrigen === 'all' || noticia.origen === filterOrigen;
@@ -1117,7 +1127,17 @@ export function GestionNoticias() {
         telefono: denuncianteData.telefono || '',
         direccion: denuncianteData.direccion || '',
         entidad: denuncianteData.entidad || denuncianteData.dependencia || '',
-        dependencia: denuncianteData.dependencia || ''
+        dependencia: denuncianteData.dependencia || '',
+        // ✅ NUEVO: Incluir apoderado del denunciante
+        ...(denuncianteData.apoderado && denuncianteData.apoderado.nombre ? {
+          apoderado: {
+            nombre: denuncianteData.apoderado.nombre || '',
+            cedula: denuncianteData.apoderado.cedula || '',
+            email: denuncianteData.apoderado.correo || '',
+            telefono: denuncianteData.apoderado.celular || '',
+            direccion: denuncianteData.apoderado.direccion || ''
+          }
+        } : {})
       };
 
       // Map Disciplinable(s)
@@ -1131,7 +1151,17 @@ export function GestionNoticias() {
         cedula: mainDisciplinableData.identificacion || mainDisciplinableData.cedula || '',
         identificacion: mainDisciplinableData.identificacion || mainDisciplinableData.cedula || '',
         cargo: mainDisciplinableData.cargo || 'N/A',
-        dependencia: mainDisciplinableData.dependencia || 'Sin Dependencia'
+        dependencia: mainDisciplinableData.dependencia || 'Sin Dependencia',
+        // ✅ NUEVO: Incluir apoderado del disciplinable (denunciado)
+        ...(mainDisciplinableData.apoderado && mainDisciplinableData.apoderado.nombre ? {
+          apoderado: {
+            nombre: mainDisciplinableData.apoderado.nombre || '',
+            cedula: mainDisciplinableData.apoderado.cedula || '',
+            email: mainDisciplinableData.apoderado.correo || '',
+            telefono: mainDisciplinableData.apoderado.celular || '',
+            direccion: mainDisciplinableData.apoderado.direccion || ''
+          }
+        } : {})
       };
 
       const createDto: CreateNewsDto = {
@@ -1141,6 +1171,8 @@ export function GestionNoticias() {
         hechos: data.descripcionHechos || 'Sin descripción',
         denunciante: denuncianteObj as any, // Pass object, service handles stringify
         disciplinable: disciplinableObj as any,
+        // Fecha de los hechos para cálculo de caducidad (Ley 734/2002 Art. 30)
+        fechaHechos: data.fechaHechos || undefined,
         // NO enviar: radicado, fechaRecepcion, estado (los genera el backend)
       };
 
@@ -1252,7 +1284,9 @@ export function GestionNoticias() {
       'En Valoración': 'En Valoración',
       'Convertido a Proceso': 'Convertido a Proceso',
       'ARCHIVADA': 'Archivada',
-      'Archivada': 'Archivada'
+      'Archivada': 'Archivada',
+      'REMITIDA': 'Remitido',
+      'Remitido': 'Remitido'
     }[estado] || 'Pendiente';
 
     const configs: Record<string, { bg: string; text: string; border: string }> = {
@@ -1261,7 +1295,8 @@ export function GestionNoticias() {
       'Devuelto': { bg: '#FEE2E2', text: '#991B1B', border: '#DC2626' },
       'Asignado': { bg: '#E0E7FF', text: '#4338CA', border: '#6366F1' },
       'Convertido a Proceso': { bg: '#D1FAE5', text: '#065F46', border: '#10B981' },
-      'Archivada': { bg: '#F3F4F6', text: '#6B7280', border: '#9CA3AF' }
+      'Archivada': { bg: '#F3F4F6', text: '#6B7280', border: '#9CA3AF' },
+      'Remitido': { bg: '#FCE7F3', text: '#BE185D', border: '#EC4899' }
     };
     const config = configs[normalized] || configs['Pendiente'];
 
@@ -1466,6 +1501,7 @@ export function GestionNoticias() {
             <option value="en-valoracion">En Valoración</option>
             <option value="asignado">Asignado</option>
             <option value="devuelto">Devuelto</option>
+            <option value="remitido">Remitido</option>
             <option value="archivado">Archivado</option>
           </select>
 
@@ -1508,7 +1544,8 @@ export function GestionNoticias() {
                           noticia.estado === 'devuelto' ? '#FEE2E2' :
                             noticia.estado === 'asignado' ? '#E0E7FF' :
                               (noticia.estado === 'archivado' || noticia.estado === 'ARCHIVADA') ? '#F3F4F6' :
-                                '#D1FAE5'
+                                noticia.estado === 'remitido' ? '#FCE7F3' :
+                                  '#D1FAE5'
                     }}
                   >
                     <FileText
@@ -1519,7 +1556,8 @@ export function GestionNoticias() {
                             noticia.estado === 'devuelto' ? '#991B1B' :
                               noticia.estado === 'asignado' ? '#4338CA' :
                                 (noticia.estado === 'archivado' || noticia.estado === 'ARCHIVADA') ? '#6B7280' :
-                                  '#065F46'
+                                  noticia.estado === 'remitido' ? '#BE185D' :
+                                    '#065F46'
                       }}
                     />
                   </div>
@@ -1639,8 +1677,8 @@ export function GestionNoticias() {
                     </button>
                   )}
 
-                  {/* Botón Remitir por Competencia */}
-                  {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR) && (
+                  {/* Botón Remitir por Competencia - solo si NO ha sido remitido */}
+                  {(noticia.estado !== 'remitido') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR) && (
                     <button
                       onClick={() => {
                         setNoticiaSeleccionada(noticia);
@@ -1698,12 +1736,19 @@ export function GestionNoticias() {
                     </div>
                   )}
 
-                  {(noticia.estado === 'ASIGNADA' || noticia.estado === 'asignado' || noticia.estado === 'CONVERTIDO_PROCESO' || noticia.estado === 'convertido-proceso') && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg  w-full sm:w-auto">
-                      <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
-                      <span className="text-sm font-semibold text-green-700">
-                        {noticia.procesoAsociado || 'Asignado'}
-                      </span>
+                  {(noticia.estado === 'remitido') && (
+                    <div className="flex flex-col gap-1 px-3 py-2 bg-pink-50 border border-pink-200 rounded-lg w-full sm:w-auto">
+                      <div className="flex items-center gap-2">
+                        <Send className="w-4 h-4 text-pink-600 flex-shrink-0" />
+                        <span className="text-sm font-bold text-pink-700">
+                          {noticia.numeroRC || 'Remitido'}
+                        </span>
+                      </div>
+                      {noticia.entidadRemision && (
+                        <span className="text-xs text-pink-600 ml-6">
+                          → {noticia.entidadRemision}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1849,41 +1894,52 @@ export function GestionNoticias() {
 
         {showRemitirCompetenciaModal && noticiaSeleccionada && (
           <ModalRemitirCompetencia
-            noticia={noticiaSeleccionada}
+            noticia={{
+              id: noticiaSeleccionada.id,
+              numero: noticiaSeleccionada.numeroRadicado || noticiaSeleccionada.radicado || '',
+              origen: noticiaSeleccionada.origen || 'De oficio',
+              fechaRecepcion: noticiaSeleccionada.fechaRecepcion || '',
+              denunciante: Array.isArray(noticiaSeleccionada.denunciante) && noticiaSeleccionada.denunciante.length > 0 
+                ? { nombre: noticiaSeleccionada.denunciante[0].nombre || '', identificacion: noticiaSeleccionada.denunciante[0].cedula || '' }
+                : { nombre: '', identificacion: '' },
+              denunciado: Array.isArray(noticiaSeleccionada.disciplinable) && noticiaSeleccionada.disciplinable.length > 0 
+                ? { 
+                    nombre: noticiaSeleccionada.disciplinable[0].nombre || '', 
+                    identificacion: noticiaSeleccionada.disciplinable[0].cedula || '', 
+                    cargo: noticiaSeleccionada.disciplinable[0].cargo || '' 
+                  }
+                : { nombre: '', identificacion: '', cargo: '' }
+            }}
             onClose={() => {
               setShowRemitirCompetenciaModal(false);
               setNoticiaSeleccionada(null);
             }}
-            onConfirm={(data) => {
-              // Actualizar la noticia: cambiar el número de ND a RC
-              setNoticias(noticias.map(n => {
-                if (n.id === noticiaSeleccionada?.id) {
-                  return {
-                    ...n,
-                    radicado: data.numeroRC,
-                    origen: 'Remisión por competencia' as const,
-                    estado: 'devuelto' as const,
-                    estadoLabel: 'Devuelto' as const,
-                    historialAuditoria: [
-                      ...n.historialAuditoria,
-                      {
-                        id: Date.now().toString(),
-                        tipo: 'devolucion' as const,
-                        usuario: 'Sistema',
-                        fecha: new Date().toISOString(),
-                        observaciones: `Remitido por competencia a: ${data.areaDestino}. Justificación: ${data.justificacion}`
-                      }
-                    ]
-                  };
-                }
-                return n;
-              }));
+            onConfirm={async (data) => {
+              try {
+                // No usamos setLoading(true) aquí porque el modal ya maneja su propio estado de carga
+                // Esto permite que el botón "Remitir" muestre el spinner mientras espera la respuesta del backend
+                
+                // Llamar al backend para remitir por competencia
+                await disciplinaryService.remitirPorCompetencia({
+                  newsId: noticiaSeleccionada.id,
+                  radicado: noticiaSeleccionada.numeroRadicado || noticiaSeleccionada.radicado,
+                  emailDestinatario: data.entidadCorreo,
+                  entidadDestino: data.entidadNombre,
+                  justificacion: data.justificacion,
+                  usuarioRemision: 'Sistema'
+                });
 
-              toast.success('Remitido por Competencia', {
-                description: `La noticia ahora tiene el número ${data.numeroRC} y ha sido remitida a ${data.areaDestino}.`
-              });
-              setShowRemitirCompetenciaModal(false);
-              setNoticiaSeleccionada(null);
+                // Actualizar la lista de noticias
+                await loadNoticias();
+
+                toast.success('Remitido por Competencia', {
+                  description: `La noticia ha sido remitida a ${data.entidadNombre} y se ha enviado un correo a ${data.entidadCorreo}.`
+                });
+                // El modal se cierra desde el componente ModalRemitirCompetencia después de completar exitosamente
+              } catch (error) {
+                console.error('Error al remitir por competencia:', error);
+                toast.error('Error al remitir la noticia por competencia');
+              }
             }}
           />
         )}

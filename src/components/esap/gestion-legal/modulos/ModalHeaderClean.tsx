@@ -20,6 +20,7 @@ interface ModalHeaderCleanProps {
   colorIcono?: string; // Color del icono y borde (ej: 'purple', 'blue', 'orange')
   badges?: ReactNode | BadgeConfig[]; // Badges personalizados o array de configuración
   badgePrincipal?: string; // Badge principal (ej: "CONTESTACIÓN")
+  actions?: ReactNode; // Botones de acción (ej: Editar, Archivar)
   onClose: () => void;
 }
 
@@ -30,6 +31,7 @@ export function ModalHeaderClean({
   colorIcono = 'blue',
   badges,
   badgePrincipal,
+  actions,
   onClose
 }: ModalHeaderCleanProps) {
 
@@ -156,20 +158,27 @@ export function ModalHeaderClean({
               <div className="flex items-center gap-2 flex-wrap">
                 {isBadgeConfigArray
                   ? (badges as BadgeConfig[]).map((badge, index) => renderBadge(badge, index))
-                  : badges
+                  : badges as ReactNode
                 }
               </div>
             )}
           </div>
         </div>
 
-        {/* Botón Cerrar */}
-        <button
-          onClick={onClose}
-          className="ml-4 p-1 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
-        >
-          <X className="w-7 h-7" />
-        </button>
+        {/* Acciones y Botón Cerrar */}
+        <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+          {actions && (
+            <div className="flex items-center gap-2">
+              {actions}
+            </div>
+          )}
+          <button
+            onClick={onClose}
+            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <X className="w-7 h-7" />
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -16,6 +16,10 @@ export interface UpdateGraduateDto {
   diplomaNumber?: string;
   actaNumber?: string;
   resolutionNumber?: string;
+  numActa?: string;
+  numFolio?: string;
+  numLibro?: string;
+  numRegistro?: string;
   status?: string;
   isVerified?: boolean;
   campus?: string;

@@ -43,6 +43,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
+import headerImg from '../../../assets/graduation-certificates/img_primera.png';
+import footerImg from '../../../assets/graduation-certificates/img_segunda.png';
 
 // Componentes del design system
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
@@ -427,30 +429,30 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
       
       // Función para dibujar el encabezado
       const dibujarEncabezado = () => {
-        doc.setDrawColor(0, 0, 0);
-        doc.setLineWidth(0.3);
-        
-        const logoWidth = 35;
-        const logoX = margin;
-        const tituloWidth = 100;
-        const tituloX = logoX + logoWidth;
-        const infoWidth = 45;
-        const infoX = tituloX + tituloWidth;
-        const rowHeight = headerHeight / 3;
-        
-        // Dibujar celdas del encabezado
-        doc.rect(logoX, headerY, logoWidth, headerHeight);
-        doc.rect(tituloX, headerY, tituloWidth, headerHeight);
-        doc.rect(infoX, headerY, infoWidth, rowHeight);
-        doc.rect(infoX, headerY + rowHeight, infoWidth, rowHeight);
-        doc.rect(infoX, headerY + (rowHeight * 2), infoWidth, rowHeight);
-        
-        // Logo
         try {
-          const logoImg = new Image();
-          logoImg.src = '/ESAP.jpg';
-          doc.addImage(logoImg, 'JPEG', logoX + 5, headerY + 3, logoWidth - 10, headerHeight - 6);
+          // Usar imagen institucional del encabezado
+          doc.addImage(headerImg, 'PNG', margin, headerY, pageWidth * 0.6, 20);
         } catch (error) {
+          console.warn('No se pudo cargar encabezado institucional, usando fallback');
+          // Fallback: Encabezado con rectángulos
+          doc.setDrawColor(0, 0, 0);
+          doc.setLineWidth(0.3);
+          
+          const logoWidth = 35;
+          const logoX = margin;
+          const tituloWidth = 100;
+          const tituloX = logoX + logoWidth;
+          const infoWidth = 45;
+          const infoX = tituloX + tituloWidth;
+          const rowHeight = headerHeight / 3;
+          
+          // Dibujar celdas del encabezado
+          doc.rect(logoX, headerY, logoWidth, headerHeight);
+          doc.rect(tituloX, headerY, tituloWidth, headerHeight);
+          doc.rect(infoX, headerY, infoWidth, rowHeight);
+          doc.rect(infoX, headerY + rowHeight, infoWidth, rowHeight);
+          doc.rect(infoX, headerY + (rowHeight * 2), infoWidth, rowHeight);
+          
           doc.setFontSize(8);
           doc.setFont('helvetica', 'bold');
           doc.text('LOGO', logoX + (logoWidth / 2), headerY + 12, { align: 'center' });
@@ -460,8 +462,8 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
         // Título
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
-        doc.text('FORMATO', tituloX + (tituloWidth / 2), headerY + 10, { align: 'center' });
-        doc.setFontSize(10);
+        doc.setTextColor(0, 0, 0);
+        
         let tituloTexto = '';
         let codigo = '';
         
@@ -473,45 +475,43 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
           codigo = 'EM-FO-009';
         } else if (documento.tipo === 'oficio') {
           tituloTexto = 'OFICIO DE ANUNCIO';
-          codigo = 'EM-FO-XXX'; // Ajustar según corresponda
+          codigo = 'EM-FO-XXX';
         } else if (documento.tipo === 'programa-individual') {
           tituloTexto = 'PROGRAMA INDIVIDUAL DE AUDITORÍA';
-          codigo = 'EM-FO-XXX'; // Ajustar según corresponda
+          codigo = 'EM-FO-XXX';
         }
         
-        doc.text(tituloTexto, tituloX + (tituloWidth / 2), headerY + 16, { align: 'center' });
-        
-        // Info derecha
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'bold');
-        doc.text('CÓDIGO: ', infoX + 2, headerY + 5);
-        doc.setFont('helvetica', 'normal');
-        doc.text(codigo, infoX + 18, headerY + 5);
-        
-        doc.setFont('helvetica', 'bold');
-        doc.text('VERSIÓN: ', infoX + 2, headerY + rowHeight + 5);
-        doc.setFont('helvetica', 'normal');
-        doc.text('02', infoX + 20, headerY + rowHeight + 5);
-        
-        doc.setFont('helvetica', 'bold');
-        doc.text('FECHA: ', infoX + 2, headerY + (rowHeight * 2) + 5);
-        doc.setFont('helvetica', 'normal');
-        doc.text('24/02/2025', infoX + 16, headerY + (rowHeight * 2) + 5);
+        doc.text(tituloTexto, pageWidth / 2, headerY + headerHeight + 5, { align: 'center' });
       };
       
       // Función para dibujar pie de página
       const dibujarPiePagina = (numeroPagina: number) => {
-        const yPie = pageHeight - 15;
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(0, 0, 0);
-        
-        doc.text('Sede Nacional - Bogotá - Calle 44 No. 53 - 37 CAN', margin, yPie);
-        doc.text('PBX: (+57 601) 7956110', margin, yPie + 4);
-        doc.text('Correo Electrónico: ventanillaunica@esap.edu.co', margin, yPie + 8);
-        
-        // Número de página a la derecha
-        doc.text(`Página ${numeroPagina}`, pageWidth - margin - 20, yPie + 8);
+        try {
+          // Usar imagen institucional del pie de página
+          const footerHeight = 25; // mm
+          const footerY = pageHeight - footerHeight - 5;
+          doc.addImage(footerImg, 'PNG', margin, footerY, pageWidth - (margin * 2), footerHeight);
+          
+          // Paginación en la parte superior del footer
+          doc.setFontSize(7);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(100, 100, 100);
+          doc.text(`Página ${numeroPagina}`, pageWidth / 2, footerY - 2, { align: 'center' });
+        } catch (error) {
+          console.warn('No se pudo cargar pie de página institucional, usando fallback');
+          // Fallback: Pie de página con texto
+          const yPie = pageHeight - 15;
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(0, 0, 0);
+          
+          doc.text('Sede Nacional - Bogotá - Calle 44 No. 53 - 37 CAN', margin, yPie);
+          doc.text('PBX: (+57 601) 7956110', margin, yPie + 4);
+          doc.text('Correo Electrónico: ventanillaunica@esap.edu.co', margin, yPie + 8);
+          
+          // Número de página a la derecha
+          doc.text(`Página ${numeroPagina}`, pageWidth - margin - 20, yPie + 8);
+        }
       };
       
       // Dibujar encabezado y pie de la primera página

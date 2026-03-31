@@ -111,6 +111,9 @@ export const usersService = {
 
     if (filters.page) params.append('page', filters.page.toString());
     if (filters.limit) params.append('limit', filters.limit.toString());
+    if (filters.search && filters.search.trim()) params.append('search', filters.search.trim());
+    if (filters.status && filters.status !== 'all') params.append('status', filters.status);
+    if (filters.role && filters.role.trim()) params.append('role', filters.role.trim());
 
     const queryString = params.toString();
     const endpoint = queryString ? `${SERVICE_PREFIX}/users?${queryString}` : `${SERVICE_PREFIX}/users`;

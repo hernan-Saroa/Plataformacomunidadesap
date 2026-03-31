@@ -1,11 +1,20 @@
-import { Controller, Get, Post, Put, Body, Param, Req, Query, HttpCode, HttpStatus, Res, StreamableFile } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Req, Query, HttpCode, HttpStatus, Res, StreamableFile } from '@nestjs/common';
 import type { Response } from 'express';
 import { CertificatesService } from './certificates.service';
 import { CertificateRequest } from './certificate-request.entity';
+import { Public } from '../auth/public.decorator';
 
 @Controller('certificates')
 export class CertificatesController {
   constructor(private readonly certificatesService: CertificatesService) {}
+
+  private resolveRequestUsername(req: any): string {
+    const headerUser = req?.headers?.['x-user-username'];
+    const normalizedHeaderUser = Array.isArray(headerUser)
+      ? String(headerUser[0] || '').trim()
+      : String(headerUser || '').trim();
+    return normalizedHeaderUser || req?.user?.username || '';
+  }
 
   // ============================================
   // SOLICITUDES DE CERTIFICADO
@@ -41,6 +50,85 @@ export class CertificatesController {
   }
 
   // ============================================
+  // PRIMA TECNICA
+  // ============================================
+
+  @Get('technical-bonus/search')
+  async searchTechnicalBonusCandidates(
+    @Query('query') query?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit = limit ? Number.parseInt(limit, 10) : 10;
+    return await this.certificatesService.searchTechnicalBonusCandidates(query || '', parsedLimit);
+  }
+
+  @Get('technical-bonus')
+  async getTechnicalBonusAssignments(@Query('category') category?: string) {
+    return await this.certificatesService.listTechnicalBonusAssignments(category || '');
+  }
+
+  @Post('technical-bonus')
+  async upsertTechnicalBonusAssignment(
+    @Body()
+    body: {
+      category: string;
+      idNumber: string;
+      fullName?: string;
+      requestId?: string;
+      percentage: number;
+      updatedBy?: string;
+    },
+    @Req() req: any,
+  ) {
+    return await this.certificatesService.upsertTechnicalBonusAssignment({
+      ...body,
+      updatedBy: body.updatedBy || this.resolveRequestUsername(req),
+    });
+  }
+
+  @Post('technical-bonus/bulk')
+  async bulkUpsertTechnicalBonusAssignments(
+    @Body()
+    body: {
+      category: string;
+      rows: Array<{
+        rowNumber?: number;
+        fullName?: string;
+        idNumber?: string;
+        percentage?: number | string;
+      }>;
+      updatedBy?: string;
+    },
+    @Req() req: any,
+  ) {
+    return await this.certificatesService.bulkUpsertTechnicalBonusAssignments({
+      ...body,
+      updatedBy: body.updatedBy || this.resolveRequestUsername(req),
+    });
+  }
+
+  @Put('technical-bonus/:id')
+  async updateTechnicalBonusAssignment(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      percentage: number;
+      updatedBy?: string;
+    },
+    @Req() req: any,
+  ) {
+    return await this.certificatesService.updateTechnicalBonusAssignment(id, {
+      percentage: body.percentage,
+      updatedBy: body.updatedBy || this.resolveRequestUsername(req),
+    });
+  }
+
+  @Delete('technical-bonus/:id')
+  async deleteTechnicalBonusAssignment(@Param('id') id: string) {
+    return await this.certificatesService.deleteTechnicalBonusAssignment(id);
+  }
+
+  // ============================================
   // CERTIFICADOS
   // ============================================
 
@@ -52,10 +140,12 @@ export class CertificatesController {
     @Query('status') status?: string,
     @Query('cargo') cargo?: string,
     @Query('tipoVinculacion') tipoVinculacion?: string,
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
   ) {
     const parsedPage = page ? Number.parseInt(page, 10) : undefined;
     const parsedLimit = limit ? Number.parseInt(limit, 10) : undefined;
-    const hasFilters = Boolean(search || status || cargo || tipoVinculacion);
+    const hasFilters = Boolean(search || status || cargo || tipoVinculacion || fechaDesde || fechaHasta);
     const hasPagination = Number.isFinite(parsedPage) || Number.isFinite(parsedLimit) || hasFilters;
 
     if (hasPagination) {
@@ -66,6 +156,8 @@ export class CertificatesController {
         status,
         cargo,
         tipoVinculacion,
+        fechaDesde,
+        fechaHasta,
       });
     }
 
@@ -73,6 +165,7 @@ export class CertificatesController {
   }
 
   // IMPORTANTE: Esta ruta debe ir ANTES de certificados/:id para evitar conflictos
+  @Public()
   @Get('certificados/verify/:codigo')
   async verifyCertificado(
     @Param('codigo') codigo: string,
@@ -82,26 +175,70 @@ export class CertificatesController {
     const realIp = req.headers?.['x-real-ip'];
     const cfConnectingIp = req.headers?.['cf-connecting-ip'];
     const clientIpHeader = req.headers?.['x-client-ip'];
-    const forwardedIp = Array.isArray(forwarded)
-      ? forwarded[0]
-      : typeof forwarded === 'string'
-        ? forwarded.split(',')[0]
-        : '';
-    const realIpValue = Array.isArray(realIp) ? realIp[0] : realIp;
-    const cfIpValue = Array.isArray(cfConnectingIp) ? cfConnectingIp[0] : cfConnectingIp;
-    const clientIpValue = Array.isArray(clientIpHeader) ? clientIpHeader[0] : clientIpHeader;
-    const ip =
-      forwardedIp?.trim() ||
-      (typeof cfIpValue === 'string' ? cfIpValue.trim() : '') ||
-      (typeof realIpValue === 'string' ? realIpValue.trim() : '') ||
-      (typeof clientIpValue === 'string' ? clientIpValue.trim() : '') ||
-      req.ip ||
-      req.connection?.remoteAddress;
+    const parseIpHeader = (value?: string | string[]) => {
+      const raw = Array.isArray(value) ? value.join(',') : value || '';
+      return String(raw)
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    };
+
+    const ipCandidates = [
+      ...parseIpHeader(forwarded),
+      ...parseIpHeader(cfConnectingIp),
+      ...parseIpHeader(realIp),
+      ...parseIpHeader(clientIpHeader),
+      ...(Array.isArray(req.ips) ? req.ips.map((item: any) => String(item || '').trim()) : []),
+      typeof req.ip === 'string' ? req.ip.trim() : '',
+      typeof req.connection?.remoteAddress === 'string' ? req.connection.remoteAddress.trim() : '',
+      typeof req.socket?.remoteAddress === 'string' ? req.socket.remoteAddress.trim() : '',
+    ].filter(Boolean);
+
+    const parseSingleHeader = (value?: string | string[]) => {
+      const raw = Array.isArray(value) ? value.find((item) => String(item || '').trim()) : value;
+      const parsed = String(raw || '').trim();
+      return parsed || undefined;
+    };
+
+    const pickHeader = (...headerNames: string[]) => {
+      for (const headerName of headerNames) {
+        const value = parseSingleHeader(req.headers?.[headerName]);
+        if (value) return value;
+      }
+      return undefined;
+    };
+
+    const ip = ipCandidates.join(',');
     const userAgent = req.get('user-agent');
-    return await this.certificatesService.registrarValidacion(codigo, ip, userAgent);
+    const geoContext = {
+      geoCountry: pickHeader(
+        'cf-ipcountry',
+        'x-vercel-ip-country',
+        'x-country',
+        'x-country-code',
+        'x-geo-country',
+      ),
+      geoRegion: pickHeader(
+        'x-vercel-ip-country-region',
+        'x-region',
+        'x-geo-region',
+      ),
+      geoCity: pickHeader(
+        'x-vercel-ip-city',
+        'x-city',
+        'x-geo-city',
+      ),
+      geoTimezone: pickHeader(
+        'x-vercel-ip-timezone',
+        'x-timezone',
+        'x-geo-timezone',
+      ),
+    };
+    return await this.certificatesService.registrarValidacion(codigo, ip, userAgent, geoContext);
   }
 
   // Obtener historial de validaciones sin registrar una nueva
+  @Public()
   @Get('certificados/:codigo/validations')
   async getValidationHistory(@Param('codigo') codigo: string) {
     return await this.certificatesService.obtenerHistorialValidaciones(codigo);
@@ -134,6 +271,7 @@ export class CertificatesController {
   }
 
   @Post('certificados/:id/reenviar')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async reenviarCertificadoLaboral(
     @Param('id') id: string,
@@ -142,6 +280,7 @@ export class CertificatesController {
       includeSalary?: boolean;
       includeTechnicalBonus?: boolean;
       templateType?: 'docente' | 'administrador';
+      publicBaseUrl?: string;
       to?: string;
     },
   ) {
@@ -176,12 +315,14 @@ export class CertificatesController {
   // ============================================
 
   @Post('autoservicio/verificar-documento')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async verificarDocumento(@Body() data: { documento: string }) {
     return await this.certificatesService.verificarDocumentoPorSolicitud(data.documento);
   }
 
   @Post('autoservicio/generar-codigo')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async generarCodigoValidacion(@Body() data: { documento: string }) {
     try {
@@ -193,11 +334,24 @@ export class CertificatesController {
   }
 
   @Post('autoservicio/validar-codigo')
+  @Public()
   @HttpCode(HttpStatus.CREATED)
-  async validarCodigoYGenerar(@Body() data: { documento: string; codigo: string }) {
+  async validarCodigoYGenerar(
+    @Body()
+    data: {
+      documento: string;
+      codigo: string;
+      includeSalary?: boolean;
+      includeTechnicalBonus?: boolean;
+    },
+  ) {
     return await this.certificatesService.validarCodigoYGenerarCertificado(
       data.documento,
       data.codigo,
+      {
+        includeSalary: data.includeSalary,
+        includeTechnicalBonus: data.includeTechnicalBonus,
+      },
     );
   }
 }

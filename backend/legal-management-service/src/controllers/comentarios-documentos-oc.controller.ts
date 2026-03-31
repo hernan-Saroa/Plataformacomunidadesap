@@ -51,7 +51,10 @@ export class ComentariosDocumentosOCController {
                 const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
                 return cb(null, `${randomName}${extname(file.originalname)}`);
             }
-        })
+        }),
+        limits: {
+            fileSize: 50 * 1024 * 1024, // 50MB
+        }
     }))
     async createDocumento(
         @Param('requerimientoId') requerimientoId: string,

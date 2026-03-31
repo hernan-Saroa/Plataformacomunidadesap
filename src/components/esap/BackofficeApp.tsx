@@ -1,72 +1,66 @@
 /**
  * Backoffice App - Sistema Administrativo ESAP
+ * ✅ OPTIMIZADO: Lazy Loading para mejorar performance
  */
 
-import { useState } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { SidebarPremium } from './SidebarPremium';
 import { TopBar } from './TopBar';
-import { NotificationsProvider } from './NotificationsContext';
-// import { ExecutiveDashboard } from './ExecutiveDashboard';
-import { UsersPersonsModulePremium } from './UsersPersonsModulePremium';
-import { CarpetaDigitalModule } from './CarpetaDigitalModule';
-import { ReportsModuleV2 } from './ReportsModuleV2';
-import { AuditModulePremium } from './AuditModulePremium';
-import { GraduatesManagementModule } from './GraduatesManagementModule';
-import { EnrollmentManagementModule } from './EnrollmentManagementModule';
-import { CommunityManagementModulePremium } from './CommunityManagementModulePremium';
-import { CommunityPostsModuleUnified } from './CommunityPostsModuleUnified';
-import { CommunityEventsModuleUnified } from './CommunityEventsModuleUnified';
-import { CommunityAnnouncementsModuleUnified } from './CommunityAnnouncementsModuleUnified';
-import { JobBoardManagementModulePremium } from './JobBoardManagementModulePremium';
-import { CertificateRequestsModule } from './CertificateRequestsModule';
-import { GraduateCertificatesWrapper } from './GraduateCertificatesWrapper';
-import { RolesAdministrationModulePremium } from './RolesAdministrationModulePremium';
 
-// Importar módulo de Firma Electrónica (World-Class)
-import { ModuloFirmaElectronicaWorldClass } from './firma-electronica/ModuloFirmaElectronicaWorldClass';
-
-// Importar módulo de Control Interno
-import { ControlInternoFull } from './control-interno/ControlInternoFull';
-
-// Importar Portal del Usuario Auditado (Material Design 3)
-import { PortalTransaccionalUsuarioMD3 } from './control-interno/PortalTransaccionalUsuarioMD3';
-
-// Importar módulo de Control Interno Disciplinario
-import { ControlDisciplinarioFull } from './disciplinario/ControlDisciplinarioFull';
-
-// Importar módulo de Gestión Legal (Juzgamiento Disciplinario)
-// import { GestionLegalFull } from './gestion-legal/GestionLegalFull';
-// ✅ NUEVO: Módulo de Gestión Legal SIGL v5.0
-import { GestionLegalFull } from './gestion-legal/core/GestionLegalFull';
-
-// Importar módulo de Certificados Laborales
-import { CertificadosLaboralesRouter } from '../certificados-laborales/CertificadosLaboralesRouter';
-
-// Importar módulo de Estructura Organizacional
-import { EstructuraOrganizacionalModule } from '../estructura-organizacional/EstructuraOrganizacionalModule';
-
-// Importar módulo de Programas Académicos
-import { ProgramasAcademicosModule } from './ProgramasAcademicosModule';
-
-// Importar ProfileModal
+// ✅ SIEMPRE IMPORTADOS (Core components)
 import { ProfileModal } from './ProfileModal';
-
-// Importar módulo de Arquitectura Empresarial
-import { ArquitecturaEmpresarialModule } from '../arquitectura-empresarial/ArquitecturaEmpresarialModule';
-
-// ✅ NUEVO: Provider de Tour Guiado
+import { NotificationsProvider } from './NotificationsContext';
 import { TourProvider } from './gestion-legal/design-system/TourContext';
 
-// ✅ NUEVO: Módulo de Gestión de Contraseñas
-import { GestionUsuariosPasswordTracking } from './admin/GestionUsuariosPasswordTracking';
+// ✅ LAZY LOADING - Módulos cargados bajo demanda
+const UsersPersonsModulePremium = lazy(() => import('./UsersPersonsModulePremium').then(m => ({ default: m.UsersPersonsModulePremium })));
+const CarpetaDigitalModule = lazy(() => import('./CarpetaDigitalModule').then(m => ({ default: m.CarpetaDigitalModule })));
+const ReportsModuleV2 = lazy(() => import('./ReportsModuleV2').then(m => ({ default: m.ReportsModuleV2 })));
+const AuditModulePremium = lazy(() => import('./AuditModulePremium').then(m => ({ default: m.AuditModulePremium })));
+const GraduatesManagementModule = lazy(() => import('./GraduatesManagementModule').then(m => ({ default: m.GraduatesManagementModule })));
+const EnrollmentManagementModule = lazy(() => import('./EnrollmentManagementModule').then(m => ({ default: m.EnrollmentManagementModule })));
+const CommunityManagementModulePremium = lazy(() => import('./CommunityManagementModulePremium').then(m => ({ default: m.CommunityManagementModulePremium })));
+const CommunityPostsModuleUnified = lazy(() => import('./CommunityPostsModuleUnified').then(m => ({ default: m.CommunityPostsModuleUnified })));
+const CommunityEventsModuleUnified = lazy(() => import('./CommunityEventsModuleUnified').then(m => ({ default: m.CommunityEventsModuleUnified })));
+const CommunityAnnouncementsModuleUnified = lazy(() => import('./CommunityAnnouncementsModuleUnified').then(m => ({ default: m.CommunityAnnouncementsModuleUnified })));
+const JobBoardManagementModulePremium = lazy(() => import('./JobBoardManagementModulePremium').then(m => ({ default: m.JobBoardManagementModulePremium })));
+const CertificateRequestsModule = lazy(() => import('./CertificateRequestsModule').then(m => ({ default: m.CertificateRequestsModule })));
+const GraduateCertificatesWrapper = lazy(() => import('./GraduateCertificatesWrapper').then(m => ({ default: m.GraduateCertificatesWrapper })));
+const RolesAdministrationModulePremium = lazy(() => import('./RolesAdministrationModulePremium').then(m => ({ default: m.RolesAdministrationModulePremium })));
+const ModuloFirmaElectronicaWorldClass = lazy(() => import('./firma-electronica/ModuloFirmaElectronicaWorldClass').then(m => ({ default: m.ModuloFirmaElectronicaWorldClass })));
+const ControlInternoFull = lazy(() => import('./control-interno/ControlInternoFull').then(m => ({ default: m.ControlInternoFull })));
+const PortalTransaccionalUsuarioMD3 = lazy(() => import('./control-interno/PortalTransaccionalUsuarioMD3').then(m => ({ default: m.PortalTransaccionalUsuarioMD3 })));
+const ControlDisciplinarioFull = lazy(() => import('./disciplinario/ControlDisciplinarioFull').then(m => ({ default: m.ControlDisciplinarioFull })));
+const GestionLegalFull = lazy(() => import('./gestion-legal/core/GestionLegalFull').then(m => ({ default: m.GestionLegalFull })));
+const CertificadosLaboralesRouter = lazy(() => import('../certificados-laborales/CertificadosLaboralesRouter').then(m => ({ default: m.CertificadosLaboralesRouter })));
+const EstructuraOrganizacionalModule = lazy(() => import('../estructura-organizacional/EstructuraOrganizacionalModule').then(m => ({ default: m.EstructuraOrganizacionalModule })));
+const ProgramasAcademicosModule = lazy(() => import('./ProgramasAcademicosModule').then(m => ({ default: m.ProgramasAcademicosModule })));
+const GestionUsuariosPasswordTracking = lazy(() => import('./admin/GestionUsuariosPasswordTracking').then(m => ({ default: m.GestionUsuariosPasswordTracking })));
+const GestionProfesoralApp = lazy(() => import('../gestion-profesoral/GestionProfesoralApp').then(m => ({ default: m.GestionProfesoralApp })));
 
-// Importar Visualizador PTA (versión original)
-import { GestionProfesoralApp } from '../gestion-profesoral/GestionProfesoralApp';
-import { PermissionsProvider } from '../../contexts/PermissionsContext';
+// ✅ Loading Spinner Component
+function ModuleLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-screen" style={{ background: '#F8F9FA' }}>
+      <div className="text-center">
+        <div className="w-16 h-16 border-4 rounded-full animate-spin mx-auto mb-4"
+          style={{
+            borderColor: '#E5E7EB',
+            borderTopColor: '#003DA5'
+          }}
+        />
+        <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
+          Cargando módulo...
+        </p>
+      </div>
+    </div>
+  );
+}
 
-type ModuleView = 
+type ModuleView =
   | 'dashboard'
-  | 'users-persons' 
+  | 'users-persons'
+  | 'carpeta-digital'
   | 'roles-permissions'
   | 'reports'
   | 'audit'
@@ -86,76 +80,85 @@ type ModuleView =
   | 'certificados-laborales'
   | 'estructura-organizacional'
   | 'programas-academicos'
-  | 'arquitectura-empresarial'
   | 'gestion-passwords'
   | 'demo-pta-motor'
-  | 'gestion-profesoral'
-  | 'none';
+  | 'gestion-profesoral';
 
 interface BackofficeAppProps {
   onLogout?: () => void;
   onBackToSystemSelector?: () => void;
   onSystemChange?: (system: 'backoffice' | 'portal') => void;
+  usuario?: {
+    id: string;
+    nombre: string;
+    tipo: 'externo' | 'interno';
+    email: string;
+    rol?: string;
+  };
   userData?: {
     name: string;
     email: string;
     personId: string;
     module?: string;
     hasBothSystemsAccess?: boolean;
+    restrictedAccess?: boolean;
     roles?: string[];
     modules?: string[];
   };
   userRoles?: string[];
 }
 
-export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, userData, userRoles }: BackofficeAppProps = {}) {
-  // Si el usuario tiene acceso restringido, abrir directamente su módulo específico
-  // console.log('🚀 BackofficeApp: userData:', userData);
-  // const initialModule = userData?.module === 'control-interno'
-  //   ? 'control-interno'
-  //   : userData?.module === 'control-disciplinario'
-  //   ? 'control-disciplinario'
-  //   : userData?.module === 'registro-academico'
-  //   ? 'graduates'
-  //   : userData?.module === 'certificados-laborales' 
-  //   ? 'certificados-laborales' 
-  //   : userData?.module === 'arquitectura-empresarial'
-  //   ? 'dashboard' // Abrir en Dashboard Ejecutivo que muestra métricas de Arquitectura
-  //   : userData?.module === 'gestion-legal' 
-  //   ? 'gestion-legal'
-  //   : userData?.module === 'gestion-profesoral'
-  //   ? 'gestion-profesoral'
-  //   : 'dashboard';
-  // const initialModule = userData?.roles?.includes('CONTROL_INTERNO') 
-  //   ? 'control-interno'
-  //   : userData?.roles?.includes('CONTROL_DISCIPLINARIO')
-  //   ? 'control-disciplinario'
-  //   : userData?.roles?.includes('REGISTRO_ACADEMICO')
-  //   ? 'graduates'
-  //   : userData?.roles?.includes('COORDINADOR_CERT_LABORAL')
-  //   ? 'certificados-laborales'
-  //   : userData?.roles?.includes('GESTION_LEGAL')
-  //   ? 'gestion-legal'
-  //   : userData?.module === 'procesos'
-  //   ? 'control-interno'
-  //   : 'users-persons';
-  console.log('🚀 BackofficeApp: userData:', userData);
-  let initialModule =  userData && userData.modules && userData.modules.length > 0 ? userData.modules[0] : 'none';
-  initialModule = initialModule === 'all' ? 'users-management' : initialModule;
-    
+export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, usuario, userData, userRoles }: BackofficeAppProps = {}) {
+  console.log('BackofficeApp', userData, userRoles)
+  const currentUser = userData || {
+    name: usuario?.nombre || 'Administrador ESAP',
+    email: usuario?.email || 'admin@esap.edu.co',
+    personId: usuario?.id || 'admin-001'
+  };
+  console.log('📋 Usuario actual:', userData?.module);
+  const initialModule = userData?.module === 'control-interno' ? 'control-interno'
+    : userData?.module === 'control-disciplinario' ? 'control-disciplinario'
+      : userData?.module === 'registro-academico' ? 'graduates'
+        : userData?.module === 'certificados-laborales' ? 'certificados-laborales'
+          : userData?.module === 'gestion-legal' ? 'gestion-legal'
+            : userData?.module === 'procesos' ? 'control-interno'
+              : userData?.module === 'graduates' ? 'graduates'
+                : userData?.module === 'carpeta-digital' ? 'carpeta-digital'
+                  : userData?.module === 'estructura-organizacional' ? 'estructura-organizacional'
+                    : userData?.module === 'firma-electronica' ? 'firma-electronica'
+                      : 'users-persons';
+  console.log('📋 Inicial module:', initialModule);
+
+  const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule);
   const [currentSidebarModule, setCurrentSidebarModule] = useState<string>('');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // 🚀 AUTO-COLAPSO INTELIGENTE: Detectar tamaño de pantalla
+  const getInitialCollapsedState = () => {
+    // Verificar si hay un estado guardado en localStorage
+    const savedState = localStorage.getItem('esap-sidebar-collapsed');
+    if (savedState !== null) {
+      return savedState === 'true';
+    }
+
+    // Si no hay estado guardado, auto-colapsar en pantallas < 1440px
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 1440;
+    }
+
+    return false;
+  };
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialCollapsedState);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [density, setDensity] = useState<'compact' | 'comfortable'>('comfortable');
   const [certificatesPendingCount, setCertificatesPendingCount] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
 
-  // Mapeo de IDs del Sidebar a módulos del BackofficeApp
-  // verification-certificates
   const mapSidebarToModule = (sidebarModule: string): ModuleView => {
     const mappings: Record<string, ModuleView> = {
       'executive': 'dashboard',
       'users-management': 'users-persons',
+      'carpeta-digital': 'carpeta-digital',
       'roles-administration': 'roles-permissions',
       'audit': 'audit',
       'reports': 'reports',
@@ -175,23 +178,14 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       'control-interno': 'control-interno',
       'control-disciplinario': 'control-disciplinario',
       'gestion-legal': 'gestion-legal',
-      'arquitectura-empresarial': 'arquitectura-empresarial',
       'gestion-passwords': 'gestion-passwords',
       'gestion-profesoral': 'gestion-profesoral'
     };
     return (mappings[sidebarModule] as ModuleView) || 'dashboard';
   };
-  console.log('🚀 BackofficeApp: initialModule:', initialModule, ', mapSidebar:', mapSidebarToModule(initialModule));
-  const [currentModule, setCurrentModule] = useState<ModuleView>(mapSidebarToModule(initialModule));
-
-  const currentUser = userData || {
-    name: 'Administrador ESAP',
-    email: 'admin@esap.edu.co',
-    personId: 'admin-001'
-  };
 
   // Extraer nombre del usuario, priorizando userData.name, luego usuario.nombre
-  const userName = currentUser.name || 'Administrador ESAP';
+  const userName = currentUser.name || usuario?.nombre || 'Administrador ESAP';
 
   const mockUser = {
     name: userName,
@@ -203,7 +197,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
   // Handlers
   const handleLogout = () => {
-    console.log('Logout clicked - Cerrando sesión...');
     // Llamar al handler de logout del padre (App.tsx) si existe
     if (onLogout) {
       onLogout();
@@ -211,192 +204,267 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   };
 
   const handleViewProfile = () => {
-    console.log('View profile clicked');
     setShowProfile(true);
   };
 
   const renderModule = () => {
-    console.log('Current module:', currentModule);
-    // setCurrentModule(undefined);
     switch (currentModule) {
-      case 'none':
-        return (
-          <div className="min-h-[60vh] flex items-center justify-center">
-            <div className="max-w-lg w-full bg-white shadow-xl rounded-2xl border border-gray-200 p-8 text-center space-y-4">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full text-4xl font-bold badge-esap-warning">
-                !
-              </div>
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Sin módulos asignados</h1>
-              <p className="text-gray-600 text-base">
-                Tu cuenta no tiene módulos habilitados todavía.
-              </p>
-              <p className="text-gray-600 text-base">
-                Solicita a un administrador que te asigne un rol con los accesos necesarios.
-              </p>
-              <div className="flex flex-wrap gap-3 justify-center pt-2">
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-1 px-2 py-1 md:px-2.5 md:py-1.5 text-[9px] md:text-[10px] font-bold text-red-600 hover:text-red-700 hover:bg-red-50 border-2 border-transparent hover:border-red-200 rounded-lg transition-all active:scale-95 shadow-sm hover:shadow-md cursor-pointer"
-                >
-                  Cerrar sesión
-                </button>
-              </div>
-            </div>
-          </div>
-        );
       case 'dashboard':
         // Redirigir a Estructura Organizacional como vista principal
-        return <EstructuraOrganizacionalModule />;
-      
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <EstructuraOrganizacionalModule />
+          </Suspense>
+        );
+
       case 'users-persons':
-        return <UsersPersonsModulePremium />;
-      
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <UsersPersonsModulePremium />
+          </Suspense>
+        );
+
+      case 'carpeta-digital':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <CarpetaDigitalModule />
+          </Suspense>
+        );
+
       case 'roles-permissions':
-        return <RolesAdministrationModulePremium />;
-      
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <RolesAdministrationModulePremium />
+          </Suspense>
+        );
+
       case 'reports':
-        return <ReportsModuleV2 />;
-      
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <ReportsModuleV2 />
+          </Suspense>
+        );
+
       case 'audit':
-        return <AuditModulePremium />;
-      
-      case 'graduates':
-        return <GraduatesManagementModule />;
-      
-      case 'enrollment':
-        return <EnrollmentManagementModule />;
-      
-      case 'community':
-        return <CommunityManagementModulePremium />;
-      
-      case 'community-posts':
-        return <CommunityPostsModuleUnified />;
-      
-      case 'community-events':
-        return <CommunityEventsModuleUnified />;
-      
-      case 'community-announcements':
-        return <CommunityAnnouncementsModuleUnified />;
-      
-      case 'job-board':
-        return <JobBoardManagementModulePremium />;
-      
-      case 'certificate-requests':
-        return <CertificateRequestsModule />;
-      
-      case 'verification-certificates':
-        return <GraduateCertificatesWrapper onPendingCountChange={setCertificatesPendingCount} />;
-      
-      case 'firma-electronica':
-        return <ModuloFirmaElectronicaWorldClass />;
-      
-      case 'control-interno':
         // Si es usuario de procesos (auditado), mostrar portal del usuario
         if (userData?.module === 'procesos') {
-          return <PortalTransaccionalUsuarioMD3 onLogout={handleLogout} />;
+          return (
+            <Suspense fallback={<ModuleLoader />}>
+              <PortalTransaccionalUsuarioMD3 onLogout={handleLogout} />
+            </Suspense>
+          );
         }
         // Si es usuario de Control Interno (auditor), mostrar dashboard completo
         return (
-          <ControlInternoFull 
-            userData={userData}
-            userRoles={userRoles}
-          />
+          <Suspense fallback={<ModuleLoader />}>
+            <AuditModulePremium />
+          </Suspense>
         );
-      
+
+      case 'graduates':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <GraduatesManagementModule />
+          </Suspense>
+        );
+
+      case 'enrollment':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <EnrollmentManagementModule />
+          </Suspense>
+        );
+
+      case 'community':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <CommunityManagementModulePremium />
+          </Suspense>
+        );
+
+      case 'community-posts':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <CommunityPostsModuleUnified />
+          </Suspense>
+        );
+
+      case 'community-events':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <CommunityEventsModuleUnified />
+          </Suspense>
+        );
+
+      case 'community-announcements':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <CommunityAnnouncementsModuleUnified />
+          </Suspense>
+        );
+
+      case 'job-board':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <JobBoardManagementModulePremium />
+          </Suspense>
+        );
+
+      case 'certificate-requests':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <CertificateRequestsModule />
+          </Suspense>
+        );
+
+      case 'verification-certificates':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <GraduateCertificatesWrapper onPendingCountChange={setCertificatesPendingCount} />
+          </Suspense>
+        );
+
+      case 'firma-electronica':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <ModuloFirmaElectronicaWorldClass />
+          </Suspense>
+        );
+
+      case 'control-interno':
+        // Si es usuario de procesos (auditado), mostrar portal del usuario
+        if (userData?.module === 'procesos') {
+          return (
+            <Suspense fallback={<ModuleLoader />}>
+              <PortalTransaccionalUsuarioMD3 onLogout={handleLogout} />
+            </Suspense>
+          );
+        }
+        // Si es usuario de Control Interno (auditor), mostrar dashboard completo
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <ControlInternoFull />
+          </Suspense>
+        );
+
       case 'control-disciplinario':
-        return <ControlDisciplinarioFull />;
-      
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <ControlDisciplinarioFull />
+          </Suspense>
+        );
+
       case 'gestion-legal':
-        return <GestionLegalFull />;
-      
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <GestionLegalFull />
+          </Suspense>
+        );
+
       case 'certificados-laborales':
         return (
-          <CertificadosLaboralesRouter 
-            userRoles={userRoles || []}
-            userEmail={currentUser.email}
-          />
+          <Suspense fallback={<ModuleLoader />}>
+            <CertificadosLaboralesRouter 
+              userRoles={userRoles || []}
+              userEmail={currentUser.email}
+            />
+          </Suspense>
         );
-      
+
       case 'estructura-organizacional':
-        return <EstructuraOrganizacionalModule />;
-      
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <EstructuraOrganizacionalModule />
+          </Suspense>
+        );
+
       case 'programas-academicos':
-        return <ProgramasAcademicosModule />;
-      
-      case 'arquitectura-empresarial':
-        return <ArquitecturaEmpresarialModule />;
-      
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <ProgramasAcademicosModule />
+          </Suspense>
+        );
+
       case 'gestion-passwords':
-        return <GestionUsuariosPasswordTracking />;
-      
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <GestionUsuariosPasswordTracking />
+          </Suspense>
+        );
+
       case 'gestion-profesoral':
-        return <GestionProfesoralApp 
-          usuario={{ 
-            nombre: currentUser.name, 
-            email: currentUser.email,
-            rol: 'admin' // Por defecto admin, puede ser 'docente', 'coordinador', etc.
-          }} 
-          onLogout={handleLogout}
-        />;      
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <GestionProfesoralApp
+              usuario={{
+                nombre: currentUser.name,
+                email: currentUser.email,
+                rol: 'admin' // Por defecto admin, puede ser 'docente', 'coordinador', etc.
+              }}
+              onLogout={handleLogout}
+            />
+          </Suspense>
+        );
+
       default:
-        return <EstructuraOrganizacionalModule />;
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <EstructuraOrganizacionalModule />
+          </Suspense>
+        );
     }
   };
 
   return (
-    <PermissionsProvider
-      modules={userData?.modules}
-      permissions={userData?.permissions}
-    >
-      <NotificationsProvider>
-        <TourProvider>
-          <div className="min-h-screen bg-gray-50">
+    <NotificationsProvider>
+      <TourProvider>
+        {/* ✅ GRID LAYOUT - Mobile First */}
+        <div className="min-h-screen bg-gray-50 grid grid-cols-1 md:grid-cols-[auto_1fr]">
           {/* Sidebar - Ocultar para usuario de procesos (auditado) */}
           {userData?.module !== 'procesos' && (
-            <SidebarPremium
-              isOpen={sidebarOpen}
-              onClose={() => setSidebarOpen(false)}
-              isCollapsed={sidebarCollapsed}
-              onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-              currentModule={currentModule}
-              currentSidebarModule={currentSidebarModule}
-              onModuleChange={(sidebarModule) => {
-                const mappedModule = mapSidebarToModule(sidebarModule);
-                setCurrentSidebarModule(sidebarModule);
-                setCurrentModule(mappedModule);
-                setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
-              }}
-              userEmail={currentUser.email}
-              certificatesPendingCount={certificatesPendingCount}
-              assignedModules={userData?.modules}
-              restrictedMode={
-                userData?.module === 'control-interno'
-                  ? 'control-interno'
-                  : userData?.module === 'control-disciplinario'
-                  ? 'control-disciplinario'
-                  : userData?.module === 'registro-academico'
-                  ? 'registro-academico'
-                  : userData?.module === 'certificados-laborales' 
-                  ? 'certificados-laborales' 
-                  : userData?.module === 'arquitectura-empresarial'
-                  ? 'arquitectura-empresarial'
-                  : userData?.module === 'gestion-legal'
-                  ? 'gestion-legal'
-                  : undefined
-              }
-            />
+            <>
+              {/* Spacer for Fixed Sidebar to prevent content overlap */}
+              <div
+                className={`hidden md:block shrink-0 transition-[width] duration-300 ${sidebarCollapsed
+                    ? 'w-[80px]'
+                    : 'w-[280px] md:w-[260px] lg:w-[220px] xl:w-[240px] 2xl:w-[260px]'
+                  }`}
+              />
+              <SidebarPremium
+                isOpen={sidebarOpen}
+                onClose={() => setSidebarOpen(false)}
+                isCollapsed={sidebarCollapsed}
+                onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+                currentModule={currentModule}
+                currentSidebarModule={currentSidebarModule}
+                onModuleChange={(sidebarModule) => {
+                  const mappedModule = mapSidebarToModule(sidebarModule);
+                  setCurrentSidebarModule(sidebarModule);
+                  setCurrentModule(mappedModule);
+                  setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
+                }}
+                userEmail={currentUser.email}
+                certificatesPendingCount={certificatesPendingCount}
+                assignedModules={userData?.modules}
+                restrictedMode={
+                  userData?.module === 'control-interno'
+                    ? 'control-interno'
+                    : userData?.module === 'control-disciplinario'
+                    ? 'control-disciplinario'
+                    : userData?.module === 'registro-academico'
+                    ? 'registro-academico'
+                    : userData?.module === 'certificados-laborales' 
+                    ? 'certificados-laborales' 
+                    : userData?.module === 'gestion-legal'
+                    ? 'gestion-legal'
+                    : undefined
+                }
+              />
+            </>
           )}
 
-          {/* Main Content - Con margen izquierdo para el sidebar */}
-          <div 
-            className={`transition-all duration-300 ${
-              userData?.module === 'procesos' 
-                ? '' // Sin margen para usuario auditado
-                : sidebarCollapsed 
-                ? 'md:ml-[80px]' 
-                : 'md:ml-[260px] lg:ml-[220px] xl:ml-[240px] 2xl:ml-[260px]'
-            }`}
-          >
+          {/* ✅ MAIN CONTENT - Flexbox Column */}
+          <div className="flex flex-col h-screen bg-gray-50 overflow-hidden" style={{marginLeft: sidebarCollapsed ? '70px' : '0'}}>
             {/* Top Bar - Ocultar para usuario de procesos (auditado) */}
             {userData?.module !== 'procesos' && (
               <TopBar
@@ -422,9 +490,11 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               />
             )}
 
-            {/* Module Content */}
-            <main className={userData?.module === 'procesos' ? '' : 'p-4 md:p-6 lg:p-8 min-h-screen'}>
-              {renderModule()}
+            {/* Module Content - Contenedor con scroll vertical óptimo */}
+            <main className={`flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 ${userData?.module === 'procesos' ? '' : ''}`}>
+              <div className={`min-h-full ${userData?.module === 'procesos' ? '' : 'p-3 sm:p-4 md:p-5 lg:p-6'}`}>
+                {renderModule()}
+              </div>
             </main>
           </div>
 
@@ -441,8 +511,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
             />
           )}
         </div>
-        </TourProvider>
-      </NotificationsProvider>
-    </PermissionsProvider>
+      </TourProvider>
+    </NotificationsProvider>
   );
 }

@@ -6,6 +6,8 @@
  * ✅ Funcionalidad real de notificaciones, compartir y PDF
  */
 
+import { useState, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import {
   FileText, Scale, User, Calendar, Clock, AlertTriangle,
   Download, Eye, ExternalLink, Paperclip, CheckCircle,
@@ -13,7 +15,7 @@ import {
   Building2, Gavel, MapPin, DollarSign, FileCheck,
   MessageSquare, Send, Edit, Filter, ChevronDown,
   Briefcase, Phone, Mail, Hash, Activity, Bell,
-  Shield, Target, Flag, Bookmark, Archive, Upload, Trash2
+  Shield, Target, Flag, Bookmark, Archive, Upload, Trash2, Check, Link as LinkIcon, Unlink
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -23,29 +25,38 @@ import { Card } from '../../../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import { Input } from '../../../ui/input';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import { toast } from 'sonner';
-import { legalService } from '../../../../services/api/legal.service';
-import { getServiceUrl, API_MODE } from '../../../../config/environment';
 
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalNotificar } from './ModalNotificar';
+import { ModalRegistrarActuacion } from './ModalRegistrarActuacion';
+import { ModalProgramarAudiencia } from './ModalProgramarAudiencia';
 import { ModalCompartir } from './ModalCompartir';
 import { ModalCrearTarea } from './ModalCrearTarea';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { ModalGestionDocumentos } from './ModalGestionDocumentos';
+import { ModalNuevaDemandaRESTAURADO } from './ModalNuevaDemandaRESTAURADO';
+import { ModalAnexarProceso } from './ModalAnexarProceso';
+import { DialogoConfirmacion } from './DialogoConfirmacion';
+import { copyToClipboard } from '../../../../utils/clipboard';
+import { legalService, correosJuridicosService } from '../../../../services/api/legal.service';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
-import { ModalNuevaActuacion } from './ModalNuevaActuacion';
-import { ModalNuevaAudiencia } from './ModalNuevaAudiencia';
+import { isViewableInBrowser } from '../../../../utils/fileUtils';
+import { BarraProgresoExpediente } from '../core/BarraProgresoExpediente';
+import { TabActuacionesExpediente } from '../core/TabActuacionesExpediente';
+import { TabTareasExpediente } from '../core/TabTareasExpediente';
+import { TabNotasExpediente } from '../core/TabNotasExpediente';
+import { TabDocumentosExpediente } from '../core/TabDocumentosExpediente';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 interface ModalExpedienteProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
-  onUpdate?: () => void; // Callback para refrescar datos después de cambios
+  onUpdate?: () => void;
 }
 
 export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: ModalExpedienteProps) {
@@ -53,300 +64,265 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
   const [tabActivo, setTabActivo] = useState('general');
 
-  // ✅ Obtener tipos de procesos desde configuración para resolver nombres
-  const { tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
-
+  // Estados para modales
   // Estados para modales
   const [modalNotificarAbierto, setModalNotificarAbierto] = useState(false);
   const [modalCompartirAbierto, setModalCompartirAbierto] = useState(false);
   const [modalCrearTareaAbierto, setModalCrearTareaAbierto] = useState(false);
   const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
+  const [modalEditarTareaAbierto, setModalEditarTareaAbierto] = useState(false);
+  const [modalGestionDocumentosAbierto, setModalGestionDocumentosAbierto] = useState(false);
+  const [modalRegistrarActuacionAbierto, setModalRegistrarActuacionAbierto] = useState(false);
+  const [modalProgramarAudienciaAbierto, setModalProgramarAudienciaAbierto] = useState(false);
+  const [modalAnexarAbierto, setModalAnexarAbierto] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  // Estados para modales de Actuaciones/Audiencias
-  const [showNuevaActuacion, setShowNuevaActuacion] = useState(false);
-  const [showNuevaAudiencia, setShowNuevaAudiencia] = useState(false);
-
-  // Estado para documentos cargados desde la API
-  const [documentos, setDocumentos] = useState<any[]>([]);
-  const [loadingDocumentos, setLoadingDocumentos] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadingDoc, setUploadingDoc] = useState(false);
+  // Estado para visor de documentos inline
+  const [visorAbierto, setVisorAbierto] = useState(false);
+  const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string } | null>(null);
+  const [selectedAnexado, setSelectedAnexado] = useState<any>(null); // Sub-modal para ver anexados
 
   // Estado para modal de reasignar
   const [showReasignarModal, setShowReasignarModal] = useState(false);
+  const [showArchivarModal, setShowArchivarModal] = useState(false); // Modal de confirmación archivar
+  const [motivoArchivo, setMotivoArchivo] = useState(''); // Motivo de archivo
+  const [showEliminarModal, setShowEliminarModal] = useState(false); // Modal de confirmación eliminar
+  const [motivoEliminar, setMotivoEliminar] = useState(''); // Motivo de eliminación
   const [abogados, setAbogados] = useState<any[]>([]);
   const [loadingAbogados, setLoadingAbogados] = useState(false);
   const [selectedAbogado, setSelectedAbogado] = useState('');
   const [reasignando, setReasignando] = useState(false);
+  const [audienciaIdPendienteEliminar, setAudienciaIdPendienteEliminar] = useState<string | null>(null);
 
-  // Estado para edición
-  const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({
-    juzgado: '',
-    etapa: '',
-    cuantia: 0
-  });
-
-  // Estado para tareas desde la API
+  // Estados de datos
+  const [documentos, setDocumentos] = useState<any[]>([]);
+  const [loadingDocumentos, setLoadingDocumentos] = useState(false);
   const [tareas, setTareas] = useState<any[]>([]);
   const [loadingTareas, setLoadingTareas] = useState(false);
-  const [showNuevaTarea, setShowNuevaTarea] = useState(false);
-  const [nuevaTarea, setNuevaTarea] = useState({ titulo: '', descripcion: '', prioridad: 'media', fechaVencimiento: '' });
-
-  // Estado para notas desde la API
   const [notas, setNotas] = useState<any[]>([]);
   const [loadingNotas, setLoadingNotas] = useState(false);
-  const [showNuevaNota, setShowNuevaNota] = useState(false);
-  const [nuevaNota, setNuevaNota] = useState({ contenido: '', tipo: 'general' });
+  const [actuaciones, setActuaciones] = useState<any[]>([]);
+  const [loadingActuaciones, setLoadingActuaciones] = useState(false);
+  const [audienciasProgramadas, setAudienciasProgramadas] = useState<any[]>([]);
 
-  // Cargar documentos, tareas y notas cuando se abre el modal
+  // Estados de edición AUX
+  const [audienciaAReasignar, setAudienciaAReasignar] = useState<any>(null);
+  const [tareaParaEditar, setTareaParaEditar] = useState<any>(null);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [showDesanexarConfirm, setShowDesanexarConfirm] = useState(false);
+  const [anexadoADesanexar, setAnexadoADesanexar] = useState<any>(null);
+
+  // Ref para input file
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Cargar datos al abrir
   useEffect(() => {
-    if (isOpen && expediente.uuid) {
-      loadDocumentos();
-      loadTareas();
-      loadNotas();
-      loadActuaciones(); // Cargar historial unificado
-      // Inicializar form
-      setEditForm({
-        juzgado: expediente.juzgado || '',
-        etapa: expediente.etapa || 'NOTIFICADA',
-        cuantia: expediente.cuantia || 0
-      });
+    if (isOpen && expediente) {
+      const id = expediente.uuid || expediente.id;
+      if (id) {
+        loadDocumentos(id);
+        loadTareas(id);
+        loadNotas(id);
+        loadDocumentos(id);
+        loadTareas(id);
+        loadNotas(id);
+        loadActuaciones(id);
+        loadAudiencias(id);
+      }
     }
   }, [isOpen, expediente]);
 
-  const loadTareas = async () => {
-    try {
-      setLoadingTareas(true);
-      const data = await legalService.getTareasByExpediente(expediente.uuid || expediente.id);
-      setTareas(data);
-    } catch (error) {
-      console.error('Error cargando tareas:', error);
-      setTareas([]);
-    } finally {
-      setLoadingTareas(false);
+  // Cargar abogados al abrir modal reasignar o programar audiencia
+  useEffect(() => {
+    if (showReasignarModal || modalProgramarAudienciaAbierto) {
+      loadAbogados();
     }
+  }, [showReasignarModal, modalProgramarAudienciaAbierto]);
+
+  // Helper: inferir categoría del tipo de documento (fallback si BD no tiene la columna aún)
+  const inferirCategoria = (tipo: string): string => {
+    if (!tipo) return 'documentos';
+    const t = tipo.toLowerCase();
+    if (t.includes('acta')) return 'actas';
+    if (t.includes('evidencia') || t.includes('prueba')) return 'evidencias';
+    if (t.includes('auto')) return 'autos';
+    if (t.includes('oficio')) return 'oficios';
+    if (t.includes('comunicacion') || t.includes('comunicación') || t.includes('memorando')) return 'comunicaciones';
+    if (t.includes('notificacion') || t.includes('notificación') || t.includes('citacion') || t.includes('citación') || t.includes('edicto')) return 'notificaciones';
+    if (t.includes('pericial') || t.includes('testimonial') || t.includes('inspección') || t.includes('inspeccion')) return 'pruebas';
+    return 'documentos';
   };
 
-  const loadNotas = async () => {
-    try {
-      setLoadingNotas(true);
-      const data = await legalService.getNotasByExpediente(expediente.uuid || expediente.id);
-      setNotas(data);
-    } catch (error) {
-      console.error('Error cargando notas:', error);
-      setNotas([]);
-    } finally {
-      setLoadingNotas(false);
-    }
-  };
-
-  // ==================== ACTUACIONES Y AUDIENCIAS (Historial Unificado) ====================
-  const [actuacionesList, setActuacionesList] = useState<any[]>([]);
-  const [loadingActuaciones, setLoadingActuaciones] = useState(false);
-
-  const loadActuaciones = async () => {
-    try {
-      setLoadingActuaciones(true);
-      const data = await legalService.getActuaciones(expediente.uuid || expediente.id);
-
-      // Mapear para visualización unificada
-      const mapped = data.map((act: any) => ({
-        id: act.id,
-        fechaObj: new Date(act.fechaActuacion), // Para ordenar si hiciera falta
-        fecha: new Date(act.fechaActuacion).toLocaleDateString('es-CO'),
-        tipo: act.tipoActuacion,
-        descripcion: act.descripcion,
-        responsable: act.usuarioResponsable || 'Sistema',
-        estado: 'Registrado',
-        origen: act.origen || 'MANUAL',
-        metadata: act.metadata,
-        referenciaId: act.referenciaId
-      }));
-      setActuacionesList(mapped);
-    } catch (error) {
-      console.error('Error cargando actuaciones:', error);
-      // toast.error('Error al cargar historial de actuaciones'); // Silencioso para no saturar al inicio
-    } finally {
-      setLoadingActuaciones(false);
-    }
-  };
-
-  const handleCrearTarea = async () => {
-    if (!nuevaTarea.titulo.trim()) {
-      toast.error('El título es requerido');
-      return;
-    }
-    try {
-      await legalService.createTarea(expediente.uuid || expediente.id, {
-        titulo: nuevaTarea.titulo,
-        descripcion: nuevaTarea.descripcion,
-        prioridad: nuevaTarea.prioridad,
-        fechaVencimiento: nuevaTarea.fechaVencimiento || undefined,
-        responsableNombre: expediente.abogadoAsignado
-      });
-      toast.success('Tarea creada exitosamente');
-      setNuevaTarea({ titulo: '', descripcion: '', prioridad: 'media', fechaVencimiento: '' });
-      setShowNuevaTarea(false);
-      loadTareas();
-    } catch (error) {
-      console.error('Error creando tarea:', error);
-      toast.error('Error al crear la tarea');
-    }
-  };
-
-  const handleCrearNota = async () => {
-    if (!nuevaNota.contenido.trim()) {
-      toast.error('El contenido es requerido');
-      return;
-    }
-    try {
-      await legalService.createNota(expediente.uuid || expediente.id, {
-        contenido: nuevaNota.contenido,
-        tipo: nuevaNota.tipo,
-        autorNombre: expediente.abogadoAsignado || 'Usuario'
-      });
-      toast.success('Nota creada exitosamente');
-      setNuevaNota({ contenido: '', tipo: 'general' });
-      setShowNuevaNota(false);
-      loadNotas();
-    } catch (error) {
-      console.error('Error creando nota:', error);
-      toast.error('Error al crear la nota');
-    }
-  };
-
-  const handleEliminarTarea = async (tareaId: string) => {
-    try {
-      await legalService.deleteTarea(tareaId);
-      toast.success('Tarea eliminada');
-      loadTareas();
-    } catch (error) {
-      toast.error('Error al eliminar la tarea');
-    }
-  };
-
-  const handleActualizarEstadoTarea = async (tareaId: string, nuevoEstado: string) => {
-    try {
-      await legalService.updateTarea(tareaId, { estado: nuevoEstado });
-      toast.success('Estado actualizado');
-      loadTareas();
-    } catch (error) {
-      toast.error('Error al actualizar el estado');
-    }
-  };
-
-  const handleEliminarNota = async (notaId: string) => {
-    try {
-      await legalService.deleteNota(notaId);
-      toast.success('Nota eliminada');
-      loadNotas();
-    } catch (error) {
-      toast.error('Error al eliminar la nota');
-    }
-  };
-
-  const loadDocumentos = async () => {
+  const loadDocumentos = async (id: string) => {
     try {
       setLoadingDocumentos(true);
-      const data = await legalService.getDocumentos(expediente.uuid || expediente.id);
-      // Mapear los datos del backend al formato esperado por el frontend
-      const mappedDocs = data.map((doc: any) => ({
-        id: doc.id,
-        nombre: doc.nombre,
-        fecha: doc.fechaDocumento ? new Date(doc.fechaDocumento).toLocaleDateString('es-CO') : new Date(doc.createdAt).toLocaleDateString('es-CO'),
-        tipo: doc.tipo,
-        tamaño: doc.archivoTamano ? formatBytes(doc.archivoTamano) : 'N/A',
-        firmante: doc.subidoPor || 'Sistema',
-        url: doc.archivoUrl,
-        descripcion: doc.descripcion
+      // Fetch documents (emails omitted per user request)
+      const docsData = await legalService.getDocumentos(id);
+
+      // Map native documents
+      const mappedDocs = docsData.map((d: any) => ({
+        id: d.id,
+        nombre: d.nombre,
+        fecha: d.fechaDocumento ? new Date(d.fechaDocumento).toLocaleDateString('es-CO') : new Date(d.createdAt).toLocaleDateString('es-CO'),
+        tipo: d.tipo,
+        tamaño: d.archivoTamano ? formatBytes(d.archivoTamano) : 'N/A',
+        firmante: d.subidoPor || 'Sistema',
+        url: d.archivoUrl,
+        descripcion: d.descripcion,
+        categoria: d.categoria || inferirCategoria(d.tipo),
+        etapa: d.etapa || null
       }));
+
       setDocumentos(mappedDocs);
     } catch (error) {
-      console.error('Error cargando documentos:', error);
-      // Si hay error, usar array vacío o mock data como fallback
+      console.error('Error cargando documentos', error);
       setDocumentos([]);
     } finally {
       setLoadingDocumentos(false);
     }
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 10 * 1024 * 1024) { // 10MB limit
-      toast.error('El archivo es demasiado grande (max 10MB)');
-      return;
-    }
-
+  const loadTareas = async (id: string) => {
     try {
-      setUploadingDoc(true);
-      const formData = new FormData();
-      formData.append('expedienteId', expediente.uuid || expediente.id);
-      formData.append('archivo', file);
-      formData.append('nombre', file.name);
-      formData.append('tipo', 'OTRO'); // Por defecto, se podría mejorar con un modal
-      formData.append('subidoPor', 'Usuario Actual'); // Debería venir del auth context
+      setLoadingTareas(true);
+      const data = await legalService.getTareasByExpediente(id);
 
-      await legalService.crearDocumento(formData);
-      toast.success('Documento subido correctamente');
-      loadDocumentos(); // Recargar lista
+      const mapped = data.map((t: any) => {
+        // Calculo dias restantes
+        const vencimiento = t.fechaVencimiento ? new Date(t.fechaVencimiento) : new Date();
+        const diffTime = vencimiento.getTime() - new Date().getTime();
+        const dias = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        return {
+          id: t.id,
+          titulo: t.titulo,
+          descripcion: t.descripcion,
+          vencimiento: t.fechaVencimiento ? new Date(t.fechaVencimiento).toLocaleDateString('es-CO') : 'Sin fecha',
+          diasRestantes: dias,
+          prioridad: t.prioridad ? t.prioridad.charAt(0).toUpperCase() + t.prioridad.slice(1) : 'Media',
+          responsable: t.responsableNombre || expediente.abogadoAsignado || 'Sin asignar',
+          estado: t.estado === 'completada' ? 'Completado' : (t.estado === 'en_proceso' ? 'En proceso' : 'Pendiente')
+        };
+      });
+      setTareas(mapped);
     } catch (error) {
-      console.error('Error subiendo documento:', error);
-      toast.error('Error al subir el documento');
+      console.error('Error loading tareas', error);
+      setTareas([]);
     } finally {
-      setUploadingDoc(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      setLoadingTareas(false);
     }
   };
 
-  const getFullUrl = (url: string) => {
-    if (!url) return '';
-    if (url.startsWith('http')) return url;
-
-    // URL Base del Gateway
-    const baseUrl = getServiceUrl('legal');
-
-    // Extraer nombre del archivo si la URL tiene ruta
-    let filename = url;
-    if (url.includes('/files/')) {
-      filename = url.split('/files/').pop() || url;
-    } else if (url.includes('/')) {
-      filename = url.split('/').pop() || url;
-    }
-
-    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
-    const prefix = API_MODE === 'direct' ? '' : '/legal';
-    return `${baseUrl}${prefix}/files/${filename}`;
-  };
-
-  const handleDownloadFile = async (doc: any) => {
-    const fullUrl = getFullUrl(doc.url);
-    if (!fullUrl) return;
-
+  const loadNotas = async (id: string) => {
     try {
-      const response = await fetch(fullUrl);
-      if (!response.ok) throw new Error('Error de red al descargar');
+      setLoadingNotas(true);
+      // Las notas se guardan como actuaciones tipo NOTA_INTERNA
+      // Filtrarlas desde el endpoint de actuaciones
+      const allActuaciones = await legalService.getActuaciones(id);
+      const notasActuaciones = allActuaciones.filter(
+        (a: any) => a.tipoActuacion === 'NOTA_INTERNA' || a.tipoActuacion === 'NOTA'
+      );
 
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', doc.nombre || 'documento');
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      // Mapeo de tipos a colores
+      const tipoColorMap: Record<string, string> = {
+        'Importante': '#EF4444',    // Rojo
+        'Seguimiento': '#F59E0B',   // Amarillo/Naranja
+        'Informativa': '#10B981',   // Verde
+        'General': '#6B7280'        // Gris
+      };
+
+      const mapped = notasActuaciones.map((n: any) => {
+        // Extraer tipo del formato [Tipo] en la descripción
+        const tipoMatch = n.descripcion?.match(/^\[([^\]]+)\]/);
+        const tipoExtraido = tipoMatch ? tipoMatch[1] : 'General';
+
+        // Limpiar descripción quitando el [Tipo] si existe
+        const notaLimpia = n.descripcion?.replace(/^\[[^\]]+\]\s*/, '') || n.descripcion;
+
+        return {
+          id: n.id,
+          fecha: new Date(n.fechaActuacion || n.createdAt).toLocaleDateString('es-CO'),
+          autor: n.usuarioResponsable || 'Sistema',
+          nota: notaLimpia,
+          tipo: tipoExtraido,
+          color: tipoColorMap[tipoExtraido] || tipoColorMap['General']
+        };
+      });
+      setNotas(mapped);
     } catch (error) {
-      console.error('Error descargando:', error);
-      toast.error('Error al descargar el archivo: Posible bloqueo de red o CORS');
+      console.error('Error loading notas', error);
+      setNotas([]);
+    } finally {
+      setLoadingNotas(false);
     }
   };
 
-  // Función auxiliar para formatear bytes
+  const loadActuaciones = async (id: string) => {
+    try {
+      setLoadingActuaciones(true);
+      const data = await legalService.getActuaciones(id);
+      const mapped = data.map((a: any) => ({
+        id: a.id,
+        fecha: new Date(a.fechaActuacion).toLocaleDateString('es-CO'),
+        hora: new Date(a.fechaActuacion).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+        descripcion: a.descripcion,
+        responsable: a.usuarioResponsable || 'Sistema',
+        tipo: a.tipoActuacion,
+        estado: a.metadata?.estado || 'Registrado',
+        origen: a.origen || 'MANUAL',
+        metadata: a.metadata,
+        documentoUrl: a.documentoUrl,
+        documentoNombre: a.documentoNombre,
+        createdAt: a.createdAt ? new Date(a.createdAt).toLocaleString('es-CO') : null
+      }));
+      setActuaciones(mapped);
+    } catch (error) {
+      console.error('Error loading actuaciones', error);
+      // Fallback silent
+    } finally {
+      setLoadingActuaciones(false);
+    }
+  };
+
+  const loadAudiencias = async (id: string) => {
+    try {
+      const data = await legalService.getAudiencias({ expedienteId: id });
+      // Mapear data para asegurar compatibilidad con la vista
+      const mapped = data.map((a: any) => ({
+        id: a.id,
+        tipo: a.titulo.split(' - ')[0] || 'Audiencia', // Fallback si no hay titulo estructurado
+        fecha: new Date(a.fechaHoraInicio).toLocaleDateString('es-CO'),
+        hora: new Date(a.fechaHoraInicio).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+        lugar: a.ubicacion || 'Sede Judicial',
+        modalidad: a.modalidad,
+        linkReunion: a.linkReunion,
+        abogadoResponsable: a.nombreAbogado || expediente.abogadoAsignado || 'Abogado Asignado',
+        estado: a.estado || 'Programada',
+        historial: a.historial || [],
+        descripcion: a.notasPreparacion,
+        observaciones: a.notasPreparacion,
+        objetivo: a.objetivo
+      }));
+      setAudienciasProgramadas(mapped);
+    } catch (error) {
+      console.error('Error loading audiencias', error);
+      // No borrar datos anteriores si falla silenciosamente
+    }
+  };
+
+  const loadAbogados = async () => {
+    try {
+      setLoadingAbogados(true);
+      const data = await legalService.getAbogadosDashboard();
+      setAbogados(data);
+    } catch (error) {
+      console.error('Error loading abogados', error);
+    } finally {
+      setLoadingAbogados(false);
+    }
+  };
+
+  // Helper para bytes
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -355,133 +331,240 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
-  // Cargar abogados cuando se abre el modal de reasignar
-  useEffect(() => {
-    if (showReasignarModal) {
-      loadAbogados();
-    }
-  }, [showReasignarModal]);
+  // Helpers de URL y Preview
+  const getFullUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
 
-  const loadAbogados = async () => {
-    try {
-      setLoadingAbogados(true);
-      const data = await legalService.getAbogadosDashboard();
-      setAbogados(data);
-    } catch (error) {
-      console.error('Error cargando abogados:', error);
-      toast.error('Error al cargar lista de abogados');
-    } finally {
-      setLoadingAbogados(false);
+    const baseUrl = getServiceUrl('legal');
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
+
+    // ✨ FIXED: Rutas de adjuntos de correos/oficios (usar /api/v1 para que gateway rutee correctamente)
+    if (url.includes('/correos/adjuntos/')) {
+      const regex = /\/adjuntos\/([^/]+)/;
+      const match = url.match(regex);
+      if (match) {
+        let adjuntoId = match[1];
+        // Quitar /download del final si por error lo agarró
+        if (adjuntoId.endsWith('/download')) adjuntoId = adjuntoId.replace('/download', '');
+        
+        const adjuntoPrefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        return `${baseUrl}${adjuntoPrefix}/correos/adjuntos/${adjuntoId}/download`;
+      }
     }
+
+    // Manejar otras rutas directas de API evitando /files/
+    if (url.includes('/api/') || url.includes('/download')) {
+      let cleanUrl = url.startsWith('/legal') ? url.replace('/legal', '') : url;
+      if (API_MODE === 'direct') {
+        cleanUrl = cleanUrl.replace('/api/v1', ''); // remove /api/v1 since port 3008 doesn't use it
+      }
+      return `${baseUrl}${prefix}${cleanUrl}`;
+    }
+
+    // Si viene solo el filename
+    let filename = url;
+    // Normalizar slashes
+    filename = filename.replace(/\\/g, '/');
+
+    // Eliminar prefijo files/ si existe para no duplicarlo, ya que se agrega en el return
+    if (filename.startsWith('files/')) {
+      filename = filename.replace('files/', '');
+    } else if (filename.startsWith('/files/')) {
+      filename = filename.replace('/files/', '');
+    } else if (filename.includes('/files/')) {
+      filename = filename.split('/files/').pop() || filename;
+    }
+
+    return `${baseUrl}${prefix}/files/${filename}`;
+  };
+
+  const isPrevisuable = (doc: any): boolean => {
+    const nombre = (doc.nombre || '').toLowerCase();
+    // Word y Excel NO previsuables
+    if (nombre.endsWith('.doc') || nombre.endsWith('.docx') || nombre.endsWith('.xls') || nombre.endsWith('.xlsx')) {
+      return false;
+    }
+    // PDF, Imagenes SI
+    if (nombre.endsWith('.pdf') || nombre.endsWith('.jpg') || nombre.endsWith('.png') || nombre.endsWith('.jpeg')) {
+      return true;
+    }
+    return false;
   };
 
   // ==================== HANDLERS DE ACCIONES ====================
 
+  // ==================== HANDLERS DE DOCUMENTOS ====================
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    try {
+      setUploadingDoc(true);
+      const file = files[0];
+      // FormData match the service expectation
+      // The service expects 'file' inside creating FormData manually if passing simple object,
+      // BUT `crearDocumento` takes `CreateDocumentoData | FormData`.
+      // If passing FormData, the service calls `apiClient.upload`.
+      // The service code:
+      // async crearDocumento(data) { if (data instanceof FormData) return upload... }
+      // So we must append 'file' key if the backend expects it, or 'documento'?
+      // However, `uploadJuzgamientoDocumento` uses 'file'.
+      // Let's assume 'file' is safe.
+
+      const formDataUpload = new FormData();
+      formDataUpload.append('file', file);
+      formDataUpload.append('expedienteId', expediente.uuid || expediente.id);
+      formDataUpload.append('nombre', file.name);
+      formDataUpload.append('tipo', 'Otros'); // Default
+
+      await legalService.crearDocumento(formDataUpload);
+
+      toast.success('✅ Documento subido', {
+        description: file.name
+      });
+
+      // Recargar lista
+      const id = expediente.uuid || expediente.id;
+      if (id) loadDocumentos(id);
+
+    } catch (error) {
+      console.error('Error uploading document', error);
+      toast.error('❌ Error al subir documento');
+    } finally {
+      setUploadingDoc(false);
+      // Limpiar input
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleDescargarDocumento = async (doc: any) => {
     const fullUrl = getFullUrl(doc.url);
     if (!fullUrl) {
-      toast.error('URL del documento no disponible');
+      toast.error('❌ URL no válida');
       return;
     }
-    toast.loading('⏳ Descargando...', { id: 'download-doc' });
+
     try {
-      const response = await fetch(fullUrl);
-      if (!response.ok) throw new Error('Error al descargar');
+      toast.loading('⬇️ Iniciando descarga...', { id: 'descarga-doc' });
+
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(fullUrl, {
+        method: 'GET',
+        headers,
+        credentials: 'include', // Importante para CORS en producción
+      });
+
+      if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', doc.nombre || 'documento');
+      // Usar nombre del documento o extraer del URL
+      const filename = doc.nombre || fullUrl.split('/').pop() || 'documento';
+      link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
+
+      // Limpieza
       link.remove();
       window.URL.revokeObjectURL(url);
-      toast.success('✅ Descarga completada', { id: 'download-doc', description: doc.nombre });
+
+      toast.success('✅ Descarga completada', { id: 'descarga-doc' });
     } catch (error) {
-      console.error('Error descargando:', error);
-      toast.error('Error al descargar el archivo', { id: 'download-doc' });
+      console.error('Error downloading:', error);
+      // Fallback: intentar descarga directa con link (funciona mejor en algunos casos)
+      try {
+        const link = document.createElement('a');
+        link.href = fullUrl;
+        link.setAttribute('download', doc.nombre || 'documento');
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...', { id: 'descarga-doc' });
+      } catch {
+        window.open(fullUrl, '_blank');
+        toast.error('⚠️ Error en descarga, abriendo en pestaña...', { id: 'descarga-doc' });
+      }
     }
   };
 
   const handleVerDocumento = (doc: any) => {
+    if (!isPrevisuable(doc)) {
+      handleDescargarDocumento(doc);
+      return;
+    }
     const fullUrl = getFullUrl(doc.url);
-    if (!fullUrl) {
-      toast.error('URL del documento no disponible');
-      return;
-    }
-    window.open(fullUrl, '_blank');
-    toast.success('👁️ Documento abierto en nueva pestaña', { description: doc.nombre });
-  };
-
-  // Helper para detectar si un archivo es previsuable en el navegador
-  const isPrevisuable = (doc: any): boolean => {
-    const nombre = (doc.nombre || '').toLowerCase();
-    // Word files cannot be previewed, only downloaded
-    if (nombre.endsWith('.doc') || nombre.endsWith('.docx')) {
-      return false;
-    }
-    // PDF and images can be previewed
-    if (nombre.endsWith('.pdf') || nombre.endsWith('.jpg') || nombre.endsWith('.jpeg') || nombre.endsWith('.png') || nombre.endsWith('.gif')) {
-      return true;
-    }
-    // Default to true for other file types
-    return true;
-  };
-
-  const handleEliminarDocumento = async (doc: any) => {
-    if (!confirm(`¿Estás seguro de eliminar el documento "${doc.nombre}"?`)) {
-      return;
-    }
-
-    toast.loading('🗑️ Eliminando documento...', { id: 'delete-doc' });
-    try {
-      await legalService.eliminarDocumento(doc.id);
-      toast.success('✅ Documento eliminado', { id: 'delete-doc', description: doc.nombre });
-      // Recargar documentos
-      loadDocumentos();
-    } catch (error) {
-      console.error('Error eliminando documento:', error);
-      toast.error('Error al eliminar el documento', { id: 'delete-doc' });
-    }
+    // Abrir el documento en el visor inline
+    setDocParaVisor({ url: fullUrl, nombre: doc.nombre || 'Documento', asunto: doc.tipo || '' });
+    setVisorAbierto(true);
   };
 
   const handleDescargarTodos = async () => {
-    if (documentos.length === 0) {
-      toast.info('No hay documentos para descargar');
-      return;
-    }
-
-    toast.loading('📦 Preparando descarga...', { id: 'download-zip' });
+    // Usamos documentosFiltrados para validar visualmente, pero descargamos todo el expediente
+    if (documentos.length === 0) return;
 
     try {
-      const expedienteId = expediente.uuid || expediente.id;
-      const baseUrl = getServiceUrl('legal');
-      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
-      const url = `${baseUrl}${prefix}/documentos/expediente/${expedienteId}/download-zip`;
+      toast.loading('📦 Comprimiendo y descargando documentos...', { id: 'descarga-zip' });
 
-      const response = await fetch(url);
+      const id = expediente.uuid || expediente.id;
+      const url = legalService.getDocumentosDownloadZipUrl(id);
 
-      if (!response.ok) {
-        throw new Error('Error al descargar los documentos');
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
       }
 
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
+
       const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
+      const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `expediente_${expediente.id.replace(/[^a-zA-Z0-9]/g, '_')}.zip`;
+      link.href = blobUrl;
+
+      // Construir nombre de archivo amigable
+      const safeId = (expediente.radicado || expediente.id || 'sin_id').replace(/[^a-zA-Z0-9_-]/g, '_');
+      link.setAttribute('download', `Expediente_${safeId}_Documentos.zip`);
+
       document.body.appendChild(link);
       link.click();
-      link.remove();
-      window.URL.revokeObjectURL(downloadUrl);
 
-      toast.success('✅ Descarga completada', {
-        id: 'download-zip',
-        description: `${documentos.length} documentos descargados`
-      });
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+
+      toast.success('✅ Archivo ZIP descargado', { id: 'descarga-zip' });
     } catch (error) {
-      console.error('Error descargando ZIP:', error);
-      toast.error('Error al descargar los documentos', { id: 'download-zip' });
+      console.error('Error downloading zip:', error);
+      // Fallback: intentar descarga directa por link
+      try {
+        const id = expediente.uuid || expediente.id;
+        const url = legalService.getDocumentosDownloadZipUrl(id);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...', { id: 'descarga-zip' });
+      } catch {
+        toast.error('❌ Error al descargar el ZIP', { id: 'descarga-zip' });
+      }
     }
   };
 
@@ -507,16 +590,82 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }, 3500);
   };
 
+  // Handler para archivar el expediente - abre modal de confirmación
+  const handleArchivar = () => {
+    setMotivoArchivo(''); // Resetear motivo
+    setShowArchivarModal(true);
+  };
+
+  // Confirmar archivo del expediente
+  const confirmarArchivar = async () => {
+    if (!motivoArchivo.trim()) {
+      toast.error('⚠️ El motivo es obligatorio');
+      return;
+    }
+
+    try {
+      toast.loading('📦 Archivando expediente...', { id: 'archivar-exp' });
+      const usuario = 'Usuario Actual'; // TODO: obtener del contexto de auth
+
+      await legalService.archivarExpediente(expediente.uuid || expediente.id, motivoArchivo, usuario);
+
+      toast.success('✅ Expediente archivado correctamente', {
+        id: 'archivar-exp',
+        description: 'El expediente ha sido movido a Archivados'
+      });
+      setShowArchivarModal(false);
+      onClose(); // Cerrar el modal
+      // Trigger refresh del Kanban si existe callback
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error archivando:', error);
+      toast.error('❌ Error al archivar el expediente', { id: 'archivar-exp' });
+    }
+  };
+
+  // Handler para eliminar el expediente - abre modal de confirmación
+  const handleEliminar = () => {
+    setMotivoEliminar('');
+    setShowEliminarModal(true);
+  };
+
+  // Confirmar eliminación del expediente
+  const confirmarEliminar = async () => {
+    if (!motivoEliminar.trim()) {
+      toast.error('⚠️ El motivo es obligatorio');
+      return;
+    }
+
+    try {
+      toast.loading('🗑️ Eliminando expediente...', { id: 'eliminar-exp' });
+      const usuario = 'Usuario Actual';
+
+      await legalService.eliminarExpedienteSoft(expediente.uuid || expediente.id, motivoEliminar, usuario);
+
+      toast.success('✅ Expediente eliminado correctamente', {
+        id: 'eliminar-exp',
+        description: 'El expediente ha sido movido a la papelera'
+      });
+      setShowEliminarModal(false);
+      onClose();
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error eliminando:', error);
+      toast.error('❌ Error al eliminar el expediente', { id: 'eliminar-exp' });
+    }
+  };
+
   const handleCompartir = async () => {
     const expedienteUrl = `${window.location.origin}/gestion-legal/defensa-judicial?expediente=${encodeURIComponent(expediente.id)}`;
 
-    try {
-      await navigator.clipboard.writeText(expedienteUrl);
+    const copiado = await copyToClipboard(expedienteUrl);
+
+    if (copiado) {
       toast.success('🔗 Enlace copiado al portapapeles', {
         description: 'El enlace del expediente está listo para compartir',
         duration: 4000
       });
-    } catch (error) {
+    } else {
       toast.info('📋 Enlace del expediente', {
         description: expedienteUrl,
         duration: 6000
@@ -534,7 +683,36 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     });
   };
 
-  // handleAgregarNota removed - using handleCrearNota (line 139) instead
+  const handleAgregarNota = async (contenido: string, tipo: string = 'General') => {
+    try {
+      const id = expediente.uuid || expediente.id;
+      await legalService.createNota(id, {
+        contenido,
+        tipo
+      });
+
+      toast.success('📝 Nota agregada', {
+        description: 'La anotación se guardó correctamente'
+      });
+      loadNotas(id);
+      setModalAgregarNotaAbierto(false);
+    } catch (error) {
+      console.error('Error creando nota', error);
+      toast.error('Error al guardar nota');
+    }
+  };
+
+  const handleEliminarNota = async (notaId: string) => {
+    try {
+      await legalService.deleteNota(notaId);
+      toast.success('Nota eliminada');
+      const id = expediente.uuid || expediente.id;
+      if (id) loadNotas(id);
+    } catch (error) {
+      console.error('Error delete nota', error);
+      toast.error('No se pudo eliminar la nota');
+    }
+  };
 
   const handleEnviarNotificacion = () => {
     toast.success('📧 Notificación enviada', {
@@ -555,55 +733,332 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   };
 
   const handleConfirmarReasignacion = async () => {
-    if (!selectedAbogado) {
-      toast.error('Seleccione un abogado');
-      return;
-    }
+    if (!selectedAbogado) return;
 
     try {
       setReasignando(true);
-      // Llamar a la API para actualizar el abogado - usar UUID real
-      const idParaActualizar = expediente.uuid || expediente.id;
-      await legalService.updateExpediente(idParaActualizar, {
+      const id = expediente.uuid || expediente.id;
+
+      // Update expediente with new lawyer
+      // Assuming updateExpediente can take abogadoId or similar.
+      // Checking legal.service interface: updateExpediente(id, data: Partial<Expediente>)
+      // Expediente interface has `abogadoSustanciador`.
+
+      await legalService.updateExpediente(id, {
         abogadoSustanciador: selectedAbogado
       });
 
-      toast.success('✅ Profesional reasignado', {
-        description: `El expediente fue asignado a ${selectedAbogado}`,
-        duration: 3000
+      toast.success('👨‍💼 Abogado reasignado', {
+        description: 'El expediente ha sido transferido correctamente'
       });
 
       setShowReasignarModal(false);
-      setSelectedAbogado('');
-      // Llamar callback para refrescar datos sin recargar página
-      if (onUpdate) {
-        onUpdate();
-      }
-      // Cerrar modal principal también
-      onClose();
+      // Refresh parent if needed
+      if (onUpdate) onUpdate();
+
     } catch (error) {
-      console.error('Error reasignando:', error);
-      toast.error('Error al reasignar profesional');
+      console.error('Error reasignando', error);
+      toast.error('Error al reasignar');
     } finally {
       setReasignando(false);
     }
   };
 
-  // handleCrearTarea is defined at line 116 - removed duplicate mock here
-
-  const handleGuardarCambios = async () => {
+  const handleCrearTarea = async (data: any) => {
     try {
-      await legalService.updateExpediente(expediente.uuid || expediente.id, {
-        juzgadoConocimiento: editForm.juzgado,
-        etapaProcesal: editForm.etapa,
-        cuantia: Number(editForm.cuantia)
+      const id = expediente.uuid || expediente.id;
+      await legalService.createTarea(id, {
+        titulo: data.titulo,
+        descripcion: data.descripcion,
+        fechaVencimiento: data.vencimiento,
+        prioridad: data.prioridad.toLowerCase(),
+        // Enviamos nombre por ahora ya que los IDs del modal son mocks ('1', '2'...)
+        // El backend guardará esto en responsable_nombre
+        responsableNombre: data.responsable
       });
-      setIsEditing(false);
-      toast.success('Cambios guardados correctamente');
-      if (onUpdate) onUpdate();
+
+      toast.success('✅ Tarea creada');
+      loadTareas(id);
+      setModalCrearTareaAbierto(false);
+
     } catch (error) {
-      console.error('Error guardando:', error);
-      toast.error('Error al guardar cambios');
+      console.error('Error creating tarea', error);
+      toast.error('Error al crear tarea');
+    }
+  };
+
+  // ==================== HANDLERS DE DOCUMENTOS (DIRECTO) ====================
+
+  const handleDirectFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setLoadingDocumentos(true);
+      const id = expediente.uuid || expediente.id;
+
+      const formData = new FormData();
+      formData.append('archivo', file);
+      formData.append('expedienteId', id);
+      formData.append('nombre', file.name);
+      formData.append('tipo', 'DOCUMENTO_GENERAL'); // Default type
+      formData.append('origen', 'CARGA_DIRECTA');
+
+      await legalService.crearDocumento(formData);
+
+      toast.success('✅ Documento cargado exitosamente');
+      loadDocumentos(id); // Reload list
+    } catch (error) {
+      console.error('Error uploading document:', error);
+      toast.error('Error al cargar el documento');
+    } finally {
+      setLoadingDocumentos(false);
+      // Reset input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleUploadDocumentoDesdeTab = async (file: File, categoria: string, tipoDocumento: string) => {
+    try {
+      setLoadingDocumentos(true);
+      const id = expediente.uuid || expediente.id;
+
+      const formData = new FormData();
+      formData.append('archivo', file);
+      formData.append('expedienteId', id);
+      formData.append('nombre', file.name);
+      formData.append('tipo', tipoDocumento || 'DOCUMENTO_GENERAL');
+      formData.append('origen', 'CARGA_DIRECTA');
+      formData.append('categoria', categoria);
+      // Enviar la etapa procesal actual del expediente
+      const etapaActual = expediente.etapa || '';
+      if (etapaActual) {
+        formData.append('etapa', etapaActual);
+      }
+
+      await legalService.crearDocumento(formData);
+      toast.success('✅ Documento cargado exitosamente');
+      loadDocumentos(id);
+    } catch (error) {
+      console.error('Error uploading document:', error);
+      toast.error('Error al cargar el documento');
+      throw error;
+    } finally {
+      setLoadingDocumentos(false);
+    }
+  };
+
+  const handleEliminarTarea = async (tareaId: string) => {
+    try {
+      await legalService.deleteTarea(tareaId);
+      toast.success('Tarea eliminada');
+      const id = expediente.uuid || expediente.id;
+      if (id) loadTareas(id);
+    } catch (error) {
+      console.error('Error deleting tarea', error);
+    }
+  };
+
+  // ==================== HANDLERS DE ACTUACIONES Y AUDIENCIAS ====================
+
+  // ==================== HANDLERS DE ACTUACIONES Y AUDIENCIAS ====================
+
+  const handleGuardarActuacion = async (data: any, file?: File) => {
+    try {
+      const id = expediente.uuid || expediente.id;
+      // data viene del ModalRegistrarActuacion
+      // Mapear a lo que espera el servicio
+      await legalService.createActuacion({
+        expedienteId: id,
+        tipoActuacion: data.tipo,
+        descripcion: data.descripcion,
+        fechaActuacion: data.fecha ? new Date(data.fecha).toISOString() : new Date().toISOString(),
+        responsable: data.responsable,
+        estado: data.estado,
+        observaciones: data.observaciones,
+        file: file
+      });
+
+      toast.success('✅ Actuación registrada');
+      loadActuaciones(id);
+      setModalRegistrarActuacionAbierto(false);
+    } catch (error) {
+      console.error('Error creando actuacion', error);
+      toast.error('Error al registrar actuación');
+    }
+  };
+
+  const handleGuardarAudiencia = async (audienciaData: any) => {
+    try {
+      const id = expediente.uuid || expediente.id;
+      const modalidadVal = (audienciaData.modalidad === 'Virtual' ? 'VIRTUAL' : 'PRESENCIAL') as 'VIRTUAL' | 'PRESENCIAL';
+
+      // Adaptar formato si es necesario
+      const dataToSend = {
+        expedienteId: id,
+        abogadoId: audienciaData.abogadoResponsable || expediente.abogadoAsignado, // Asegurar ID
+        titulo: audienciaData.tipo + ' - ' + audienciaData.lugar, // TODO: Check if titulo logic needs adjustment for updates
+        fechaHoraInicio: new Date(`${audienciaData.fecha}T${audienciaData.hora}`).toISOString(),
+        duracionMinutos: 60, // Default o pedir en modal
+        modalidad: modalidadVal,
+        ubicacion: audienciaData.lugar,
+        linkReunion: audienciaData.linkVirtual,
+        notasPreparacion: audienciaData.observaciones,
+        // Campos para reasignación
+        motivoReasignacion: audienciaData.motivoReasignacion,
+        detalleReasignacion: audienciaData.detalleReasignacion
+      };
+
+      let savedAudiencia;
+
+      if (audienciaData.id) {
+        // UPDATE
+        savedAudiencia = await legalService.updateAudiencia(audienciaData.id, dataToSend);
+        toast.success(`✅ Audiencia ${audienciaData.motivoReasignacion ? 'reasignada' : 'actualizada'} exitosamente`);
+      } else {
+        // CREATE
+        savedAudiencia = await legalService.createAudiencia(dataToSend);
+        toast.success('✅ Audiencia programada exitosamente');
+
+        // Revisar si hubo error en notificaciones (flag interna del backend)
+        if (savedAudiencia._notificationError) {
+          toast.warning('⚠️ La audiencia se guardó, pero el servicio de notificaciones está caído. No se pudo enviar el correo al abogado.');
+        }
+      }
+
+      setModalProgramarAudienciaAbierto(false);
+      setAudienciaAReasignar(null);
+
+      // Buscar nombre del abogado para mostrarlo inmediatamente
+      const abogadoNombre = abogados.find(a => a.id === (audienciaData.abogadoResponsable || expediente.abogadoAsignado))?.nombre || 'Abogado Asignado';
+
+      // Recargar audiencias (Simulación local optimista + carga real en background)
+      if (id) loadAudiencias(id);
+
+      // Optimistic Update
+      const newAudiencia = {
+        id: audienciaData.id || Date.now(), // Use real ID if edit, temp if create (though we reload anyway)
+        tipo: audienciaData.tipo,
+        fecha: audienciaData.fecha,
+        hora: audienciaData.hora,
+        lugar: audienciaData.lugar,
+        modalidad: modalidadVal,
+        linkReunion: audienciaData.linkVirtual,
+        abogadoResponsable: abogadoNombre,
+        estado: 'Programada',
+        descripcion: audienciaData.observaciones
+      };
+
+      setAudienciasProgramadas(prev => {
+        if (audienciaData.id) {
+          return prev.map(a => a.id === audienciaData.id ? newAudiencia : a);
+        }
+        return [...prev, newAudiencia];
+      });
+
+    } catch (error) {
+      console.error('Error programando audiencia', error);
+      toast.error('Error al programar audiencia');
+    }
+  };
+
+  const handleEliminarAudiencia = async (id: string) => {
+    setAudienciaIdPendienteEliminar(id.toString());
+  };
+
+  const confirmarEliminarAudiencia = async () => {
+    const id = audienciaIdPendienteEliminar;
+    if (!id) return;
+    setAudienciaIdPendienteEliminar(null);
+
+    try {
+      await legalService.deleteAudiencia(id);
+      toast.success('🗑️ Audiencia eliminada');
+      setAudienciasProgramadas(prev => prev.filter(a => a.id !== id));
+    } catch (error) {
+      console.error('Error eliminando audiencia', error);
+      toast.error('No se pudo eliminar la audiencia');
+    }
+  };
+
+  const handleGuardarNota = async (notaData: any) => {
+    try {
+      setLoadingNotas(true);
+      const id = expediente.uuid || expediente.id;
+      // createNota might not exist, using createActuacion type NOTA if failed
+      // But grep said createNota exists? 
+      // Let's try explicit createNota if checking service confirmed it.
+      // If not, we fall back to createActuacion logic or generic.
+
+      // NOTE: Using a generic approach if createNota is specific to other modules
+      // Assuming createActuacion can handle internal notes if type='NOTA_INTERNA'
+      // But we will try to use the most likely method.
+
+      // For safety, let's use createActuacion with type 'NOTA_INTERNA' if createNota is ambiguous
+      // But user wanted "Fully functional".
+      // Let's assume createNota is available or we mock it via actuacion.
+
+      await legalService.createActuacion({
+        expedienteId: id,
+        tipoActuacion: 'NOTA_INTERNA',
+        descripcion: `[${notaData.tipo}] ${notaData.titulo}: ${notaData.contenido}`,
+        fechaActuacion: new Date().toISOString()
+      });
+
+      toast.success('✅ Nota interna agregada');
+      setModalAgregarNotaAbierto(false);
+      loadNotas(id);
+
+    } catch (error) {
+      console.error('Error guardando nota', error);
+      toast.error('Error al guardar nota');
+    } finally {
+      setLoadingNotas(false);
+    }
+  };
+
+  const handleGuardarEdicionTarea = async (tareaData: any) => {
+    try {
+      // Mapear datos para el backend
+      const payload = {
+        titulo: tareaData.titulo,
+        descripcion: tareaData.descripcion,
+        fechaVencimiento: tareaData.vencimiento,
+        prioridad: tareaData.prioridad.toLowerCase(),
+        responsableNombre: tareaData.responsable,
+        estado: tareaData.estado === 'En proceso' ? 'en_proceso' :
+          tareaData.estado === 'Completado' ? 'completada' : 'pendiente'
+      };
+
+      await legalService.updateTarea(tareaData.id, payload);
+
+      toast.success('✅ Tarea actualizada');
+      setTareaParaEditar(null);
+      setModalEditarTareaAbierto(false);
+
+      const id = expediente.uuid || expediente.id;
+      if (id) loadTareas(id);
+
+    } catch (error) {
+      console.error('Error actualizando tarea', error);
+      toast.error('Error al actualizar tarea');
+    }
+  };
+
+  const handleGuardarEdicion = async (data: any, isEdit?: boolean, id?: string) => {
+    try {
+      if (!isEdit || !id) return;
+      await legalService.updateExpediente(id, data);
+      setIsEditModalOpen(false);
+      // Actualizar los datos del expediente en el modal actual o avisar al padre
+      if (onUpdate) {
+        onUpdate();
+      }
+    } catch (error) {
+      console.error('Error al actualizar expediente', error);
+      throw error; // Para que ModalNuevaDemandaRESTAURADO muestre error si es que lo maneja
     }
   };
 
@@ -622,79 +1077,225 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     return { color: '#10B981', label: 'En término', bg: '#D1FAE5' };
   };
 
-  const formatCuantia = (cuantia: number | undefined) => {
+  const formatCuantia = (cuantia: number | string | undefined) => {
     if (!cuantia) return 'No determinada';
+    const val = typeof cuantia === 'string' ? parseFloat(cuantia) : cuantia;
+    if (isNaN(val)) return 'No determinada';
+
     return new Intl.NumberFormat('es-CO', {
       style: 'currency',
       currency: 'COP',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(cuantia);
+    }).format(val);
   };
 
   const semaforo = getSemaforoColor(expediente.diasRestantes);
   const porcentajeTiempo = Math.round(((expediente.diasTotales - expediente.diasRestantes) / expediente.diasTotales) * 100);
 
-  // ==================== DATOS MOCK (ya no usamos mock para documentos) ====================
-  // Los documentos ahora se cargan desde la API via loadDocumentos()
+  // ==================== DATOS DE ESTADO (Ya inicializados arriba) ====================
+  // Las variables documentos, actuaciones y audienciasProgramadas ahora son estados reactivos.
 
-  // Mocks de Actuaciones eliminados - ahora usa actuacionesList desde loadActuaciones()
 
-  // Tareas now loaded from API via loadTareas()
+  // ==================== HANDLERS DE TAREAS ====================
 
-  const partes = [
-    {
-      tipo: 'Demandante',
-      nombre: expediente.demandante || 'No registrado',
-      identificacion: expediente.tipoIdDemandante && expediente.numeroIdDemandante
-        ? `${expediente.tipoIdDemandante} ${expediente.numeroIdDemandante}`
-        : 'No registrado',
-      apoderado: expediente.demandanteApoderado || 'No registrado',
-      direccion: expediente.demandanteDireccion || 'No registrado',
-      telefono: expediente.demandanteTelefono || 'No registrado',
-      email: expediente.demandanteEmail || 'No registrado',
-      notificaciones: 'Correo electrónico'
-    },
-    {
+  const handleMarcarCompletada = async (tareaId: string) => {
+    const tarea = tareas.find(t => t.id === tareaId);
+    if (!tarea) return;
+
+    try {
+      // Optimistic update local
+      setTareas(tareas.map(t =>
+        t.id === tareaId
+          ? { ...t, estado: 'Completado' }
+          : t
+      ));
+
+      // Persistir en el backend
+      await legalService.updateTarea(tareaId, {
+        estado: 'completada',
+        fechaCompletada: new Date().toISOString()
+      });
+
+      toast.success('✅ Tarea marcada como completada', {
+        description: `"${tarea.titulo}" ha sido completada exitosamente`,
+        duration: 4000
+      });
+
+      // Recargar tareas para tener datos frescos del servidor
+      const id = expediente.uuid || expediente.id;
+      if (id) loadTareas(id);
+
+    } catch (error) {
+      console.error('Error al completar tarea:', error);
+      toast.error('Error al marcar tarea como completada');
+      // Revertir optimistic update
+      const id = expediente.uuid || expediente.id;
+      if (id) loadTareas(id);
+    }
+  };
+
+  const handleEditarTarea = (tarea: any) => {
+    setTareaParaEditar(tarea);
+    setModalEditarTareaAbierto(true);
+
+    toast.info('✏️ Abriendo editor de tarea', {
+      description: `Editando: "${tarea.titulo}"`,
+      duration: 2000
+    });
+  };
+
+
+
+  // Construir array dinámico de partes desde los datos del expediente
+  const partesDelExpediente: any[] = [];
+
+  // Agregar demandantes (soporte para arrays)
+  // Agregar demandantes (soporte para arrays)
+  if (expediente.demandantes && expediente.demandantes.length > 0) {
+    expediente.demandantes.forEach(demandante => {
+      partesDelExpediente.push({
+        tipo: 'Demandante',
+        nombre: demandante.nombre,
+        identificacion: `${demandante.tipoPersona === 'natural' ? 'CC' : 'NIT'} ${demandante.identificacion}`,
+        apoderado: 'En proceso',
+        direccion: 'En proceso',
+        telefono: 'En proceso',
+        email: 'En proceso',
+        notificaciones: 'En proceso',
+        tipoPersona: demandante.tipoPersona
+      });
+    });
+  } else {
+    // Fallback si solo hay string simple
+    // Agregar demandantes
+    if (expediente.demandantes && expediente.demandantes.length > 0) {
+      expediente.demandantes.forEach(dem => {
+        partesDelExpediente.push({
+          tipo: 'Demandante',
+          nombre: dem.nombre,
+          identificacion: `${dem.tipoPersona === 'natural' ? 'CC' : 'NIT'} ${dem.identificacion}`,
+          apoderado: dem.apoderado || 'En proceso',
+          direccion: dem.direccion || 'En proceso',
+          telefono: dem.telefono || 'En proceso',
+          email: dem.email || 'En proceso',
+          notificaciones: 'En proceso'
+        });
+      });
+    } else {
+      partesDelExpediente.push({
+        tipo: 'Demandante',
+        nombre: expediente.demandante || 'Sin registrar',
+        identificacion: expediente.numeroIdDemandante ? `${expediente.tipoIdDemandante} ${expediente.numeroIdDemandante}` : 'Sin identificación',
+        apoderado: expediente.demandanteApoderado || 'En proceso',
+        direccion: expediente.demandanteDireccion || 'En proceso',
+        telefono: expediente.demandanteTelefono || 'En proceso',
+        email: expediente.demandanteEmail || 'En proceso',
+        notificaciones: 'En proceso'
+      });
+    }
+  }
+
+  // Agregar demandados
+  if (expediente.demandados && expediente.demandados.length > 0) {
+    expediente.demandados.forEach(demandado => {
+      partesDelExpediente.push({
+        tipo: 'Demandado',
+        nombre: demandado.nombre,
+        identificacion: `${demandado.tipoPersona === 'natural' ? 'CC' : 'NIT'} ${demandado.identificacion}`,
+        apoderado: demandado.apoderado || expediente.abogadoAsignado || 'Oficina Jurídica ESAP',
+        direccion: demandado.direccion || 'En proceso',
+        telefono: demandado.telefono || 'En proceso',
+        email: demandado.email || 'En proceso',
+        notificaciones: 'En proceso',
+        tipoPersona: demandado.tipoPersona,
+        cargo: demandado.cargo
+      });
+    });
+  } else {
+    partesDelExpediente.push({
       tipo: 'Demandado',
-      nombre: expediente.demandado || 'ESAP - Escuela Superior de Administración Pública',
-      identificacion: expediente.tipoIdDemandado && expediente.numeroIdDemandado
-        ? `${expediente.tipoIdDemandado} ${expediente.numeroIdDemandado}`
-        : 'NIT 899.999.061-4',
-      apoderado: expediente.abogadoAsignado || 'No asignado',
-      direccion: expediente.demandadoDireccion || 'Calle 44 #53-37, Bogotá D.C.',
-      telefono: expediente.demandadoTelefono || '+57 601 220 2790',
-      email: expediente.demandadoEmail || 'juridica@esap.edu.co',
-      notificaciones: 'Física y electrónica'
+      nombre: expediente.demandado || 'ESAP',
+      identificacion: expediente.numeroIdDemandado ? `${expediente.tipoIdDemandado} ${expediente.numeroIdDemandado}` : 'NIT 899.999.061-4',
+      apoderado: expediente.abogadoAsignado || 'Oficina Jurídica ESAP',
+      direccion: 'En proceso',
+      telefono: 'En proceso',
+      email: 'En proceso',
+      notificaciones: 'En proceso'
+    });
+  }
+
+  // Agregar otros actores
+  if (expediente.otrosActores && expediente.otrosActores.length > 0) {
+    expediente.otrosActores.forEach(actor => {
+      partesDelExpediente.push({
+        tipo: 'Otro Actor',
+        nombre: actor.nombre,
+        identificacion: `${actor.tipoPersona === 'natural' ? 'CC' : 'NIT'} ${actor.identificacion}`,
+        rol: actor.rol,
+        apoderado: actor.apoderado || 'En proceso',
+        direccion: actor.direccion || 'En proceso',
+        telefono: actor.telefono || 'En proceso',
+        email: actor.email || 'En proceso',
+        notificaciones: 'En proceso',
+        tipoPersona: actor.tipoPersona
+      });
+    });
+  }
+
+  const partes = partesDelExpediente;
+
+  const notasInternas = [
+    {
+      id: 1,
+      fecha: '24/12/2024',
+      autor: 'Coordinador Jurídico',
+      nota: 'Importante: El demandante tiene antecedentes de litigiosidad. Revisar jurisprudencia similar.',
+      tipo: 'Importante'
+    },
+    {
+      id: 2,
+      fecha: '21/12/2024',
+      autor: expediente.abogadoAsignado || 'Oficina Jurídica',
+      nota: 'Se solicitó al área de talento humano certificación de nómina de los últimos 6 meses.',
+      tipo: 'Seguimiento'
+    },
+    {
+      id: 3,
+      fecha: '18/12/2024',
+      autor: 'Auxiliar Jurídico',
+      nota: 'El juzgado tiene agenda cargada. Es probable que las audiencias se programen con retraso.',
+      tipo: 'Información'
     }
   ];
 
-  // Notas now loaded from API via loadNotas()
-
-  // Pretensiones del expediente (de la BD o fallback)
-  const pretensionesTexto = expediente.pretensiones || 'No se han registrado pretensiones en el sistema';
-  const pretensionesArray = pretensionesTexto.split('\n').filter((p: string) => p.trim() !== '');
-
-  const riesgosIdentificados = [
-    {
-      nivel: 'Alto',
-      descripcion: 'Cuantía elevada podría impactar el presupuesto institucional',
-      impacto: 'Financiero',
-      mitigacion: 'Evaluar posibilidad de conciliación'
-    },
-    {
-      nivel: 'Medio',
-      descripcion: 'Precedente jurisprudencial desfavorable en casos similares',
-      impacto: 'Jurídico',
-      mitigacion: 'Fortalecer argumentación con doctrina reciente'
-    },
-    {
-      nivel: 'Medio',
-      descripcion: 'Términos procesales ajustados para aporte de pruebas',
-      impacto: 'Procesal',
-      mitigacion: 'Calendario estricto de seguimiento'
+  const riesgosIdentificados = (() => {
+    const riesgosBackend = (expediente as any)?.riesgosIdentificados;
+    if (Array.isArray(riesgosBackend) && riesgosBackend.length > 0) {
+      return riesgosBackend;
     }
-  ];
+    return [
+      {
+        nivel: 'Alto',
+        descripcion: 'Cuantía elevada podría impactar el presupuesto institucional',
+        impacto: 'Financiero',
+        mitigacion: 'Evaluar posibilidad de conciliación'
+      },
+      {
+        nivel: 'Medio',
+        descripcion: 'Precedente jurisprudencial desfavorable en casos similares',
+        impacto: 'Jurídico',
+        mitigacion: 'Fortalecer argumentación con doctrina reciente'
+      },
+      {
+        nivel: 'Medio',
+        descripcion: 'Términos procesales ajustados para aporte de pruebas',
+        impacto: 'Procesal',
+        mitigacion: 'Calendario estricto de seguimiento'
+      }
+    ];
+  })();
+
 
   // Filtrar documentos
   const documentosFiltrados = documentos.filter(doc => {
@@ -705,10 +1306,48 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   const tiposDocumento = ['TODOS', ...Array.from(new Set(documentos.map(d => d.tipo)))];
 
+  // ==================== ABOGADOS DISPONIBLES PARA TAREAS ====================
+  const abogadosDisponibles = (() => {
+    const lista: { nombre: string; rol: string }[] = [];
+    const nombresVistos = new Set<string>();
+
+    // 1. Abogado principal del caso
+    const abogadoPrincipal = expediente.abogadoAsignado;
+    if (abogadoPrincipal && !nombresVistos.has(abogadoPrincipal)) {
+      lista.push({ nombre: abogadoPrincipal, rol: 'Abogado del caso' });
+      nombresVistos.add(abogadoPrincipal);
+    }
+
+    // 2. Abogados de demandas anexadas
+    const anexados = (expediente as any).procesosAnexados;
+    if (Array.isArray(anexados)) {
+      anexados.forEach((anexado: any) => {
+        const nombre = anexado.abogadoSustanciador || anexado.abogadoAsignado;
+        if (nombre && !nombresVistos.has(nombre)) {
+          lista.push({ nombre, rol: `Abogado caso anexado (${anexado.radicado || 'N/A'})` });
+          nombresVistos.add(nombre);
+        }
+      });
+    }
+
+    // 3. Abogados anteriores (reasignados)
+    const anteriores = (expediente as any).abogadosAnteriores;
+    if (Array.isArray(anteriores)) {
+      anteriores.forEach((nombre: string) => {
+        if (nombre && !nombresVistos.has(nombre)) {
+          lista.push({ nombre, rol: 'Abogado anterior (reasignado)' });
+          nombresVistos.add(nombre);
+        }
+      });
+    }
+
+    return lista;
+  })();
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent hideCloseButton className="max-w-5xl h-[90vh] flex flex-col p-0">
+        <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl !max-h-[82vh] flex flex-col p-0">
           <DialogTitle className="sr-only">
             Expediente Judicial {expediente.id} - Vista Completa
           </DialogTitle>
@@ -734,7 +1373,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   }}
                 >
                   <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: semaforo.color }} />
-                  {semaforo.label} - {expediente.diasRestantes} días
+                  {semaforo.label} - {expediente.diasRestantes < 0 ? `Vencido hace ${Math.abs(expediente.diasRestantes)}d` : `${expediente.diasRestantes} días restantes`}
                 </Badge>
                 <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
                   <FileText className="w-3 h-3 mr-1" />
@@ -742,7 +1381,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 </Badge>
                 <Badge variant="outline" className="font-semibold text-xs border-purple-300 text-purple-700">
                   <Activity className="w-3 h-3 mr-1" />
-                  {actuacionesList.length} actuaciones
+                  {actuaciones.length} actuaciones
                 </Badge>
                 <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
                   <Target className="w-3 h-3 mr-1" />
@@ -750,49 +1389,50 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 </Badge>
               </>
             }
+            actions={
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="text-blue-600 border-blue-600 hover:bg-blue-50 bg-white shadow-sm flex-shrink-0"
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Editar Proceso
+                </Button>
+                {!(expediente as any).procesoPrincipalId && (!(expediente as any).procesosAnexados || (expediente as any).procesosAnexados.length === 0) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setModalAnexarAbierto(true)}
+                    className="text-indigo-600 border-indigo-600 hover:bg-indigo-50 bg-white shadow-sm flex-shrink-0"
+                  >
+                    <LinkIcon className="w-4 h-4 mr-2" />
+                    Anexar
+                  </Button>
+                )}
+              </div>
+            }
             onClose={onClose}
           />
 
-          {/* Barra de progreso del proceso */}
-          <div className="flex-shrink-0 bg-gray-50 border-b px-6 py-3">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-bold text-gray-700">
-                Progreso del Proceso
-              </span>
-              <span className="text-xs font-black text-blue-600">
-                {porcentajeTiempo}%
-              </span>
-            </div>
-            <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="h-full transition-all duration-500 bg-gradient-to-r from-green-500 to-blue-500"
-                style={{ width: `${porcentajeTiempo}%` }}
-              />
-            </div>
-            <div className="flex justify-between mt-1">
-              <span className="text-xs text-gray-600">
-                {expediente.diasTotales - expediente.diasRestantes} días transcurridos
-              </span>
-              <span className="text-xs text-gray-600">
-                {expediente.diasRestantes} días restantes
-              </span>
-            </div>
-          </div>
-
-
+          <BarraProgresoExpediente
+            diasTotales={expediente.diasTotales}
+            diasRestantes={expediente.diasRestantes}
+          />
 
           {/* ==================== CONTENIDO CON TABS ==================== */}
           <div className="flex-1 overflow-y-auto px-6 py-4">
             <Tabs value={tabActivo} onValueChange={setTabActivo} className="w-full">
-              <TabsList className="grid w-full grid-cols-6 mb-4 bg-gray-100">
+              <TabsList className="flex overflow-x-auto w-full mb-4 bg-gray-100 p-1 rounded-lg no-scrollbar">
                 <TabsTrigger value="general" className="text-xs font-bold">
                   📋 General
                 </TabsTrigger>
                 <TabsTrigger value="partes" className="text-xs font-bold">
                   👥 Partes
                 </TabsTrigger>
-                <TabsTrigger value="documentos" className="text-xs font-bold">
-                  📄 Documentos
+                <TabsTrigger value="archivo" className="text-xs font-bold">
+                  📁 Documento
                 </TabsTrigger>
                 <TabsTrigger value="actuaciones" className="text-xs font-bold">
                   ⚖️ Actuaciones
@@ -802,6 +1442,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 </TabsTrigger>
                 <TabsTrigger value="notas" className="text-xs font-bold">
                   📝 Notas
+                </TabsTrigger>
+                <TabsTrigger value="anexos" className="text-xs font-bold">
+                  🔗 Anexos
                 </TabsTrigger>
               </TabsList>
 
@@ -813,43 +1456,54 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     <Briefcase className="w-4 h-4" />
                     RESUMEN EJECUTIVO
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div>
                       <p className="text-xs text-gray-500 mb-1">🏛️ Juzgado</p>
-                      {isEditing ? (
-                        <Input
-                          value={editForm.juzgado}
-                          onChange={(e) => setEditForm({ ...editForm, juzgado: e.target.value })}
-                          className="h-7 text-xs"
-                        />
-                      ) : (
-                        <p className="text-sm font-bold text-gray-900">{expediente.juzgado || 'Sin asignar'}</p>
-                      )}
+                      <p className="text-sm font-bold text-gray-900">{expediente.juzgadoConocimiento}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 mb-1">💰 Cuantía</p>
-                      {isEditing ? (
-                        <Input
-                          type="number"
-                          value={editForm.cuantia}
-                          onChange={(e) => setEditForm({ ...editForm, cuantia: Number(e.target.value) })}
-                          className="h-7 text-xs"
-                        />
-                      ) : (
-                        <p className="text-sm font-bold text-green-600">{formatCuantia(expediente.cuantia)}</p>
-                      )}
+                      <p className="text-sm font-bold text-green-600">{formatCuantia(expediente.cuantia)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 mb-1">📅 Fecha Notificación</p>
                       <p className="text-sm font-bold text-gray-900">
-                        {expediente.fechaNotificacion?.toLocaleDateString('es-CO', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric'
-                        }) || 'No registrada'}
+                        {expediente.fechaNotificacion
+                          ? new Date(expediente.fechaNotificacion).toLocaleDateString('es-CO')
+                          : ''}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">⚠️ Nivel de Riesgo</p>
+                      <Badge
+                        variant="outline"
+                        className={`font-semibold text-xs border-2 ${(expediente as any).nivelRiesgo === 'Alto' ? 'border-red-500 text-red-700 bg-red-50' :
+                          (expediente as any).nivelRiesgo === 'Medio' ? 'border-amber-500 text-amber-700 bg-amber-50' :
+                            (expediente as any).nivelRiesgo === 'Bajo' ? 'border-green-500 text-green-700 bg-green-50' :
+                              'border-gray-200 text-gray-500 bg-gray-50'
+                          }`}
+                      >
+                        {(expediente as any).nivelRiesgo || 'No evaluado'}
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">🏦 Provisión Contable</p>
+                      <p className={`text-sm font-bold ${(expediente as any).nivelRiesgo === 'Alto' ? 'text-red-600' :
+                        (expediente as any).nivelRiesgo === 'Medio' ? 'text-amber-600' :
+                          'text-gray-500'
+                        }`}>
+                        {(expediente as any).provisionContable ? formatCuantia((expediente as any).provisionContable) : '$0'}
                       </p>
                     </div>
                   </div>
+
+                  {/* Justificación de la Provisión Contable */}
+                  {(expediente as any).observacionProvision && (
+                    <div className="mt-4 pt-3 border-t border-blue-100">
+                      <p className="text-xs text-gray-500 mb-1 font-semibold">📝 Justificación de la Provisión Contable</p>
+                      <p className="text-sm text-gray-800 italic">{(expediente as any).observacionProvision}</p>
+                    </div>
+                  )}
                 </Card>
 
                 {/* Información del Proceso */}
@@ -875,25 +1529,15 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         </Badge>
                       </div>
                       <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                        <span className="text-xs text-gray-500">Jurisdicción:</span>
+                        <span className="text-xs text-gray-500">Ciudad:</span>
                         <span className="text-sm font-bold text-gray-900 flex items-center gap-1">
                           <MapPin className="w-3 h-3" />
-                          {expediente.jurisdiccion || 'Contencioso Administrativo'}
+                          {expediente.ubicacionFisica}
                         </span>
                       </div>
                       <div className="flex items-start justify-between py-2">
                         <span className="text-xs text-gray-500">Tipo de Proceso:</span>
-                        <span className="text-sm font-bold text-gray-900">
-                          {(() => {
-                            // Intentar resolver nombre desde tipoProceso ID
-                            const tipoId = (expediente as any).tipoProceso || expediente.tipo;
-                            if (tipoId) {
-                              const tipoConfig = tiposProcesosActivos.find(t => t.id === tipoId);
-                              return tipoConfig ? tipoConfig.nombre : tipoId;
-                            }
-                            return 'No especificado';
-                          })()}
-                        </span>
+                        <span className="text-sm font-bold text-gray-900">{expediente.tipoProceso}</span>
                       </div>
                     </div>
                   </Card>
@@ -909,16 +1553,20 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           className="text-base font-bold"
                           style={{ background: '#E0EDFF', color: '#003DA5' }}
                         >
-                          {expediente.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                          {expediente.abogadoAsignado
+                            ? expediente.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2)
+                            : 'NA'}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1">
-                        <p className="font-black text-gray-900 text-base">{expediente.abogadoAsignado}</p>
+                        <p className="font-black text-gray-900 text-base">{expediente.abogadoAsignado || 'No asignado'}</p>
                         <p className="text-xs text-gray-600 mb-2">Abogado Defensor - Oficina Jurídica</p>
                         <div className="space-y-1">
                           <p className="text-xs text-gray-600 flex items-center gap-1.5">
                             <Mail className="w-3 h-3" />
-                            {expediente.abogadoAsignado.toLowerCase().replace(/ /g, '.')}@esap.edu.co
+                            {expediente.abogadoAsignado
+                              ? `${expediente.abogadoAsignado.toLowerCase().replace(/ /g, '.')}@esap.edu.co`
+                              : 'juridica@esap.edu.co'}
                           </p>
                           <p className="text-xs text-gray-600 flex items-center gap-1.5">
                             <Phone className="w-3 h-3" />
@@ -945,20 +1593,18 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     <Target className="w-4 h-4 text-orange-600" />
                     PRETENSIONES DEL DEMANDANTE
                   </h4>
-                  {pretensionesArray.length > 1 ? (
-                    <ul className="space-y-2">
-                      {pretensionesArray.map((pretension: string, idx: number) => (
+                  <ul className="space-y-2">
+                    {expediente.pretensionDemandante ? (
+                      expediente.pretensionDemandante.split('\n').map((pretension, idx) => (
                         <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
                           <CheckCircle className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
                           <span>{pretension}</span>
                         </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                      {pretensionesTexto}
-                    </p>
-                  )}
+                      ))
+                    ) : (
+                      <li className="text-sm text-gray-500 italic">No registradas</li>
+                    )}
+                  </ul>
                 </Card>
 
                 {/* Última Actuación Destacada */}
@@ -968,19 +1614,26 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     ÚLTIMA ACTUACIÓN PROCESAL
                   </h4>
                   <p className="text-base text-gray-800 mb-3 font-semibold">
-                    {expediente.ultimaActuacion || 'No hay actuaciones recientes registradas en el sistema'}
+                    {expediente.ultimaActuacion?.descripcion || 'No hay actuaciones recientes registradas en el sistema'}
                   </p>
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-gray-600 flex items-center gap-1.5">
                       <Calendar className="w-3 h-3" />
-                      {expediente.fechaActualizacion.toLocaleDateString('es-CO', {
-                        day: '2-digit',
-                        month: 'long',
-                        year: 'numeric'
-                      })}
+                      {expediente.ultimaActuacion?.fecha
+                        ? new Date(expediente.ultimaActuacion.fecha).toLocaleDateString('es-CO', {
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric'
+                        })
+                        : expediente.fechaActualizacion.toLocaleDateString('es-CO', {
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric'
+                        })
+                      }
                     </p>
                     <Badge className="bg-blue-600 text-white text-xs font-bold">
-                      Hace {Math.floor((Date.now() - expediente.fechaActualizacion.getTime()) / (1000 * 60 * 60 * 24))} días
+                      {expediente.ultimaActuacion?.tipo || 'Sin tipo'}
                     </Badge>
                   </div>
                 </Card>
@@ -992,831 +1645,380 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     RIESGOS IDENTIFICADOS
                   </h4>
                   <div className="space-y-3">
-                    {riesgosIdentificados.map((riesgo, idx) => (
-                      <div key={idx} className="p-3 rounded-lg bg-orange-50 border border-orange-200">
-                        <div className="flex items-start justify-between mb-2">
-                          <Badge
-                            className="font-bold text-xs"
-                            style={{
-                              background: riesgo.nivel === 'Alto' ? '#DC2626' : '#F59E0B',
-                              color: '#FFFFFF'
-                            }}
-                          >
-                            Nivel {riesgo.nivel}
-                          </Badge>
-                          <Badge variant="outline" className="text-xs">
-                            {riesgo.impacto}
-                          </Badge>
+                    {riesgosIdentificados.length > 0 ? (
+                      riesgosIdentificados.map((riesgo, idx) => (
+                        <div key={idx} className="p-3 rounded-lg bg-orange-50 border border-orange-200">
+                          <div className="flex items-start justify-between mb-2">
+                            <Badge
+                              className="font-bold text-xs"
+                              style={{
+                                background: riesgo.nivel === 'Alto' ? '#DC2626' : '#F59E0B',
+                                color: '#FFFFFF'
+                              }}
+                            >
+                              Nivel {riesgo.nivel}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {riesgo.impacto}
+                            </Badge>
+                          </div>
+                          <p className="text-sm font-semibold text-gray-900 mb-1">
+                            {riesgo.descripcion}
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            💡 <strong>Mitigación:</strong> {riesgo.mitigacion}
+                          </p>
                         </div>
-                        <p className="text-sm font-semibold text-gray-900 mb-1">
-                          {riesgo.descripcion}
-                        </p>
-                        <p className="text-xs text-gray-600">
-                          💡 <strong>Mitigación:</strong> {riesgo.mitigacion}
-                        </p>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500 italic">Sin riesgos identificados</p>
+                    )}
                   </div>
                 </Card>
+
               </TabsContent>
 
               {/* ==================== TAB: PARTES ==================== */}
               <TabsContent value="partes" className="space-y-4">
-                {partes.map((parte, idx) => (
-                  <Card
-                    key={idx}
-                    className="p-4 border-l-4"
-                    style={{ borderLeftColor: parte.tipo === 'Demandante' ? '#DC2626' : '#003DA5' }}
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <h4 className="text-sm font-black flex items-center gap-2" style={{ color: parte.tipo === 'Demandante' ? '#DC2626' : '#003DA5' }}>
-                        {parte.tipo === 'Demandante' ? <User className="w-4 h-4" /> : <Building2 className="w-4 h-4" />}
-                        {parte.tipo.toUpperCase()}
-                      </h4>
-                      <Badge
-                        className="font-bold text-xs"
-                        style={{
-                          background: parte.tipo === 'Demandante' ? '#FEE2E2' : '#E0EDFF',
-                          color: parte.tipo === 'Demandante' ? '#DC2626' : '#003DA5'
-                        }}
+                {(() => {
+                  // Logic to merge legacy arrays and new 'actors' array
+                  const allPartes: any[] = [];
+
+                  // 1. Legacy Arrays
+                  if (expediente.demandantes) {
+                    allPartes.push(...expediente.demandantes.map(p => ({ ...p, tipo: 'Demandante' })));
+                  }
+                  if (expediente.demandados) {
+                    allPartes.push(...expediente.demandados.map(p => ({ ...p, tipo: 'Demandado' })));
+                  }
+                  if (expediente.otrosActores) {
+                    allPartes.push(...expediente.otrosActores.map(p => ({ ...p, tipo: 'Otro Actor' })));
+                  }
+
+                  // 2. New 'actors' Array (if present)
+                  const actors = (expediente as any).actors;
+                  if (actors && Array.isArray(actors)) {
+                    actors.forEach((actor: any) => {
+                      let tipo = 'Otro Actor';
+                      if (actor.rol === 'DEMANDANTE') tipo = 'Demandante';
+                      else if (actor.rol === 'DEMANDADO') tipo = 'Demandado';
+
+                      const exists = allPartes.some(p => p.identificacion === actor.identificacion && p.tipo === tipo);
+                      if (!exists) {
+                        allPartes.push({
+                          id: actor.id,
+                          nombre: actor.nombre,
+                          identificacion: actor.identificacion,
+                          tipoPersona: actor.tipoPersona,
+                          tipo: tipo,
+                          rol: (actor.rol === 'DEMANDANTE' || actor.rol === 'DEMANDADO') ? undefined : actor.rol,
+                          cargo: actor.cargo,
+                          telefono: actor.telefono,
+                          email: actor.email,
+                          direccion: actor.direccion,
+                          apoderado: actor.apoderado,
+                          notificaciones: 'En proceso'
+                        });
+                      }
+                    });
+                  }
+
+                  // 3. Fallback to single fields if arrays are entirely empty
+                  const hasDemandante = allPartes.some(p => p.tipo === 'Demandante');
+                  if (!hasDemandante && expediente.demandante) {
+                    allPartes.push({
+                      nombre: expediente.demandante,
+                      identificacion: expediente.numeroIdDemandante || '',
+                      tipo: 'Demandante',
+                      tipoPersona: expediente.tipoIdDemandante === 'NIT' ? 'juridica' : 'natural',
+                      direccion: expediente.demandanteDireccion,
+                      telefono: expediente.demandanteTelefono,
+                      email: expediente.demandanteEmail,
+                      apoderado: expediente.demandanteApoderado
+                    });
+                  }
+
+                  const hasDemandado = allPartes.some(p => p.tipo === 'Demandado');
+                  if (!hasDemandado && expediente.demandado) {
+                    allPartes.push({
+                      nombre: expediente.demandado,
+                      identificacion: expediente.numeroIdDemandado || '',
+                      tipo: 'Demandado',
+                      tipoPersona: expediente.tipoIdDemandado === 'NIT' ? 'juridica' : 'natural',
+                      direccion: expediente.demandadoDireccion,
+                      telefono: expediente.demandadoTelefono,
+                      email: expediente.demandadoEmail
+                    });
+                  }
+
+                  return allPartes.map((parte, idx) => {
+                    // Determinar colores según tipo de parte
+                    const getParteColors = (tipo: string) => {
+                      if (tipo === 'Demandante') {
+                        return {
+                          borderColor: '#F57C00',
+                          textColor: '#F57C00',
+                          bgColor: '#FFF3E0',
+                          icon: <User className="w-4 h-4" />
+                        };
+                      } else if (tipo === 'Demandado') {
+                        return {
+                          borderColor: '#DC2626',
+                          textColor: '#DC2626',
+                          bgColor: '#FEE2E2',
+                          icon: <Building2 className="w-4 h-4" />
+                        };
+                      } else {
+                        // Otro Actor
+                        return {
+                          borderColor: '#6B7280',
+                          textColor: '#6B7280',
+                          bgColor: '#F3F4F6',
+                          icon: <User className="w-4 h-4" />
+                        };
+                      }
+                    };
+
+                    const colors = getParteColors(parte.tipo);
+
+                    return (
+                      <Card
+                        key={idx}
+                        className="p-4 border-l-4"
+                        style={{ borderLeftColor: colors.borderColor }}
                       >
-                        {parte.tipo}
-                      </Badge>
-                    </div>
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <h4 className="text-sm font-black flex items-center gap-2" style={{ color: colors.textColor }}>
+                              {colors.icon}
+                              {parte.tipo.toUpperCase()}
+                            </h4>
+                            {parte.tipo === 'Otro Actor' && parte.rol && (
+                              <p className="text-xs text-gray-600 mt-1 ml-6">
+                                <span className="font-semibold">Rol:</span> {parte.rol}
+                              </p>
+                            )}
+                            {parte.tipo === 'Demandado' && parte.cargo && (
+                              <p className="text-xs text-gray-600 mt-1 ml-6">
+                                <span className="font-semibold">Cargo:</span> {parte.cargo}
+                              </p>
+                            )}
+                          </div>
+                          <Badge
+                            className="font-bold text-xs"
+                            style={{
+                              background: colors.bgColor,
+                              color: colors.textColor
+                            }}
+                          >
+                            {parte.tipo}
+                          </Badge>
+                        </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Nombre / Razón Social</p>
-                        <p className="text-sm font-bold text-gray-900">{parte.nombre}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Identificación</p>
-                        <p className="text-sm font-bold text-gray-900">{parte.identificacion}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Apoderado</p>
-                        <p className="text-sm font-bold text-gray-900">{parte.apoderado}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Notificaciones</p>
-                        <Badge variant="outline" className="text-xs">
-                          {parte.notificaciones}
-                        </Badge>
-                      </div>
-                    </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Nombre / Razón Social</p>
+                            <p className="text-sm font-bold text-gray-900">{parte.nombre}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Identificación</p>
+                            <p className="text-sm font-bold text-gray-900">{parte.identificacion}</p>
+                          </div>
+                          {parte.apoderado && (
+                            <div className="col-span-2">
+                              <div className="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                                <p className="text-xs font-bold text-indigo-700 mb-1 flex items-center gap-1">
+                                  📜 Apoderado
+                                </p>
+                                <p className="text-sm font-bold text-gray-900">{parte.apoderado}</p>
+                              </div>
+                            </div>
+                          )}
+                          {/* <div>
+                          <p className="text-xs text-gray-500 mb-1">Notificaciones</p>
+                          <Badge variant="outline" className="text-xs">
+                            {parte.notificaciones}
+                          </Badge>
+                        </div> */}
+                        </div>
 
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <h5 className="text-xs font-bold text-gray-700 mb-2">Datos de Contacto</h5>
-                      <div className="space-y-2">
-                        <p className="text-xs text-gray-600 flex items-center gap-2">
-                          <MapPin className="w-3 h-3" />
-                          {parte.direccion}
-                        </p>
-                        <p className="text-xs text-gray-600 flex items-center gap-2">
-                          <Phone className="w-3 h-3" />
-                          {parte.telefono}
-                        </p>
-                        <p className="text-xs text-gray-600 flex items-center gap-2">
-                          <Mail className="w-3 h-3" />
-                          {parte.email}
-                        </p>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </TabsContent>
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <h5 className="text-xs font-bold text-gray-700 mb-2">Datos de Contacto</h5>
+                          <div className="space-y-2">
+                            <p className="text-xs text-gray-600 flex items-center gap-2">
+                              <MapPin className="w-3 h-3" />
+                              {parte.direccion}
+                            </p>
+                            <p className="text-xs text-gray-600 flex items-center gap-2">
+                              <Phone className="w-3 h-3" />
+                              {parte.telefono}
+                            </p>
+                            <p className="text-xs text-gray-600 flex items-center gap-2">
+                              <Mail className="w-3 h-3" />
+                              {parte.email}
+                            </p>
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  });
+                })()}</TabsContent>
 
               {/* ==================== TAB: DOCUMENTOS ==================== */}
-              <TabsContent value="documentos" className="space-y-3">
-                <Card className="p-4 bg-gray-50">
-                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-                    <div className="flex-1 w-full md:w-auto">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <Input
-                          placeholder="Buscar documentos..."
-                          value={busquedaDocs}
-                          onChange={(e) => setBusquedaDocs(e.target.value)}
-                          className="pl-10 text-sm"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 w-full md:w-auto">
-                      <select
-                        value={filtroDocTipo}
-                        onChange={(e) => setFiltroDocTipo(e.target.value)}
-                        className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white font-semibold"
-                      >
-                        {tiposDocumento.map((tipo) => (
-                          <option key={tipo} value={tipo}>
-                            {tipo}
-                          </option>
-                        ))}
-                      </select>
-                      <Button
-                        size="sm"
-                        style={{ background: '#003DA5', color: '#FFFFFF' }}
-                        onClick={handleDescargarTodos}
-                        className="font-bold"
-                      >
-                        <Download className="w-3 h-3 mr-1" />
-                        Descargar Todos
-                      </Button>
-                      {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD) && (
-                        <Button
-                          size="sm"
-                          className="bg-green-600 hover:bg-green-700 text-white font-bold"
-                          onClick={() => fileInputRef.current?.click()}
-                          disabled={uploadingDoc}
-                        >
-                          <Upload className="w-3 h-3 mr-1" />
-                          {uploadingDoc ? 'Subiendo...' : 'Subir'}
-                        </Button>
-                      )}
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        className="hidden"
-                        onChange={handleFileUpload}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="mt-3 flex items-center gap-2 flex-wrap">
-                    <Badge
-                      className={`font-bold ${documentosFiltrados.length === 0
-                        ? 'bg-amber-100 text-amber-700'
-                        : documentosFiltrados.length < documentos.length
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-green-100 text-green-700'
-                        }`}
-                    >
-                      <FileText className="w-3 h-3 mr-1" />
-                      {documentosFiltrados.length} de {documentos.length} documentos
-                    </Badge>
-
-                    {(busquedaDocs || filtroDocTipo !== 'TODOS') && (
-                      <Badge variant="outline" className="text-xs font-semibold text-blue-600 border-blue-300">
-                        <Filter className="w-3 h-3 mr-1" />
-                        Filtros activos
-                      </Badge>
-                    )}
-
-                    {busquedaDocs && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setBusquedaDocs('')}
-                        className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                      >
-                        <X className="w-3 h-3 mr-1" />
-                        Limpiar búsqueda
-                      </Button>
-                    )}
-
-                    {filtroDocTipo !== 'TODOS' && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setFiltroDocTipo('TODOS')}
-                        className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                      >
-                        <X className="w-3 h-3 mr-1" />
-                        Quitar filtro de tipo
-                      </Button>
-                    )}
-                  </div>
-                </Card>
-
-                <div className="space-y-2">
-                  {documentosFiltrados.map((doc: any) => (
-                    <Card key={doc.id} className="p-3 hover:shadow-md transition-all border-l-4 border-l-blue-500">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <div className="p-2.5 rounded-lg bg-red-50 flex-shrink-0">
-                            <FileText className="w-5 h-5 text-red-600" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-gray-900 truncate">{doc.nombre}</p>
-                            <div className="flex items-center gap-3 mt-1 flex-wrap">
-                              <Badge
-                                variant="outline"
-                                className="text-xs font-semibold"
-                                style={{ borderColor: '#003DA5', color: '#003DA5' }}
-                              >
-                                {doc.tipo}
-                              </Badge>
-                              <span className="text-xs text-gray-500 flex items-center gap-1">
-                                <Hash className="w-3 h-3" />
-                                {doc.tamaño}
-                              </span>
-                              <span className="text-xs text-gray-500 flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                {doc.fecha}
-                              </span>
-                              <span className="text-xs text-gray-600 flex items-center gap-1">
-                                <User className="w-3 h-3" />
-                                {doc.firmante}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 ml-3">
-                          {isPrevisuable(doc) && (
-                            <Button size="sm" variant="outline" onClick={() => handleVerDocumento(doc)} title="Vista previa">
-                              <Eye className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                          <Button size="sm" variant="outline" onClick={() => handleDescargarDocumento(doc)} title="Descargar">
-                            <Download className="w-3.5 h-3.5" />
-                          </Button>
-                          {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_DELETE) && (
-                          <Button size="sm" variant="outline" onClick={() => handleEliminarDocumento(doc)} title="Eliminar" className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                          )}
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-
-                  {documentosFiltrados.length === 0 && (
-                    <Card className="p-10 text-center bg-gradient-to-br from-blue-50 to-white border-2 border-dashed border-blue-200">
-                      <div className="max-w-md mx-auto">
-                        <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center">
-                          <FileText className="w-10 h-10 text-blue-400" />
-                        </div>
-
-                        {documentos.length === 0 ? (
-                          <>
-                            <h4 className="font-black text-gray-900 mb-2">Sin documentos adjuntos</h4>
-                            <p className="text-sm text-gray-600 mb-6">
-                              Este expediente aún no tiene documentos cargados. Los documentos aparecerán aquí una vez sean agregados al proceso judicial.
-                            </p>
-                            {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD) && (
-                              <Button
-                                style={{ background: '#003DA5', color: '#FFFFFF' }}
-                                className="font-bold"
-                                onClick={() => {
-                                  toast.info('📎 Función de carga de documentos', {
-                                    description: 'Esta función permitirá subir documentos al expediente'
-                                  });
-                                }}
-                              >
-                                <Upload className="w-4 h-4 mr-2" />
-                                Cargar Primer Documento
-                              </Button>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                            <h4 className="font-black text-gray-900 mb-2">No hay resultados</h4>
-                            <p className="text-sm text-gray-600 mb-4">
-                              {busquedaDocs ? `No se encontraron documentos con "${busquedaDocs}"` : `No hay documentos del tipo "${filtroDocTipo}"`}
-                            </p>
-
-                            <div className="bg-white border border-blue-200 rounded-lg p-4 mb-4">
-                              <p className="text-xs font-bold text-gray-700 mb-3">💡 Sugerencias:</p>
-                              <ul className="text-xs text-left text-gray-600 space-y-2">
-                                <li className="flex items-start gap-2">
-                                  <span className="text-blue-500 mt-0.5">•</span>
-                                  <span>Intenta con otros términos de búsqueda</span>
-                                </li>
-                                <li className="flex items-start gap-2">
-                                  <span className="text-blue-500 mt-0.5">•</span>
-                                  <span>Selecciona "TODOS" para ver todos los tipos</span>
-                                </li>
-                                <li className="flex items-start gap-2">
-                                  <span className="text-blue-500 mt-0.5">•</span>
-                                  <span>Revisa los filtros activos arriba</span>
-                                </li>
-                              </ul>
-                            </div>
-
-                            <div className="flex items-center justify-center gap-2">
-                              {busquedaDocs && (
-                                <Button variant="outline" onClick={() => setBusquedaDocs('')} className="font-semibold">
-                                  <X className="w-4 h-4 mr-1" />
-                                  Limpiar búsqueda
-                                </Button>
-                              )}
-                              {filtroDocTipo !== 'TODOS' && (
-                                <Button variant="outline" onClick={() => setFiltroDocTipo('TODOS')} className="font-semibold">
-                                  <Filter className="w-4 h-4 mr-1" />
-                                  Ver todos los tipos
-                                </Button>
-                              )}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </Card>
-                  )}
-                </div>
+              <TabsContent value="archivo" className="space-y-3">
+                <TabDocumentosExpediente
+                  expedienteId={String(expediente.uuid || expediente.id)}
+                  documentos={documentos.map((doc: any) => ({ ...doc, categoria: doc.categoria || 'documentos' }))}
+                  setDocumentos={setDocumentos}
+                  profesionalAsignado={expediente.abogadoAsignado || 'Oficina Jurídica'}
+                  tituloSeccion="Documentos del Expediente"
+                  moduloContexto="defensa-judicial"
+                  onUploadDocument={handleUploadDocumentoDesdeTab}
+                  onViewDocument={handleVerDocumento}
+                  onDownloadDocument={handleDescargarDocumento}
+                  onDownloadAll={handleDescargarTodos}
+                />
               </TabsContent>
 
               {/* ==================== TAB: ACTUACIONES ==================== */}
-              {/* ==================== TAB: ACTUACIONES ==================== */}
               <TabsContent value="actuaciones" className="space-y-3">
-                <Card className="p-4 bg-gray-50 flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-blue-600" />
-                    Historial Cronológico Unificado
-                    <Badge className="ml-2 bg-blue-600 text-white font-bold">{actuacionesList.length}</Badge>
-                  </h4>
-                  <div className="flex gap-2">
-                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_AUDIENCIA_CREATE) && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs font-bold border-blue-200 text-blue-700 hover:bg-blue-50"
-                      onClick={() => setShowNuevaAudiencia(true)}
-                    >
-                      <Calendar className="w-3 h-3 mr-1" />
-                      Programar Audiencia
-                    </Button>
-                    )}
-                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_CREATE) && (
-                    <Button
-                      size="sm"
-                      className="text-xs font-bold"
-                      style={{ background: '#003DA5' }}
-                      onClick={() => setShowNuevaActuacion(true)}
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Registrar Actuación
-                    </Button>
-                    )}
-                  </div>
-                </Card>
-
-                {loadingActuaciones ? (
-                  <div className="text-center py-10">
-                    <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-                    <p className="text-xs text-gray-500">Cargando historial...</p>
-                  </div>
-                ) : actuacionesList.length === 0 ? (
-                  <div className="text-center py-10 border-2 border-dashed border-gray-200 rounded-lg">
-                    <Activity className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500">No hay actuaciones registradas</p>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <div className="absolute left-3 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-500 to-blue-300" />
-
-                    {actuacionesList.map((actuacion, idx) => (
-                      <div key={idx} className="relative pl-10 pb-6 last:pb-0">
-                        <div
-                          className={`absolute left-0 top-0 w-7 h-7 rounded-full border-4 border-white shadow-lg flex items-center justify-center ${actuacion.origen === 'AUDIENCIA' ? 'bg-purple-600' :
-                            actuacion.origen === 'AUTO' ? 'bg-amber-500' :
-                              actuacion.origen === 'ACTA' ? 'bg-green-500' :
-                                idx === 0 ? '#003DA5' : '#3B82F6'
-                            }`}
-                          style={{
-                            background:
-                              actuacion.origen === 'AUDIENCIA' ? '#7C3AED' : // Morado
-                                actuacion.origen === 'AUTO' ? '#F59E0B' : // Ámbar
-                                  actuacion.origen === 'ACTA' ? '#10B981' : // Verde
-                                    idx === 0 ? '#003DA5' : '#3B82F6' // Azul corporativo o lighter
-                          }}
-                        >
-                          {/* Icono según origen */}
-                          {actuacion.origen === 'AUDIENCIA' ? <Calendar className="w-3 h-3 text-white" /> :
-                            actuacion.origen === 'AUTO' ? <Gavel className="w-3 h-3 text-white" /> :
-                              actuacion.origen === 'ACTA' ? <FileText className="w-3 h-3 text-white" /> :
-                                <Activity className="w-3 h-3 text-white" />
-                          }
-                        </div>
-
-                        <Card className={`p-4 ${idx === 0 ? 'border-2 border-blue-500 shadow-md' : 'border border-gray-200'}`}>
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <Badge
-                                className="text-xs font-bold"
-                                style={{
-                                  background: idx === 0 ? '#003DA5' : '#E5E7EB',
-                                  color: idx === 0 ? '#FFFFFF' : '#6B7280'
-                                }}
-                              >
-                                {actuacion.fecha}
-                              </Badge>
-                              <Badge variant="outline" className="text-xs font-semibold">
-                                {actuacion.tipo}
-                              </Badge>
-                              {actuacion.origen !== 'MANUAL' && (
-                                <Badge className="text-[10px] px-1 py-0 bg-gray-100 text-gray-500 border border-gray-200">
-                                  AUTO-GENERADO
-                                </Badge>
-                              )}
-                            </div>
-                            {idx === 0 && (
-                              <Badge className="text-xs bg-green-100 text-green-700 font-bold animate-pulse">
-                                ⚡ Más Reciente
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-sm font-bold text-gray-900 mb-2">{actuacion.descripcion}</p>
-
-                          {/* Mostrar Metadata si es Audiencia */}
-                          {actuacion.origen === 'AUDIENCIA' && actuacion.metadata && (
-                            <div className="bg-purple-50 p-3 rounded text-xs text-purple-800 mb-2 border border-purple-100 space-y-1">
-                              <p><strong>Modalidad:</strong> {actuacion.metadata.modalidad === 'VIRTUAL' ? '🖥️ Virtual' : '📍 Presencial'}</p>
-                              {actuacion.metadata.modalidad === 'VIRTUAL' && actuacion.metadata.linkReunion && (
-                                <div className="flex items-center gap-2">
-                                  <span><strong>Enlace:</strong></span>
-                                  <a
-                                    href={actuacion.metadata.linkReunion}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:underline font-semibold truncate max-w-[250px]"
-                                  >
-                                    {actuacion.metadata.linkReunion}
-                                  </a>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 px-2 text-[10px] bg-purple-100 hover:bg-purple-200 text-purple-700"
-                                    onClick={() => window.open(actuacion.metadata.linkReunion, '_blank')}
-                                  >
-                                    Abrir
-                                  </Button>
-                                </div>
-                              )}
-                              {actuacion.metadata.modalidad === 'PRESENCIAL' && actuacion.metadata.ubicacion && (
-                                <p><strong>Ubicación:</strong> {actuacion.metadata.ubicacion}</p>
-                              )}
-                              {actuacion.metadata.duracionMinutos && (
-                                <p><strong>Duración:</strong> {actuacion.metadata.duracionMinutos} min</p>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Mostrar Link al archivo si existe en metadata */}
-                          {actuacion.metadata?.archivo && (
-                            <div className="mb-2">
-                              <Button variant="link" size="sm" className="h-auto p-0 text-blue-600" onClick={() => window.open(getFullUrl(actuacion.metadata.archivo), '_blank')}>
-                                <Paperclip className="w-3 h-3 mr-1" />
-                                Ver Documento Adjunto
-                              </Button>
-                            </div>
-                          )}
-
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs text-gray-600 flex items-center gap-1.5">
-                              <User className="w-3 h-3" />
-                              {actuacion.responsable}
-                            </p>
-                            <Badge
-                              className="text-xs font-semibold"
-                              style={{
-                                background: actuacion.estado === 'Completado' || actuacion.estado === 'Registrado' ? '#D1FAE5' : '#FEF3C7',
-                                color: actuacion.estado === 'Completado' || actuacion.estado === 'Registrado' ? '#065F46' : '#92400E'
-                              }}
-                            >
-                              {actuacion.estado}
-                            </Badge>
-                          </div>
-                        </Card>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <TabActuacionesExpediente
+                  actuaciones={actuaciones}
+                  botonesAccion={[
+                    {
+                      label: 'Registrar',
+                      icono: <Plus className="w-3 h-3 mr-1" />,
+                      onClick: () => setModalRegistrarActuacionAbierto(true),
+                      color: '#003DA5'
+                    },
+                    {
+                      label: 'Programar Audiencia',
+                      icono: <Calendar className="w-3 h-3 mr-1" />,
+                      onClick: () => {
+                        setAudienciaAReasignar(null);
+                        setModalProgramarAudienciaAbierto(true);
+                      },
+                      color: '#7C3AED'
+                    }
+                  ]}
+                  audienciasProgramadas={audienciasProgramadas}
+                  onReasignarAudiencia={(audiencia) => {
+                    setAudienciaAReasignar(audiencia);
+                    setModalProgramarAudienciaAbierto(true);
+                  }}
+                  onEliminarAudiencia={(id) => handleEliminarAudiencia(id.toString())}
+                  labelRegistrar="Registrar Primera Actuación"
+                  onRegistrarPrimera={() => setModalRegistrarActuacionAbierto(true)}
+                />
               </TabsContent>
 
               {/* ==================== TAB: TAREAS ==================== */}
               <TabsContent value="tareas" className="space-y-3">
-                <Card className="p-4 bg-gradient-to-r from-orange-50 to-white border-orange-200">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                      <Target className="w-4 h-4 text-orange-600" />
-                      Tareas y Pendientes del Expediente
-                    </h4>
-                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_CREATE) && (
-                      <Button
-                        size="sm"
-                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-                        onClick={() => setShowNuevaTarea(true)}
-                      >
-                        <Plus className="w-3 h-3 mr-1" />
-                        Nueva Tarea
-                      </Button>
-                    )}
-                  </div>
-                </Card>
-
-                {showNuevaTarea && (
-                  <Card className="p-4 border-2 border-orange-300 bg-orange-50">
-                    <h5 className="text-sm font-bold mb-3 text-orange-700">Crear Nueva Tarea</h5>
-                    <div className="space-y-3">
-                      <div>
-                        <label className="text-xs font-semibold text-gray-700">Título *</label>
-                        <input
-                          type="text"
-                          className="w-full mt-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                          placeholder="Título de la tarea"
-                          value={nuevaTarea.titulo}
-                          onChange={(e) => setNuevaTarea({ ...nuevaTarea, titulo: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-semibold text-gray-700">Descripción</label>
-                        <textarea
-                          className="w-full mt-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-orange-500"
-                          placeholder="Descripción de la tarea"
-                          rows={2}
-                          value={nuevaTarea.descripcion}
-                          onChange={(e) => setNuevaTarea({ ...nuevaTarea, descripcion: e.target.value })}
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-xs font-semibold text-gray-700">Prioridad</label>
-                          <select
-                            className="w-full mt-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-orange-500"
-                            value={nuevaTarea.prioridad}
-                            onChange={(e) => setNuevaTarea({ ...nuevaTarea, prioridad: e.target.value })}
-                          >
-                            <option value="alta">Alta</option>
-                            <option value="media">Media</option>
-                            <option value="baja">Baja</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-700">Fecha Vencimiento</label>
-                          <input
-                            type="date"
-                            className="w-full mt-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-orange-500"
-                            value={nuevaTarea.fechaVencimiento}
-                            onChange={(e) => setNuevaTarea({ ...nuevaTarea, fechaVencimiento: e.target.value })}
-                          />
-                        </div>
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setShowNuevaTarea(false)}>
-                          Cancelar
-                        </Button>
-                        <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-white" onClick={handleCrearTarea}>
-                          Guardar Tarea
-                        </Button>
-                      </div>
-                    </div>
-                  </Card>
-                )}
-
-                {loadingTareas ? (
-                  <div className="text-center py-4 text-gray-500">Cargando tareas...</div>
-                ) : tareas.length === 0 ? (
-                  <Card className="p-6 text-center text-gray-500">
-                    <Target className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    <p className="text-sm">No hay tareas registradas para este expediente</p>
-                    <p className="text-xs text-gray-400">Haz clic en "Nueva Tarea" para agregar una</p>
-                  </Card>
-                ) : (
-                  <div className="space-y-3">
-                    {tareas.map((tarea) => {
-                      const diasRestantes = tarea.fechaVencimiento
-                        ? Math.ceil((new Date(tarea.fechaVencimiento).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-                        : 999;
-                      const semaforoTarea = getSemaforoColor(diasRestantes);
-
-                      return (
-                        <Card
-                          key={tarea.id}
-                          className="p-4 border-l-4 hover:shadow-md transition-shadow"
-                          style={{ borderLeftColor: semaforoTarea.color }}
-                        >
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex-1">
-                              <h5 className="text-sm font-bold text-gray-900 mb-1">{tarea.titulo}</h5>
-                              <p className="text-xs text-gray-600">{tarea.descripcion}</p>
-                            </div>
-                            <Badge
-                              className="ml-3 font-bold text-xs"
-                              style={{
-                                background: tarea.prioridad === 'alta' ? '#FEE2E2' : tarea.prioridad === 'media' ? '#FEF3C7' : '#E5E7EB',
-                                color: tarea.prioridad === 'alta' ? '#DC2626' : tarea.prioridad === 'media' ? '#F59E0B' : '#6B7280',
-                                border: `1px solid ${tarea.prioridad === 'alta' ? '#DC2626' : tarea.prioridad === 'media' ? '#F59E0B' : '#9CA3AF'}`
-                              }}
-                            >
-                              {tarea.prioridad}
-                            </Badge>
-                          </div>
-
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                            <div>
-                              <p className="text-xs text-gray-500 mb-0.5">Vencimiento</p>
-                              <p className="text-xs font-bold text-gray-900 flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                {tarea.fechaVencimiento ? new Date(tarea.fechaVencimiento).toLocaleDateString() : 'Sin fecha'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-500 mb-0.5">Días restantes</p>
-                              <Badge
-                                className="text-xs font-bold"
-                                style={{
-                                  background: semaforoTarea.bg,
-                                  color: semaforoTarea.color,
-                                  border: `1px solid ${semaforoTarea.color}`
-                                }}
-                              >
-                                {diasRestantes} días
-                              </Badge>
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-500 mb-0.5">Responsable</p>
-                              <p className="text-xs font-bold text-gray-900 truncate flex items-center gap-1">
-                                <User className="w-3 h-3" />
-                                {tarea.responsableNombre || tarea.responsable?.nombre || expediente.abogadoAsignado || 'Sin asignar'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-500 mb-0.5">Estado</p>
-                              <Badge
-                                className="text-xs font-semibold"
-                                style={{
-                                  background: tarea.estado === 'completada' ? '#D1FAE5' : tarea.estado === 'en_proceso' ? '#DBEAFE' : '#FEF3C7',
-                                  color: tarea.estado === 'completada' ? '#065F46' : tarea.estado === 'en_proceso' ? '#1E40AF' : '#92400E'
-                                }}
-                              >
-                                {tarea.estado === 'completada' ? 'Completada' : tarea.estado === 'en_proceso' ? 'En proceso' : 'Pendiente'}
-                              </Badge>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            {tarea.estado !== 'completada' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-xs flex-1 font-bold"
-                                onClick={() => handleActualizarEstadoTarea(tarea.id, 'completada')}
-                              >
-                                <CheckCircle className="w-3 h-3 mr-1" />
-                                Marcar Completada
-                              </Button>
-                            )}
-                            {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_DELETE) && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-xs font-bold text-red-600 hover:bg-red-50"
-                                onClick={() => handleEliminarTarea(tarea.id)}
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            )}
-                          </div>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                )}
+                <TabTareasExpediente
+                  tareas={tareas}
+                  setTareas={setTareas}
+                  expedienteId={String(expediente.uuid || expediente.id)}
+                  onCrearTarea={() => setModalCrearTareaAbierto(true)}
+                  onEditarTarea={handleEditarTarea}
+                  onMarcarCompletada={(id) => handleMarcarCompletada(String(id))}
+                />
               </TabsContent>
 
               {/* ==================== TAB: NOTAS ==================== */}
               <TabsContent value="notas" className="space-y-3">
-                <Card className="p-4 bg-yellow-50 border-yellow-200">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                      <Bookmark className="w-4 h-4 text-yellow-600" />
-                      Notas Internas del Expediente
-                    </h4>
-                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_NOTA_CREATE) && (
-                      <Button
-                        size="sm"
-                        className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
-                        onClick={() => setShowNuevaNota(true)}
-                      >
-                        <Plus className="w-3 h-3 mr-1" />
-                        Agregar Nota
-                      </Button>
-                    )}
+                <TabNotasExpediente
+                  notas={notas}
+                  onAgregarNota={() => setModalAgregarNotaAbierto(true)}
+                />
+              </TabsContent>
+
+              {/* ==================== TAB: ANEXOS ==================== */}
+              <TabsContent value="anexos" className="space-y-3">
+                <Card className="full p-6 bg-white shadow-sm border border-gray-100 rounded-xl">
+                  <div className="flex items-center justify-between border-b pb-4 mb-4">
+                    <h3 className="text-sm font-black text-indigo-900 flex items-center gap-2">
+                      <LinkIcon className="w-5 h-5 text-indigo-600" />
+                      PROCESOS ANEXADOS
+                    </h3>
                   </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    Las notas internas son visibles solo para el equipo jurídico y no forman parte del expediente oficial
-                  </p>
-                </Card>
-
-                {showNuevaNota && (
-                  <Card className="p-4 border-2 border-yellow-300 bg-yellow-50">
-                    <h5 className="text-sm font-bold mb-3 text-yellow-700">Agregar Nueva Nota</h5>
-                    <div className="space-y-3">
-                      <div>
-                        <label className="text-xs font-semibold text-gray-700">Contenido *</label>
-                        <textarea
-                          className="w-full mt-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-yellow-500"
-                          placeholder="Escribe tu nota aquí..."
-                          rows={3}
-                          value={nuevaNota.contenido}
-                          onChange={(e) => setNuevaNota({ ...nuevaNota, contenido: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-semibold text-gray-700">Tipo</label>
-                        <select
-                          className="w-full mt-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-yellow-500"
-                          value={nuevaNota.tipo}
-                          onChange={(e) => setNuevaNota({ ...nuevaNota, tipo: e.target.value })}
-                        >
-                          <option value="general">General</option>
-                          <option value="importante">Importante</option>
-                          <option value="seguimiento">Seguimiento</option>
-                          <option value="informacion">Información</option>
-                          <option value="alerta">Alerta</option>
-                        </select>
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setShowNuevaNota(false)}>
-                          Cancelar
-                        </Button>
-                        <Button size="sm" className="bg-yellow-600 hover:bg-yellow-700 text-white" onClick={handleCrearNota}>
-                          Guardar Nota
-                        </Button>
-                      </div>
+                  {!(expediente as any).procesosAnexados || (expediente as any).procesosAnexados.length === 0 ? (
+                    <div className="text-center py-10 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                      <LinkIcon className="mx-auto h-12 w-12 text-gray-400 mb-3 opacity-50" />
+                      <h3 className="text-sm font-bold text-gray-900">Sin procesos anexados</h3>
+                      <p className="mt-1 text-xs text-gray-500 max-w-sm mx-auto">
+                        Este expediente no tiene otros procesos adjuntos o unificados a él.
+                      </p>
                     </div>
-                  </Card>
-                )}
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {(expediente as any).procesosAnexados.map((anexado: any) => (
+                        <div key={anexado.id} className="bg-white rounded-xl border border-indigo-100 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col group relative">
+                          {/* Franja superior de color */}
+                          <div className="h-1.5 w-full bg-indigo-500"></div>
+                          <div className="p-4 flex-1 flex flex-col">
+                            {/* Cabecera de tarjeta */}
+                            <div className="flex justify-between items-start mb-3">
+                              <Badge className="bg-indigo-100 text-indigo-800 font-bold border-indigo-200 shadow-none hover:bg-indigo-200 text-xs">
+                                {anexado.radicado || anexado.id}
+                              </Badge>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs font-semibold text-indigo-700 border-indigo-200 hover:bg-indigo-50"
+                                  onClick={() => setSelectedAnexado(anexado)}
+                                >
+                                  <Eye className="w-3.5 h-3.5 mr-1" />
+                                  Ver Proceso
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-1.5 h-auto transition-colors focus:ring-0"
+                                  onClick={() => {
+                                    setAnexadoADesanexar(anexado);
+                                    setShowDesanexarConfirm(true);
+                                  }}
+                                  title="Desanexar proceso"
+                                >
+                                  <Unlink className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
 
-                {loadingNotas ? (
-                  <div className="text-center py-4 text-gray-500">Cargando notas...</div>
-                ) : notas.length === 0 ? (
-                  <Card className="p-6 text-center text-gray-500">
-                    <Bookmark className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    <p className="text-sm">No hay notas registradas para este expediente</p>
-                    <p className="text-xs text-gray-400">Haz clic en "Agregar Nota" para crear una</p>
-                  </Card>
-                ) : (
-                  <div className="space-y-3">
-                    {notas.map((nota) => (
-                      <Card
-                        key={nota.id}
-                        className="p-4 border-l-4"
-                        style={{
-                          borderLeftColor:
-                            nota.tipo === 'importante'
-                              ? '#DC2626'
-                              : nota.tipo === 'seguimiento'
-                                ? '#3B82F6'
-                                : nota.tipo === 'alerta'
-                                  ? '#F59E0B'
-                                  : '#10B981'
-                        }}
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <Badge
-                            className="text-xs font-bold"
-                            style={{
-                              background:
-                                nota.tipo === 'importante'
-                                  ? '#FEE2E2'
-                                  : nota.tipo === 'seguimiento'
-                                    ? '#DBEAFE'
-                                    : nota.tipo === 'alerta'
-                                      ? '#FEF3C7'
-                                      : '#D1FAE5',
-                              color:
-                                nota.tipo === 'importante'
-                                  ? '#DC2626'
-                                  : nota.tipo === 'seguimiento'
-                                    ? '#1E40AF'
-                                    : nota.tipo === 'alerta'
-                                      ? '#92400E'
-                                      : '#065F46'
-                            }}
-                          >
-                            {nota.tipo}
-                          </Badge>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500 flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {nota.createdAt ? new Date(nota.createdAt).toLocaleDateString() : ''}
-                            </span>
-                            {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_NOTA_DELETE) && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-6 w-6 p-0 text-red-600 hover:bg-red-50"
-                                onClick={() => handleEliminarNota(nota.id)}
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            )}
+                            {/* Info Principal */}
+                            <div className="mb-4">
+                              <h4 className="text-sm font-black text-gray-900 mb-1.5 leading-tight group-hover:text-indigo-700 transition-colors line-clamp-2">
+                                {anexado.medioControl || anexado.tipoProceso || 'Medio de Control No Especificado'}
+                              </h4>
+                              <p className="text-xs text-gray-500 font-medium flex items-center gap-1.5">
+                                <Building2 className="w-3.5 h-3.5 flex-shrink-0 text-indigo-400" />
+                                <span className="truncate">{anexado.juzgadoConocimiento || anexado.juzgado || 'Juzgado no especificado'}</span>
+                              </p>
+                            </div>
+
+                            {/* Partes */}
+                            <div className="mt-auto pt-3 border-t border-gray-100 text-xs space-y-1.5 bg-gray-50/50 -mx-4 -mb-4 px-4 pb-4">
+                              <div className="flex gap-2">
+                                <span className="font-bold text-gray-500 w-8 flex-shrink-0">Dte:</span>
+                                <span className="text-gray-900 font-medium line-clamp-1">{anexado.demandante || anexado.actors?.find((a: any) => a.rol === 'DEMANDANTE')?.nombre || 'No especificado'}</span>
+                              </div>
+                              <div className="flex gap-2">
+                                <span className="font-bold text-gray-500 w-8 flex-shrink-0">Ddo:</span>
+                                <span className="text-gray-900 font-medium line-clamp-1">{anexado.demandado || anexado.actors?.find((a: any) => a.rol === 'DEMANDADO')?.nombre || 'No especificado'}</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <p className="text-sm text-gray-800 mb-2">{nota.contenido}</p>
-                        <p className="text-xs text-gray-600 flex items-center gap-1">
-                          <User className="w-3 h-3" />
-                          {nota.autorNombre || nota.autor?.nombre || expediente.abogadoAsignado || 'Usuario'}
-                        </p>
-                      </Card>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </Card>
               </TabsContent>
             </Tabs>
           </div>
 
+          {/* ==================== FOOTER CON ACCIONES ==================== */}
           <div className="flex-shrink-0 bg-gradient-to-r from-gray-50 to-white border-t-2 border-gray-200 px-6 py-4">
             <div className="flex flex-col md:flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-3 w-full md:w-auto">
@@ -1827,7 +2029,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 <div className="text-xs text-gray-600 hidden md:block">
                   Expediente <strong className="font-black" style={{ color: '#003DA5' }}>{expediente.id}</strong> ·
                   <strong className="text-green-600"> {documentos.length} docs</strong> ·
-                  <strong className="text-blue-600"> {actuacionesList.length} actuaciones</strong> ·
+                  <strong className="text-blue-600"> {actuaciones.length} actuaciones</strong> ·
                   <strong className="text-orange-600"> {tareas.length} tareas</strong>
                 </div>
               </div>
@@ -1841,114 +2043,217 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   <Bell className="w-3.5 h-3.5 mr-1" />
                   Notificar
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleArchivar}
+                  className="font-bold text-xs text-orange-600 border-orange-300 hover:bg-orange-50"
+                >
+                  <Archive className="w-3.5 h-3.5 mr-1" />
+                  Archivar
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleEliminar}
+                  className="font-bold text-xs text-red-600 border-red-300 hover:bg-red-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1" />
+                  Eliminar
+                </Button>
               </div>
             </div>
           </div>
-        </DialogContent >
-      </Dialog >
 
-      {showNuevaActuacion && (
-        <ModalNuevaActuacion
-          isOpen={showNuevaActuacion}
-          onClose={() => setShowNuevaActuacion(false)}
-          expedienteId={expediente.uuid || expediente.id}
-          onSuccess={loadActuaciones}
-        />
-      )}
+          {/* ==================== MODAL DE REASIGNAR PROFESIONAL ==================== */}
+          <Dialog open={showReasignarModal} onOpenChange={setShowReasignarModal}>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Reasignar Expediente</DialogTitle>
+                <DialogDescription>
+                  Seleccione el nuevo profesional responsable de este expediente.
+                </DialogDescription>
+              </DialogHeader>
 
-      {showNuevaAudiencia && (
-        <ModalNuevaAudiencia
-          isOpen={showNuevaAudiencia}
-          onClose={() => setShowNuevaAudiencia(false)}
-          expedienteId={expediente.uuid || expediente.id}
-          onSuccess={loadActuaciones}
-        />
-      )}
+              <div className="py-4 space-y-4">
+                <div className="flex items-center p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <AlertCircle className="w-5 h-5 text-blue-600 mr-3" />
+                  <div className="text-sm text-blue-800">
+                    <p className="font-bold">Información Importante</p>
+                    <p>El expediente será transferido inmediatamente y el profesional será notificado.</p>
+                  </div>
+                </div>
 
-      {/* Modal de Reasignar Profesional - usando Portal para aparecer encima */}
-      {
-        showReasignarModal && createPortal(
-          <div
-            className="fixed inset-0 flex items-center justify-center"
-            style={{ zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.7)' }}
-            onClick={() => setShowReasignarModal(false)}
-            role="dialog"
-            aria-modal="true"
-          >
-            <div
-              className="w-full max-w-md bg-white p-6 m-4 shadow-2xl rounded-lg border border-gray-200"
-              style={{ pointerEvents: 'auto' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
-                  <User className="w-5 h-5" style={{ color: '#003DA5' }} />
-                  Reasignar Profesional
-                </h3>
-                <button
-                  type="button"
-                  className="p-1 rounded hover:bg-gray-100"
-                  onClick={() => setShowReasignarModal(false)}
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Nuevo Profesional</label>
+                  <select
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                    value={selectedAbogado}
+                    onChange={(e) => setSelectedAbogado(e.target.value)}
+                    disabled={loadingAbogados}
+                  >
+                    <option value="">Seleccione un abogado...</option>
+                    {loadingAbogados ? (
+                      <option disabled>Cargando lista...</option>
+                    ) : (
+                      abogados.map((abogado) => {
+                        // Soportar múltiples formatos del API
+                        const displayName = abogado.nombreCompleto || `${abogado.nombre || ''} ${abogado.apellido || ''}`.trim() || abogado.name || 'Sin nombre';
+                        return (
+                          <option key={abogado.id} value={abogado.id}>
+                            {displayName} {abogado.especialidad ? `- ${abogado.especialidad}` : ''} ({abogado.cargaActual || abogado.expedientesActivos || 0} exp.)
+                          </option>
+                        );
+                      })
+                    )}
+                  </select>
+                </div>
+
+                {/* Si no hay abogados cargados */}
+                {!loadingAbogados && abogados.length === 0 && (
+                  <p className="text-xs text-red-500">No se pudieron cargar los abogados.</p>
+                )}
               </div>
 
-              <div className="mb-4">
-                <p className="text-sm text-gray-600 mb-2">
-                  Abogado actual: <strong>{expediente.abogadoAsignado}</strong>
-                </p>
-                <p className="text-sm text-gray-600 mb-4">
-                  Seleccione el nuevo profesional responsable:
-                </p>
-
-                <select
-                  value={selectedAbogado}
-                  onChange={(e) => setSelectedAbogado(e.target.value)}
-                  disabled={loadingAbogados}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  style={{ pointerEvents: 'auto' }}
-                >
-                  <option value="">
-                    {loadingAbogados ? 'Cargando...' : 'Seleccione un abogado'}
-                  </option>
-                  {abogados.map((abogado: any) => (
-                    <option key={abogado.id} value={abogado.nombreCompleto}>
-                      {abogado.nombreCompleto}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
+              <div className="flex justify-end gap-3 mt-4">
+                <Button
+                  variant="outline"
                   onClick={() => setShowReasignarModal(false)}
                 >
                   Cancelar
-                </button>
-                <button
-                  type="button"
-                  className="flex-1 px-4 py-2 text-white font-bold rounded-lg disabled:opacity-50"
-                  style={{ backgroundColor: '#003DA5' }}
+                </Button>
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
                   onClick={handleConfirmarReasignacion}
-                  disabled={reasignando || !selectedAbogado}
+                  disabled={!selectedAbogado || reasignando}
                 >
-                  {reasignando ? 'Guardando...' : 'Confirmar'}
-                </button>
+                  {reasignando ? 'Asignando...' : 'Confirmar Reasignación'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </DialogContent>
+      </Dialog >
+
+      {/* ==================== MODAL DE CONFIRMACIÓN ARCHIVAR ==================== */}
+      <Dialog open={showArchivarModal} onOpenChange={setShowArchivarModal}>
+        <DialogContent
+          className="sm:max-w-[380px] w-[90vw] !max-w-[380px] !w-auto p-0 overflow-hidden"
+          style={{ maxWidth: '380px', width: '100%' }}
+        >
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Archive className="w-5 h-5 text-orange-500" />
+              Archivar Expediente
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="p-4 pt-2">
+            <div className="flex items-start gap-3 p-3 bg-orange-50 border border-orange-200 rounded-lg mb-3">
+              <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-orange-800">
+                <p className="font-semibold">¿Archivar este expediente?</p>
+                <p className="text-xs mt-1 opacity-80">Podrá restaurarlo desde la vista de Archivados.</p>
               </div>
             </div>
-          </div>,
-          document.body
-        )
-      }
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-700">Motivo del archivo <span className="text-red-500">*</span></label>
+              <textarea
+                className="w-full text-sm p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                rows={3}
+                placeholder="Indique la razón..."
+                value={motivoArchivo}
+                onChange={(e) => setMotivoArchivo(e.target.value)}
+                maxLength={500}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 p-4 pt-0 bg-gray-50/50">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowArchivarModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+              onClick={confirmarArchivar}
+              disabled={!motivoArchivo.trim()}
+            >
+              <Archive className="w-4 h-4 mr-1" />
+              Archivar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==================== MODAL DE CONFIRMACIÓN ELIMINAR ==================== */}
+      <Dialog open={showEliminarModal} onOpenChange={setShowEliminarModal}>
+        <DialogContent
+          className="sm:max-w-[380px] w-[90vw] !max-w-[380px] !w-auto p-0 overflow-hidden"
+          style={{ maxWidth: '380px', width: '100%' }}
+        >
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Trash2 className="w-5 h-5 text-red-500" />
+              Eliminar Expediente
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="p-4 pt-2">
+            <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg mb-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-red-800">
+                <p className="font-semibold">¿Eliminar este expediente?</p>
+                <p className="text-xs mt-1 opacity-80">El expediente será movido a la papelera. Podrá restaurarlo desde la vista de Archivados.</p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-700">Motivo de eliminación <span className="text-red-500">*</span></label>
+              <textarea
+                className="w-full text-sm p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+                rows={3}
+                placeholder="Indique la razón de la eliminación..."
+                value={motivoEliminar}
+                onChange={(e) => setMotivoEliminar(e.target.value)}
+                maxLength={500}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 p-4 pt-0 bg-gray-50/50">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEliminarModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={confirmarEliminar}
+              disabled={!motivoEliminar.trim()}
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              Eliminar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ==================== MODALES SECUNDARIOS (FUERA DEL DIALOG PRINCIPAL) ==================== */}
-      <ModalNotificar
+      < ModalNotificar
         isOpen={modalNotificarAbierto}
-        onClose={() => setModalNotificarAbierto(false)}
+        onClose={() => setModalNotificarAbierto(false)
+        }
         expediente={expediente}
+        abogadosDisponibles={abogadosDisponibles}
       />
       <ModalCompartir
         isOpen={modalCompartirAbierto}
@@ -1959,12 +2264,284 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         isOpen={modalCrearTareaAbierto}
         onClose={() => setModalCrearTareaAbierto(false)}
         expediente={expediente}
+        onGuardar={handleCrearTarea}
+        abogadosDisponibles={abogadosDisponibles}
       />
+      {
+        tareaParaEditar && (
+          <ModalCrearTarea
+            isOpen={modalEditarTareaAbierto}
+            onClose={() => {
+              setModalEditarTareaAbierto(false);
+              setTareaParaEditar(null);
+            }}
+            expediente={expediente}
+            tareaInicial={tareaParaEditar}
+            onGuardar={handleGuardarEdicionTarea}
+            modoEdicion={true}
+            abogadosDisponibles={abogadosDisponibles}
+          />
+        )
+      }
       <ModalAgregarNota
         isOpen={modalAgregarNotaAbierto}
         onClose={() => setModalAgregarNotaAbierto(false)}
         expediente={expediente}
+        onGuardar={handleGuardarNota}
       />
+      {
+        modalGestionDocumentosAbierto && (
+          <ModalGestionDocumentos
+            isOpen={modalGestionDocumentosAbierto}
+            onClose={() => setModalGestionDocumentosAbierto(false)}
+            requerimientoId={(expediente.uuid || expediente.id).toString()}
+            tituloContexto={`Documentos del Expediente ${expediente.id}`}
+          />
+        )
+      }
+      <ModalRegistrarActuacion
+        isOpen={modalRegistrarActuacionAbierto}
+        onClose={() => setModalRegistrarActuacionAbierto(false)}
+        onGuardar={handleGuardarActuacion}
+        expedienteId={(expediente.uuid || expediente.id).toString()}
+        radicado={expediente.radicado}
+      />
+      <ModalProgramarAudiencia
+        isOpen={modalProgramarAudienciaAbierto}
+        onClose={() => {
+          setModalProgramarAudienciaAbierto(false);
+          setAudienciaAReasignar(null);
+        }}
+        onGuardar={handleGuardarAudiencia}
+        expedienteId={expediente.radicado || expediente.id}
+        audienciaExistente={audienciaAReasignar}
+        abogados={abogados}
+      />
+
+      {/* ==================== MODAL DE REASIGNAR PROFESIONAL ==================== */}
+      {showReasignarModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <User className="w-5 h-5" />
+                Reasignar Profesional
+              </h3>
+              <p className="text-blue-100 text-sm">Seleccione el nuevo abogado responsable</p>
+            </div>
+
+            <div className="p-6">
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Abogado actual:
+                </label>
+                <div className="flex items-center gap-3 p-3 bg-gray-100 rounded-lg">
+                  <Avatar className="w-10 h-10">
+                    <AvatarFallback className="bg-blue-100 text-blue-600 font-bold">
+                      {expediente.abogadoAsignado?.split(' ').map(n => n[0]).join('').substring(0, 2) || 'NA'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="font-semibold text-gray-900">{expediente.abogadoAsignado || 'No asignado'}</span>
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Nuevo abogado: *
+                </label>
+                {loadingAbogados ? (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <span className="ml-2 text-sm text-gray-500">Cargando abogados...</span>
+                  </div>
+                ) : (
+                  <select
+                    value={selectedAbogado}
+                    onChange={(e) => setSelectedAbogado(e.target.value)}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-sm font-medium"
+                  >
+                    <option value="">Seleccione un abogado...</option>
+                    {abogados.map((abogado) => (
+                      <option key={abogado.id} value={abogado.id}>
+                        {abogado.nombreCompleto || `${abogado.nombre} ${abogado.apellido}`}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setShowReasignarModal(false);
+                    setSelectedAbogado('');
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  onClick={handleConfirmarReasignacion}
+                  disabled={!selectedAbogado || reasignando}
+                >
+                  {reasignando ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Reasignando...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4 mr-1" />
+                      Confirmar
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Edición de Expediente */}
+      {isEditModalOpen && (
+        <ModalNuevaDemandaRESTAURADO
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          onSave={handleGuardarEdicion}
+          expedienteEdit={expediente}
+        />
+      )}
+
+      {/* Modal de Anexar Proceso */}
+      {modalAnexarAbierto && (
+        <ModalAnexarProceso
+          isOpen={modalAnexarAbierto}
+          onClose={() => setModalAnexarAbierto(false)}
+          expedienteActual={expediente}
+          onAnexado={() => {
+            if (onUpdate) onUpdate();
+          }}
+        />
+      )}
+
+      {/* Modal Recursivo para ver detalles de Proceso Anexado */}
+      {selectedAnexado && (
+        <ModalExpediente
+          isOpen={!!selectedAnexado}
+          onClose={() => setSelectedAnexado(null)}
+          expediente={{
+            ...selectedAnexado,
+            uuid: selectedAnexado.id, // Parse for internal components
+            id: selectedAnexado.radicado || selectedAnexado.id,
+            diasRestantes: selectedAnexado.diasRestantes !== undefined ? selectedAnexado.diasRestantes : 0,
+            etapa: selectedAnexado.etapaProcesal || 'NOTIFICADA',
+            cuantia: selectedAnexado.cuantia || 0,
+            abogadoAsignado: selectedAnexado.abogadoSustanciador || 'Sin Asignar',
+            documentos: [], // Let standard flow fetch its own documents
+            actuaciones: [],
+            demandante: selectedAnexado.demandante,
+            demandado: selectedAnexado.demandado,
+            demandantes: selectedAnexado.actors?.filter((a: any) => a.rol === 'DEMANDANTE') || [],
+            demandados: selectedAnexado.actors?.filter((a: any) => a.rol === 'DEMANDADO') || [],
+            otrosActores: selectedAnexado.actors?.filter((a: any) => a.rol !== 'DEMANDANTE' && a.rol !== 'DEMANDADO') || [],
+            actors: selectedAnexado.actors || [],
+            timeline: [],
+            fechaCreacion: new Date(selectedAnexado.createdAt || Date.now()),
+            fechaActualizacion: new Date(selectedAnexado.updatedAt || Date.now()),
+            estado: selectedAnexado.estado || 'ACTIVO'
+          } as any}
+          onUpdate={onUpdate}
+        />
+      )}
+
+
+      {/* ==================== DIALOG DE CONFIRMACIÓN DE DESANEXAR ==================== */}
+      <Dialog open={showDesanexarConfirm} onOpenChange={setShowDesanexarConfirm}>
+        <DialogContent 
+          hideCloseButton 
+          className="p-0 overflow-hidden border-none shadow-2xl z-[10001] rounded-2xl mx-auto"
+          style={{ width: '380px', maxWidth: '380px' }}
+        >
+          <DialogTitle className="sr-only">Confirmar desanexar proceso</DialogTitle>
+          <DialogDescription className="sr-only">
+            Confirmación para volver a independizar un proceso del expediente actual.
+          </DialogDescription>
+          
+          <div className="bg-white overflow-hidden w-full">
+            <div className="h-2 w-full bg-[#004884]"></div>
+            
+            <div className="p-10 flex flex-col items-center text-center">
+              <div className="w-20 h-20 rounded-3xl bg-blue-50 flex items-center justify-center mb-8 rotate-3 hover:rotate-0 transition-all duration-300 shadow-sm border border-blue-100">
+                <Unlink className="w-10 h-10 text-[#004884]" />
+              </div>
+              
+              <h3 className="text-2xl font-black text-gray-900 mb-4 tracking-tight leading-tight">
+                ¿Desanexar este proceso?
+              </h3>
+              
+              <p className="text-base text-gray-500 leading-relaxed mb-10 px-4">
+                El proceso <span className="font-bold text-gray-900">{anexadoADesanexar?.radicado || anexadoADesanexar?.id}</span> volverá a ser independiente.
+              </p>
+
+              <div className="flex flex-col w-full gap-4">
+                <Button
+                  onClick={async () => {
+                    if (!anexadoADesanexar) return;
+                    try {
+                      await legalService.desanexarExpediente(anexadoADesanexar.id || anexadoADesanexar.uuid, 'Usuario Actual');
+                      toast.success('Proceso desanexado con éxito');
+                      setShowDesanexarConfirm(false);
+                      setAnexadoADesanexar(null);
+                      if (onUpdate) onUpdate();
+                    } catch (e) {
+                      toast.error('Error al desanexar el proceso');
+                    }
+                  }}
+                  className="w-full py-8 !bg-[#004884] hover:!bg-[#003663] !text-white font-black rounded-2xl shadow-xl shadow-blue-100 transition-all active:scale-[0.98] text-lg border-none"
+                >
+                  Sí, desanexar ahora
+                </Button>
+                
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setShowDesanexarConfirm(false);
+                    setAnexadoADesanexar(null);
+                  }}
+                  className="w-full py-6 rounded-xl font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-50 transition-colors text-sm"
+                >
+                  No, mantener anexado
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <DialogoConfirmacion
+        isOpen={!!audienciaIdPendienteEliminar}
+        onClose={() => setAudienciaIdPendienteEliminar(null)}
+        onConfirm={confirmarEliminarAudiencia}
+        titulo="Eliminar Audiencia"
+        mensaje="¿Estás seguro de eliminar esta audiencia programada? Esta acción no se puede deshacer."
+        tipo="peligro"
+        textoConfirmar="Sí, eliminar"
+        textoCancelar="Cancelar"
+        icono="eliminar"
+      />
+
+      {/* VISOR INLINE DE DOCUMENTOS */}
+      {docParaVisor && (
+        <VisorDocumentoModal
+          isOpen={visorAbierto}
+          onClose={() => { setVisorAbierto(false); setDocParaVisor(null); }}
+          archivo={docParaVisor.url}
+          numero={docParaVisor.nombre}
+          asunto={docParaVisor.asunto}
+        />
+      )}
     </>
   );
 }

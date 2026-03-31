@@ -24,4 +24,9 @@ export class SystemConfiguration {
     // Ejemplo: { "auditEnabled": true, "digitalSignature": false ... }
     @Column('jsonb', { default: {} })
     securitySettings: Record<string, boolean>;
+
+    // PLANTILLAS DE DOCUMENTOS (JSON)
+    // Ejemplo: { "oficios": [...], "autos": [...], "actas": [...] }
+    @Column('jsonb', { default: {} })
+    documentTemplates: Record<string, any>;
 }

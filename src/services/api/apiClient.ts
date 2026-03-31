@@ -13,7 +13,7 @@
  * - Direct Mode: Cada servicio en su puerto http://localhost:300X/{path}
  */
 
-import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS } from '../../config/environment';
+import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../config/environment';
 import type { ApiResponse, ApiError } from '../../types';
 import { toast } from 'sonner';
 
@@ -30,6 +30,19 @@ interface RequestConfig extends RequestInit {
 interface RetryConfig {
   attempts: number;
   delay: number;
+}
+
+export interface UploadProgressDetail {
+  progress: number;
+  loaded: number;
+  total: number;
+}
+
+export interface UploadRequestOptions {
+  onProgress?: (progress: number) => void;
+  onProgressDetail?: (detail: UploadProgressDetail) => void;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
 // ============================================================================
@@ -68,6 +81,24 @@ export class ApiClient {
   ): Promise<T> {
     const url = this.buildURL(endpoint, params);
     return this.request<T>(url, { method: 'GET', ...customConfig });
+  }
+
+  /**
+   * GET request para archivos binarios (Blob)
+   */
+  async getBlob(
+    endpoint: string,
+    params?: Record<string, any>,
+    customConfig?: RequestConfig
+  ): Promise<Blob> {
+    const url = this.buildURL(endpoint, params);
+    const {
+      skipAuth = false,
+      skipErrorToast = false,
+      ...fetchConfig
+    } = customConfig || {};
+
+    return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast);
   }
 
   /**
@@ -144,9 +175,18 @@ export class ApiClient {
   async upload<T = any>(
     endpoint: string,
     formData: FormData,
-    onProgress?: (progress: number) => void
+    options?: UploadRequestOptions | ((progress: number) => void)
   ): Promise<T> {
     const url = this.buildURL(endpoint);
+    const resolvedOptions: UploadRequestOptions = typeof options === 'function'
+      ? { onProgress: options }
+      : (options || {});
+    const {
+      onProgress,
+      onProgressDetail,
+      signal,
+      timeoutMs,
+    } = resolvedOptions;
 
     // Para upload, no enviamos Content-Type header (el browser lo setea automáticamente con boundary)
     const headers = getDefaultHeaders(true);
@@ -154,14 +194,24 @@ export class ApiClient {
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
+      let abortHandler: (() => void) | null = null;
+
+      if (signal?.aborted) {
+        reject(new DOMException('Carga cancelada por el usuario', 'AbortError'));
+        return;
+      }
 
       // Progress tracking
-      if (onProgress) {
+      if (onProgress || onProgressDetail) {
         xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const progress = Math.round((e.loaded / e.total) * 100);
-            onProgress(progress);
-          }
+          const total = e.lengthComputable ? e.total : 0;
+          const progress = total > 0 ? Math.round((e.loaded / total) * 100) : 0;
+          onProgress?.(progress);
+          onProgressDetail?.({
+            progress,
+            loaded: e.loaded,
+            total,
+          });
         });
       }
 
@@ -195,6 +245,10 @@ export class ApiClient {
         reject(new Error('Error de red al subir archivo'));
       });
 
+      xhr.addEventListener('abort', () => {
+        reject(new DOMException('Carga cancelada por el usuario', 'AbortError'));
+      });
+
       // Timeout
       xhr.addEventListener('timeout', () => {
         reject(new Error('Timeout al subir archivo'));
@@ -207,8 +261,19 @@ export class ApiClient {
         xhr.setRequestHeader(key, value as string);
       });
 
-      xhr.timeout = this.timeout;
+      if (signal) {
+        abortHandler = () => xhr.abort();
+        signal.addEventListener('abort', abortHandler, { once: true });
+      }
+
+      xhr.timeout = timeoutMs ?? this.timeout;
       xhr.send(formData);
+
+      xhr.addEventListener('loadend', () => {
+        if (signal && abortHandler) {
+          signal.removeEventListener('abort', abortHandler);
+        }
+      });
     });
   }
 
@@ -266,7 +331,8 @@ export class ApiClient {
     url: string,
     fetchConfig: RequestInit,
     skipAuth: boolean,
-    skipErrorToast: boolean
+    skipErrorToast: boolean,
+    allowRefresh = true,
   ): Promise<T> {
     const headers = skipAuth
       ? { 'Content-Type': 'application/json; charset=utf-8' }
@@ -293,10 +359,104 @@ export class ApiClient {
 
       clearTimeout(timeoutId);
 
+      // Token expirado: refrescar y reintentar UNA sola vez conservando método y body.
+      if (response.status === 401 && !skipAuth && allowRefresh) {
+        const newToken = await this.refreshAccessToken();
+        if (newToken) {
+          return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false);
+        }
+      }
+
       // Manejo de respuesta
       return await this.handleResponse<T>(response, skipErrorToast, skipAuth);
     } catch (error: any) {
       console.log('🔴 Error en request:', error);
+      clearTimeout(timeoutId);
+
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout');
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Ejecuta request GET para respuesta binaria (Blob)
+   */
+  private async executeBlobRequest(
+    url: string,
+    fetchConfig: RequestInit,
+    skipAuth: boolean,
+    skipErrorToast: boolean,
+    allowRefresh = true,
+  ): Promise<Blob> {
+    const headers = skipAuth
+      ? { Accept: '*/*' }
+      : getDefaultHeaders(true);
+
+    // Para descargas no enviamos Content-Type JSON.
+    delete (headers as any)['Content-Type'];
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await fetch(url, {
+        ...fetchConfig,
+        method: 'GET',
+        headers: {
+          ...headers,
+          ...fetchConfig.headers,
+        },
+        signal: controller.signal,
+        ...CORS_CONFIG,
+      });
+
+      clearTimeout(timeoutId);
+
+      // Token expirado: refrescar y reintentar una sola vez.
+      if (response.status === 401 && !skipAuth && allowRefresh) {
+        const newToken = await this.refreshAccessToken();
+        if (newToken) {
+          return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, false);
+        }
+      }
+
+      if (!response.ok) {
+        let errorMessage = 'Error al descargar archivo';
+
+        try {
+          const text = await response.text();
+          if (text) {
+            try {
+              const parsed = JSON.parse(text);
+              if (typeof parsed?.message === 'string') {
+                errorMessage = parsed.message;
+              } else if (Array.isArray(parsed?.message)) {
+                errorMessage = parsed.message.join(', ');
+              } else if (typeof parsed?.error === 'string') {
+                errorMessage = parsed.error;
+              }
+            } catch {
+              errorMessage = text;
+            }
+          }
+        } catch {
+          // Mantener mensaje por defecto
+        }
+
+        if (!skipErrorToast) {
+          this.showErrorToast(response.status, errorMessage);
+        }
+
+        const error: any = new Error(errorMessage);
+        error.status = response.status;
+        throw error;
+      }
+
+      return response.blob();
+    } catch (error: any) {
       clearTimeout(timeoutId);
 
       if (error.name === 'AbortError') {
@@ -315,17 +475,6 @@ export class ApiClient {
     skipErrorToast: boolean,
     skipAuth: boolean
   ): Promise<T> {
-    // Token expirado - intentar refresh solo si la petición requiere auth
-    if (response.status === 401 && !skipAuth) {
-      const originalRequest = response.url;
-      const newToken = await this.refreshAccessToken();
-
-      if (newToken) {
-        // Reintentar request con nuevo token
-        return this.get<T>(originalRequest);
-      }
-    }
-
     // Si es 204 No Content, retornar null
     if (response.status === 204) {
       return null as T;
@@ -333,20 +482,44 @@ export class ApiClient {
 
     // Parse response
     let data: ApiResponse<T> | ApiError;
+    let rawText = '';
 
     try {
-      const text = await response.text();
-      try {
-        data = JSON.parse(text);
-      } catch {
-        // If parsing fails, use text as error message or empty object
-        if (!response.ok) {
-          throw new Error(text || 'Error en la petición (sin detalles)');
-        }
-        data = {} as any; // For 200 OK with empty body
-      }
+      rawText = await response.text();
     } catch (error: any) {
-      throw new Error(error.message || 'Error al leer respuesta del servidor');
+      const readError: any = new Error(
+        error?.message || 'Error al leer respuesta del servidor'
+      );
+      readError.status = response.status;
+      readError.response = { status: response.status };
+      throw readError;
+    }
+
+    if (!rawText) {
+      if (response.ok) {
+        data = {} as any; // For 200 OK with empty body
+      } else {
+        const emptyError: any = new Error('Error en la petición (sin detalles)');
+        emptyError.status = response.status;
+        emptyError.response = { status: response.status, data: null };
+        throw emptyError;
+      }
+    } else {
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        if (response.ok) {
+          data = {} as any;
+        } else {
+          const plainTextError: any = new Error(rawText);
+          plainTextError.status = response.status;
+          plainTextError.response = {
+            status: response.status,
+            data: { message: rawText },
+          };
+          throw plainTextError;
+        }
+      }
     }
 
     // Success
@@ -435,11 +608,13 @@ export class ApiClient {
       const refreshToken = localStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
 
       if (!refreshToken) {
-        this.handleLogout();
+        // No hacer logout automático - solo retornar null
+        console.warn('No refresh token available');
         return null;
       }
 
-      const response = await fetch(`${this.baseURL}/auth/refresh`, {
+      // 🔄 Nuevo endpoint versionado para refresh
+      const response = await fetch(`${this.baseURL}${API_ENDPOINTS.AUTH.REFRESH}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
@@ -447,15 +622,24 @@ export class ApiClient {
       });
 
       if (!response.ok) {
-        this.handleLogout();
+        // No hacer logout automático - solo retornar null
+        console.warn('Token refresh failed with status:', response.status);
         return null;
       }
 
       const data = await response.json();
-      const newToken = data.data.accessToken;
+
+      // El backend expone el token en data.data.accessToken (contrato NestJS)
+      const newToken = data?.data?.accessToken || data?.accessToken;
+
+      if (!newToken) {
+        console.warn('Refresh response without accessToken');
+        return null;
+      }
 
       // Guardar nuevo token
       localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, newToken);
+      localStorage.setItem('esap_access_token', newToken);
 
       // Notificar a todos los subscribers
       this.refreshSubscribers.forEach((callback) => callback(newToken));
@@ -463,7 +647,7 @@ export class ApiClient {
 
       return newToken;
     } catch (error) {
-      this.handleLogout();
+      console.warn('Token refresh error:', error);
       return null;
     } finally {
       this.isRefreshing = false;
@@ -475,6 +659,7 @@ export class ApiClient {
    */
   private handleLogout(): void {
     localStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
+    localStorage.removeItem('esap_access_token');
     localStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
     localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
 

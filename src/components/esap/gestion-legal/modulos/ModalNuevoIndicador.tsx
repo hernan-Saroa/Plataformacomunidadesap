@@ -3,7 +3,7 @@
  * Modal para crear nuevos indicadores del Plan de Acción Institucional
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Target, Calendar, Users, TrendingUp } from 'lucide-react';
 import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
@@ -11,6 +11,8 @@ import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
 import { toast } from 'sonner@2.0.3';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
+import { legalService } from '../../../../services/api/legal.service';
 
 interface ModalNuevoIndicadorProps {
   isOpen: boolean;
@@ -19,6 +21,29 @@ interface ModalNuevoIndicadorProps {
 }
 
 export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIndicadorProps) {
+  // Obtener ejes estratégicos y tipos indicador desde el Context
+  const { getEjesEstrategicosActivos, getTiposIndicadoresActivos } = useConfiguracionesSIGL();
+  const ejesActivos = getEjesEstrategicosActivos();
+  const tiposIndicadorActivos = getTiposIndicadoresActivos();
+
+  // Cargar lista de abogados/profesionales
+  const [abogados, setAbogados] = useState<{ id: string; nombreCompleto: string; especialidad?: string }[]>([]);
+  useEffect(() => {
+    legalService.getAbogados()
+      .then((data: any[]) => {
+        const activos = data.filter((a: any) => !a.estado || a.estado === 'ACTIVO');
+        setAbogados(activos.map((a: any) => ({
+          id: a.id,
+          nombreCompleto: a.nombreCompleto,
+          especialidad: a.especialidad,
+        })));
+      })
+      .catch(() => { /* silencioso si falla */ });
+  }, []);
+
+  // 🐛 DEBUG: Ver si los ejes están cargando
+  console.log('🔍 Ejes Estratégicos Activos:', ejesActivos);
+
   const [formData, setFormData] = useState({
     codigo: '',
     nombre: '',
@@ -36,7 +61,7 @@ export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIn
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validaciones
     if (!formData.nombre.trim()) {
       toast.error('El nombre del indicador es obligatorio');
@@ -134,10 +159,9 @@ export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIn
                     className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                     required
                   >
-                    <option value="GESTION_INSTITUCIONAL">🏛️ Gestión Institucional</option>
-                    <option value="TALENTO_HUMANO">👥 Talento Humano</option>
-                    <option value="TRANSPARENCIA">🔍 Transparencia</option>
-                    <option value="TECNOLOGIA">💻 Tecnología</option>
+                    {ejesActivos.map(eje => (
+                      <option key={eje.id} value={eje.id}>{eje.icono} {eje.nombre}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -228,10 +252,9 @@ export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIn
                     className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                     required
                   >
-                    <option value="EFICIENCIA">⚡ Eficiencia</option>
-                    <option value="EFICACIA">🎯 Eficacia</option>
-                    <option value="GESTION">📊 Gestión</option>
-                    <option value="TRANSPARENCIA">🔍 Transparencia</option>
+                    {tiposIndicadorActivos.map(tipo => (
+                      <option key={tipo.id} value={tipo.id}>{tipo.icono} {tipo.nombre}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -285,14 +308,23 @@ export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIn
                 <Label htmlFor="responsable" className="text-sm font-semibold text-gray-700">
                   Responsable del Indicador <span className="text-red-600">*</span>
                 </Label>
-                <Input
+                <select
                   id="responsable"
-                  placeholder="Ej: Dr. Carlos Mendoza Torres"
                   value={formData.responsable}
                   onChange={(e) => handleChange('responsable', e.target.value)}
-                  className="border-2 border-gray-300 focus:border-blue-500"
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                   required
-                />
+                >
+                  <option value="">-- Seleccione un responsable --</option>
+                  {abogados.map(a => (
+                    <option key={a.id} value={a.nombreCompleto}>
+                      {a.nombreCompleto}{a.especialidad ? ` — ${a.especialidad}` : ''}
+                    </option>
+                  ))}
+                </select>
+                {abogados.length === 0 && (
+                  <p className="text-xs text-amber-600">Cargando profesionales... Si no aparecen, verifique la conexión.</p>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

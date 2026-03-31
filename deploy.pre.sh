@@ -50,10 +50,14 @@ usage() {
     echo "  up        - Iniciar todos los servicios"
     echo "  down      - Detener todos los servicios"
     echo "  restart   - Reiniciar todos los servicios"
-    echo "  rebuild   - Reconstruir y reiniciar todos los servicios"
+    echo "  rebuild   - Reconstruir sin bajar servicios y publicar al finalizar"
+    echo "  rebuild-frontend - Reconstruir y reiniciar solo frontend"
+    echo "  rebuild-service <servicio> - Reconstruir y reiniciar solo un servicio"
+    echo "  rebuild-select - Seleccionar interactivamente un servicio para rebuild"
     echo "  logs      - Ver logs de todos los servicios"
     echo "  status    - Ver estado de los servicios"
     echo "  clean     - Limpiar contenedores e imágenes no usados (NO borra volúmenes)"
+    echo "  clean-safe - Limpieza segura Docker (preserva volúmenes de BD PRE)"
     echo "  db-backup  - Crear backup de la base de datos"
     echo "  db-migrate - Ejecutar migraciones de base de datos"
     echo "  db-reset   - PELIGROSO: Eliminar volumen de DB y reiniciar (requiere confirmación)"
@@ -77,7 +81,7 @@ cmd_up() {
     echo ""
     echo -e "${YELLOW}URLs de acceso (PRE):${NC}"
     echo "  Frontend:    http://172.16.202.222"
-    echo "  API Gateway: http://172.16.202.222:3000"
+    echo "  API Gateway: http://172.16.202.222/services"
     echo ""
 }
 
@@ -97,15 +101,69 @@ cmd_restart() {
 
 # Comando: rebuild
 cmd_rebuild() {
-    echo -e "${YELLOW}Reconstruyendo servicios PRE...${NC}"
-    docker compose -f docker-compose.pre.yml down
-    # Construir imagenes
+    echo -e "${YELLOW}Reconstruyendo servicios PRE (sin detener la versión actual)...${NC}"
+    echo -e "${YELLOW}La aplicación seguirá disponible mientras termina el build.${NC}"
+
+    echo -e "${YELLOW}Limpiando node_modules/dist/build locales (frontend y backend) para reducir el contexto de build...${NC}"
+    rm -rf node_modules dist build
+    find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
+
+    # Construir imágenes con los contenedores actuales activos.
     docker compose -f docker-compose.pre.yml --env-file .env.pre build
+
+    # Publicar nueva versión una vez terminado el build.
     docker compose -f docker-compose.pre.yml --env-file .env.pre up -d
     # Ejecutar migraciones automáticamente
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
-    echo -e "${GREEN}Servicios PRE reconstruidos y reiniciados${NC}"
+    echo -e "${GREEN}Nueva versión publicada. Servicios PRE reconstruidos y reiniciados.${NC}"
+}
+
+# Comando: rebuild-frontend (rápido)
+cmd_rebuild_frontend() {
+    echo -e "${YELLOW}Reconstruyendo solo frontend PRE...${NC}"
+    docker compose -f docker-compose.pre.yml --env-file .env.pre build frontend
+    docker compose -f docker-compose.pre.yml --env-file .env.pre up -d --no-deps frontend
+    echo -e "${GREEN}Frontend PRE reconstruido y reiniciado${NC}"
+}
+
+# Comando: rebuild-service (rápido para un microservicio)
+cmd_rebuild_service() {
+    local service="$1"
+    if [ -z "$service" ]; then
+        echo -e "${RED}Error: Debes indicar el nombre del servicio${NC}"
+        echo -e "${YELLOW}Ejemplo: $0 rebuild-service auth-service${NC}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}Reconstruyendo servicio PRE: ${service}${NC}"
+    docker compose -f docker-compose.pre.yml --env-file .env.pre build "$service"
+    docker compose -f docker-compose.pre.yml --env-file .env.pre up -d --no-deps "$service"
+    echo -e "${GREEN}Servicio PRE ${service} reconstruido y reiniciado${NC}"
+}
+
+# Comando: rebuild-select (selección interactiva de servicio)
+cmd_rebuild_select() {
+    echo -e "${YELLOW}Cargando servicios PRE disponibles...${NC}"
+    mapfile -t services < <(docker compose -f docker-compose.pre.yml --env-file .env.pre config --services)
+
+    if [ ${#services[@]} -eq 0 ]; then
+        echo -e "${RED}No se encontraron servicios en docker-compose.pre.yml${NC}"
+        exit 1
+    fi
+
+    echo ""
+    echo -e "${GREEN}Selecciona un servicio PRE para rebuild:${NC}"
+    PS3="Ingresa el número (o Ctrl+C para cancelar): "
+    select selected in "${services[@]}"; do
+        if [ -n "$selected" ]; then
+            echo -e "${YELLOW}Servicio seleccionado: ${selected}${NC}"
+            cmd_rebuild_service "$selected"
+            break
+        else
+            echo -e "${RED}Opción inválida. Intenta de nuevo.${NC}"
+        fi
+    done
 }
 
 # Comando: logs
@@ -124,6 +182,35 @@ cmd_clean() {
     echo -e "${YELLOW}Limpiando recursos Docker no utilizados...${NC}"
     docker system prune -f
     echo -e "${GREEN}Limpieza completada${NC}"
+}
+
+# Comando: clean-safe (preserva datos de DB PRE)
+cmd_clean_safe() {
+    echo -e "${YELLOW}Limpieza segura Docker PRE (sin borrar volúmenes de BD)...${NC}"
+    echo -e "${YELLOW}Estado antes de limpiar:${NC}"
+    docker system df
+
+    docker container prune -f
+    docker image prune -f
+    docker builder prune -f --filter "until=168h"
+    docker network prune -f
+
+    # Eliminar solo volúmenes huérfanos, excepto los protegidos de BD PRE
+    while IFS= read -r v; do
+        [ -z "$v" ] && continue
+        case "$v" in
+            esap-pgdata-pre|codigosuperappesap_pgdata-pre)
+                echo -e "${YELLOW}Volumen protegido (omitido): $v${NC}"
+                ;;
+            *)
+                docker volume rm "$v" >/dev/null 2>&1 || true
+                ;;
+        esac
+    done < <(docker volume ls -qf dangling=true)
+
+    echo -e "${GREEN}Limpieza segura PRE completada${NC}"
+    echo -e "${YELLOW}Estado después de limpiar:${NC}"
+    docker system df
 }
 
 # Comando: db-backup
@@ -247,6 +334,15 @@ case "$1" in
     rebuild)
         cmd_rebuild
         ;;
+    rebuild-frontend)
+        cmd_rebuild_frontend
+        ;;
+    rebuild-service)
+        cmd_rebuild_service "$2"
+        ;;
+    rebuild-select)
+        cmd_rebuild_select
+        ;;
     logs)
         cmd_logs
         ;;
@@ -255,6 +351,9 @@ case "$1" in
         ;;
     clean)
         cmd_clean
+        ;;
+    clean-safe)
+        cmd_clean_safe
         ;;
     db-backup)
         cmd_db_backup

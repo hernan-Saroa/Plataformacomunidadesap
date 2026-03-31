@@ -1,7 +1,8 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { ProcesoCoactivoAdjunto } from './proceso-coactivo-adjunto.entity';
+import { TipoTasaReferencia } from './tasa-referencia.entity';
 
-export type EstadoProcesoCoactivo = 'IDENTIFICADO' | 'PERSUASIVO' | 'PREJURIDICO' | 'MANDAMIENTO' | 'EMBARGO' | 'FINALIZADO';
+export type EstadoProcesoCoactivo = 'PERSUASIVA' | 'COACTIVA' | 'MEDIDAS_CAUTELARES' | 'EXCEPCIONES' | 'LIQUIDACION';
 
 export interface DeudorInfo {
     nombre: string;
@@ -34,8 +35,8 @@ export class ProcesoCoactivo {
     @Column({
         type: 'enum',
         enumName: 'estado_proceso_coactivo',
-        enum: ['IDENTIFICADO', 'PERSUASIVO', 'PREJURIDICO', 'MANDAMIENTO', 'EMBARGO', 'FINALIZADO'],
-        default: 'IDENTIFICADO'
+        enum: ['PERSUASIVA', 'COACTIVA', 'MEDIDAS_CAUTELARES', 'EXCEPCIONES', 'LIQUIDACION'],
+        default: 'PERSUASIVA'
     })
     estado: EstadoProcesoCoactivo;
 
@@ -66,6 +67,27 @@ export class ProcesoCoactivo {
     })
     saldoPendiente: number;
 
+    // Campos añadidos para Resolución 492 / Manual de Cartera
+    @Column({ name: 'fecha_ejecutoria', type: 'timestamp', nullable: true })
+    fechaEjecutoria: Date | null;
+
+    @Column({
+        type: 'enum',
+        enum: TipoTasaReferencia,
+        default: TipoTasaReferencia.DIAN,
+        name: 'tipo_interes_aplicable',
+        nullable: true
+    })
+    tipoInteresAplicable: TipoTasaReferencia;
+
+    @Column({
+        name: 'valor_costas', type: 'numeric', precision: 15, scale: 2, default: 0, transformer: {
+            to: (value: number) => value,
+            from: (value: string) => parseFloat(value)
+        }
+    })
+    valorCostas: number;
+
     @Column({ name: 'notificaciones_enviadas', type: 'int', default: 0 })
     notificacionesEnviadas: number;
 
@@ -77,6 +99,18 @@ export class ProcesoCoactivo {
 
     @CreateDateColumn({ name: 'fecha_creacion' })
     fechaCreacion: Date;
+
+    @Column({ name: 'estado_archivo', type: 'varchar', length: 20, default: 'ACTIVO' })
+    estadoArchivo: 'ACTIVO' | 'ARCHIVADO' | 'ELIMINADO';
+
+    @Column({ name: 'fecha_archivo', type: 'timestamp', nullable: true })
+    fechaArchivo: Date | null;
+
+    @Column({ name: 'usuario_archivo', type: 'varchar', length: 150, nullable: true })
+    usuarioArchivo: string | null;
+
+    @Column({ name: 'motivo_archivo', type: 'text', nullable: true })
+    motivoArchivo: string | null;
 
     @UpdateDateColumn({ name: 'updated_at' })
     updatedAt: Date;
