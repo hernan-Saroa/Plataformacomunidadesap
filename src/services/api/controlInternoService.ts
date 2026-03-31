@@ -84,6 +84,72 @@ export interface ProcesoAuditable {
   updatedAt: string;
 }
 
+/**
+ * Evaluación de Proceso DAFP
+ * Permite múltiples evaluaciones por proceso con diferentes vigencias/fechas
+ */
+export interface EvaluacionProceso {
+  id: string;
+  procesoId: string;
+  proceso?: ProcesoAuditable;
+  // Encabezado
+  vigencia: number;
+  fechaCorte: string;
+  dependenciaResponsable: string;
+  // Riesgos inherentes
+  riesgosExtremos: number;
+  riesgosAltos: number;
+  riesgosModerados: number;
+  riesgosBajos: number;
+  totalRiesgos: number;
+  // Requerimientos especiales
+  requerimientoComite: boolean;
+  requerimientoEntesReg: boolean;
+  // Auditoría anterior
+  fechaUltimaAuditoria?: string;
+  resultadoUltimaAuditoria?: string;
+  // Score C+E-M
+  criticidad: number;
+  exposicion: number;
+  mitigantes: number;
+  scoreRiesgo: number;
+  // Cálculos DAFP
+  ponderacionRiesgo?: string;
+  diasTranscurridos?: number;
+  planRotacion?: string;
+  diasRotacion: number;
+  decisionRotacion?: string;
+  // Decisión final
+  decisionFinal?: string;
+  motivoDecision?: string;
+  prioridadRegla?: number;
+  // Metadatos
+  creadoPor?: string;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateEvaluacionProcesoDTO {
+  procesoId: string;
+  vigencia: number;
+  fechaCorte: string;
+  dependenciaResponsable: string;
+  riesgosExtremos?: number;
+  riesgosAltos?: number;
+  riesgosModerados?: number;
+  riesgosBajos?: number;
+  requerimientoComite?: boolean;
+  requerimientoEntesReg?: boolean;
+  fechaUltimaAuditoria?: string;
+  resultadoUltimaAuditoria?: string;
+  criticidad?: number;
+  exposicion?: number;
+  mitigantes?: number;
+  decisionFinal?: string;
+  motivoDecision?: string;
+}
+
 export interface AuditoriaProgramada {
   id: string;
   codigo: string;
@@ -490,6 +556,60 @@ class ControlInternoService {
    */
   async getPriorizacion(): Promise<any> {
     return client.get('/universo-auditorias/priorizacion');
+  }
+
+  // ==========================================================================
+  // EVALUACIONES DE PROCESO (DAFP)
+  // ==========================================================================
+
+  /**
+   * Obtiene todas las evaluaciones de proceso
+   */
+  async getEvaluaciones(vigencia?: number): Promise<EvaluacionProceso[]> {
+    const q = vigencia ? `?vigencia=${vigencia}` : '';
+    return client.get<EvaluacionProceso[]>(`/universo-auditorias/evaluaciones${q}`);
+  }
+
+  /**
+   * Obtiene una evaluación por ID
+   */
+  async getEvaluacionById(id: string): Promise<EvaluacionProceso> {
+    return client.get<EvaluacionProceso>(`/universo-auditorias/evaluaciones/${id}`);
+  }
+
+  /**
+   * Obtiene evaluaciones por proceso
+   */
+  async getEvaluacionesByProceso(procesoId: string): Promise<EvaluacionProceso[]> {
+    return client.get<EvaluacionProceso[]>(`/universo-auditorias/evaluaciones/proceso/${procesoId}`);
+  }
+
+  /**
+   * Obtiene estadísticas de evaluaciones por vigencia
+   */
+  async getEstadisticasEvaluaciones(vigencia: number): Promise<any> {
+    return client.get(`/universo-auditorias/evaluaciones/estadisticas/${vigencia}`);
+  }
+
+  /**
+   * Crea una nueva evaluación de proceso
+   */
+  async createEvaluacion(data: CreateEvaluacionProcesoDTO): Promise<EvaluacionProceso> {
+    return client.post<EvaluacionProceso>('/universo-auditorias/evaluaciones', data);
+  }
+
+  /**
+   * Actualiza una evaluación de proceso
+   */
+  async updateEvaluacion(id: string, data: Partial<CreateEvaluacionProcesoDTO>): Promise<EvaluacionProceso> {
+    return client.put<EvaluacionProceso>(`/universo-auditorias/evaluaciones/${id}`, data);
+  }
+
+  /**
+   * Elimina una evaluación de proceso
+   */
+  async deleteEvaluacion(id: string): Promise<void> {
+    return client.delete(`/universo-auditorias/evaluaciones/${id}`);
   }
 
   // ==========================================================================
