@@ -2927,7 +2927,7 @@ export class AuditoriasService {
         if (evento.usuarioId) {
           try {
             const personaResult = await this.dataSource.query(
-              'SELECT nom_largo FROM auth.personas WHERE id_tercero = $1',
+              'SELECT nom_largo FROM auth.personas WHERE id_person = $1',
               [evento.usuarioId]
             );
             

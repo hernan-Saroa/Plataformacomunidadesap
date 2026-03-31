@@ -378,28 +378,24 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     auditorLider,
     auditorAsignado,
     fechaInicio: formatearFecha(auditoriaBackend.fechaInicio),
-    // ✅ CRONOGRAMA 3 ETAPAS COMPLETO - DEBUG
+    // ✅ CRONOGRAMA 3 ETAPAS COMPLETO
     // Etapa 1: Planeación
     fechaFinPlaneacion: (() => {
       const val = auditoriaBackend.fechaFinPlaneacion;
-      console.log(`🔍 [TRANSFORM] fechaFinPlaneacion raw:`, val);
       return val ? formatearFecha(val) : undefined;
     })(),
     // Etapa 2: Ejecución
     fechaInicioEjecucion: (() => {
       const val = auditoriaBackend.fechaInicioEjecucion;
-      console.log(`🔍 [TRANSFORM] fechaInicioEjecucion raw:`, val);
       return val ? formatearFecha(val) : undefined;
     })(),
     fechaFinEjecucion: (() => {
       const val = auditoriaBackend.fechaFinEjecucion;
-      console.log(`🔍 [TRANSFORM] fechaFinEjecucion raw:`, val);
       return val ? formatearFecha(val) : undefined;
     })(),
     // Etapa 3: Comunicación
     fechaInicioComunicacion: (() => {
       const val = auditoriaBackend.fechaInicioComunicacion;
-      console.log(`🔍 [TRANSFORM] fechaInicioComunicacion raw:`, val);
       return val ? formatearFecha(val) : undefined;
     })(),
     fechaFin: formatearFecha(auditoriaBackend.fechaFin),
@@ -510,7 +506,6 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
           iniciales: generarIniciales(a.nombre)
         }));
         setAuditores(auditoresTransformados);
-        console.log(`✅ [useAuditoriasKanban] ${auditoresTransformados.length} auditores cargados`);
         return auditoresTransformados;
       }
       return [];
@@ -528,21 +523,15 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
       setLoading(true);
       setError(null);
 
-      console.log('🔍 [useAuditoriasKanban] Iniciando carga de auditorías...');
-
       // Obtener auditorías del backend
       const response = await controlInternoService.getAuditorias();
-      
-      console.log('📦 [useAuditoriasKanban] Respuesta del backend:', response);
       
       if (Array.isArray(response)) {
         // ✅ MEJORADO: Pasar auditores disponibles para resolver nombres
         const auditoriasTransformadas = response.map(aud => 
           transformarAuditoria(aud, auditoresDisponibles)
         );
-        console.log('🔄 [useAuditoriasKanban] Auditorías transformadas:', auditoriasTransformadas);
         setAuditorias(auditoriasTransformadas);
-        console.log(`✅ [useAuditoriasKanban] ${auditoriasTransformadas.length} auditorías cargadas del backend`);
       } else {
         console.warn('[useAuditoriasKanban] Respuesta no es array:', response);
         setAuditorias([]);

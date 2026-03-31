@@ -826,6 +826,7 @@ interface TarjetaAuditoriaProps {
   onEliminar: (aud: Auditoria) => void;
   onEditar: (aud: Auditoria) => void;
   onCrearPlan?: (aud: Auditoria) => void; // ← NUEVO: Crear Plan de Mejoramiento
+  puedeCrearPlan?: (aud: Auditoria) => boolean;
   colapsada?: boolean; // NUEVO: Estado de colapso
   onToggleColapso?: (id: string) => void; // NUEVO: Toggle colapso
   // ✅ Funciones de conteo dinámico
@@ -854,6 +855,7 @@ function TarjetaAuditoria({
   onEliminar,
   onEditar,
   onCrearPlan,
+  puedeCrearPlan,
   colapsada = false,
   onToggleColapso,
   contarHallazgos,
@@ -881,6 +883,9 @@ function TarjetaAuditoria({
   };
 
   const semaforo = semaforoIndicator[auditoria.semaforo];
+  const mostrarBotonCrearPlan = puedeCrearPlan
+    ? puedeCrearPlan(auditoria)
+    : auditoria.estado === 'Comunicación' && auditoria.hallazgos > 0;
 
   // VERSIÓN COLAPSADA
   if (colapsada) {
@@ -1299,7 +1304,7 @@ function TarjetaAuditoria({
             </div>
 
             {/* Botón Crear Plan: exclusivo de la etapa Comunicación */}
-            {auditoria.estado === 'Comunicación' && auditoria.hallazgos > 0 && onCrearPlan && (
+            {mostrarBotonCrearPlan && onCrearPlan && (
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1543,6 +1548,7 @@ interface ColumnaKanbanProps {
   onEliminar: (aud: Auditoria) => void;
   onEditar: (aud: Auditoria) => void;
   onCrearPlan?: (aud: Auditoria) => void; // ← NUEVO
+  puedeCrearPlan?: (aud: Auditoria) => boolean;
   tarjetasColapsadas?: Set<string>; // ← NUEVO: Set de IDs de tarjetas colapsadas
   onToggleColapsoTarjeta?: (id: string) => void; // ← NUEVO: Toggle para tarjetas individuales
   // ✅ Funciones de conteo dinámico
@@ -1570,6 +1576,7 @@ function ColumnaKanban({
   onEliminar,
   onEditar,
   onCrearPlan,
+  puedeCrearPlan,
   tarjetasColapsadas,
   onToggleColapsoTarjeta,
   contarHallazgos,
@@ -1785,6 +1792,7 @@ function ColumnaKanban({
               onEliminar={onEliminar}
               onEditar={onEditar}
               onCrearPlan={onCrearPlan}
+              puedeCrearPlan={puedeCrearPlan}
               contarHallazgos={contarHallazgos}
               contarHallazgosCriticos={contarHallazgosCriticos}
               contarTareasPendientes={contarTareasPendientes}
@@ -1870,6 +1878,7 @@ export function GestionAuditoriasKanbanSimple() {
   const [modoVista, setModoVista] = useState<'ajustado' | 'confortable'>('ajustado'); // Vista ajustada vs scroll
   const [columnaActiva, setColumnaActiva] = useState(0); // Para navegación por columnas
   const [mostrarMinimapa, setMostrarMinimapa] = useState(false); // Minimapa del tablero
+  const [auditoriasConPlan, setAuditoriasConPlan] = useState<Set<string>>(new Set());
 
   // ✅ NUEVO: Integración con Context - Recibir auditorías del Programa Anual
   const { 
@@ -1879,14 +1888,29 @@ export function GestionAuditoriasKanbanSimple() {
     seleccionarAuditoria
   } = useIntegracionAuditoriaPlanes();
 
+  const extraerAuditoriaIdPlan = (plan: any): string | null => {
+    const auditoriaId =
+      plan?.auditoriaId ||
+      plan?.auditoria_id ||
+      plan?.auditoria?.id ||
+      plan?.hallazgo?.auditoriaId ||
+      plan?.hallazgo?.auditoriaEntity?.id;
+
+    if (!auditoriaId) return null;
+    const idNormalizado = String(auditoriaId).trim();
+    return idNormalizado || null;
+  };
+
+  const puedeMostrarCrearPlan = (auditoria: Auditoria): boolean => {
+    return (
+      auditoria.estado === 'Comunicación' &&
+      auditoria.hallazgos > 0 &&
+      !auditoriasConPlan.has(auditoria.id)
+    );
+  };
+
   // ✅ SINCRONIZAR: Auditorías del backend con estado local
   useEffect(() => {
-    console.log('🔄 [SYNC] Hook disparado:', { 
-      auditoriasBackend: auditoriasBackend?.length, 
-      cargandoBackend,
-      primerAuditoria: auditoriasBackend?.[0]
-    });
-    
     // Solo sincronizar cuando terminó de cargar y hay datos
     if (!cargandoBackend && auditoriasBackend && auditoriasBackend.length > 0) {
       // Transformar auditorías del backend al formato local
@@ -1931,7 +1955,6 @@ export function GestionAuditoriasKanbanSimple() {
         documentoCierre: aud.documentoCierre,
       } as Auditoria));
       setAuditorias(auditoriasTransformadas);
-      console.log(`✅ [GestionAuditorias] ${auditoriasTransformadas.length} auditorías sincronizadas desde backend`);
       
       // ✅ CARGAR TAREAS: Cargar tareas para cada auditoría desde el backend
       auditoriasTransformadas.forEach(aud => {
@@ -1940,6 +1963,37 @@ export function GestionAuditoriasKanbanSimple() {
     }
     // No cargar MOCK automáticamente - el usuario decide en desarrollo
   }, [auditoriasBackend, cargandoBackend, cargarTareas]);
+
+  useEffect(() => {
+    let activo = true;
+
+    const cargarAuditoriasConPlan = async () => {
+      if (cargandoBackend) return;
+
+      try {
+        const planes = await controlInternoService.getPlanesMejoramiento();
+        if (!activo) return;
+
+        const idsConPlan = new Set<string>();
+        (planes || []).forEach((plan: any) => {
+          const auditoriaId = extraerAuditoriaIdPlan(plan);
+          if (auditoriaId) {
+            idsConPlan.add(auditoriaId);
+          }
+        });
+
+        setAuditoriasConPlan(idsConPlan);
+      } catch (error) {
+        console.warn('No se pudieron cargar planes de mejoramiento para validar auditorías:', error);
+      }
+    };
+
+    cargarAuditoriasConPlan();
+
+    return () => {
+      activo = false;
+    };
+  }, [cargandoBackend, auditoriasBackend]);
 
   // ✅ NUEVO: Effect para detectar scroll horizontal disponible
   useEffect(() => {
@@ -2877,6 +2931,11 @@ export function GestionAuditoriasKanbanSimple() {
         return;
       }
 
+      if (auditoriasConPlan.has(auditoria.id)) {
+        toast.info('Esta auditoría ya tiene un plan de mejoramiento creado');
+        return;
+      }
+
       // 1. Obtener hallazgos reales del backend si existen
       let hallazgosReales: HallazgoAuditoria[] = [];
       try {
@@ -2927,6 +2986,12 @@ export function GestionAuditoriasKanbanSimple() {
       toast.success(`Plan de Mejoramiento creado para ${auditoria.codigo}`, {
         description: `${hallazgos.length} hallazgos detectados. Ahora puede formular acciones correctivas.`,
         duration: 5000
+      });
+
+      setAuditoriasConPlan((prev) => {
+        const siguiente = new Set(prev);
+        siguiente.add(auditoria.id);
+        return siguiente;
       });
     } catch (err) {
       console.error('Error en handleCrearPlan:', err);
@@ -3637,6 +3702,7 @@ export function GestionAuditoriasKanbanSimple() {
                     onArchivar={handleArchivar}
                     onEliminar={handleEliminar}
                     onCrearPlan={handleCrearPlan}
+                    puedeCrearPlan={puedeMostrarCrearPlan}
                     onEditar={handleEditarAuditoria}
                     tarjetasColapsadas={tarjetasColapsadas}
                     onToggleColapsoTarjeta={toggleTarjetaColapsada}
@@ -4070,7 +4136,7 @@ export function GestionAuditoriasKanbanSimple() {
                       </Button>
                       
                       {/* Crear Plan: exclusivo de la etapa Comunicación */}
-                      {auditoria.estado === 'Comunicación' && auditoria.hallazgos > 0 && (
+                      {puedeMostrarCrearPlan(auditoria) && (
                         <Button 
                           size="sm" 
                           className="gap-2 flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white" 

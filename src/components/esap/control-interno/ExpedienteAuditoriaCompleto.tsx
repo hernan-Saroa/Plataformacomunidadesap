@@ -75,6 +75,7 @@ interface Auditoria {
   id: string;
   codigo: string;
   nombre: string;
+  territorial?: string;
   tipo: TipoAuditoria;
   estado: EstadoAuditoria;
   areaAuditable: string;
@@ -328,6 +329,7 @@ export function ExpedienteAuditoriaCompleto({
           id: data.id,
           codigo: data.codigo,
           nombre: data.nombre,
+          territorial: data.territorial || data.sede || undefined,
           tipo: (data.tipo === 'Regular' || data.tipo === 'Sede') ? 'Sede' : 
                 data.tipo === 'Territorial' ? 'Territorial' : 'Especial' as TipoAuditoria,
           // Priorizar estadoKanban (Seguimiento vs Finalizada) sobre fase (ambos son COMPLETADA)
@@ -2186,18 +2188,65 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
     }
   };
 
+  const construirAuditoriaPdfData = () => {
+    const fechaInicioPdf = resumen?.fechaInicio || auditoria.cronograma?.fechaInicio;
+    const fechaFinPdf = resumen?.fechaFin || auditoria.cronograma?.fechaFin;
+    const territorialAuditoria = (auditoria as any).territorial || undefined;
+
+    return {
+      codigo: resumen?.codigo || auditoria.codigo,
+      nombre: resumen?.nombre || auditoria.nombre,
+      tipo: auditoria.tipo,
+      estado: auditoria.estado,
+      areaAuditable: auditoria.areaAuditable,
+      procesoNombre: auditoria.procesoNombre,
+      nivelRiesgo: auditoria.nivelRiesgo,
+      territorial: territorialAuditoria,
+      auditorLider: auditoria.auditorLider?.nombre || '—',
+      auditorLiderEmail: auditoria.auditorLider?.email || '—',
+      responsableArea: {
+        nombre: auditoria.responsableArea?.nombre,
+        cargo: auditoria.responsableArea?.cargo,
+        email: auditoria.responsableArea?.email,
+        telefono: auditoria.responsableArea?.telefono,
+      },
+      equipoAuditores: (auditoria.equipoAuditores || []).map((a) => ({
+        nombre: a.nombre,
+        rol: a.rol,
+        email: a.email,
+      })),
+      cronograma: {
+        fechaInicio: fechaInicioPdf,
+        fechaFin: fechaFinPdf,
+        fechaCreacion: auditoria.cronograma?.fechaCreacion,
+        fechaFinReal: auditoria.cronograma?.fechaFinReal,
+        duracionDias: auditoria.cronograma?.duracionDias,
+        diasTranscurridos: auditoria.cronograma?.diasTranscurridos,
+      },
+      progreso: {
+        general: auditoria.progreso?.general ?? 0,
+      },
+      estadisticas: {
+        totalHallazgos: auditoria.estadisticas?.totalHallazgos ?? 0,
+        hallazgosCriticos: auditoria.estadisticas?.hallazgosCriticos ?? 0,
+        hallazgosMayores: auditoria.estadisticas?.hallazgosMayores ?? 0,
+        hallazgosMenores: auditoria.estadisticas?.hallazgosMenores ?? 0,
+        documentosCargados: auditoria.estadisticas?.documentosCargados ?? 0,
+        notificacionesEnviadas: auditoria.estadisticas?.notificacionesEnviadas ?? 0,
+      },
+      metadata: {
+        creadoPor: auditoria.metadata?.creadoPor,
+        ultimaModificacion: auditoria.metadata?.ultimaModificacion,
+        modificadoPor: auditoria.metadata?.modificadoPor,
+      },
+    };
+  };
+
   const generarYDescargarEjecutivo = async () => {
     try {
       const { exportarPDFInformeEjecutivo } = await import('./services/exportarPDFInformeCierreEjecutivo');
       const datos = {
-        auditoria: {
-          codigo: resumen?.codigo || auditoria.codigo,
-          nombre: resumen?.nombre || auditoria.nombre,
-          auditorLider: auditoria.auditorLider?.nombre || '—',
-          territorial: auditoria.territorial,
-          cronograma: { fechaInicio: resumen?.fechaInicio, fechaFin: resumen?.fechaFin },
-          progreso: { general: 100 },
-        },
+        auditoria: construirAuditoriaPdfData(),
         resumen: resumen ? { ...resumen } : null,
         planes: planes,
         hallazgos: hallazgos.map((h: any) => ({
@@ -2377,13 +2426,7 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
                 try {
                   const { exportarPDFInformeCierre } = await import('./services/exportarPDFInformeCierreEjecutivo');
                   const datos = {
-                    auditoria: {
-                      codigo: resumen?.codigo || auditoria.codigo,
-                      nombre: resumen?.nombre || auditoria.nombre,
-                      auditorLider: auditoria.auditorLider?.nombre || '—',
-                      territorial: auditoria.territorial,
-                      cronograma: { fechaInicio: resumen?.fechaInicio, fechaFin: resumen?.fechaFin },
-                    },
+                    auditoria: construirAuditoriaPdfData(),
                     resumen: resumen ? { ...resumen, leccionesAprendidas: resumen.leccionesAprendidas, recomendacionesFuturasAuditorias: resumen.recomendacionesFuturasAuditorias } : null,
                     planes: planes,
                     hallazgos: hallazgos.map((h: any) => ({
