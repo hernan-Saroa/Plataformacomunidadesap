@@ -8,12 +8,13 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
     Clock, Calendar, FileText, User, AlertTriangle, CheckCircle,
-    Hash, Download, MessageSquare, Plus, Loader2
+    Hash, Download, MessageSquare, Plus, Loader2, Eye
 } from 'lucide-react';
 import { useState } from 'react';
 import { legalService } from '../../../../services/api/legal.service';
 import { toast } from 'sonner';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 interface ModalDetalleTerminoProps {
     open: boolean;
@@ -21,9 +22,19 @@ interface ModalDetalleTerminoProps {
     solicitud: SolicitudInforme | null;
 }
 
+function getFilename(fileUrl: string): string {
+    return fileUrl.includes('/') ? fileUrl.split('/').pop()! : fileUrl;
+}
+
+function getFileViewUrl(fileUrl: string): string {
+    const filename = getFilename(fileUrl);
+    const baseUrl = getServiceUrl('legal');
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
+    return `${baseUrl}${prefix}/files/${filename}?view=true`;
+}
+
 function getFileDownloadUrl(fileUrl: string, nombre: string): string {
-    // fileUrl stored as "files/filename.ext" or just "filename.ext" by backend
-    const filename = fileUrl.includes('/') ? fileUrl.split('/').pop()! : fileUrl;
+    const filename = getFilename(fileUrl);
     const baseUrl = getServiceUrl('legal');
     const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/download/${filename}?name=${encodeURIComponent(nombre)}`;
@@ -32,6 +43,8 @@ function getFileDownloadUrl(fileUrl: string, nombre: string): string {
 export function ModalDetalleTermino({ open, onOpenChange, solicitud }: ModalDetalleTerminoProps) {
     const [documentos, setDocumentos] = useState<any[]>([]);
     const [loadingDocs, setLoadingDocs] = useState(false);
+    const [visorOpen, setVisorOpen] = useState(false);
+    const [visorDoc, setVisorDoc] = useState<{ archivo: string; numero: string } | null>(null);
     const [notas, setNotas] = useState<any[]>([]);
     const [loadingNotas, setLoadingNotas] = useState(false);
     const [nuevaNota, setNuevaNota] = useState('');
@@ -96,6 +109,7 @@ export function ModalDetalleTermino({ open, onOpenChange, solicitud }: ModalDeta
     };
 
     return (
+        <>
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden p-0">
                 {/* Header */}
@@ -232,14 +246,27 @@ export function ModalDetalleTermino({ open, onOpenChange, solicitud }: ModalDeta
                                                 </div>
                                             </div>
                                             {doc.url && (
-                                                <Button
-                                                    size="sm" variant="ghost"
-                                                    className="flex-shrink-0 h-8 w-8 p-0 text-gray-500 hover:text-green-600 hover:bg-green-50"
-                                                    title="Descargar"
-                                                    onClick={() => window.open(getFileDownloadUrl(doc.url, doc.nombre || 'documento'), '_blank')}
-                                                >
-                                                    <Download className="w-4 h-4" />
-                                                </Button>
+                                                <div className="flex items-center gap-1 flex-shrink-0">
+                                                    <Button
+                                                        size="sm" variant="ghost"
+                                                        className="h-8 w-8 p-0 text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+                                                        title="Ver documento"
+                                                        onClick={() => {
+                                                            setVisorDoc({ archivo: getFileViewUrl(doc.url), numero: doc.nombre || 'Documento' });
+                                                            setVisorOpen(true);
+                                                        }}
+                                                    >
+                                                        <Eye className="w-4 h-4" />
+                                                    </Button>
+                                                    <Button
+                                                        size="sm" variant="ghost"
+                                                        className="h-8 w-8 p-0 text-gray-500 hover:text-green-600 hover:bg-green-50"
+                                                        title="Descargar"
+                                                        onClick={() => window.open(getFileDownloadUrl(doc.url, doc.nombre || 'documento'), '_blank')}
+                                                    >
+                                                        <Download className="w-4 h-4" />
+                                                    </Button>
+                                                </div>
                                             )}
                                         </div>
                                     ))}
@@ -323,5 +350,16 @@ export function ModalDetalleTermino({ open, onOpenChange, solicitud }: ModalDeta
                 </div>
             </DialogContent>
         </Dialog>
+
+        {visorDoc && (
+            <VisorDocumentoModal
+                isOpen={visorOpen}
+                onClose={() => { setVisorOpen(false); setVisorDoc(null); }}
+                archivo={visorDoc.archivo}
+                numero={visorDoc.numero}
+                asunto="Documento — Términos e Informes"
+            />
+        )}
+    </>
     );
 }

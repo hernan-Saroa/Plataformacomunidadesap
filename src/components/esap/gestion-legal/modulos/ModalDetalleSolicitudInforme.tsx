@@ -11,8 +11,9 @@ import { Textarea } from '../../../ui/textarea';
 import {
   FileText, Calendar, User, Building, Clock, X, AlertCircle,
   CheckCircle, Target, Edit, Send, Download, Upload, MessageSquare,
-  Paperclip, AlertTriangle, Archive, Trash2
+  Paperclip, AlertTriangle, Archive, Trash2, Eye
 } from 'lucide-react';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { SolicitudInforme, EtapaSolicitudInforme } from '../core/types';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
@@ -42,8 +43,19 @@ function parseObservaciones(texto: string): { descripcionBase: string; notas: Ar
   return { descripcionBase, notas };
 }
 
+function getFilename(fileUrl: string): string {
+  return fileUrl?.includes('/') ? fileUrl.split('/').pop()! : fileUrl;
+}
+
+function getFileViewUrl(fileUrl: string): string {
+  const filename = getFilename(fileUrl);
+  const baseUrl = getServiceUrl('legal');
+  const prefix = API_MODE === 'direct' ? '' : '/legal';
+  return `${baseUrl}${prefix}/files/${filename}?view=true`;
+}
+
 function getFileDownloadUrl(fileUrl: string, nombre: string): string {
-  const filename = fileUrl?.includes('/') ? fileUrl.split('/').pop()! : fileUrl;
+  const filename = getFilename(fileUrl);
   const baseUrl = getServiceUrl('legal');
   const prefix = API_MODE === 'direct' ? '' : '/legal';
   return `${baseUrl}${prefix}/files/download/${filename}?name=${encodeURIComponent(nombre)}`;
@@ -72,6 +84,8 @@ export function ModalDetalleSolicitudInforme({
   const [mostrarCambioEtapa, setMostrarCambioEtapa] = useState(false);
   const [archivosSubidos, setArchivosSubidos] = useState<Array<{ nombre: string; tipo: string; fechaCarga: Date; tamaño: string, url?: string }>>([]);
   const [subiendoArchivo, setSubiendoArchivo] = useState(false);
+  const [visorOpen, setVisorOpen] = useState(false);
+  const [visorDoc, setVisorDoc] = useState<{ archivo: string; numero: string } | null>(null);
   const [mostrarModalRecordatorio, setMostrarModalRecordatorio] = useState(false);
 
   useEffect(() => {
@@ -266,6 +280,7 @@ export function ModalDetalleSolicitudInforme({
   const porcentajeAvance = ((solicitud.diasTotales - diasRestantes) / solicitud.diasTotales) * 100;
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent hideCloseButton className="w-[95vw] max-w-[750px] lg:max-w-3xl h-[90vh] flex flex-col p-0">
         <DialogTitle className="sr-only">
@@ -660,15 +675,29 @@ export function ModalDetalleSolicitudInforme({
                         </div>
                       </div>
                       {archivo.url && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-blue-600 hover:bg-blue-50"
-                          title="Descargar"
-                          onClick={() => window.open(getFileDownloadUrl(archivo.url!, archivo.nombre), '_blank')}
-                        >
-                          <Download className="w-4 h-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+                            title="Ver documento"
+                            onClick={() => {
+                              setVisorDoc({ archivo: getFileViewUrl(archivo.url!), numero: archivo.nombre });
+                              setVisorOpen(true);
+                            }}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-gray-500 hover:text-green-600 hover:bg-green-50"
+                            title="Descargar"
+                            onClick={() => window.open(getFileDownloadUrl(archivo.url!, archivo.nombre), '_blank')}
+                          >
+                            <Download className="w-4 h-4" />
+                          </Button>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -852,5 +881,16 @@ export function ModalDetalleSolicitudInforme({
         </Dialog>
       )}
     </Dialog>
+
+      {visorDoc && (
+        <VisorDocumentoModal
+          isOpen={visorOpen}
+          onClose={() => { setVisorOpen(false); setVisorDoc(null); }}
+          archivo={visorDoc.archivo}
+          numero={visorDoc.numero}
+          asunto="Documento — Términos e Informes"
+        />
+      )}
+    </>
   );
 }
