@@ -12,12 +12,12 @@
  */
 
 import { useState } from 'react';
-import { X, RefreshCw, CheckCircle, AlertCircle, ArrowRight, ClipboardCheck, Play, MessageSquare, Eye, Award } from 'lucide-react';
+import { X, RefreshCw, CheckCircle, AlertCircle, ArrowRight, Calendar, ClipboardCheck, Play, MessageSquare, Eye, Award } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { toast } from 'sonner@2.0.3';
 
-type EstadoAuditoria = 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | 'Finalizada';
+type EstadoAuditoria = 'Plan Anual' | 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | 'Finalizada';
 
 interface Auditoria {
   id: string;
@@ -37,6 +37,13 @@ interface ModalCambiarEstadoAuditoriaProps {
 }
 
 const ESTADOS_FLUJO: { estado: EstadoAuditoria; label: string; color: string; icon: any; descripcion: string }[] = [
+  { 
+    estado: 'Plan Anual', 
+    label: 'Plan Anual', 
+    color: '#6366F1',
+    icon: Calendar,
+    descripcion: 'Auditoría programada en plan anual'
+  },
   { 
     estado: 'Planeación', 
     label: 'Planeación', 

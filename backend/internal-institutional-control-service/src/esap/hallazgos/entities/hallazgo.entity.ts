@@ -17,10 +17,12 @@ export enum HallazgoCategoria {
 
 export enum HallazgoEstado {
   BORRADOR = 'borrador',
-  NOTIFICADO = 'notificado',
-  EN_CONTROVERSIA = 'en-controversia',
-  RATIFICADO = 'ratificado',
-  MODIFICADO = 'modificado',
+  NOTIFICADO = 'notificado',       // Pendiente respuesta (después de informe preliminar)
+  ACEPTADO = 'aceptado',           // Área auditada aceptó
+  EN_CONTROVERSIA = 'en-controversia', // Área presentó controversia
+  RATIFICADO = 'ratificado',       // Auditor ratificó
+  MODIFICADO = 'modificado',       // Auditor modificó
+  RETIRADO = 'retirado',           // Auditor retiró el hallazgo
   CERRADO = 'cerrado',
 }
 
@@ -60,6 +62,12 @@ export class Hallazgo {
   @Column({ name: 'criterio_incumplido', type: 'text' })
   criterioIncumplido: string;
 
+  @Column({ type: 'text', nullable: true })
+  causa?: string;
+
+  @Column({ type: 'text', nullable: true })
+  efecto?: string;
+
   @Column({
     name: 'normativa_relacionada',
     type: 'jsonb',
@@ -75,6 +83,7 @@ export class Hallazgo {
     nombre: string;
     tipo: string;
     fecha: string;
+    url?: string;
   }>;
 
   @Column({
@@ -97,6 +106,34 @@ export class Hallazgo {
 
   @Column({ name: 'observaciones_controversia', type: 'text', nullable: true })
   observacionesControversia?: string;
+
+  /** Argumentos del área auditada al presentar controversia */
+  @Column({ name: 'argumentos_controversia', type: 'text', nullable: true })
+  argumentosControversia?: string;
+
+  /** URL del documento adjunto de controversia */
+  @Column({ name: 'documento_controversia_url', type: 'varchar', length: 500, nullable: true })
+  documentoControversiaUrl?: string;
+
+  /** Nombre del archivo adjunto de controversia */
+  @Column({ name: 'documento_controversia_nombre', type: 'varchar', length: 255, nullable: true })
+  documentoControversiaNombre?: string;
+
+  /** Decisión del auditor: ratificado | modificado | retirado */
+  @Column({ name: 'decision_auditor', type: 'varchar', length: 50, nullable: true })
+  decisionAuditor?: string;
+
+  /** Fundamentación técnica de la decisión del auditor */
+  @Column({ name: 'fundamentacion_tecnica', type: 'text', nullable: true })
+  fundamentacionTecnica?: string;
+
+  /** Fecha en que el auditor tomó la decisión */
+  @Column({ name: 'fecha_decision', type: 'timestamp', nullable: true })
+  fechaDecision?: Date;
+
+  /** ID del auditor que tomó la decisión */
+  @Column({ name: 'auditor_decision_id', type: 'bigint', nullable: true })
+  auditorDecisionId?: number;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

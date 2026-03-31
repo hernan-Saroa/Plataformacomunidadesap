@@ -34,6 +34,8 @@ interface Expediente {
   abogadoAsignado: { nombre: string; identificacion: string };
   etapa: Etapa;
   diasRestantes: number;
+  tiempoRestante: string;
+  tipoConteoTermino?: 'HABILES' | 'CALENDARIO'; // Tipo de conteo de días
   colorAlerta: ColorAlerta;
   fechaNotificacion: string;
   valorDemanda?: number;
@@ -282,7 +284,7 @@ function DetalleExpedienteModal({ expediente, isOpen, onClose }: { expediente: E
               <div>
                 <p className="text-gray-500">Días Restantes</p>
                 <p className={`font-medium ${expediente.diasRestantes < 0 ? 'text-red-600' : expediente.diasRestantes <= 7 ? 'text-yellow-600' : 'text-green-600'}`}>
-                  {expediente.diasRestantes < 0 ? `Vencido hace ${Math.abs(expediente.diasRestantes)} días` : `${expediente.diasRestantes} días`}
+                  {expediente.tiempoRestante}
                 </p>
               </div>
             </div>
@@ -634,7 +636,7 @@ function TarjetaExpediente({ expediente, onVerDetalle, onVerComentarios }: {
           <div className="flex items-center justify-between mb-3">
             <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md ${alertaColor.bg}`}>
               <AlertIcon className="w-3.5 h-3.5" />
-              <span className="text-xs font-semibold">{expediente.diasRestantes < 0 ? 'VENCIDO' : `${expediente.diasRestantes} días`}</span>
+              <span className="text-xs font-semibold">{expediente.tiempoRestante}</span>
             </div>
           </div>
 
@@ -753,10 +755,63 @@ export function KanbanDefensaJudicial() {
       }
 
       if (data) {
+        // Función para calcular días hábiles entre dos fechas (excluyendo fines de semana)
+        const calcularDiasHabiles = (fechaInicio: Date, fechaFin: Date): number => {
+          let dias = 0;
+          const fecha = new Date(fechaInicio);
+          fecha.setHours(0, 0, 0, 0);
+          const fin = new Date(fechaFin);
+          fin.setHours(0, 0, 0, 0);
+
+          while (fecha <= fin) {
+            const dia = fecha.getDay();
+            if (dia !== 0 && dia !== 6) { // Excluir domingos (0) y sábados (6)
+              dias++;
+            }
+            fecha.setDate(fecha.getDate() + 1);
+          }
+          return dias;
+        };
+
         const mappedData: Expediente[] = data.map((item: any) => {
           // Resolve abogado name from ID
           const abogadoId = item.abogadoSustanciador;
           const abogadoInfo = abogadoId ? abogadosMap.get(abogadoId) : null;
+
+          // Calculate remaining time
+          const fechaVencimiento = item.fechaVencimientoTermino ? new Date(item.fechaVencimientoTermino) : null;
+          const now = new Date();
+          let diasRestantes = 0;
+          let tiempoRestante = 'Por definir';
+          const tipoConteo = item.tipoConteoTermino || 'HABILES'; // Default a días hábiles
+
+          if (fechaVencimiento) {
+            if (tipoConteo === 'HABILES') {
+              // Calcular días hábiles restantes
+              if (fechaVencimiento > now) {
+                diasRestantes = calcularDiasHabiles(now, fechaVencimiento);
+                tiempoRestante = `${diasRestantes} días hábiles`;
+              } else {
+                diasRestantes = -calcularDiasHabiles(fechaVencimiento, now);
+                tiempoRestante = `Vencido hace ${Math.abs(diasRestantes)} días hábiles`;
+              }
+            } else {
+              // Días calendario (simple)
+              const diff = fechaVencimiento.getTime() - now.getTime();
+              const dayMs = 1000 * 60 * 60 * 24;
+              diasRestantes = Math.ceil(diff / dayMs);
+
+              if (diff > 0) {
+                tiempoRestante = `${diasRestantes} días calendario`;
+              } else {
+                tiempoRestante = `Vencido hace ${Math.abs(diasRestantes)} días calendario`;
+              }
+            }
+          } else {
+            diasRestantes = item.terminoProcesalDias || 30;
+            const tipoLabel = tipoConteo === 'HABILES' ? 'hábiles' : 'calendario';
+            tiempoRestante = `${diasRestantes} días ${tipoLabel}`;
+          }
 
           return {
             id: item.id, // UUID
@@ -771,9 +826,9 @@ export function KanbanDefensaJudicial() {
               identificacion: abogadoInfo?.email || 'N/A'
             },
             etapa: mapEtapa(item.etapaProcesal),
-            diasRestantes: item.fechaVencimientoTermino
-              ? Math.ceil((new Date(item.fechaVencimientoTermino).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
-              : (item.terminoProcesalDias || 30),
+            diasRestantes,
+            tiempoRestante,
+            tipoConteoTermino: tipoConteo as 'HABILES' | 'CALENDARIO',
             colorAlerta: item.riesgoPrescripcion ? 'ROJO' : 'VERDE',
             fechaNotificacion: item.fechaNotificacion,
             valorDemanda: Number(item.cuantia) || 0,
@@ -810,6 +865,23 @@ export function KanbanDefensaJudicial() {
 
     // Guard to prevent unnecessary updates
     if (item.etapa === nuevaEtapa) return;
+
+    // Validar tareas pendientes antes de cambiar etapa
+    try {
+      const tareas = await legalService.getTareasByExpediente(item.id);
+      const tareasPendientes = (tareas || []).filter(
+        (t: any) => t.estado !== 'completada' && t.estado !== 'cancelada'
+      );
+      if (tareasPendientes.length > 0) {
+        toast.error('No se puede cambiar de etapa', {
+          description: `El expediente tiene ${tareasPendientes.length} tarea(s) pendiente(s). Complete o cancele todas las tareas antes de cambiar de etapa.`
+        });
+        return;
+      }
+    } catch (error) {
+      // Si falla la consulta de tareas, permitir el cambio (fallo silencioso)
+      console.warn('No se pudieron verificar tareas:', error);
+    }
 
     // Optimistic Update
     const previousExpedientes = [...expedientes];
@@ -852,6 +924,7 @@ export function KanbanDefensaJudicial() {
       abogadoAsignado: { nombre: data.abogadoSustanciador || 'Por asignar', identificacion: 'N/A' },
       etapa: mapEtapa(data.etapaProcesal),
       diasRestantes: data.terminoProcesalDias || 30,
+      tiempoRestante: `${data.terminoProcesalDias || 30} días`,
       colorAlerta: data.riesgoPrescripcion ? 'ROJO' : 'VERDE',
       fechaNotificacion: data.fechaNotificacion,
       valorDemanda: Number(data.cuantia) || 0,

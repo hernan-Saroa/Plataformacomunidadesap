@@ -39,57 +39,8 @@ import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
-import { toast } from 'sonner@2.0.3';
-import { tiposAuditoriaService, type TipoAuditoria } from '../../../services/api/tiposAuditoriaService';
-
-// ═══════════════════════════════════════════════════════════════════════════
-// TIPOS POR DEFECTO
-// ═══════════════════════════════════════════════════════════════════════════
-
-const TIPOS_AUDITORIA_DEFAULT: TipoAuditoria[] = [
-  {
-    id: '1',
-    codigo: 'REG',
-    nombre: 'Regular',
-    descripcion: 'Auditoría regular',
-    alcance: 'General',
-    duracionPromedio: 30,
-    equipoPromedio: 3,
-    color: '#3B82F6',
-    activa: true,
-    auditoriasProgramadas: 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: '2',
-    codigo: 'TER',
-    nombre: 'Territorial',
-    descripcion: 'Auditoría territorial',
-    alcance: 'Regional',
-    duracionPromedio: 45,
-    equipoPromedio: 4,
-    color: '#10B981',
-    activa: true,
-    auditoriasProgramadas: 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: '3',
-    codigo: 'ESP',
-    nombre: 'Especial',
-    descripcion: 'Auditoría especial',
-    alcance: 'Específico',
-    duracionPromedio: 60,
-    equipoPromedio: 5,
-    color: '#F59E0B',
-    activa: true,
-    auditoriasProgramadas: 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-];
+import { toast } from 'sonner';
+import { configuracionesProfesionalesOCIGApi } from './services/api';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -130,7 +81,7 @@ export interface HitoAuditoria {
 export interface AuditoriaUnificadaFormData {
   // 1. INFORMACIÓN BÁSICA
   codigo?: string;
-  tipoAuditoria: string; // Cambiado a string para ser dinámico
+  tipoAuditoria: 'regular' | 'territorial' | 'especial' | 'seguimiento';
   titulo: string;
   descripcion: string;
   
@@ -139,9 +90,6 @@ export interface AuditoriaUnificadaFormData {
   areaObjetivo: string;
   procesoAuditado: string;
   alcance: string;
-  responsableAreaNombre?: string;
-  responsableAreaCargo?: string;
-  responsableAreaEmail?: string;
   
   // 3. EQUIPO AUDITOR
   auditorLider: string;
@@ -149,10 +97,19 @@ export interface AuditoriaUnificadaFormData {
   equipoAuditores: string[];
   supervisorAsignado: string;
   
-  // 4. PROGRAMACIÓN
-  fechaInicio: string;
-  fechaFin: string;
-  periodicidad: 'unica' | 'trimestral' | 'semestral' | 'anual';
+  // 4. PROGRAMACIÓN (3 etapas: Planeación, Ejecución, Comunicación)
+  // Etapa 1: Planeación
+  fechaInicioPlaneacion: string;
+  fechaFinPlaneacion: string;
+  // Etapa 2: Ejecución (se habilita al completar Planeación)
+  fechaInicioEjecucion?: string;
+  fechaFinEjecucion?: string;
+  // Etapa 3: Comunicación (se habilita al completar Ejecución)
+  fechaInicioComunicacion?: string;
+  fechaFinComunicacion?: string;
+  // Campos legacy para compatibilidad
+  fechaInicio?: string;
+  fechaFin?: string;
   hitos: HitoAuditoria[];
   
   // 5. OBJETIVOS Y CRITERIOS
@@ -173,12 +130,16 @@ export interface AuditoriaUnificadaFormData {
   
   // 8. HALLAZGOS (opcional - para auditorías en ejecución)
   hallazgos: Hallazgo[];
+  incluirHallazgosPreliminares: boolean; // 🆕 Indica si se incluyen hallazgos preliminares
   
   // 9. VINCULACIÓN PLAN ANUAL
   vinculadaPlanAnual: boolean;
   planAnualId?: string;
   planAnualAño?: number;
   rolDecretoAsociado?: string;
+  
+  // 10. ESTADO KANBAN (para crear auditoria en columna correcta)
+  estadoKanban?: 'Plan Anual' | 'Planeación' | 'Trabajo de Campo' | 'Elaboración Informe' | 'Informe Final' | 'Seguimiento' | 'Cerrada';
 }
 
 interface FormularioAuditoriaUnificadoProps {
@@ -233,7 +194,8 @@ const PROCESOS_INSTITUCIONALES = [
   'Almacén'
 ];
 
-const AUDITORES_MOCK = [
+// Datos fallback si no se cargan del backend
+const AUDITORES_FALLBACK = [
   { id: 'aud-001', nombre: 'Juan Pérez Gómez', cargo: 'Auditor Senior' },
   { id: 'aud-002', nombre: 'Ana María López Silva', cargo: 'Auditor Junior' },
   { id: 'aud-003', nombre: 'Carlos Ramírez Díaz', cargo: 'Auditor Senior' },
@@ -241,6 +203,13 @@ const AUDITORES_MOCK = [
   { id: 'aud-005', nombre: 'Roberto Torres Sánchez', cargo: 'Auditor Líder' },
   { id: 'aud-006', nombre: 'Fernando Ávila García', cargo: 'Jefe OCI' }
 ];
+
+// Tipo para auditor
+interface AuditorOption {
+  id: string;
+  nombre: string;
+  cargo: string;
+}
 
 const ROLES_DECRETO_648 = [
   'Liderazgo Estratégico',
@@ -304,52 +273,30 @@ export function FormularioAuditoriaUnificado({
   initialData,
   mode
 }: FormularioAuditoriaUnificadoProps) {
-  // Función auxiliar para normalizar tipo de auditoría
-  const normalizarTipo = (tipo: any): string => {
-    if (!tipo) return 'Regular';
-    const tiposValidos = ['Regular', 'Territorial', 'Especial'];
-    if (tiposValidos.includes(tipo)) return tipo;
-    // Mapeo de tipos antiguos
-    const mapping: Record<string, string> = {
-      'gestión': 'Regular',
-      'cumplimiento': 'Regular',
-      'desempeño': 'Regular',
-      'sistemas': 'Regular',
-      'financiera': 'Regular',
-      'seguimiento': 'Regular',
-      'control interno': 'Regular',
-      'académica': 'Regular',
-      'rrhh': 'Regular',
-      'ti': 'Regular',
-      'operacional': 'Regular',
-      'regular': 'Regular',
-      'territorial': 'Territorial',
-      'especial': 'Especial'
-    };
-    return mapping[tipo.toString().toLowerCase()] || 'Regular';
-  };
-
   const [pasoActual, setPasoActual] = useState(1);
-  const [tiposAuditoria, setTiposAuditoria] = useState<TipoAuditoria[]>(TIPOS_AUDITORIA_DEFAULT);
   const [formData, setFormData] = useState<AuditoriaUnificadaFormData>({
     codigo: initialData?.codigo || '',
-    tipoAuditoria: normalizarTipo(initialData?.tipoAuditoria),
+    tipoAuditoria: initialData?.tipoAuditoria || 'regular',
     titulo: initialData?.titulo || '',
     descripcion: initialData?.descripcion || '',
     territorial: initialData?.territorial || '',
     areaObjetivo: initialData?.areaObjetivo || '',
     procesoAuditado: initialData?.procesoAuditado || '',
     alcance: initialData?.alcance || '',
-    responsableAreaNombre: initialData?.responsableAreaNombre || '',
-    responsableAreaCargo: initialData?.responsableAreaCargo || '',
-    responsableAreaEmail: initialData?.responsableAreaEmail || '',
     auditorLider: initialData?.auditorLider || '',
     auditorAsignado: initialData?.auditorAsignado || '',
     equipoAuditores: initialData?.equipoAuditores || [],
     supervisorAsignado: initialData?.supervisorAsignado || '',
+    // Etapas del cronograma
+    fechaInicioPlaneacion: initialData?.fechaInicioPlaneacion || initialData?.fechaInicio || '',
+    fechaFinPlaneacion: initialData?.fechaFinPlaneacion || '',
+    fechaInicioEjecucion: initialData?.fechaInicioEjecucion || '',
+    fechaFinEjecucion: initialData?.fechaFinEjecucion || '',
+    fechaInicioComunicacion: initialData?.fechaInicioComunicacion || '',
+    fechaFinComunicacion: initialData?.fechaFinComunicacion || initialData?.fechaFin || '',
+    // Legacy
     fechaInicio: initialData?.fechaInicio || '',
     fechaFin: initialData?.fechaFin || '',
-    periodicidad: initialData?.periodicidad || 'unica',
     hitos: initialData?.hitos || [],
     objetivos: initialData?.objetivos || [],
     criteriosAuditoria: initialData?.criteriosAuditoria || [],
@@ -362,10 +309,12 @@ export function FormularioAuditoriaUnificado({
     riesgosIdentificados: initialData?.riesgosIdentificados || [],
     controlesAplicar: initialData?.controlesAplicar || [],
     hallazgos: initialData?.hallazgos || [],
+    incluirHallazgosPreliminares: initialData?.incluirHallazgosPreliminares || false,
     vinculadaPlanAnual: initialData?.vinculadaPlanAnual || false,
     planAnualId: initialData?.planAnualId || '',
     planAnualAño: initialData?.planAnualAño || new Date().getFullYear(),
-    rolDecretoAsociado: initialData?.rolDecretoAsociado || ''
+    rolDecretoAsociado: initialData?.rolDecretoAsociado || '',
+    estadoKanban: initialData?.estadoKanban || 'Plan Anual' // Por defecto crear en Plan Anual
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -374,30 +323,45 @@ export function FormularioAuditoriaUnificado({
   const [normaTemporal, setNormaTemporal] = useState('');
   const [riesgoTemporal, setRiesgoTemporal] = useState('');
   const [controlTemporal, setControlTemporal] = useState('');
+  
+  // Estado para auditores cargados del backend
+  const [auditoresDisponibles, setAuditoresDisponibles] = useState<AuditorOption[]>(AUDITORES_FALLBACK);
+  const [cargandoAuditores, setCargandoAuditores] = useState(false);
 
   const TOTAL_PASOS = 9;
-
-  // Cargar tipos de auditoría desde la BD
+  
+  // Cargar profesionales OCIG configurados del backend
   useEffect(() => {
-    const cargarTipos = async () => {
+    const cargarAuditores = async () => {
+      if (!open) return;
+      
+      setCargandoAuditores(true);
       try {
-        const tipos = await tiposAuditoriaService.getAll(false);
-        if (tipos.length > 0) {
-          // Filtrar solo los activos
-          const tiposActivos = tipos.filter(t => t.activa);
-          setTiposAuditoria(tiposActivos);
+        // Usar profesionales configurados en OCIG en lugar de personas disponibles genéricas
+        const response = await configuracionesProfesionalesOCIGApi.getAll();
+        
+        if (response.success && response.data && response.data.length > 0) {
+          const auditores = response.data
+            .filter((config: any) => config.activo)
+            .map((config: any) => ({
+              id: String(config.idTercero),
+              nombre: config.nombre || `Profesional ${config.idTercero}`,
+              cargo: config.rolOcig || 'Auditor'
+            }));
+          setAuditoresDisponibles(auditores);
         } else {
-          console.warn('[FormularioAuditoria] ⚠️ No se encontraron tipos, usando valores por defecto');
+          console.warn('[FormularioAuditoria] No hay profesionales OCIG configurados, usando fallback');
         }
       } catch (error) {
-        console.error('[FormularioAuditoria] ❌ Error al cargar tipos:', error);
-        console.log('[FormularioAuditoria] Usando tipos por defecto');
-        // Ya está inicializado con TIPOS_AUDITORIA_DEFAULT, no hacer nada
+        console.error('[FormularioAuditoria] Error al cargar profesionales OCIG:', error);
+        // Mantener los datos fallback
+      } finally {
+        setCargandoAuditores(false);
       }
     };
-
-    cargarTipos();
-  }, []);
+    
+    cargarAuditores();
+  }, [open]);
 
   // Handlers
   const handleChange = (field: keyof AuditoriaUnificadaFormData, value: any) => {
@@ -527,17 +491,67 @@ export function FormularioAuditoriaUnificado({
       return;
     }
 
-    if (!formData.fechaInicio || !formData.fechaFin) {
-      toast.error('Debe especificar las fechas de inicio y fin');
+    // Validar Etapa 1: Planeación (obligatoria)
+    if (!formData.fechaInicioPlaneacion || !formData.fechaFinPlaneacion) {
+      toast.error('Debe especificar las fechas de inicio y fin de la etapa de Planeación');
       setPasoActual(4);
       return;
     }
-
-    // Validar que fechaFin sea posterior a fechaInicio
-    if (new Date(formData.fechaFin) < new Date(formData.fechaInicio)) {
-      toast.error('La fecha de finalización debe ser posterior a la fecha de inicio');
+    
+    const inicioPlaneacion = new Date(formData.fechaInicioPlaneacion);
+    const finPlaneacion = new Date(formData.fechaFinPlaneacion);
+    if (finPlaneacion <= inicioPlaneacion) {
+      toast.error('La fecha de fin de Planeación debe ser posterior a la fecha de inicio');
       setPasoActual(4);
       return;
+    }
+    
+    // Validar Etapa 2: Ejecución (obligatoria si Planeación está completa)
+    if (formData.fechaInicioEjecucion || formData.fechaFinEjecucion) {
+      if (!formData.fechaInicioEjecucion || !formData.fechaFinEjecucion) {
+        toast.error('Debe especificar ambas fechas (inicio y fin) para la etapa de Ejecución');
+        setPasoActual(4);
+        return;
+      }
+      const inicioEjecucion = new Date(formData.fechaInicioEjecucion);
+      const finEjecucion = new Date(formData.fechaFinEjecucion);
+      if (inicioEjecucion < finPlaneacion) {
+        toast.error('La fecha de inicio de Ejecución debe ser igual o posterior al fin de Planeación');
+        setPasoActual(4);
+        return;
+      }
+      if (finEjecucion <= inicioEjecucion) {
+        toast.error('La fecha de fin de Ejecución debe ser posterior a la fecha de inicio');
+        setPasoActual(4);
+        return;
+      }
+    }
+    
+    // Validar Etapa 3: Comunicación (obligatoria si Ejecución está completa)
+    if (formData.fechaInicioComunicacion || formData.fechaFinComunicacion) {
+      if (!formData.fechaInicioEjecucion || !formData.fechaFinEjecucion) {
+        toast.error('Debe completar la etapa de Ejecución antes de la etapa de Comunicación');
+        setPasoActual(4);
+        return;
+      }
+      if (!formData.fechaInicioComunicacion || !formData.fechaFinComunicacion) {
+        toast.error('Debe especificar ambas fechas (inicio y fin) para la etapa de Comunicación');
+        setPasoActual(4);
+        return;
+      }
+      const finEjecucion = new Date(formData.fechaFinEjecucion);
+      const inicioComunicacion = new Date(formData.fechaInicioComunicacion);
+      const finComunicacion = new Date(formData.fechaFinComunicacion);
+      if (inicioComunicacion < finEjecucion) {
+        toast.error('La fecha de inicio de Comunicación debe ser igual o posterior al fin de Ejecución');
+        setPasoActual(4);
+        return;
+      }
+      if (finComunicacion <= inicioComunicacion) {
+        toast.error('La fecha de fin de Comunicación debe ser posterior a la fecha de inicio');
+        setPasoActual(4);
+        return;
+      }
     }
 
     if (formData.objetivos.length === 0) {
@@ -549,12 +563,53 @@ export function FormularioAuditoriaUnificado({
     setIsSubmitting(true);
 
     try {
+      // 🔍 DEBUG: Log de fechas antes de enviar
+      console.log('═══════════════════════════════════════════════════════════════');
+      console.log('📤 FormularioAuditoriaUnificado - DATOS A ENVIAR:');
+      console.log('   fechaInicioPlaneacion:', formData.fechaInicioPlaneacion);
+      console.log('   fechaFinPlaneacion:', formData.fechaFinPlaneacion);
+      console.log('   fechaInicioEjecucion:', formData.fechaInicioEjecucion);
+      console.log('   fechaFinEjecucion:', formData.fechaFinEjecucion);
+      console.log('   fechaInicioComunicacion:', formData.fechaInicioComunicacion);
+      console.log('   fechaFinComunicacion:', formData.fechaFinComunicacion);
+      console.log('═══════════════════════════════════════════════════════════════');
+      
       await onSubmit(formData);
-      toast.success(
-        mode === 'create'
-          ? '✅ Auditoría creada exitosamente'
-          : '✅ Auditoría actualizada exitosamente'
-      );
+      
+      // Log detallado en consola si incluye hallazgos preliminares
+      if (formData.incluirHallazgosPreliminares && formData.hallazgos.length > 0) {
+        console.log('═══════════════════════════════════════════════════════════════');
+        console.log('✅ AUDITORÍA GUARDADA CON HALLAZGOS PRELIMINARES');
+        console.log('═══════════════════════════════════════════════════════════════');
+        console.log(`📋 Auditoría: ${formData.titulo}`);
+        console.log(`⚠️  Hallazgos preliminares: ${formData.hallazgos.length}`);
+        console.log('');
+        formData.hallazgos.forEach((h, idx) => {
+          console.log(`   ${idx + 1}. ${h.tipo.toUpperCase()}: ${h.descripcion.substring(0, 60)}...`);
+        });
+        console.log('');
+        console.log('⚡ IMPORTANTE: Los hallazgos son PRELIMINARES y deben ser comunicados al auditado');
+        console.log('═══════════════════════════════════════════════════════════════');
+      }
+      
+      // Toast personalizado si incluye hallazgos preliminares
+      if (formData.incluirHallazgosPreliminares && formData.hallazgos.length > 0) {
+        toast.success(
+          mode === 'create'
+            ? `✅ Auditoría creada exitosamente con ${formData.hallazgos.length} hallazgo${formData.hallazgos.length > 1 ? 's' : ''} preliminar${formData.hallazgos.length > 1 ? 'es' : ''}`
+            : `✅ Auditoría actualizada exitosamente con ${formData.hallazgos.length} hallazgo${formData.hallazgos.length > 1 ? 's' : ''} preliminar${formData.hallazgos.length > 1 ? 'es' : ''}`,
+          {
+            description: '⚠️ Recuerda: Los hallazgos tienen carácter preliminar y deben ser comunicados al auditado'
+          }
+        );
+      } else {
+        toast.success(
+          mode === 'create'
+            ? '✅ Auditoría creada exitosamente'
+            : '✅ Auditoría actualizada exitosamente'
+        );
+      }
+      
       onClose();
     } catch (error) {
       toast.error('Error al guardar la auditoría');
@@ -579,11 +634,11 @@ export function FormularioAuditoriaUnificado({
   const renderPaso = () => {
     switch (pasoActual) {
       case 1:
-        return <Paso1InformacionBasica formData={formData} onChange={handleChange} tiposAuditoria={tiposAuditoria} />;
+        return <Paso1InformacionBasica formData={formData} onChange={handleChange} />;
       case 2:
         return <Paso2ClasificacionAlcance formData={formData} onChange={handleChange} />;
       case 3:
-        return <Paso3EquipoAuditor formData={formData} onChange={handleChange} />;
+        return <Paso3EquipoAuditor formData={formData} onChange={handleChange} auditores={auditoresDisponibles} />;
       case 4:
         return <Paso4Programacion formData={formData} onChange={handleChange} />;
       case 5:
@@ -625,6 +680,7 @@ export function FormularioAuditoriaUnificado({
             onAgregarHallazgo={handleAgregarHallazgo}
             onEliminarHallazgo={handleEliminarHallazgo}
             onActualizarHallazgo={handleActualizarHallazgo}
+            onChange={handleChange}
           />
         );
       case 9:
@@ -642,7 +698,7 @@ export function FormularioAuditoriaUnificado({
     { numero: 5, titulo: 'Objetivos y Criterios', icono: <Target className="w-4 h-4" /> },
     { numero: 6, titulo: 'Recursos y Productos', icono: <DollarSign className="w-4 h-4" /> },
     { numero: 7, titulo: 'Riesgos y Controles', icono: <Shield className="w-4 h-4" /> },
-    { numero: 8, titulo: 'Hallazgos', icono: <AlertTriangle className="w-4 h-4" /> },
+    { numero: 8, titulo: 'Hallazgos Preliminares', icono: <AlertTriangle className="w-4 h-4" /> },
     { numero: 9, titulo: 'Vinculación Plan', icono: <ClipboardCheck className="w-4 h-4" /> }
   ];
 
@@ -768,15 +824,25 @@ export function FormularioAuditoriaUnificado({
 
               {/* FOOTER */}
               <div className="flex items-center justify-between p-4 border-t border-gray-200 bg-gray-50">
-                <Button
-                  variant="outline"
-                  onClick={handleAnterior}
-                  disabled={pasoActual === 1}
-                  className="gap-2"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Anterior
-                </Button>
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant="outline"
+                    onClick={handleAnterior}
+                    disabled={pasoActual === 1}
+                    className="gap-2"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Anterior
+                  </Button>
+                  
+                  {/* Badge de hallazgos preliminares */}
+                  {formData.incluirHallazgosPreliminares && (
+                    <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 px-3 py-1.5 text-xs font-bold">
+                      <AlertTriangle className="w-3 h-3 mr-1 inline" />
+                      {formData.hallazgos.length} Hallazgo{formData.hallazgos.length !== 1 ? 's' : ''} Preliminar{formData.hallazgos.length !== 1 ? 'es' : ''}
+                    </Badge>
+                  )}
+                </div>
 
                 <div className="flex gap-2">
                   {pasoActual < TOTAL_PASOS ? (
@@ -830,10 +896,9 @@ export function FormularioAuditoriaUnificado({
 interface PasoProps {
   formData: AuditoriaUnificadaFormData;
   onChange: (field: keyof AuditoriaUnificadaFormData, value: any) => void;
-  tiposAuditoria?: TipoAuditoria[];
 }
 
-function Paso1InformacionBasica({ formData, onChange, tiposAuditoria = TIPOS_AUDITORIA_DEFAULT }: PasoProps) {
+function Paso1InformacionBasica({ formData, onChange }: PasoProps) {
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center mb-6">
@@ -852,38 +917,36 @@ function Paso1InformacionBasica({ formData, onChange, tiposAuditoria = TIPOS_AUD
             required
             helpText="Seleccione el tipo de auditoría según su naturaleza"
           >
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {tiposAuditoria.map((tipo: TipoAuditoria) => {
-                // Mapear iconos basados en el nombre del tipo
-                const IconoComponente = tipo.nombre === 'Territorial' ? MapPin : 
-                                       tipo.nombre === 'Especial' ? Zap : 
-                                       Shield;
-                
-                return (
-                  <button
-                    key={tipo.id}
-                    type="button"
-                    onClick={() => onChange('tipoAuditoria', tipo.nombre)}
-                    className={`
-                      px-4 py-3 rounded-lg border-2 transition-all duration-200
-                      flex flex-col items-center justify-center gap-2 font-medium
-                      ${
-                        formData.tipoAuditoria === tipo.nombre
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                      }
-                    `}
-                  >
-                    <IconoComponente className="w-5 h-5" />
-                    <span className="text-sm">{tipo.nombre}</span>
-                  </button>
-                );
-              })}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { value: 'regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
+                { value: 'territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
+                { value: 'especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> },
+                { value: 'seguimiento', label: 'Seguimiento', icono: <Clock className="w-5 h-5" /> }
+              ].map(tipo => (
+                <button
+                  key={tipo.value}
+                  type="button"
+                  onClick={() => onChange('tipoAuditoria', tipo.value)}
+                  className={`
+                    px-4 py-3 rounded-lg border-2 transition-all duration-200
+                    flex flex-col items-center justify-center gap-2 font-medium
+                    ${
+                      formData.tipoAuditoria === tipo.value
+                        ? 'border-blue-600 bg-blue-50 text-blue-700'
+                        : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                    }
+                  `}
+                >
+                  {tipo.icono}
+                  <span className="text-sm">{tipo.label}</span>
+                </button>
+              ))}
             </div>
           </FieldWrapper>
 
           {/* Información contextual según tipo */}
-          {formData.tipoAuditoria === 'Especial' && (
+          {formData.tipoAuditoria === 'especial' && (
             <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -891,20 +954,6 @@ function Paso1InformacionBasica({ formData, onChange, tiposAuditoria = TIPOS_AUD
                   <p className="font-bold text-amber-900 mb-1">Auditoría Especial</p>
                   <p className="text-amber-700">
                     Las auditorías especiales se realizan por solicitudes específicas, denuncias o necesidades urgentes no contempladas en el Plan Anual. Requieren justificación detallada.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {formData.tipoAuditoria === 'Territorial' && (
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="flex items-start gap-3">
-                <MapPin className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-bold text-blue-900 mb-1">Auditoría Territorial</p>
-                  <p className="text-blue-700">
-                    Auditoría realizada a sedes territoriales de la ESAP en diferentes regiones del país.
                   </p>
                 </div>
               </div>
@@ -1030,43 +1079,6 @@ function Paso2ClasificacionAlcance({ formData, onChange }: PasoProps) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </FieldWrapper>
-
-          {/* Responsable del Área Auditada */}
-          <div className="pt-4 border-t border-gray-200">
-            <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <User className="w-4 h-4" />
-              Responsable del Área Auditada
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FieldWrapper label="Nombre Completo">
-                <Input
-                  value={formData.responsableAreaNombre || ''}
-                  onChange={(e) => onChange('responsableAreaNombre', e.target.value)}
-                  placeholder="Nombre del responsable"
-                  className="border-gray-300"
-                />
-              </FieldWrapper>
-              
-              <FieldWrapper label="Cargo">
-                <Input
-                  value={formData.responsableAreaCargo || ''}
-                  onChange={(e) => onChange('responsableAreaCargo', e.target.value)}
-                  placeholder="Cargo o puesto"
-                  className="border-gray-300"
-                />
-              </FieldWrapper>
-              
-              <FieldWrapper label="Email">
-                <Input
-                  type="email"
-                  value={formData.responsableAreaEmail || ''}
-                  onChange={(e) => onChange('responsableAreaEmail', e.target.value)}
-                  placeholder="email@esap.edu.co"
-                  className="border-gray-300"
-                />
-              </FieldWrapper>
-            </div>
-          </div>
         </div>
       </Card>
     </div>
@@ -1077,7 +1089,11 @@ function Paso2ClasificacionAlcance({ formData, onChange }: PasoProps) {
 // PASO 3: EQUIPO AUDITOR
 // ═══════════════════════════════════════════════════════════════════════════
 
-function Paso3EquipoAuditor({ formData, onChange }: PasoProps) {
+interface Paso3Props extends PasoProps {
+  auditores: AuditorOption[];
+}
+
+function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
   const handleToggleAuditor = (auditorId: string) => {
     const existe = formData.equipoAuditores.includes(auditorId);
     if (existe) {
@@ -1107,7 +1123,7 @@ function Paso3EquipoAuditor({ formData, onChange }: PasoProps) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el auditor líder...</option>
-              {AUDITORES_MOCK.map(auditor => (
+              {auditores.map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
                   {auditor.nombre} - {auditor.cargo}
                 </option>
@@ -1123,7 +1139,7 @@ function Paso3EquipoAuditor({ formData, onChange }: PasoProps) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el auditor asignado...</option>
-              {AUDITORES_MOCK.filter(a => a.id !== formData.auditorLider).map(auditor => (
+              {auditores.filter(a => a.id !== formData.auditorLider).map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
                   {auditor.nombre} - {auditor.cargo}
                 </option>
@@ -1139,7 +1155,7 @@ function Paso3EquipoAuditor({ formData, onChange }: PasoProps) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el supervisor...</option>
-              {AUDITORES_MOCK.filter(a =>
+              {auditores.filter(a =>
                 a.id !== formData.auditorLider && a.id !== formData.auditorAsignado
               ).map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
@@ -1155,7 +1171,7 @@ function Paso3EquipoAuditor({ formData, onChange }: PasoProps) {
             helpText="Seleccione otros auditores que participarán"
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {AUDITORES_MOCK.filter(a =>
+              {auditores.filter(a =>
                 a.id !== formData.auditorLider &&
                 a.id !== formData.auditorAsignado &&
                 a.id !== formData.supervisorAsignado
@@ -1209,113 +1225,253 @@ function Paso3EquipoAuditor({ formData, onChange }: PasoProps) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PASO 4: PROGRAMACIÓN
+// PASO 4: PROGRAMACIÓN - 3 ETAPAS CON FECHAS ESPECÍFICAS
 // ═══════════════════════════════════════════════════════════════════════════
 
 function Paso4Programacion({ formData, onChange }: PasoProps) {
+  // Verificar si las etapas anteriores están completas (convertir a boolean)
+  const planeacionCompleta = !!(formData.fechaInicioPlaneacion && formData.fechaFinPlaneacion);
+  const ejecucionCompleta = !!(formData.fechaInicioEjecucion && formData.fechaFinEjecucion);
+
+  // Calcular días de cada etapa
+  const calcularDias = (inicio: string, fin: string) => {
+    if (!inicio || !fin) return 0;
+    return Math.ceil((new Date(fin).getTime() - new Date(inicio).getTime()) / (1000 * 60 * 60 * 24));
+  };
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center mb-6">
         <Calendar className="w-12 h-12 mx-auto mb-3" style={{ color: '#003DA5' }} />
-        <h3 className="text-xl font-black text-gray-900">Programación y Fechas</h3>
+        <h3 className="text-xl font-black text-gray-900">Cronograma de Auditoría</h3>
         <p className="text-sm text-gray-600 mt-1">
-          Defina el periodo de ejecución y periodicidad
+          Defina las fechas específicas para cada etapa. Las etapas se habilitan secuencialmente.
         </p>
       </div>
 
-      <Card className="p-6 border-2 border-gray-200">
-        <div className="space-y-4">
-          {/* Fechas */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FieldWrapper label="Fecha de Inicio" required>
-              <Input
-                type="date"
-                value={formData.fechaInicio}
-                onChange={(e) => {
-                  const nuevaFechaInicio = e.target.value;
-                  onChange('fechaInicio', nuevaFechaInicio);
-                  // Si la fecha de fin es anterior a la nueva fecha de inicio, ajustarla
-                  if (formData.fechaFin && nuevaFechaInicio && formData.fechaFin < nuevaFechaInicio) {
-                    onChange('fechaFin', '');
-                    toast.error('La fecha de finalización debe ser posterior a la fecha de inicio');
-                  }
-                }}
-                max={formData.fechaFin || undefined}
-                className="border-gray-300"
-              />
-            </FieldWrapper>
-
-            <FieldWrapper 
-              label="Fecha de Finalización" 
-              required
-              error={formData.fechaInicio && formData.fechaFin && formData.fechaFin < formData.fechaInicio 
-                ? 'La fecha de finalización debe ser posterior a la fecha de inicio' 
-                : null}
-            >
-              <Input
-                type="date"
-                value={formData.fechaFin}
-                onChange={(e) => {
-                  const nuevaFechaFin = e.target.value;
-                  if (formData.fechaInicio && nuevaFechaFin && nuevaFechaFin < formData.fechaInicio) {
-                    toast.error('La fecha de finalización debe ser posterior a la fecha de inicio');
-                    return;
-                  }
-                  onChange('fechaFin', nuevaFechaFin);
-                }}
-                min={formData.fechaInicio || undefined}
-                className="border-gray-300"
-              />
-            </FieldWrapper>
+      {/* ETAPA 1: PLANEACIÓN - Siempre habilitada */}
+      <Card className="p-6 border-2 border-blue-200 bg-blue-50/30">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">1</div>
+          <div>
+            <h4 className="font-bold text-gray-900">Etapa de Planeación</h4>
+            <p className="text-xs text-gray-600">Fase inicial de preparación de la auditoría</p>
           </div>
-
-          {/* Periodicidad */}
-          <FieldWrapper
-            label="Periodicidad"
-            required
-            helpText="Frecuencia de ejecución de la auditoría"
-          >
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { value: 'unica', label: 'Única' },
-                { value: 'trimestral', label: 'Trimestral' },
-                { value: 'semestral', label: 'Semestral' },
-                { value: 'anual', label: 'Anual' }
-              ].map(periodo => (
-                <button
-                  key={periodo.value}
-                  type="button"
-                  onClick={() => onChange('periodicidad', periodo.value)}
-                  className={`
-                    px-4 py-3 rounded-lg border-2 transition-all font-medium text-sm
-                    ${
-                      formData.periodicidad === periodo.value
-                        ? 'border-blue-600 bg-blue-50 text-blue-700'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                    }
-                  `}
-                >
-                  {periodo.label}
-                </button>
-              ))}
-            </div>
-          </FieldWrapper>
-
-          {/* Duración estimada */}
-          {formData.fechaInicio && formData.fechaFin && (
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <p className="text-sm text-blue-700">
-                <strong>Duración estimada:</strong>{' '}
-                {Math.ceil(
-                  (new Date(formData.fechaFin).getTime() - new Date(formData.fechaInicio).getTime()) /
-                    (1000 * 60 * 60 * 24)
-                )}{' '}
-                días
-              </p>
-            </div>
+          {planeacionCompleta && (
+            <Badge className="ml-auto bg-green-100 text-green-700 border-green-300">
+              <CheckCircle className="w-3 h-3 mr-1" />
+              Completa
+            </Badge>
           )}
         </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FieldWrapper 
+            label="Fecha de Inicio" 
+            required
+            helpText="Inicio de la etapa de Planeación"
+          >
+            <Input
+              type="date"
+              value={formData.fechaInicioPlaneacion || ''}
+              onChange={(e) => {
+                onChange('fechaInicioPlaneacion', e.target.value);
+                // También actualizar fechaInicio para compatibilidad
+                onChange('fechaInicio', e.target.value);
+              }}
+              className="border-gray-300"
+            />
+          </FieldWrapper>
+
+          <FieldWrapper 
+            label="Fecha de Fin" 
+            required
+            helpText="Finalización de la etapa de Planeación"
+          >
+            <Input
+              type="date"
+              value={formData.fechaFinPlaneacion || ''}
+              onChange={(e) => onChange('fechaFinPlaneacion', e.target.value)}
+              className="border-gray-300"
+              min={formData.fechaInicioPlaneacion || undefined}
+            />
+          </FieldWrapper>
+        </div>
+
+        {planeacionCompleta && (
+          <div className="mt-3 p-2 bg-blue-100 rounded text-sm text-blue-700">
+            <strong>Duración:</strong> {calcularDias(formData.fechaInicioPlaneacion!, formData.fechaFinPlaneacion!)} días
+          </div>
+        )}
       </Card>
+
+      {/* ETAPA 2: EJECUCIÓN - Se habilita al completar Planeación */}
+      <Card className={`p-6 border-2 ${planeacionCompleta ? 'border-amber-200 bg-amber-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
+        <div className="flex items-center gap-3 mb-4">
+          <div className={`w-8 h-8 rounded-full ${planeacionCompleta ? 'bg-amber-600' : 'bg-gray-400'} text-white flex items-center justify-center font-bold text-sm`}>2</div>
+          <div>
+            <h4 className="font-bold text-gray-900">Etapa de Ejecución</h4>
+            <p className="text-xs text-gray-600">Trabajo de campo y desarrollo de la auditoría</p>
+          </div>
+          {!planeacionCompleta && (
+            <Badge className="ml-auto bg-gray-100 text-gray-600 border-gray-300">
+              <AlertCircle className="w-3 h-3 mr-1" />
+              Complete la etapa de Planeación primero
+            </Badge>
+          )}
+          {ejecucionCompleta && (
+            <Badge className="ml-auto bg-green-100 text-green-700 border-green-300">
+              <CheckCircle className="w-3 h-3 mr-1" />
+              Completa
+            </Badge>
+          )}
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FieldWrapper 
+            label="Fecha de Inicio" 
+            required={planeacionCompleta}
+            helpText="Inicio de la etapa de Ejecución"
+          >
+            <Input
+              type="date"
+              value={formData.fechaInicioEjecucion || ''}
+              onChange={(e) => onChange('fechaInicioEjecucion', e.target.value)}
+              className="border-gray-300"
+              disabled={!planeacionCompleta}
+              min={formData.fechaFinPlaneacion || undefined}
+            />
+          </FieldWrapper>
+
+          <FieldWrapper 
+            label="Fecha de Fin" 
+            required={planeacionCompleta}
+            helpText="Finalización de la etapa de Ejecución"
+          >
+            <Input
+              type="date"
+              value={formData.fechaFinEjecucion || ''}
+              onChange={(e) => onChange('fechaFinEjecucion', e.target.value)}
+              className="border-gray-300"
+              disabled={!planeacionCompleta}
+              min={formData.fechaInicioEjecucion || formData.fechaFinPlaneacion || undefined}
+            />
+          </FieldWrapper>
+        </div>
+
+        {ejecucionCompleta && (
+          <div className="mt-3 p-2 bg-amber-100 rounded text-sm text-amber-700">
+            <strong>Duración:</strong> {calcularDias(formData.fechaInicioEjecucion!, formData.fechaFinEjecucion!)} días
+          </div>
+        )}
+      </Card>
+
+      {/* ETAPA 3: COMUNICACIÓN - Se habilita al completar Ejecución */}
+      <Card className={`p-6 border-2 ${ejecucionCompleta ? 'border-green-200 bg-green-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
+        <div className="flex items-center gap-3 mb-4">
+          <div className={`w-8 h-8 rounded-full ${ejecucionCompleta ? 'bg-green-600' : 'bg-gray-400'} text-white flex items-center justify-center font-bold text-sm`}>3</div>
+          <div>
+            <h4 className="font-bold text-gray-900">Etapa de Comunicación</h4>
+            <p className="text-xs text-gray-600">Elaboración y entrega del informe final</p>
+          </div>
+          {!ejecucionCompleta && (
+            <Badge className="ml-auto bg-gray-100 text-gray-600 border-gray-300">
+              <AlertCircle className="w-3 h-3 mr-1" />
+              Complete la etapa de Ejecución primero
+            </Badge>
+          )}
+          {formData.fechaInicioComunicacion && formData.fechaFinComunicacion && (
+            <Badge className="ml-auto bg-green-100 text-green-700 border-green-300">
+              <CheckCircle className="w-3 h-3 mr-1" />
+              Completa
+            </Badge>
+          )}
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FieldWrapper 
+            label="Fecha de Inicio" 
+            required={ejecucionCompleta}
+            helpText="Inicio de la etapa de Comunicación"
+          >
+            <Input
+              type="date"
+              value={formData.fechaInicioComunicacion || ''}
+              onChange={(e) => onChange('fechaInicioComunicacion', e.target.value)}
+              className="border-gray-300"
+              disabled={!ejecucionCompleta}
+              min={formData.fechaFinEjecucion || undefined}
+            />
+          </FieldWrapper>
+
+          <FieldWrapper 
+            label="Fecha de Fin" 
+            required={ejecucionCompleta}
+            helpText="Finalización de la auditoría"
+          >
+            <Input
+              type="date"
+              value={formData.fechaFinComunicacion || ''}
+              onChange={(e) => {
+                onChange('fechaFinComunicacion', e.target.value);
+                // También actualizar fechaFin para compatibilidad
+                onChange('fechaFin', e.target.value);
+              }}
+              className="border-gray-300"
+              disabled={!ejecucionCompleta}
+              min={formData.fechaInicioComunicacion || formData.fechaFinEjecucion || undefined}
+            />
+          </FieldWrapper>
+        </div>
+
+        {formData.fechaInicioComunicacion && formData.fechaFinComunicacion && (
+          <div className="mt-3 p-2 bg-green-100 rounded text-sm text-green-700">
+            <strong>Duración:</strong> {calcularDias(formData.fechaInicioComunicacion, formData.fechaFinComunicacion)} días
+          </div>
+        )}
+      </Card>
+
+      {/* Resumen de duración total */}
+      {formData.fechaInicioPlaneacion && formData.fechaFinComunicacion && (
+        <Card className="p-4 border-2 border-blue-300 bg-blue-50">
+          <div className="flex items-center gap-2 mb-2">
+            <Clock className="w-5 h-5 text-blue-600" />
+            <h4 className="font-bold text-blue-800">Resumen del Cronograma</h4>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <p className="text-gray-600">Duración Total</p>
+              <p className="font-bold text-blue-700">
+                {calcularDias(formData.fechaInicioPlaneacion, formData.fechaFinComunicacion)} días
+              </p>
+            </div>
+            {planeacionCompleta && (
+              <div>
+                <p className="text-gray-600">Planeación</p>
+                <p className="font-bold text-blue-600">
+                  {calcularDias(formData.fechaInicioPlaneacion!, formData.fechaFinPlaneacion!)} días
+                </p>
+              </div>
+            )}
+            {ejecucionCompleta && (
+              <div>
+                <p className="text-gray-600">Ejecución</p>
+                <p className="font-bold text-amber-600">
+                  {calcularDias(formData.fechaInicioEjecucion!, formData.fechaFinEjecucion!)} días
+                </p>
+              </div>
+            )}
+            {formData.fechaInicioComunicacion && formData.fechaFinComunicacion && (
+              <div>
+                <p className="text-gray-600">Comunicación</p>
+                <p className="font-bold text-green-600">
+                  {calcularDias(formData.fechaInicioComunicacion!, formData.fechaFinComunicacion!)} días
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
@@ -1571,29 +1727,9 @@ function Paso6RecursosProductos({ formData, onChange }: PasoProps) {
             helpText="Costo aproximado de la auditoría"
           >
             <Input
-              type="number"
+              type="text"
               value={formData.presupuestoEstimado}
-              onChange={(e) => {
-                const value = e.target.value;
-                // Permitir campo vacío o valores numéricos no negativos
-                if (value === '') {
-                  onChange('presupuestoEstimado', '');
-                } else {
-                  const numValue = parseFloat(value);
-                  // Solo actualizar si el valor es un número válido y no negativo
-                  if (!isNaN(numValue) && numValue >= 0) {
-                    onChange('presupuestoEstimado', value);
-                  }
-                }
-              }}
-              onKeyDown={(e) => {
-                // Prevenir el ingreso del signo menos, 'e', 'E', '+'
-                if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') {
-                  e.preventDefault();
-                }
-              }}
-              min="0"
-              step="1000"
+              onChange={(e) => onChange('presupuestoEstimado', e.target.value)}
               placeholder="Ej: $5,000,000 COP"
               className="border-gray-300"
             />
@@ -1818,13 +1954,15 @@ interface Paso8Props {
   onAgregarHallazgo: () => void;
   onEliminarHallazgo: (id: string) => void;
   onActualizarHallazgo: (id: string, campo: keyof Hallazgo, valor: any) => void;
+  onChange: (field: keyof AuditoriaUnificadaFormData, value: any) => void;
 }
 
 function Paso8Hallazgos({
   formData,
   onAgregarHallazgo,
   onEliminarHallazgo,
-  onActualizarHallazgo
+  onActualizarHallazgo,
+  onChange
 }: Paso8Props) {
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -1836,43 +1974,86 @@ function Paso8Hallazgos({
         </p>
       </div>
 
-      <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200 mb-4">
-        <p className="text-sm text-yellow-800">
-          <strong>Nota:</strong> Esta sección es opcional durante la creación. Puede agregar hallazgos
-          ahora o posteriormente durante la ejecución de la auditoría.
-        </p>
-      </div>
+      {/* ✅ CHECKBOX PARA INCLUIR HALLAZGOS PRELIMINARES */}
+      <Card className="p-6 border-2 border-blue-200 bg-blue-50">
+        <div className="flex items-start gap-4">
+          <input
+            type="checkbox"
+            id="incluirHallazgosPreliminares"
+            checked={formData.incluirHallazgosPreliminares}
+            onChange={(e) => onChange('incluirHallazgosPreliminares', e.target.checked)}
+            className="w-5 h-5 mt-1 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+          />
+          <div className="flex-1">
+            <label htmlFor="incluirHallazgosPreliminares" className="font-bold text-blue-900 cursor-pointer">
+              ✍️ Incluir hallazgos preliminares identificados durante la auditoría
+            </label>
+            <p className="text-sm text-blue-800 mt-2">
+              <strong>Nota:</strong> Los hallazgos incluidos aquí tienen carácter{' '}
+              <span className="font-bold underline">PRELIMINAR</span> y están sujetos a validación,
+              verificación y comunicación formal al auditado antes de ser considerados definitivos.
+            </p>
+          </div>
+        </div>
+      </Card>
 
-      {formData.hallazgos.length === 0 ? (
-        <Card className="p-8 text-center border-2 border-dashed border-gray-300">
-          <AlertCircle className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-          <p className="text-gray-600 mb-4">No hay hallazgos registrados</p>
-          <Button
-            type="button"
-            onClick={onAgregarHallazgo}
-            style={{ background: '#EF4444' }}
-            className="gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Agregar Primer Hallazgo
-          </Button>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {formData.hallazgos.map((hallazgo, index) => (
-            <Card key={hallazgo.id} className="p-6 border-2 border-gray-200">
-              <div className="flex items-start justify-between mb-4">
-                <h4 className="font-bold text-gray-900">Hallazgo #{index + 1}</h4>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onEliminarHallazgo(hallazgo.id)}
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
+      {/* BANNER DE HALLAZGOS PRELIMINARES */}
+      {formData.incluirHallazgosPreliminares && (
+        <div className="p-4 bg-yellow-50 rounded-lg border-2 border-yellow-400">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-yellow-700 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-bold text-yellow-900">
+                ⚠️ HALLAZGOS PRELIMINARES
+              </p>
+              <p className="text-sm text-yellow-800 mt-1">
+                Los hallazgos registrados a continuación tienen carácter <strong>preliminar</strong>.
+                Deben ser comunicados al auditado para el derecho de contradicción antes de su
+                formalización en el informe final de auditoría.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECCIÓN DE HALLAZGOS (solo visible si el checkbox está activado) */}
+      {formData.incluirHallazgosPreliminares && (
+        <>
+          {formData.hallazgos.length === 0 ? (
+            <Card className="p-8 text-center border-2 border-dashed border-gray-300">
+              <AlertCircle className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+              <p className="text-gray-600 mb-4">No hay hallazgos preliminares registrados</p>
+              <Button
+                type="button"
+                onClick={onAgregarHallazgo}
+                style={{ background: '#EF4444' }}
+                className="gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Agregar Primer Hallazgo Preliminar
+              </Button>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {formData.hallazgos.map((hallazgo, index) => (
+                <Card key={hallazgo.id} className="p-6 border-2 border-yellow-300 bg-yellow-50/30">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <h4 className="font-bold text-gray-900">Hallazgo Preliminar #{index + 1}</h4>
+                      <span className="px-2 py-1 bg-yellow-200 text-yellow-800 text-xs font-bold rounded-full">
+                        PRELIMINAR
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onEliminarHallazgo(hallazgo.id)}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
 
               <div className="space-y-4">
                 {/* Tipo de Hallazgo */}
@@ -1954,13 +2135,15 @@ function Paso8Hallazgos({
             type="button"
             onClick={onAgregarHallazgo}
             variant="outline"
-            className="w-full gap-2"
+            className="w-full gap-2 border-2 border-yellow-400 text-yellow-700 hover:bg-yellow-50"
           >
             <Plus className="w-4 h-4" />
-            Agregar Otro Hallazgo
+            Agregar Otro Hallazgo Preliminar
           </Button>
         </div>
       )}
+    </>
+    )}
     </div>
   );
 }
@@ -2065,23 +2248,59 @@ function Paso9VinculacionPlan({ formData, onChange }: PasoProps) {
             <p className="text-gray-600">Área:</p>
             <p className="font-bold text-gray-900">{formData.areaObjetivo || 'Sin asignar'}</p>
           </div>
-          <div>
-            <p className="text-gray-600">Periodo:</p>
-            <p className="font-bold text-gray-900">
-              {formData.fechaInicio && formData.fechaFin
-                ? `${formData.fechaInicio} - ${formData.fechaFin}`
-                : 'Sin asignar'}
-            </p>
+          <div className="md:col-span-2">
+            <p className="text-gray-600 mb-1">Cronograma de Etapas:</p>
+            <div className="space-y-1">
+              {formData.fechaInicioPlaneacion && formData.fechaFinPlaneacion && (
+                <p className="text-xs text-gray-700">
+                  <strong>Planeación:</strong> {formData.fechaInicioPlaneacion} → {formData.fechaFinPlaneacion}
+                </p>
+              )}
+              {formData.fechaInicioEjecucion && formData.fechaFinEjecucion && (
+                <p className="text-xs text-gray-700">
+                  <strong>Ejecución:</strong> {formData.fechaInicioEjecucion} → {formData.fechaFinEjecucion}
+                </p>
+              )}
+              {formData.fechaInicioComunicacion && formData.fechaFinComunicacion && (
+                <p className="text-xs text-gray-700">
+                  <strong>Comunicación:</strong> {formData.fechaInicioComunicacion} → {formData.fechaFinComunicacion}
+                </p>
+              )}
+            </div>
           </div>
           <div>
             <p className="text-gray-600">Objetivos:</p>
             <p className="font-bold text-gray-900">{formData.objetivos.length} definidos</p>
           </div>
           <div>
-            <p className="text-gray-600">Hallazgos:</p>
-            <p className="font-bold text-gray-900">{formData.hallazgos.length} registrados</p>
+            <p className="text-gray-600">Hallazgos Preliminares:</p>
+            <p className="font-bold text-gray-900">
+              {formData.incluirHallazgosPreliminares 
+                ? `${formData.hallazgos.length} registrado${formData.hallazgos.length !== 1 ? 's' : ''}`
+                : 'Sin hallazgos'
+              }
+            </p>
           </div>
         </div>
+        
+        {/* Alerta de hallazgos preliminares en resumen */}
+        {formData.incluirHallazgosPreliminares && formData.hallazgos.length > 0 && (
+          <div className="mt-4 p-4 bg-yellow-50 rounded-lg border-2 border-yellow-300">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-yellow-700 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-yellow-900">
+                  ⚠️ Esta auditoría incluye {formData.hallazgos.length} hallazgo{formData.hallazgos.length !== 1 ? 's' : ''} preliminar{formData.hallazgos.length !== 1 ? 'es' : ''}
+                </p>
+                <p className="text-sm text-yellow-800 mt-1">
+                  Recuerde que estos hallazgos deben ser comunicados formalmente al auditado
+                  para el ejercicio del derecho de contradicción antes de su inclusión en el
+                  informe final.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

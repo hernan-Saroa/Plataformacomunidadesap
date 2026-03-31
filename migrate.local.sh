@@ -13,8 +13,20 @@ set -e
 ENV_FILE="backend/auth-service/.env"
 
 if [ -f "$ENV_FILE" ]; then
-  # Cargar variables del .env (ignorar comentarios y lineas vacias)
-  export $(grep -v '^\s*#' "$ENV_FILE" | grep -v '^\s*$' | sed 's/\r$//' | xargs)
+  # Cargar variables del .env (compatibles con bash; limpiando BOM y CR para Mac/Linux/Windows)
+  CLEAN_ENV=$(mktemp)
+  while IFS= read -r line || [ -n "$line" ]; do
+    # Remover BOM (UTF-8) si está presente al inicio
+    line="${line#$'\xef\xbb\xbf'}"
+    # Remover retorno de carro (\r) típico de Windows
+    line="${line%$'\r'}"
+    echo "$line" >> "$CLEAN_ENV"
+  done < "$ENV_FILE"
+
+  set -a
+  source "$CLEAN_ENV"
+  set +a
+  rm -f "$CLEAN_ENV"
 else
   echo "Error: No se encontro $ENV_FILE"
   exit 1

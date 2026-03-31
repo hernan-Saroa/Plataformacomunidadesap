@@ -3,7 +3,7 @@
  * Permite asignar un usuario a múltiples sedes con diferentes configuraciones
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Building2, Plus, X, MapPin, Star, Calendar, AlertCircle, 
@@ -14,6 +14,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { toast } from 'sonner';
 import type { CreateAsignacionSedeDTO } from '../../types';
+import { estructuraService } from '../../services/estructuraService';
 
 interface GestionAsignacionesSedesProps {
   asignaciones: CreateAsignacionSedeDTO[];
@@ -36,15 +37,54 @@ export function GestionAsignacionesSedes({
 }: GestionAsignacionesSedesProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [loadingSedes, setLoadingSedes] = useState(false);
 
-  // Mock data - sedes disponibles (en producción viene de API)
-  const sedesDisponibles = [
+  // Fallback local (si falla el endpoint)
+  const fallbackSedesDisponibles = [
     { id: '1', codigo: 'SEDE-NAL', nombre: 'Sede Nacional', nivel: 'nacional' as const, ciudad: 'Bogotá D.C.' },
     { id: '2', codigo: 'DIR-BOG', nombre: 'Dirección Territorial Bogotá', nivel: 'territorial' as const, ciudad: 'Bogotá D.C.' },
     { id: '3', codigo: 'DIR-ANT', nombre: 'Dirección Territorial Antioquia', nivel: 'territorial' as const, ciudad: 'Medellín' },
     { id: '4', codigo: 'CRE-MED', nombre: 'Centro Regional Medellín', nivel: 'regional' as const, ciudad: 'Medellín' },
     { id: '5', codigo: 'DIR-VAL', nombre: 'Dirección Territorial Valle del Cauca', nivel: 'territorial' as const, ciudad: 'Cali' },
   ];
+  const [sedesDisponibles, setSedesDisponibles] = useState(fallbackSedesDisponibles);
+
+  useEffect(() => {
+    const loadSedes = async () => {
+      try {
+        setLoadingSedes(true);
+        const response = await estructuraService.obtenerEstructura();
+        const seccionales = response.data?.seccionales || [];
+        const sedes = response.data?.sedes || [];
+
+        if (sedes.length === 0) {
+          setSedesDisponibles(fallbackSedesDisponibles);
+          return;
+        }
+
+        const seccionalById = new Map<number, string>(
+          seccionales.map((sec: any) => [sec.idSeccional, sec.nomSeccional]),
+        );
+
+        const sedesMapped = sedes.map((sede: any) => ({
+          id: String(sede.idSede),
+          codigo: sede.codSede || `SEDE-${sede.idSede}`,
+          nombre: sede.nomSede,
+          nivel: 'sede' as const,
+          ciudad: sede.geopolitica?.nomDivGeopolitica || seccionalById.get(sede.idSeccional) || 'Sin ubicación',
+        }));
+
+        setSedesDisponibles(sedesMapped);
+      } catch (error) {
+        console.error('Error cargando sedes desde estructura-organizacional:', error);
+        setSedesDisponibles(fallbackSedesDisponibles);
+      } finally {
+        setLoadingSedes(false);
+      }
+    };
+
+    loadSedes();
+  }, []);
 
   const handleAgregarAsignacion = (asignacion: CreateAsignacionSedeDTO) => {
     // Validar que no esté duplicada
@@ -140,6 +180,7 @@ export function GestionAsignacionesSedes({
           Asignación de Sedes
           {required && <span className="text-red-500 ml-1">*</span>}
         </label>
+        {asignaciones.length == 0 && (
         <Button
           type="button"
           variant="outline"
@@ -150,6 +191,7 @@ export function GestionAsignacionesSedes({
           <Plus className="w-4 h-4" />
           Agregar Sede
         </Button>
+        )}
       </div>
 
       {/* Lista de asignaciones */}
@@ -309,6 +351,7 @@ export function GestionAsignacionesSedes({
           asignacion={editingIndex !== null ? asignaciones[editingIndex] : undefined}
           sedesDisponibles={sedesDisponibles}
           sedesYaAsignadas={asignaciones.map(a => a.unidadId)}
+          loadingSedes={loadingSedes}
         />
       )}
     </div>
@@ -326,6 +369,7 @@ interface FormularioAsignacionSedeProps {
   asignacion?: CreateAsignacionSedeDTO;
   sedesDisponibles: any[];
   sedesYaAsignadas: string[];
+  loadingSedes?: boolean;
 }
 
 function FormularioAsignacionSede({
@@ -335,6 +379,7 @@ function FormularioAsignacionSede({
   asignacion,
   sedesDisponibles,
   sedesYaAsignadas,
+  loadingSedes = false,
 }: FormularioAsignacionSedeProps) {
   const [formData, setFormData] = useState<CreateAsignacionSedeDTO>(
     asignacion || {
@@ -347,6 +392,7 @@ function FormularioAsignacionSede({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
 
     if (!formData.unidadId) {
       toast.error('Debe seleccionar una sede');
@@ -404,6 +450,7 @@ function FormularioAsignacionSede({
                 disabled={!!asignacion} // No permitir cambiar sede en edición
               >
                 <option value="">Seleccionar sede...</option>
+                {loadingSedes && <option value="" disabled>Cargando sedes...</option>}
                 {sedesFiltradas.map((sede) => (
                   <option key={sede.id} value={sede.id}>
                     {sede.nombre} ({sede.codigo}) - {sede.ciudad}

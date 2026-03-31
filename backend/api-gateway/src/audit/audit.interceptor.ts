@@ -213,50 +213,141 @@ export class AuditInterceptor implements NestInterceptor {
     userRole?: string;
   } {
     try {
-      const authHeader = request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      const reqUser = (request as any).user as Record<string, any> | undefined;
+
+      // Priorizar el usuario ya validado por JwtAuthGuard
+      const guardDisplayUser = this.getDisplayUserFromPayload(reqUser);
+      const guardUserRole = this.extractRoles(reqUser?.roles);
+      const guardUserId = this.parseNumericUserId(reqUser?.userId ?? reqUser?.sub ?? reqUser?.id);
+
+      if (guardDisplayUser || guardUserRole || guardUserId !== undefined) {
+        return {
+          userId: guardUserId,
+          userEmail: guardDisplayUser,
+          userRole: guardUserRole,
+        };
+      }
+
+      const token = this.extractTokenFromRequest(request);
+      if (!token) {
         return {};
       }
 
-      const token = authHeader.substring(7);
-      const parts = token.split('.');
-      if (parts.length !== 3) {
+      const payload = this.decodeJwtPayload(token);
+      if (!payload) {
         return {};
-      }
-
-      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-      if (!payload || typeof payload !== 'object') {
-        return {};
-      }
-      
-      const userId = payload.sub ? parseInt(payload.sub, 10) : undefined;
-      const userEmail = payload.email || payload.username || undefined;
-      
-      let userRole: string | undefined;
-      if (payload.roles) {
-        if (Array.isArray(payload.roles)) {
-          if (payload.roles.length > 0 && typeof payload.roles[0] === 'object') {
-            userRole = payload.roles
-              .map((r: any) => r.code || r.name || r.id || JSON.stringify(r))
-              .join(', ');
-          } else {
-            userRole = payload.roles.join(', ');
-          }
-        } else if (typeof payload.roles === 'string') {
-          userRole = payload.roles;
-        } else if (typeof payload.roles === 'object') {
-          userRole = payload.roles.code || payload.roles.name || JSON.stringify(payload.roles);
-        }
       }
 
       return {
-        userId: userId && !isNaN(userId) ? userId : undefined,
-        userEmail,
-        userRole,
+        userId: this.parseNumericUserId(payload.sub),
+        userEmail: this.getDisplayUserFromPayload(payload),
+        userRole: this.extractRoles(payload.roles),
       };
     } catch (error) {
       return {};
     }
+  }
+
+  private extractTokenFromRequest(request: Request): string | undefined {
+    const authHeader = request.headers.authorization;
+    const xAccessToken = request.headers['x-access-token'];
+    const xAuthToken = request.headers['x-auth-token'];
+
+    const candidates = [
+      authHeader,
+      Array.isArray(xAccessToken) ? xAccessToken[0] : xAccessToken,
+      Array.isArray(xAuthToken) ? xAuthToken[0] : xAuthToken,
+    ];
+
+    for (const rawCandidate of candidates) {
+      if (!rawCandidate || typeof rawCandidate !== 'string') continue;
+      const candidate = rawCandidate.trim();
+      if (!candidate) continue;
+
+      if (/^bearer\s+/i.test(candidate)) {
+        const token = candidate.replace(/^bearer\s+/i, '').trim();
+        if (token) return token;
+      }
+
+      if (candidate.split('.').length === 3) {
+        return candidate;
+      }
+    }
+
+    return undefined;
+  }
+
+  private decodeJwtPayload(token: string): Record<string, any> | undefined {
+    const parts = token.split('.');
+    if (parts.length !== 3) return undefined;
+
+    const rawPayload = parts[1];
+    if (!rawPayload) return undefined;
+
+    const normalized = rawPayload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+
+    const payload = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+    return payload && typeof payload === 'object' ? payload : undefined;
+  }
+
+  private parseNumericUserId(rawUserId: unknown): number | undefined {
+    if (typeof rawUserId === 'number' && Number.isFinite(rawUserId)) {
+      return rawUserId;
+    }
+
+    if (typeof rawUserId === 'string' && rawUserId.trim()) {
+      const parsed = parseInt(rawUserId, 10);
+      return Number.isNaN(parsed) ? undefined : parsed;
+    }
+
+    return undefined;
+  }
+
+  private extractRoles(rawRoles: unknown): string | undefined {
+    if (!rawRoles) return undefined;
+
+    if (Array.isArray(rawRoles)) {
+      if (rawRoles.length > 0 && typeof rawRoles[0] === 'object') {
+        return rawRoles
+          .map((r: any) => r.code || r.name || r.id || JSON.stringify(r))
+          .join(', ');
+      }
+      return rawRoles.join(', ');
+    }
+
+    if (typeof rawRoles === 'string') {
+      return rawRoles;
+    }
+
+    if (typeof rawRoles === 'object') {
+      return (rawRoles as any).code || (rawRoles as any).name || JSON.stringify(rawRoles);
+    }
+
+    return undefined;
+  }
+
+  private getDisplayUserFromPayload(payload?: Record<string, any>): string | undefined {
+    if (!payload || typeof payload !== 'object') return undefined;
+
+    const candidates = [
+      payload.name,
+      payload.full_name,
+      payload.preferred_username,
+      payload.email,
+      payload.upn,
+      payload.unique_name,
+      payload.username,
+      payload.sub,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+
+    return undefined;
   }
 
   /**
@@ -435,4 +526,3 @@ export class AuditInterceptor implements NestInterceptor {
     return null;
   }
 }
-

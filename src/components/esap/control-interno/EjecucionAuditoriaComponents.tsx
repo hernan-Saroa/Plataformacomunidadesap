@@ -220,6 +220,14 @@ export function SeccionListasChequeo({
     setObservaciones('');
   };
 
+  // Función para navegar a la biblioteca de listas de chequeo
+  const navegarBiblioteca = () => {
+    // Disparar evento global para que ControlInternoFull lo capture
+    window.dispatchEvent(new CustomEvent('navegarModuloControlInterno', { 
+      detail: { seccion: 'listas-chequeo' } 
+    }));
+  };
+
   if (listasAplicadas.length === 0) {
     return (
       <CardSIGL>
@@ -229,11 +237,11 @@ export function SeccionListasChequeo({
           </div>
           <h3 className="text-lg text-gray-900 mb-2">No hay listas de chequeo aplicadas</h3>
           <p className="text-sm text-gray-600 mb-6">
-            Comience aplicando una lista de chequeo estándar para este proceso
+            Vaya a la Biblioteca de Listas de Chequeo para crear y gestionar sus listas
           </p>
-          <ButtonSIGL variant="primary" onClick={onAplicarNuevaLista}>
-            <Plus className="w-4 h-4 mr-2" />
-            Aplicar Lista de Chequeo
+          <ButtonSIGL variant="primary" onClick={navegarBiblioteca}>
+            <ClipboardCheck className="w-4 h-4 mr-2" />
+            Ir a Biblioteca de Listas
           </ButtonSIGL>
         </div>
       </CardSIGL>

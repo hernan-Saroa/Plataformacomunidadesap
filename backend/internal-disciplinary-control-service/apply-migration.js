@@ -6,11 +6,11 @@ const fs = require('fs');
 
 
 const client = new Client({
-    user: process.env.DB_USER || 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    database: process.env.DB_NAME || 'disciplinario_db',
-    password: process.env.DB_PASS,
-    port: parseInt(process.env.DB_PORT) || 5432,
+    user: process.env.DATABASE_USER || process.env.DB_USER || 'postgres',
+    host: process.env.DATABASE_HOST || process.env.DB_HOST || 'localhost',
+    database: process.env.DATABASE_NAME || process.env.DB_NAME || 'disciplinario_db',
+    password: process.env.DATABASE_PASSWORD || process.env.DB_PASS || '',
+    port: parseInt(process.env.DATABASE_PORT || process.env.DB_PORT || '5432', 10),
 });
 
 async function runMigration() {

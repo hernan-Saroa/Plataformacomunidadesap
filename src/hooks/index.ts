@@ -10,7 +10,6 @@ export { useRoles } from './useRoles';
 
 // Sistema Usuario Persona V2
 export { useEnrollment } from './useEnrollment';
-export { useProfileCompleteness } from './useProfileCompleteness';
 export { useUserRoles } from './useUserRoles';
 export { useNotifications } from './useNotifications';
 
@@ -27,9 +26,6 @@ export * from './useResponsive';
 // Reports & Analytics
 export * from './useReportsQueries';
 
-// PWA
-export * from './usePWA';
-
 // Microinteracciones & UX Premium
 export { useMicrointeractions } from './useMicrointeractions';
 
@@ -45,9 +41,6 @@ export {
   useAriaDescription,
   useAriaExpanded
 } from './useAccessibility';
-
-// Formularios
-export { useContactForm, type ContactFormData, type ContactFormErrors, type UseContactFormOptions } from './useContactForm';
 
 // Onboarding & User Experience
 export { useFirstVisit } from './useFirstVisit';

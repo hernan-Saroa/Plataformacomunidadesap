@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, Res } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Patch, Delete, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { PeiService } from '../services/pei.service';
 
@@ -9,6 +9,11 @@ export class PeiController {
     @Get('dashboard')
     async getDashboard() {
         return this.peiService.getDashboard();
+    }
+
+    @Get('archivados')
+    async getArchivados() {
+        return this.peiService.getArchivados();
     }
 
     @Post('indicador')
@@ -32,6 +37,21 @@ export class PeiController {
         @Body() body: { valor: number; observaciones?: string; usuarioId?: string }
     ) {
         return this.peiService.registrarAvance(id, body.valor, body.observaciones, body.usuarioId);
+    }
+
+    @Patch('indicador/:id/archivar')
+    async archivar(@Param('id') id: number) {
+        return this.peiService.archivar(id);
+    }
+
+    @Patch('indicador/:id/restaurar')
+    async restaurar(@Param('id') id: number) {
+        return this.peiService.restaurar(id);
+    }
+
+    @Delete('indicador/:id')
+    async eliminar(@Param('id') id: number) {
+        return this.peiService.eliminar(id);
     }
 
     @Get('export/zip')

@@ -2117,24 +2117,14 @@ COMMENT ON TABLE control_interno.integraciones_esap IS 'Configuración de integr
 
 CREATE TABLE control_interno.item_lista_chequeo (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
-    numero integer NOT NULL,
-    pregunta text NOT NULL,
-    criterio text NOT NULL,
-    normativa_referencia character varying(255),
-    tipo_respuesta character varying(50) NOT NULL,
-    obligatorio boolean DEFAULT true,
-    peso_calificacion numeric(10,2),
-    evidencia_requerida boolean DEFAULT false,
     lista_chequeo_id uuid NOT NULL,
-    seccion_id uuid,
-    es_critico boolean DEFAULT false,
-    respuesta character varying(50),
-    observaciones text,
-    genera_hallazgo boolean DEFAULT false,
-    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT item_lista_chequeo_respuesta_check CHECK (((respuesta)::text = ANY ((ARRAY['cumple'::character varying, 'no-cumple'::character varying, 'no-aplica'::character varying])::text[]))),
-    CONSTRAINT item_lista_chequeo_tipo_respuesta_check CHECK (((tipo_respuesta)::text = ANY ((ARRAY['si_no'::character varying, 'cumple_no_cumple'::character varying, 'texto'::character varying, 'numerico'::character varying])::text[])))
+    texto text NOT NULL,
+    categoria character varying(100) NOT NULL,
+    obligatorio boolean DEFAULT false NOT NULL,
+    orden integer DEFAULT 0 NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT item_lista_chequeo_pkey PRIMARY KEY (id)
 );
 
 
@@ -5014,14 +5004,7 @@ CREATE INDEX idx_integraciones_tipo ON control_interno.integraciones_esap USING 
 -- Name: idx_item_lista_chequeo_lista; Type: INDEX; Schema: control_interno; Owner: -
 --
 
-CREATE INDEX idx_item_lista_chequeo_lista ON control_interno.item_lista_chequeo USING btree (lista_chequeo_id);
-
-
---
--- Name: idx_item_seccion; Type: INDEX; Schema: control_interno; Owner: -
---
-
-CREATE INDEX idx_item_seccion ON control_interno.item_lista_chequeo USING btree (seccion_id);
+CREATE INDEX idx_item_lista_chequeo_lista ON control_interno.item_lista_chequeo USING btree (lista_chequeo_id, orden);
 
 
 --
@@ -5662,6 +5645,13 @@ CREATE TRIGGER trigger_update_lista_chequeo_updated_at BEFORE UPDATE ON control_
 
 
 --
+-- Name: item_lista_chequeo trigger_update_item_lista_chequeo_updated_at; Type: TRIGGER; Schema: control_interno; Owner: -
+--
+
+CREATE TRIGGER trigger_update_item_lista_chequeo_updated_at BEFORE UPDATE ON control_interno.item_lista_chequeo FOR EACH ROW EXECUTE FUNCTION control_interno.update_lista_chequeo_updated_at();
+
+
+--
 -- Name: tipo_auditoria trigger_update_tipo_auditoria_updated_at; Type: TRIGGER; Schema: control_interno; Owner: -
 --
 
@@ -6028,19 +6018,11 @@ ALTER TABLE ONLY control_interno.historial_plan_anual
 
 
 --
--- Name: item_lista_chequeo fk_item_lista_chequeo; Type: FK CONSTRAINT; Schema: control_interno; Owner: -
+-- Name: item_lista_chequeo item_lista_chequeo_lista_chequeo_id_fkey; Type: FK CONSTRAINT; Schema: control_interno; Owner: -
 --
 
 ALTER TABLE ONLY control_interno.item_lista_chequeo
-    ADD CONSTRAINT fk_item_lista_chequeo FOREIGN KEY (lista_chequeo_id) REFERENCES control_interno.lista_chequeo(id) ON DELETE CASCADE;
-
-
---
--- Name: item_lista_chequeo fk_item_seccion; Type: FK CONSTRAINT; Schema: control_interno; Owner: -
---
-
-ALTER TABLE ONLY control_interno.item_lista_chequeo
-    ADD CONSTRAINT fk_item_seccion FOREIGN KEY (seccion_id) REFERENCES control_interno.seccion_lista_chequeo(id) ON DELETE SET NULL;
+    ADD CONSTRAINT item_lista_chequeo_lista_chequeo_id_fkey FOREIGN KEY (lista_chequeo_id) REFERENCES control_interno.lista_chequeo(id) ON DELETE CASCADE;
 
 
 --

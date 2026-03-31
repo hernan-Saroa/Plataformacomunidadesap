@@ -28,16 +28,14 @@ import { Textarea } from '../../../ui/textarea';
 import { Label } from '../../../ui/label';
 import { Input } from '../../../ui/input';
 import type { ProcesoDisciplinario } from '../core/types';
+import { procesosDisciplinariosMock } from '../data/datosProcesosDisciplinarios';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalProcesoDisciplinario } from './ModalProcesoDisciplinario';
 import { ModalComunicaciones } from './ModalComunicaciones';
-import { ModalAutos } from './ModalAutos';
-import { ModalEvidencias } from './ModalEvidencias';
-import { ModalOficios } from './ModalOficios';
-import { ModalActas } from './ModalActas';
+import { ModalNuevoProcesoDisciplinario } from './ModalNuevoProcesoDisciplinario';
 
 import { VistaListaJuzgamiento } from './VistaListaJuzgamiento';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
@@ -45,6 +43,8 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 
 // ✅ Importar configuraciones centralizadas
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // Tipo para drag and drop
 const ItemTypes = {
@@ -59,15 +59,41 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   // ✅ Obtener configuraciones desde el Context API
   const { estadosActivos, tiempos } = useConfiguracionModulo('juzgamiento');
 
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
-  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista'>('kanban');
+  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroGravedad, setFiltroGravedad] = useState<string>('TODAS');
+  const [modalNuevoProcesoOpen, setModalNuevoProcesoOpen] = useState(false);
+  const [procesoAbiertoExternamente, setProcesoAbiertoExternamente] = useState<ProcesoDisciplinario | null>(null);
 
   // Estado local para manejar drag and drop
   const [procesos, setProcesos] = useState<ProcesoDisciplinario[]>([]);
+
+  const handleVerExpedienteAnexado = async (procesoId: string) => {
+    let proc = procesos.find(p => p.id === procesoId || (p as any).radicado === procesoId);
+    if (!proc) {
+      try {
+        toast.loading(`Cargando información del expediente ${procesoId}...`, { id: 'cargando-anexo' });
+        // The endpoint will be /juzgamiento/procesos in this logic, wait for details or mock it based on API behavior. If not found locally, fetch it.
+        proc = await legalService.getJuzgamientoProceso(procesoId);
+        toast.dismiss('cargando-anexo');
+      } catch(e) {
+         toast.dismiss('cargando-anexo');
+         proc = undefined;
+      }
+    }
+    
+    if (proc) {
+      setProcesoAbiertoExternamente(proc);
+    } else {
+      toast.error(`El proceso ${procesoId} no se encuentra en la base de datos o no tiene acceso.`);
+    }
+  };
 
   // ✅ Estado para modal de confirmación de cambio de etapa
   const [modalCambioEtapaOpen, setModalCambioEtapaOpen] = useState(false);
@@ -80,6 +106,154 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const [justificacionCambio, setJustificacionCambio] = useState('');
   const [archivoCambio, setArchivoCambio] = useState<File | null>(null);
   const [guardandoCambio, setGuardandoCambio] = useState(false);
+
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'PD-999',
+      codigo: 'DISC-2023-999',
+      nombre: 'Falta Gravísima - Malversación de Fondos - Carlos Andrés Mora',
+      tipo: 'Proceso Disciplinario',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-20T15:30:00'),
+      usuarioArchivo: 'Dr. Juan Carlos Pérez',
+      motivoArchivo: 'Proceso terminado por prescripción de la acción disciplinaria (Art. 30 Ley 734/2002)',
+      metadatos: {
+        'Tipo Falta': 'GRAVÍSIMA',
+        'Funcionario': 'Carlos Andrés Mora Gutiérrez',
+        'Cargo': 'Coordinador Administrativo',
+        'Investigador': 'Dr. Juan Carlos Pérez',
+        'Fecha Inicio': '15/03/2020',
+        'Motivo Archivo': 'Prescripción'
+      }
+    },
+    {
+      id: 'PD-998',
+      codigo: 'DISC-2023-888',
+      nombre: 'Falta Grave - Incumplimiento de Horario - Ana María Castro',
+      tipo: 'Proceso Disciplinario',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-11-18T11:20:00'),
+      usuarioArchivo: 'Dra. Ana María López',
+      motivoArchivo: 'Archivo definitivo por ausencia de mérito para continuar la investigación disciplinaria',
+      metadatos: {
+        'Tipo Falta': 'GRAVE',
+        'Funcionario': 'Ana María Castro Pérez',
+        'Cargo': 'Asistente Administrativa',
+        'Investigador': 'Dra. Ana María López',
+        'Fecha Inicio': '10/08/2023',
+        'Resultado': 'Archivo por falta de mérito'
+      }
+    },
+    {
+      id: 'PD-997',
+      codigo: 'DISC-2023-777',
+      nombre: 'Falta Leve - Uso Indebido de Computador - Pedro Ramírez',
+      tipo: 'Proceso Disciplinario',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-10-25T09:45:00'),
+      usuarioArchivo: 'Dr. Juan Carlos Pérez',
+      motivoArchivo: 'Proceso duplicado - El caso real está bajo radicado DISC-2023-778. Error de digitación en el sistema',
+      metadatos: {
+        'Tipo Falta': 'LEVE',
+        'Funcionario': 'Pedro Ramírez González',
+        'Motivo Eliminación': 'Registro Duplicado'
+      }
+    },
+    {
+      id: 'PD-996',
+      codigo: 'DISC-2022-666',
+      nombre: 'Falta Gravísima - Acoso Laboral - Luis Fernando Díaz',
+      tipo: 'Proceso Disciplinario',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-09-12T16:10:00'),
+      usuarioArchivo: 'Dra. Ana María López',
+      motivoArchivo: 'Sanción ejecutoriada: Destitución e inhabilidad de 15 años. Resolución notificada y en firme',
+      metadatos: {
+        'Tipo Falta': 'GRAVÍSIMA',
+        'Funcionario': 'Luis Fernando Díaz Parra',
+        'Cargo': 'Jefe de Departamento',
+        'Sanción': 'Destitución e Inhabilidad 15 años',
+        'Fecha Sanción': '05/09/2024',
+        'Estado': 'Ejecutoriada'
+      }
+    },
+    {
+      id: 'PD-995',
+      codigo: 'DISC-2024-555',
+      nombre: 'Falta Grave - Absentismo Laboral - María Fernanda Torres',
+      tipo: 'Proceso Disciplinario',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-08-08T14:30:00'),
+      usuarioArchivo: 'Admin Sistema',
+      motivoArchivo: 'Registro erróneo - No corresponde a funcionario de ESAP. Persona externa a la institución',
+      metadatos: {
+        'Tipo Falta': 'GRAVE',
+        'Motivo Eliminación': 'Error de registro - No es funcionario ESAP'
+      }
+    },
+    {
+      id: 'PD-994',
+      codigo: 'DISC-2023-444',
+      nombre: 'Falta Gravísima - Cohecho - Roberto Sánchez Mora',
+      tipo: 'Proceso Disciplinario',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-07-15T10:00:00'),
+      usuarioArchivo: 'Dr. Juan Carlos Pérez',
+      motivoArchivo: 'Remisión a Fiscalía General de la Nación por presunta conducta punible (Art. 406 C.P.). Se suspende proceso disciplinario',
+      metadatos: {
+        'Tipo Falta': 'GRAVÍSIMA',
+        'Funcionario': 'Roberto Sánchez Mora',
+        'Cargo': 'Supervisor de Contratos',
+        'Investigador': 'Dr. Juan Carlos Pérez',
+        'Motivo': 'Remisión a Fiscalía',
+        'Radicado Fiscalía': 'FGN-2024-00123'
+      }
+    },
+    {
+      id: 'PD-993',
+      codigo: 'DISC-2023-333',
+      nombre: 'Falta Grave - Negligencia en Funciones - Carmen Lucía Vega',
+      tipo: 'Proceso Disciplinario',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-06-20T13:45:00'),
+      usuarioArchivo: 'Dra. Ana María López',
+      motivoArchivo: 'Sanción ejecutoriada: Suspensión de 30 días sin remuneración. Ya cumplida íntegramente',
+      metadatos: {
+        'Tipo Falta': 'GRAVE',
+        'Funcionario': 'Carmen Lucía Vega Ruiz',
+        'Cargo': 'Profesional Especializado',
+        'Sanción': 'Suspensión 30 días',
+        'Fecha Sanción': '01/06/2024',
+        'Fecha Cumplimiento': '18/06/2024',
+        'Estado': 'Sanción cumplida'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un proceso archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando proceso disciplinario:', itemId);
+
+    // Simulación: En producción esto haría una llamada al backend
+    // await api.restaurarProceso(itemId);
+
+    // Remover de la lista de archivados
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+
+    // Aquí se agregaría de vuelta a los procesos activos
+  };
+
+  // ✅ Función para eliminar permanentemente un proceso
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente proceso disciplinario:', itemId);
+
+    // Simulación: En producción esto haría una llamada al backend
+    // await api.eliminarPermanente(itemId);
+
+    // Remover de la lista de archivados
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+  };
 
   // ✅ Log de configuraciones cargadas
   useEffect(() => {
@@ -102,27 +276,33 @@ export function ModuloJuzgamientoDisciplinarioV3() {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  // Fetch Data from API
+  // ✅ Fetch Data from API (extracted for reuse)
+  const fetchProcesos = async () => {
+    try {
+      const data = await legalService.getJuzgamientoProcesos();
+      const mappedData = (Array.isArray(data) ? data : []).map((p: any) => ({
+        ...p,
+        fechaHechos: p.fechaHechos ? new Date(p.fechaHechos) : new Date(),
+        fechaUltimaActuacion: p.fechaUltimaActuacion ? new Date(p.fechaUltimaActuacion) : new Date(),
+        fechaActualizacion: p.fechaActualizacion ? new Date(p.fechaActualizacion) : new Date(),
+        diasTotales: p.diasTotales || 90,
+        diasRestantes: p.diasRestantes ?? p.calculo?.diasRestantes ?? 0,
+        etapa: p.etapa || 'E1_AVOCAMIENTO',
+        investigado: p.investigado || p.nombreInvestigado || 'N/A',
+        disciplinado: p.investigado || p.disciplinado || 'N/A',
+        tipoFalta: p.tipoFalta || 'Sin clasificar',
+        cargo: p.cargo || '',
+        ultimaActuacion: p.actuaciones && p.actuaciones.length > 0 ? p.actuaciones[0].descripcion : 'Inicio del proceso',
+        documentosAdjuntos: p.documentos ? p.documentos.length : 0,
+      }));
+      setProcesos(mappedData);
+    } catch (error) {
+      console.error('Error fetching procesos:', error);
+      toast.error('Error al cargar expedientes disciplinarios');
+    }
+  };
+
   useEffect(() => {
-    const fetchProcesos = async () => {
-      try {
-        const data = await legalService.getJuzgamientoProcesos();
-        const mappedData = data.map((p: any) => ({
-          ...p,
-          fechaHechos: new Date(), // Mock/Default
-          fechaUltimaActuacion: new Date(),
-          fechaActualizacion: new Date(),
-          diasTotales: 90, // Default constant
-          disciplinado: p.investigado, // Map backend 'investigado' to frontend 'disciplinado'
-          ultimaActuacion: p.actuaciones && p.actuaciones.length > 0 ? p.actuaciones[0].descripcion : 'Inicio del proceso',
-          documentosAdjuntos: p.documentos ? p.documentos.length : 0,
-        }));
-        setProcesos(mappedData);
-      } catch (error) {
-        console.error('Error fetching procesos:', error);
-        toast.error('Error al cargar expedientes disciplinarios');
-      }
-    };
     fetchProcesos();
   }, []);
 
@@ -268,17 +448,26 @@ export function ModuloJuzgamientoDisciplinarioV3() {
     <div className="space-y-3 md:space-y-4">
       {/* Header con ModuleHeader */}
       <ModuleHeader
-        title={isMobile ? 'Kanban Operativo' : 'Tablero Kanban Operativo'}
+        title="Juzgamiento Disciplinario"
         subtitle="Gestión visual de procesos disciplinarios"
         toggleView={{
           current: tipoVista,
-          onChange: (view) => setTipoVista(view as 'kanban' | 'lista'),
+          onChange: (view) => setTipoVista(view as 'kanban' | 'lista' | 'archivados'),
           options: [
             { label: 'Kanban', icon: <Columns3 className="w-4 h-4" />, value: 'kanban' },
-            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
+            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' },
+            { label: 'Archivados', icon: <Archive className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
-        buttons={[]}
+        buttons={[
+          {
+            label: 'Nuevo Proceso',
+            labelMobile: 'Nuevo',
+            icon: <Plus className="w-4 h-4" />,
+            onClick: () => setModalNuevoProcesoOpen(true),
+            variant: 'primary'
+          }
+        ]}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Juzgamiento Disciplinario"
@@ -348,6 +537,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
       <ModuleFilters
         searchValue={busqueda}
         onSearchChange={setBusqueda}
+        searchPlaceholder="Buscar por radicado, disciplinado o tipo de falta..."
         filters={[
           {
             label: 'Etapa',
@@ -356,7 +546,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
             type: 'select',
             options: [
               { label: 'Todas', value: 'TODAS' },
-              ...etapas.map(e => ({ label: e.nombre, value: e.nombre }))
+              ...etapas.map(e => ({ label: e.nombre, value: e.valor }))
             ]
           },
           {
@@ -372,6 +562,11 @@ export function ModuloJuzgamientoDisciplinarioV3() {
             ]
           }
         ]}
+        onClearFilters={() => {
+          setBusqueda('');
+          setFiltroEtapa('TODAS');
+          setFiltroGravedad('TODAS');
+        }}
       />
 
       {/* Tablero Kanban - IGUAL A DEFENSA JUDICIAL */}
@@ -395,13 +590,15 @@ export function ModuloJuzgamientoDisciplinarioV3() {
                 WebkitOverflowScrolling: 'touch'
               }}
             >
-              {etapas.map((etapa) => (
+              {etapas.map((etapa: any) => (
                 <ColumnaKanban
                   key={etapa.nombre}
                   etapa={etapa}
                   isMobile={isMobile}
                   isTablet={isTablet}
                   handleMoverProceso={handleMoverProceso}
+                  onRefresh={fetchProcesos}
+                  onVerExpedienteAnexado={handleVerExpedienteAnexado}
                 />
               ))}
             </div>
@@ -532,6 +729,33 @@ export function ModuloJuzgamientoDisciplinarioV3() {
         </DialogContent>
       </Dialog>
 
+      {/* Vista Archivados */}
+      {tipoVista === 'archivados' && (
+        <VistaArchivados
+          items={itemsArchivados}
+          moduloNombre="Juzgamiento Disciplinario"
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
+        />
+      )}
+
+      {/* Modal Nuevo Proceso */}
+      <ModalNuevoProcesoDisciplinario
+        isOpen={modalNuevoProcesoOpen}
+        onClose={() => setModalNuevoProcesoOpen(false)}
+        onSubmit={() => {
+          setModalNuevoProcesoOpen(false);
+          fetchProcesos(); // Re-fetch from backend
+        }}
+      />
+
+      {/* Modal para Procesos Anexados visualizados externamente */}
+      <ModalProcesoDisciplinario
+        isOpen={procesoAbiertoExternamente !== null}
+        onClose={() => setProcesoAbiertoExternamente(null)}
+        proceso={procesoAbiertoExternamente as any}
+        onRefresh={fetchProcesos}
+      />
     </div>
   );
 }
@@ -550,9 +774,11 @@ interface ColumnaKanbanProps {
   isMobile: boolean;
   isTablet: boolean;
   handleMoverProceso: (procesoId: string, nuevaEtapa: string) => void;
+  onRefresh: () => void;
+  onVerExpedienteAnexado: (id: string) => void;
 }
 
-function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso }: ColumnaKanbanProps) {
+function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso, onRefresh, onVerExpedienteAnexado }: ColumnaKanbanProps) {
   const [{ isOver }, drop] = useDrop({
     accept: ItemTypes.PROCESO,
     drop: (item: { id: string }) => handleMoverProceso(item.id, etapa.valor),
@@ -615,6 +841,8 @@ function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso }: Column
               isMobile={isMobile}
               handleMoverProceso={handleMoverProceso}
               nuevaEtapa={etapa.valor}
+              onRefresh={onRefresh}
+              onVerExpedienteAnexado={onVerExpedienteAnexado}
             />
           ))}
 
@@ -638,16 +866,14 @@ interface TarjetaProcesoProps {
   isMobile: boolean;
   handleMoverProceso: (procesoId: string, nuevaEtapa: string) => void;
   nuevaEtapa: string;
+  onRefresh: () => void;
+  onVerExpedienteAnexado?: (id: string) => void;
 }
 
-function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: TarjetaProcesoProps) {
+function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa, onRefresh, onVerExpedienteAnexado }: TarjetaProcesoProps) {
   // Estados para modales
   const [modalProcesoOpen, setModalProcesoOpen] = useState(false);
   const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
-  const [modalAutosOpen, setModalAutosOpen] = useState(false);
-  const [modalEvidenciasOpen, setModalEvidenciasOpen] = useState(false);
-  const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
-  const [modalActasOpen, setModalActasOpen] = useState(false);
 
   // Drag and Drop
   const [{ isDragging }, drag] = useDrag({
@@ -668,9 +894,10 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
   };
   const semaforo = getSemaforo(proceso.diasRestantes);
 
-  const porcentajeTiempo = Math.min(100, Math.round(((proceso.diasTotales - proceso.diasRestantes) / proceso.diasTotales) * 100));
+  // const semaforo = getSemaforoColor(proceso.diasRestantes);
+  const porcentajeTiempo = Math.round((((proceso.diasTotales || 0) - proceso.diasRestantes) / (proceso.diasTotales || 1)) * 100);
+  const ultimaActuacion = typeof proceso.ultimaActuacion === 'string' ? proceso.ultimaActuacion : (proceso.ultimaActuacion?.descripcion || proceso.hechos || `Proceso en etapa de ${proceso.etapa}`);
 
-  const ultimaActuacion = proceso.ultimaActuacion || 'Sin actuaciones registradas';
 
   // Adaptador para modales de gestión legal que esperan "ExpedienteJudicial"
   const expedienteParaModales = {
@@ -753,7 +980,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
               <p className="text-xs text-gray-500">Docs</p>
             </div>
             <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
-              <p className="text-xs font-bold text-gray-700">{proceso.diasTotales - proceso.diasRestantes}</p>
+              <p className="text-xs font-bold text-gray-700">{(proceso.diasTotales || 0) - proceso.diasRestantes}</p>
               <p className="text-xs text-gray-500">Días</p>
             </div>
             <div className={`text-center ${isMobile ? 'p-1' : 'p-1.5'} rounded-lg bg-gray-50 border border-gray-100`}>
@@ -773,69 +1000,26 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
             <p className="text-xs text-gray-500">📅 {proceso.fechaActualizacion.toLocaleDateString('es-CO')}</p>
           </div>
 
-          <div className="space-y-1 pt-2 border-t border-gray-200">
+          <div className="grid grid-cols-2 gap-1 pt-1.5 border-t border-gray-200">
             <Button
               onClick={() => setModalProcesoOpen(true)}
               size="sm"
-              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
+              className="w-full text-[10px] py-1.5 font-bold h-auto"
               style={{ background: '#003DA5', color: '#FFFFFF' }}
             >
-              <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1 flex-shrink-0`} />
+              <FolderOpen className="w-3 h-3 mr-1 flex-shrink-0" />
               Expediente
             </Button>
-
-            <div className="grid grid-cols-2 gap-1">
-              <Button
-                onClick={() => setModalAutosOpen(true)}
-                size="sm"
-                variant="outline"
-                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-              >
-                <Gavel className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-                Autos
-              </Button>
-
-              <Button
-                onClick={() => setModalEvidenciasOpen(true)}
-                size="sm"
-                variant="outline"
-                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-              >
-                <Paperclip className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-                Evidencias
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-1">
-              <Button
-                onClick={() => setModalOficiosOpen(true)}
-                size="sm"
-                variant="outline"
-                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-              >
-                <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-                Oficios
-              </Button>
-
-              <Button
-                onClick={() => setModalActasOpen(true)}
-                size="sm"
-                variant="outline"
-                className={`${isMobile ? 'text-[10px] py-1 px-1' : 'text-[11px] px-2'} justify-start`}
-              >
-                <FileCheck className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-0.5`} />
-                Actas
-              </Button>
-            </div>
 
             <Button
               onClick={() => setModalComunicacionesOpen(true)}
               size="sm"
-              className={`w-full ${isMobile ? 'text-xs py-1.5' : 'text-xs'} font-bold`}
-              style={{ background: '#003DA5', color: '#FFFFFF' }}
+              variant="outline"
+              className="w-full text-[10px] py-1.5 font-bold border h-auto"
+              style={{ borderColor: '#003DA5', color: '#003DA5' }}
             >
-              <MessageSquare className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1`} />
-              Comentarios del Proceso
+              <MessageSquare className="w-3 h-3 mr-1 flex-shrink-0" />
+              Comunic.
             </Button>
           </div>
         </div>
@@ -843,39 +1027,19 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
         <ModalProcesoDisciplinario
           isOpen={modalProcesoOpen}
           onClose={() => setModalProcesoOpen(false)}
-          proceso={proceso}
+          proceso={proceso as any}
+          onRefresh={onRefresh}
+          onVerExpedienteAnexado={(id) => {
+            setModalProcesoOpen(false); // Close current nested
+            if (onVerExpedienteAnexado) onVerExpedienteAnexado(id);
+          }}
         />
         <ModalComunicaciones
           isOpen={modalComunicacionesOpen}
           onClose={() => setModalComunicacionesOpen(false)}
           expediente={expedienteParaModales as any}
         />
-        <ModalAutos
-          isOpen={modalAutosOpen}
-          onClose={() => setModalAutosOpen(false)}
-          expediente={expedienteParaModales as any}
-          modulo='juzgamiento-disciplinario'
-        />
-        <ModalEvidencias
-          isOpen={modalEvidenciasOpen}
-          onClose={() => setModalEvidenciasOpen(false)}
-          expediente={expedienteParaModales as any}
-          modulo='juzgamiento-disciplinario'
-        />
-        <ModalOficios
-          isOpen={modalOficiosOpen}
-          onClose={() => setModalOficiosOpen(false)}
-          expediente={expedienteParaModales as any}
-          modulo='juzgamiento-disciplinario'
-        />
-        <ModalActas
-          isOpen={modalActasOpen}
-          onClose={() => setModalActasOpen(false)}
-          expediente={expedienteParaModales as any}
-          modulo='juzgamiento-disciplinario'
-        />
       </Card>
     </div>
   );
 }
-

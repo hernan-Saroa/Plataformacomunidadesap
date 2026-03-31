@@ -15,11 +15,13 @@ import { Evidence } from './evidence.entity';
 
 export enum ProcessStage {
   RECEPCION = 'RECEPCION',
-  EVALUACION = 'EVALUACION',
   VALORACION = 'VALORACION',
   INDAGACION_PREVIA = 'INDAGACION_PREVIA',
   INVESTIGACION = 'INVESTIGACION',
+  EVALUACION = 'EVALUACION',
   JUZGAMIENTO = 'JUZGAMIENTO',
+  INDAGACION = 'INDAGACION',
+  FALLO = 'FALLO',
   SEGUNDA_INSTANCIA = 'SEGUNDA_INSTANCIA',
 }
 
@@ -47,7 +49,11 @@ export class DisciplinaryProcess {
   @Column('uuid')
   newsId: string;
 
-  @ManyToOne(() => DisciplinaryProfessional, { eager: true, nullable: true, createForeignKeyConstraints: false })
+  @ManyToOne(() => DisciplinaryProfessional, {
+    eager: true,
+    nullable: true,
+    createForeignKeyConstraints: false,
+  })
   @JoinColumn({ name: 'abogado_asignado_id' })
   abogadoAsignado: DisciplinaryProfessional;
 
@@ -98,4 +104,35 @@ export class DisciplinaryProcess {
   // Relación con pruebas
   @OneToMany(() => Evidence, (evidence) => evidence.process)
   evidence: Evidence[];
+
+  // ✅ NUEVO: Campos para asociar proceso a otro proceso
+  @Column({ name: 'proceso_asociado_id', type: 'uuid', nullable: true })
+  procesoAsociadoId: string | null;
+
+  @Column({ name: 'proceso_asociado_numero', type: 'varchar', length: 50, nullable: true })
+  procesoAsociadoNumero: string | null;
+
+  @Column({ name: 'proceso_asociado_tipo', type: 'varchar', length: 20, nullable: true })
+  procesoAsociadoTipo: 'conexo' | 'similar' | 'consolidado' | null;
+
+  @Column({ name: 'proceso_asociado_fecha', type: 'timestamp', nullable: true })
+  procesoAsociadoFecha: Date | null;
+
+  @Column({ name: 'proceso_asociado_justificacion', type: 'text', nullable: true })
+  procesoAsociadoJustificacion: string | null;
+
+  // ✅ NUEVO: Campos para trazabilidad de consolidación
+  @Column({ name: 'procesos_consolidados', type: 'text', array: true, nullable: true })
+  procesosConsolidados: string[] | null;
+
+  @Column({ name: 'proceso_consolidado_principal', type: 'uuid', nullable: true })
+  procesoConsolidadoPrincipal: string | null;
+
+  @Column({ name: 'informacion_consolidada', type: 'jsonb', nullable: true })
+  informacionConsolidada: {
+    radicado: string;
+    fechaInicio: string;
+    hechos: string;
+    disciplinable: any;
+  } | null;
 }

@@ -20,6 +20,7 @@ import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { certificadosService } from '../../services/api/certificados.service';
+import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 
 export function VerificarCertificado() {
   const { codigo } = useParams<{ codigo?: string }>();
@@ -27,6 +28,19 @@ export function VerificarCertificado() {
   const [isValidating, setIsValidating] = useState(true);
   const [certificado, setCertificado] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    body.style.overflow = 'hidden';
+    html.style.overflow = prevHtmlOverflow || 'auto';
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+    };
+  }, []);
 
   // Verificar automáticamente cuando se carga el componente
   useEffect(() => {
@@ -164,6 +178,43 @@ export function VerificarCertificado() {
     );
   };
 
+  const cargoCalculado = certificado
+    ? formatCargoDisplay({
+        cargoSource:
+          certificado?.career_category ||
+          certificado?.careerCategory ||
+          certificado?.career_category_name ||
+          certificado?.position_category ||
+          certificado?.positionCategory ||
+          certificado?.cargo,
+        codCargo: selectPreferredCargoCode(
+          certificado?.request?.cod_cargo,
+          certificado?.request?.codCargo,
+          certificado?.cod_cargo,
+          certificado?.codCargo,
+        ),
+        codGrade:
+          certificado?.cod_grade ||
+          certificado?.codGrade ||
+          certificado?.request?.cod_grade ||
+          certificado?.request?.codGrade,
+        observations:
+          certificado?.request?.observations ||
+          certificado?.observations,
+        templateType: certificado?.template_type || certificado?.templateType,
+        includeCodeLabel: true,
+        codeLabel: 'Codigo',
+      })
+    : '';
+  const tipoVinculacion = certificado?.position_category || certificado?.positionCategory || certificado?.tipo_vinculacion || '';
+  const dependenciaMostrar =
+    certificado?.department ||
+    certificado?.request?.department ||
+    certificado?.request?.departmentName ||
+    certificado?.position_location ||
+    certificado?.positionLocation ||
+    '';
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Hero Section */}
@@ -190,7 +241,7 @@ export function VerificarCertificado() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 pb-16">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 pb-24">
         {isValidating ? (
           /* Estado de Carga - Verificando */
           <motion.div
@@ -318,7 +369,7 @@ export function VerificarCertificado() {
                     Cargo
                   </label>
                   <p className="text-lg font-semibold text-gray-900 mt-1">
-                    {certificado.position_category}
+                    {cargoCalculado || certificado.position_category}
                   </p>
                 </div>
 
@@ -327,7 +378,7 @@ export function VerificarCertificado() {
                     Tipo de Vinculación
                   </label>
                   <p className="text-lg font-semibold text-gray-900 mt-1">
-                    {certificado.career_category}
+                    {tipoVinculacion || 'No especificado'}
                   </p>
                 </div>
 
@@ -336,7 +387,7 @@ export function VerificarCertificado() {
                     Dependencia
                   </label>
                   <p className="text-lg font-semibold text-gray-900 mt-1">
-                    {certificado.department || 'No especificado'}
+                    {dependenciaMostrar || 'No especificado'}
                   </p>
                 </div>
 
@@ -425,6 +476,8 @@ export function VerificarCertificado() {
                 </div>
               </div>
             </div>
+
+            <div className="h-16 sm:h-24" />
           </motion.div>
         )}
       </div>

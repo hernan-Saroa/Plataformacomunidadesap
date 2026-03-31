@@ -77,7 +77,8 @@ export function FiltroEstructuraOrganizacional({
       {/* Trigger button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-left focus:outline-none focus:ring-2 focus:ring-[#003DA5] hover:border-[#003DA5] transition-colors flex items-center justify-between bg-white"
+        className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm text-left focus:outline-none focus:ring-2 focus:ring-[#003DA5] hover:border-[#003DA5] transition-colors flex items-center justify-between bg-white"
+        style={{ height: '44px' }}
       >
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <Building2 className="w-4 h-4 text-gray-500 flex-shrink-0" />

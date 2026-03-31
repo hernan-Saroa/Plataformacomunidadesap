@@ -14,11 +14,13 @@ import { Evidencia } from './entities/evidencia.entity';
 import { Acta } from './entities/acta.entity';
 import { ConsultaJuridica } from './entities/consulta-juridica.entity';
 import { TerminoProcesal } from './entities/termino-procesal.entity';
+import { Actor } from './entities/actor.entity';
 
 // Órganos de Control - Nuevo módulo
 import { OrganismoControlOC } from './entities/organismo-control-legal.entity';
 import { RequerimientoOC } from './entities/requerimiento-oc.entity';
 import { RespuestaBorradorOC } from './entities/respuesta-borrador-oc.entity';
+import { TipoRequerimientoOC } from './entities/tipo-requerimiento-oc.entity';
 import { SolicitudInsumo } from './entities/solicitud-insumo.entity';
 import { Hallazgo } from './entities/hallazgo.entity';
 import { PeiIndicador } from './entities/pei-indicador.entity';
@@ -48,6 +50,7 @@ import { ConsultaJuridicaHistorial } from './entities/consulta-juridica-historia
 // Correos Jurídicos (Microsoft Graph)
 import { CorreoJuridico } from './entities/correo-juridico.entity';
 import { AdjuntoCorreo } from './entities/adjunto-correo.entity';
+import { CorreoJuridicoHistorial } from './entities/correo-juridico-historial.entity';
 
 // Excepciones Procesales
 import { ExcepcionProcesal } from './entities/excepcion-procesal.entity';
@@ -61,6 +64,12 @@ import { CoactivoHistorial } from './entities/coactivo-historial.entity';
 // System Configurations
 import { SystemConfiguration } from './entities/system-configuration.entity';
 
+// Oficios Enviados
+import { OficioEnviado } from './entities/oficio-enviado.entity';
+
+// Plantillas de Documentos
+import { PlantillaDocumento } from './entities/plantilla-documento.entity';
+
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
 
@@ -72,11 +81,13 @@ export const databaseConfig: TypeOrmModuleOptions = {
     password: process.env.DB_PASS,
     database: process.env.DB_NAME || 'esap_db',
     // No especificar schema por defecto para permitir múltiples schemas
+
     entities: [
         Expediente, Actuacion, Abogado, Audiencia, Requerimiento, OrganismoControl,
         Auto, Documento, Comentario, Evidencia, Acta, ConsultaJuridica, TerminoProcesal,
+        Actor,
         // Órganos de Control
-        OrganismoControlOC, RequerimientoOC, RespuestaBorradorOC, SolicitudInsumo, Hallazgo,
+        OrganismoControlOC, RequerimientoOC, RespuestaBorradorOC, SolicitudInsumo, Hallazgo, TipoRequerimientoOC,
         // PEI
         PeiIndicador, PeiRegistroAvance,
         // Tareas y Notas
@@ -92,13 +103,17 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Documentos de Consultas Jurídicas
         DocumentoConsulta, ComentarioConsulta, ConsultaJuridicaHistorial,
         // Correos Jurídicos
-        CorreoJuridico, AdjuntoCorreo,
+        CorreoJuridico, AdjuntoCorreo, CorreoJuridicoHistorial,
         // Excepciones Procesales
         ExcepcionProcesal,
         // Procesos Coactivos
         ProcesoCoactivo, ProcesoCoactivoAdjunto, PagoCoactivo, CoactivoHistorial,
         // System Configurations
-        SystemConfiguration
+        SystemConfiguration,
+        // Oficios Enviados
+        OficioEnviado,
+        // Plantillas de Documentos
+        PlantillaDocumento
     ],
     synchronize: false, // ⚠️ Reverted to false to avoid conflicts
     logging: ['error'], // Solo mostrar errores, no queries

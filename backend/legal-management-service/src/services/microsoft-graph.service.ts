@@ -26,6 +26,8 @@ export interface GraphEmail {
     bodyPreview: string;
     hasAttachments: boolean;
     isRead: boolean;
+    internetMessageId?: string;
+    conversationId?: string;
 }
 
 @Injectable()
@@ -82,7 +84,7 @@ export class MicrosoftGraphService {
                     .api(`/users/${this.emailAccount}/messages`)
                     .top(limit)
                     .orderby('receivedDateTime desc')
-                    .select('id,subject,from,toRecipients,receivedDateTime,bodyPreview,hasAttachments,isRead')
+                    .select('id,subject,from,toRecipients,receivedDateTime,bodyPreview,hasAttachments,isRead,internetMessageId,conversationId')
                     .get();
             }
 
@@ -316,6 +318,46 @@ export class MicrosoftGraphService {
     }
 
     /**
+     * Forward an email
+     * Uses Microsoft Graph native forward which automatically includes Original Attachments
+     */
+    async forwardEmail(
+        messageId: string,
+        to: string,
+        comment: string,
+    ): Promise<boolean> {
+        if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
+            this.logger.warn(`[DEV MOCK] Forward simulación de email ${messageId} enviado a: ${to} con comentario: ${comment}`);
+            return true;
+        }
+
+        try {
+            const client = this.getClient();
+
+            const forwardMessage = {
+                toRecipients: [
+                    {
+                        emailAddress: {
+                            address: to.trim()
+                        }
+                    }
+                ],
+                comment: comment || ''
+            };
+
+            await client
+                .api(`/users/${this.emailAccount}/messages/${messageId}/forward`)
+                .post(forwardMessage);
+
+            this.logger.log(`Email ${messageId} forwarded to ${to}`);
+            return true;
+        } catch (error) {
+            this.logger.error(`Error forwarding email ${messageId} to ${to}:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Test connection to Microsoft Graph
      */
     async testConnection(): Promise<{ success: boolean; message: string }> {
@@ -348,6 +390,8 @@ export class MicrosoftGraphService {
         contentType: string;
         size: number;
         contentBytes?: string;
+        contentId?: string;  // Needed to resolve CID inline images
+        isInline?: boolean;
     }>> {
         try {
             const client = this.getClient();
@@ -365,6 +409,8 @@ export class MicrosoftGraphService {
                 contentType: att.contentType,
                 size: att.size,
                 contentBytes: att.contentBytes, // Base64 encoded
+                contentId: att.contentId || null,  // Preserve for CID inline image resolution
+                isInline: att.isInline ?? false,
             }));
         } catch (error) {
             this.logger.error(`Error fetching attachments for message ${messageId}:`, error);
@@ -398,6 +444,64 @@ export class MicrosoftGraphService {
             };
         } catch (error) {
             this.logger.error(`Error downloading attachment ${attachmentId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Reply to an email via sendMail (requires only Mail.Send permission).
+     * The body already contains the quoted original assembled by the frontend.
+     */
+    async replyToEmail(
+        messageId: string,
+        body: string,
+        attachments?: { name: string; contentBytes: string; contentType: string }[],
+        to?: string,
+        subject?: string,
+    ): Promise<boolean> {
+        // MOCK FOR DEV
+        if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
+            this.logger.warn(`[DEV MOCK] Reply simulado al mensaje: ${messageId}`);
+            return true;
+        }
+
+        if (!to || !subject) {
+            this.logger.error('replyToEmail: to and subject are required');
+            throw new Error('to and subject are required to send a reply');
+        }
+
+        try {
+            const client = this.getClient();
+
+            const graphAttachments = attachments?.map(att => ({
+                '@odata.type': '#microsoft.graph.fileAttachment',
+                name: att.name,
+                contentBytes: att.contentBytes,
+                contentType: att.contentType,
+            })) || [];
+
+            const message: any = {
+                message: {
+                    subject,
+                    body: {
+                        contentType: 'HTML',
+                        content: body,
+                    },
+                    toRecipients: [{ emailAddress: { address: to } }],
+                    from: { emailAddress: { address: this.emailAccount } },
+                    ...(graphAttachments.length > 0 && { attachments: graphAttachments }),
+                },
+                saveToSentItems: true,
+            };
+
+            await client
+                .api(`/users/${this.emailAccount}/sendMail`)
+                .post(message);
+
+            this.logger.log(`Reply sent to ${to} for original message ${messageId}`);
+            return true;
+        } catch (error) {
+            this.logger.error(`Error replying to message ${messageId}:`, error);
             throw error;
         }
     }

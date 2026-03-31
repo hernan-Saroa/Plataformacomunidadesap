@@ -16,17 +16,10 @@ import {
   UserPlus,
   Download,
   Upload,
-  UserCheck,
-  UserX,
-  TrendingUp,
   Search,
-  Filter,
   X,
   MoreVertical,
   ChevronDown,
-  Mail,
-  Phone,
-  Calendar,
   MapPin,
   FileText,
   Clock,
@@ -37,44 +30,72 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
-  QrCode, // ✅ AGREGADO para gestión de QR
   Lock, // ✅ NUEVO - Para bloquear usuario
   Unlock, // ✅ NUEVO - Para activar usuario
   Building2, // ✅ FIX - Para métricas por sede
-  FolderOpen // ✅ CARPETA DIGITAL
+  FolderOpen, // ✅ CARPETA DIGITAL
+  GraduationCap,
+  BookOpen,
+  Briefcase,
+  Award,
+  UserCircle,
+  MessageSquare,
+  BarChart3,
+  Cog,
+  Scale
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CreatePersonModal } from './CreatePersonModal';
-import { UserEnrollmentSection } from './UserEnrollmentSection';  // ✅ NUEVO
-import { EnrollmentConfigModal } from './EnrollmentConfigModal';  // ✅ MODAL CONFIGURACIÓN
 import { AssignAccessModal } from './AssignAccessModal';  // ✅ MODAL ASIGNAR ACCESOS
 import { AssignRolesModal } from './AssignRolesModal';  // ✅ MODAL ASIGNAR ROLES
 import { EditUserModal } from './EditUserModal';  // ✅ MODAL EDITAR CON SEDES
-import { DashboardSedesMetrics } from './DashboardSedesMetrics';  // ✅ DASHBOARD SEDES
-import { CarpetaDigitalGlobal } from './CarpetaDigitalGlobal';  // ✅ CARPETA DIGITAL GLOBAL
 import { ExportUsersBySede } from './ExportUsersBySede';  // ✅ EXPORTAR POR SEDE
 import { MOCK_USERS_WITH_SEDES } from '../../data/mockUsersWithSedes';  // ✅ USUARIOS CON SEDES
 import { usersService, type User, type UserFilters } from '../../services/usersService';  // ✅ SERVICIO DE USUARIOS
 import { rolesService } from '../../services/api';
 import type { SystemRole } from '../../services/api/roles.service';
-import { BadgesSedesUsuario } from '../estructura-organizacional/BadgesSedesUsuario';  // ✅ BADGES
-import { SelectorEstructuraCompacto } from '../estructura-organizacional/SelectorEstructura';  // ✅ FILTRO
 import { FiltroEstructuraOrganizacional } from '../estructura-organizacional/FiltroEstructuraOrganizacional';  // ✅ FILTRO COHERENTE
 import { DigitalFolderSection } from './DigitalFolderSection';  // ✅ CARPETA DIGITAL COMO SECCIÓN
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';  // ✅ TABS
 import { UserExpandedView } from './UserExpandedView';  // ✅ VISTA EXPANDIDA REDISEÑADA
 import { RolesYPermisosActualizado } from './RolesYPermisosActualizado';  // ✅ RF015 - ROLES Y PERMISOS ACTUALIZADO
 import { EstadisticasDocentesESAP } from './EstadisticasDocentesESAP';  // ✅ ESTADÍSTICAS DOCENTES ESAP
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useAuth } from '../../hooks';
+import { ModalCambiarContrasena } from "./admin/ModalCambiarContrasena"; // ✅ MODAL CAMBIAR CONTRASEÑA
+import { estructuraService } from '../../services/estructuraService';
+
+const ICON_MAP: Record<string, any> = {
+  Shield,
+  GraduationCap,
+  BookOpen,
+  Briefcase,
+  Award,
+  UserCircle,
+  Building2,
+  FileText,
+  MessageSquare,
+  FolderOpen,
+  BarChart3,
+  Cog,
+  Scale
+};
+
+const getIconComponent = (iconName: string) => {
+  return ICON_MAP[iconName] || Shield;
+};
+
+// ✅ DÍA 4: Container4K para padding adaptativo
+// ✅ DÍA 5: ResponsiveHeader para headers adaptativos
+import { Container4K, ResponsiveHeader } from '@/components/ui';
 
 export function UsersPersonsModulePremium() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<string>("all");
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -111,14 +132,21 @@ export function UsersPersonsModulePremium() {
   const itemsPerPage = 10;
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole('SUPER_ADMIN');
+  const isMountedRef = useRef(true);
+  const latestLoadUsersRequestRef = useRef(0);
 
   // ✅ FUNCIÓN PARA CARGAR USUARIOS DESDE EL BACKEND
   const loadUsers = async () => {
+    const requestId = ++latestLoadUsersRequestRef.current;
+
     try {
       setLoading(true);
       const response = await usersService.getUsers({
         page: currentPage,
-        limit: itemsPerPage
+        limit: itemsPerPage,
+        search: debouncedSearchQuery.trim() || undefined,
+        status: statusFilter === 'all' ? undefined : (statusFilter as 'active' | 'inactive'),
+        role: roleFilter === 'all' ? undefined : roleFilter,
       });
 
       // Mapear usuarios de la API al formato esperado por el componente
@@ -160,17 +188,25 @@ export function UsersPersonsModulePremium() {
         seccional: item.seccional,
         sede: item.sede,
         // IDs para el modal de edición
-        idSeccional: item.seccional?.id || item.idSeccional || undefined,
-        idSede: item.sede?.id || item.idSede || undefined,
+        idSeccional: item.seccional?.idSeccional || item.idSeccional || undefined,
+        idSede: item.sede?.idSede || item.idSede || undefined,
         sedes: [], // Mantener para compatibilidad
         enrollmentMethod: 'manual' as 'qr' | 'manual' | 'massive'
       }));
+
+      if (!isMountedRef.current || requestId !== latestLoadUsersRequestRef.current) {
+        return;
+      }
 
       setUsers(mappedUsers);
       setTotalUsers(response.meta.total);
       setTotalActiveUsers(response.meta.totalActive);
       setTotalBlockedUsers(response.meta.totalBlocked);
     } catch (error) {
+      if (!isMountedRef.current || requestId !== latestLoadUsersRequestRef.current) {
+        return;
+      }
+
       console.error('Error al cargar usuarios:', error);
       toast.error('Error al cargar usuarios', {
         description: 'No se pudieron cargar los usuarios. Usando datos de prueba.'
@@ -178,73 +214,74 @@ export function UsersPersonsModulePremium() {
       // En caso de error, usamos los datos mock
       setUsers([]);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current && requestId === latestLoadUsersRequestRef.current) {
+        setLoading(false);
+      }
     }
   };
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Debounce para búsqueda en backend
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 350);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchQuery]);
+
+  // Volver a primera página cuando cambia la búsqueda o filtros backend
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery, statusFilter, roleFilter]);
+
+  // Paginación local: reiniciar cuando cambian filtros frontend
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [locationFilter, unidadOrganizacionalFilter]);
 
   // ✅ CARGAR USUARIOS AL MONTAR EL COMPONENTE
   useEffect(() => {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage]); // Recargar cuando cambia la página
+  }, [currentPage, debouncedSearchQuery, statusFilter, roleFilter]); // Recargar cuando cambia paginación o filtros backend
 
   // Usuarios actuales (de API o mock)
   const currentUsers = users;
 
-  // Stats calculadas - Usar valores del backend si están disponibles, sino calcular del frontend
-  const stats = {
-    total: totalUsers > 0 ? totalUsers : currentUsers.length,
-    active: totalActiveUsers > 0 ? totalActiveUsers : currentUsers.filter(u => u.status === 'active').length,
-    blocked: totalBlockedUsers > 0 ? totalBlockedUsers : currentUsers.filter(u => u.status === 'blocked').length,
-    growth: 12.5
-  };
-
-  // ✅ Stats de enrolamiento para el modal
-  const enrollmentStats = {
-    qr: (users.length ? users.filter(u => u.enrollmentMethod === 'qr').length : 0),
-    manual: (users.length ? users.filter(u => u.enrollmentMethod === 'manual').length : 0),
-    massive: (users.length ? users.filter(u => u.enrollmentMethod === 'massive').length : 0),
-    total: users.length || MOCK_USERS_WITH_SEDES.length
-  };
-
-  // Filtros únicos para los selectores
-  const uniqueRoles = Array.from(
-    new Set(
-      MOCK_USERS_WITH_SEDES.flatMap((u) =>
-        u.roles.map((r) => r.name),
-      ),
-    ),
-  );
+  // Filtros únicos para los selectores (roles desde backend)
   const uniqueLocations = Array.from(
     new Set(MOCK_USERS_WITH_SEDES.map((u) => u.location)),
   );
 
   // Filtrado
   const filteredUsers = currentUsers.filter(user => {
-    const matchesSearch = searchQuery === '' ||
-      `${user.firstName} ${user.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (user.document || user.identification_number || '').includes(searchQuery);
-
-    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
-    const matchesRole = roleFilter === 'all' || user.roles.some(r => r.name === roleFilter);
     const matchesLocation = locationFilter === 'all' || user.location === locationFilter;
 
     // ✅ FILTRO POR UNIDAD ORGANIZACIONAL (Coherente con estructura)
     const matchesUnidadOrganizacional = !unidadOrganizacionalFilter ||
       (user.sedes && user.sedes.some(sede => sede.id === unidadOrganizacionalFilter));
 
-    return matchesSearch && matchesStatus && matchesRole && matchesLocation && matchesUnidadOrganizacional;
+    return matchesLocation && matchesUnidadOrganizacional;
   });
 
-  // Paginación - Usar totalPages del backend cuando no hay filtros activos
+  // Filtros activos (UI)
   const hasActiveFilters = searchQuery !== '' || statusFilter !== 'all' || roleFilter !== 'all' || locationFilter !== 'all' || unidadOrganizacionalFilter;
-  const totalPages = hasActiveFilters
+  // Filtros que todavía se aplican en frontend (búsqueda se aplica en backend)
+  const hasClientSideFilters = locationFilter !== 'all' || !!unidadOrganizacionalFilter;
+
+  // Paginación: backend para búsqueda; frontend para filtros locales
+  const totalPages = hasClientSideFilters
     ? Math.ceil(filteredUsers.length / itemsPerPage)
     : Math.ceil(totalUsers / itemsPerPage);
 
-  // Si hay filtros activos, paginar en frontend. Si no, los datos ya vienen paginados del backend
-  const paginatedUsers = hasActiveFilters
+  // Si hay filtros locales, paginar en frontend. Si no, los datos ya vienen paginados del backend
+  const paginatedUsers = hasClientSideFilters
     ? filteredUsers.slice(
         (currentPage - 1) * itemsPerPage,
         currentPage * itemsPerPage
@@ -478,6 +515,26 @@ export function UsersPersonsModulePremium() {
     try {
       setLoading(true);
 
+      const principalAsignacion =
+        userData.asignacionesSedes?.find((a: any) => a.esPrincipal) ||
+        userData.asignacionesSedes?.[0];
+      const sedeIdSeleccionada = userData.idSede || userData.sedePrincipalId || principalAsignacion?.unidadId;
+      const sedeIdNumerica = sedeIdSeleccionada ? Number(sedeIdSeleccionada) : undefined;
+      let seccionalIdNumerica = userData.idSeccional ? Number(userData.idSeccional) : undefined;
+
+      // Si hay sede seleccionada y no viene seccional en el formulario, resolverla desde estructura-organizacional
+      if (!Number.isFinite(seccionalIdNumerica as number) && Number.isFinite(sedeIdNumerica as number)) {
+        try {
+          const sedeResponse = await estructuraService.obtenerSedePorId(sedeIdNumerica as number);
+          const resolvedSeccionalId = sedeResponse?.data?.idSeccional;
+          if (resolvedSeccionalId) {
+            seccionalIdNumerica = Number(resolvedSeccionalId);
+          }
+        } catch (error) {
+          console.warn('No se pudo resolver idSeccional desde idSede:', error);
+        }
+      }
+
       // Mapear datos del formulario al formato esperado por el backend
       const updateUserData = {
         first_name: userData.firstName,
@@ -489,8 +546,8 @@ export function UsersPersonsModulePremium() {
         gender: userData.gender || '',
         roleIds: userData.roleIds || [],
         // Agregar seccional y sede si están definidos
-        idSeccional: userData.idSeccional ? Number(userData.idSeccional) : undefined,
-        idSede: userData.idSede ? Number(userData.idSede) : undefined,
+        idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
+        idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
       };
 
       await usersService.updateUser(userData.id_user || userData.id, updateUserData);
@@ -574,6 +631,11 @@ export function UsersPersonsModulePremium() {
       setRolesLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadRoles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAssignRoles = async (user: any) => {
     if (hasSuperAdminRole(user)) {
@@ -687,12 +749,14 @@ export function UsersPersonsModulePremium() {
 
       // Mapear datos del formulario al formato esperado por el backend
       const createUserData = {
-        first_name: userData.firstName,
-        last_name: userData.lastName,
-        identification_number: userData.documentNumber || userData.document || userData.identification_number,
+        first_name: String(userData.firstName || '').trim(),
+        last_name: String(userData.lastName || '').trim(),
+        identification_number: String(
+          userData.documentNumber || userData.document || userData.identification_number || ''
+        ).trim(),
         identification_type: userData.documentType || userData.identificationType || 'CC',
-        email: userData.email.toLowerCase(),
-        phone: userData.phone || '',
+        email: String(userData.email || '').trim().toLowerCase(),
+        phone: String(userData.phone || '').trim(),
         gender: userData.gender || '',
         roleIds: userData.roleIds || [],
         // Agregar seccional y sede si están definidos
@@ -714,6 +778,7 @@ export function UsersPersonsModulePremium() {
       toast.error('Error al crear usuario', {
         description: error?.message || 'No se pudo crear el usuario. Intente nuevamente.'
       });
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -753,53 +818,22 @@ export function UsersPersonsModulePremium() {
   //   locationFilter !== "all";
 
   // ✅ FILTROS RÁPIDOS POR ROL - Contadores de usuarios por rol
-  const quickFiltersData = [
-    {
-      role: 'Docente',
-      code: 'DOCENTE',
-      icon: Users,
-      color: '#2962FF',
-      bgColor: '#EFF6FF',
-      borderColor: '#3B82F6',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Docente')).length
-    },
-    {
-      role: 'Estudiante',
-      code: 'ESTUDIANTE',
-      icon: UserCheck,
-      color: '#10B981',
-      bgColor: '#D1FAE5',
-      borderColor: '#10B981',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Estudiante')).length
-    },
-    {
-      role: 'Coordinador Académico',
-      code: 'COORD_ACAD',
-      icon: Shield,
-      color: '#8B5CF6',
-      bgColor: '#EDE9FE',
-      borderColor: '#8B5CF6',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Coordinador Académico')).length
-    },
-    {
-      role: 'Director Territorial',
-      code: 'DIR_TERRITORIAL',
-      icon: Building2,
-      color: '#F59E0B',
-      bgColor: '#FEF3C7',
-      borderColor: '#F59E0B',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Director Territorial')).length
-    },
-    {
-      role: 'Directivo',
-      code: 'DIRECTIVO',
-      icon: Shield,
-      color: '#EF4444',
-      bgColor: '#FEE2E2',
-      borderColor: '#EF4444',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Directivo')).length
-    },
-  ];
+
+  const quickFiltersData = [...availableRoles]
+    .sort((a, b) => (b.usuarios_count || 0) - (a.usuarios_count || 0))
+    .slice(0, 6)
+    .map((role, index) => {
+      return {
+        id: role.id,
+        role: role.name,
+        code: role.code || role.id,
+        icon: getIconComponent(role.icon || 'Shield'),
+        color: role.color,
+        bgColor: role.color+'20',
+        borderColor: role.color,
+        count: role.usuarios_count || 0,
+      };
+    });
 
   // Si estamos en la vista de carpeta digital, mostrar esa sección
   if (viewMode === "digital-folder") {
@@ -857,405 +891,27 @@ export function UsersPersonsModulePremium() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header - Según especificaciones Figma */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-      >
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center"
-              style={{
-                background:
-                  "linear-gradient(135deg, #003DA5 0%, #0052CC 100%)",
-                boxShadow: "0 4px 12px rgba(0, 61, 165, 0.15)",
-              }}
-            >
-              <Users
-                className="w-6 h-6 text-white"
-                strokeWidth={2.5}
-              />
-            </div>
-            {/* H1: 32px Bold, line-height 40px, letter-spacing -0.25px */}
-            <h1
-              className="font-bold tracking-tight"
-              style={{
-                fontSize: "32px",
-                lineHeight: "40px",
-                letterSpacing: "-0.25px",
-                color: "#1F2937",
-              }}
-            >
-              Gestión Personas
-            </h1>
-          </div>
-          {/* Body: 14px Regular, line-height 20px */}
-          <p
-            className="font-normal"
-            style={{
-              fontSize: "14px",
-              lineHeight: "20px",
-              color: "#6B7280",
-            }}
-          >
-            Gestión integral de personas con asignación de roles
-            múltiples simultáneos
-          </p>
-        </div>
-
-        {/* Botones de Acción */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          {/* ✅ Botón Exportar por Sede */}
-          <button
-            onClick={() => setShowExportModal(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: "#FFFFFF",
-              color: "#10B981",
-              border: "2px solid #10B981",
-              borderRadius: "8px",
-              padding: "12px 20px",
-              fontSize: "14px",
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#ECFDF5";
-              e.currentTarget.style.transform =
-                "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#FFFFFF";
-              e.currentTarget.style.transform = "translateY(0)";
-            }}
-          >
-            <Download className="w-5 h-5" strokeWidth={2} />
-            <span>Exportar por Sede</span>
-          </button>
-
-          {/* ✅ Botón Configurar Enrolamiento QR */}
-          <button
-            onClick={() => setShowEnrollmentConfig(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: "#FFFFFF",
-              color: "#003DA5",
-              border: "2px solid #003DA5",
-              borderRadius: "8px",
-              padding: "12px 20px",
-              fontSize: "14px",
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#F0F6FF";
-              e.currentTarget.style.transform =
-                "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#FFFFFF";
-              e.currentTarget.style.transform = "translateY(0)";
-            }}
-          >
-            <QrCode className="w-5 h-5" strokeWidth={2} />
-            <span>Configurar Enrolamiento</span>
-          </button>
-
-          {/* Botón Primario - Crear Usuario */}
-          {isSuperAdmin && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center justify-center gap-2 transition-all"
-              style={{
-                background: "#003DA5",
-                color: "#FFFFFF",
-                borderRadius: "8px",
-                padding: "12px 24px",
-                fontSize: "14px",
-                fontWeight: 500,
-                boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
-                cursor: "pointer",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#002D7A";
-                e.currentTarget.style.boxShadow =
-                  "0 4px 8px rgba(0, 61, 165, 0.15)";
-                e.currentTarget.style.transform =
-                  "translateY(-1px)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "#003DA5";
-                e.currentTarget.style.boxShadow =
-                  "0 1px 2px rgba(0, 0, 0, 0.05)";
-                e.currentTarget.style.transform = "translateY(0)";
-              }}
-            >
-              <UserPlus className="w-5 h-5" strokeWidth={2} />
-              <span>Crear Usuario</span>
-            </button>
-          )}
-        </div>
-      </motion.div>
-
-      {/* Stats Cards - Card Stats según especificaciones */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.1 }}
-        style={{ display: 'none'}}
-      >
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-600">
-              <Shield className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-900">
-                Roles y Permisos
-              </h3>
-              <p className="text-sm text-gray-600">
-                Administra roles, permisos granulares y control
-                de acceso con SSO
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setViewMode("roles-permisos")}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium"
-          >
-            <Shield className="w-5 h-5" />
-            <span>Ir a roles y permisos</span>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-          {/* Card Total */}
-          <motion.div
-            className="bg-white rounded-xl p-6 border border-[#E5E7EB]"
-            style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
-            whileHover={{ 
-              y: -2, 
-              boxShadow: '0 4px 12px rgba(0, 61, 165, 0.08)',
-              transition: { duration: 0.2 }
-            }}
-          >
-            <div 
-              className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
-              style={{
-                background: '#F0F6FF',
-                border: '1px solid #DBEAFE'
-              }}
-            >
-              <Users 
-                className="w-6 h-6" 
-                strokeWidth={2.5}
-                style={{ color: '#003DA5' }}
-              />
-            </div>
-            <p 
-              className="font-extrabold mb-1"
-              style={{
-                fontSize: '48px',
-                lineHeight: '56px',
-                letterSpacing: '-0.5px',
-                color: '#1F2937'
-              }}
-            >
-              {stats.total}
-            </p>
-            <p 
-              className="font-normal"
-              style={{
-                fontSize: '14px',
-                lineHeight: '20px',
-                color: '#6B7280'
-              }}
-            >
-              Total Usuarios
-            </p>
-          </motion.div>
-
-          {/* Card Activos */}
-          <motion.div
-            className="bg-white rounded-xl p-6 border border-[#E5E7EB]"
-            style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
-            whileHover={{ 
-              y: -2, 
-              boxShadow: '0 4px 12px rgba(0, 61, 165, 0.08)',
-              transition: { duration: 0.2 }
-            }}
-          >
-            <div 
-              className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
-              style={{
-                background: '#ECFDF5',
-                border: '1px solid #D1FAE5'
-              }}
-            >
-              <UserCheck 
-                className="w-6 h-6" 
-                strokeWidth={2.5}
-                style={{ color: '#10B981' }}
-              />
-            </div>
-            <p 
-              className="font-extrabold mb-1"
-              style={{
-                fontSize: '48px',
-                lineHeight: '56px',
-                letterSpacing: '-0.5px',
-                color: '#1F2937'
-              }}
-            >
-              {stats.active}
-            </p>
-            <p 
-              className="font-normal"
-              style={{
-                fontSize: '14px',
-                lineHeight: '20px',
-                color: '#6B7280'
-              }}
-            >
-              Usuarios Activos
-            </p>
-          </motion.div>
-
-          {/* Card Bloqueados */}
-          <motion.div
-            className="bg-white rounded-xl p-6 border border-[#E5E7EB]"
-            style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
-            whileHover={{ 
-              y: -2, 
-              boxShadow: '0 4px 12px rgba(0, 61, 165, 0.08)',
-              transition: { duration: 0.2 }
-            }}
-          >
-            <div 
-              className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
-              style={{
-                background: '#FEF2F2',
-                border: '1px solid #FEE2E2'
-              }}
-            >
-              <UserX 
-                className="w-6 h-6" 
-                strokeWidth={2.5}
-                style={{ color: '#EF4444' }}
-              />
-            </div>
-            <p 
-              className="font-extrabold mb-1"
-              style={{
-                fontSize: '48px',
-                lineHeight: '56px',
-                letterSpacing: '-0.5px',
-                color: '#1F2937'
-              }}
-            >
-              {stats.blocked}
-            </p>
-            <p 
-              className="font-normal"
-              style={{
-                fontSize: '14px',
-                lineHeight: '20px',
-                color: '#6B7280'
-              }}
-            >
-              Bloqueados
-            </p>
-          </motion.div>
-
-          {/* Card Crecimiento */}
-          <motion.div
-            className="bg-white rounded-xl p-6 border border-[#E5E7EB]"
-            style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
-            whileHover={{ 
-              y: -2, 
-              boxShadow: '0 4px 12px rgba(0, 61, 165, 0.08)',
-              transition: { duration: 0.2 }
-            }}
-          >
-            <div 
-              className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
-              style={{
-                background: '#FEF3C7',
-                border: '1px solid #FDE68A'
-              }}
-            >
-              <TrendingUp 
-                className="w-6 h-6" 
-                strokeWidth={2.5}
-                style={{ color: '#F59E0B' }}
-              />
-            </div>
-            <p 
-              className="font-extrabold mb-1"
-              style={{
-                fontSize: '48px',
-                lineHeight: '56px',
-                letterSpacing: '-0.5px',
-                color: '#1F2937'
-              }}
-            >
-              +{stats.growth}%
-            </p>
-            <p 
-              className="font-normal"
-              style={{
-                fontSize: '14px',
-                lineHeight: '20px',
-                color: '#6B7280'
-              }}
-            >
-              Crecimiento
-            </p>
-          </motion.div>
-        </div>
-      </motion.div>
-
-      {/* ✅ Carpeta Digital Global - Todos los Usuarios */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.12 }}
-        style={{ display: 'none'}}
-      >
-        <button
-          onClick={() => setShowSedesMetrics(!showSedesMetrics)}
-          className="w-full bg-white rounded-xl border border-[#E5E7EB] p-4 mb-4 hover:bg-gray-50 transition-colors flex items-center justify-between"
-          style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
-        >
-          <div className="flex items-center gap-2">
-            <FolderOpen className="w-5 h-5 text-[--esap-primary]" />
-            <span className="font-semibold text-gray-900">
-              Carpeta Digital
-            </span>
-            <Badge variant="outline" className="ml-2">
-              {filteredUsers.length} usuarios
-            </Badge>
-          </div>
-          <ChevronDown 
-            className={`w-5 h-5 text-gray-500 transition-transform ${showSedesMetrics ? 'rotate-180' : ''}`}
-          />
-        </button>
-
-        {showSedesMetrics && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mb-4"
-          >
-            <CarpetaDigitalGlobal usuarios={filteredUsers} />
-          </motion.div>
-        )}
-      </motion.div>
+    <Container4K className="space-y-6">
+      {/* Header - DÍA 5: ResponsiveHeader */}
+      <ResponsiveHeader
+        title="Gestión Personas"
+        description="Gestión integral de personas con asignación de roles múltiples simultáneos"
+        icon={Users}
+        primaryAction={{
+          label: "Crear Usuario",
+          icon: UserPlus,
+          onClick: () => setShowCreateModal(true),
+          variant: "primary"
+        }}
+        secondaryActions={[
+          {
+            label: "Exportar por Sede",
+            icon: Download,
+            onClick: () => setShowExportModal(true),
+            variant: "secondary"
+          }
+        ]}
+      />
 
       {/* Búsqueda y Filtros - Input estándar según especificaciones */}
       <motion.div
@@ -1336,9 +992,10 @@ export function UsersPersonsModulePremium() {
               style={{ height: "44px" }}
             >
               <option value="all">Todos los roles</option>
-              {uniqueRoles.map((role) => (
-                <option key={role} value={role}>
-                  {role}
+              {rolesLoading && <option value="" disabled>Cargando roles...</option>}
+              {availableRoles.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {role.name}
                 </option>
               ))}
             </select>
@@ -1349,7 +1006,7 @@ export function UsersPersonsModulePremium() {
                 setLocationFilter(e.target.value)
               }
               className="px-4 py-3 border-2 border-[#D1D5DB] rounded-lg bg-white cursor-pointer font-medium text-sm transition-all"
-              style={{ height: "44px" }}
+              style={{ height: "44px", display: 'none' }}
             >
               <option value="all">Todas las ubicaciones</option>
               {uniqueLocations.map((loc) => (
@@ -1404,7 +1061,7 @@ export function UsersPersonsModulePremium() {
             )}
             {roleFilter !== "all" && (
               <Badge variant="outline" className="gap-1">
-                Rol: {roleFilter}
+                Rol: {availableRoles.find(r => r.id === roleFilter)?.name}
                 <button
                   onClick={() => setRoleFilter("all")}
                   className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
@@ -1440,11 +1097,11 @@ export function UsersPersonsModulePremium() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.18 }}
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4"
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4"
       >
         {quickFiltersData.map((filter) => {
           const Icon = filter.icon;
-          const isActive = roleFilter === filter.role;
+          const isActive = roleFilter === filter.id;
           
           return (
             <motion.button
@@ -1456,7 +1113,7 @@ export function UsersPersonsModulePremium() {
                     description: `Se eliminó el filtro de ${filter.role}`,
                   });
                 } else {
-                  setRoleFilter(filter.role);
+                  setRoleFilter(filter.id);
                   toast.success("Filtro Aplicado", {
                     description: `Mostrando usuarios con rol ${filter.role}`,
                   });
@@ -1492,7 +1149,7 @@ export function UsersPersonsModulePremium() {
                 className="w-10 h-10 rounded-lg flex items-center justify-center mb-3"
                 style={{ 
                   backgroundColor: filter.bgColor,
-                  border: `2px solid ${filter.borderColor}20`
+                  border: `2px solid ${filter.borderColor}60`
                 }}
               >
                 <Icon 
@@ -2136,7 +1793,6 @@ export function UsersPersonsModulePremium() {
                           </div>
                         </td>
                       </motion.tr>
-
                       {/* Fila expandida - Detalles del usuario - REDISEÑADA */}
                       {expandedUserId === user.id && (
                         <motion.tr
@@ -2538,14 +2194,6 @@ export function UsersPersonsModulePremium() {
         usuarios={filteredUsers}
       />
 
-      {/* Modal Configuración de Enrolamiento */}
-      {showEnrollmentConfig && (
-        <EnrollmentConfigModal
-          onClose={() => setShowEnrollmentConfig(false)}
-          enrollmentStats={enrollmentStats}
-        />
-      )}
-
       {/* ✅ Modal Cambiar Contraseña */}
       {showChangePasswordModal && selectedUser && (
         <ModalCambiarContrasena
@@ -2558,6 +2206,6 @@ export function UsersPersonsModulePremium() {
           mode="admin-reset"
         />
       )}
-    </div>
+    </Container4K>
   );
 }

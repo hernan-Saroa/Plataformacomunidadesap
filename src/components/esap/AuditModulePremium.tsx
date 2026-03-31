@@ -81,6 +81,566 @@ export function AuditModulePremium() {
 
   // Mock data - ACTUALIZADO con eventos de Usuario Persona, Roles y 2FA (fallback si no hay logs)
   const mockEvents: AuditEvent[] = [
+    // ============ EVENTOS DE CONTROL INTERNO DE GESTIÓN ============
+    
+    // ━━━━━ PLAN ANUAL ━━━━━
+    {
+      id: 'EVT-CI-001',
+      timestamp: '2025-11-17 16:30:00',
+      user: 'Mario Osvaldo Bernal Rodríguez',
+      userId: 'PER-OCI-001',
+      action: 'Creación de Plan Anual de Auditoría 2025',
+      module: 'Control Interno - Plan Anual',
+      severity: 'high',
+      status: 'success',
+      ipAddress: '192.168.1.10',
+      device: 'Windows 11 - Desktop',
+      browser: 'Chrome 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '3.5s',
+      details: 'Se creó el Plan Anual de Auditoría 2025 con 45 auditorías programadas',
+      changes: [
+        { field: 'Año', before: 'N/A', after: '2025' },
+        { field: 'Total Auditorías', before: '0', after: '45' },
+        { field: 'Horas Estimadas', before: '0', after: '2,400 horas' },
+        { field: 'Estado', before: 'N/A', after: 'Borrador' }
+      ]
+    },
+    {
+      id: 'EVT-CI-002',
+      timestamp: '2025-11-17 16:25:30',
+      user: 'Mario Osvaldo Bernal Rodríguez',
+      userId: 'PER-OCI-001',
+      action: 'Aprobación de Plan Anual por Rectoría',
+      module: 'Control Interno - Plan Anual',
+      severity: 'critical',
+      status: 'success',
+      ipAddress: '192.168.1.10',
+      device: 'Windows 11 - Desktop',
+      browser: 'Chrome 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '2.1s',
+      details: 'Plan Anual 2025 aprobado oficialmente - Activación automática de programa',
+      changes: [
+        { field: 'Estado', before: 'En Revisión', after: 'Aprobado' },
+        { field: 'Aprobado Por', before: 'N/A', after: 'Dr. Ricardo Montes - Rector' },
+        { field: 'Fecha Aprobación', before: 'N/A', after: '17/11/2025 16:25' }
+      ]
+    },
+    
+    // ━━━━━ UNIVERSO AUDITORÍAS ━━━━━
+    {
+      id: 'EVT-CI-003',
+      timestamp: '2025-11-17 16:20:15',
+      user: 'Sandra Montero',
+      userId: 'PER-OCI-002',
+      action: 'Creación de Área Auditable',
+      module: 'Control Interno - Universo Auditorías',
+      severity: 'medium',
+      status: 'success',
+      ipAddress: '192.168.1.11',
+      device: 'Windows 10 - Desktop',
+      browser: 'Edge 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '1.8s',
+      details: 'Se agregó nueva área "Gestión de Tecnología" al universo de auditorías',
+      changes: [
+        { field: 'Nombre', before: 'N/A', after: 'Gestión de Tecnología' },
+        { field: 'Nivel de Riesgo', before: 'N/A', after: 'Alto' },
+        { field: 'Frecuencia Auditoría', before: 'N/A', after: 'Anual' }
+      ]
+    },
+    {
+      id: 'EVT-CI-004',
+      timestamp: '2025-11-17 16:15:42',
+      user: 'Sandra Montero',
+      userId: 'PER-OCI-002',
+      action: 'Actualización de evaluación de riesgo',
+      module: 'Control Interno - Universo Auditorías',
+      severity: 'medium',
+      status: 'success',
+      ipAddress: '192.168.1.11',
+      device: 'Windows 10 - Desktop',
+      browser: 'Edge 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '2.3s',
+      details: 'Evaluación de riesgo actualizada para "Oficina Jurídica" - Incremento de nivel',
+      changes: [
+        { field: 'Nivel de Riesgo', before: 'Medio', after: 'Alto' },
+        { field: 'Justificación', before: 'N/A', after: 'Incremento de litigios' },
+        { field: 'Prioridad Auditoría', before: 'Normal', after: 'Alta' }
+      ]
+    },
+    
+    // ━━━━━ PROGRAMA ANUAL ━━━━━
+    {
+      id: 'EVT-CI-005',
+      timestamp: '2025-11-17 16:10:20',
+      user: 'Mario Osvaldo Bernal Rodríguez',
+      userId: 'PER-OCI-001',
+      action: 'Programación masiva de auditorías',
+      module: 'Control Interno - Programa Anual',
+      severity: 'high',
+      status: 'success',
+      ipAddress: '192.168.1.10',
+      device: 'Windows 11 - Desktop',
+      browser: 'Chrome 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '5.2s',
+      details: 'Se programaron 45 auditorías del Q1 2025 - Asignación automática de auditores',
+      changes: [
+        { field: 'Auditorías Programadas', before: '12', after: '45' },
+        { field: 'Período', before: 'Q4 2024', after: 'Q1 2025' },
+        { field: 'Auditores Asignados', before: '3', after: '8' }
+      ]
+    },
+    
+    // ━━━━━ AUDITORÍAS (KANBAN) ━━━━━
+    {
+      id: 'EVT-CI-006',
+      timestamp: '2025-11-17 16:05:15',
+      user: 'Sandra Montero',
+      userId: 'PER-OCI-002',
+      action: 'Cambio de estado: Planificada → En Curso',
+      module: 'Control Interno - Auditorías',
+      severity: 'medium',
+      status: 'success',
+      ipAddress: '192.168.1.11',
+      device: 'Windows 10 - Desktop',
+      browser: 'Edge 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '1.5s',
+      details: 'Auditoría "AUD-2025-003 - Gestión Financiera" iniciada oficialmente',
+      changes: [
+        { field: 'Estado Kanban', before: 'Planificada', after: 'En Curso' },
+        { field: 'Fecha Inicio Real', before: 'N/A', after: '17/11/2025' },
+        { field: 'Auditor Líder', before: 'Sin asignar', after: 'Sandra Montero' }
+      ]
+    },
+    {
+      id: 'EVT-CI-007',
+      timestamp: '2025-11-17 16:00:30',
+      user: 'Sandra Montero',
+      userId: 'PER-OCI-002',
+      action: 'Apertura de expediente de auditoría',
+      module: 'Control Interno - Auditorías',
+      severity: 'info',
+      status: 'success',
+      ipAddress: '192.168.1.11',
+      device: 'Windows 10 - Desktop',
+      browser: 'Edge 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '2.1s',
+      details: 'Expediente creado automáticamente para AUD-2025-003 con todos los documentos base',
+      changes: [
+        { field: 'Expediente', before: 'No existe', after: 'EXP-2025-003' },
+        { field: 'Documentos Iniciales', before: '0', after: '12 documentos' }
+      ]
+    },
+    
+    // ━━━━━ HALLAZGOS ━━━━━
+    {
+      id: 'EVT-CI-008',
+      timestamp: '2025-11-17 15:55:20',
+      user: 'Sandra Montero',
+      userId: 'PER-OCI-002',
+      action: 'Registro de hallazgo crítico',
+      module: 'Control Interno - Hallazgos',
+      severity: 'critical',
+      status: 'success',
+      ipAddress: '192.168.1.11',
+      device: 'Windows 10 - Desktop',
+      browser: 'Edge 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '3.2s',
+      details: 'Hallazgo crítico detectado en Gestión Financiera - Falta de segregación de funciones',
+      changes: [
+        { field: 'Código', before: 'N/A', after: 'HAL-2025-008' },
+        { field: 'Tipo', before: 'N/A', after: 'No Conformidad Mayor' },
+        { field: 'Nivel Riesgo', before: 'N/A', after: 'Crítico' },
+        { field: 'Área Notificada', before: 'N/A', after: 'Dirección Financiera' }
+      ]
+    },
+    {
+      id: 'EVT-CI-009',
+      timestamp: '2025-11-17 15:50:45',
+      user: 'Sandra Montero',
+      userId: 'PER-OCI-002',
+      action: 'Notificación automática de hallazgo a área',
+      module: 'Control Interno - Hallazgos',
+      severity: 'high',
+      status: 'success',
+      ipAddress: '192.168.1.11',
+      device: 'Windows 10 - Desktop',
+      browser: 'Edge 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '0.8s',
+      details: 'Email automático enviado a Jefe de Área Financiera con hallazgo HAL-2025-008',
+      changes: [
+        { field: 'Notificación Enviada', before: 'No', after: 'Sí' },
+        { field: 'Destinatarios', before: 'N/A', after: 'Jefe Área + Director Financiero' }
+      ]
+    },
+    
+    // ━━━━━ PLANES DE MEJORAMIENTO ━━━━━
+    {
+      id: 'EVT-CI-010',
+      timestamp: '2025-11-17 15:45:30',
+      user: 'María Pérez González',
+      userId: 'PER-FIN-001',
+      action: 'Formulación de Plan de Mejoramiento',
+      module: 'Control Interno - Planes de Mejoramiento',
+      severity: 'high',
+      status: 'success',
+      ipAddress: '192.168.1.25',
+      device: 'Windows 10 - Laptop',
+      browser: 'Chrome 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '4.5s',
+      details: 'Plan de mejoramiento creado para hallazgo HAL-2025-008 con 4 acciones correctivas',
+      changes: [
+        { field: 'Código Plan', before: 'N/A', after: 'PM-2025-003' },
+        { field: 'Acciones Definidas', before: '0', after: '4 acciones' },
+        { field: 'Plazo', before: 'N/A', after: '60 días' },
+        { field: 'Responsable', before: 'N/A', after: 'María Pérez González' }
+      ]
+    },
+    {
+      id: 'EVT-CI-011',
+      timestamp: '2025-11-17 15:40:15',
+      user: 'Mario Osvaldo Bernal Rodríguez',
+      userId: 'PER-OCI-001',
+      action: 'Aprobación de Plan de Mejoramiento',
+      module: 'Control Interno - Planes de Mejoramiento',
+      severity: 'medium',
+      status: 'success',
+      ipAddress: '192.168.1.10',
+      device: 'Windows 11 - Desktop',
+      browser: 'Chrome 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '1.8s',
+      details: 'Plan PM-2025-003 aprobado oficialmente - Inicio de seguimiento automático',
+      changes: [
+        { field: 'Estado', before: 'En Revisión', after: 'Aprobado' },
+        { field: 'Observaciones', before: 'Ninguna', after: 'Aprobado sin observaciones' }
+      ]
+    },
+    
+    // ━━━━━ SEGUIMIENTO ━━━━━
+    {
+      id: 'EVT-CI-012',
+      timestamp: '2025-11-17 15:35:42',
+      user: 'María Pérez González',
+      userId: 'PER-FIN-001',
+      action: 'Actualización de avance de acción',
+      module: 'Control Interno - Seguimiento',
+      severity: 'info',
+      status: 'success',
+      ipAddress: '192.168.1.25',
+      device: 'Windows 10 - Laptop',
+      browser: 'Chrome 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '2.1s',
+      details: 'Avance actualizado al 45% para acción "Implementación de segregación de funciones"',
+      changes: [
+        { field: 'Avance', before: '25%', after: '45%' },
+        { field: 'Estado', before: 'En Proceso', after: 'En Proceso' },
+        { field: 'Evidencias', before: '2 archivos', after: '5 archivos' }
+      ]
+    },
+    {
+      id: 'EVT-CI-013',
+      timestamp: '2025-11-17 15:30:20',
+      user: 'Sistema Automático',
+      userId: 'SYS-0001',
+      action: 'Alerta de vencimiento próximo',
+      module: 'Control Interno - Seguimiento',
+      severity: 'medium',
+      status: 'warning',
+      ipAddress: '127.0.0.1',
+      device: 'Server Ubuntu 22.04',
+      browser: 'N/A',
+      location: 'Servidor Principal',
+      duration: '0.5s',
+      details: 'Notificación automática enviada - Plan PM-2025-001 vence en 7 días',
+      changes: [
+        { field: 'Alerta Enviada', before: 'No', after: 'Sí' },
+        { field: 'Días Restantes', before: '7', after: '7 (CRÍTICO)' }
+      ]
+    },
+    
+    // ━━━━━ GESTIÓN DOCUMENTAL ━━━━━
+    {
+      id: 'EVT-CI-014',
+      timestamp: '2025-11-17 15:25:30',
+      user: 'Sandra Montero',
+      userId: 'PER-OCI-002',
+      action: 'Carga de documento de auditoría',
+      module: 'Control Interno - Gestión Documental',
+      severity: 'info',
+      status: 'success',
+      ipAddress: '192.168.1.11',
+      device: 'Windows 10 - Desktop',
+      browser: 'Edge 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '3.4s',
+      details: 'Documento "Informe Final AUD-2025-003" cargado (2.4 MB)',
+      changes: [
+        { field: 'Nombre Archivo', before: 'N/A', after: 'Informe_Final_AUD_2025_003.pdf' },
+        { field: 'Tamaño', before: 'N/A', after: '2.4 MB' },
+        { field: 'Tipo', before: 'N/A', after: 'Informe Final' }
+      ]
+    },
+    {
+      id: 'EVT-CI-015',
+      timestamp: '2025-11-17 15:20:15',
+      user: 'María Pérez González',
+      userId: 'PER-FIN-001',
+      action: 'Carga de evidencia de mejoramiento',
+      module: 'Control Interno - Gestión Documental',
+      severity: 'info',
+      status: 'success',
+      ipAddress: '192.168.1.25',
+      device: 'Windows 10 - Laptop',
+      browser: 'Chrome 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '2.8s',
+      details: 'Evidencia fotográfica cargada para acción PM-2025-003',
+      changes: [
+        { field: 'Carpeta', before: 'Planes de Mejoramiento', after: 'Planes de Mejoramiento/PM-2025-003' },
+        { field: 'Archivos', before: '5', after: '6' }
+      ]
+    },
+    
+    // ━━━━━ EXPEDIENTES ━━━━━
+    {
+      id: 'EVT-CI-016',
+      timestamp: '2025-11-17 15:15:42',
+      user: 'Sandra Montero',
+      userId: 'PER-OCI-002',
+      action: 'Creación de expediente digital',
+      module: 'Control Interno - Expedientes',
+      severity: 'medium',
+      status: 'success',
+      ipAddress: '192.168.1.11',
+      device: 'Windows 10 - Desktop',
+      browser: 'Edge 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '2.5s',
+      details: 'Expediente EXP-2025-004 creado automáticamente para auditoría AUD-2025-004',
+      changes: [
+        { field: 'Código', before: 'N/A', after: 'EXP-2025-004' },
+        { field: 'Auditoría Asociada', before: 'N/A', after: 'AUD-2025-004' },
+        { field: 'Estado', before: 'N/A', after: 'Activo' }
+      ]
+    },
+    {
+      id: 'EVT-CI-017',
+      timestamp: '2025-11-17 15:10:20',
+      user: 'Mario Osvaldo Bernal Rodríguez',
+      userId: 'PER-OCI-001',
+      action: 'Búsqueda avanzada en expedientes',
+      module: 'Control Interno - Expedientes',
+      severity: 'low',
+      status: 'success',
+      ipAddress: '192.168.1.10',
+      device: 'Windows 11 - Desktop',
+      browser: 'Chrome 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '1.2s',
+      details: 'Búsqueda realizada: "Gestión Financiera 2024" - 12 expedientes encontrados'
+    },
+    
+    // ━━━━━ CONFIGURACIONES ━━━━━
+    {
+      id: 'EVT-CI-018',
+      timestamp: '2025-11-17 15:05:30',
+      user: 'Mario Osvaldo Bernal Rodríguez',
+      userId: 'PER-OCI-001',
+      action: 'Creación de tipo de auditoría',
+      module: 'Control Interno - Configuraciones',
+      severity: 'medium',
+      status: 'success',
+      ipAddress: '192.168.1.10',
+      device: 'Windows 11 - Desktop',
+      browser: 'Chrome 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '1.8s',
+      details: 'Nuevo tipo de auditoría creado: "Auditoría de Tecnología"',
+      changes: [
+        { field: 'Nombre', before: 'N/A', after: 'Auditoría de Tecnología' },
+        { field: 'Color', before: 'N/A', after: '#8B5CF6 (Púrpura)' },
+        { field: 'Duración Estimada', before: 'N/A', after: '40 horas' }
+      ]
+    },
+    {
+      id: 'EVT-CI-019',
+      timestamp: '2025-11-17 15:00:15',
+      user: 'Mario Osvaldo Bernal Rodríguez',
+      userId: 'PER-OCI-001',
+      action: 'Actualización de configuración de Kanban',
+      module: 'Control Interno - Configuraciones',
+      severity: 'low',
+      status: 'success',
+      ipAddress: '192.168.1.10',
+      device: 'Windows 11 - Desktop',
+      browser: 'Chrome 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '0.9s',
+      details: 'Columnas del Kanban reorganizadas - Nueva columna "Revisión Interna" agregada',
+      changes: [
+        { field: 'Columnas', before: '6', after: '7' },
+        { field: 'Nueva Columna', before: 'N/A', after: 'Revisión Interna' }
+      ]
+    },
+    
+    // ━━━━━ NOTIFICACIONES ━━━━━
+    {
+      id: 'EVT-CI-020',
+      timestamp: '2025-11-17 14:55:42',
+      user: 'Sistema Automático',
+      userId: 'SYS-0001',
+      action: 'Envío masivo de notificaciones',
+      module: 'Control Interno - Notificaciones',
+      severity: 'info',
+      status: 'success',
+      ipAddress: '127.0.0.1',
+      device: 'Server Ubuntu 22.04',
+      browser: 'N/A',
+      location: 'Servidor Principal',
+      duration: '2.3s',
+      details: 'Recordatorios de auditorías próximas enviados a 8 auditores',
+      changes: [
+        { field: 'Notificaciones Enviadas', before: '0', after: '8' },
+        { field: 'Tipo', before: 'N/A', after: 'Recordatorio de Auditoría' }
+      ]
+    },
+    
+    // ━━━━━ DASHBOARD KANBAN ━━━━━
+    {
+      id: 'EVT-CI-021',
+      timestamp: '2025-11-17 14:50:30',
+      user: 'Sandra Montero',
+      userId: 'PER-OCI-002',
+      action: 'Actualización de métricas del dashboard',
+      module: 'Control Interno - Dashboard Kanban',
+      severity: 'low',
+      status: 'success',
+      ipAddress: '192.168.1.11',
+      device: 'Windows 10 - Desktop',
+      browser: 'Edge 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '1.5s',
+      details: 'Métricas recalculadas automáticamente - Dashboard actualizado'
+    },
+    
+    // ━━━━━ TRAZABILIDAD ━━━━━
+    {
+      id: 'EVT-CI-022',
+      timestamp: '2025-11-17 14:45:20',
+      user: 'Mario Osvaldo Bernal Rodríguez',
+      userId: 'PER-OCI-001',
+      action: 'Consulta de historial de auditoría',
+      module: 'Control Interno - Trazabilidad',
+      severity: 'low',
+      status: 'success',
+      ipAddress: '192.168.1.10',
+      device: 'Windows 11 - Desktop',
+      browser: 'Chrome 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '0.8s',
+      details: 'Historial completo consultado para AUD-2025-003 - 47 eventos registrados'
+    },
+    
+    // ━━━━━ COMUNICACIONES ━━━━━
+    {
+      id: 'EVT-CI-023',
+      timestamp: '2025-11-17 14:40:15',
+      user: 'Sandra Montero',
+      userId: 'PER-OCI-002',
+      action: 'Envío de comunicación oficial',
+      module: 'Control Interno - Comunicaciones',
+      severity: 'medium',
+      status: 'success',
+      ipAddress: '192.168.1.11',
+      device: 'Windows 10 - Desktop',
+      browser: 'Edge 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '1.6s',
+      details: 'Comunicación oficial enviada a Dirección Financiera sobre hallazgo crítico',
+      changes: [
+        { field: 'Destinatario', before: 'N/A', after: 'Dirección Financiera' },
+        { field: 'Tipo', before: 'N/A', after: 'Hallazgo Crítico' },
+        { field: 'Estado', before: 'N/A', after: 'Enviado' }
+      ]
+    },
+    
+    // ━━━━━ APROBACIONES ━━━━━
+    {
+      id: 'EVT-CI-024',
+      timestamp: '2025-11-17 14:35:30',
+      user: 'Mario Osvaldo Bernal Rodríguez',
+      userId: 'PER-OCI-001',
+      action: 'Aprobación de informe final',
+      module: 'Control Interno - Aprobaciones',
+      severity: 'high',
+      status: 'success',
+      ipAddress: '192.168.1.10',
+      device: 'Windows 11 - Desktop',
+      browser: 'Chrome 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '2.2s',
+      details: 'Informe final AUD-2025-002 aprobado y firmado digitalmente',
+      changes: [
+        { field: 'Estado', before: 'En Revisión', after: 'Aprobado' },
+        { field: 'Firma Digital', before: 'No', after: 'Sí' },
+        { field: 'Fecha Aprobación', before: 'N/A', after: '17/11/2025 14:35' }
+      ]
+    },
+    {
+      id: 'EVT-CI-025',
+      timestamp: '2025-11-17 14:30:45',
+      user: 'Mario Osvaldo Bernal Rodríguez',
+      userId: 'PER-OCI-001',
+      action: 'Rechazo de documento con observaciones',
+      module: 'Control Interno - Aprobaciones',
+      severity: 'medium',
+      status: 'warning',
+      ipAddress: '192.168.1.10',
+      device: 'Windows 11 - Desktop',
+      browser: 'Chrome 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '1.9s',
+      details: 'Documento rechazado - Se requieren correcciones en metodología',
+      changes: [
+        { field: 'Estado', before: 'Pendiente', after: 'Rechazado' },
+        { field: 'Observaciones', before: 'Ninguna', after: 'Metodología incompleta' }
+      ]
+    },
+    
+    // ━━━━━ HISTORIAL ━━━━━
+    {
+      id: 'EVT-CI-026',
+      timestamp: '2025-11-17 14:25:30',
+      user: 'Sandra Montero',
+      userId: 'PER-OCI-002',
+      action: 'Exportación de historial de auditoría',
+      module: 'Control Interno - Historial',
+      severity: 'info',
+      status: 'success',
+      ipAddress: '192.168.1.11',
+      device: 'Windows 10 - Desktop',
+      browser: 'Edge 119.0',
+      location: 'Bogotá, Colombia',
+      duration: '3.8s',
+      details: 'Historial completo de AUD-2025-001 exportado a PDF - 89 páginas generadas',
+      changes: [
+        { field: 'Formato', before: 'N/A', after: 'PDF' },
+        { field: 'Eventos Incluidos', before: '0', after: '127 eventos' },
+        { field: 'Tamaño Archivo', before: 'N/A', after: '4.2 MB' }
+      ]
+    },
+
     // ============ EVENTOS DE AUTENTICACIÓN 2FA ============
     {
       id: 'EVT-2FA-001',

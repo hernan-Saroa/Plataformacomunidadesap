@@ -1,4 +1,4 @@
-import { IsInt, IsString, IsNotEmpty, IsOptional, Min, Max } from 'class-validator';
+import { IsInt, IsString, IsNotEmpty, IsOptional, Min, Max, IsUUID, IsDateString } from 'class-validator';
 
 export class CreatePlanAnual5RolesDto {
   @IsInt()
@@ -11,7 +11,19 @@ export class CreatePlanAnual5RolesDto {
   responsable: string;
 
   @IsOptional()
+  @IsUUID()
+  responsable_id?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fecha_inicio?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fecha_fin?: string;
+
+  @IsOptional()
   @IsString()
-  estado?: 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado';
+  estado?: 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' | 'activo';
 }
 

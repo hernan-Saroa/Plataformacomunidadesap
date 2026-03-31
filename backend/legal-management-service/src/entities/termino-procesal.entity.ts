@@ -10,9 +10,9 @@ export class TerminoProcesal {
     @Index()
     origenModulo: string; // 'DEFENSA', 'JUZGAMIENTO', 'ASESORIA', 'MANUAL'
 
-    @Column({ name: 'referencia_id', type: 'uuid' })
+    @Column({ name: 'referencia_id', type: 'uuid', nullable: true })
     @Index()
-    referenciaId: string;
+    referenciaId: string | null;
 
     @Column({ name: 'numero_radicado', type: 'varchar', length: 100, nullable: true })
     numeroRadicado: string | null;

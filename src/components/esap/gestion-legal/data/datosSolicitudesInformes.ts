@@ -1,363 +1,256 @@
 /**
- * Datos Mock - Solicitudes de Informes (MOD-05)
- * Mock data para el módulo de Términos para Informes
- * 
- * 🔄 SINCRONIZACIÓN AUTOMÁTICA:
- * Este archivo combina:
- * 1. Términos AUTO-GENERADOS desde otros módulos (Defensa Judicial, Juzgamiento)
- * 2. Solicitudes directas de informes (Órganos de Control, PQRS, etc.)
+ * DATOS MOCK: Solicitudes de Informes para el Módulo MOD-05
  */
 
 import { SolicitudInforme } from '../core/types';
-import { expedientesJudicialesMock } from './datosExpedientesJudicialesExpandido';
-import { sincronizarTodosLosTerminos } from '../services/sincronizacionTerminos';
 
-function fechaHace(dias: number): Date {
-  const fecha = new Date();
-  fecha.setDate(fecha.getDate() - dias);
-  return fecha;
-}
+// Función helper para calcular días restantes
+const calcularDiasRestantes = (fechaVencimiento: Date): number => {
+  const hoy = new Date();
+  const dias = Math.ceil((fechaVencimiento.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+  return dias;
+};
 
-function fechaDentro(dias: number): Date {
-  const fecha = new Date();
-  fecha.setDate(fecha.getDate() + dias);
-  return fecha;
-}
+// ============================================================================
+// DATOS MOCK DE SOLICITUDES DE INFORMES
+// ============================================================================
 
-// Función para crear fecha específica en diciembre 2025
-function fechaDiciembre(dia: number): Date {
-  return new Date(2025, 11, dia); // 11 = diciembre (0-indexed)
-}
-
-export const solicitudesInformesMock: SolicitudInforme[] = [
-  // ============ SOLICITUDES CRÍTICAS (≤2 días) - ROJAS ============
+export const solicitudesConsolidadas: SolicitudInforme[] = [
   {
     id: 'SI-2025-001',
-    etapa: 'REVISIÓN',
-    tipoInforme: 'Informe Procuraduría',
-    enteSolicitante: 'Procuraduría General de la Nación',
-    radicadoExterno: 'PGN-2025-156',
-    asunto: 'Informe sobre procesos disciplinarios en curso',
-    descripcion: 'Consolidado de procesos disciplinarios activos con estado actual',
-    responsable: 'Dr. Juan Pérez López',
-    fechaSolicitud: fechaHace(8),
-    fechaVencimiento: fechaDiciembre(26), // 26 de diciembre - CRÍTICO
-    diasTotales: 10,
-    diasRestantes: 1,
-    datosRequeridos: ['Procesos disciplinarios', 'Estado procesal'],
-    // 🔗 INTEGRACIÓN TRANSVERSAL
+    etapa: 'RECIBIDA',
+    tipoInforme: 'Informe de Gestión',
+    enteSolicitante: 'Contraloría General de la República',
+    radicadoExterno: 'RAD-CGR-2025-0123',
+    asunto: 'Solicitud de informe trimestral de ejecución presupuestal',
+    descripcion: 'La Contraloría solicita informe detallado de la ejecución presupuestal del primer trimestre 2025',
+    responsable: 'María Fernanda López',
+    fechaSolicitud: new Date('2025-01-15'),
+    fechaVencimiento: new Date('2025-02-15'),
+    diasTotales: 31,
+    diasRestantes: calcularDiasRestantes(new Date('2025-02-15')),
+    datosRequeridos: [
+      'Ejecución presupuestal por proyecto',
+      'Certificados de disponibilidad',
+      'Informes de interventoría'
+    ],
     moduloOrigen: 'ORGANOS_CONTROL',
     tipoTermino: 'ENTE_CONTROL',
-    esImprorrogable: true,
-    baseNormativa: 'Ley 1952 de 2019 - Art. 52',
-    consecuenciaIncumplimiento: 'Presunción de falta de colaboración con órgano de control'
+    prioridad: 'URGENTE',
+    improrrogable: true,
+    baseNormativa: 'Ley 42 de 1993',
+    consecuenciaIncumplimiento: 'Apertura de proceso sancionatorio fiscal'
   },
   {
     id: 'SI-2025-002',
-    etapa: 'EN_ELABORACIÓN',
-    tipoInforme: 'Respuesta Tutela',
-    enteSolicitante: 'Juzgado 10 Civil',
-    radicadoExterno: 'TUT-2025-089',
-    asunto: 'Respuesta a tutela sobre procesos laborales',
-    descripcion: 'Informe urgente sobre estado de procesos laborales del peticionario',
-    responsable: 'Dra. María Torres',
-    fechaSolicitud: fechaHace(3),
-    fechaVencimiento: fechaDiciembre(27), // 27 de diciembre - CRÍTICO
-    diasTotales: 5,
-    diasRestantes: 2,
-    datosRequeridos: ['Procesos laborales', 'Estado actual'],
-    // 🔗 INTEGRACIÓN TRANSVERSAL
-    moduloOrigen: 'DEFENSA_JUDICIAL',
-    tipoTermino: 'JUDICIAL',
-    expedienteRelacionado: 'PJ-2025-089',
-    esImprorrogable: true,
-    baseNormativa: 'Decreto 2591 de 1991 - Art. 14',
-    consecuenciaIncumplimiento: 'Desacato - Posible incidente penal y multa'
+    etapa: 'EN_ELABORACION',
+    tipoInforme: 'Informe de Auditoría',
+    enteSolicitante: 'Procuraduría General de la Nación',
+    radicadoExterno: 'RAD-PGN-2025-0456',
+    asunto: 'Informe sobre procesos disciplinarios en curso',
+    descripcion: 'Solicitud de información sobre todos los procesos disciplinarios activos',
+    responsable: 'Carlos Alberto Rodríguez',
+    fechaSolicitud: new Date('2025-01-20'),
+    fechaVencimiento: new Date('2025-02-20'),
+    diasTotales: 31,
+    diasRestantes: calcularDiasRestantes(new Date('2025-02-20')),
+    datosRequeridos: [
+      'Listado de procesos activos',
+      'Estado de cada proceso',
+      'Términos procesales'
+    ],
+    moduloOrigen: 'JUZGAMIENTO',
+    tipoTermino: 'DISCIPLINARIO',
+    prioridad: 'NORMAL',
+    improrrogable: true,
+    baseNormativa: 'Ley 734 de 2002',
+    consecuenciaIncumplimiento: 'Investigación disciplinaria'
   },
   {
     id: 'SI-2025-003',
-    etapa: 'RECIBIDA',
-    tipoInforme: 'Derecho de Petición',
+    etapa: 'EN_REVISION',
+    tipoInforme: 'Respuesta Derecho de Petición',
     enteSolicitante: 'Ciudadano',
-    radicadoExterno: 'PET-2025-345',
-    asunto: 'Solicitud información sobre contratación pública',
-    responsable: 'Dr. Carlos Mendoza',
-    fechaSolicitud: fechaHace(13),
-    fechaVencimiento: fechaDiciembre(30), // 30 de diciembre - CRÍTICO
+    radicadoExterno: 'RAD-EXT-2025-0789',
+    asunto: 'Solicitud de información sobre concursos de méritos',
+    descripcion: 'Ciudadano solicita información sobre convocatorias abiertas',
+    responsable: 'Ana María Torres',
+    fechaSolicitud: new Date('2025-01-25'),
+    fechaVencimiento: new Date('2025-02-09'),
     diasTotales: 15,
-    diasRestantes: 1,
-    datosRequeridos: ['Contratos vigentes'],
-    // 🔗 INTEGRACIÓN TRANSVERSAL
+    diasRestantes: calcularDiasRestantes(new Date('2025-02-09')),
+    datosRequeridos: [
+      'Listado de convocatorias',
+      'Requisitos de participación',
+      'Cronograma'
+    ],
     moduloOrigen: 'CENTRO_COMUNICACIONES',
     tipoTermino: 'ADMINISTRATIVO',
-    esImprorrogable: false,
-    baseNormativa: 'Código Contencioso Administrativo - Art. 14',
+    prioridad: 'NORMAL',
+    improrrogable: false,
+    baseNormativa: 'Código Contencioso Administrativo',
     consecuenciaIncumplimiento: 'Silencio administrativo positivo'
   },
-
-  // ============ SOLICITUDES URGENTES (3-5 días) - AMARILLAS ============
   {
     id: 'SI-2025-004',
-    etapa: 'EN_ELABORACIÓN',
-    tipoInforme: 'Informe Ejecutivo',
-    enteSolicitante: 'Dirección General ESAP',
-    radicadoExterno: 'DG-2025-045',
-    asunto: 'Estado de procesos judiciales críticos',
-    descripcion: 'Reporte ejecutivo de procesos con alto riesgo económico',
-    responsable: 'Dra. Ana González',
-    fechaSolicitud: fechaHace(7),
-    fechaVencimiento: fechaDiciembre(29), // 29 de diciembre - URGENTE
-    diasTotales: 10,
-    diasRestantes: 4,
-    datosRequeridos: ['Procesos críticos', 'Riesgos', 'Provisiones']
+    etapa: 'APROBADO',
+    tipoInforme: 'Informe Técnico',
+    enteSolicitante: 'Ministerio de Educación',
+    radicadoExterno: 'RAD-MINEDU-2025-0234',
+    asunto: 'Informe de resultados de programas de capacitación',
+    descripcion: 'Solicitud de informe sobre el impacto de los programas de capacitación 2024',
+    responsable: 'Jorge Luis Martínez',
+    fechaSolicitud: new Date('2025-01-10'),
+    fechaVencimiento: new Date('2025-02-28'),
+    diasTotales: 49,
+    diasRestantes: calcularDiasRestantes(new Date('2025-02-28')),
+    datosRequeridos: [
+      'Número de participantes',
+      'Resultados de evaluaciones',
+      'Certificaciones emitidas'
+    ],
+    moduloOrigen: 'PLAN_ACCION',
+    tipoTermino: 'ADMINISTRATIVO',
+    prioridad: 'NORMAL',
+    improrrogable: false,
+    baseNormativa: 'Convenio Interadministrativo 001-2024',
+    consecuenciaIncumplimiento: 'Requerimiento formal'
   },
   {
     id: 'SI-2025-005',
-    etapa: 'REVISIÓN',
-    tipoInforme: 'Informe Contraloría',
-    enteSolicitante: 'Contraloría General de la República',
-    radicadoExterno: 'CGR-2025-0234',
-    asunto: 'Informe trimestral de gestión legal Q4-2024',
-    descripcion: 'Consolidado trimestral de procesos judiciales, sentencias y provisiones',
-    responsable: 'Dr. Juan Pérez López',
-    fechaSolicitud: fechaHace(10),
-    fechaVencimiento: fechaDiciembre(28), // 28 de diciembre - URGENTE
-    diasTotales: 15,
-    diasRestantes: 3,
-    datosRequeridos: ['Procesos activos', 'Sentencias', 'Provisiones']
+    etapa: 'ENVIADO',
+    tipoInforme: 'Informe Jurídico',
+    enteSolicitante: 'Defensoría del Pueblo',
+    radicadoExterno: 'RAD-DP-2025-0567',
+    asunto: 'Informe sobre tutelas en trámite',
+    descripcion: 'Solicitud de información sobre acciones de tutela contra la ESAP',
+    responsable: 'Laura Patricia Gómez',
+    fechaSolicitud: new Date('2025-01-05'),
+    fechaVencimiento: new Date('2025-02-05'),
+    diasTotales: 31,
+    diasRestantes: calcularDiasRestantes(new Date('2025-02-05')),
+    datosRequeridos: [
+      'Número de radicado de tutelas',
+      'Estado procesal',
+      'Pretensiones'
+    ],
+    moduloOrigen: 'DEFENSA_JUDICIAL',
+    tipoTermino: 'JUDICIAL',
+    prioridad: 'URGENTE',
+    improrrogable: true,
+    baseNormativa: 'Decreto 2591 de 1991',
+    consecuenciaIncumplimiento: 'Incidente de desacato'
   },
   {
     id: 'SI-2025-006',
     etapa: 'RECIBIDA',
-    tipoInforme: 'Concepto Jurídico',
-    enteSolicitante: 'Oficina de Planeación',
-    radicadoExterno: 'PLAN-2025-067',
-    asunto: 'Concepto sobre legalidad de proyecto de inversión',
-    responsable: 'Dra. Patricia Rojas',
-    fechaSolicitud: fechaHace(5),
-    fechaVencimiento: fechaDiciembre(31), // 31 de diciembre - URGENTE
-    diasTotales: 10,
-    diasRestantes: 5,
-    datosRequeridos: ['Normatividad aplicable', 'Riesgos legales']
+    tipoInforme: 'Informe de Control Interno',
+    enteSolicitante: 'Oficina de Control Interno',
+    radicadoExterno: 'RAD-OCI-2025-0012',
+    asunto: 'Informe de seguimiento al Plan de Mejoramiento',
+    descripcion: 'Solicitud de estado de avance de las acciones correctivas del Plan de Mejoramiento',
+    responsable: 'Diego Fernando Ruiz',
+    fechaSolicitud: new Date('2025-01-28'),
+    fechaVencimiento: new Date('2025-02-12'),
+    diasTotales: 15,
+    diasRestantes: calcularDiasRestantes(new Date('2025-02-12')),
+    datosRequeridos: [
+      'Estado de cada acción',
+      'Evidencias de cumplimiento',
+      'Porcentaje de avance'
+    ],
+    moduloOrigen: 'RIESGOS',
+    tipoTermino: 'SLA_INTERNO',
+    prioridad: 'NORMAL',
+    improrrogable: false,
+    baseNormativa: 'Manual de Control Interno ESAP',
+    consecuenciaIncumplimiento: 'Hallazgo de control interno'
   },
-
-  // ============ SOLICITUDES EN TÉRMINO (>5 días) - VERDES ============
   {
     id: 'SI-2025-007',
-    etapa: 'RECIBIDA',
-    tipoInforme: 'Informe al Congreso',
-    enteSolicitante: 'Congreso de la República',
-    radicadoExterno: 'CONG-2025-012',
-    asunto: 'Informe anual de gestión jurídica 2024',
-    descripcion: 'Informe completo de gestión legal del año 2024 para el Congreso',
-    responsable: 'Dr. Carlos Mendoza',
-    fechaSolicitud: fechaHace(3),
-    fechaVencimiento: new Date(2026, 0, 3), // 3 de enero 2026 - EN TÉRMINO
-    diasTotales: 20,
-    diasRestantes: 8,
-    datosRequeridos: ['Gestión anual', 'Estadísticas', 'Resultados', 'Logros']
+    etapa: 'VENCIDA',
+    tipoInforme: 'Informe de Gestión',
+    enteSolicitante: 'Archivo General de la Nación',
+    radicadoExterno: 'RAD-AGN-2025-0890',
+    asunto: 'Informe de gestión documental 2024',
+    descripcion: 'Solicitud de informe anual de gestión documental y tablas de retención',
+    responsable: 'Patricia Elena Vargas',
+    fechaSolicitud: new Date('2025-01-02'),
+    fechaVencimiento: new Date('2025-01-30'),
+    diasTotales: 28,
+    diasRestantes: calcularDiasRestantes(new Date('2025-01-30')),
+    datosRequeridos: [
+      'Tablas de retención documental',
+      'Inventario de archivos',
+      'Plan de conservación'
+    ],
+    moduloOrigen: 'PLAN_ACCION',
+    tipoTermino: 'ADMINISTRATIVO',
+    prioridad: 'CRÍTICA',
+    improrrogable: true,
+    baseNormativa: 'Ley 594 de 2000',
+    consecuenciaIncumplimiento: 'Sanción económica'
   },
   {
     id: 'SI-2025-008',
-    etapa: 'EN_ELABORACIÓN',
-    tipoInforme: 'Informe Defensoria',
-    enteSolicitante: 'Defensoría del Pueblo',
-    radicadoExterno: 'DEF-2025-089',
-    asunto: 'Informe sobre derechos humanos en procesos disciplinarios',
-    responsable: 'Dra. María Torres',
-    fechaSolicitud: fechaHace(2),
-    fechaVencimiento: new Date(2026, 0, 5), // 5 de enero 2026 - EN TÉRMINO
-    diasTotales: 15,
-    diasRestantes: 10,
-    datosRequeridos: ['Procesos disciplinarios', 'Garantías']
-  },
-  {
-    id: 'SI-2025-009',
-    etapa: 'RECIBIDA',
-    tipoInforme: 'Respuesta Ente de Control',
-    enteSolicitante: 'Auditoría General de la República',
-    radicadoExterno: 'AUD-2025-123',
-    asunto: 'Informe sobre hallazgos de auditoría jurídica',
-    responsable: 'Dr. Juan Pérez López',
-    fechaSolicitud: fechaHace(1),
-    fechaVencimiento: new Date(2026, 0, 7), // 7 de enero 2026 - EN TÉRMINO
-    diasTotales: 12,
-    diasRestantes: 12,
-    datosRequeridos: ['Hallazgos', 'Planes de mejora']
-  },
-  {
-    id: 'SI-2025-010',
-    etapa: 'RECIBIDA',
-    tipoInforme: 'Informe Archivo General',
-    enteSolicitante: 'Archivo General de la Nación',
-    radicadoExterno: 'AGN-2025-023',
-    asunto: 'Informe de gestión documental legal',
-    descripcion: 'Reporte sobre organización y conservación de expedientes legales',
-    responsable: 'Dra. Ana González',
-    fechaSolicitud: fechaHace(0),
-    fechaVencimiento: new Date(2026, 0, 10), // 10 de enero 2026 - EN TÉRMINO
-    diasTotales: 15,
-    diasRestantes: 15,
-    datosRequeridos: ['Gestión documental', 'Inventario']
-  },
-
-  // ============ SOLICITUDES DISTRIBUIDAS EN DICIEMBRE ============
-  {
-    id: 'SI-2025-011',
-    etapa: 'RECIBIDA',
-    tipoInforme: 'Informe Trimestral',
-    enteSolicitante: 'Ministerio de Hacienda',
-    radicadoExterno: 'MHAC-2025-078',
-    asunto: 'Informe de provisiones contables Q1-2025',
-    responsable: 'Dr. Carlos Mendoza',
-    fechaSolicitud: fechaHace(18),
-    fechaVencimiento: fechaDiciembre(3), // 3 de diciembre
-    diasTotales: 20,
-    diasRestantes: -22,
-    datosRequeridos: ['Provisiones', 'Contingencias']
-  },
-  {
-    id: 'SI-2025-012',
-    etapa: 'EN_ELABORACIÓN',
-    tipoInforme: 'Concepto Técnico',
-    enteSolicitante: 'Oficina Jurídica Territorial',
-    radicadoExterno: 'OJT-2025-156',
-    asunto: 'Concepto sobre competencias territoriales',
-    responsable: 'Dra. Patricia Rojas',
-    fechaSolicitud: fechaHace(15),
-    fechaVencimiento: fechaDiciembre(8), // 8 de diciembre
-    diasTotales: 18,
-    diasRestantes: -17,
-    datosRequeridos: ['Normatividad', 'Precedentes']
-  },
-  {
-    id: 'SI-2025-013',
-    etapa: 'REVISIÓN',
-    tipoInforme: 'Informe Mensual',
-    enteSolicitante: 'Rectoría Nacional',
-    radicadoExterno: 'RECT-2025-234',
-    asunto: 'Informe mensual de gestión legal - Noviembre',
-    responsable: 'Dr. Juan Pérez López',
-    fechaSolicitud: fechaHace(10),
-    fechaVencimiento: fechaDiciembre(12), // 12 de diciembre
-    diasTotales: 15,
-    diasRestantes: -13,
-    datosRequeridos: ['Estadísticas mensuales']
-  },
-  {
-    id: 'SI-2025-014',
-    etapa: 'EN_ELABORACIÓN',
-    tipoInforme: 'Respuesta Derecho de Petición',
-    enteSolicitante: 'Asociación de Usuarios',
-    radicadoExterno: 'ASOU-2025-045',
-    asunto: 'Información sobre procesos de responsabilidad fiscal',
-    responsable: 'Dra. María Torres',
-    fechaSolicitud: fechaHace(8),
-    fechaVencimiento: fechaDiciembre(15), // 15 de diciembre
-    diasTotales: 15,
-    diasRestantes: -10,
-    datosRequeridos: ['Procesos fiscales']
-  },
-  {
-    id: 'SI-2025-015',
-    etapa: 'RECIBIDA',
-    tipoInforme: 'Informe Ejecutivo',
-    enteSolicitante: 'Consejo Directivo',
-    radicadoExterno: 'CD-2025-089',
-    asunto: 'Estado de litigios de alto impacto',
-    responsable: 'Dr. Carlos Mendoza',
-    fechaSolicitud: fechaHace(5),
-    fechaVencimiento: fechaDiciembre(18), // 18 de diciembre
-    diasTotales: 12,
-    diasRestantes: -7,
-    datosRequeridos: ['Litigios críticos', 'Impacto económico']
-  },
-  {
-    id: 'SI-2025-016',
-    etapa: 'RECIBIDA',
-    tipoInforme: 'Informe Estadístico',
-    enteSolicitante: 'DANE',
-    radicadoExterno: 'DANE-2025-123',
-    asunto: 'Estadísticas de litigiosidad institucional',
-    responsable: 'Dra. Ana González',
-    fechaSolicitud: fechaHace(3),
-    fechaVencimiento: fechaDiciembre(20), // 20 de diciembre
-    diasTotales: 10,
-    diasRestantes: -5,
-    datosRequeridos: ['Estadísticas', 'Tendencias']
-  },
-  {
-    id: 'SI-2025-017',
-    etapa: 'EN_ELABORACIÓN',
-    tipoInforme: 'Informe de Riesgos',
-    enteSolicitante: 'Oficina de Control Interno',
-    radicadoExterno: 'OCI-2025-067',
-    asunto: 'Matriz de riesgos legales Q4-2024',
-    responsable: 'Dr. Juan Pérez López',
-    fechaSolicitud: fechaHace(2),
-    fechaVencimiento: fechaDiciembre(23), // 23 de diciembre
-    diasTotales: 8,
-    diasRestantes: -2,
-    datosRequeridos: ['Riesgos', 'Controles', 'Mitigación']
-  },
-
-  // ============ SOLICITUDES VENCIDAS (PASADAS) ============
-  {
-    id: 'SI-2025-018',
-    etapa: 'ENVIADO',
-    tipoInforme: 'Informe Mensual',
-    enteSolicitante: 'Archivo General de la Nación',
-    radicadoExterno: 'AGN-2025-001',
-    asunto: 'Informe de gestión documental - Octubre',
-    responsable: 'Dra. María Torres',
-    fechaSolicitud: fechaHace(35),
-    fechaVencimiento: fechaHace(20),
-    diasTotales: 15,
-    diasRestantes: -20,
-    datosRequeridos: ['Gestión documental']
-  },
+    etapa: 'EN_ELABORACION',
+    tipoInforme: 'Informe Contractual',
+    enteSolicitante: 'Contratista XYZ SAS',
+    radicadoExterno: 'RAD-CONT-2025-0123',
+    asunto: 'Informe de supervisión mensual',
+    descripcion: 'Solicitud de informe de supervisión correspondiente al mes de enero 2025',
+    responsable: 'Ricardo Andrés Moreno',
+    fechaSolicitud: new Date('2025-01-30'),
+    fechaVencimiento: new Date('2025-02-06'),
+    diasTotales: 7,
+    diasRestantes: calcularDiasRestantes(new Date('2025-02-06')),
+    datosRequeridos: [
+      'Actividades realizadas',
+      'Cumplimiento de metas',
+      'Observaciones'
+    ],
+    moduloOrigen: 'ASESORIA',
+    tipoTermino: 'CONTRACTUAL',
+    prioridad: 'NORMAL',
+    improrrogable: false,
+    baseNormativa: 'Contrato 001-2024',
+    consecuenciaIncumplimiento: 'Incumplimiento contractual'
+  }
 ];
 
 // ============================================================================
-// 🔄 AUTO-GENERACIÓN DE TÉRMINOS DESDE OTROS MÓDULOS
+// ESTADÍSTICAS PRECALCULADAS
 // ============================================================================
-
-/**
- * Genera términos automáticamente desde expedientes de otros módulos
- * Esta función se ejecuta al cargar el módulo y consolida TODOS los términos activos
- */
-export function generarTerminosConsolidados(): SolicitudInforme[] {
-  // 1. Términos manuales (solicitudes directas de informes)
-  const terminosManuales = [...solicitudesInformesMock];
-  
-  // 2. Términos auto-generados desde otros módulos (PJ, PD, AJ)
-  const terminosAutoGenerados = sincronizarTodosLosTerminos();
-  
-  // 3. Combinar y ordenar por fecha de vencimiento
-  const todosLosTerminos = [
-    ...terminosManuales,
-    ...terminosAutoGenerados
-  ].sort((a, b) => {
-    return new Date(a.fechaVencimiento).getTime() - new Date(b.fechaVencimiento).getTime();
-  });
-  
-  return todosLosTerminos;
-}
-
-// ============================================================================
-// EXPORT: Lista consolidada (manual + auto-generados)
-// ============================================================================
-
-// 🔄 SINCRONIZACIÓN AUTOMÁTICA ACTIVADA
-// Esta lista combina solicitudes manuales + términos auto-generados desde otros módulos
-export const solicitudesConsolidadas = generarTerminosConsolidados();
-
-// Para testing/desarrollo, usar solo manuales:
-// export const solicitudesConsolidadas = solicitudesInformesMock;
 
 export const estadisticasTerminosInformes = {
-  total: solicitudesConsolidadas.length,
-  criticas: solicitudesConsolidadas.filter((s) => s.diasRestantes <= 2).length,
-  urgentes: solicitudesConsolidadas.filter((s) => s.diasRestantes > 2 && s.diasRestantes <= 5).length,
-  enTermino: solicitudesConsolidadas.filter((s) => s.diasRestantes > 5).length,
+  totalSolicitudes: solicitudesConsolidadas.length,
+  porEtapa: {
+    recibida: solicitudesConsolidadas.filter(s => s.etapa === 'RECIBIDA').length,
+    enElaboracion: solicitudesConsolidadas.filter(s => s.etapa === 'EN_ELABORACION').length,
+    enRevision: solicitudesConsolidadas.filter(s => s.etapa === 'EN_REVISION').length,
+    aprobado: solicitudesConsolidadas.filter(s => s.etapa === 'APROBADO').length,
+    enviado: solicitudesConsolidadas.filter(s => s.etapa === 'ENVIADO').length,
+    finalizada: solicitudesConsolidadas.filter(s => s.etapa === 'FINALIZADA').length,
+    vencida: solicitudesConsolidadas.filter(s => s.etapa === 'VENCIDA').length
+  },
+  porSemaforo: {
+    rojo: solicitudesConsolidadas.filter(s => s.diasRestantes <= 2).length,
+    amarillo: solicitudesConsolidadas.filter(s => s.diasRestantes > 2 && s.diasRestantes <= 5).length,
+    verde: solicitudesConsolidadas.filter(s => s.diasRestantes > 5).length
+  },
+  porModulo: {
+    defensaJudicial: solicitudesConsolidadas.filter(s => s.moduloOrigen === 'DEFENSA_JUDICIAL').length,
+    juzgamiento: solicitudesConsolidadas.filter(s => s.moduloOrigen === 'JUZGAMIENTO').length,
+    asesoria: solicitudesConsolidadas.filter(s => s.moduloOrigen === 'ASESORIA').length,
+    organosControl: solicitudesConsolidadas.filter(s => s.moduloOrigen === 'ORGANOS_CONTROL').length,
+    centroComms: solicitudesConsolidadas.filter(s => s.moduloOrigen === 'CENTRO_COMUNICACIONES').length,
+    planAccion: solicitudesConsolidadas.filter(s => s.moduloOrigen === 'PLAN_ACCION').length,
+    riesgos: solicitudesConsolidadas.filter(s => s.moduloOrigen === 'RIESGOS').length,
+    terminosInformes: solicitudesConsolidadas.filter(s => s.moduloOrigen === 'TERMINOS_INFORMES').length
+  },
+  porPrioridad: {
+    critica: solicitudesConsolidadas.filter(s => s.prioridad === 'CRÍTICA').length,
+    urgente: solicitudesConsolidadas.filter(s => s.prioridad === 'URGENTE').length,
+    normal: solicitudesConsolidadas.filter(s => s.prioridad === 'NORMAL').length
+  }
 };

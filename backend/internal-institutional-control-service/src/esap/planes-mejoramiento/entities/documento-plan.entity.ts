@@ -9,9 +9,11 @@ import {
   Index,
 } from 'typeorm';
 import { PlanMejoramiento } from './plan-mejoramiento.entity';
+import { AccionCorrectiva } from './accion-correctiva.entity';
 
 @Entity('documento_plan_mejoramiento', { schema: 'control_interno' })
 @Index(['planMejoramientoId'])
+@Index(['accionId'])
 export class DocumentoPlanMejoramiento {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -22,6 +24,14 @@ export class DocumentoPlanMejoramiento {
   @ManyToOne(() => PlanMejoramiento, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'plan_mejoramiento_id' })
   planMejoramiento: PlanMejoramiento;
+
+  // Nueva relación: documento asociado a una acción correctiva específica (opcional)
+  @Column({ name: 'accion_id', type: 'uuid', nullable: true })
+  accionId?: string;
+
+  @ManyToOne(() => AccionCorrectiva, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'accion_id' })
+  accion?: AccionCorrectiva;
 
   @Column({ type: 'varchar', length: 255 })
   nombre: string;
@@ -52,6 +62,22 @@ export class DocumentoPlanMejoramiento {
 
   @Column({ name: 'fecha_subida', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   fechaSubida: Date;
+
+  // Campos para validación de evidencia por el auditor
+  @Column({ name: 'estado_validacion', type: 'varchar', length: 50, default: 'PENDIENTE_REVISION' })
+  estadoValidacion: 'PENDIENTE_REVISION' | 'ACEPTADA' | 'CON_OBSERVACIONES' | 'RECHAZADA';
+
+  @Column({ name: 'comentarios_auditor', type: 'text', nullable: true })
+  comentariosAuditor?: string;
+
+  @Column({ name: 'fecha_validacion', type: 'timestamp', nullable: true })
+  fechaValidacion?: Date;
+
+  @Column({ name: 'validado_por', type: 'varchar', length: 255, nullable: true })
+  validadoPor?: string;
+
+  @Column({ name: 'solicita_nueva_evidencia', type: 'boolean', default: false })
+  solicitaNuevaEvidencia: boolean;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

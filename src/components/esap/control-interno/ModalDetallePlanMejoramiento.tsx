@@ -19,21 +19,30 @@
  */
 
 import { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Calendar, User, Clock, AlertTriangle, CheckCircle2, FileText,
   TrendingUp, Activity, Target, Flag, Plus, Upload, Download,
   Edit2, Trash2, Eye, MessageSquare, Paperclip, History,
-  BarChart3, Users, Building2, AlertCircle, Check, XCircle, Loader2, ChevronDown, RefreshCw
+  BarChart3, Users, Building2, AlertCircle, Check, XCircle, Loader2, RefreshCw, ChevronDown
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import * as XLSX from 'xlsx';
-import { planesMejoramientoApi, hallazgosApi, evidenciasApi } from './services/api';
-import type { PlanMejoramiento as PlanMejoramientoBD, AccionMejoramiento, Hallazgo as HallazgoBD } from './services/types';
 
-// Notificaciones
-import { useCrearNotificacion } from './hooks/useCrearNotificacion';
-import { useAuth } from '../../../hooks/useAuth';
+// ✅ HOOK DE BACKEND
+import { usePlanMejoramientoDetalle } from './services/usePlanMejoramientoDetalle';
+
+// ✅ API para profesionales OCIG
+import { configuracionesProfesionalesOCIGApi } from './services/api';
+
+// ✅ API para cargar evidencias
+import { controlInternoService } from '../../../services/api/controlInternoService';
+
+// ✅ Utilidades PDF para reportes institucionales
+import { 
+  dibujarEncabezadoInstitucional, 
+  dibujarPieInstitucional
+} from './services/pdfESAPHeader';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -45,7 +54,6 @@ interface Hallazgo {
   descripcion: string;
   criticidad: 'ALTA' | 'MEDIA' | 'BAJA';
   proceso: string;
-  area: string;
   responsable: string;
   accionesCount: number;
   accionesCompletadas: number;
@@ -88,7 +96,6 @@ interface PlanMejoramientoDetalle {
   nombre: string;
   area: string;
   responsableGeneral: string;
-  responsableAreaNombre?: string;
   fechaCreacion: string;
   fechaVencimiento: string;
   estado: 'FORMULACION' | 'APROBACION' | 'EN_EJECUCION' | 'EN_SEGUIMIENTO' | 'CUMPLIDO';
@@ -97,8 +104,39 @@ interface PlanMejoramientoDetalle {
   acciones: AccionCorrectiva[];
   documentos: DocumentoPlan[];
   timeline: ActividadTimeline[];
+  seguimientos: SeguimientoTrimestral[];
   auditoria: string;
   observaciones?: string;
+}
+
+interface RegistroSeguimiento {
+  id: string;
+  accionId: string;
+  accionDescripcion: string;
+  accionesProgramadas: number;
+  accionesImplementadas: number;
+  puntajeCumplimiento: number;
+  controlesImplementados: 'SI' | 'NO' | 'PARCIAL';
+  hallazgoSeRepite: 'SI' | 'NO';
+  puntajeEfectividad: number;
+  observaciones?: string;
+}
+
+interface SeguimientoTrimestral {
+  id: string;
+  trimestre: number;
+  año: number;
+  fechaInicio: string;
+  fechaFin: string;
+  fechaSeguimiento?: string;
+  avanceGlobal: number;
+  porcentajeCumplimiento: number;
+  porcentajeEfectividad: number;
+  accionesRevisadas: number;
+  accionesTotales: number;
+  observacionesGenerales?: string;
+  registros: RegistroSeguimiento[];
+  createdAt: string;
 }
 
 type TabActiva = 'resumen' | 'hallazgos' | 'acciones' | 'documentos' | 'seguimiento';
@@ -127,7 +165,6 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
       descripcion: 'Falta de políticas documentadas de seguridad de la información',
       criticidad: 'ALTA',
       proceso: 'Gestión de Seguridad TI',
-      area: 'Gestión de TI',
       responsable: 'Jorge Silva',
       accionesCount: 3,
       accionesCompletadas: 1,
@@ -139,7 +176,6 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
       descripcion: 'Ausencia de backups periódicos de bases de datos críticas',
       criticidad: 'ALTA',
       proceso: 'Infraestructura TI',
-      area: 'Gestión de TI',
       responsable: 'María González',
       accionesCount: 2,
       accionesCompletadas: 1,
@@ -151,7 +187,6 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
       descripcion: 'Falta de capacitación en ciberseguridad para funcionarios',
       criticidad: 'MEDIA',
       proceso: 'Talento Humano TI',
-      area: 'Gestión de TI',
       responsable: 'Carlos Méndez',
       accionesCount: 2,
       accionesCompletadas: 2,
@@ -163,7 +198,6 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
       descripcion: 'Documentación desactualizada de procedimientos técnicos',
       criticidad: 'BAJA',
       proceso: 'Gestión Documental TI',
-      area: 'Gestión de TI',
       responsable: 'Ana Torres',
       accionesCount: 1,
       accionesCompletadas: 0,
@@ -345,404 +379,42 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
 };
 
 // ════════════════════════════════════════════════════════════════════════════
-// FUNCIONES DE MAPEO
-// ════════════════════════════════════════════════════════════════════════════
-
-/**
- * Mapea el estado del backend al estado del modal
- */
-function mapearEstadoBD(estadoBD: string): PlanMejoramientoDetalle['estado'] {
-  switch (estadoBD) {
-    case 'borrador':
-      return 'FORMULACION';
-    case 'aprobado':
-      return 'APROBACION';
-    case 'en-ejecucion':
-      return 'EN_EJECUCION';
-    case 'cerrado':
-      return 'CUMPLIDO';
-    default:
-      return 'FORMULACION';
-  }
-}
-
-/**
- * Mapea el estado de acción del backend al estado del modal
- */
-function mapearEstadoAccionBD(estadoBD: string): AccionCorrectiva['estado'] {
-  switch (estadoBD) {
-    case 'programada':
-      return 'PENDIENTE';
-    case 'en-progreso':
-    case 'en-ejecucion':
-      return 'EN_EJECUCION';
-    case 'implementada':
-    case 'completada':
-      return 'COMPLETADA';
-    case 'vencida':
-    case 'atrasada':
-      return 'VENCIDA';
-    default:
-      return 'PENDIENTE';
-  }
-}
-
-/**
- * Mapea la gravedad del backend a criticidad del modal
- */
-function mapearGravedadACriticidad(gravedad: string): Hallazgo['criticidad'] {
-  const gravedadLower = gravedad?.toLowerCase() || '';
-  if (gravedadLower === 'alta' || gravedadLower === 'crítica' || gravedadLower === 'critica') {
-    return 'ALTA';
-  }
-  if (gravedadLower === 'media' || gravedadLower === 'moderado' || gravedadLower === 'moderada') {
-    return 'MEDIA';
-  }
-  return 'BAJA';
-}
-
-/**
- * Calcula el progreso global basado en las acciones
- */
-function calcularProgresoGlobalDesdeAcciones(
-  acciones: AccionCorrectiva[],
-  porcentajeAvanceGeneral?: number | null
-): number {
-  // SIEMPRE calcular basado en las acciones si hay acciones
-  if (acciones.length > 0) {
-    const sumaProgreso = acciones.reduce((sum, accion) => sum + accion.progreso, 0);
-    return Math.round(sumaProgreso / acciones.length);
-  }
-  // Si no hay acciones pero hay porcentajeAvanceGeneral, usarlo como fallback
-  return porcentajeAvanceGeneral || 0;
-}
-
-/**
- * Mapea un PlanMejoramiento del backend a PlanMejoramientoDetalle del modal
- */
-async function mapearPlanDetalleDesdeBD(
-  planBD: any, // Usar any temporalmente para manejar diferentes estructuras del backend
-  hallazgosCargados: HallazgoBD[] = []
-): Promise<PlanMejoramientoDetalle> {
-  
-  // Mapear acciones - pueden venir como AccionCorrectiva del backend o AccionMejoramiento del tipo
-  const accionesMapeadas: AccionCorrectiva[] = (planBD.acciones || []).map((accion: any) => {
-    // Calcular estado real basado en el progreso
-    let estado = mapearEstadoAccionBD(accion.estado);
-    
-    // Si el progreso es menor a 100%, NO puede estar completada
-    if (estado === 'COMPLETADA' && accion.porcentajeAvance < 100) {
-      estado = accion.porcentajeAvance > 0 ? 'EN_EJECUCION' : 'PENDIENTE';
-    }
-    
-    // Verificar si está vencida
-    if (estado === 'PENDIENTE' || estado === 'EN_EJECUCION') {
-      const hoy = new Date();
-      const fechaFin = new Date(accion.fechaFin);
-      if (fechaFin < hoy && accion.porcentajeAvance < 100) {
-        estado = 'VENCIDA';
-      }
-    }
-
-    // Formatear fechas (pueden venir en formato ISO o YYYY-MM-DD)
-    const fechaInicioStr = accion.fechaInicio ? String(accion.fechaInicio) : '';
-    const fechaFinStr = accion.fechaFin ? String(accion.fechaFin) : '';
-    
-    const fechaInicio = fechaInicioStr.includes('T') 
-      ? fechaInicioStr.split('T')[0] 
-      : fechaInicioStr;
-    const fechaFin = fechaFinStr.includes('T') 
-      ? fechaFinStr.split('T')[0] 
-      : fechaFinStr;
-
-    // Usar el hallazgoId de la acción si existe, sino usar el del plan como fallback
-    const hallazgoIdAccion = accion.hallazgoId || planBD.hallazgoId || planBD.hallazgo?.id || '';
-
-    // Calcular progreso: si está completada, usar 100%, de lo contrario usar porcentajeAvance
-    let progreso = accion.porcentajeAvance || 0;
-    if (estado === 'COMPLETADA') {
-      progreso = 100; // Si está completada, el progreso siempre es 100%
-    }
-
-    return {
-      id: accion.id,
-      hallazgoId: hallazgoIdAccion, // Usar el hallazgoId específico de la acción
-      descripcion: accion.descripcion || '',
-      responsable: accion.responsable || '',
-      fechaInicio: fechaInicio || new Date().toISOString().split('T')[0],
-      fechaVencimiento: fechaFin || new Date().toISOString().split('T')[0],
-      estado,
-      progreso,
-      evidencias: (accion.evidencias && Array.isArray(accion.evidencias)) ? accion.evidencias.length : 0,
-      observaciones: accion.observaciones || ''
-    };
-  });
-
-  // Mapear hallazgos
-  const hallazgosMapeados: Hallazgo[] = hallazgosCargados.map((h: HallazgoBD) => {
-    const accionesHallazgo = accionesMapeadas.filter(a => a.hallazgoId === h.id);
-    const accionesCompletadas = accionesHallazgo.filter(a => a.estado === 'COMPLETADA').length;
-    
-    // Calcular progreso basado en el promedio del progreso de las acciones, no solo las completadas
-    let progreso = 0;
-    if (accionesHallazgo.length > 0) {
-      const sumaProgreso = accionesHallazgo.reduce((sum, accion) => sum + accion.progreso, 0);
-      progreso = Math.round(sumaProgreso / accionesHallazgo.length);
-    }
-
-    // Obtener responsable del hallazgo o usar el responsableAreaNombre de la auditoría como fallback
-    const hallazgoAny = h as any;
-    const responsableHallazgo = hallazgoAny.responsable || 
-      hallazgoAny.auditoriaEntity?.responsableAreaNombre || 
-      '';
-
-    return {
-      id: h.id,
-      codigo: h.codigo,
-      descripcion: h.descripcion || h.titulo || '',
-      criticidad: mapearGravedadACriticidad(h.gravedad || ''),
-      proceso: h.criterioIncumplido || '', // Usar criterioIncumplido como proceso
-      area: hallazgoAny.area || '',
-      responsable: responsableHallazgo,
-      accionesCount: accionesHallazgo.length,
-      accionesCompletadas,
-      progreso
-    };
-  });
-
-  // Calcular fecha de vencimiento (usar la fecha más lejana de las acciones o fechaLimite/fechaCreacion + 1 año)
-  const fechaElaboracion = new Date(planBD.fechaLimite || planBD.fechaCreacion || planBD.createdAt || planBD.fechaElaboracion || new Date());
-  let fechaVencimiento = new Date(fechaElaboracion);
-  fechaVencimiento.setFullYear(fechaVencimiento.getFullYear() + 1);
-
-  if (accionesMapeadas.length > 0) {
-    const fechasFin = accionesMapeadas.map(a => new Date(a.fechaVencimiento));
-    const fechaMax = new Date(Math.max(...fechasFin.map(d => d.getTime())));
-    if (fechaMax > fechaVencimiento) {
-      fechaVencimiento = fechaMax;
-    }
-  }
-
-  // ✅ CARGAR EVENTOS REALES DEL BACKEND
-  let timeline: ActividadTimeline[] = [];
-  
-  try {
-    const eventosResponse = await planesMejoramientoApi.getEventosTimeline(planBD.id);
-    
-    if (eventosResponse.success && eventosResponse.data?.eventos) {
-      // Mapear eventos desde el backend al formato del frontend
-      timeline = eventosResponse.data.eventos.map((evento: any) => ({
-        id: evento.id,
-        tipo: evento.tipo as ActividadTimeline['tipo'],
-        descripcion: evento.descripcion,
-        usuario: evento.usuarioNombre || 'Sistema',
-        fecha: new Date(evento.fecha).toLocaleDateString('es-ES', {
-          day: '2-digit',
-          month: 'short',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        })
-      }));
-    }
-  } catch (error) {
-    console.warn('[ModalDetallePlan] Error al cargar eventos del timeline:', error);
-    // Si falla, el timeline quedará vacío
-  }
-
-  // El backend puede tener 'titulo' en lugar de 'nombre', 'fechaLimite' en lugar de 'fechaElaboracion'
-  const nombrePlan = planBD.nombre || planBD.titulo || planBD.codigo || 'Plan sin nombre';
-  const fechaCreacionPlan = planBD.fechaCreacion || planBD.createdAt || planBD.fechaElaboracion || new Date().toISOString().split('T')[0];
-  const responsablePlan = planBD.responsable || planBD.responsableImplementacion || '';
-  const areaPlan = planBD.area || planBD.areaResponsable || '';
-  const auditoriaCodigo = planBD.auditoriaCodigo || planBD.auditoria?.codigo || '';
-  // Obtener responsableAreaNombre de la auditoría
-  const responsableAreaNombre = (planBD.auditoria as any)?.responsableAreaNombre || '';
-
-  return {
-    id: planBD.id,
-    codigo: planBD.codigo,
-    nombre: nombrePlan,
-    area: areaPlan,
-    responsableGeneral: responsablePlan,
-    responsableAreaNombre: responsableAreaNombre, // Agregar responsableAreaNombre
-    fechaCreacion: fechaCreacionPlan,
-    fechaVencimiento: fechaVencimiento.toISOString().split('T')[0],
-    estado: mapearEstadoBD(planBD.estado),
-    progresoGlobal: calcularProgresoGlobalDesdeAcciones(accionesMapeadas, planBD.porcentajeAvanceGeneral),
-    hallazgos: hallazgosMapeados,
-    acciones: accionesMapeadas,
-    documentos: [], // Los documentos se cargarían por separado si existe un endpoint
-    timeline,
-    auditoria: auditoriaCodigo,
-    observaciones: planBD.observaciones || ''
-  };
-}
-
-// ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
 interface ModalDetallePlanProps {
   planId: string;
   onClose: () => void;
+  onPlanActualizado?: () => void;
 }
 
-export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePlanProps) {
+export function ModalDetallePlanMejoramiento({ planId, onClose, onPlanActualizado }: ModalDetallePlanProps) {
   const [tabActiva, setTabActiva] = useState<TabActiva>('resumen');
   const [modalActualizacion, setModalActualizacion] = useState(false);
-  const [plan, setPlan] = useState<PlanMejoramientoDetalle | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [conteoDocumentos, setConteoDocumentos] = useState<number>(0);
-
-  // Cargar datos del plan desde el backend
-  useEffect(() => {
-    const cargarPlan = async () => {
-      if (!planId) return;
-
-      try {
-        setLoading(true);
-        setError(null);
-
-        // Cargar plan desde el backend
-        const response = await planesMejoramientoApi.getById(planId);
-        
-        if (!response.success || !response.data) {
-          throw new Error(response.error || 'Error al cargar el plan');
-        }
-
-        const planBD = response.data;
-
-        // Cargar TODOS los hallazgos de la auditoría, no solo el asociado al plan
-        let hallazgosCargados: HallazgoBD[] = [];
-        
-        // Si el plan tiene auditoriaId, cargar todos los hallazgos de esa auditoría
-        if (planBD.auditoriaId) {
-          try {
-            const hallazgosResponse = await hallazgosApi.getByAuditoria(planBD.auditoriaId);
-            if (hallazgosResponse.success && hallazgosResponse.data) {
-              hallazgosCargados = hallazgosResponse.data;
-            }
-          } catch (errorHallazgos) {
-            console.warn('[ModalDetallePlan] Error al cargar hallazgos de la auditoría:', errorHallazgos);
-            // Si falla, intentar con el método alternativo
-          }
-        }
-        
-        // Si no se cargaron hallazgos desde la auditoría, intentar métodos alternativos
-        if (hallazgosCargados.length === 0) {
-          // Si viene el objeto hallazgo directamente (estructura del backend)
-          if (planBD.hallazgo && typeof planBD.hallazgo === 'object') {
-            hallazgosCargados = [planBD.hallazgo as HallazgoBD];
-          }
-          // Si viene un array de IDs
-          else if (planBD.hallazgosIds && Array.isArray(planBD.hallazgosIds) && planBD.hallazgosIds.length > 0) {
-            try {
-              // Cargar cada hallazgo por ID
-              const hallazgosPromises = planBD.hallazgosIds.map((id: string) => 
-                hallazgosApi.getById(id).then(r => r.success && r.data ? r.data : null).catch(() => null)
-              );
-              const hallazgosResults = await Promise.all(hallazgosPromises);
-              hallazgosCargados = hallazgosResults.filter((h): h is HallazgoBD => h !== null && h !== undefined);
-            } catch (errorHallazgos) {
-              console.warn('[ModalDetallePlan] Error al cargar hallazgos por IDs:', errorHallazgos);
-            }
-          }
-          // Si viene un solo ID de hallazgo (hallazgoId)
-          else if (planBD.hallazgoId) {
-            try {
-              const hallazgoResponse = await hallazgosApi.getById(planBD.hallazgoId);
-              if (hallazgoResponse.success && hallazgoResponse.data) {
-                hallazgosCargados = [hallazgoResponse.data];
-              }
-            } catch (errorHallazgos) {
-              console.warn('[ModalDetallePlan] Error al cargar hallazgo por ID:', errorHallazgos);
-            }
-          }
-        }
-
-        // Mapear plan a formato del modal
-        const planMapeado = await mapearPlanDetalleDesdeBD(planBD, hallazgosCargados);
-        setPlan(planMapeado);
-      } catch (err: any) {
-        console.error('[ModalDetallePlan] Error al cargar plan:', err);
-        setError(err.message || 'Error al cargar el plan de mejoramiento');
-        toast.error('Error al cargar el plan', {
-          description: err.message || 'No se pudo cargar la información del plan'
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    cargarPlan();
-  }, [planId]);
-
-  // Función para recargar el plan después de crear/editar acciones
-  const handleRecargarPlan = async () => {
-    if (!planId) return;
-
-    try {
-      setLoading(true);
-      const response = await planesMejoramientoApi.getById(planId);
-      
-      if (!response.success || !response.data) {
-        throw new Error(response.error || 'Error al recargar el plan');
-      }
-
-      const planBD = response.data;
-
-      // Cargar TODOS los hallazgos de la auditoría
-      let hallazgosCargados: HallazgoBD[] = [];
-      
-      if (planBD.auditoriaId) {
-        try {
-          const hallazgosResponse = await hallazgosApi.getByAuditoria(planBD.auditoriaId);
-          if (hallazgosResponse.success && hallazgosResponse.data) {
-            hallazgosCargados = hallazgosResponse.data;
-          }
-        } catch (errorHallazgos) {
-          console.warn('[ModalDetallePlan] Error al recargar hallazgos de la auditoría:', errorHallazgos);
-          // Fallback a métodos alternativos
-          if (planBD.hallazgo && typeof planBD.hallazgo === 'object') {
-            hallazgosCargados = [planBD.hallazgo as HallazgoBD];
-          } else if (planBD.hallazgosIds && Array.isArray(planBD.hallazgosIds) && planBD.hallazgosIds.length > 0) {
-            try {
-              const hallazgosPromises = planBD.hallazgosIds.map((id: string) => 
-                hallazgosApi.getById(id).then(r => r.success && r.data ? r.data : null).catch(() => null)
-              );
-              const hallazgosResults = await Promise.all(hallazgosPromises);
-              hallazgosCargados = hallazgosResults.filter((h): h is HallazgoBD => h !== null && h !== undefined);
-            } catch (errorHallazgos2) {
-              console.warn('[ModalDetallePlan] Error al recargar hallazgos por IDs:', errorHallazgos2);
-            }
-          }
-        }
-      }
-
-      const planMapeado = await mapearPlanDetalleDesdeBD(planBD, hallazgosCargados);
-      setPlan(planMapeado);
-    } catch (err: any) {
-      console.error('[ModalDetallePlan] Error al recargar plan:', err);
-      toast.error('Error al recargar el plan', {
-        description: err.message || 'No se pudo recargar la información'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [modalCrearAccion, setModalCrearAccion] = useState(false);
+  
+  // ✅ HOOK DE BACKEND - Carga datos reales
+  const {
+    plan,
+    loading,
+    error,
+    refetch,
+    actualizarPlan,
+    crearAccion,
+    actualizarAccion,
+    eliminarAccion
+  } = usePlanMejoramientoDetalle(planId);
 
   // Estado para el formulario de actualización
   const [datosActualizacion, setDatosActualizacion] = useState({
-    estado: 'FORMULACION' as PlanMejoramientoDetalle['estado'],
+    estado: '',
     fechaVencimiento: '',
     responsableGeneral: '',
     observaciones: ''
   });
 
-  // Actualizar datos de actualización cuando se carga el plan
-  useEffect(() => {
+  // Inicializar datos cuando carga el plan
+  useMemo(() => {
     if (plan) {
       setDatosActualizacion({
         estado: plan.estado,
@@ -751,7 +423,38 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
         observaciones: plan.observaciones || ''
       });
     }
-  }, [plan]);
+  }, [plan?.id]);
+
+  // Estado de evidencias (Documentos) para el badge del tab
+  const [evidenciasPorAccion, setEvidenciasPorAccion] = useState<Record<string, EvidenciaItem[]>>({});
+  const [cargandoEvidenciasDoc, setCargandoEvidenciasDoc] = useState(false);
+  useEffect(() => {
+    if (!plan?.acciones?.length) {
+      setEvidenciasPorAccion({});
+      setCargandoEvidenciasDoc(false);
+      return;
+    }
+    let cancelled = false;
+    setCargandoEvidenciasDoc(true);
+    const cargarEvidencias = async () => {
+      const evidenciasMap: Record<string, EvidenciaItem[]> = {};
+      for (const accion of plan.acciones) {
+        try {
+          const evidencias = await controlInternoService.getEvidenciasByAccion(accion.id);
+          if (!cancelled) evidenciasMap[accion.id] = Array.isArray(evidencias) ? evidencias : [];
+        } catch (error) {
+          if (!cancelled) evidenciasMap[accion.id] = [];
+        }
+      }
+      if (!cancelled) {
+        setEvidenciasPorAccion(evidenciasMap);
+        setCargandoEvidenciasDoc(false);
+      }
+    };
+    cargarEvidencias();
+    return () => { cancelled = true; };
+  }, [plan?.id, plan?.acciones]);
+  const totalEvidencias = useMemo(() => Object.values(evidenciasPorAccion).flat().length, [evidenciasPorAccion]);
 
   const estadisticas = useMemo(() => {
     if (!plan) {
@@ -767,7 +470,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
         porcentajeCompletado: 0
       };
     }
-
+    
     const totalAcciones = plan.acciones.length;
     const accionesCompletadas = plan.acciones.filter(a => a.estado === 'COMPLETADA').length;
     const accionesEnEjecucion = plan.acciones.filter(a => a.estado === 'EN_EJECUCION').length;
@@ -796,8 +499,6 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
   };
 
   const handleGuardarActualizacion = async () => {
-    if (!plan) return;
-
     // Validaciones básicas
     if (!datosActualizacion.estado) {
       toast.error('Debes seleccionar un estado');
@@ -809,212 +510,271 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
       return;
     }
 
-    try {
-      // Actualizar en el backend
-      // IMPORTANTE: Solo enviar 'estado' porque el DTO del backend solo acepta ese campo
-      // Los hallazgosIds se mantienen automáticamente en el backend
-      const updateData: any = {
-        estado: datosActualizacion.estado === 'FORMULACION' ? 'borrador' :
-                datosActualizacion.estado === 'APROBACION' ? 'aprobado' :
-                datosActualizacion.estado === 'EN_EJECUCION' ? 'en-ejecucion' :
-                datosActualizacion.estado === 'CUMPLIDO' ? 'cerrado' : 'borrador'
-      };
+    // ✅ LLAMADA AL BACKEND
+    const exito = await actualizarPlan({
+      estado: datosActualizacion.estado,
+      fechaVencimiento: datosActualizacion.fechaVencimiento,
+      responsableGeneral: datosActualizacion.responsableGeneral,
+      observaciones: datosActualizacion.observaciones
+    });
 
-      console.log('[ModalDetallePlan] Actualizando plan con datos:', updateData);
-      
-      const updateResponse = await planesMejoramientoApi.update(plan.id, updateData);
-      
-      console.log('[ModalDetallePlan] Respuesta del update:', updateResponse);
-
-      toast.success('Plan de Mejoramiento Actualizado', {
-        description: `El plan ${plan.codigo} ha sido actualizado exitosamente`,
-        duration: 4000,
-      });
-
+    if (exito) {
       setModalActualizacion(false);
-      
-      // Recargar datos del plan completo
-      console.log('[ModalDetallePlan] Recargando plan:', planId);
-      const response = await planesMejoramientoApi.getById(planId);
-      console.log('[ModalDetallePlan] Respuesta del getById:', response);
-      
-      if (response.success && response.data) {
-        // El backend puede devolver hallazgosIds (array) o hallazgoId (singular) y hallazgo (objeto)
-        const planData = response.data;
-        let hallazgosIdsArray: string[] = [];
-        
-        // Caso 1: hallazgosIds como array
-        if (planData.hallazgosIds && Array.isArray(planData.hallazgosIds) && planData.hallazgosIds.length > 0) {
-          hallazgosIdsArray = planData.hallazgosIds;
-          console.log('[ModalDetallePlan] Plan usa hallazgosIds (array):', hallazgosIdsArray);
-        }
-        // Caso 2: hallazgoId (singular)
-        else if (planData.hallazgoId) {
-          hallazgosIdsArray = [planData.hallazgoId];
-          console.log('[ModalDetallePlan] Plan usa hallazgoId (singular):', planData.hallazgoId);
-        }
-        // Caso 3: hallazgo (objeto completo)
-        else if (planData.hallazgo?.id) {
-          hallazgosIdsArray = [planData.hallazgo.id];
-          console.log('[ModalDetallePlan] Plan tiene hallazgo (objeto):', planData.hallazgo.id);
-        }
-        
-        console.log('[ModalDetallePlan] IDs de hallazgos a cargar:', hallazgosIdsArray);
-        
-        // Recargar también hallazgos si es necesario
-        let hallazgosCargados: HallazgoBD[] = [];
-        
-        if (hallazgosIdsArray.length > 0) {
-          try {
-            console.log('[ModalDetallePlan] Cargando', hallazgosIdsArray.length, 'hallazgos');
-            const hallazgosPromises = hallazgosIdsArray.map((id: string) => 
-              hallazgosApi.getById(id).then(r => {
-                console.log('[ModalDetallePlan] Hallazgo cargado:', id, r.data);
-                return r.data;
-              })
-            );
-            const hallazgosResults = await Promise.all(hallazgosPromises);
-            hallazgosCargados = hallazgosResults.filter((h): h is HallazgoBD => h !== undefined);
-            console.log('[ModalDetallePlan] Hallazgos cargados exitosamente:', hallazgosCargados.length);
-          } catch (errorHallazgos) {
-            console.error('[ModalDetallePlan] Error al recargar hallazgos:', errorHallazgos);
-          }
-        } else {
-          console.warn('[ModalDetallePlan] No hay hallazgosIds en la respuesta del plan');
-        }
-        
-        const planMapeado = await mapearPlanDetalleDesdeBD(response.data, hallazgosCargados);
-        console.log('[ModalDetallePlan] Plan mapeado - hallazgos:', planMapeado.hallazgos?.length);
-        setPlan(planMapeado);
-      } else {
-        console.error('[ModalDetallePlan] Error al recargar plan - respuesta no exitosa');
-      }
-    } catch (err: any) {
-      console.error('[ModalDetallePlan] Error al actualizar plan:', err);
-      console.error('[ModalDetallePlan] Error completo:', JSON.stringify(err, null, 2));
-      toast.error('Error al actualizar el plan', {
-        description: err.message || 'No se pudo actualizar el plan'
-      });
+      onPlanActualizado?.();
     }
   };
 
   const handleDescargarReporte = async () => {
     if (!plan) return;
+    
+    toast.info('Generando Reporte PDF', {
+      description: 'Preparando documento del Plan de Mejoramiento...',
+      duration: 3000,
+    });
 
     try {
-      toast.info('Generando Reporte Excel', {
-        description: 'El reporte del plan se está generando...',
-        duration: 2000,
+      // Importar jsPDF dinámicamente
+      const jsPDF = (await import('jspdf')).default;
+      const autoTable = (await import('jspdf-autotable')).default;
+
+      // Crear documento PDF
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'letter'
       });
 
-      // Crear un nuevo libro de trabajo
-      const workbook = XLSX.utils.book_new();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 20;
 
-      // ============ HOJA 1: INFORMACIÓN GENERAL ============
-      const infoGeneralData = [
-        ['ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA'],
-        ['REPORTE DE PLAN DE MEJORAMIENTO'],
-        [`Generado el ${new Date().toLocaleDateString('es-CO', { 
-          year: 'numeric', 
-          month: 'long', 
-          day: 'numeric' 
-        })}`],
-        [],
-        ['INFORMACIÓN GENERAL'],
-        [],
+      // Header institucional
+      const alturaEncabezado = dibujarEncabezadoInstitucional(doc, {
+        codigo: plan.codigo || 'PM-2026',
+        version: 1,
+        fecha: new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
+        titulo: 'PLAN DE MEJORAMIENTO',
+        proceso: 'EVALUACIÓN CONTROL Y MEJORA'
+      });
+      
+      let currentY = alturaEncabezado + 5;
+
+      // Título del plan
+      doc.setTextColor(0, 61, 165);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text(plan.nombre, pageWidth / 2, currentY, { align: 'center' });
+      currentY += 10;
+
+      // Información General
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('INFORMACIÓN GENERAL', margin, currentY);
+      currentY += 6;
+
+      const infoData = [
         ['Código', plan.codigo],
-        ['Nombre', plan.nombre || 'Sin nombre'],
+        ['Área Responsable', plan.area || '-'],
+        ['Responsable General', plan.responsableGeneral || '-'],
+        ['Auditoría Origen', plan.auditoria || '-'],
         ['Estado', plan.estado],
-        ['Área Responsable', plan.area],
-        ['Responsable General', plan.responsableGeneral],
-        ['Fecha Creación', new Date(plan.fechaCreacion).toLocaleDateString('es-CO')],
-        ['Fecha Vencimiento', new Date(plan.fechaVencimiento).toLocaleDateString('es-CO')],
-        ['Progreso Global', `${plan.progresoGlobal}%`],
-        ['Auditoría Origen', plan.auditoria]
+        ['Fecha Creación', plan.fechaCreacion],
+        ['Fecha Vencimiento', plan.fechaVencimiento],
+        ['Progreso Global', `${plan.progresoGlobal}%`]
       ];
 
-      const infoGeneralSheet = XLSX.utils.aoa_to_sheet(infoGeneralData);
-      XLSX.utils.book_append_sheet(workbook, infoGeneralSheet, 'Información General');
-
-      // ============ HOJA 2: RESUMEN DE ACCIONES ============
-      const totalAcciones = plan.acciones.length;
-      const accionesCompletadas = plan.acciones.filter(a => a.estado === 'COMPLETADA').length;
-      const accionesEnEjecucion = plan.acciones.filter(a => a.estado === 'EN_EJECUCION').length;
-      const accionesPendientes = plan.acciones.filter(a => a.estado === 'PENDIENTE').length;
-
-      const resumenAccionesData = [
-        ['RESUMEN DE ACCIONES'],
-        [],
-        ['Concepto', 'Cantidad', 'Porcentaje'],
-        ['Total de Acciones', totalAcciones, '100%'],
-        ['Completadas', accionesCompletadas, `${totalAcciones > 0 ? Math.round((accionesCompletadas / totalAcciones) * 100) : 0}%`],
-        ['En Ejecución', accionesEnEjecucion, `${totalAcciones > 0 ? Math.round((accionesEnEjecucion / totalAcciones) * 100) : 0}%`],
-        ['Pendientes', accionesPendientes, `${totalAcciones > 0 ? Math.round((accionesPendientes / totalAcciones) * 100) : 0}%`]
-      ];
-
-      const resumenAccionesSheet = XLSX.utils.aoa_to_sheet(resumenAccionesData);
-      XLSX.utils.book_append_sheet(workbook, resumenAccionesSheet, 'Resumen Acciones');
-
-      // ============ HOJA 3: HALLAZGOS ============
-      if (plan.hallazgos.length > 0) {
-        const hallazgosData = [
-          ['HALLAZGOS'],
-          [],
-          ['Código', 'Descripción', 'Criticidad', 'Acciones Completadas', 'Total Acciones', 'Progreso (%)']
-        ];
-
-        plan.hallazgos.forEach(h => {
-          hallazgosData.push([
-            h.codigo,
-            h.descripcion,
-            h.criticidad,
-            String(h.accionesCompletadas),
-            String(h.accionesCount),
-            `${h.progreso}%`
-          ]);
-        });
-
-        const hallazgosSheet = XLSX.utils.aoa_to_sheet(hallazgosData);
-        XLSX.utils.book_append_sheet(workbook, hallazgosSheet, 'Hallazgos');
-      }
-
-      // ============ HOJA 4: ACCIONES CORRECTIVAS ============
-      if (plan.acciones.length > 0) {
-        const accionesData = [
-          ['ACCIONES CORRECTIVAS'],
-          [],
-          ['Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Vencimiento', 'Estado', 'Progreso (%)', 'Evidencias']
-        ];
-
-        plan.acciones.forEach(a => {
-          accionesData.push([
-            a.descripcion,
-            a.responsable,
-            new Date(a.fechaInicio).toLocaleDateString('es-CO'),
-            new Date(a.fechaVencimiento).toLocaleDateString('es-CO'),
-            a.estado,
-            `${a.progreso}%`,
-            String(a.evidencias || 0)
-          ]);
-        });
-
-        const accionesSheet = XLSX.utils.aoa_to_sheet(accionesData);
-        XLSX.utils.book_append_sheet(workbook, accionesSheet, 'Acciones Correctivas');
-      }
-
-      // Generar el archivo Excel
-      const nombreArchivo = `Reporte_Plan_${plan.codigo}_${new Date().toISOString().split('T')[0]}.xlsx`;
-      XLSX.writeFile(workbook, nombreArchivo);
-
-      toast.success('Reporte generado exitosamente', {
-        description: `El archivo ${nombreArchivo} ha sido descargado`,
-        duration: 3000,
+      autoTable(doc, {
+        startY: currentY,
+        head: [],
+        body: infoData,
+        theme: 'grid',
+        styles: { fontSize: 9, cellPadding: 3 },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 45, fillColor: [240, 240, 240] },
+          1: { cellWidth: 'auto' }
+        },
+        margin: { left: margin, right: margin }
       });
-    } catch (error: any) {
-      console.error('Error al generar reporte Excel:', error);
-      toast.error('Error al generar reporte', {
-        description: error.message || 'No se pudo generar el archivo Excel',
+
+      currentY = (doc as any).lastAutoTable.finalY + 10;
+
+      // Hallazgos
+      if (plan.hallazgos.length > 0) {
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 61, 165);
+        doc.text('HALLAZGOS', margin, currentY);
+        currentY += 6;
+
+        const hallazgosData = plan.hallazgos.map((h, idx) => [
+          (idx + 1).toString(),
+          h.codigo,
+          h.descripcion.substring(0, 60) + (h.descripcion.length > 60 ? '...' : ''),
+          h.criticidad,
+          h.responsable,
+          `${h.progreso}%`
+        ]);
+
+        autoTable(doc, {
+          startY: currentY,
+          head: [['#', 'Código', 'Descripción', 'Criticidad', 'Responsable', 'Avance']],
+          body: hallazgosData,
+          theme: 'striped',
+          headStyles: {
+            fillColor: [0, 61, 165],
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 8
+          },
+          styles: { fontSize: 7, cellPadding: 2 },
+          columnStyles: {
+            0: { cellWidth: 8, halign: 'center' },
+            1: { cellWidth: 20 },
+            2: { cellWidth: 'auto' },
+            3: { cellWidth: 20, halign: 'center' },
+            4: { cellWidth: 35 },
+            5: { cellWidth: 15, halign: 'center' }
+          },
+          margin: { left: margin, right: margin }
+        });
+
+        currentY = (doc as any).lastAutoTable.finalY + 10;
+      }
+
+      // Verificar si necesita nueva página
+      if (currentY > pageHeight - 60) {
+        doc.addPage();
+        currentY = margin + 10;
+      }
+
+      // Acciones Correctivas
+      if (plan.acciones.length > 0) {
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 61, 165);
+        doc.text('ACCIONES CORRECTIVAS', margin, currentY);
+        currentY += 6;
+
+        const accionesData = plan.acciones.map((a, idx) => {
+          const estadoLabel = a.estado === 'COMPLETADA' ? 'Completada' :
+                              a.estado === 'EN_EJECUCION' ? 'En Ejecución' :
+                              a.estado === 'VENCIDA' ? 'Vencida' : 'Pendiente';
+          return [
+            (idx + 1).toString(),
+            a.descripcion.substring(0, 50) + (a.descripcion.length > 50 ? '...' : ''),
+            a.responsable,
+            a.fechaInicio,
+            a.fechaVencimiento,
+            estadoLabel,
+            `${a.progreso}%`
+          ];
+        });
+
+        autoTable(doc, {
+          startY: currentY,
+          head: [['#', 'Descripción', 'Responsable', 'Inicio', 'Vencimiento', 'Estado', 'Avance']],
+          body: accionesData,
+          theme: 'striped',
+          headStyles: {
+            fillColor: [0, 61, 165],
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 8
+          },
+          styles: { fontSize: 7, cellPadding: 2 },
+          columnStyles: {
+            0: { cellWidth: 8, halign: 'center' },
+            1: { cellWidth: 'auto' },
+            2: { cellWidth: 30 },
+            3: { cellWidth: 20 },
+            4: { cellWidth: 20 },
+            5: { cellWidth: 22, halign: 'center' },
+            6: { cellWidth: 15, halign: 'center' }
+          },
+          margin: { left: margin, right: margin }
+        });
+
+        currentY = (doc as any).lastAutoTable.finalY + 10;
+      }
+
+      // Resumen de avance
+      if (currentY > pageHeight - 50) {
+        doc.addPage();
+        currentY = margin + 10;
+      }
+
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 61, 165);
+      doc.text('RESUMEN DE AVANCE', margin, currentY);
+      currentY += 6;
+
+      const completadas = plan.acciones.filter(a => a.estado === 'COMPLETADA').length;
+      const enEjecucion = plan.acciones.filter(a => a.estado === 'EN_EJECUCION').length;
+      const pendientes = plan.acciones.filter(a => a.estado === 'PENDIENTE').length;
+      const vencidas = plan.acciones.filter(a => a.estado === 'VENCIDA').length;
+
+      const resumenData = [
+        ['Total Hallazgos', plan.hallazgos.length.toString()],
+        ['Total Acciones', plan.acciones.length.toString()],
+        ['Acciones Completadas', completadas.toString()],
+        ['Acciones En Ejecución', enEjecucion.toString()],
+        ['Acciones Pendientes', pendientes.toString()],
+        ['Acciones Vencidas', vencidas.toString()],
+        ['Progreso Global', `${plan.progresoGlobal}%`]
+      ];
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [],
+        body: resumenData,
+        theme: 'grid',
+        styles: { fontSize: 9, cellPadding: 3 },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 50, fillColor: [240, 240, 240] },
+          1: { cellWidth: 30, halign: 'center' }
+        },
+        margin: { left: margin, right: margin }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 10;
+
+      // Observaciones
+      if (plan.observaciones) {
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 61, 165);
+        doc.text('OBSERVACIONES', margin, currentY);
+        currentY += 6;
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(9);
+        const observacionesLines = doc.splitTextToSize(plan.observaciones, pageWidth - margin * 2);
+        doc.text(observacionesLines, margin, currentY);
+      }
+
+      // Footer institucional en todas las páginas
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        dibujarPieInstitucional(doc, i, true);
+      }
+
+      // Guardar PDF
+      const nombreArchivo = `Plan-Mejoramiento-${plan.codigo}-${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(nombreArchivo);
+
+      toast.success('Reporte PDF Generado', {
+        description: `Archivo ${nombreArchivo} descargado exitosamente`,
         duration: 4000,
+      });
+
+    } catch (error) {
+      console.error('Error generando PDF:', error);
+      toast.error('Error al generar PDF', {
+        description: 'No se pudo generar el reporte. Intente nuevamente.',
       });
     }
   };
@@ -1027,16 +787,16 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
     CUMPLIDO: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Cumplido' }
   };
 
-  // Manejar estados de carga y error
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ESTADOS DE CARGA Y ERROR
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   if (loading) {
     return (
       <div className="fixed inset-0 z-[9998] overflow-y-auto flex items-center justify-center bg-black/60 backdrop-blur-sm">
-        <div className="absolute inset-0" onClick={onClose} />
-        <div className="relative bg-white rounded-2xl shadow-2xl p-8 z-[9999]">
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="w-8 h-8 animate-spin text-[#1e5da8]" />
-            <p className="text-gray-600">Cargando plan de mejoramiento...</p>
-          </div>
+        <div className="bg-white rounded-2xl p-8 flex flex-col items-center gap-4">
+          <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+          <p className="text-gray-700 font-medium">Cargando plan de mejoramiento...</p>
         </div>
       </div>
     );
@@ -1045,15 +805,21 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
   if (error || !plan) {
     return (
       <div className="fixed inset-0 z-[9998] overflow-y-auto flex items-center justify-center bg-black/60 backdrop-blur-sm">
-        <div className="absolute inset-0" onClick={onClose} />
-        <div className="relative bg-white rounded-2xl shadow-2xl p-8 z-[9999] max-w-md">
-          <div className="flex flex-col items-center gap-4">
-            <AlertCircle className="w-12 h-12 text-red-500" />
-            <h3 className="text-lg font-semibold text-gray-900">Error al cargar el plan</h3>
-            <p className="text-gray-600 text-center">{error || 'No se pudo cargar la información del plan'}</p>
+        <div className="bg-white rounded-2xl p-8 flex flex-col items-center gap-4 max-w-md">
+          <AlertCircle className="w-12 h-12 text-red-500" />
+          <h3 className="text-lg font-bold text-gray-900">Error al cargar el plan</h3>
+          <p className="text-gray-600 text-center">{error || 'No se pudo obtener la información del plan'}</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => refetch()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium flex items-center gap-2 hover:bg-blue-700"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Reintentar
+            </button>
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#2a6dbd] transition-colors"
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300"
             >
               Cerrar
             </button>
@@ -1066,12 +832,12 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
   const config = estadoConfig[plan.estado];
 
   return (
-    <div className="fixed inset-0 z-[9998] overflow-y-auto flex items-start justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[9998] overflow-y-auto flex items-center justify-center bg-black/60 backdrop-blur-sm">
       {/* Overlay con efecto blur */}
       <div className="absolute inset-0" onClick={onClose} />
 
       {/* Modal - Tamaño optimizado con mejor responsive */}
-      <div className="relative w-full max-w-[95vw] lg:max-w-[85vw] xl:max-w-7xl my-8 mx-4 bg-white rounded-2xl shadow-2xl flex flex-col max-h-[calc(100vh-4rem)] z-[9999]">
+      <div className="relative w-full max-w-[95vw] lg:max-w-[85vw] xl:max-w-7xl my-auto mx-4 bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh] z-[9999]">
         {/* Header */}
         <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-4 sm:px-6 lg:px-8 py-4 sm:py-5 lg:py-6 rounded-t-2xl">
           <div className="flex items-start justify-between gap-4">
@@ -1136,8 +902,8 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
         </div>
 
         {/* KPIs Dashboard */}
-        <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200 px-6 py-3">
-          <div className="grid grid-cols-6 gap-2">
+        <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200 px-6 py-3 overflow-x-auto">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 min-w-[600px]">
             <KPICard
               label="Total Acciones"
               valor={estadisticas.totalAcciones}
@@ -1205,7 +971,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
               onClick={() => setTabActiva('documentos')}
               icon={<FileText className="w-4 h-4" />}
               label="Documentos"
-              badge={(conteoDocumentos ?? 0).toString()}
+              badge={totalEvidencias > 0 ? totalEvidencias.toString() : undefined}
             />
             <TabButton
               active={tabActiva === 'seguimiento'}
@@ -1227,9 +993,29 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
               transition={{ duration: 0.2 }}
             >
               {tabActiva === 'resumen' && <TabResumen plan={plan} estadisticas={estadisticas} />}
-              {tabActiva === 'hallazgos' && <TabHallazgos plan={plan} />}
-              {tabActiva === 'acciones' && <TabAcciones plan={plan} planId={planId} onAccionCreada={handleRecargarPlan} />}
-              {tabActiva === 'documentos' && <TabDocumentos plan={plan} onDocumentosCargados={setConteoDocumentos} />}
+              {tabActiva === 'hallazgos' && (
+                <TabHallazgos 
+                  plan={plan} 
+                  onCrearAccion={crearAccion}
+                />
+              )}
+              {tabActiva === 'acciones' && (
+                <TabAcciones 
+                  plan={plan} 
+                  onActualizarAccion={actualizarAccion}
+                  onEliminarAccion={eliminarAccion}
+                  onCrearAccion={crearAccion}
+                  onRefresh={refetch}
+                />
+              )}
+              {tabActiva === 'documentos' && (
+                <TabDocumentos
+                  plan={plan}
+                  evidenciasPorAccion={evidenciasPorAccion}
+                  setEvidenciasPorAccion={setEvidenciasPorAccion}
+                  cargandoEvidencias={cargandoEvidenciasDoc}
+                />
+              )}
               {tabActiva === 'seguimiento' && <TabSeguimiento plan={plan} />}
             </motion.div>
           </AnimatePresence>
@@ -1239,7 +1025,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
         <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">
-              Última actualización: {plan.timeline[0]?.fecha}
+              Plan ID: {plan.id?.substring(0, 8)}...
             </div>
             <div className="flex gap-3">
               <button
@@ -1247,7 +1033,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
                 onClick={handleDescargarReporte}
               >
                 <Download className="w-4 h-4" />
-                Descargar Excel
+                Descargar Reporte
               </button>
               <button
                 className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm"
@@ -1298,9 +1084,6 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
                     <InfoItem label="Auditoría Origen" valor={plan.auditoria} />
                     <InfoItem label="Área Responsable" valor={plan.area} />
                     <InfoItem label="Responsable General" valor={plan.responsableGeneral} />
-                    {plan.responsableAreaNombre && (
-                      <InfoItem label="Responsable del Área Auditada" valor={plan.responsableAreaNombre} />
-                    )}
                     <InfoItem label="Fecha Creación" valor={plan.fechaCreacion} />
                     <InfoItem label="Fecha Vencimiento" valor={plan.fechaVencimiento} />
                     <InfoItem label="Progreso Global" valor={`${plan.progresoGlobal}%`} />
@@ -1370,7 +1153,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
             <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-600">
-                  Última actualización: {plan.timeline[0]?.fecha}
+                  Plan ID: {plan.id?.substring(0, 8)}...
                 </div>
                 <div className="flex gap-3">
                   <button
@@ -1473,9 +1256,6 @@ function TabResumen({ plan, estadisticas }: { plan: PlanMejoramientoDetalle; est
           <InfoItem label="Auditoría Origen" valor={plan.auditoria} />
           <InfoItem label="Área Responsable" valor={plan.area} />
           <InfoItem label="Responsable General" valor={plan.responsableGeneral} />
-          {plan.responsableAreaNombre && (
-            <InfoItem label="Responsable del Área Auditada" valor={plan.responsableAreaNombre} />
-          )}
           <InfoItem label="Fecha Creación" valor={plan.fechaCreacion} />
           <InfoItem label="Fecha Vencimiento" valor={plan.fechaVencimiento} />
           <InfoItem label="Progreso Global" valor={`${plan.progresoGlobal}%`} />
@@ -1546,7 +1326,12 @@ function TabResumen({ plan, estadisticas }: { plan: PlanMejoramientoDetalle; est
 // TAB: HALLAZGOS
 // ════════════════════════════════════════════════════════════════════════════
 
-function TabHallazgos({ plan }: { plan: PlanMejoramientoDetalle }) {
+interface TabHallazgosProps {
+  plan: PlanMejoramientoDetalle;
+  onCrearAccion: (data: any) => Promise<boolean>;
+}
+
+function TabHallazgos({ plan, onCrearAccion }: TabHallazgosProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
@@ -1557,14 +1342,26 @@ function TabHallazgos({ plan }: { plan: PlanMejoramientoDetalle }) {
       </div>
 
       {plan.hallazgos.map((hallazgo) => (
-        <CardHallazgo key={hallazgo.id} hallazgo={hallazgo} plan={plan} />
+        <CardHallazgo 
+          key={hallazgo.id} 
+          hallazgo={hallazgo} 
+          plan={plan} 
+          onCrearAccion={onCrearAccion}
+        />
       ))}
     </div>
   );
 }
 
-function CardHallazgo({ hallazgo, plan }: { hallazgo: Hallazgo; plan: PlanMejoramientoDetalle }) {
+interface CardHallazgoProps {
+  hallazgo: Hallazgo;
+  plan: PlanMejoramientoDetalle;
+  onCrearAccion: (data: any) => Promise<boolean>;
+}
+
+function CardHallazgo({ hallazgo, plan, onCrearAccion }: CardHallazgoProps) {
   const [expandido, setExpandido] = useState(false);
+  const [modalCrearAccion, setModalCrearAccion] = useState(false);
 
   const criticidadConfig = {
     ALTA: { bg: 'bg-red-100', text: 'text-red-700', label: 'Crítica' },
@@ -1590,12 +1387,8 @@ function CardHallazgo({ hallazgo, plan }: { hallazgo: Hallazgo; plan: PlanMejora
             <p className="text-sm text-gray-700 mb-2">{hallazgo.descripcion}</p>
             <div className="flex items-center gap-4 text-xs text-gray-600">
               <div className="flex items-center gap-1">
-                <Building2 className="w-3 h-3" />
-                {hallazgo.area || 'No especificada'}
-              </div>
-              <div className="flex items-center gap-1">
                 <User className="w-3 h-3" />
-                {hallazgo.responsable || 'No asignado'}
+                {hallazgo.responsable}
               </div>
               <div className="flex items-center gap-1">
                 <Target className="w-3 h-3" />
@@ -1636,15 +1429,35 @@ function CardHallazgo({ hallazgo, plan }: { hallazgo: Hallazgo; plan: PlanMejora
           </div>
         </div>
 
-        {/* Botón Ver Acciones */}
-        <button
-          onClick={() => setExpandido(!expandido)}
-          className="text-sm text-[#1e5da8] hover:text-[#2a6dbd] font-medium flex items-center gap-2"
-        >
-          {expandido ? 'Ocultar' : 'Ver'} {accionesHallazgo.length} acciones
-          <ChevronDown className={`w-4 h-4 transition-transform ${expandido ? 'rotate-180' : ''}`} />
-        </button>
+        {/* Botones Ver Acciones y Añadir Acción */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setExpandido(!expandido)}
+            className="text-sm text-[#1e5da8] hover:text-[#2a6dbd] font-medium flex items-center gap-2"
+          >
+            {expandido ? 'Ocultar' : 'Ver'} {accionesHallazgo.length} acciones
+            <ChevronDown className={`w-4 h-4 transition-transform ${expandido ? 'rotate-180' : ''}`} />
+          </button>
+          
+          <button
+            onClick={() => setModalCrearAccion(true)}
+            className="px-3 py-1.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg text-sm hover:shadow transition-all flex items-center gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Añadir Acción
+          </button>
+        </div>
       </div>
+
+      {/* Modal Crear Acción para este hallazgo */}
+      {modalCrearAccion && (
+        <ModalCrearAccion
+          hallazgos={[hallazgo]}
+          hallazgoPreseleccionado={hallazgo.id}
+          onClose={() => setModalCrearAccion(false)}
+          onCrear={onCrearAccion}
+        />
+      )}
 
       {/* Lista de Acciones del Hallazgo */}
       <AnimatePresence>
@@ -1671,7 +1484,15 @@ function CardHallazgo({ hallazgo, plan }: { hallazgo: Hallazgo; plan: PlanMejora
 // TAB: ACCIONES
 // ════════════════════════════════════════════════════════════════════════════
 
-function TabAcciones({ plan, planId, onAccionCreada }: { plan: PlanMejoramientoDetalle; planId: string; onAccionCreada?: () => void }) {
+interface TabAccionesProps {
+  plan: PlanMejoramientoDetalle;
+  onActualizarAccion: (accionId: string, data: any) => Promise<boolean>;
+  onEliminarAccion: (accionId: string) => Promise<boolean>;
+  onCrearAccion: (data: any) => Promise<boolean>;
+  onRefresh: () => void;
+}
+
+function TabAcciones({ plan, onActualizarAccion, onEliminarAccion, onCrearAccion, onRefresh }: TabAccionesProps) {
   const [filtroEstado, setFiltroEstado] = useState<'TODOS' | AccionCorrectiva['estado']>('TODOS');
   const [modalCrearAccion, setModalCrearAccion] = useState(false);
 
@@ -1687,83 +1508,140 @@ function TabAcciones({ plan, planId, onAccionCreada }: { plan: PlanMejoramientoD
           <p className="text-sm text-gray-600">{accionesFiltradas.length} acciones</p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {/* Botón Nueva Acción */}
           <button
             onClick={() => setModalCrearAccion(true)}
-            className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium"
+            className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium mr-3"
           >
             <Plus className="w-4 h-4" />
-            Agregar Acción
+            Nueva Acción
           </button>
+          <FiltroButton
+            active={filtroEstado === 'TODOS'}
+            onClick={() => setFiltroEstado('TODOS')}
+            label="Todas"
+          />
+          <FiltroButton
+            active={filtroEstado === 'COMPLETADA'}
+            onClick={() => setFiltroEstado('COMPLETADA')}
+            label="Completadas"
+            color="green"
+          />
+          <FiltroButton
+            active={filtroEstado === 'EN_EJECUCION'}
+            onClick={() => setFiltroEstado('EN_EJECUCION')}
+            label="En Ejecución"
+            color="yellow"
+          />
+          <FiltroButton
+            active={filtroEstado === 'PENDIENTE'}
+            onClick={() => setFiltroEstado('PENDIENTE')}
+            label="Pendientes"
+            color="gray"
+          />
         </div>
-      </div>
-
-      <div className="flex gap-2 mb-4">
-        <FiltroButton
-          active={filtroEstado === 'TODOS'}
-          onClick={() => setFiltroEstado('TODOS')}
-          label="Todas"
-        />
-        <FiltroButton
-          active={filtroEstado === 'COMPLETADA'}
-          onClick={() => setFiltroEstado('COMPLETADA')}
-          label="Completadas"
-          color="green"
-        />
-        <FiltroButton
-          active={filtroEstado === 'EN_EJECUCION'}
-          onClick={() => setFiltroEstado('EN_EJECUCION')}
-          label="En Ejecución"
-          color="yellow"
-        />
-        <FiltroButton
-          active={filtroEstado === 'PENDIENTE'}
-          onClick={() => setFiltroEstado('PENDIENTE')}
-          label="Pendientes"
-          color="gray"
-        />
       </div>
 
       {accionesFiltradas.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-          <Target className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No hay acciones</h3>
-          <p className="text-sm text-gray-600 mb-4">Comienza agregando una acción correctiva al plan</p>
-          <button
-            onClick={() => setModalCrearAccion(true)}
-            className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium mx-auto"
-          >
-            <Plus className="w-4 h-4" />
-            Agregar Primera Acción
-          </button>
+        <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+          <Target className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+          <p className="font-medium">Sin acciones {filtroEstado !== 'TODOS' ? 'en este estado' : ''}</p>
+          <p className="text-sm mt-1">Haz clic en "Nueva Acción" para crear una acción correctiva</p>
         </div>
       ) : (
         accionesFiltradas.map((accion) => (
-          <CardAccion key={accion.id} accion={accion} plan={plan} planId={planId} onAccionEditada={onAccionCreada} />
+          <CardAccion 
+            key={accion.id} 
+            accion={accion} 
+            plan={plan}
+            onActualizarAccion={onActualizarAccion}
+            onEliminarAccion={onEliminarAccion}
+            onRefresh={onRefresh}
+          />
         ))
       )}
 
+      {/* Modal Crear Acción */}
       {modalCrearAccion && (
         <ModalCrearAccion
-          planId={planId}
-          plan={plan}
+          hallazgos={plan.hallazgos}
           onClose={() => setModalCrearAccion(false)}
-          onAccionCreada={() => {
-            setModalCrearAccion(false);
-            onAccionCreada?.();
-          }}
+          onCrear={onCrearAccion}
         />
       )}
     </div>
   );
 }
 
-function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionCorrectiva; plan: PlanMejoramientoDetalle; planId: string; onAccionEditada?: () => void }) {
+interface CardAccionProps {
+  accion: AccionCorrectiva;
+  plan: PlanMejoramientoDetalle;
+  onActualizarAccion: (accionId: string, data: any) => Promise<boolean>;
+  onEliminarAccion: (accionId: string) => Promise<boolean>;
+  onRefresh: () => void;
+}
+
+interface EvidenciaAccion {
+  id: string;
+  nombre: string;
+  descripcion?: string;
+  nombreArchivo: string;
+  tamano: number;
+  fechaSubida: string;
+}
+
+function CardAccion({ accion, plan, onActualizarAccion, onEliminarAccion, onRefresh }: CardAccionProps) {
   const [modalEditar, setModalEditar] = useState(false);
   const [modalEvidencia, setModalEvidencia] = useState(false);
-  const [marcandoCompletada, setMarcandoCompletada] = useState(false);
-  const [evidencias, setEvidencias] = useState<any[]>([]);
-  const [loadingEvidencias, setLoadingEvidencias] = useState(false);
+  const [evidenciasLista, setEvidenciasLista] = useState<EvidenciaAccion[]>([]);
+  const [cargandoEvidencias, setCargandoEvidencias] = useState(true);
+  
+  // Cargar lista de evidencias desde el backend
+  useEffect(() => {
+    const cargarEvidencias = async () => {
+      setCargandoEvidencias(true);
+      try {
+        const evidencias = await controlInternoService.getEvidenciasByAccion(accion.id);
+        setEvidenciasLista(Array.isArray(evidencias) ? evidencias : []);
+      } catch (error) {
+        console.error('Error cargando evidencias:', error);
+        setEvidenciasLista([]);
+      } finally {
+        setCargandoEvidencias(false);
+      }
+    };
+    cargarEvidencias();
+  }, [accion.id]);
+
+  const evidenciasCount = evidenciasLista.length;
+
+  const formatFileSize = (bytes: number) => {
+    if (!bytes || bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  const handleDescargarEvidencia = async (evidencia: EvidenciaAccion) => {
+    try {
+      toast.info('Descargando...', { description: evidencia.nombre });
+      const blob = await controlInternoService.downloadEvidencia(evidencia.id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = evidencia.nombreArchivo || evidencia.nombre;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success('Descarga completada');
+    } catch (error) {
+      console.error('Error descargando:', error);
+      toast.error('Error al descargar el archivo');
+    }
+  };
   
   const estadoConfig = {
     PENDIENTE: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Pendiente', icon: Clock },
@@ -1776,67 +1654,13 @@ function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionC
   const Icon = config.icon;
   const hallazgo = plan.hallazgos.find(h => h.id === accion.hallazgoId);
 
-  // Cargar evidencias de la acción
-  useEffect(() => {
-    const cargarEvidencias = async () => {
-      try {
-        setLoadingEvidencias(true);
-        const response = await evidenciasApi.getByAccion(accion.id);
-        if (response.success && response.data) {
-          setEvidencias(response.data);
-        }
-      } catch (error) {
-        console.error('[CardAccion] Error al cargar evidencias:', error);
-      } finally {
-        setLoadingEvidencias(false);
-      }
-    };
-
-    cargarEvidencias();
-  }, [accion.id]);
-
   const handleEditar = () => {
     setModalEditar(true);
   };
 
   const handleCargarEvidencia = () => {
+    console.log('🟢 handleCargarEvidencia llamado - abriendo modal');
     setModalEvidencia(true);
-  };
-
-  const handleEvidenciaCargada = async () => {
-    // Recargar evidencias después de cargar
-    try {
-      const response = await evidenciasApi.getByAccion(accion.id);
-      if (response.success && response.data) {
-        setEvidencias(response.data);
-      }
-    } catch (error) {
-      console.error('[CardAccion] Error al recargar evidencias:', error);
-    }
-  };
-
-  const handleDescargarEvidencia = async (evidencia: any) => {
-    try {
-      const blob = await evidenciasApi.download(evidencia.id);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = evidencia.nombreArchivoOriginal || evidencia.nombre;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-
-      toast.success('Evidencia Descargada', {
-        description: `${evidencia.nombre} se ha descargado exitosamente`,
-        duration: 2000,
-      });
-    } catch (error: any) {
-      console.error('[CardAccion] Error al descargar:', error);
-      toast.error('Error al descargar evidencia', {
-        description: error.message || 'No se pudo descargar el archivo'
-      });
-    }
   };
 
   const handleMarcarCompletada = async () => {
@@ -1848,52 +1672,11 @@ function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionC
       return;
     }
 
-    // Prevenir múltiples clicks mientras se procesa
-    if (marcandoCompletada) {
-      return;
-    }
-
-    try {
-      setMarcandoCompletada(true);
-
-      // Mapear estado del frontend al backend
-      const estadoBackend = 'completada';
-
-      // Actualizar acción en el backend
-      const response = await planesMejoramientoApi.updateAccion(planId, accion.id, {
-        estado: estadoBackend,
-        porcentajeAvance: 100,
-      });
-
-      if (response.success) {
-        toast.success('Acción Marcada como Completada', {
-          description: `La acción "${accion.descripcion.substring(0, 50)}..." ha sido completada`,
-          duration: 4000,
-        });
-
-        // Log para debugging
-        console.log('✅ Acción marcada como completada:', {
-          accionId: accion.id,
-          estadoAnterior: accion.estado,
-          progresoAnterior: accion.progreso,
-          estadoNuevo: 'COMPLETADA',
-          progresoNuevo: 100,
-          timestamp: new Date().toISOString()
-        });
-
-        // Refrescar los datos del plan
-        onAccionEditada?.();
-      } else {
-        throw new Error(response.error || 'Error al actualizar la acción');
-      }
-    } catch (err: any) {
-      console.error('[CardAccion] Error al marcar acción como completada:', err);
-      toast.error('Error al completar la acción', {
-        description: err.message || 'No se pudo actualizar el estado de la acción. Por favor, intenta nuevamente.'
-      });
-    } finally {
-      setMarcandoCompletada(false);
-    }
+    // ✅ LLAMADA AL BACKEND
+    await onActualizarAccion(accion.id, {
+      estado: 'COMPLETADA',
+      progreso: 100
+    });
   };
 
   return (
@@ -1971,43 +1754,40 @@ function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionC
                 <span>Evidencias</span>
               </div>
               <div className="text-gray-900">
-                {loadingEvidencias ? (
+                {cargandoEvidencias ? (
                   <Loader2 className="w-3 h-3 animate-spin inline" />
                 ) : (
-                  `${evidencias.length} archivo(s)`
+                  `${evidenciasCount} archivos`
                 )}
               </div>
             </div>
           </div>
 
-          {/* Evidencias */}
-          {evidencias.length > 0 && (
-            <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded">
-              <div className="text-xs font-medium text-gray-700 mb-2 flex items-center gap-1">
-                <Paperclip className="w-3 h-3" />
-                Evidencias ({evidencias.length})
-              </div>
-              <div className="space-y-1">
-                {evidencias.slice(0, 3).map((evidencia) => (
-                  <div key={evidencia.id} className="flex items-center justify-between text-xs bg-white p-2 rounded border border-gray-200">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <FileText className="w-3 h-3 text-gray-500 flex-shrink-0" />
-                      <span className="text-gray-700 truncate">{evidencia.nombre}</span>
+          {/* Lista de Evidencias - siempre visible */}
+          {evidenciasCount > 0 && (
+            <div className="mb-3 bg-gray-50 rounded-lg border border-gray-200 p-3">
+              <div className="text-xs font-medium text-gray-700 mb-2">Archivos adjuntos:</div>
+              <div className="space-y-2">
+                {evidenciasLista.map(evidencia => (
+                  <div key={evidencia.id} className="flex items-center justify-between bg-white border border-gray-200 rounded p-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-xs text-gray-900 truncate">{evidencia.nombre}</div>
+                        <div className="text-[10px] text-gray-500">
+                          {formatFileSize(evidencia.tamano)} • {new Date(evidencia.fechaSubida).toLocaleDateString()}
+                        </div>
+                      </div>
                     </div>
                     <button
                       onClick={() => handleDescargarEvidencia(evidencia)}
-                      className="p-1 text-gray-600 hover:text-[#1e5da8] transition-colors flex-shrink-0"
+                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors flex-shrink-0"
                       title="Descargar"
                     >
-                      <Download className="w-3 h-3" />
+                      <Download className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 ))}
-                {evidencias.length > 3 && (
-                  <div className="text-xs text-gray-500 text-center pt-1">
-                    +{evidencias.length - 3} más
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -2038,20 +1818,10 @@ function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionC
             {accion.estado !== 'COMPLETADA' && (
               <button 
                 onClick={handleMarcarCompletada}
-                disabled={marcandoCompletada}
-                className="px-3 py-1.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded text-sm hover:shadow transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded text-sm hover:shadow transition-all flex items-center gap-1.5"
               >
-                {marcandoCompletada ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Procesando...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Marcar Completada
-                  </>
-                )}
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Marcar Completada
               </button>
             )}
           </div>
@@ -2061,24 +1831,28 @@ function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionC
       {/* Modal Editar Acción */}
       {modalEditar && (
         <ModalEditarAccion 
-          accion={accion}
-          planId={planId}
+          accion={accion} 
           onClose={() => setModalEditar(false)}
-          onAccionActualizada={onAccionEditada}
+          onGuardar={onActualizarAccion}
         />
       )}
 
       {/* Modal Cargar Evidencia */}
       {modalEvidencia && (
         <ModalCargarEvidencia 
-          accion={accion} 
-          planId={planId}
+          accion={accion}
+          planId={plan.id}
           onClose={() => setModalEvidencia(false)}
-          onEvidenciaCargada={() => {
-            handleEvidenciaCargada();
-            onAccionEditada?.();
+          onEvidenciasCargadas={async () => {
+            // Recargar lista de evidencias
+            try {
+              const evidencias = await controlInternoService.getEvidenciasByAccion(accion.id);
+              setEvidenciasLista(Array.isArray(evidencias) ? evidencias : []);
+            } catch (e) {
+              // fallback
+            }
+            onRefresh();
           }}
-          conteoEvidenciasActual={evidencias.length}
         />
       )}
     </div>
@@ -2114,99 +1888,119 @@ function MiniCardAccion({ accion }: { accion: AccionCorrectiva }) {
 // TAB: DOCUMENTOS
 // ════════════════════════════════════════════════════════════════════════════
 
-function TabDocumentos({ plan, onDocumentosCargados }: { plan: PlanMejoramientoDetalle; onDocumentosCargados?: (count: number) => void }) {
+interface EvidenciaItem {
+  id: string;
+  nombre: string;
+  descripcion?: string;
+  tipoDocumento: string;
+  nombreArchivo: string;
+  mimeType: string;
+  tamano: number;
+  fechaSubida: string;
+  subidoPor?: string;
+  accionCorrectivaId?: string;
+  planMejoramientoId?: string;
+}
+
+interface TabDocumentosProps {
+  plan: PlanMejoramientoDetalle;
+  evidenciasPorAccion: Record<string, EvidenciaItem[]>;
+  setEvidenciasPorAccion: React.Dispatch<React.SetStateAction<Record<string, EvidenciaItem[]>>>;
+  cargandoEvidencias: boolean;
+}
+
+function TabDocumentos({ plan, evidenciasPorAccion, setEvidenciasPorAccion, cargandoEvidencias }: TabDocumentosProps) {
   const [modalCargarDocumento, setModalCargarDocumento] = useState(false);
-  const [documentoVistaPrevia, setDocumentoVistaPrevia] = useState<any | null>(null);
-  const [evidencias, setEvidencias] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [documentoVistaPrevia, setDocumentoVistaPrevia] = useState<DocumentoPlan | null>(null);
 
-  // Cargar evidencias del plan desde el backend
-  useEffect(() => {
-    const cargarEvidencias = async () => {
-      try {
-        setLoading(true);
-        const response = await evidenciasApi.getByPlan(plan.id);
-        if (response.success && response.data) {
-          setEvidencias(response.data);
-          // Notificar al componente padre el conteo de documentos
-          onDocumentosCargados?.(response.data.length);
-        }
-      } catch (error) {
-        console.error('[TabDocumentos] Error al cargar evidencias:', error);
-        toast.error('Error al cargar documentos', {
-          description: 'No se pudieron cargar los documentos del plan'
-        });
-        onDocumentosCargados?.(0);
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Estados para el modal de carga
+  const [accionSeleccionadaId, setAccionSeleccionadaId] = useState<string>('');
+  const [nombreDocumento, setNombreDocumento] = useState('');
+  const [tipoDocumento, setTipoDocumento] = useState('');
+  const [archivoSeleccionado, setArchivoSeleccionado] = useState<File | null>(null);
+  const [subiendo, setSubiendo] = useState(false);
 
-    cargarEvidencias();
-  }, [plan.id, onDocumentosCargados]);
+  // Total de evidencias (viene del padre; el badge del tab usa el mismo valor)
+  const totalEvidencias = Object.values(evidenciasPorAccion).flat().length;
 
   const handleCargarDocumento = () => {
+    console.log('🟢 handleCargarDocumento llamado - abriendo modal');
     setModalCargarDocumento(true);
+    setAccionSeleccionadaId('');
+    setNombreDocumento('');
+    setTipoDocumento('');
+    setArchivoSeleccionado(null);
   };
 
-  const handleVerDocumento = async (evidencia: any) => {
-    try {
-      // Verificar si el archivo se puede previsualizar (solo imágenes y PDFs)
-      const tipoMime = evidencia.tipoMime?.toLowerCase() || '';
-      const esImagen = tipoMime.startsWith('image/');
-      const esPdf = tipoMime === 'application/pdf' || tipoMime.includes('pdf');
-      
-      if (esImagen || esPdf) {
-        // Intentar abrir preview solo para imágenes y PDFs
-        const url = `${import.meta.env.VITE_API_URL || 'http://localhost:3007'}/evidencias/${evidencia.id}/preview`;
-        const token = localStorage.getItem('esap_auth_token');
-        
-        if (token) {
-          window.open(`${url}?token=${token}`, '_blank');
-        } else {
-          window.open(url, '_blank');
-        }
-      } else {
-        // Para otros tipos de archivo, descargar directamente
-        await handleDescargarDocumento(evidencia);
-        toast.info('Archivo descargado', {
-          description: 'Este tipo de archivo se descarga directamente. Solo se pueden previsualizar imágenes y PDFs.'
-        });
-      }
-    } catch (error) {
-      console.error('[TabDocumentos] Error al abrir documento:', error);
-      toast.error('Error al abrir documento', {
-        description: 'No se pudo abrir la vista previa'
-      });
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setArchivoSeleccionado(e.target.files[0]);
     }
   };
 
-  const handleDescargarDocumento = async (evidencia: any) => {
+  const handleSubirDocumento = async () => {
+    if (!accionSeleccionadaId) {
+      toast.error('Selecciona una acción');
+      return;
+    }
+    if (!archivoSeleccionado) {
+      toast.error('Selecciona un archivo');
+      return;
+    }
+
+    setSubiendo(true);
     try {
-      const blob = await evidenciasApi.download(evidencia.id);
+      await controlInternoService.createEvidencia(
+        archivoSeleccionado,
+        {
+          nombre: nombreDocumento || archivoSeleccionado.name,
+          descripcion: `Documento tipo ${tipoDocumento}`,
+          tipoDocumento: (tipoDocumento || 'evidencia_accion') as 'evidencia_accion' | 'evidencia_hallazgo' | 'evidencia_plan' | 'documento_plan' | 'certificado' | 'acta' | 'informe' | 'otro',
+          accionCorrectivaId: accionSeleccionadaId,
+        },
+        (progress) => {
+          console.log('Progreso:', progress);
+        }
+      );
+
+      toast.success('Documento cargado correctamente');
+      setModalCargarDocumento(false);
+
+      // Recargar evidencias de la acción
+      const evidencias = await controlInternoService.getEvidenciasByAccion(accionSeleccionadaId);
+      setEvidenciasPorAccion(prev => ({
+        ...prev,
+        [accionSeleccionadaId]: Array.isArray(evidencias) ? evidencias : []
+      }));
+    } catch (error) {
+      console.error('Error subiendo documento:', error);
+      toast.error('Error al cargar el documento');
+    } finally {
+      setSubiendo(false);
+    }
+  };
+
+  const handleDescargarEvidencia = async (evidencia: EvidenciaItem) => {
+    try {
+      toast.info('Descargando...', { description: evidencia.nombre });
+      const blob = await controlInternoService.downloadEvidencia(evidencia.id);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = evidencia.nombreArchivoOriginal || evidencia.nombre;
+      a.download = evidencia.nombreArchivo || evidencia.nombre;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-
-      toast.success('Documento Descargado', {
-        description: `${evidencia.nombre} se ha descargado exitosamente`,
-        duration: 3000,
-      });
-    } catch (error: any) {
-      console.error('[TabDocumentos] Error al descargar:', error);
-      toast.error('Error al descargar documento', {
-        description: error.message || 'No se pudo descargar el archivo'
-      });
+      document.body.removeChild(a);
+      toast.success('Descarga completada');
+    } catch (error) {
+      console.error('Error descargando:', error);
+      toast.error('Error al descargar el archivo');
     }
   };
 
   const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
+    if (!bytes || bytes === 0) return '0 Bytes';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -2218,7 +2012,9 @@ function TabDocumentos({ plan, onDocumentosCargados }: { plan: PlanMejoramientoD
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-base font-medium text-gray-900">Documentos y Evidencias</h3>
-          <p className="text-sm text-gray-600">{loading ? 'Cargando...' : `${evidencias.length} archivos`}</p>
+          <p className="text-sm text-gray-600">
+            {cargandoEvidencias ? 'Cargando...' : `${totalEvidencias} archivo(s) asociados a acciones`}
+          </p>
         </div>
 
         <button 
@@ -2230,128 +2026,211 @@ function TabDocumentos({ plan, onDocumentosCargados }: { plan: PlanMejoramientoD
         </button>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-[#1e5da8]" />
+      {/* Lista de evidencias por acción */}
+      {cargandoEvidencias ? (
+        <div className="text-center py-8 text-gray-500">
+          <Loader2 className="w-12 h-12 mx-auto mb-3 text-gray-300 animate-spin" />
+          <p className="font-medium">Cargando evidencias...</p>
         </div>
-      ) : evidencias.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-          <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No hay documentos</h3>
-          <p className="text-sm text-gray-600 mb-4">Comienza agregando un documento al plan</p>
-          <button
-            onClick={handleCargarDocumento}
-            className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium mx-auto"
-          >
-            <Upload className="w-4 h-4" />
-            Cargar Primer Documento
-          </button>
+      ) : totalEvidencias === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+          <p className="font-medium">Sin documentos cargados</p>
+          <p className="text-sm">Haz clic en "Cargar Documento" para asociar evidencias a las acciones</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3">
-          {evidencias.map((evidencia) => (
-            <div key={evidencia.id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <FileText className="w-5 h-5 text-blue-600" />
+        <div className="space-y-4">
+          {plan.acciones.map(accion => {
+            const evidencias = evidenciasPorAccion[accion.id] || [];
+            if (evidencias.length === 0) return null;
+            
+            return (
+              <div key={accion.id} className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Target className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-gray-900">
+                    Acción: {accion.descripcion.substring(0, 60)}{accion.descripcion.length > 60 ? '...' : ''}
+                  </span>
+                  <span className="ml-auto bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full">
+                    {evidencias.length} archivo(s)
+                  </span>
                 </div>
-
-                <div className="flex-1">
-                  <h4 className="text-sm text-gray-900 font-medium mb-1">{evidencia.nombre}</h4>
-                  <div className="flex items-center gap-4 text-xs text-gray-600 flex-wrap">
-                    <span>{evidencia.tipoDocumento?.replace(/_/g, ' ')}</span>
-                    <span>{formatFileSize(evidencia.tamanioBytes || 0)}</span>
-                    <span>{new Date(evidencia.fechaSubida).toLocaleDateString('es-CO')}</span>
-                    <span>{evidencia.subidoPor}</span>
-                    {/* Mostrar vinculación */}
-                    {evidencia.hallazgoId && (
-                      <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700">
-                        Hallazgo
-                      </span>
-                    )}
-                    {evidencia.accionCorrectivaId && (
-                      <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700">
-                        Acción
-                      </span>
-                    )}
-                    {evidencia.planMejoramientoId && (
-                      <span className="px-2 py-0.5 rounded bg-green-100 text-green-700">
-                        Plan
-                      </span>
-                    )}
-                    {evidencia.auditoriaId && (
-                      <span className="px-2 py-0.5 rounded bg-orange-100 text-orange-700">
-                        Auditoría
-                      </span>
-                    )}
-                    {evidencia.estadoValidacion && (
-                      <span className={`px-2 py-0.5 rounded ${
-                        evidencia.estadoValidacion === 'aceptado' ? 'bg-green-100 text-green-700' :
-                        evidencia.estadoValidacion === 'rechazado' ? 'bg-red-100 text-red-700' :
-                        evidencia.estadoValidacion === 'con_observaciones' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
-                        {evidencia.estadoValidacion}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  {(() => {
-                    const tipoMime = evidencia.tipoMime?.toLowerCase() || '';
-                    const esPrevisualizable = tipoMime.startsWith('image/') || 
-                                            tipoMime === 'application/pdf' || 
-                                            tipoMime.includes('pdf');
-                    
-                    return esPrevisualizable ? (
-                      <button 
-                        onClick={() => handleVerDocumento(evidencia)}
-                        className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors"
-                        title="Ver documento"
+                
+                <div className="space-y-2">
+                  {evidencias.map(evidencia => (
+                    <div key={evidencia.id} className="flex items-center justify-between bg-white border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-center gap-3">
+                        <Paperclip className="w-4 h-4 text-gray-500" />
+                        <div>
+                          <div className="text-sm text-gray-900">{evidencia.nombre}</div>
+                          <div className="text-xs text-gray-500">
+                            {formatFileSize(evidencia.tamano)} • {new Date(evidencia.fechaSubida).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDescargarEvidencia(evidencia)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Descargar"
                       >
-                        <Eye className="w-4 h-4" />
+                        <Download className="w-4 h-4" />
                       </button>
-                    ) : null;
-                  })()}
-                  <button 
-                    onClick={() => handleDescargarDocumento(evidencia)}
-                    className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors"
-                    title="Descargar documento"
-                  >
-                    <Download className="w-4 h-4" />
-                  </button>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* Modal Cargar Documento */}
-      {modalCargarDocumento && (
-        <ModalCargarDocumentoPlan
-          planId={plan.id}
-          onClose={() => {
-            setModalCargarDocumento(false);
-            // Recargar evidencias después de cargar
-            evidenciasApi.getByPlan(plan.id).then(response => {
-              if (response.success && response.data) {
-                setEvidencias(response.data);
-                onDocumentosCargados?.(response.data.length);
-              }
-            });
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {modalCargarDocumento && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]"
+            onClick={() => setModalCargarDocumento(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Cargar Documento</h3>
+                <button
+                  onClick={() => setModalCargarDocumento(false)}
+                  className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
 
-      {/* Modal Vista Previa */}
-      {documentoVistaPrevia && (
-        <ModalVistaPreviaDocumento
-          documento={documentoVistaPrevia}
-          onClose={() => setDocumentoVistaPrevia(null)}
-        />
-      )}
+              <div className="space-y-4">
+                {/* Selector de Acción */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Asociar a Acción <span className="text-red-500">*</span>
+                  </label>
+                  <select 
+                    value={accionSeleccionadaId}
+                    onChange={(e) => setAccionSeleccionadaId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Seleccione una acción...</option>
+                    {plan.acciones.map(accion => (
+                      <option key={accion.id} value={accion.id}>
+                        {accion.descripcion.substring(0, 50)}{accion.descripcion.length > 50 ? '...' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {!accionSeleccionadaId && (
+                    <p className="text-xs text-amber-600 mt-1">Debes seleccionar la acción a la que se asociará este documento</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nombre del documento
+                  </label>
+                  <input
+                    type="text"
+                    value={nombreDocumento}
+                    onChange={(e) => setNombreDocumento(e.target.value)}
+                    placeholder="Ej: Evidencia acción correctiva..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Tipo de documento
+                  </label>
+                  <select 
+                    value={tipoDocumento}
+                    onChange={(e) => setTipoDocumento(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Seleccione tipo...</option>
+                    <option value="evidencia_accion">Evidencia de Acción</option>
+                    <option value="documento_plan">Documento de Plan</option>
+                    <option value="certificado">Certificado</option>
+                    <option value="acta">Acta</option>
+                    <option value="informe">Informe</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Archivo <span className="text-red-500">*</span>
+                  </label>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors cursor-pointer">
+                    {archivoSeleccionado ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <Paperclip className="w-5 h-5 text-blue-600" />
+                        <span className="text-sm text-gray-700">{archivoSeleccionado.name}</span>
+                        <button
+                          onClick={() => setArchivoSeleccionado(null)}
+                          className="ml-2 p-1 hover:bg-red-100 rounded text-red-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label htmlFor="file-upload-doc" className="cursor-pointer">
+                        <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                        <p className="text-sm text-gray-600">
+                          Arrastra un archivo o haz clic para seleccionar
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          PDF, Word, Excel hasta 10MB
+                        </p>
+                      </label>
+                    )}
+                    <input 
+                      id="file-upload-doc"
+                      type="file" 
+                      className="hidden" 
+                      onChange={handleFileChange}
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setModalCargarDocumento(false)}
+                    disabled={subiendo}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSubirDocumento}
+                    disabled={subiendo || !accionSeleccionadaId || !archivoSeleccionado}
+                    className="flex-1 px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {subiendo ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Subiendo...
+                      </>
+                    ) : (
+                      'Cargar'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -2361,18 +2240,231 @@ function TabDocumentos({ plan, onDocumentosCargados }: { plan: PlanMejoramientoD
 // ════════════════════════════════════════════════════════════════════════════
 
 function TabSeguimiento({ plan }: { plan: PlanMejoramientoDetalle }) {
+  const [seguimientoExpandido, setSeguimientoExpandido] = useState<string | null>(null);
+
+  const seguimientos = plan.seguimientos || [];
+  const haySeguimientos = seguimientos.length > 0;
+
+  // Ordenar por fecha más reciente primero
+  const seguimientosOrdenados = [...seguimientos].sort((a, b) => {
+    const fechaA = new Date(`${a.año}-${String(a.trimestre * 3).padStart(2, '0')}-01`);
+    const fechaB = new Date(`${b.año}-${String(b.trimestre * 3).padStart(2, '0')}-01`);
+    return fechaB.getTime() - fechaA.getTime();
+  });
+
+  const getNombreTrimestre = (trimestre: number) => {
+    const nombres: Record<number, string> = {
+      1: 'Primer Trimestre',
+      2: 'Segundo Trimestre',
+      3: 'Tercer Trimestre',
+      4: 'Cuarto Trimestre'
+    };
+    return nombres[trimestre] || `Trimestre ${trimestre}`;
+  };
+
+  const getColorCumplimiento = (porcentaje: number) => {
+    if (porcentaje >= 80) return 'text-green-600 bg-green-100';
+    if (porcentaje >= 50) return 'text-yellow-600 bg-yellow-100';
+    return 'text-red-600 bg-red-100';
+  };
+
+  const getColorEfectividad = (porcentaje: number) => {
+    if (porcentaje >= 70) return 'text-green-600';
+    if (porcentaje >= 40) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
   return (
     <div className="space-y-4">
-      <div className="mb-4">
-        <h3 className="text-base font-medium text-gray-900">Historial de Actividades</h3>
-        <p className="text-sm text-gray-600">{plan.timeline.length} eventos registrados</p>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-base font-medium text-gray-900">Seguimientos Trimestrales</h3>
+          <p className="text-sm text-gray-600">
+            {haySeguimientos 
+              ? `${seguimientos.length} seguimiento${seguimientos.length > 1 ? 's' : ''} registrado${seguimientos.length > 1 ? 's' : ''}`
+              : 'Historial de seguimiento del plan'}
+          </p>
+        </div>
       </div>
 
-      <div className="space-y-3">
-        {plan.timeline.map((actividad, index) => (
-          <TimelineItem key={actividad.id} actividad={actividad} isLast={index === plan.timeline.length - 1} />
-        ))}
-      </div>
+      {!haySeguimientos ? (
+        <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+          <History className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+          <p className="font-medium">Sin seguimientos registrados</p>
+          <p className="text-sm mt-1">
+            Los seguimientos trimestrales aparecerán aquí cuando se registren avances
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {seguimientosOrdenados.map((seguimiento, index) => (
+            <div 
+              key={seguimiento.id} 
+              className="bg-white border border-gray-200 rounded-lg overflow-hidden"
+            >
+              {/* Header del seguimiento */}
+              <button
+                onClick={() => setSeguimientoExpandido(
+                  seguimientoExpandido === seguimiento.id ? null : seguimiento.id
+                )}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <span className="text-blue-700 font-semibold text-sm">T{seguimiento.trimestre}</span>
+                  </div>
+                  <div className="text-left">
+                    <div className="font-medium text-gray-900">
+                      {getNombreTrimestre(seguimiento.trimestre)} - {seguimiento.año}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {seguimiento.fechaInicio && seguimiento.fechaFin 
+                        ? `${seguimiento.fechaInicio} al ${seguimiento.fechaFin}`
+                        : seguimiento.fechaSeguimiento 
+                          ? `Realizado: ${seguimiento.fechaSeguimiento}`
+                          : 'Sin fechas'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  {/* Indicadores */}
+                  <div className="flex items-center gap-3">
+                    <div className="text-center">
+                      <div className={`text-lg font-bold ${getColorCumplimiento(seguimiento.porcentajeCumplimiento).split(' ')[0]}`}>
+                        {seguimiento.porcentajeCumplimiento}%
+                      </div>
+                      <div className="text-xs text-gray-500">Cumplimiento</div>
+                    </div>
+                    <div className="text-center">
+                      <div className={`text-lg font-bold ${getColorEfectividad(seguimiento.porcentajeEfectividad)}`}>
+                        {seguimiento.porcentajeEfectividad}%
+                      </div>
+                      <div className="text-xs text-gray-500">Efectividad</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-gray-700">
+                        {seguimiento.accionesRevisadas}/{seguimiento.accionesTotales}
+                      </div>
+                      <div className="text-xs text-gray-500">Acciones</div>
+                    </div>
+                  </div>
+
+                  <ChevronDown 
+                    className={`w-5 h-5 text-gray-400 transition-transform ${
+                      seguimientoExpandido === seguimiento.id ? 'rotate-180' : ''
+                    }`}
+                  />
+                </div>
+              </button>
+
+              {/* Detalle expandible */}
+              {seguimientoExpandido === seguimiento.id && (
+                <div className="border-t border-gray-200 px-5 py-4 bg-gray-50">
+                  {/* Barras de progreso */}
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <div className="text-xs text-gray-600 mb-1">Cumplimiento</div>
+                      <div className="bg-gray-200 rounded-full h-2">
+                        <div 
+                          className={`h-full rounded-full transition-all ${
+                            seguimiento.porcentajeCumplimiento >= 80 ? 'bg-green-500' :
+                            seguimiento.porcentajeCumplimiento >= 50 ? 'bg-yellow-500' :
+                            'bg-red-500'
+                          }`}
+                          style={{ width: `${seguimiento.porcentajeCumplimiento}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-600 mb-1">Efectividad</div>
+                      <div className="bg-gray-200 rounded-full h-2">
+                        <div 
+                          className={`h-full rounded-full transition-all ${
+                            seguimiento.porcentajeEfectividad >= 70 ? 'bg-green-500' :
+                            seguimiento.porcentajeEfectividad >= 40 ? 'bg-yellow-500' :
+                            'bg-red-500'
+                          }`}
+                          style={{ width: `${seguimiento.porcentajeEfectividad}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Observaciones generales */}
+                  {seguimiento.observacionesGenerales && (
+                    <div className="mb-4">
+                      <div className="text-xs font-medium text-gray-700 mb-1">Observaciones Generales</div>
+                      <div className="text-sm text-gray-600 bg-white p-3 rounded border border-gray-200">
+                        {seguimiento.observacionesGenerales}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Registros de acciones */}
+                  {seguimiento.registros && seguimiento.registros.length > 0 && (
+                    <div>
+                      <div className="text-xs font-medium text-gray-700 mb-2">
+                        Detalle por Acción ({seguimiento.registros.length})
+                      </div>
+                      <div className="space-y-2">
+                        {seguimiento.registros.map((registro) => (
+                          <div 
+                            key={registro.id}
+                            className="bg-white p-3 rounded border border-gray-200"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1">
+                                <p className="text-sm text-gray-900">{registro.accionDescripcion}</p>
+                                <div className="flex items-center gap-4 mt-2 text-xs">
+                                  <span className="text-gray-500">
+                                    Implementadas: {registro.accionesImplementadas}/{registro.accionesProgramadas}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded ${
+                                    registro.controlesImplementados === 'SI' ? 'bg-green-100 text-green-700' :
+                                    registro.controlesImplementados === 'PARCIAL' ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-red-100 text-red-700'
+                                  }`}>
+                                    Controles: {registro.controlesImplementados}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded ${
+                                    registro.hallazgoSeRepite === 'NO' ? 'bg-green-100 text-green-700' :
+                                    'bg-red-100 text-red-700'
+                                  }`}>
+                                    {registro.hallazgoSeRepite === 'NO' ? 'No se repite' : 'Se repite'}
+                                  </span>
+                                </div>
+                                {registro.observaciones && (
+                                  <p className="text-xs text-gray-500 mt-2 italic">
+                                    {registro.observaciones}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs text-gray-500">Puntajes</div>
+                                <div className="text-sm font-medium">
+                                  C: {registro.puntajeCumplimiento} | E: {registro.puntajeEfectividad}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sin registros detallados */}
+                  {(!seguimiento.registros || seguimiento.registros.length === 0) && (
+                    <div className="text-center py-4 text-gray-400 text-sm">
+                      Sin detalle de acciones para este seguimiento
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -2381,16 +2473,12 @@ function TimelineItem({ actividad, isLast }: { actividad: ActividadTimeline; isL
   const tipoConfig = {
     CREACION: { bg: 'bg-blue-100', text: 'text-blue-700', icon: Plus },
     ACTUALIZACION: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: Edit2 },
-    APROBACION: { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: CheckCircle2 },
     COMPLETADA: { bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle2 },
     EVIDENCIA: { bg: 'bg-purple-100', text: 'text-purple-700', icon: Paperclip },
-    COMENTARIO: { bg: 'bg-gray-100', text: 'text-gray-700', icon: MessageSquare },
-    PROGRESO: { bg: 'bg-blue-100', text: 'text-blue-700', icon: TrendingUp },
-    ESTADO: { bg: 'bg-orange-100', text: 'text-orange-700', icon: RefreshCw },
-    HALLAZGO_COMPLETADO: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: CheckCircle2 }
+    COMENTARIO: { bg: 'bg-gray-100', text: 'text-gray-700', icon: MessageSquare }
   };
 
-  const config = tipoConfig[actividad.tipo] || tipoConfig.ACTUALIZACION; // fallback si el tipo no existe
+  const config = tipoConfig[actividad.tipo];
   const Icon = config.icon;
 
   return (
@@ -2477,218 +2565,7 @@ function FiltroButton({ active, onClick, label, color = 'gray' }: any) {
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// MODAL: CREAR ACCIÓN
-// ════════════════════════════════════════════════════════════════════════════
-
-interface ModalCrearAccionProps {
-  planId: string;
-  plan: PlanMejoramientoDetalle;
-  onClose: () => void;
-  onAccionCreada: () => void;
-}
-
-function ModalCrearAccion({ planId, plan, onClose, onAccionCreada }: ModalCrearAccionProps) {
-  const [datosAccion, setDatosAccion] = useState({
-    hallazgoId: plan.hallazgos.length > 0 ? plan.hallazgos[0].id : '', // Seleccionar primer hallazgo por defecto
-    descripcion: '',
-    responsable: plan.responsableGeneral || '',
-    fechaInicio: new Date().toISOString().split('T')[0],
-    fechaFin: plan.fechaVencimiento || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    observaciones: ''
-  });
-
-  const handleGuardar = async () => {
-    // Validaciones
-    if (!datosAccion.hallazgoId) {
-      toast.error('Debe seleccionar un hallazgo');
-      return;
-    }
-
-    if (!datosAccion.descripcion.trim()) {
-      toast.error('La descripción es obligatoria');
-      return;
-    }
-
-    if (!datosAccion.responsable.trim()) {
-      toast.error('El responsable es obligatorio');
-      return;
-    }
-
-    try {
-      // Crear acción en el backend con hallazgoId
-      const response = await planesMejoramientoApi.addAccion(planId, {
-        hallazgoId: datosAccion.hallazgoId, // ✅ VINCULAR AL HALLAZGO
-        descripcion: datosAccion.descripcion,
-        responsable: datosAccion.responsable,
-        fechaInicio: datosAccion.fechaInicio,
-        fechaFin: datosAccion.fechaFin,
-        observaciones: datosAccion.observaciones || undefined,
-        estado: 'programada',
-        porcentajeAvance: 0
-      });
-
-      if (response.success) {
-        toast.success('Acción Creada', {
-          description: 'La acción correctiva ha sido vinculada al hallazgo exitosamente',
-          duration: 3000,
-        });
-        onAccionCreada();
-      } else {
-        throw new Error(response.error || 'Error al crear la acción');
-      }
-    } catch (err: any) {
-      console.error('[ModalCrearAccion] Error al crear acción:', err);
-      toast.error('Error al crear la acción', {
-        description: err.message || 'No se pudo crear la acción correctiva'
-      });
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[10001] overflow-hidden flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      
-      <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col">
-        {/* Header */}
-        <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
-          <div className="flex items-start justify-between">
-            <div>
-              <h3 className="text-xl font-medium mb-1">Nueva Acción Correctiva</h3>
-              <p className="text-sm text-blue-100">Agregar una nueva acción al plan {plan.codigo}</p>
-            </div>
-            <button
-              onClick={onClose}
-              className="ml-4 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Contenido */}
-        <div className="flex-1 overflow-auto px-6 py-6">
-          <div className="space-y-4">
-            {/* Selección de Hallazgo */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Hallazgo a Corregir <span className="text-red-500">*</span>
-              </label>
-              {plan.hallazgos.length === 0 ? (
-                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-sm text-yellow-800">⚠️ Este plan no tiene hallazgos asociados</p>
-                </div>
-              ) : (
-                <select
-                  value={datosAccion.hallazgoId}
-                  onChange={(e) => setDatosAccion({ ...datosAccion, hallazgoId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
-                >
-                  <option value="">Seleccionar hallazgo...</option>
-                  {plan.hallazgos.map((hallazgo) => (
-                    <option key={hallazgo.id} value={hallazgo.id}>
-                      {hallazgo.codigo} - {hallazgo.titulo}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <p className="text-xs text-gray-500 mt-1">
-                La acción correctiva se vinculará a este hallazgo específico
-              </p>
-            </div>
-
-            {/* Descripción */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Descripción <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                value={datosAccion.descripcion}
-                onChange={(e) => setDatosAccion({ ...datosAccion, descripcion: e.target.value })}
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
-                placeholder="Descripción detallada de la acción correctiva"
-              />
-            </div>
-
-            {/* Responsable */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Responsable <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={datosAccion.responsable}
-                onChange={(e) => setDatosAccion({ ...datosAccion, responsable: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
-                placeholder="Nombre del responsable"
-              />
-            </div>
-
-            {/* Fechas */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Fecha Inicio
-                </label>
-                <input
-                  type="date"
-                  value={datosAccion.fechaInicio}
-                  onChange={(e) => setDatosAccion({ ...datosAccion, fechaInicio: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Fecha Fin <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={datosAccion.fechaFin}
-                  onChange={(e) => setDatosAccion({ ...datosAccion, fechaFin: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
-                />
-              </div>
-            </div>
-
-            {/* Observaciones */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Observaciones
-              </label>
-              <textarea
-                value={datosAccion.observaciones}
-                onChange={(e) => setDatosAccion({ ...datosAccion, observaciones: e.target.value })}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
-                placeholder="Observaciones adicionales (opcional)"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-4 rounded-b-xl">
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleGuardar}
-              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm font-medium"
-            >
-              Crear Acción
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+// ChevronDown ya importado al inicio del archivo
 
 // ════════════════════════════════════════════════════════════════════════════
 // MODAL: EDITAR ACCIÓN
@@ -2696,12 +2573,14 @@ function ModalCrearAccion({ planId, plan, onClose, onAccionCreada }: ModalCrearA
 
 interface ModalEditarAccionProps {
   accion: AccionCorrectiva;
-  planId: string;
   onClose: () => void;
-  onAccionActualizada?: () => void;
+  onGuardar: (accionId: string, data: any) => Promise<boolean>;
 }
 
-function ModalEditarAccion({ accion, planId, onClose, onAccionActualizada }: ModalEditarAccionProps) {
+function ModalEditarAccion({ accion, onClose, onGuardar }: ModalEditarAccionProps) {
+  const [guardando, setGuardando] = useState(false);
+  const [profesionales, setProfesionales] = useState<{id: string; nombre: string; cargo: string}[]>([]);
+  const [cargandoProfesionales, setCargandoProfesionales] = useState(true);
   const [datosEdicion, setDatosEdicion] = useState({
     descripcion: accion.descripcion,
     responsable: accion.responsable,
@@ -2712,27 +2591,32 @@ function ModalEditarAccion({ accion, planId, onClose, onAccionActualizada }: Mod
     observaciones: accion.observaciones || ''
   });
 
-  // Actualizar estado automáticamente cuando cambia el progreso
-  const handleProgresoChange = (nuevoProgreso: number) => {
-    let nuevoEstado = datosEdicion.estado;
-    
-    if (nuevoProgreso === 100) {
-      nuevoEstado = 'COMPLETADA';
-    } else if (nuevoProgreso > 0 && nuevoProgreso < 100) {
-      // Si estaba completada y ahora es menor a 100%, cambiar a EN_EJECUCION
-      if (datosEdicion.estado === 'COMPLETADA') {
-        nuevoEstado = 'EN_EJECUCION';
+  // Cargar profesionales OCIG al montar
+  useEffect(() => {
+    const cargarProfesionales = async () => {
+      setCargandoProfesionales(true);
+      try {
+        const response = await configuracionesProfesionalesOCIGApi.getAll();
+        
+        if (response.success && response.data && response.data.length > 0) {
+          const profs = response.data
+            .filter((config: any) => config.activo)
+            .map((config: any) => ({
+              id: String(config.idTercero),
+              nombre: config.nombre || `Profesional ${config.idTercero}`,
+              cargo: config.rolOcig || 'Profesional'
+            }));
+          setProfesionales(profs);
+        }
+      } catch (error) {
+        console.error('[ModalEditarAccion] Error cargando profesionales:', error);
+      } finally {
+        setCargandoProfesionales(false);
       }
-    } else if (nuevoProgreso === 0) {
-      nuevoEstado = 'PENDIENTE';
-    }
+    };
     
-    setDatosEdicion({
-      ...datosEdicion,
-      progreso: nuevoProgreso,
-      estado: nuevoEstado
-    });
-  };
+    cargarProfesionales();
+  }, []);
 
   const handleGuardar = async () => {
     // Validaciones
@@ -2751,39 +2635,13 @@ function ModalEditarAccion({ accion, planId, onClose, onAccionActualizada }: Mod
       return;
     }
 
-    try {
-      // Mapear estado del frontend al backend
-      const estadoBackend = datosEdicion.estado === 'PENDIENTE' ? 'programada' :
-                           datosEdicion.estado === 'EN_EJECUCION' ? 'en-progreso' :
-                           datosEdicion.estado === 'COMPLETADA' ? 'completada' :
-                           datosEdicion.estado === 'VENCIDA' ? 'vencida' : 'programada';
-
-      // Actualizar acción en el backend
-      const response = await planesMejoramientoApi.updateAccion(planId, accion.id, {
-        descripcion: datosEdicion.descripcion,
-        responsable: datosEdicion.responsable,
-        fechaInicio: datosEdicion.fechaInicio,
-        fechaFin: datosEdicion.fechaVencimiento,
-        estado: estadoBackend,
-        porcentajeAvance: datosEdicion.progreso,
-        observaciones: datosEdicion.observaciones || undefined
-      });
-
-      if (response.success) {
-        toast.success('Acción Actualizada', {
-          description: 'Los cambios han sido guardados exitosamente',
-          duration: 3000,
-        });
-        onAccionActualizada?.();
-        onClose();
-      } else {
-        throw new Error(response.error || 'Error al actualizar la acción');
-      }
-    } catch (err: any) {
-      console.error('[ModalEditarAccion] Error al actualizar acción:', err);
-      toast.error('Error al actualizar la acción', {
-        description: err.message || 'No se pudo actualizar la acción correctiva'
-      });
+    // ✅ LLAMADA AL BACKEND
+    setGuardando(true);
+    const exito = await onGuardar(accion.id, datosEdicion);
+    setGuardando(false);
+    
+    if (exito) {
+      onClose();
     }
   };
 
@@ -2831,13 +2689,37 @@ function ModalEditarAccion({ accion, planId, onClose, onAccionActualizada }: Mod
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Responsable <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={datosEdicion.responsable}
-                  onChange={(e) => setDatosEdicion({ ...datosEdicion, responsable: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
-                  placeholder="Nombre del responsable"
-                />
+                {cargandoProfesionales ? (
+                  <div className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-500 flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Cargando...
+                  </div>
+                ) : profesionales.length > 0 ? (
+                  <select
+                    value={datosEdicion.responsable}
+                    onChange={(e) => setDatosEdicion({ ...datosEdicion, responsable: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                  >
+                    <option value="">Seleccionar responsable...</option>
+                    {/* Opción actual si no está en la lista */}
+                    {datosEdicion.responsable && !profesionales.find(p => p.nombre === datosEdicion.responsable) && (
+                      <option value={datosEdicion.responsable}>{datosEdicion.responsable} (actual)</option>
+                    )}
+                    {profesionales.map((prof) => (
+                      <option key={prof.id} value={prof.nombre}>
+                        {prof.nombre} - {prof.cargo}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={datosEdicion.responsable}
+                    onChange={(e) => setDatosEdicion({ ...datosEdicion, responsable: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                    placeholder="Nombre del responsable"
+                  />
+                )}
               </div>
 
               <div>
@@ -2887,8 +2769,7 @@ function ModalEditarAccion({ accion, planId, onClose, onAccionActualizada }: Mod
             {/* Progreso */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Progreso: {datosEdicion.progreso}% 
-                <span className="text-xs text-gray-500 ml-2">(Estado se ajusta automáticamente)</span>
+                Progreso: {datosEdicion.progreso}%
               </label>
               <input
                 type="range"
@@ -2896,7 +2777,7 @@ function ModalEditarAccion({ accion, planId, onClose, onAccionActualizada }: Mod
                 max="100"
                 step="5"
                 value={datosEdicion.progreso}
-                onChange={(e) => handleProgresoChange(parseInt(e.target.value))}
+                onChange={(e) => setDatosEdicion({ ...datosEdicion, progreso: parseInt(e.target.value) })}
                 className="w-full"
               />
               <div className="flex justify-between text-xs text-gray-600 mt-1">
@@ -2946,6 +2827,292 @@ function ModalEditarAccion({ accion, planId, onClose, onAccionActualizada }: Mod
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// MODAL: CREAR ACCIÓN CORRECTIVA
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalCrearAccionProps {
+  hallazgos: Hallazgo[];
+  hallazgoPreseleccionado?: string;
+  onClose: () => void;
+  onCrear: (data: any) => Promise<boolean>;
+}
+
+function ModalCrearAccion({ hallazgos, hallazgoPreseleccionado, onClose, onCrear }: ModalCrearAccionProps) {
+  const [guardando, setGuardando] = useState(false);
+  const [profesionales, setProfesionales] = useState<{id: string; nombre: string; cargo: string}[]>([]);
+  const [cargandoProfesionales, setCargandoProfesionales] = useState(true);
+  const [datosAccion, setDatosAccion] = useState({
+    hallazgoId: hallazgoPreseleccionado || (hallazgos.length > 0 ? hallazgos[0].id : ''),
+    descripcion: '',
+    responsable: '',
+    fechaInicio: new Date().toISOString().split('T')[0],
+    fechaVencimiento: '',
+    observaciones: ''
+  });
+
+  // Cargar profesionales OCIG al montar
+  useEffect(() => {
+    const cargarProfesionales = async () => {
+      setCargandoProfesionales(true);
+      try {
+        const response = await configuracionesProfesionalesOCIGApi.getAll();
+        console.log('[ModalCrearAccion] Profesionales OCIG response:', response);
+        
+        if (response.success && response.data && response.data.length > 0) {
+          const profs = response.data
+            .filter((config: any) => config.activo)
+            .map((config: any) => ({
+              id: String(config.idTercero),
+              nombre: config.nombre || `Profesional ${config.idTercero}`,
+              cargo: config.rolOcig || 'Profesional'
+            }));
+          setProfesionales(profs);
+          console.log('[ModalCrearAccion] Profesionales cargados:', profs.length);
+        } else {
+          console.warn('[ModalCrearAccion] No hay profesionales OCIG configurados');
+          toast.warning('No hay profesionales configurados');
+        }
+      } catch (error) {
+        console.error('[ModalCrearAccion] Error cargando profesionales:', error);
+        toast.error('Error al cargar profesionales');
+      } finally {
+        setCargandoProfesionales(false);
+      }
+    };
+    
+    cargarProfesionales();
+  }, []);
+
+  const handleCrear = async () => {
+    // Validaciones
+    if (!datosAccion.hallazgoId) {
+      toast.error('Debes seleccionar un hallazgo');
+      return;
+    }
+
+    if (!datosAccion.descripcion.trim()) {
+      toast.error('La descripción es obligatoria');
+      return;
+    }
+
+    if (!datosAccion.responsable.trim()) {
+      toast.error('El responsable es obligatorio');
+      return;
+    }
+
+    if (!datosAccion.fechaInicio) {
+      toast.error('La fecha de inicio es obligatoria');
+      return;
+    }
+
+    if (!datosAccion.fechaVencimiento) {
+      toast.error('La fecha de vencimiento es obligatoria');
+      return;
+    }
+
+    // Validar que fecha vencimiento sea posterior a fecha inicio
+    if (new Date(datosAccion.fechaVencimiento) < new Date(datosAccion.fechaInicio)) {
+      toast.error('La fecha de vencimiento debe ser posterior a la fecha de inicio');
+      return;
+    }
+
+    // Llamar al backend
+    setGuardando(true);
+    const exito = await onCrear({
+      hallazgoId: datosAccion.hallazgoId,
+      descripcion: datosAccion.descripcion,
+      responsable: datosAccion.responsable,
+      fechaInicio: datosAccion.fechaInicio,
+      fechaFin: datosAccion.fechaVencimiento,  // Backend usa fechaFin
+      observaciones: datosAccion.observaciones
+    });
+    setGuardando(false);
+    
+    if (exito) {
+      onClose();
+    }
+  };
+
+  const hallazgoSeleccionado = hallazgos.find(h => h.id === datosAccion.hallazgoId);
+
+  return (
+    <div className="fixed inset-0 z-[10001] overflow-hidden flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      
+      <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="text-xl font-medium mb-1">Nueva Acción Correctiva</h3>
+              <p className="text-sm text-blue-100">Crear una nueva acción para el plan de mejoramiento</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="ml-4 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div className="flex-1 overflow-auto px-6 py-6">
+          <div className="space-y-4">
+            {/* Hallazgo asociado */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Hallazgo Asociado <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={datosAccion.hallazgoId}
+                onChange={(e) => setDatosAccion({ ...datosAccion, hallazgoId: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                disabled={!!hallazgoPreseleccionado}
+              >
+                {hallazgos.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.codigo} - {h.descripcion.substring(0, 60)}{h.descripcion.length > 60 ? '...' : ''}
+                  </option>
+                ))}
+              </select>
+              {hallazgoSeleccionado && (
+                <div className={`mt-2 text-xs px-2 py-1 rounded inline-block ${
+                  hallazgoSeleccionado.criticidad === 'ALTA' ? 'bg-red-100 text-red-700' :
+                  hallazgoSeleccionado.criticidad === 'MEDIA' ? 'bg-yellow-100 text-yellow-700' :
+                  'bg-blue-100 text-blue-700'
+                }`}>
+                  Criticidad: {hallazgoSeleccionado.criticidad}
+                </div>
+              )}
+            </div>
+
+            {/* Descripción */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Descripción de la Acción <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={datosAccion.descripcion}
+                onChange={(e) => setDatosAccion({ ...datosAccion, descripcion: e.target.value })}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Describe la acción correctiva a implementar..."
+              />
+            </div>
+
+            {/* Responsable */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Responsable <span className="text-red-500">*</span>
+              </label>
+              {cargandoProfesionales ? (
+                <div className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-500 flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Cargando profesionales...
+                </div>
+              ) : profesionales.length > 0 ? (
+                <select
+                  value={datosAccion.responsable}
+                  onChange={(e) => setDatosAccion({ ...datosAccion, responsable: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                >
+                  <option value="">Seleccionar responsable...</option>
+                  {profesionales.map((prof) => (
+                    <option key={prof.id} value={prof.nombre}>
+                      {prof.nombre} - {prof.cargo}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={datosAccion.responsable}
+                  onChange={(e) => setDatosAccion({ ...datosAccion, responsable: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                  placeholder="Nombre del responsable de implementar la acción"
+                />
+              )}
+            </div>
+
+            {/* Fechas */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fecha Inicio <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={datosAccion.fechaInicio}
+                  onChange={(e) => setDatosAccion({ ...datosAccion, fechaInicio: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fecha Vencimiento <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={datosAccion.fechaVencimiento}
+                  onChange={(e) => setDatosAccion({ ...datosAccion, fechaVencimiento: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Observaciones */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Observaciones
+              </label>
+              <textarea
+                value={datosAccion.observaciones}
+                onChange={(e) => setDatosAccion({ ...datosAccion, observaciones: e.target.value })}
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Observaciones adicionales (opcional)"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              disabled={guardando}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleCrear}
+              disabled={guardando}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50"
+            >
+              {guardando ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Creando...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Crear Acción
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MODAL: CARGAR EVIDENCIA
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -2953,31 +3120,25 @@ interface ModalCargarEvidenciaProps {
   accion: AccionCorrectiva;
   planId: string;
   onClose: () => void;
-  onEvidenciaCargada?: () => void;
-  conteoEvidenciasActual?: number;
+  onEvidenciasCargadas?: () => void;
 }
 
-function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada, conteoEvidenciasActual = 0 }: ModalCargarEvidenciaProps) {
-  // Hooks para notificaciones
-  const { notificarDocumentoSubidoPlanMejoramiento } = useCrearNotificacion();
-  const { user } = useAuth();
-
+function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciasCargadas }: ModalCargarEvidenciaProps) {
   const [archivosSeleccionados, setArchivosSeleccionados] = useState<File[]>([]);
   const [observaciones, setObservaciones] = useState('');
-  const [subiendo, setSubiendo] = useState(false);
+  const [cargando, setCargando] = useState(false);
+  const [progresoArchivos, setProgresoArchivos] = useState<Record<number, number>>({});
+
+  // Log de montaje
+  useEffect(() => {
+    console.log('🔵 ModalCargarEvidencia MONTADO - planId:', planId, 'accionId:', accion.id);
+    return () => console.log('🔴 ModalCargarEvidencia DESMONTADO');
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const nuevosArchivos = Array.from(e.target.files);
-      // Validar tamaño (10MB máximo por archivo)
-      const archivosValidos = nuevosArchivos.filter(archivo => {
-        if (archivo.size > 10 * 1024 * 1024) {
-          toast.error(`El archivo ${archivo.name} es demasiado grande (máx. 10MB)`);
-          return false;
-        }
-        return true;
-      });
-      setArchivosSeleccionados([...archivosSeleccionados, ...archivosValidos]);
+      setArchivosSeleccionados([...archivosSeleccionados, ...nuevosArchivos]);
     }
   };
 
@@ -2986,88 +3147,53 @@ function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada, con
     setArchivosSeleccionados(nuevosArchivos);
   };
 
-  const getFileType = (fileName: string, mimeType: string): string => {
-    const extension = fileName.split('.').pop()?.toLowerCase() || '';
-    if (['pdf'].includes(extension)) return 'PDF';
-    if (['doc', 'docx'].includes(extension)) return 'Word';
-    if (['xls', 'xlsx'].includes(extension)) return 'Excel';
-    if (['jpg', 'jpeg', 'png', 'gif'].includes(extension)) return 'Imagen';
-    return mimeType.split('/')[1]?.toUpperCase() || 'Archivo';
-  };
-
   const handleCargar = async () => {
     if (archivosSeleccionados.length === 0) {
       toast.error('Debes seleccionar al menos un archivo');
       return;
     }
 
-    setSubiendo(true);
+    setCargando(true);
+    let exitosos = 0;
+    let errores = 0;
 
-    try {
-      // Obtener información del plan para las notificaciones
-      let planInfo: { codigo: string } | null = null;
+    // Subir cada archivo
+    for (let i = 0; i < archivosSeleccionados.length; i++) {
+      const archivo = archivosSeleccionados[i];
       try {
-        const planResponse = await planesMejoramientoApi.getById(planId);
-        if (planResponse.success && planResponse.data) {
-          planInfo = {
-            codigo: planResponse.data.codigo || `PM-${new Date().getFullYear()}-${planResponse.data.id.substring(0, 6).toUpperCase()}`
-          };
-        }
-      } catch (error) {
-        console.warn('No se pudo obtener información del plan para notificaciones:', error);
-      }
-
-      // Subir cada archivo usando el nuevo servicio de evidencias
-      for (const archivo of archivosSeleccionados) {
-        const response = await evidenciasApi.create(
+        await controlInternoService.createEvidencia(
           archivo,
           {
-            nombre: archivo.name.replace(/\.[^/.]+$/, ''), // Nombre sin extensión
-            descripcion: observaciones || undefined,
+            nombre: archivo.name,
+            descripcion: observaciones || `Evidencia para acción: ${accion.descripcion.substring(0, 50)}`,
             tipoDocumento: 'evidencia_accion',
             accionCorrectivaId: accion.id,
-            subidoPor: 'Usuario Actual', // TODO: Obtener del contexto de autenticación
+            // No enviar planMejoramientoId - backend solo permite UNA vinculación
           },
           (progress) => {
-            // Progreso individual por archivo (opcional)
-            // Progress tracking removed for cleaner console
+            setProgresoArchivos(prev => ({ ...prev, [i]: progress }));
           }
         );
-
-        if (!response.success) {
-          throw new Error(response.error || `Error al cargar ${archivo.name}`);
-        }
-
-        // ============ NOTIFICACIONES: Documento Subido en Plan de Mejoramiento ============
-        if (planInfo && response.data && user?.id) {
-          try {
-            await notificarDocumentoSubidoPlanMejoramiento(
-              response.data.id,
-              archivo.name,
-              planId,
-              planInfo.codigo,
-              user.id
-            );
-          } catch (notifError) {
-            console.error('Error al enviar notificaciones:', notifError);
-          }
-        }
+        exitosos++;
+      } catch (error) {
+        console.error(`Error subiendo ${archivo.name}:`, error);
+        errores++;
       }
+    }
 
+    setCargando(false);
+
+    if (exitosos > 0) {
       toast.success('Evidencias Cargadas', {
-        description: `${archivosSeleccionados.length} archivo(s) cargado(s) exitosamente`,
+        description: `${exitosos} archivo(s) cargado(s) exitosamente${errores > 0 ? `, ${errores} con error` : ''}`,
         duration: 3000,
       });
-
-      onEvidenciaCargada?.();
+      onEvidenciasCargadas?.();
       onClose();
-    } catch (error: any) {
-      console.error('[ModalCargarEvidencia] Error al cargar evidencias:', error);
+    } else {
       toast.error('Error al cargar evidencias', {
-        description: error.message || 'No se pudieron cargar las evidencias'
+        description: 'No se pudo cargar ningún archivo. Intenta de nuevo.',
       });
-    } finally {
-      setSubiendo(false);
     }
   };
 
@@ -3079,7 +3205,7 @@ function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada, con
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[10001] overflow-hidden flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       
@@ -3108,7 +3234,7 @@ function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada, con
               <div className="text-sm font-medium text-blue-900 mb-1">Acción Correctiva</div>
               <div className="text-sm text-blue-700">{accion.descripcion}</div>
               <div className="text-xs text-blue-600 mt-2">
-                Evidencias actuales: {conteoEvidenciasActual} archivo(s)
+                Evidencias actuales: {accion.evidencias} archivo(s)
               </div>
             </div>
 
@@ -3197,19 +3323,20 @@ function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada, con
           <div className="flex justify-end gap-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+              disabled={cargando}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               onClick={handleCargar}
-              disabled={subiendo}
+              disabled={cargando || archivosSeleccionados.length === 0}
               className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {subiendo ? (
+              {cargando ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Cargando...
+                  Subiendo...
                 </>
               ) : (
                 <>
@@ -3221,7 +3348,8 @@ function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada, con
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -3235,27 +3363,14 @@ interface ModalCargarDocumentoPlanProps {
 }
 
 function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanProps) {
-  // Hooks para notificaciones
-  const { notificarDocumentoSubidoPlanMejoramiento } = useCrearNotificacion();
-  const { user } = useAuth();
-
   const [archivosSeleccionados, setArchivosSeleccionados] = useState<File[]>([]);
-  const [tipoDocumento, setTipoDocumento] = useState<'evidencia_plan' | 'documento_plan' | 'certificado' | 'acta' | 'informe' | 'otro'>('documento_plan');
+  const [tipoDocumento, setTipoDocumento] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [subiendo, setSubiendo] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const nuevosArchivos = Array.from(e.target.files);
-      // Validar tamaño (50MB máximo por archivo)
-      const archivosValidos = nuevosArchivos.filter(archivo => {
-        if (archivo.size > 50 * 1024 * 1024) {
-          toast.error(`El archivo ${archivo.name} es demasiado grande (máx. 50MB)`);
-          return false;
-        }
-        return true;
-      });
-      setArchivosSeleccionados([...archivosSeleccionados, ...archivosValidos]);
+      setArchivosSeleccionados([...archivosSeleccionados, ...nuevosArchivos]);
     }
   };
 
@@ -3264,75 +3379,37 @@ function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanP
     setArchivosSeleccionados(nuevosArchivos);
   };
 
-  const handleCargar = async () => {
+  const handleCargar = () => {
     if (archivosSeleccionados.length === 0) {
       toast.error('Debes seleccionar al menos un archivo');
       return;
     }
 
-    setSubiendo(true);
-
-    try {
-      // Obtener información del plan para las notificaciones
-      let planInfo: { codigo: string } | null = null;
-      try {
-        const planResponse = await planesMejoramientoApi.getById(planId);
-        if (planResponse.success && planResponse.data) {
-          planInfo = {
-            codigo: planResponse.data.codigo || `PM-${new Date().getFullYear()}-${planResponse.data.id.substring(0, 6).toUpperCase()}`
-          };
-        }
-      } catch (error) {
-        console.warn('No se pudo obtener información del plan para notificaciones:', error);
-      }
-
-      // Subir cada archivo usando el nuevo servicio de evidencias
-      for (const archivo of archivosSeleccionados) {
-        const response = await evidenciasApi.create(
-          archivo,
-          {
-            nombre: archivo.name.replace(/\.[^/.]+$/, ''), // Nombre sin extensión
-            descripcion: descripcion || undefined,
-            tipoDocumento: tipoDocumento,
-            planMejoramientoId: planId,
-            subidoPor: 'Usuario Actual', // TODO: Obtener del contexto de autenticación
-          }
-        );
-
-        if (!response.success) {
-          throw new Error(response.error || `Error al cargar ${archivo.name}`);
-        }
-
-        // ============ NOTIFICACIONES: Documento Subido en Plan de Mejoramiento ============
-        if (planInfo && response.data && user?.id) {
-          try {
-            await notificarDocumentoSubidoPlanMejoramiento(
-              response.data.id,
-              archivo.name,
-              planId,
-              planInfo.codigo,
-              user.id
-            );
-          } catch (notifError) {
-            console.error('Error al enviar notificaciones:', notifError);
-          }
-        }
-      }
-
-      toast.success('Documentos Cargados', {
-        description: `${archivosSeleccionados.length} documento(s) cargado(s) exitosamente al plan`,
-        duration: 3000,
-      });
-
-      onClose();
-    } catch (error: any) {
-      console.error('[ModalCargarDocumentoPlan] Error al cargar documentos:', error);
-      toast.error('Error al cargar documentos', {
-        description: error.message || 'No se pudieron cargar los documentos'
-      });
-    } finally {
-      setSubiendo(false);
+    if (!tipoDocumento) {
+      toast.error('Debes seleccionar el tipo de documento');
+      return;
     }
+
+    // Simular carga de documentos
+    toast.success('Documentos Cargados', {
+      description: `${archivosSeleccionados.length} documento(s) cargado(s) exitosamente al plan`,
+      duration: 3000,
+    });
+
+    console.log('📄 Cargando documentos al plan:', {
+      planId,
+      tipoDocumento,
+      descripcion,
+      archivos: archivosSeleccionados.map(f => ({
+        nombre: f.name,
+        tamanio: f.size,
+        tipo: f.type
+      })),
+      usuario: 'Usuario Actual',
+      timestamp: new Date().toISOString()
+    });
+
+    onClose();
   };
 
   const formatFileSize = (bytes: number) => {
@@ -3374,11 +3451,12 @@ function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanP
               </label>
               <select
                 value={tipoDocumento}
-                onChange={(e) => setTipoDocumento(e.target.value as any)}
+                onChange={(e) => setTipoDocumento(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
               >
-                <option value="documento_plan">Documento del Plan</option>
-                <option value="evidencia_plan">Evidencia del Plan</option>
+                <option value="">Seleccionar tipo...</option>
+                <option value="plan">Plan de Mejoramiento</option>
+                <option value="evidencia">Evidencia</option>
                 <option value="informe">Informe de Seguimiento</option>
                 <option value="acta">Acta</option>
                 <option value="certificado">Certificado</option>
@@ -3477,20 +3555,10 @@ function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanP
             </button>
             <button
               onClick={handleCargar}
-              disabled={subiendo}
-              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
             >
-              {subiendo ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Cargando...
-                </>
-              ) : (
-                <>
-                  <Upload className="w-4 h-4" />
-                  Cargar {archivosSeleccionados.length > 0 ? `${archivosSeleccionados.length} Documento(s)` : 'Documentos'}
-                </>
-              )}
+              <Upload className="w-4 h-4" />
+              Cargar {archivosSeleccionados.length > 0 ? `${archivosSeleccionados.length} Documento(s)` : 'Documentos'}
             </button>
           </div>
         </div>

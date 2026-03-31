@@ -29,24 +29,14 @@ import { ModalHeaderClean } from './ModalHeaderClean';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
 
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+
 interface ModalAutosProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
   modulo: string;
 }
-
-// Tipos de autos judiciales
-const tiposAuto = [
-  'Auto Admisorio',
-  'Auto de Pruebas',
-  'Auto de Traslado',
-  'Auto de Archivo',
-  'Auto de Nulidad',
-  'Auto de Corrección',
-  'Auto Interlocutorio',
-  'Auto de Sustanciaci��n'
-];
 
 interface Auto {
   id: string;
@@ -56,6 +46,7 @@ interface Auto {
   juzgado: string;
   resumen: string;
   estado: string;
+  estadoColor?: string;
   fechaNotificacion?: string;
   archivoNombre: string;
   archivoUrl: string;
@@ -63,26 +54,23 @@ interface Auto {
 }
 
 export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosProps) {
-  
+  // ✅ Obtener tipos de autos desde configuración
+  const { tiposAutosActivos } = useConfiguracionModulo('defensa-judicial');
+  // Fallback a lista básica si no hay configuración
+  const tiposAuto = tiposAutosActivos.length > 0
+    ? tiposAutosActivos.map(t => t.nombre)
+    : ['Auto Admisorio', 'Auto de Pruebas', 'Auto de Traslado', 'Auto de Archivo', 'Auto de Fallo'];
+
   const [autos, setAutos] = useState<Auto[]>([]);
   const [loading, setLoading] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [busqueda, setBusqueda] = useState('');
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [visorPDFAbierto, setVisorPDFAbierto] = useState(false);
-  const [documentoActual, setDocumentoActual] = useState<typeof autosMock[0] | null>(null);
+  const [documentoActual, setDocumentoActual] = useState<Auto | null>(null);
   const [modalNuevoAutoAbierto, setModalNuevoAutoAbierto] = useState(false);
 
-  // Create Modal State
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [newAutoData, setNewAutoData] = useState({
-    tipo: '',
-    numero: `AUTO-${new Date().getFullYear()}-001`,
-    fechaAuto: new Date().toISOString().split('T')[0],
-    juzgado: 'Juzgado 1° Administrativo',
-    resumen: ''
-  });
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
 
   // Fetch Autos
   const fecthAutos = async () => {
@@ -139,8 +127,19 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
 
     toast.loading('⏳ Descargando...', { id: 'download-auto' });
     try {
-      const response = await fetch(fileUrl);
-      if (!response.ok) throw new Error('Error al descargar el archivo');
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(fileUrl, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -154,7 +153,19 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
       toast.success('✅ Descarga completada', { id: 'download-auto', description: auto.archivoNombre });
     } catch (error) {
       console.error('Download error:', error);
-      toast.error('Error al descargar el archivo', { id: 'download-auto' });
+      // Fallback: intentar descarga directa
+      try {
+        const link = document.createElement('a');
+        link.href = fileUrl;
+        link.setAttribute('download', auto.archivoNombre || `auto-${auto.numero}.pdf`);
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...', { id: 'download-auto' });
+      } catch {
+        toast.error('Error al descargar el archivo', { id: 'download-auto' });
+      }
     }
   };
 
@@ -176,28 +187,7 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
   };
 
   const handleCreateAuto = async () => {
-    if (!selectedFile) {
-      toast.error('Debes adjuntar el archivo del auto');
-      return;
-    }
-    if (!newAutoData.tipo || !newAutoData.numero || !newAutoData.resumen) {
-      toast.error('Por favor completa todos los campos requeridos');
-      return;
-    }
-
-    const toastId = toast.loading('Creando auto procesal...');
-    try {
-      // Use current radicado as ID (or expediente.id if they match, checking types)
-      await legalService.createAuto(expediente.id, newAutoData, selectedFile);
-      toast.success('Auto creado exitosamente', { id: toastId });
-      setIsCreateOpen(false);
-      setSelectedFile(null);
-      // Reset form basic fields maybe?
-      fecthAutos();
-    } catch (error) {
-      console.error(error);
-      toast.error('Error al crear el auto', { id: toastId });
-    }
+    // Deprecated: Logic moved to ModalNuevoAuto
   };
 
 
@@ -252,13 +242,24 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
 
       const url = `${baseUrl}${prefix}/autos/expediente/${radicadoTarget}/download-zip`;
 
-      const response = await fetch(url);
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
 
       if (!response.ok) {
         if (response.status === 404) {
           throw new Error('No se encontraron archivos para descargar');
         }
-        throw new Error('Error al descargar los autos');
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
 
       const blob = await response.blob();
@@ -280,7 +281,22 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
       });
     } catch (error: any) {
       console.error('Error descargando ZIP de autos:', error);
-      toast.error(error.message || 'Error al descargar autos', { id: 'download-autos' });
+      // Fallback: intentar descarga directa
+      try {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        const radicadoTarget = expediente.id || expediente.radicado;
+        const url = `${baseUrl}${prefix}/autos/expediente/${radicadoTarget}/download-zip`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...', { id: 'download-autos' });
+      } catch {
+        toast.error(error.message || 'Error al descargar autos', { id: 'download-autos' });
+      }
     }
   };
 
@@ -324,11 +340,11 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
       default:
         return authService.isSuperAdmin()
     }
-    };
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+      <DialogContent hideCloseButton className="w-full max-w-[95vw] sm:max-w-5xl !max-h-[70vh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">
           Autos Procesales - Expediente {expediente.id}
         </DialogTitle>
@@ -549,15 +565,15 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
 
                           {/* Botón Eliminar */}
                           {hasPermission('delete') && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleEliminarAuto(auto.id, auto.numero)}
-                            title="Eliminar auto"
-                            className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEliminarAuto(auto.id, auto.numero)}
+                              title="Eliminar auto"
+                              className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
                           )}
                         </div>
                       </div>
@@ -598,80 +614,21 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
                 Descargar Todos (ZIP)
               </Button>
               {hasPermission('create') && (
-              <Button
-                onClick={() => {
-                  // Limpiar todos los valores antes de abrir
-                  setNewAutoData({
-                    tipo: '',
-                    numero: `AUTO-${new Date().getFullYear()}-${String(autos.length + 1).padStart(3, '0')}`,
-                    fechaAuto: new Date().toISOString().split('T')[0],
-                    juzgado: 'Juzgado 1° Administrativo',
-                    resumen: ''
-                  });
-                  setSelectedFile(null);
-                  setIsCreateOpen(true);
-                }}
-                className="font-bold text-white"
-                style={{ background: '#F57C00' }}
-              >
-                <Plus className="w-4 h-4 mr-1.5" />
-                Cargar Auto Nuevo
-              </Button>
+                <Button
+                  onClick={() => setModalNuevoAutoAbierto(true)}
+                  className="font-bold text-white"
+                  style={{ background: '#F57C00' }}
+                >
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  Cargar Auto Nuevo
+                </Button>
               )}
             </div>
           </div>
         </div>
-
-        {/* Modal Crear Auto */}
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogContent>
-            <DialogTitle>Crear Nuevo Auto</DialogTitle>
-            <DialogDescription>Registra un nuevo auto procesal en el expediente.</DialogDescription>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>Tipo de Auto</Label>
-                <Select onValueChange={(val) => setNewAutoData({ ...newAutoData, tipo: val })} value={newAutoData.tipo}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona el tipo" />
-                  </SelectTrigger>
-                  <SelectContent className="z-[9999]">
-                    {tiposAuto.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label>Número</Label>
-                  <Input value={newAutoData.numero} onChange={e => setNewAutoData({ ...newAutoData, numero: e.target.value })} />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Fecha</Label>
-                  <Input type="date" value={newAutoData.fechaAuto} onChange={e => setNewAutoData({ ...newAutoData, fechaAuto: e.target.value })} />
-                </div>
-              </div>
-
-              <div className="grid gap-2">
-                <Label>Juzgado</Label>
-                <Input value={newAutoData.juzgado} onChange={e => setNewAutoData({ ...newAutoData, juzgado: e.target.value })} />
-              </div>
-
-              <div className="grid gap-2">
-                <Label>Resumen / Contenido</Label>
-                <Textarea value={newAutoData.resumen} onChange={e => setNewAutoData({ ...newAutoData, resumen: e.target.value })} />
-              </div>
-
-              <div className="grid gap-2">
-                <Label>Archivo del Auto (PDF)</Label>
-                <Input type="file" accept=".pdf,.doc,.docx" onChange={e => setSelectedFile(e.target.files?.[0] || null)} />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-              <Button onClick={handleCreateAuto} disabled={!selectedFile}>Crear Auto</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
       </DialogContent>
+
+
 
       {/* Visor de PDF Corporativo Premium */}
       {visorPDFAbierto && documentoActual && (
@@ -692,7 +649,7 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
         onClose={() => setModalNuevoAutoAbierto(false)}
         expedienteId={expediente.id}
         onGuardar={(nuevoAuto) => {
-          setAutos([nuevoAuto, ...autos]);
+          fecthAutos(); // Recargar lista completa
           setFiltroTipo('TODOS');
           setBusqueda('');
         }}

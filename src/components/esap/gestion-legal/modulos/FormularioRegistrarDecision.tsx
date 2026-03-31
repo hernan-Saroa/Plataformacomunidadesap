@@ -157,10 +157,13 @@ export function FormularioRegistrarDecision({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleCancelar}>
-      <DialogContent hideCloseButton className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0">
-        <DialogDescription className="sr-only">
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[750px] lg:max-w-3xl max-h-[75vh] overflow-hidden flex flex-col p-0 gap-0">
+        <DialogTitle className="sr-only">
           Formulario para registrar una nueva decisión en el proceso disciplinario {procesoId}
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          Registrar nueva decisión o fallo en el proceso disciplinario {procesoId}
         </DialogDescription>
 
         {/* Header Limpio y Usable - ESAP 2025 */}

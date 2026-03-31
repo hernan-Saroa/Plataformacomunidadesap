@@ -13,6 +13,9 @@ export class User {
   @Column()
   password_hash: string;
 
+  @Column({ name: 'id_person', type: 'uuid', nullable: true })
+  id_person: string | null;
+
   @Column({ default: true })
   is_active: boolean;
 
@@ -23,7 +26,7 @@ export class User {
   updated_at: Date;
 
   @OneToOne(() => Person, { cascade: true })
-  @JoinColumn({ name: 'id_tercero' })
+  @JoinColumn({ name: 'id_person' })
   person: Person;
 
   @ManyToMany(() => Role)

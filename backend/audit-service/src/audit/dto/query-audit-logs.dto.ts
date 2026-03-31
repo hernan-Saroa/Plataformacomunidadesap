@@ -40,6 +40,14 @@ export class QueryAuditLogsDto {
   statusCode?: number;
 
   @IsOptional()
+  @IsString()
+  entityName?: string; // Filtrar por nombre de entidad modificada
+
+  @IsOptional()
+  @IsString()
+  entityId?: string; // Filtrar por ID del registro modificado
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber({}, { message: 'limit debe ser un número' })
   @Min(1, { message: 'limit debe ser al menos 1' })

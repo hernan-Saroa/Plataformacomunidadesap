@@ -4,6 +4,97 @@ import { HttpService } from '@nestjs/axios';
 import type { Request, Response } from 'express';
 import { lastValueFrom } from 'rxjs';
 
+const parseIpHeader = (value?: string | string[]): string[] => {
+  const raw = Array.isArray(value) ? value.join(',') : value || '';
+  return String(raw)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const isIpLike = (value: string): boolean => {
+  if (!value) return false;
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(value)) return true;
+  return value.includes(':');
+};
+
+const normalizeSingleIp = (raw?: string): string | null => {
+  if (!raw) return null;
+  let normalized = String(raw).trim();
+  if (!normalized) return null;
+
+  if (normalized.toLowerCase().startsWith('for=')) {
+    normalized = normalized.slice(4).trim();
+  }
+
+  normalized = normalized.replace(/^"+|"+$/g, '');
+  normalized = normalized.split(';')[0]?.trim() || normalized;
+
+  if (normalized.startsWith('[') && normalized.includes(']')) {
+    normalized = normalized.slice(1, normalized.indexOf(']'));
+  }
+
+  normalized = normalized.replace(/^::ffff:/i, '');
+
+  if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(normalized)) {
+    normalized = normalized.split(':')[0];
+  }
+
+  if (!isIpLike(normalized)) return null;
+  return normalized || null;
+};
+
+const isPrivateIp = (ip: string): boolean => {
+  if (!ip) return true;
+  const lower = ip.toLowerCase();
+  if (
+    lower === '::1' ||
+    lower === '::' ||
+    lower.startsWith('fc') ||
+    lower.startsWith('fd') ||
+    lower.startsWith('fe80')
+  ) {
+    return true;
+  }
+
+  const parts = ip.split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
+    return false;
+  }
+
+  const [a, b] = parts;
+  if (a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+
+  return false;
+};
+
+const getClientIp = (req: Request): string => {
+  const candidates = [
+    ...parseIpHeader(req.headers['x-forwarded-for']),
+    ...parseIpHeader(req.headers.forwarded),
+    ...parseIpHeader(req.headers['cf-connecting-ip']),
+    ...parseIpHeader(req.headers['x-real-ip']),
+    ...parseIpHeader(req.headers['x-client-ip']),
+    ...(Array.isArray(req.ips) ? req.ips.map((item) => String(item || '').trim()) : []),
+    typeof req.ip === 'string' ? req.ip.trim() : '',
+    req.socket?.remoteAddress || '',
+  ]
+    .map((candidate) => normalizeSingleIp(candidate))
+    .filter((candidate): candidate is string => Boolean(candidate));
+
+  if (!candidates.length) {
+    return '';
+  }
+
+  const publicIp = candidates.find((candidate) => !isPrivateIp(candidate));
+  return publicIp || candidates[0] || '';
+};
+
 @Injectable()
 export class GatewayService {
   constructor(
@@ -58,22 +149,24 @@ export class GatewayService {
     
     const contentType = (req.headers['content-type'] as string) || '';
     const isMultipart = contentType.toLowerCase().includes('multipart/form-data');
-    const forwardedFor = req.headers['x-forwarded-for'];
-    const forwardedIp = Array.isArray(forwardedFor)
-      ? forwardedFor[0]
-      : typeof forwardedFor === 'string'
-        ? forwardedFor.split(',')[0]
-        : '';
-    const clientIp =
-      forwardedIp?.trim() ||
-      (typeof req.ip === 'string' ? req.ip : '') ||
-      req.socket?.remoteAddress ||
-      '';
+    const clientIp = getClientIp(req);
     
     // Reenviar headers existentes sin modificarlos
     // NO modificar x-forwarded-for ni x-real-ip (eliminado módulo de cambio de IP)
+    const user = (req as any).user;
+    const userHeaders = user
+      ? {
+          'x-user-id': user.userId,
+          'x-user-username': user.username,
+          'x-user-roles': Array.isArray(user.roles)
+            ? (user.roles as any[]).join(',')
+            : user.roles,
+        }
+      : {};
+
     const forwardHeaders = {
       ...req.headers,
+      ...userHeaders,
       host: undefined, // Eliminar host para evitar conflictos
       'x-forwarded-proto': (req.headers['x-forwarded-proto'] as string) || req.protocol,
       ...(clientIp ? { 'x-client-ip': clientIp } : {}),
@@ -100,6 +193,7 @@ export class GatewayService {
             ? {
               maxContentLength: Infinity,
               maxBodyLength: Infinity,
+              timeout: 0,
             }
             : {}),
           // Si esperamos un archivo binario, usar responseType: 'stream' para no cargar todo en memoria

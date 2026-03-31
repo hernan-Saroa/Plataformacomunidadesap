@@ -59,8 +59,8 @@ CREATE TABLE certification.certificate_requests (
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     validation_code character varying(10),
     validation_expires_at timestamp without time zone,
-    department_parent character varying(255),
-    department_son character varying(255)
+    cod_cargo character varying(255),
+    cod_grade character varying(255)
 );
 
 
@@ -347,9 +347,11 @@ CREATE TABLE certification.certificates (
     last_validation timestamp without time zone,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    department_parent character varying(255),
+    cod_cargo character varying(255),
     technical_bonus numeric(12,2) DEFAULT 0,
-    department_son character varying(255)
+    include_salary boolean DEFAULT true,
+    include_technical_bonus boolean DEFAULT false,
+    cod_grade character varying(255)
 );
 
 

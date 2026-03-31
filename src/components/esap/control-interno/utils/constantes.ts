@@ -428,6 +428,139 @@ export const LIMITES = {
   MAX_CARACTERES_OBSERVACION: 2000
 } as const;
 
+// ==================== FÓRMULA DAFP - CÁLCULO DE RIESGO ====================
+// Según DAFP - Guía de Auditoría Interna V6
+// Implementado: 23 Enero 2026
+
+/**
+ * Niveles de Criticidad según DAFP
+ * ALTO: Impacto significativo en objetivos estratégicos
+ * MEDIO: Impacto moderado en procesos operativos
+ * BAJO: Impacto mínimo o localizado
+ */
+export const DAFP_CRITICIDAD = {
+  ALTO: 5,
+  MEDIO: 3,
+  BAJO: 1
+} as const;
+
+/**
+ * Factor de Exposición según DAFP
+ * Basado en número de beneficiarios/afectados
+ * >100: Alto impacto poblacional
+ * 50-100: Impacto medio
+ * <50: Impacto bajo
+ */
+export const DAFP_EXPOSICION = {
+  MAS_100_BENEFICIARIOS: 5,
+  ENTRE_50_100_BENEFICIARIOS: 3,
+  MENOS_50_BENEFICIARIOS: 1
+} as const;
+
+/**
+ * Factores Mitigantes típicos
+ * Número de controles existentes que reducen el riesgo
+ */
+export const DAFP_FACTORES_MITIGANTES = {
+  SIN_CONTROLES: 1,
+  CONTROLES_BASICOS: 2,
+  CONTROLES_MODERADOS: 3,
+  CONTROLES_ROBUSTOS: 4,
+  CONTROLES_COMPLETOS: 5
+} as const;
+
+/**
+ * Calcula el nivel de riesgo según la fórmula DAFP
+ * 
+ * Fórmula: (Criticidad × Factor_Exposición) / Factores_Mitigantes
+ * 
+ * Clasificación resultante:
+ * - ALTO: > 10
+ * - MEDIO: 5-10
+ * - BAJO: < 5
+ * 
+ * @param criticidad - Nivel de criticidad (1, 3, 5)
+ * @param exposicion - Factor de exposición basado en beneficiarios (1, 3, 5)
+ * @param mitigantes - Número de factores mitigantes (1-5)
+ * @returns Valor numérico del riesgo calculado
+ * 
+ * @example
+ * // Riesgo ALTO: criticidad alta, muchos beneficiarios, pocos controles
+ * const riesgoAlto = calcularRiesgoDAFP(5, 5, 1); // 25 = ALTO
+ * 
+ * @example
+ * // Riesgo MEDIO: criticidad media, beneficiarios medios, controles básicos
+ * const riesgoMedio = calcularRiesgoDAFP(3, 3, 2); // 4.5 = MEDIO
+ * 
+ * @example
+ * // Riesgo BAJO: criticidad baja, pocos beneficiarios, controles robustos
+ * const riesgoBajo = calcularRiesgoDAFP(1, 1, 4); // 0.25 = BAJO
+ */
+export function calcularRiesgoDAFP(
+  criticidad: number,
+  exposicion: number,
+  mitigantes: number
+): number {
+  if (mitigantes === 0) {
+    throw new Error('Los factores mitigantes no pueden ser 0');
+  }
+  
+  const riesgo = (criticidad * exposicion) / mitigantes;
+  return Math.round(riesgo * 100) / 100; // Redondear a 2 decimales
+}
+
+/**
+ * Clasifica el nivel de riesgo calculado según DAFP
+ * 
+ * @param valorRiesgo - Valor numérico del riesgo (resultado de calcularRiesgoDAFP)
+ * @returns Clasificación del riesgo: 'ALTO', 'MEDIO', 'BAJO'
+ */
+export function clasificarRiesgoDAFP(valorRiesgo: number): 'ALTO' | 'MEDIO' | 'BAJO' {
+  if (valorRiesgo > 10) return 'ALTO';
+  if (valorRiesgo >= 5) return 'MEDIO';
+  return 'BAJO';
+}
+
+/**
+ * Obtiene el color asociado al nivel de riesgo
+ * 
+ * @param nivelRiesgo - Nivel de riesgo ('ALTO', 'MEDIO', 'BAJO')
+ * @returns Color hexadecimal del riesgo
+ */
+export function obtenerColorRiesgoDAFP(nivelRiesgo: 'ALTO' | 'MEDIO' | 'BAJO'): string {
+  const colores = {
+    ALTO: '#EF4444',    // Rojo
+    MEDIO: '#F59E0B',   // Amarillo/Naranja
+    BAJO: '#10B981'     // Verde
+  };
+  return colores[nivelRiesgo];
+}
+
+/**
+ * Calcula y clasifica el riesgo en un solo paso
+ * 
+ * @param criticidad - Nivel de criticidad (1, 3, 5)
+ * @param exposicion - Factor de exposición (1, 3, 5)
+ * @param mitigantes - Factores mitigantes (1-5)
+ * @returns Objeto con valor, clasificación y color del riesgo
+ */
+export function evaluarRiesgoDAFP(
+  criticidad: number,
+  exposicion: number,
+  mitigantes: number
+) {
+  const valor = calcularRiesgoDAFP(criticidad, exposicion, mitigantes);
+  const clasificacion = clasificarRiesgoDAFP(valor);
+  const color = obtenerColorRiesgoDAFP(clasificacion);
+  
+  return {
+    valor,
+    clasificacion,
+    color,
+    descripcion: `Riesgo ${clasificacion} (${valor})`
+  };
+}
+
 // Exportar todo como un objeto único también
 export default {
   COLORES_ESAP,
@@ -462,5 +595,12 @@ export default {
   TOOLTIPS,
   BUSQUEDA_CONFIG,
   GRAFICOS_CONFIG,
-  LIMITES
+  LIMITES,
+  DAFP_CRITICIDAD,
+  DAFP_EXPOSICION,
+  DAFP_FACTORES_MITIGANTES,
+  calcularRiesgoDAFP,
+  clasificarRiesgoDAFP,
+  obtenerColorRiesgoDAFP,
+  evaluarRiesgoDAFP
 };

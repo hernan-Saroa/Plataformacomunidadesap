@@ -1,7 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  In,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './user.entity';
 import { Person } from './person.entity';
@@ -12,6 +23,7 @@ import { CreatePersonDto } from './dto/create-person.dto';
 @Injectable()
 export class UsersService {
   constructor(
+    private readonly dataSource: DataSource,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(Person) private readonly personRepo: Repository<Person>,
     @InjectRepository(Role) private readonly roleRepo: Repository<Role>,
@@ -33,32 +45,267 @@ export class UsersService {
     });
   }
 
-  async createPersonAndUser(dto: NewPersonDto): Promise<User> {
-    const password_hash = await bcrypt.hash(dto.password, 10);
+  private get schemaName(): string {
+    return process.env.DB_SCHEMA || 'auth';
+  }
 
-    const person = this.personRepo.create({
-      first_name: dto.firstName,
-      last_name: dto.lastName,
-      email: dto.email,
-      phone: dto.phone,
-    });
+  private get personasTableRef(): string {
+    return `"${this.schemaName}"."personas"`;
+  }
 
-    const user = this.userRepo.create({
-      id_user: randomUUID(),
-      username: dto.username,
-      password_hash,
-      person,
-    });
+  private normalizeRequiredText(value: string): string {
+    return value.trim();
+  }
 
-    const savedUser = await this.userRepo.save(user);
+  private normalizeOptionalText(value?: string | null): string {
+    return value?.trim() || '';
+  }
 
-    if (dto.roles && dto.roles.length > 0) {
-      const roles = await this.roleRepo.find({ where: dto.roles.map(name => ({ name })) });
-      savedUser.roles = roles;
-      await this.userRepo.save(savedUser);
+  private normalizeEmail(value: string): string {
+    return value.trim().toLowerCase();
+  }
+
+  private normalizeGender(value?: string | null): string {
+    const normalized = value?.trim().toUpperCase();
+    return normalized || 'N';
+  }
+
+  private async getNextLegacyPersonId(
+    manager: EntityManager,
+  ): Promise<string | null> {
+    const [columnInfo] = await manager.query(
+      `
+        SELECT column_default
+        FROM information_schema.columns
+        WHERE table_schema = $1
+          AND table_name = 'personas'
+          AND column_name = 'id_tercero'
+        LIMIT 1
+      `,
+      [this.schemaName],
+    );
+
+    if (!columnInfo) {
+      return null;
     }
 
-    return savedUser;
+    const columnDefault =
+      typeof columnInfo.column_default === 'string'
+        ? columnInfo.column_default
+        : null;
+
+    if (columnDefault?.includes('nextval')) {
+      const [nextValue] = await manager.query(
+        `SELECT nextval(pg_get_serial_sequence($1, 'id_tercero')) AS next_id`,
+        [`${this.schemaName}.personas`],
+      );
+      return String(nextValue.next_id);
+    }
+
+    await manager.query(`LOCK TABLE ${this.personasTableRef} IN EXCLUSIVE MODE`);
+    const [nextValue] = await manager.query(
+      `SELECT COALESCE(MAX(id_tercero), 0) + 1 AS next_id FROM ${this.personasTableRef}`,
+    );
+
+    return String(nextValue.next_id);
+  }
+
+  private async assertCreateUserUniqueness(
+    manager: EntityManager,
+    email: string,
+    identificationNumber: string,
+  ): Promise<void> {
+    const [existingUser, existingPersonByDocument, existingPersonByEmail] =
+      await Promise.all([
+        manager.getRepository(User).findOne({
+          where: { username: email },
+        }),
+        manager.getRepository(Person).findOne({
+          where: { identification_number: identificationNumber },
+        }),
+        manager.getRepository(Person).findOne({
+          where: { email },
+        }),
+      ]);
+
+    if (existingUser || existingPersonByEmail) {
+      throw new ConflictException(
+        'Ya existe un usuario registrado con ese correo electronico.',
+      );
+    }
+
+    if (existingPersonByDocument) {
+      throw new ConflictException(
+        'Ya existe una persona registrada con ese numero de documento.',
+      );
+    }
+  }
+
+  private async savePerson(
+    manager: EntityManager,
+    data: {
+      firstName: string;
+      lastName: string;
+      identificationNumber: string;
+      identificationType: string;
+      email: string;
+      phone?: string | null;
+      gender?: string | null;
+      idSeccional?: number | null;
+      idSede?: number | null;
+    },
+  ): Promise<Person> {
+    const personRepo = manager.getRepository(Person);
+    const legacyPersonId = await this.getNextLegacyPersonId(manager);
+    const firstName = this.normalizeRequiredText(data.firstName);
+    const lastName = this.normalizeRequiredText(data.lastName);
+
+    return personRepo.save(
+      personRepo.create({
+        id: randomUUID(),
+        idTercero: legacyPersonId,
+        first_name: firstName,
+        last_name: lastName,
+        full_name: `${firstName} ${lastName}`.trim(),
+        identification_number: this.normalizeRequiredText(
+          data.identificationNumber,
+        ),
+        identification_type: this.normalizeRequiredText(data.identificationType),
+        email: this.normalizeEmail(data.email),
+        phone: this.normalizeOptionalText(data.phone),
+        gender: this.normalizeGender(data.gender),
+        idSeccional: data.idSeccional ?? null,
+        idSede: data.idSede ?? null,
+      }),
+    );
+  }
+
+  private async loadUserWithRelations(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<User> {
+    const createdUser = await manager.getRepository(User).findOne({
+      where: { id_user: userId },
+      relations: [
+        'person',
+        'person.seccional',
+        'person.seccional.ubicacion',
+        'person.sede',
+        'person.sede.geopolitica',
+        'roles',
+      ],
+    });
+
+    if (!createdUser) {
+      throw new Error('User not found after creation');
+    }
+
+    return createdUser;
+  }
+
+  private rethrowCreateUserError(error: unknown): never {
+    if (
+      error instanceof ConflictException ||
+      error instanceof BadRequestException
+    ) {
+      throw error;
+    }
+
+    if (error instanceof QueryFailedError) {
+      const driverError = error.driverError as {
+        code?: string;
+        constraint?: string;
+      };
+
+      if (driverError.code === '23503') {
+        if (driverError.constraint === 'fk_personas_seccional') {
+          throw new BadRequestException(
+            'La seccional seleccionada no existe o ya no esta disponible.',
+          );
+        }
+
+        if (driverError.constraint === 'fk_personas_sede') {
+          throw new BadRequestException(
+            'La sede seleccionada no existe o ya no esta disponible.',
+          );
+        }
+
+        throw new BadRequestException(
+          'No fue posible relacionar algunos datos del usuario.',
+        );
+      }
+
+      if (driverError.code === '23505') {
+        throw new ConflictException(
+          'Ya existe un registro con los mismos datos del usuario.',
+        );
+      }
+    }
+
+    throw new InternalServerErrorException(
+      'No fue posible crear el usuario en este momento.',
+    );
+  }
+
+  async createPersonAndUser(dto: NewPersonDto): Promise<User> {
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const normalizedEmail = this.normalizeEmail(dto.email);
+        const normalizedDocument = this.normalizeRequiredText(
+          dto.documentNumber,
+        );
+        const normalizedUsername = this.normalizeRequiredText(dto.username);
+
+        const existingUsername = await manager.getRepository(User).findOne({
+          where: { username: normalizedUsername },
+        });
+        if (existingUsername) {
+          throw new ConflictException(
+            'Ya existe un usuario registrado con ese nombre de usuario.',
+          );
+        }
+
+        await this.assertCreateUserUniqueness(
+          manager,
+          normalizedEmail,
+          normalizedDocument,
+        );
+
+        const passwordHash = await bcrypt.hash(dto.password, 10);
+        const person = await this.savePerson(manager, {
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          identificationNumber: normalizedDocument,
+          identificationType: 'CC',
+          email: normalizedEmail,
+          phone: dto.phone,
+          gender: 'N',
+        });
+
+        const userRepo = manager.getRepository(User);
+        const savedUser = await userRepo.save(
+          userRepo.create({
+            id_user: randomUUID(),
+            username: normalizedUsername,
+            password_hash: passwordHash,
+            id_person: person.id,
+            person,
+          }),
+        );
+
+        if (dto.roles && dto.roles.length > 0) {
+          const roles = await manager.getRepository(Role).find({
+            where: dto.roles.map((name) => ({ name })),
+          });
+          savedUser.roles = roles;
+          await userRepo.save(savedUser);
+        }
+
+        return this.loadUserWithRelations(manager, savedUser.id_user);
+      });
+    } catch (error) {
+      this.rethrowCreateUserError(error);
+    }
   }
 
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
@@ -81,31 +328,64 @@ export class UsersService {
   async findAllPaginated(
     page: number = 1,
     limit: number = 10,
+    filters: { search?: string; status?: 'active' | 'inactive' | 'all'; role?: string } = {},
   ): Promise<{
     users: User[];
     total: number;
     totalActive: number;
     totalBlocked: number;
   }> {
-    // Obtener usuarios paginados con seccional y sede desde persona
-    const [users, total] = await this.userRepo.findAndCount({
-      relations: ['person', 'person.seccional', 'person.seccional.ubicacion', 'person.sede', 'person.sede.geopolitica', 'roles'],
-      skip: (page - 1) * limit,
-      take: limit,
-      order: {
-        created_at: 'DESC',
-      },
-    });
+    const baseQuery = this.userRepo
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.person', 'person')
+      .leftJoinAndSelect('person.seccional', 'seccional')
+      .leftJoinAndSelect('seccional.ubicacion', 'seccionalUbicacion')
+      .leftJoinAndSelect('person.sede', 'sede')
+      .leftJoinAndSelect('sede.geopolitica', 'sedeGeopolitica')
+      .leftJoinAndSelect('user.roles', 'roles')
+      .distinct(true);
 
-    // Contar usuarios activos
-    const totalActive = await this.userRepo.count({
-      where: { is_active: true },
-    });
+    if (filters.search?.trim()) {
+      const search = `%${filters.search.trim()}%`;
+      baseQuery.andWhere(
+        `(
+          person.first_name ILIKE :search OR
+          person.last_name ILIKE :search OR
+          person.full_name ILIKE :search OR
+          person.email ILIKE :search OR
+          person.identification_number ILIKE :search
+        )`,
+        { search },
+      );
+    }
 
-    // Contar usuarios bloqueados
-    const totalBlocked = await this.userRepo.count({
-      where: { is_active: false },
-    });
+    if (filters.status && filters.status !== 'all') {
+      baseQuery.andWhere('user.is_active = :isActive', {
+        isActive: filters.status === 'active',
+      });
+    }
+
+    if (filters.role && filters.role?.trim()) {
+      baseQuery.andWhere('roles.id = :id', { id: filters.role });
+    }
+
+    const pagedQuery = baseQuery
+      .clone()
+      .orderBy('user.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [users, total] = await pagedQuery.getManyAndCount();
+
+    const totalActive = await baseQuery
+      .clone()
+      .andWhere('user.is_active = :activeStatus', { activeStatus: true })
+      .getCount();
+
+    const totalBlocked = await baseQuery
+      .clone()
+      .andWhere('user.is_active = :blockedStatus', { blockedStatus: false })
+      .getCount();
 
     return { users, total, totalActive, totalBlocked };
   }
@@ -124,59 +404,57 @@ export class UsersService {
   }
 
   async createPerson(dto: CreatePersonDto): Promise<User> {
-    // Obtener el próximo id_tercero manualmente (la tabla no usa serial/uuid)
-    const maxIdResult = await this.personRepo
-      .createQueryBuilder('person')
-      .select('MAX(person.id)', 'maxId')
-      .getRawOne();
-    const nextId = parseInt((maxIdResult?.maxId || 0)) + 1;
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const normalizedEmail = this.normalizeEmail(dto.email);
+        const normalizedDocument = this.normalizeRequiredText(
+          dto.identification_number,
+        );
 
+        await this.assertCreateUserUniqueness(
+          manager,
+          normalizedEmail,
+          normalizedDocument,
+        );
 
-    // Crear y guardar persona primero
-    const savedPerson = await this.personRepo.save(
-      this.personRepo.create({
-        id: nextId,
-        first_name: dto.first_name,
-        last_name: dto.last_name,
-        full_name: `${dto.first_name} ${dto.last_name}`,
-        identification_number: dto.identification_number,
-        identification_type: dto.identification_type,
-        email: dto.email,
-        phone: dto.phone || '',
-        gender: dto.gender || '',
-        idSeccional: dto.idSeccional || null,
-        idSede: dto.idSede || null,
-      }),
-    );
+        const savedPerson = await this.savePerson(manager, {
+          firstName: dto.first_name,
+          lastName: dto.last_name,
+          identificationNumber: normalizedDocument,
+          identificationType: dto.identification_type,
+          email: normalizedEmail,
+          phone: dto.phone,
+          gender: dto.gender,
+          idSeccional: dto.idSeccional,
+          idSede: dto.idSede,
+        });
 
-    // Crear usuario usando save() (generamos UUID manualmente para evitar null)
-    const passwordHash = await bcrypt.hash('123456', 10);
+        const passwordHash = await bcrypt.hash('123456', 10);
+        const userRepo = manager.getRepository(User);
+        const savedUser = await userRepo.save(
+          userRepo.create({
+            id_user: randomUUID(),
+            username: normalizedEmail,
+            password_hash: passwordHash,
+            is_active: false,
+            id_person: savedPerson.id,
+            person: savedPerson,
+          }),
+        );
 
-    const user = this.userRepo.create({
-      id_user: randomUUID(),
-      username: dto.email,
-      password_hash: passwordHash,
-      is_active: false,
-      person: savedPerson,
-    });
+        if (dto.roleIds && dto.roleIds.length > 0) {
+          const roles = await manager.getRepository(Role).findBy({
+            id: In(dto.roleIds),
+          });
+          savedUser.roles = roles;
+          await userRepo.save(savedUser);
+        }
 
-    const savedUser = await this.userRepo.save(user);
-
-    // Asignar roles si existen
-    if (dto.roleIds && dto.roleIds.length > 0) {
-      const roles = await this.roleRepo.findByIds(dto.roleIds);
-      savedUser.roles = roles;
-      await this.userRepo.save(savedUser);
+        return this.loadUserWithRelations(manager, savedUser.id_user);
+      });
+    } catch (error) {
+      this.rethrowCreateUserError(error);
     }
-    const createdUser = await this.userRepo.findOne({
-      where: { id_user: savedUser.id_user },
-      relations: ['person', 'person.seccional', 'person.seccional.ubicacion', 'person.sede', 'person.sede.geopolitica', 'roles'],
-    });
-    if (!createdUser) {
-      throw new Error('User not found after creation');
-    }
-
-    return createdUser;
   }
 
   async updatePerson(id: string, dto: Partial<CreatePersonDto>): Promise<User> {
@@ -246,7 +524,7 @@ export class UsersService {
     // Ejecutar la actualización si hay campos para actualizar
     if (setClauses.length > 0) {
       values.push(user.person.id); // Para el WHERE
-      const sql = `UPDATE auth.personas SET ${setClauses.join(', ')} WHERE id_tercero = $${paramIndex}`;
+      const sql = `UPDATE auth.personas SET ${setClauses.join(', ')} WHERE id_person = $${paramIndex}`;
       console.log('📝 Executing SQL:', sql);
       console.log('📝 With values:', values);
 
@@ -256,7 +534,7 @@ export class UsersService {
 
     // Solo actualizar roles si se envían roleIds con elementos
     if (dto.roleIds && dto.roleIds.length > 0) {
-      const roles = await this.roleRepo.findByIds(dto.roleIds);
+      const roles = await this.roleRepo.findBy({ id: In(dto.roleIds) });
       // Actualizar solo la relación de roles, no todo el usuario
       await this.userRepo
         .createQueryBuilder()

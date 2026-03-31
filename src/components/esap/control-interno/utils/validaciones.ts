@@ -423,6 +423,28 @@ export function validarAvanceAccion(avance: number): ResultadoValidacion {
   };
 }
 
+/**
+ * Valida que un plan de mejoramiento cumpla requisitos para considerar la auditoría al 100%:
+ * - Debe tener al menos una acción
+ * - Al menos una acción debe estar completada
+ */
+export function validarPlanParaAuditoriaCompleta(
+  totalAcciones: number,
+  accionesCompletadas: number
+): ResultadoValidacion {
+  const errores: string[] = [];
+  if (totalAcciones < 1) {
+    errores.push('El plan de mejoramiento debe tener al menos una acción.');
+  }
+  if (accionesCompletadas < 1) {
+    errores.push('El plan debe tener al menos una acción completada para considerar la auditoría al 100%.');
+  }
+  return {
+    valido: errores.length === 0,
+    errores
+  };
+}
+
 // ==================== UTILIDADES DE VALIDACIÓN ====================
 
 /**

@@ -2,9 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, TrendingUp, Sparkles, ArrowLeft, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogo } from '../assets/ESAPLogo';
 import { ModalRecuperarContrasena } from './ModalRecuperarContrasena';
 import { authService } from '../../services/api/authService';
+import { de } from 'date-fns/locale';
+
+interface MicrosoftCallbackResponse {
+  code: string;
+  state: string;
+  error?: string;
+  errorDescription?: string;
+}
 
 interface Usuario {
   id: string;
@@ -28,11 +36,107 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
   const [showRecuperarModal, setShowRecuperarModal] = useState(false);
+  const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
+  const [microsoftLoginError, setMicrosoftLoginError] = useState<string | null>(null);
 
   // IMPORTANTE: Forzar tema claro en el login SIEMPRE
   useEffect(() => {
     document.documentElement.classList.remove('dark');
   }, []);
+
+  useEffect(() => {
+    const search = window.location.search;
+    if (!search || (!search.includes('code=') && !search.includes('error='))) return;
+
+    const processMicrosoftCallback = async () => {
+      setIsMicrosoftLoading(true);
+      setMicrosoftLoginError(null);
+      try {
+        const response = parseMicrosoftCallback(window.location.search);
+
+        if (response.error) {
+          throw new Error(resolveMicrosoftErrorMessage(response.error, response.errorDescription));
+        }
+
+        if (!response.code) {
+          throw new Error('Microsoft no retornó código de autorización.');
+        }
+
+        const expectedState = sessionStorage.getItem('ms_oauth_state');
+        if (!expectedState || expectedState !== response.state) {
+          throw new Error('Respuesta inválida de Microsoft (state).');
+        }
+
+        const clientId = import.meta.env.VITE_MICROSOFT_CLIENT_ID as string | undefined;
+        const tenantId = (import.meta.env.VITE_MICROSOFT_TENANT_ID as string | undefined) || 'common';
+        const redirectUri =
+          (import.meta.env.VITE_MICROSOFT_REDIRECT_URI as string | undefined) ||
+          window.location.origin + window.location.pathname;
+        const codeVerifier = sessionStorage.getItem('ms_pkce_verifier');
+
+        if (!clientId || !codeVerifier) {
+          throw new Error('No hay contexto PKCE para completar el login.');
+        }
+
+        const tokenResponse = await exchangeMicrosoftCode({
+          tenantId,
+          clientId,
+          code: response.code,
+          redirectUri,
+          codeVerifier,
+        });
+
+        if (!tokenResponse.id_token) {
+          throw new Error('Microsoft no retornó id_token.');
+        }
+
+        const payload = decodeJwtPayload(tokenResponse.id_token);
+        const email = (payload.preferred_username || payload.email || payload.upn || '').toLowerCase();
+
+        if (!email) {
+          throw new Error('Microsoft no retornó correo electrónico.');
+        }
+
+        const expectedNonce = sessionStorage.getItem('ms_oauth_nonce');
+        if (expectedNonce && payload.nonce && expectedNonce !== payload.nonce) {
+          throw new Error('Respuesta inválida de Microsoft (nonce).');
+        }
+
+        if (!email.endsWith('@esap.edu.co')) {
+          throw new Error('Solo se permiten cuentas institucionales @esap.edu.co.');
+        }
+
+        // Limpiar query de callback y datos temporales
+        history.replaceState(null, '', window.location.pathname);
+        sessionStorage.removeItem('ms_oauth_state');
+        sessionStorage.removeItem('ms_oauth_nonce');
+        sessionStorage.removeItem('ms_pkce_verifier');
+
+        const loginResponse = await authService.loginWithMicrosoft({
+          email,
+          idToken: tokenResponse.id_token,
+        });
+
+        toast.success('Inicio de sesión con Microsoft exitoso', {
+          description: `Bienvenido ${payload.name || email}`,
+          duration: 3500,
+        });
+
+        onLogin(loginResponse.user, loginResponse.accessToken, rememberMe);
+      } catch (error: any) {
+        console.error('Error en callback de Microsoft:', error);
+        setMicrosoftLoginError(error?.message || 'No fue posible completar el inicio de sesión con Microsoft.');
+        toast.error('No fue posible iniciar sesión con Microsoft', {
+          description: error?.message || 'Intenta nuevamente.',
+          duration: 5000,
+        });
+      } finally {
+        setIsMicrosoftLoading(false);
+      }
+    };
+
+    void processMicrosoftCallback();
+  }, [onLogin, rememberMe]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -183,7 +287,62 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   };
 
   const handleSocialLogin = (provider: string) => {
-    toast.info(`Inicio de sesión con ${provider} próximamente disponible`);
+    setMicrosoftLoginError(null);
+
+    if (provider !== 'Microsoft') {
+      toast.info(`Inicio de sesión con ${provider} próximamente disponible`);
+      return;
+    }
+
+    const clientId = import.meta.env.VITE_MICROSOFT_CLIENT_ID as string | undefined;
+    const tenantId = (import.meta.env.VITE_MICROSOFT_TENANT_ID as string | undefined) || 'common';
+    const redirectUri =
+      (import.meta.env.VITE_MICROSOFT_REDIRECT_URI as string | undefined) ||
+      window.location.origin + window.location.pathname;
+
+    if (!clientId) {
+      toast.error('Falta configurar Microsoft OAuth', {
+        description: 'Define VITE_MICROSOFT_CLIENT_ID en tu entorno.',
+      });
+      return;
+    }
+
+    const launchMicrosoftAuth = async () => {
+      try {
+        const state = generateUuid();
+        const nonce = generateUuid();
+        const codeVerifier = generateCodeVerifier();
+        const codeChallenge = await generateCodeChallenge(codeVerifier);
+
+        sessionStorage.setItem('ms_oauth_state', state);
+        sessionStorage.setItem('ms_oauth_nonce', nonce);
+        sessionStorage.setItem('ms_pkce_verifier', codeVerifier);
+
+        const query = new URLSearchParams({
+          client_id: clientId,
+          response_type: 'code',
+          redirect_uri: redirectUri,
+          response_mode: 'query',
+          scope: 'openid profile email',
+          state,
+          nonce,
+          prompt: 'select_account',
+          code_challenge: codeChallenge,
+          code_challenge_method: 'S256',
+        });
+
+        setIsMicrosoftLoading(true);
+        window.location.assign(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${query.toString()}`);
+      } catch (error: any) {
+        console.error('Error iniciando OAuth Microsoft:', error);
+        setIsMicrosoftLoading(false);
+        toast.error('No se pudo iniciar el login con Microsoft', {
+          description: error?.message || 'Revisa la configuración OAuth.',
+        });
+      }
+    };
+
+    void launchMicrosoftAuth();
   };
 
   return (
@@ -206,12 +365,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           >
             {/* Logo - Mobile Only */}
             <div className="lg:hidden flex justify-center mb-6">
-              <img 
-                src={esapLogoWhite} 
-                alt="ESAP Logo" 
-                className="h-10 w-auto object-contain"
-                style={{ filter: 'brightness(0) saturate(100%) invert(28%) sepia(91%) saturate(1448%) hue-rotate(197deg) brightness(91%) contrast(101%)' }}
-              />
+              <ESAPLogo variant="color" className="h-10 w-auto" />
             </div>
 
             {/* Back to Home Button */}
@@ -253,13 +407,22 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
               transition={{ delay: 0.4 }}
               className="mb-5"
             >
+              {microsoftLoginError && (
+                <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {microsoftLoginError}
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={() => handleSocialLogin('Microsoft')}
+                disabled={isLoading || isMicrosoftLoading}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all group"
               >
                 <Building2 className="w-5 h-5 text-gray-600 group-hover:text-gray-900" />
-                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Iniciar sesión con Microsoft</span>
+                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
+                  {isMicrosoftLoading ? 'Conectando con Microsoft...' : 'Iniciar sesión con Microsoft'}
+                </span>
               </button>
             </motion.div>
 
@@ -541,11 +704,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
               transition={{ delay: 0.3 }}
               className="flex items-start"
             >
-              <img 
-                src={esapLogoWhite} 
-                alt="ESAP Logo" 
-                className="h-16 w-auto object-contain drop-shadow-2xl"
-              />
+              <ESAPLogo variant="white" className="h-16 w-auto" />
             </motion.div>
 
             {/* Main Content */}
@@ -605,4 +764,224 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
       />
     </div>
   );
+}
+
+function parseMicrosoftCallback(search: string): MicrosoftCallbackResponse {
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+
+  return {
+    code: params.get('code') || '',
+    state: params.get('state') || '',
+    error: params.get('error') || undefined,
+    errorDescription: params.get('error_description') || undefined,
+  };
+}
+
+function generateUuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  // UUID v4 format
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function generateCodeVerifier(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return base64UrlEncode(bytes);
+}
+
+async function generateCodeChallenge(codeVerifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(codeVerifier);
+  if (typeof crypto !== 'undefined' && crypto.subtle && typeof crypto.subtle.digest === 'function') {
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return base64UrlEncode(new Uint8Array(digest));
+  }
+  return base64UrlEncode(sha256Bytes(data));
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = '';
+  bytes.forEach((b) => {
+    binary += String.fromCharCode(b);
+  });
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function rightRotate(value: number, amount: number): number {
+  return (value >>> amount) | (value << (32 - amount));
+}
+
+function sha256Bytes(input: Uint8Array): Uint8Array {
+  const k = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+  ];
+  const h = [
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+  ];
+
+  const bitLenHi = Math.floor((input.length * 8) / 0x100000000);
+  const bitLenLo = (input.length * 8) >>> 0;
+
+  const withOne = input.length + 1;
+  const paddedLen = ((withOne + 8 + 63) >> 6) << 6;
+  const msg = new Uint8Array(paddedLen);
+  msg.set(input);
+  msg[input.length] = 0x80;
+
+  msg[paddedLen - 8] = (bitLenHi >>> 24) & 0xff;
+  msg[paddedLen - 7] = (bitLenHi >>> 16) & 0xff;
+  msg[paddedLen - 6] = (bitLenHi >>> 8) & 0xff;
+  msg[paddedLen - 5] = bitLenHi & 0xff;
+  msg[paddedLen - 4] = (bitLenLo >>> 24) & 0xff;
+  msg[paddedLen - 3] = (bitLenLo >>> 16) & 0xff;
+  msg[paddedLen - 2] = (bitLenLo >>> 8) & 0xff;
+  msg[paddedLen - 1] = bitLenLo & 0xff;
+
+  const w = new Uint32Array(64);
+
+  for (let offset = 0; offset < msg.length; offset += 64) {
+    for (let i = 0; i < 16; i += 1) {
+      const j = offset + i * 4;
+      w[i] = ((msg[j] << 24) | (msg[j + 1] << 16) | (msg[j + 2] << 8) | msg[j + 3]) >>> 0;
+    }
+
+    for (let i = 16; i < 64; i += 1) {
+      const s0 = rightRotate(w[i - 15], 7) ^ rightRotate(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+      const s1 = rightRotate(w[i - 2], 17) ^ rightRotate(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+    }
+
+    let a = h[0];
+    let b = h[1];
+    let c = h[2];
+    let d = h[3];
+    let e = h[4];
+    let f = h[5];
+    let g = h[6];
+    let hh = h[7];
+
+    for (let i = 0; i < 64; i += 1) {
+      const S1 = rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const temp1 = (hh + S1 + ch + k[i] + w[i]) >>> 0;
+      const S0 = rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const temp2 = (S0 + maj) >>> 0;
+
+      hh = g;
+      g = f;
+      f = e;
+      e = (d + temp1) >>> 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (temp1 + temp2) >>> 0;
+    }
+
+    h[0] = (h[0] + a) >>> 0;
+    h[1] = (h[1] + b) >>> 0;
+    h[2] = (h[2] + c) >>> 0;
+    h[3] = (h[3] + d) >>> 0;
+    h[4] = (h[4] + e) >>> 0;
+    h[5] = (h[5] + f) >>> 0;
+    h[6] = (h[6] + g) >>> 0;
+    h[7] = (h[7] + hh) >>> 0;
+  }
+
+  const out = new Uint8Array(32);
+  for (let i = 0; i < h.length; i += 1) {
+    out[i * 4] = (h[i] >>> 24) & 0xff;
+    out[i * 4 + 1] = (h[i] >>> 16) & 0xff;
+    out[i * 4 + 2] = (h[i] >>> 8) & 0xff;
+    out[i * 4 + 3] = h[i] & 0xff;
+  }
+  return out;
+}
+
+async function exchangeMicrosoftCode(params: {
+  tenantId: string;
+  clientId: string;
+  code: string;
+  redirectUri: string;
+  codeVerifier: string;
+}): Promise<{ id_token?: string }> {
+  const body = new URLSearchParams({
+    client_id: params.clientId,
+    grant_type: 'authorization_code',
+    code: params.code,
+    redirect_uri: params.redirectUri,
+    code_verifier: params.codeVerifier,
+    scope: 'openid profile email',
+  });
+
+  const response = await fetch(
+    `https://login.microsoftonline.com/${params.tenantId}/oauth2/v2.0/token`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body.toString(),
+    },
+  );
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error_description || data.error || 'No se pudo obtener token de Microsoft.');
+  }
+
+  return data as { id_token?: string };
+}
+
+function resolveMicrosoftErrorMessage(errorCode?: string, errorDescription?: string): string {
+  const code = (errorCode || '').toLowerCase();
+
+  const messages: Record<string, string> = {
+    access_denied: 'Cancelaste el inicio de sesión con Microsoft.',
+    temporarily_unavailable: 'Microsoft no está disponible en este momento. Intenta nuevamente en unos minutos.',
+    invalid_request: 'La solicitud de inicio de sesión es inválida. Revisa la configuración de la aplicación.',
+    unauthorized_client: 'La aplicación no está autorizada en Microsoft Entra ID.',
+    interaction_required: 'Microsoft requiere una interacción adicional. Intenta iniciar sesión nuevamente.',
+    login_required: 'Debes autenticarte en Microsoft para continuar.',
+    consent_required: 'Debes autorizar permisos de Microsoft para continuar.',
+  };
+
+  if (messages[code]) {
+    return messages[code];
+  }
+
+  return errorDescription || errorCode || 'No fue posible completar el inicio de sesión con Microsoft.';
+}
+
+function decodeJwtPayload(token: string): Record<string, any> {
+  const parts = token.split('.');
+  if (parts.length < 2) throw new Error('Token de Microsoft inválido.');
+
+  const base64Url = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64Url.padEnd(Math.ceil(base64Url.length / 4) * 4, '=');
+  const decoded = atob(padded);
+  return JSON.parse(decoded) as Record<string, any>;
 }

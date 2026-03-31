@@ -1,250 +1,235 @@
 /**
- * SIGL v5.0 - Design System Tokens
- * Documento base: DISE_O_UX_UI_SIGL_v5_MVP_CORREGIDO.md
- * 
- * ⚠️ ESTOS VALORES SON MANDATORIOS - NO MODIFICAR
+ * Design Tokens SIGL v5.0
+ * Sistema de tokens de diseño centralizado para Gestión Legal
  */
 
-// ⭐ COLORES PRIMARIOS (CAMBIO MANDATORIO v5.0)
+// ============================================================================
+// COLORES
+// ============================================================================
+
 export const SIGL_COLORS = {
-  // Primarios
-  primary: '#0066CC',            // ⚠️ Azul ESAP v5.0 (antes era #003DA5)
-  primaryDark: '#004C99',
-  primaryLight: '#3399FF',
-  primaryHover: '#0052A3',
+  // Colores corporativos ESAP
+  primary: '#003DA5',        // Azul principal ESAP
+  primaryLight: '#2962FF',   // Azul claro
+  primaryDark: '#002C7A',    // Azul oscuro
   
-  // ⭐ SEMÁFORO UNIVERSAL (Aplicar en TODOS los módulos)
-  semaforoVerde: '#28A745',      // > 50% plazo disponible
-  semaforoAmarillo: '#FFC107',   // 25-50% plazo
-  semaforoRojo: '#DC3545',       // < 25% plazo
-  semaforoCritico: '#8B0000',    // ≤ 0 días (con animate-pulse)
+  secondary: '#F57C00',      // Naranja corporativo ESAP
+  secondaryLight: '#FF9800',
+  secondaryDark: '#E65100',
   
-  // ⭐ COLORES POR MÓDULO MVP (Para badges/headers de tab)
-  modDefensaJudicial: '#0066CC',      // MOD-01: Azul
-  modJuzgamiento: '#9C27B0',          // MOD-02: Púrpura
-  modAsesoria: '#FF9800',             // MOD-03: Naranja
-  modBuzonNotif: '#2196F3',           // MOD-04: Azul claro
-  modTerminos: '#607D8B',             // MOD-05: Gris azulado
-  
-  // ⭐ COLORES POR JURISDICCIÓN (MOD-01 específico)
-  jurisdContencioso: '#1976D2',       // Contencioso Administrativo
-  jurisdCivil: '#388E3C',             // Ordinaria Civil
-  jurisdLaboral: '#F57C00',           // Laboral
-  jurisdConstitucional: '#7B1FA2',    // Constitucional
-  
-  // Neutrales (Grises)
-  gris100: '#F8F9FA',
-  gris200: '#E9ECEF',
-  gris300: '#DEE2E6',
-  gris400: '#CED4DA',
-  gris500: '#ADB5BD',
-  gris600: '#6C757D',
-  gris700: '#495057',
-  gris800: '#343A40',
-  gris900: '#212529',
-  
-  // Estados
-  success: '#28A745',
-  warning: '#FFC107',
-  danger: '#DC3545',
-  info: '#17A2B8',
-  
-  // Fondos
+  // Colores de fondo
   bgPrimary: '#FFFFFF',
-  bgSecondary: '#F8F9FA',
-  bgDark: '#212529',
-  bgHover: '#F1F3F5',
-  bgSelected: '#E7F5FF',
+  bgSecondary: '#F9FAFB',
+  bgTertiary: '#F3F4F6',
   
-  // Bordes
-  border: '#DEE2E6',
-  borderDark: '#ADB5BD',
-  borderLight: '#E9ECEF',
+  // Colores de texto
+  textPrimary: '#1F2937',
+  textSecondary: '#6B7280',
+  textTertiary: '#9CA3AF',
+  textDisabled: '#D1D5DB',
   
-  // Texto
-  textPrimary: '#212529',
-  textSecondary: '#6C757D',
-  textMuted: '#ADB5BD',
-  textWhite: '#FFFFFF',
-} as const;
+  // Colores de borde
+  border: '#E5E7EB',
+  borderLight: '#F3F4F6',
+  borderDark: '#D1D5DB',
+  
+  // Colores de estado (semáforo)
+  semaforoVerde: '#10B981',
+  semaforoAmarillo: '#F59E0B',
+  semaforoRojo: '#EF4444',
+  semaforoCritico: '#DC2626',
+  
+  // Colores de notificación
+  success: '#10B981',
+  warning: '#F59E0B',
+  error: '#EF4444',
+  info: '#3B82F6',
+  
+  // Colores de estados específicos
+  draft: '#9CA3AF',
+  pending: '#F59E0B',
+  approved: '#10B981',
+  rejected: '#EF4444',
+  archived: '#6B7280',
+};
 
-// ⭐ ESPACIADO (Sistema de 4px base)
-export const SIGL_SPACING = {
-  xs: 4,      // 4px
-  sm: 8,      // 8px
-  md: 16,     // 16px
-  lg: 24,     // 24px
-  xl: 32,     // 32px
-  xxl: 48,    // 48px
-  xxxl: 64,   // 64px
-} as const;
+// ============================================================================
+// BORDES Y RADIOS
+// ============================================================================
 
-// ⭐ BORDES Y RADIOS
 export const SIGL_BORDERS = {
-  radiusCard: 8,
-  radiusInput: 4,
-  radiusModal: 12,
-  radiusButton: 6,
-  radiusBadge: 4,
-  radiusTab: 6,
+  // Border radius
+  radiusNone: '0px',
+  radiusSm: '4px',
+  radiusMd: '8px',
+  radiusLg: '12px',
+  radiusXl: '16px',
+  radiusFull: '9999px',
   
-  // Tamaños de borde
-  thin: '1px',
-  medium: '2px',
-  thick: '3px',
+  // Border radius específicos por componente
+  radiusButton: '8px',
+  radiusCard: '12px',
+  radiusInput: '8px',
+  radiusModal: '16px',
+  radiusBadge: '6px',
   
-  // Estilos
-  solid: 'solid',
-  dashed: 'dashed',
-  dotted: 'dotted',
-} as const;
+  // Border widths
+  widthNone: '0px',
+  widthThin: '1px',
+  widthMedium: '2px',
+  widthThick: '3px',
+};
 
-// ⭐ SOMBRAS
+// ============================================================================
+// SOMBRAS
+// ============================================================================
+
 export const SIGL_SHADOWS = {
   none: 'none',
-  sm: '0 1px 3px rgba(0,0,0,0.12)',
-  md: '0 2px 8px rgba(0,0,0,0.15)',
-  lg: '0 4px 16px rgba(0,0,0,0.15)',
-  xl: '0 8px 24px rgba(0,0,0,0.20)',
-  hover: '0 4px 12px rgba(0,102,204,0.20)', // Sombra con color primario
-} as const;
+  sm: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+  md: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+  lg: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+  xl: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+  '2xl': '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+  inner: 'inset 0 2px 4px 0 rgba(0, 0, 0, 0.06)',
+  
+  // Sombras específicas
+  card: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+  modal: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+  button: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+  dropdown: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+};
 
-// ⭐ TIPOGRAFÍA (Fuente: Inter de Google Fonts)
-export const SIGL_TYPOGRAPHY = {
-  h1: {
-    fontSize: 32,
-    fontWeight: 700,
-    lineHeight: 1.25,
-  },
-  h2: {
-    fontSize: 24,
-    fontWeight: 600,
-    lineHeight: 1.3,
-  },
-  h3: {
-    fontSize: 20,
-    fontWeight: 600,
-    lineHeight: 1.4,
-  },
-  h4: {
-    fontSize: 18,
-    fontWeight: 600,
-    lineHeight: 1.4,
-  },
-  body: {
-    fontSize: 14,
-    fontWeight: 400,
-    lineHeight: 1.5,
-  },
-  small: {
-    fontSize: 12,
-    fontWeight: 400,
-    lineHeight: 1.5,
-  },
-  micro: {
-    fontSize: 10,
-    fontWeight: 400,
-    lineHeight: 1.5,
-  },
-} as const;
+// ============================================================================
+// ESPACIADO
+// ============================================================================
 
-// ⭐ ALTURAS DE COMPONENTES
+export const SIGL_SPACING = {
+  none: '0px',
+  xs: '4px',
+  sm: '8px',
+  md: '16px',
+  lg: '24px',
+  xl: '32px',
+  '2xl': '40px',
+  '3xl': '48px',
+  '4xl': '64px',
+  '5xl': '80px',
+  
+  // Espaciado específico por componente
+  cardPadding: '24px',
+  buttonPadding: '12px 24px',
+  inputPadding: '10px 12px',
+  modalPadding: '32px',
+  sectionGap: '32px',
+};
+
+// ============================================================================
+// ALTURAS
+// ============================================================================
+
 export const SIGL_HEIGHTS = {
-  inputSm: 32,
-  inputMd: 40,
-  inputLg: 48,
-  buttonSm: 32,
-  buttonMd: 40,
-  buttonLg: 48,
-  navTab: 48,
-  tableRow: 56,
-  cardHeader: 64,
-} as const;
+  buttonSm: '32px',
+  buttonMd: '40px',
+  buttonLg: '48px',
+  
+  inputSm: '32px',
+  inputMd: '40px',
+  inputLg: '48px',
+  
+  navbarHeight: '64px',
+  sidebarWidth: '280px',
+  sidebarCollapsed: '72px',
+};
 
-// ⭐ Z-INDEX (Capas de profundidad)
+// ============================================================================
+// TIPOGRAFÍA
+// ============================================================================
+
+export const SIGL_TYPOGRAPHY = {
+  // Font families
+  fontSans: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  fontMono: '"SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace',
+  
+  // Font sizes
+  textXs: '12px',
+  textSm: '14px',
+  textBase: '16px',
+  textLg: '18px',
+  textXl: '20px',
+  text2Xl: '24px',
+  text3Xl: '30px',
+  text4Xl: '36px',
+  
+  // Font weights
+  weightNormal: 400,
+  weightMedium: 500,
+  weightSemibold: 600,
+  weightBold: 700,
+  
+  // Line heights
+  leadingTight: '1.25',
+  leadingNormal: '1.5',
+  leadingRelaxed: '1.75',
+};
+
+// ============================================================================
+// Z-INDEX
+// ============================================================================
+
 export const SIGL_Z_INDEX = {
   base: 0,
-  dropdown: 100,
-  sticky: 200,
-  fixed: 300,
-  modalBackdrop: 400,
-  modal: 500,
-  popover: 600,
-  tooltip: 700,
-} as const;
+  dropdown: 1000,
+  sticky: 1020,
+  fixed: 1030,
+  modalBackdrop: 1040,
+  modal: 1050,
+  popover: 1060,
+  tooltip: 1070,
+  notification: 1080,
+};
 
-// ⭐ TRANSICIONES
+// ============================================================================
+// TRANSICIONES Y ANIMACIONES
+// ============================================================================
+
 export const SIGL_TRANSITIONS = {
-  fast: '150ms ease-in-out',
-  normal: '250ms ease-in-out',
-  slow: '350ms ease-in-out',
+  fast: '150ms cubic-bezier(0.4, 0, 0.2, 1)',
+  normal: '250ms cubic-bezier(0.4, 0, 0.2, 1)',
+  slow: '350ms cubic-bezier(0.4, 0, 0.2, 1)',
   
-  // Propiedades específicas
-  all: 'all 250ms ease-in-out',
-  color: 'color 150ms ease-in-out',
-  background: 'background-color 150ms ease-in-out',
-  transform: 'transform 250ms ease-in-out',
-  opacity: 'opacity 200ms ease-in-out',
-} as const;
+  // Transiciones específicas
+  button: 'all 250ms cubic-bezier(0.4, 0, 0.2, 1)',
+  modal: 'all 350ms cubic-bezier(0.4, 0, 0.2, 1)',
+  dropdown: 'all 150ms cubic-bezier(0.4, 0, 0.2, 1)',
+};
 
-// ⭐ BREAKPOINTS (Responsive)
+// ============================================================================
+// BREAKPOINTS (para consistencia)
+// ============================================================================
+
 export const SIGL_BREAKPOINTS = {
-  xs: 0,      // Mobile small
-  sm: 576,    // Mobile
-  md: 768,    // Tablet
-  lg: 992,    // Desktop
-  xl: 1200,   // Desktop large
-  xxl: 1400,  // Desktop extra large
-} as const;
+  sm: '640px',
+  md: '768px',
+  lg: '1024px',
+  xl: '1280px',
+  '2xl': '1536px',
+};
 
-// ⭐ ANCHOS MÁXIMOS
-export const SIGL_MAX_WIDTH = {
-  container: 1440,
-  modal: 800,
-  modalLarge: 1200,
-  sidebar: 280,
-  card: 400,
-} as const;
+// ============================================================================
+// EXPORTACIÓN CONSOLIDADA
+// ============================================================================
 
-/**
- * Utilidad para generar sombra de semáforo
- */
-export function getSemaforoShadow(color: string): string {
-  return `0 0 8px ${color}40`; // 40 es 25% de opacidad en hex
-}
-
-/**
- * Utilidad para determinar color de texto según fondo
- */
-export function getTextColor(bgColor: string): string {
-  // Simplificado: colores oscuros usan texto blanco
-  const darkColors = [
-    SIGL_COLORS.primary,
-    SIGL_COLORS.primaryDark,
-    SIGL_COLORS.semaforoCritico,
-    SIGL_COLORS.jurisdConstitucional,
-    SIGL_COLORS.modJuzgamiento,
-  ];
-  
-  return darkColors.includes(bgColor) 
-    ? SIGL_COLORS.textWhite 
-    : SIGL_COLORS.textPrimary;
-}
-
-/**
- * Exportar tokens combinados para uso fácil
- */
 export const SIGL_TOKENS = {
   colors: SIGL_COLORS,
-  spacing: SIGL_SPACING,
   borders: SIGL_BORDERS,
   shadows: SIGL_SHADOWS,
-  typography: SIGL_TYPOGRAPHY,
+  spacing: SIGL_SPACING,
   heights: SIGL_HEIGHTS,
+  typography: SIGL_TYPOGRAPHY,
   zIndex: SIGL_Z_INDEX,
   transitions: SIGL_TRANSITIONS,
   breakpoints: SIGL_BREAKPOINTS,
-  maxWidth: SIGL_MAX_WIDTH,
-} as const;
+};
 
 export default SIGL_TOKENS;

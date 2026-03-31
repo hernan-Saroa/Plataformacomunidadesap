@@ -180,6 +180,8 @@ export enum Permissions {
 
   // Auditoría OCIG
   CONTROL_INTERNO_AUDITORIA_MANAGE = 'control-interno.auditoria.manage',
+  CONTROL_INTERNO_AUDITORIA_VIEW = 'control-interno.auditoria.view',
+  CONTROL_INTERNO_AUDITORIA_CREATE = 'control-interno.auditoria.create',
   CONTROL_INTERNO_AUDITORIA_EDIT = 'control-interno.auditoria.edit',
   CONTROL_INTERNO_AUDITORIA_ADD_AMPLIACION = 'control-interno.auditoria.add.ampliacion',
   CONTROL_INTERNO_AUDITORIA_STATE_CHANGE = 'control-interno.auditoria.state.change',
@@ -189,6 +191,33 @@ export enum Permissions {
   CONTROL_INTERNO_AUDITORIA_ARCHIVE = 'control-interno.auditoria.archive',
   CONTROL_INTERNO_AUDITORIA_DELETE = 'control-interno.auditoria.delete',
   CONTROL_INTERNO_AUDITORIA_NOTAS_CREATE = 'control-interno.auditoria.notas.create',
+  CONTROL_INTERNO_AUDITORIA_NOTAS_DELETE = 'control-interno.auditoria.notas.delete',
+
+  // Hallazgos OCIG
+  CONTROL_INTERNO_HALLAZGOS_MANAGE = 'control-interno.hallazgos.manage',
+  CONTROL_INTERNO_HALLAZGOS_VIEW = 'control-interno.hallazgos.view',
+  CONTROL_INTERNO_HALLAZGOS_CREATE = 'control-interno.hallazgos.create',
+  CONTROL_INTERNO_HALLAZGOS_EDIT = 'control-interno.hallazgos.edit',
+  CONTROL_INTERNO_HALLAZGOS_DELETE = 'control-interno.hallazgos.delete',
+  CONTROL_INTERNO_HALLAZGOS_APPROVE = 'control-interno.hallazgos.approve',
+
+  // Evidencias OCIG
+  CONTROL_INTERNO_EVIDENCIAS_VIEW = 'control-interno.evidencias.view',
+  CONTROL_INTERNO_EVIDENCIAS_CREATE = 'control-interno.evidencias.create',
+  CONTROL_INTERNO_EVIDENCIAS_DELETE = 'control-interno.evidencias.delete',
+  CONTROL_INTERNO_EVIDENCIAS_VALIDATE = 'control-interno.evidencias.validate',
+
+  // Aprobaciones OCIG
+  CONTROL_INTERNO_APROBACIONES_VIEW = 'control-interno.aprobaciones.view',
+  CONTROL_INTERNO_APROBACIONES_CREATE = 'control-interno.aprobaciones.create',
+  CONTROL_INTERNO_APROBACIONES_EDIT = 'control-interno.aprobaciones.edit',
+  CONTROL_INTERNO_APROBACIONES_DELETE = 'control-interno.aprobaciones.delete',
+
+  // Documentos OCIG
+  CONTROL_INTERNO_DOCUMENTOS_VIEW = 'control-interno.documentos.view',
+  CONTROL_INTERNO_DOCUMENTOS_CREATE = 'control-interno.documentos.create',
+  CONTROL_INTERNO_DOCUMENTOS_EDIT = 'control-interno.documentos.edit',
+  CONTROL_INTERNO_DOCUMENTOS_DELETE = 'control-interno.documentos.delete',
 
   // Planeación OCIG
   CONTROL_INTERNO_PLANEACION_MANAGE = 'control-interno.planeacion.manage',
@@ -199,13 +228,35 @@ export enum Permissions {
   CONTROL_INTERNO_PLANEACION_PLAN_CREATE = 'control-interno.planeacion.plan.create',
   CONTROL_INTERNO_PLANEACION_PLAN_EDIT = 'control-interno.planeacion.plan.edit',
 
+  // Plan Anual 5 Roles (Decreto 648/2017)
+  CONTROL_INTERNO_PLAN_ANUAL_VIEW = 'control-interno.plan-anual.view',
+  CONTROL_INTERNO_PLAN_ANUAL_CREATE = 'control-interno.plan-anual.create',
+  CONTROL_INTERNO_PLAN_ANUAL_EDIT = 'control-interno.plan-anual.edit',
+  CONTROL_INTERNO_PLAN_ANUAL_DELETE = 'control-interno.plan-anual.delete',
+  CONTROL_INTERNO_PLAN_ANUAL_APPROVE = 'control-interno.plan-anual.approve',
+  CONTROL_INTERNO_PLAN_ANUAL_ACTIVATE = 'control-interno.plan-anual.activate',
+  CONTROL_INTERNO_PLAN_ANUAL_EXPORT = 'control-interno.plan-anual.export',
+  CONTROL_INTERNO_PLAN_ANUAL_ASSIGN = 'control-interno.plan-anual.assign',
+  CONTROL_INTERNO_PLAN_ANUAL_FOLLOW_UP = 'control-interno.plan-anual.follow-up',
+
   // Planes de Mejoramiento
   CONTROL_INTERNO_PLANES_MEJORAMIENTO_MANAGE = 'control-interno.planes-mejoramiento.manage',
+  CONTROL_INTERNO_PLANES_MEJORAMIENTO_VIEW = 'control-interno.planes-mejoramiento.view',
   CONTROL_INTERNO_PLANES_MEJORAMIENTO_CREATE = 'control-interno.planes-mejoramiento.create',
+  CONTROL_INTERNO_PLANES_MEJORAMIENTO_EDIT = 'control-interno.planes-mejoramiento.edit',
+  CONTROL_INTERNO_PLANES_MEJORAMIENTO_DELETE = 'control-interno.planes-mejoramiento.delete',
+  CONTROL_INTERNO_PLANES_MEJORAMIENTO_APPROVE = 'control-interno.planes-mejoramiento.approve',
+  CONTROL_INTERNO_PLANES_MEJORAMIENTO_FOLLOW_UP = 'control-interno.planes-mejoramiento.follow-up',
 
   // Informes de Ley
   CONTROL_INTERNO_INFORMES_DE_LEY_MANAGE = 'control-interno.informes-de-ley.manage',
+  CONTROL_INTERNO_INFORMES_DE_LEY_VIEW = 'control-interno.informes-de-ley.view',
+  CONTROL_INTERNO_INFORMES_DE_LEY_CREATE = 'control-interno.informes-de-ley.create',
+  CONTROL_INTERNO_INFORMES_DE_LEY_EDIT = 'control-interno.informes-de-ley.edit',
+  CONTROL_INTERNO_INFORMES_DE_LEY_DELETE = 'control-interno.informes-de-ley.delete',
+  CONTROL_INTERNO_INFORMES_DE_LEY_APPROVE = 'control-interno.informes-de-ley.approve',
   CONTROL_INTERNO_INFORMES_DE_LEY_GENERATE = 'control-interno.informes-de-ley.generate',
+  CONTROL_INTERNO_INFORMES_DE_LEY_EXPORT = 'control-interno.informes-de-ley.export',
 
   // Expidientes
   CONTROL_INTERNO_EXPEDIENTES_MANAGE = 'control-interno.expedientes.manage',

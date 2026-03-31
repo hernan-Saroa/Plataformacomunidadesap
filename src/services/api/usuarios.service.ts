@@ -6,7 +6,7 @@
  * URL: /auth/api/v1/backoffice/usuarios -> auth-service:3001/backoffice/usuarios
  */
 
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 import type { PaginatedResponse } from './config';
 import type {
   Usuario,

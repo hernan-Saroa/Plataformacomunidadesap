@@ -6,26 +6,18 @@
 // IMPORTANTE: Vite solo reemplaza accesos ESTÁTICOS a import.meta.env
 // Accesos dinámicos como import.meta.env[key] NO funcionan en build
 
-import { getPublicBaseUrl } from '../../config/environment';
+import { getApiGatewayBaseUrl, getPublicBaseUrl } from '../../config/environment';
 
-// Acceso estático a variables de entorno de Vite
-const VITE_API_URL = import.meta.env.VITE_API_URL as string | undefined;
 const VITE_MODE = import.meta.env.MODE || 'development';
-
-// URLs por ambiente (fallbacks si VITE_API_URL no está definida)
-const API_URLS = {
-  development: 'http://localhost:3000',
-  // En servidor dev usamos la IP; cambiar a https://api.esap.edu.co en prod real
-  production: 'http://4.156.71.181:3000',
-};
+const RUNTIME_GATEWAY_BASE_URL = getApiGatewayBaseUrl();
 
 export const API_CONFIG = {
   // Base URLs por ambiente (URL del API Gateway, sin sufijos)
   // La estructura de endpoints es: /{service}/api/v{version}/{path}
   // Ejemplo: /auth/api/v1/login, /certificados/api/v1/generate
   baseURL: {
-    development: VITE_API_URL || API_URLS.development,
-    production: VITE_API_URL || API_URLS.production,
+    development: RUNTIME_GATEWAY_BASE_URL,
+    production: RUNTIME_GATEWAY_BASE_URL,
   },
 
   // Timeout para requests (30 segundos)
@@ -38,23 +30,11 @@ export const API_CONFIG = {
   },
 } as const;
 
-const getDevBaseURL = (): string => {
-  if (VITE_API_URL) return VITE_API_URL;
-  if (typeof window !== 'undefined' && window.location?.hostname) {
-    const protocol = window.location.protocol || 'http:';
-    return `${protocol}//${window.location.hostname}:3000`;
-  }
-  return API_URLS.development;
-};
-
 /**
  * Obtener la base URL según el ambiente
  */
 export const getBaseURL = (): string => {
   const env = (VITE_MODE === 'production' ? 'production' : 'development') as 'development' | 'production';
-  if (env === 'development') {
-    return getDevBaseURL();
-  }
   return API_CONFIG.baseURL[env];
 };
 

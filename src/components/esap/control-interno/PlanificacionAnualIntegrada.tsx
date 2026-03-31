@@ -970,9 +970,8 @@ export function PlanificacionAnualIntegrada() {
         <div className="flex items-center justify-between">
           <div className="flex-1">
             <div
-              className={`text-center p-4 rounded-lg transition-all cursor-pointer ${
-                tabActivo === 'plan-anual' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
+              className={`text-center p-4 rounded-lg transition-all cursor-pointer ${tabActivo === 'plan-anual' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
               onClick={() => setTabActivo('plan-anual')}
             >
               <Target className={`w-8 h-8 mx-auto mb-2 ${tabActivo === 'plan-anual' ? 'text-white' : 'text-blue-600'}`} />
@@ -985,9 +984,8 @@ export function PlanificacionAnualIntegrada() {
 
           <div className="flex-1">
             <div
-              className={`text-center p-4 rounded-lg transition-all cursor-pointer ${
-                tabActivo === 'universo' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
+              className={`text-center p-4 rounded-lg transition-all cursor-pointer ${tabActivo === 'universo' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
               onClick={() => setTabActivo('universo')}
             >
               <Database className={`w-8 h-8 mx-auto mb-2 ${tabActivo === 'universo' ? 'text-white' : 'text-orange-600'}`} />
@@ -1000,9 +998,8 @@ export function PlanificacionAnualIntegrada() {
 
           <div className="flex-1">
             <div
-              className={`text-center p-4 rounded-lg transition-all cursor-pointer ${
-                tabActivo === 'programa' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
+              className={`text-center p-4 rounded-lg transition-all cursor-pointer ${tabActivo === 'programa' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
               onClick={() => setTabActivo('programa')}
             >
               <CalendarDays className={`w-8 h-8 mx-auto mb-2 ${tabActivo === 'programa' ? 'text-white' : 'text-green-600'}`} />
@@ -1057,11 +1054,10 @@ function TabPlanAnual() {
             return (
               <div
                 key={rol.id}
-                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                  rolSeleccionado === rol.id
+                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${rolSeleccionado === rol.id
                     ? 'border-blue-600 bg-blue-50'
                     : 'border-gray-200 hover:border-blue-300'
-                }`}
+                  }`}
                 onClick={() => setRolSeleccionado(rol.id)}
                 style={{ borderColor: rolSeleccionado === rol.id ? rol.color : undefined }}
               >
@@ -1284,7 +1280,7 @@ function TabUniverso() {
 
   const areasFiltradas = UNIVERSO_AUDITORIAS.filter(area => {
     const matchBusqueda = area.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-                          area.dependencia.toLowerCase().includes(busqueda.toLowerCase());
+      area.dependencia.toLowerCase().includes(busqueda.toLowerCase());
     const matchRiesgo = filtroRiesgo === 'todos' || area.nivelRiesgo === filtroRiesgo;
     const matchEstado = filtroEstado === 'todos' || area.estado === filtroEstado;
     return matchBusqueda && matchRiesgo && matchEstado;
@@ -1519,12 +1515,12 @@ function TabPrograma() {
         setLoading(true);
         console.log('[ProgramaAnual] Cargando auditorías desde BD...');
         const response = await auditoriasApi.getAllKanban();
-        
+
         console.log('[ProgramaAnual] Respuesta recibida:', response);
-        
+
         if (response.success && response.data) {
           console.log('[ProgramaAnual] Total auditorías recibidas:', response.data.length);
-          
+
           // Filtrar solo las del año actual
           const auditoriasAnoActual = response.data.filter((aud: any) => {
             if (!aud.fechaInicio) return false;
@@ -1538,7 +1534,7 @@ function TabPrograma() {
           const auditoriasMapeadas = auditoriasAnoActual.map(mapearAuditoriaACard);
           console.log('[ProgramaAnual] Auditorías mapeadas:', auditoriasMapeadas.length);
           setAuditoriasPrograma(auditoriasMapeadas);
-          
+
           if (auditoriasMapeadas.length === 0) {
             toast.info('No hay auditorías programadas para este año', {
               description: 'Las auditorías aparecerán aquí cuando se programen'
@@ -1726,8 +1722,7 @@ function TabPrograma() {
           </div>
         </Card>
       )}
-      </>
-      )}
+
     </motion.div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Shield,
   LayoutDashboard,
@@ -7,41 +7,41 @@ import {
   FolderOpen,
   Settings,
   FileText,
+  Layers
 } from "lucide-react";
 import { ModuleLayout, MenuItem } from "../shared/ModuleLayout";
 import { ControlInternoProvider } from "./ControlInternoContext";
 import { IntegracionAuditoriasPlanesProvider, useIntegracionAuditoriaPlanes } from "./IntegracionAuditoriasPlanesContext";
-import { useControlInternoPermissions } from "./hooks/useControlInternoPermissions";
+import { ListasChequeoProvider } from "./listas-chequeo/ListasChequeoContext";
+import { HallazgosProvider } from "./HallazgosContext";
+import { TareasProvider } from "./TareasContext";
 import { toast } from "sonner";
-import { planesMejoramientoApi } from "./services/api";
+
+import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
+
+// ✅ HOOK DE BACKEND - Planes de mejoramiento para badge
+import { usePlanesMejoramiento } from './services/usePlanesMejoramiento';
 
 // ━━━━━━━━━━━ MÓDULOS CONSOLIDADOS ━━━━━━━━━━━
 import { GestionAuditoriasKanbanSimple } from "./GestionAuditoriasKanbanSimple";  // DASHBOARD PRINCIPAL
 import { PlanificacionModuleRediseno } from "./PlanificacionModuleRediseno";  // RF001-004
 // ELIMINADO: ProcesoAuditoriaModuleRediseno - Integrado en Expediente del Kanban (RF005-009)
 import { PlanesMejoramientoModuleRediseno } from "./PlanesMejoramientoModuleRediseno";  // RF010-011
-import InformesLeyModulePremium from "./InformesLeyModulePremium";  // RF012 - MÓDULO INDEPENDIENTE
 import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
-// import { RolesYPermisosModulePremium } from "./RolesYPermisosModulePremium";  // RF015 - MÓDULO INDEPENDIENTE - COMENTADO TEMPORALMENTE
 import { ConfiguracionesModulePremium } from "./ConfiguracionesModulePremium";  // VERSIÓN PREMIUM
-import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
+import { ListasChequeoModule } from "./ListasChequeoModule";  // RF007 - Biblioteca (vista 18_feb)
+import { UniversoAuditableUnificado } from "./UniversoAuditableUnificado";  // ✨ NUEVO: Programa de Auditoría (incluye Universo Auditable)
 
 type SeccionActiva =
   | "dashboard"                      // KANBAN DASHBOARD - CENTRO DE COMANDO
-  | "planificacion"                  // RF001-004 (4 tabs)
+  | "universo-auditable"             // ✨ NUEVO: Programa de Auditoría (incluye Universo Auditable)
+  | "plan-operativo"                 // ✨ NUEVO: Plan Anual (independiente)
+  | "listas-chequeo"                 // RF007 - LISTAS DE CHEQUEO DIGITALES
   | "planes-mejoramiento"            // RF010-011 (2 tabs)
-  | "informes-ley"                   // RF012 - MÓDULO INDEPENDIENTE
   | "expedientes"                    // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
-  | "roles-permisos"                 // RF015 - MÓDULO INDEPENDIENTE
   | "config-auditorias";             // RF019-B - Config Auditorías (Tipos + Listas)
 
-interface ControlInternoFullProps {
-  userData?: { roles?: string[] };
-  userRoles?: string[];
-}
-
-export function ControlInternoFull({ userData, userRoles }: ControlInternoFullProps = {}) {
+export function ControlInternoFull() {
   const [seccionActiva, setSeccionActiva] =
     useState<SeccionActiva>("dashboard"); // 🎯 DASHBOARD DE PRIMERAS
   const [navegacionManual, setNavegacionManual] = useState<number>(0); // ← NUEVO: Timestamp de última navegación manual
@@ -49,14 +49,18 @@ export function ControlInternoFull({ userData, userRoles }: ControlInternoFullPr
   return (
     <ControlInternoProvider>
       <IntegracionAuditoriasPlanesProvider>
-        <ControlInternoContent
-          seccionActiva={seccionActiva}
-          setSeccionActiva={setSeccionActiva}
-          navegacionManual={navegacionManual}
-          setNavegacionManual={setNavegacionManual}
-          userData={userData}
-          userRoles={userRoles}
-        />
+        <ListasChequeoProvider>
+          <HallazgosProvider>
+            <TareasProvider>
+              <ControlInternoContent
+                seccionActiva={seccionActiva}
+                setSeccionActiva={setSeccionActiva}
+                navegacionManual={navegacionManual}
+                setNavegacionManual={setNavegacionManual}
+              />
+            </TareasProvider>
+          </HallazgosProvider>
+        </ListasChequeoProvider>
       </IntegracionAuditoriasPlanesProvider>
     </ControlInternoProvider>
   );
@@ -69,193 +73,183 @@ interface ControlInternoContentProps {
   setSeccionActiva: (seccion: SeccionActiva) => void;
   navegacionManual: number;
   setNavegacionManual: (timestamp: number) => void;
-  userData?: { roles?: string[] };
-  userRoles?: string[];
+}
+
+/** Navegación programática al módulo de Listas de Chequeo (desde expediente/Comunicación) */
+interface NavegacionListasChequeo {
+  tabInicial: 'BIBLIOTECA' | 'LISTAS_CHEQUEO';
+  auditoriaId?: string;
 }
 
 function ControlInternoContent({
   seccionActiva,
   setSeccionActiva,
   navegacionManual,
-  setNavegacionManual,
-  userData,
-  userRoles
+  setNavegacionManual
 }: ControlInternoContentProps) {
   const { auditoriaSeleccionada } = useIntegracionAuditoriaPlanes();
-  const [totalPlanesMejoramiento, setTotalPlanesMejoramiento] = useState<number>(0);
-  
-  // ✅ Hook de validación de permisos
-  const { 
-    puedeAcceder, 
-    submódulosAccesibles,
-    rolDetectado 
-  } = useControlInternoPermissions(userRoles, userData);
+  const [navegacionListasChequeo, setNavegacionListasChequeo] = useState<NavegacionListasChequeo | null>(null);
+  const refTabListasChequeo = useRef<NavegacionListasChequeo | null>(null);
+  const [listasChequeoTabActiva, setListasChequeoTabActiva] = useState<'BIBLIOTECA' | 'LISTAS_CHEQUEO'>('BIBLIOTECA');
 
-  // Cargar el contador de planes de mejoramiento
-  useEffect(() => {
-    const cargarContadorPlanes = async () => {
-      try {
-        const response = await planesMejoramientoApi.getAll();
-        if (response.success && response.data) {
-          setTotalPlanesMejoramiento(response.data.length);
-        }
-      } catch (error) {
-        console.error('Error al cargar contador de planes de mejoramiento:', error);
-      }
-    };
-    
-    cargarContadorPlanes();
-    // Recargar cada 30 segundos para mantener el contador actualizado
-    const interval = setInterval(cargarContadorPlanes, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Calcular menuItems dinámicamente con badge y filtrado por permisos
-  const menuItems: MenuItem[] = [
-    // ━━━━━━━━━━━ 1. CENTRO DE COMANDO ━━━━━━━━━━━
-    {
-      id: "dashboard",
-      label: "Auditorías OCIG",
-      subtitle: "Centro de comando integrado",
-      icon: <LayoutDashboard className="w-5 h-5" />,
-      color: "#10B981", // Verde - Principal
-      visible: authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_MANAGE)
-    },
-    
-    // ━━━━━━━━━━━ 2. PLANIFICACIÓN (RF001-004) ━━━━━━━━━━━
-    {
-      id: "planificacion",
-      label: "Planeación OCIG",
-      subtitle: "Plan Anual • Universo • Programa",
-      icon: <ClipboardList className="w-5 h-5" />,
-      color: "#003DA5", // Azul ESAP
-      visible: authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_MANAGE)
-    },
-    
-    // ━━━━━━━━━━━ 3. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
-    {
-      id: "planes-mejoramiento",
-      label: "Planes de Mejoramiento",
-      subtitle: "Formulación • Seguimiento",
-      icon: <AlertTriangle className="w-5 h-5" />,
-      color: "#EF4444", // Rojo - Hallazgos
-      badge: totalPlanesMejoramiento > 0 ? totalPlanesMejoramiento : undefined,
-      visible: authService.hasPermission(Permissions.CONTROL_INTERNO_PLANES_MEJORAMIENTO_MANAGE)
-    },
-    
-    // ━━━━━━━━━━━ 4. INFORMES DE LEY (RF012) ━━━━━━━━━━━
-    {
-      id: "informes-ley",
-      label: "Informes de Ley",
-      subtitle: "Ejecutivo Anual • Pormenorizado • Formatos",
-      icon: <FileText className="w-5 h-5" />,
-      color: "#8B5CF6", // Púrpura - Informes
-      visible: authService.hasPermission(Permissions.CONTROL_INTERNO_INFORMES_DE_LEY_MANAGE)
-    },
-    
-    // ━━━━━━━━━━━ 5. EXPEDIENTES (RF013) ━━━━━━━━━━━
-    {
-      id: "expedientes",
-      label: "Expedientes",
-      subtitle: "Archivo • Búsqueda • Expedientes",
-      icon: <FolderOpen className="w-5 h-5" />,
-      color: "#0891B2", // Cyan - Documental
-      visible: authService.hasPermission(Permissions.CONTROL_INTERNO_EXPEDIENTES_MANAGE)
-    },
-    
-    // ━━━━━━━━━━━ 6. ROLES Y PERMISOS (RF015) ━━━━━━━━━━━
-    // COMENTADO TEMPORALMENTE
-    // {
-    //   id: "roles-permisos",
-    //   label: "Roles y Permisos",
-    //   subtitle: "RBAC • Seguridad • Accesos",
-    //   icon: <Shield className="w-5 h-5" />,
-    //   color: "#DC2626", // Rojo - Seguridad
-    //   visible: puedeAcceder('roles-permisos'),
-    // },
-    
-    // ━━━━━━━━━━━ 7. CONFIGURACIONES ━━━━━━━━━━━
-    {
-      id: "config-auditorias",
-      label: "Configuraciones",
-      subtitle: "Notificaciones • Auditoría • Kanban • Config",
-      icon: <Settings className="w-5 h-5" />,
-      color: "#059669", // Verde oscuro - Config
-      visible: authService.hasPermission(Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE)
-    },
-  ].filter(item => item.visible !== false); // ✅ Filtrar opciones sin acceso
-
-  // ✅ Validar acceso antes de cambiar de sección
-  const handleSectionChange = (section: SeccionActiva) => {
-    if (!puedeAcceder(section)) {
-      toast.error('Acceso denegado', {
-        description: `No tienes permisos para acceder a "${section}"`,
-      });
-      return;
+  const handleNavegarAListasChequeo = (nav: NavegacionListasChequeo | null) => {
+    refTabListasChequeo.current = nav;
+    setNavegacionListasChequeo(nav);
+    if (nav?.tabInicial === 'LISTAS_CHEQUEO') {
+      setListasChequeoTabActiva('LISTAS_CHEQUEO');
     }
-    
-    setSeccionActiva(section);
-    setNavegacionManual(Date.now());
   };
 
-  // ✅ Validar sección inicial al cargar
+  // ✅ HOOK DE PERMISOS - Para filtrar submódulos
+  const { puedeAcceder, esSuperUsuario } = useControlInternoPermissions();
+  
+  // ✅ HOOK DE BACKEND - Total de planes para badge
+  const { planes: planesBackend, loading: loadingPlanes } = usePlanesMejoramiento();
+
+  // Mapeo de IDs de sección a módulos de permisos
+  const MAPEO_SECCION_MODULO: Record<string, string> = {
+    'plan-operativo': 'plan-anual',
+    'universo-auditable': 'planificacion',
+    'dashboard': 'auditorias',
+    'listas-chequeo': 'auditorias', // Usa mismo permiso que auditorías
+    'planes-mejoramiento': 'planes-mejoramiento',
+    'expedientes': 'expedientes',
+    'config-auditorias': 'configuraciones',
+  };
+
+  // Calcular menuItems dinámicamente con badge y filtrado por permisos
+  const menuItems: MenuItem[] = useMemo(() => {
+    const todosLosMenus: MenuItem[] = [
+      // ━━━━━━━━━━━ 1. PLAN ANUAL ━━━━━━━━━━━
+      {
+        id: "plan-operativo",
+        label: "Plan Anual",
+        subtitle: "QUÉ auditar • Plan de trabajo anual",
+        icon: <ClipboardList className="w-5 h-5" />,
+        color: "#2962FF", // Azul corporativo
+      },
+      
+      // ━━━━━━━━━━━ 2. PROGRAMA DE AUDITORÍA ━━━━━━━━━━━
+      {
+        id: "universo-auditable",
+        label: "Programa de Auditoría",
+        subtitle: "DÓNDE auditar • Programa Anual",
+        icon: <Layers className="w-5 h-5" />,
+        color: "#003DA5", // Azul ESAP
+      },
+      
+      // ━━━━━━━━━━━ 3. AUDITORÍAS OCIG ━━━━━━━━━━━
+      {
+        id: "dashboard",
+        label: "Auditorías OCIG",
+        subtitle: "Centro de comando integrado",
+        icon: <LayoutDashboard className="w-5 h-5" />,
+        color: "#10B981", // Verde - Principal
+      },
+      
+      // ━━━━━━━━━━━ 4. BIBLIOTECA (RF007) ━━━━━━━━━━━
+      {
+        id: "listas-chequeo",
+        label: "Biblioteca",
+        subtitle: "Plantillas • Requisitos • Cumplimiento",
+        icon: <FileText className="w-5 h-5" />,
+        color: "#6366F1", // Azul claro - Requisitos
+      },
+      
+      // ━━━━━━━━━━━ 5. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
+      {
+        id: "planes-mejoramiento",
+        label: "Planes de Mejoramiento",
+        subtitle: "Formulación • Seguimiento",
+        icon: <AlertTriangle className="w-5 h-5" />,
+        color: "#EF4444", // Rojo - Hallazgos
+        badge: loadingPlanes ? 0 : planesBackend.length // ✅ Total de planes del backend
+      },
+      
+      // ━━━━━━━━━━━ 6. EXPEDIENTES (RF013) ━━━━━━━━━━━
+      {
+        id: "expedientes",
+        label: "Expedientes",
+        subtitle: "Archivo • Búsqueda • Expedientes",
+        icon: <FolderOpen className="w-5 h-5" />,
+        color: "#0891B2", // Cyan - Documental
+      },
+      
+      // ━━━━━━━━━━━ 7. CONFIGURACIONES ━━━━━━━━━━━
+      {
+        id: "config-auditorias",
+        label: "Configuraciones",
+        subtitle: "Notificaciones • Auditoría • Kanban • Config",
+        icon: <Settings className="w-5 h-5" />,
+        color: "#059669", // Verde oscuro - Config
+      },
+    ];
+
+    // Si es superusuario, mostrar todo
+    if (esSuperUsuario) {
+      return todosLosMenus;
+    }
+
+    // Filtrar menús según permisos
+    return todosLosMenus.filter(menu => {
+      const modulo = MAPEO_SECCION_MODULO[menu.id];
+      if (!modulo) return false;
+      return puedeAcceder(modulo);
+    });
+  }, [esSuperUsuario, puedeAcceder, loadingPlanes, planesBackend.length]);
+
+  // Log de depuración de permisos
   useEffect(() => {
-    if (seccionActiva && !puedeAcceder(seccionActiva)) {
-      // Redirigir al primer submódulo accesible
-      const primeraAccesible = submódulosAccesibles[0] || 'dashboard';
-      if (primeraAccesible && primeraAccesible !== seccionActiva) {
-        setSeccionActiva(primeraAccesible as SeccionActiva);
-        toast.warning('Redirigiendo', {
-          description: `No tienes acceso a esta sección. Mostrando "${primeraAccesible}"`,
-        });
+    console.log('🔐 [ControlInternoFull] Permisos:', {
+      esSuperUsuario,
+      menuItemsCount: menuItems.length,
+      menuIds: menuItems.map(m => m.id),
+      seccionActiva
+    });
+  }, [menuItems, esSuperUsuario, seccionActiva]);
+
+  // Si la sección activa no está en los menús disponibles, navegar a la primera disponible
+  useEffect(() => {
+    if (menuItems.length > 0) {
+      const seccionDisponible = menuItems.some(m => m.id === seccionActiva);
+      if (!seccionDisponible) {
+        console.log('⚠️ [ControlInternoFull] Sección no accesible, redirigiendo a:', menuItems[0].id);
+        setSeccionActiva(menuItems[0].id as SeccionActiva);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Solo ejecutar al montar
+  }, [menuItems, seccionActiva, setSeccionActiva]);
 
   const renderSeccion = () => {
-    // ✅ Validar acceso antes de renderizar
-    if (!puedeAcceder(seccionActiva)) {
-      return (
-        <div className="p-8 text-center">
-          <Shield className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h3 className="text-xl font-bold mb-2">Acceso Denegado</h3>
-          <p className="text-gray-600 mb-2">
-            No tienes permisos para acceder a esta sección.
-          </p>
-          <p className="text-sm text-gray-500">
-            Tu rol detectado: {rolDetectado || 'No asignado'}
-          </p>
-          <p className="text-xs text-gray-400 mt-2">
-            Roles recibidos: {JSON.stringify(userRoles || userData?.roles || [])}
-          </p>
-          {submódulosAccesibles.length > 0 && (
-            <p className="text-sm text-blue-600 mt-4">
-              Submódulos disponibles: {submódulosAccesibles.join(', ')}
-            </p>
-          )}
-        </div>
-      );
-    }
-
     switch (seccionActiva) {
       case "dashboard":
         return <GestionAuditoriasKanbanSimple />;
       
-      case "planificacion":
-        return <PlanificacionModuleRediseno />;
+      case "universo-auditable":
+        return <UniversoAuditableUnificado vigencia={new Date().getFullYear()} />;
+      
+      case "plan-operativo":
+        return <PlanificacionModuleRediseno vista="plan-operativo" onNavegarModulo={(seccion) => setSeccionActiva(seccion as SeccionActiva)} />;
+      
+      case "listas-chequeo": {
+        const nav = navegacionListasChequeo ?? refTabListasChequeo.current;
+        return (
+          <ListasChequeoModule
+            tabActiva={listasChequeoTabActiva}
+            onTabChange={setListasChequeoTabActiva}
+            auditoriaIdFoco={nav?.auditoriaId}
+            onNavegacionAplicada={() => {
+              refTabListasChequeo.current = null;
+              setNavegacionListasChequeo(null);
+            }}
+          />
+        );
+      }
       
       case "planes-mejoramiento":
         return <PlanesMejoramientoModuleRediseno />;
       
-      case "informes-ley":
-        return <InformesLeyModulePremium />;
-      
       case "expedientes":
         return <ExpedientesModulePremium />;
-      
-      case "roles-permisos":
-        return <RolesYPermisosModulePremium />;
       
       case "config-auditorias":
         return <ConfiguracionesModulePremium />;
@@ -274,15 +268,17 @@ function ControlInternoContent({
       menuItems={menuItems}
       activeSection={seccionActiva}
       onSectionChange={(section) => {
-        handleSectionChange(section as SeccionActiva);
+        setSeccionActiva(section as SeccionActiva);
+        setNavegacionManual(Date.now());
+        if (section !== 'listas-chequeo') setListasChequeoTabActiva('BIBLIOTECA');
       }}
     >
       {/* Navegación automática */}
       <MenuDinamicoWrapper
         seccionActiva={seccionActiva}
-        onCambiarSeccion={(section) => handleSectionChange(section as SeccionActiva)}
+        onCambiarSeccion={setSeccionActiva}
         navegacionManual={navegacionManual}
-        puedeAcceder={puedeAcceder}
+        onNavegarAListasChequeo={handleNavegarAListasChequeo}
       />
       
       {/* Contenido de la sección */}
@@ -297,33 +293,32 @@ interface MenuDinamicoWrapperProps {
   seccionActiva: SeccionActiva;
   onCambiarSeccion: (seccion: SeccionActiva) => void;
   navegacionManual: number;
+  onNavegarAListasChequeo: (nav: NavegacionListasChequeo | null) => void;
 }
 
 function MenuDinamicoWrapper({ 
   seccionActiva, 
   onCambiarSeccion,
   navegacionManual,
-  puedeAcceder // ✅ Recibir función de validación
-}: MenuDinamicoWrapperProps & { puedeAcceder: (submodulo: string) => boolean }) {
-  const { auditoriaSeleccionada } = useIntegracionAuditoriaPlanes();
-  const [yaNavego, setYaNavego] = useState(false); // ← Control de navegación única
+  onNavegarAListasChequeo
+}: MenuDinamicoWrapperProps) {
+  const { auditoriaSeleccionada, auditoriaIdParaVerPlan } = useIntegracionAuditoriaPlanes();
+  const [yaNavego, setYaNavego] = useState(false);
+  const [yaNavegoVerPlan, setYaNavegoVerPlan] = useState(false);
 
-  // Navegación automática (solo la primera vez y si tiene permisos)
+  // Navegación: Crear plan (desde auditoría con hallazgos)
   useEffect(() => {
     const tiempoActual = Date.now();
-    const navegacionReciente = (tiempoActual - navegacionManual) < 500; // 500ms después de navegación manual
+    const navegacionReciente = (tiempoActual - navegacionManual) < 500;
     
-    // ✅ Validar que tiene acceso antes de navegar automáticamente
     if (auditoriaSeleccionada && 
         seccionActiva !== 'planes-mejoramiento' && 
         !yaNavego && 
-        !navegacionReciente &&
-        puedeAcceder('planes-mejoramiento')) { // ✅ Nueva validación
+        !navegacionReciente) {
       
-      setYaNavego(true); // ← Marcar que ya navegó
+      setYaNavego(true);
       onCambiarSeccion('planes-mejoramiento');
       
-      // Toast informativo mejorado
       toast.success(
         `Navegando a Planes de Mejoramiento`,
         {
@@ -333,11 +328,49 @@ function MenuDinamicoWrapper({
       );
     }
     
-    // Reset del flag cuando se limpia la selección
     if (!auditoriaSeleccionada && yaNavego) {
       setYaNavego(false);
     }
-  }, [auditoriaSeleccionada, seccionActiva, onCambiarSeccion, navegacionManual, yaNavego, puedeAcceder]);
+  }, [auditoriaSeleccionada, seccionActiva, onCambiarSeccion, navegacionManual, yaNavego]);
+
+  // Navegación: Ir a ver plan existente (sin abrir modal crear)
+  useEffect(() => {
+    const tiempoActual = Date.now();
+    const navegacionReciente = (tiempoActual - navegacionManual) < 500;
+    
+    if (auditoriaIdParaVerPlan && 
+        seccionActiva !== 'planes-mejoramiento' && 
+        !yaNavegoVerPlan && 
+        !navegacionReciente) {
+      
+      setYaNavegoVerPlan(true);
+      onCambiarSeccion('planes-mejoramiento');
+      
+      toast.success('Ir a ver plan', { description: 'Navegando al detalle del plan', duration: 2000 });
+    }
+    
+    if (!auditoriaIdParaVerPlan && yaNavegoVerPlan) {
+      setYaNavegoVerPlan(false);
+    }
+  }, [auditoriaIdParaVerPlan, seccionActiva, onCambiarSeccion, navegacionManual, yaNavegoVerPlan]);
+
+  // ✅ Navegación: Ir a módulo de Listas de Chequeo (desde expediente/Comunicación)
+  useEffect(() => {
+    const handler = (e: CustomEvent<{ seccion: string; auditoriaId?: string }>) => {
+      const seccion = e.detail?.seccion;
+      if (seccion === 'listas-chequeo') {
+        const nav = { tabInicial: 'LISTAS_CHEQUEO' as const, auditoriaId: e.detail?.auditoriaId };
+        onNavegarAListasChequeo(nav);
+        onCambiarSeccion('listas-chequeo');
+        toast.success('Navegando a Listas de Chequeo', {
+          description: e.detail?.auditoriaId ? 'Mostrando listas de la auditoría' : undefined,
+          duration: 2000,
+        });
+      }
+    };
+    window.addEventListener('navegarModuloControlInterno', handler as EventListener);
+    return () => window.removeEventListener('navegarModuloControlInterno', handler as EventListener);
+  }, [onCambiarSeccion, onNavegarAListasChequeo]);
 
   return null;
 }

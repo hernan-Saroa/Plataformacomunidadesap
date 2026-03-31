@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { X, RefreshCw, CheckCircle, AlertTriangle, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalHeaderClean } from '../modulos/ModalHeaderClean';
 
 interface ModalCambiarEtapaCoactivoProps {
@@ -15,7 +15,7 @@ interface ModalCambiarEtapaCoactivoProps {
   proceso: {
     id: string;
     deudor: string;
-    etapaActual: 'IDENTIFICADO' | 'PERSUASIVO' | 'PREJUDICIAL' | 'MANDAMIENTO';
+    etapaActual: 'PERSUASIVA' | 'COACTIVA' | 'MEDIDAS_CAUTELARES' | 'EXCEPCIONES' | 'LIQUIDACION';
   };
   onCambiarEtapa?: (nuevaEtapa: string, justificacion: string) => void;
 }
@@ -33,44 +33,54 @@ export function ModalCambiarEtapaCoactivo({
 
   const etapas = [
     {
-      value: 'IDENTIFICADO' as const,
-      label: 'Identificado',
-      icon: '📋',
-      color: 'gray',
-      bg: 'bg-gray-100',
-      textColor: 'text-gray-800',
-      descripcion: 'Deuda identificada y registrada en el sistema',
-      requisitos: ['Deuda superior a 2 UVT', 'Título ejecutivo válido']
-    },
-    {
-      value: 'PERSUASIVO' as const,
-      label: 'Persuasivo',
+      value: 'PERSUASIVA' as const,
+      label: 'Persuasiva',
       icon: '⚠️',
-      color: 'yellow',
-      bg: 'bg-yellow-100',
-      textColor: 'text-yellow-800',
-      descripcion: 'Cobro persuasivo antes del mandamiento',
-      requisitos: ['Comunicación al deudor enviada', 'Plazo mínimo 15 días']
+      color: 'amber',
+      bg: 'bg-amber-100',
+      textColor: 'text-amber-800',
+      descripcion: 'Búsqueda de pago voluntario',
+      requisitos: ['Notificación del título', 'Plazo para pago voluntario']
     },
     {
-      value: 'PREJUDICIAL' as const,
-      label: 'Prejudicial',
-      icon: '📢',
-      color: 'orange',
-      bg: 'bg-orange-100',
-      textColor: 'text-orange-800',
-      descripcion: 'Etapa prejudicial previa al mandamiento',
-      requisitos: ['Vencimiento del plazo persuasivo', 'Deuda sin pago']
-    },
-    {
-      value: 'MANDAMIENTO' as const,
-      label: 'Mandamiento',
+      value: 'COACTIVA' as const,
+      label: 'Coactiva',
       icon: '⚖️',
+      color: 'indigo',
+      bg: 'bg-indigo-100',
+      textColor: 'text-indigo-800',
+      descripcion: 'Inicio formal con Mandamiento de Pago',
+      requisitos: ['Mandamiento expedido', 'Término de excepciones corriente']
+    },
+    {
+      value: 'MEDIDAS_CAUTELARES' as const,
+      label: 'Medidas Cautelares',
+      icon: '🔒',
+      color: 'purple',
+      bg: 'bg-purple-100',
+      textColor: 'text-purple-800',
+      descripcion: 'Embargos y secuestros',
+      requisitos: ['Resolución de embargo', 'Bienes identificados']
+    },
+    {
+      value: 'EXCEPCIONES' as const,
+      label: 'Excepciones',
+      icon: '🛡️',
       color: 'red',
       bg: 'bg-red-100',
       textColor: 'text-red-800',
-      descripcion: 'Mandamiento de pago ejecutoriado',
-      requisitos: ['Acto administrativo generado', 'Notificación efectuada']
+      descripcion: 'Defensa del deudor',
+      requisitos: ['Excepciones presentadas', 'Resolución que resuelve excepciones']
+    },
+    {
+      value: 'LIQUIDACION' as const,
+      label: 'Liquidación',
+      icon: '💰',
+      color: 'green',
+      bg: 'bg-green-100',
+      textColor: 'text-green-800',
+      descripcion: 'Cálculo final y costas',
+      requisitos: ['Obligación ejecutoriada', 'Liquidación del crédito']
     }
   ];
 
@@ -154,7 +164,7 @@ export function ModalCambiarEtapaCoactivo({
 
             {/* Contenido */}
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              
+
               {/* Etapa Actual */}
               <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
                 <p className="text-xs text-blue-600 font-bold mb-2">Etapa Actual</p>
@@ -177,14 +187,11 @@ export function ModalCambiarEtapaCoactivo({
                 <div className="flex items-center justify-between">
                   {etapas.map((etapa, index) => (
                     <div key={etapa.value} className="flex items-center">
-                      <div className={`flex flex-col items-center ${
-                        etapa.value === proceso.etapaActual ? 'opacity-100' : 'opacity-40'
-                      }`}>
-                        <div className={`w-12 h-12 rounded-full ${
-                          etapa.value === proceso.etapaActual ? etapa.bg : 'bg-gray-200'
-                        } flex items-center justify-center text-xl border-2 ${
-                          etapa.value === proceso.etapaActual ? 'border-purple-600 scale-110' : 'border-gray-300'
+                      <div className={`flex flex-col items-center ${etapa.value === proceso.etapaActual ? 'opacity-100' : 'opacity-40'
                         }`}>
+                        <div className={`w-12 h-12 rounded-full ${etapa.value === proceso.etapaActual ? etapa.bg : 'bg-gray-200'
+                          } flex items-center justify-center text-xl border-2 ${etapa.value === proceso.etapaActual ? 'border-purple-600 scale-110' : 'border-gray-300'
+                          }`}>
                           {etapa.icon}
                         </div>
                         <p className="text-xs font-bold text-gray-900 mt-2 text-center">
@@ -211,16 +218,15 @@ export function ModalCambiarEtapaCoactivo({
                       type="button"
                       onClick={() => setEtapaSeleccionada(etapa.value)}
                       disabled={etapa.value === proceso.etapaActual}
-                      className={`p-4 rounded-lg border-2 transition-all text-left ${
-                        etapaSeleccionada === etapa.value && etapa.value !== proceso.etapaActual
-                          ? 'border-purple-600 bg-purple-50'
-                          : etapa.value === proceso.etapaActual
+                      className={`p-4 rounded-lg border-2 transition-all text-left ${etapaSeleccionada === etapa.value && etapa.value !== proceso.etapaActual
+                        ? 'border-purple-600 bg-purple-50'
+                        : etapa.value === proceso.etapaActual
                           ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
                           : 'border-gray-300 bg-white hover:border-gray-400'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div 
+                        <div
                           className={`w-12 h-12 ${etapa.bg} rounded-lg flex items-center justify-center text-2xl`}
                         >
                           {etapa.icon}
@@ -255,9 +261,8 @@ export function ModalCambiarEtapaCoactivo({
 
               {/* Indicador de Cambio */}
               {etapaSeleccionada !== proceso.etapaActual && (
-                <div className={`p-4 rounded-lg border-2 ${
-                  esAvance ? 'bg-green-50 border-green-200' : 'bg-orange-50 border-orange-200'
-                }`}>
+                <div className={`p-4 rounded-lg border-2 ${esAvance ? 'bg-green-50 border-green-200' : 'bg-orange-50 border-orange-200'
+                  }`}>
                   <div className="flex items-center gap-3">
                     {esAvance ? (
                       <CheckCircle className="w-5 h-5 text-green-600" />
@@ -265,15 +270,13 @@ export function ModalCambiarEtapaCoactivo({
                       <AlertTriangle className="w-5 h-5 text-orange-600" />
                     )}
                     <div>
-                      <p className={`text-sm font-bold ${
-                        esAvance ? 'text-green-900' : 'text-orange-900'
-                      }`}>
+                      <p className={`text-sm font-bold ${esAvance ? 'text-green-900' : 'text-orange-900'
+                        }`}>
                         {esAvance ? 'Avance de Etapa' : 'Retroceso de Etapa'}
                       </p>
-                      <p className={`text-xs mt-1 ${
-                        esAvance ? 'text-green-700' : 'text-orange-700'
-                      }`}>
-                        {esAvance 
+                      <p className={`text-xs mt-1 ${esAvance ? 'text-green-700' : 'text-orange-700'
+                        }`}>
+                        {esAvance
                           ? 'El proceso avanzará en el flujo coactivo normal.'
                           : 'El proceso retrocederá. Asegúrese de justificar este movimiento.'
                         }
@@ -299,9 +302,8 @@ export function ModalCambiarEtapaCoactivo({
               </div>
 
               {/* Confirmación */}
-              <div className={`p-4 rounded-lg border-2 ${
-                esRetroceso ? 'bg-red-50 border-red-300' : 'bg-purple-50 border-purple-200'
-              }`}>
+              <div className={`p-4 rounded-lg border-2 ${esRetroceso ? 'bg-red-50 border-red-300' : 'bg-purple-50 border-purple-200'
+                }`}>
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
@@ -310,15 +312,13 @@ export function ModalCambiarEtapaCoactivo({
                     className="mt-1 w-5 h-5 border-2 border-purple-400 rounded"
                   />
                   <div>
-                    <p className={`text-sm font-bold ${
-                      esRetroceso ? 'text-red-900' : 'text-purple-900'
-                    }`}>
+                    <p className={`text-sm font-bold ${esRetroceso ? 'text-red-900' : 'text-purple-900'
+                      }`}>
                       Confirmo el cambio de etapa
                     </p>
-                    <p className={`text-xs mt-1 ${
-                      esRetroceso ? 'text-red-700' : 'text-purple-700'
-                    }`}>
-                      He verificado los requisitos y entiendo que este cambio quedará registrado 
+                    <p className={`text-xs mt-1 ${esRetroceso ? 'text-red-700' : 'text-purple-700'
+                      }`}>
+                      He verificado los requisitos y entiendo que este cambio quedará registrado
                       en el historial del proceso{esRetroceso ? ' y requiere supervisión especial' : ''}.
                     </p>
                   </div>
@@ -338,9 +338,9 @@ export function ModalCambiarEtapaCoactivo({
                 <button
                   type="submit"
                   disabled={
-                    isSubmitting || 
-                    etapaSeleccionada === proceso.etapaActual || 
-                    !justificacion.trim() || 
+                    isSubmitting ||
+                    etapaSeleccionada === proceso.etapaActual ||
+                    !justificacion.trim() ||
                     !confirmarCambio
                   }
                   className="px-4 py-2.5 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"

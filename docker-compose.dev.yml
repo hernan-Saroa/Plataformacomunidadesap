@@ -13,8 +13,10 @@ services:
       args:
         # Nueva estructura de URLs: /{service}/api/v{version}/{path}
         # Ejemplo: /auth/api/v1/users
-        VITE_API_URL: "http://4.156.71.181:3000"
+        VITE_API_URL: "http://4.156.71.181/services"
         VITE_ONLYOFFICE_URL: "http://4.156.71.181:9000"
+        VITE_MICROSOFT_TENANT_ID: ${VITE_MICROSOFT_TENANT_ID}
+        VITE_MICROSOFT_CLIENT_ID: ${VITE_MICROSOFT_CLIENT_ID}
     container_name: superapp-frontend
     ports:
       - "80:80"
@@ -24,6 +26,8 @@ services:
     networks:
       - superapp-net
     restart: unless-stopped
+    volumes:
+      - ./backend/certification-service/uploads:/usr/share/nginx/uploads:ro
 
   # ============ ONLYOFFICE DOCUMENT SERVER ============
   onlyoffice:
@@ -49,6 +53,9 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+
+      # JWT - debe igualar al auth-service para validar tokens
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
 
       # CORS - Permitir acceso desde el frontend
       CORS_ORIGIN: "http://4.156.71.181"
@@ -144,6 +151,9 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: academic_registration
 
+      # JWT - debe coincidir con auth-service y api-gateway
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service:3009
@@ -175,6 +185,9 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: academic_work_plan
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
     ports:
@@ -205,8 +218,17 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: certification
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+      ORACLE_FNC_ENABLED: ${ORACLE_FNC_ENABLED:-false}
+      ORACLE_FNC_USER: ${ORACLE_FNC_USER:-}
+      ORACLE_FNC_PASSWORD: ${ORACLE_FNC_PASSWORD:-}
+      ORACLE_FNC_CONNECT_STRING: ${ORACLE_FNC_CONNECT_STRING:-}
+      ORACLE_FNC_SCHEMA: ${ORACLE_FNC_SCHEMA:-USRINTEGRACION}
+      ORACLE_FNC_VIEW: ${ORACLE_FNC_VIEW:-VW_INTEGRACIONFNC}
     ports:
       - "3004:3004"
     volumes:
@@ -237,8 +259,12 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: internal_disciplinary_control
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+      NOTIFICATION_SERVICE_URL: http://notifications-service:3009
     ports:
       - "3005:3005"
     depends_on:
@@ -266,6 +292,9 @@ services:
       DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
       DB_SCHEMA: interoperability
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
@@ -296,6 +325,9 @@ services:
       DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
       DB_SCHEMA: internal_institutional_control
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
@@ -330,6 +362,9 @@ services:
       DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
       DB_SCHEMA: legal_management
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
       
       
       AZURE_TENANT_ID: ${AZURE_TENANT_ID}
@@ -367,6 +402,9 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: notifications
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
+
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USER}
@@ -403,6 +441,9 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: travel_expenses
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
     ports:
@@ -431,6 +472,9 @@ services:
       DB_USER: postgres
       DB_PASSWORD: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
     ports:
       - "3011:3011"
     depends_on:
@@ -475,6 +519,40 @@ services:
       - superapp-net
     command: redis-server --appendonly yes
 
+  # ============ SONARQUBE ============
+  sonarqube:
+    image: sonarqube:10.5-community
+    container_name: sonarqube
+    restart: unless-stopped
+    ports:
+      - "9090:9000"
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonarqube_db:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: sonar
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    depends_on:
+      - sonarqube_db
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    networks:
+      - superapp-net
+
+  sonarqube_db:
+    image: postgres:15
+    container_name: sonarqube_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: sonar
+      POSTGRES_DB: sonar
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    networks:
+      - superapp-net
+
 networks:
   superapp-net:
     driver: bridge
@@ -488,3 +566,7 @@ volumes:
     name: esap-onlyoffice-data-dev
   onlyoffice-logs:
     name: esap-onlyoffice-logs-dev
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+  postgresql_data:

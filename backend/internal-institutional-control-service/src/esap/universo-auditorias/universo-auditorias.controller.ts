@@ -3,13 +3,19 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { Permissions } from '../../auth/decorators/permissions.decorator';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import { UniversoAuditoriasService } from './universo-auditorias.service';
 import { CreateProcesoAuditableDto } from './dto/create-proceso-auditable.dto';
 import { UpdateProcesoAuditableDto } from './dto/update-proceso-auditable.dto';
@@ -23,12 +29,15 @@ export class UniversoAuditoriasController {
    * Obtiene todos los procesos auditables con filtros opcionales
    */
   @Get('procesos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   findAll(
     @Query('tipo') tipo?: string,
     @Query('macroproceso') macroproceso?: string,
     @Query('nivelRiesgo') nivelRiesgo?: string,
     @Query('territorial') territorial?: string,
     @Query('search') search?: string,
+    @Query('soloActivos') soloActivos?: string,
   ) {
     return this.universoAuditoriasService.findAll({
       tipo,
@@ -36,6 +45,7 @@ export class UniversoAuditoriasController {
       nivelRiesgo,
       territorial,
       search,
+      soloActivos: soloActivos !== 'false',
     });
   }
 
@@ -44,6 +54,8 @@ export class UniversoAuditoriasController {
    * Obtiene un proceso auditable por ID
    */
   @Get('procesos/:id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   findOne(@Param('id') id: string) {
     return this.universoAuditoriasService.findOne(id);
   }
@@ -53,6 +65,8 @@ export class UniversoAuditoriasController {
    * Crea un nuevo proceso auditable
    */
   @Post('procesos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_CREATE)
   @HttpCode(HttpStatus.CREATED)
   create(@Body() createDto: CreateProcesoAuditableDto) {
     return this.universoAuditoriasService.create(createDto);
@@ -63,8 +77,32 @@ export class UniversoAuditoriasController {
    * Actualiza un proceso auditable existente
    */
   @Put('procesos/:id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   update(@Param('id') id: string, @Body() updateDto: UpdateProcesoAuditableDto) {
     return this.universoAuditoriasService.update(id, updateDto);
+  }
+
+  /**
+   * PATCH /universo-auditorias/procesos/:id/inactivar
+   * Inactiva un proceso (sin eliminar historial)
+   */
+  @Patch('procesos/:id/inactivar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
+  inactivar(@Param('id') id: string) {
+    return this.universoAuditoriasService.inactivar(id);
+  }
+
+  /**
+   * PATCH /universo-auditorias/procesos/:id/activar
+   * Reactiva un proceso
+   */
+  @Patch('procesos/:id/activar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
+  activar(@Param('id') id: string) {
+    return this.universoAuditoriasService.activar(id);
   }
 
   /**
@@ -72,6 +110,8 @@ export class UniversoAuditoriasController {
    * Elimina un proceso auditable
    */
   @Delete('procesos/:id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.universoAuditoriasService.delete(id);
@@ -82,6 +122,8 @@ export class UniversoAuditoriasController {
    * Obtiene la evaluación de riesgo de un proceso
    */
   @Get('procesos/:id/riesgo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   getEvaluacionRiesgo(@Param('id') id: string) {
     return this.universoAuditoriasService.getEvaluacionRiesgo(id);
   }
@@ -91,6 +133,8 @@ export class UniversoAuditoriasController {
    * Evalúa el riesgo de un proceso
    */
   @Post('procesos/:id/riesgo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
   evaluarRiesgo(@Param('id') id: string, @Body() evaluacionRiesgo: any) {
     return this.universoAuditoriasService.evaluarRiesgo(id, evaluacionRiesgo);
   }
@@ -100,6 +144,8 @@ export class UniversoAuditoriasController {
    * Obtiene la matriz de riesgo (agrupada por nivel)
    */
   @Get('matriz-riesgo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   getMatrizRiesgo() {
     return this.universoAuditoriasService.getMatrizRiesgo();
   }
@@ -109,6 +155,8 @@ export class UniversoAuditoriasController {
    * Obtiene la priorización de auditorías por años
    */
   @Get('priorizacion')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
   getPriorizacion() {
     return this.universoAuditoriasService.getPriorizacion();
   }

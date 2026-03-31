@@ -1,22 +1,20 @@
 /**
- * ============================================
- * FOOTER GOV.CO - NORMATIVA OFICIAL
- * ============================================
- * 
- * Footer conforme a las normativas del Portal Único del Estado Colombiano GOV.CO
- * Basado en el estándar del Ministerio del Interior y otras entidades públicas
- * 
- * Cumple con:
- * - Ley 1712 de 2014 (Transparencia y Acceso a la Información Pública)
- * - Decreto 1078 de 2015 (Portal Único del Estado Colombiano)
- * - Guía de Estilo GOV.CO
+ * FooterGovCo - Footer estilo gov.co para servicios públicos
+ * Cumple con estándares del gobierno colombiano
  */
 
-import { MapPin, Phone, Mail, ExternalLink, Facebook, Twitter, Youtube, Instagram } from 'lucide-react';
-import esapLogoBlue from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
-import govCoLogo from 'figma:asset/23bb1d229a4038c5c38dbcd756f8efeb87ac4b2f.png';
+import React from 'react';
+import { ExternalLink, Phone, Mail, MapPin, Facebook, Twitter, Youtube, Instagram } from 'lucide-react';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
-export function FooterGovCo() {
+// Logo GOV.CO oficial (placeholder - en producción se usaría el oficial)
+const LOGO_GOVCO_SVG = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"%3E%3Ctext x="10" y="25" font-family="Arial" font-size="18" font-weight="bold" fill="%23004884"%3EGOV.CO%3C/text%3E%3C/svg%3E';
+
+interface FooterGovCoProps {
+  variant?: 'light' | 'dark';
+}
+
+export function FooterGovCo({ variant = 'light' }: FooterGovCoProps) {
   const sedes = [
     {
       nombre: 'Sede Principal - Bogotá',
@@ -54,10 +52,9 @@ export function FooterGovCo() {
               <p className="text-sm text-gray-600">ESAP - Entidad adscrita al Departamento Administrativo de la Función Pública</p>
             </div>
             <div className="flex items-center gap-4">
-              <img 
-                src={esapLogoBlue} 
-                alt="ESAP Logo" 
-                className="h-16 w-auto object-contain"
+              <ESAPLogo 
+                variant="color"
+                className="h-16 w-auto"
               />
             </div>
           </div>
@@ -175,7 +172,7 @@ export function FooterGovCo() {
               {/* Logo Oficial GOV.CO */}
               <div className="bg-white rounded-lg px-4 py-2.5 flex items-center">
                 <img 
-                  src={govCoLogo} 
+                  src={LOGO_GOVCO_SVG} 
                   alt="GOV.CO - Portal Único del Estado Colombiano" 
                   className="h-8 w-auto object-contain"
                 />
@@ -191,7 +188,7 @@ export function FooterGovCo() {
               className="bg-white hover:bg-gray-100 text-[#004884] px-6 py-2.5 rounded-md font-semibold text-sm transition-colors flex items-center gap-2.5"
             >
               <img 
-                src={govCoLogo} 
+                src={LOGO_GOVCO_SVG} 
                 alt="GOV.CO" 
                 className="h-5 w-auto object-contain"
               />

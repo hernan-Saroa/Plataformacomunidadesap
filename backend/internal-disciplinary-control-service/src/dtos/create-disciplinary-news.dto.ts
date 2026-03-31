@@ -43,7 +43,37 @@ export class PersonInfoDto {
   @IsOptional()
   @IsString()
   entidad?: string;
+
+  // ✅ NUEVO: Campo opcional para almacenar información del apoderado
+  // @IsOptional()
+  // @IsObject()
+  // @ValidateNested()
+  // @Type(() => ApoderadoDto)
+  // apoderado?: ApoderadoDto;
 }
+
+// ✅ NUEVO: DTO para información del apoderado
+// export class ApoderadoDto {
+//   @IsOptional()
+//   @IsString()
+//   nombre?: string;
+
+//   @IsOptional()
+//   @IsString()
+//   cedula?: string;
+
+//   @IsOptional()
+//   @IsEmail()
+//   email?: string;
+
+//   @IsOptional()
+//   @IsString()
+//   telefono?: string;
+
+//   @IsOptional()
+//   @IsString()
+//   direccion?: string;
+// }
 
 export class CreateDisciplinaryNewsDto {
   @IsEnum(NewsOrigin)
@@ -52,6 +82,10 @@ export class CreateDisciplinaryNewsDto {
   @IsOptional()
   @IsDateString()
   fechaQueja?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaHechos?: string;
 
   @IsString()
   territorial: string;

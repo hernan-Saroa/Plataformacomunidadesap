@@ -6,7 +6,7 @@
  * URL: /auth/api/v1/backoffice/dashboard -> auth-service:3001/backoffice/dashboard
  */
 
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 import type {
   MetricasSuperiores,
   CrecimientoUsuarios,

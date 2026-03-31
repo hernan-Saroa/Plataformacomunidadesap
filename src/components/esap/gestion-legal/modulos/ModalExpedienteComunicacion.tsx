@@ -10,7 +10,7 @@ import {
   Mail, Gavel, FileText, User, Calendar, Clock, AlertTriangle,
   Download, Eye, Paperclip, CheckCircle, Share, Send,
   Building2, Activity, MessageSquare, History, Archive,
-  ExternalLink, Target, Flag, Loader2
+  ExternalLink, Target, Flag, Loader2, Scale, Search
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -25,9 +25,12 @@ import { Permissions } from '../../../../enums/permissions';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { correosJuridicosService, AdjuntoCorreo } from '../../../../services/api/legal.service';
 
+import { Input } from '../../../ui/input';
+import { legalService } from '../../../../services/api/legal.service';
+
 interface ComunicacionUnificada {
   id: string;
-  tipo: 'JUDICIAL' | 'CORREO' | 'OFICIO';
+  tipo: 'JUDICIAL' | 'CORREO' | 'OFICIO' | 'ENVIADO';
   tipoProceso?: string;
   asunto: string;
   descripcion: string;
@@ -37,7 +40,7 @@ interface ComunicacionUnificada {
   fechaRadicacion: Date;
   urgente: boolean;
   leida: boolean;
-  estado: 'PENDIENTE' | 'LEIDA' | 'ARCHIVADA';
+  estado: 'PENDIENTE' | 'LEIDA' | 'ARCHIVADA' | 'ENVIADA';
   documentosAdjuntos: string[];
   clasificacionIA?: {
     tipoDetectado: string;
@@ -52,6 +55,7 @@ interface ModalExpedienteComunicacionProps {
   comunicacion: ComunicacionUnificada;
   onMarcarLeida?: (id: string) => void;
   onArchivar?: (id: string) => void;
+  onLink?: (id: string, expedienteId: string, targetModule: string) => Promise<any>;
 }
 
 export function ModalExpedienteComunicacion({
@@ -59,12 +63,90 @@ export function ModalExpedienteComunicacion({
   onClose,
   comunicacion,
   onMarcarLeida,
-  onArchivar
+  onArchivar,
+  onLink
 }: ModalExpedienteComunicacionProps) {
   const [tabActivo, setTabActivo] = useState('general');
+  // Linking State
+  const [selectedModule, setSelectedModule] = useState<'DEFENSA' | 'DISCIPLINARIO' | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [selectedProcess, setSelectedProcess] = useState<any | null>(null);
+  const [linking, setLinking] = useState(false);
+
+  // Auto-fetch when module changes
+  useEffect(() => {
+    if (selectedModule) {
+      handleSearch();
+    }
+  }, [selectedModule]);
+
+  const handleSearch = async () => {
+    if (!selectedModule) return;
+    setIsSearching(true);
+    // Don't clear results immediately to avoid flash, but maybe safe enough
+    try {
+      if (selectedModule === 'DEFENSA') {
+        // Fetch all/recent if no term, or search if term exists
+        const expedientes = await legalService.getExpedientes(searchTerm ? { search: searchTerm } : {});
+        setSearchResults(expedientes);
+      } else if (selectedModule === 'DISCIPLINARIO') {
+        const procesos = await legalService.getJuzgamientoProcesos();
+        // Client-side filter
+        const filtered = !searchTerm ? procesos : procesos.filter((p: any) =>
+          (p.radicado && p.radicado.includes(searchTerm)) ||
+          (p.investigado && p.investigado.toLowerCase().includes(searchTerm.toLowerCase()))
+        );
+        setSearchResults(filtered);
+      }
+    } catch (error) {
+      toast.error('Error buscando procesos');
+      console.error(error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const executeLink = async () => {
+    if (!selectedProcess || !selectedModule || !onLink) return;
+    setLinking(true);
+    try {
+      const processId = selectedProcess.id;
+      await onLink(comunicacion.id, processId, selectedModule);
+      // UI success handled by parent toast, but maybe we close or reset?
+      // Parent closes modal, so we are good.
+    } catch (e) {
+      // Handled by parent
+    } finally {
+      setLinking(false);
+    }
+  };
   const [adjuntos, setAdjuntos] = useState<AdjuntoCorreo[]>([]);
   const [loadingAdjuntos, setLoadingAdjuntos] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  // Historial (Timeline)
+  const [historial, setHistorial] = useState<any[]>([]);
+  const [loadingHistorial, setLoadingHistorial] = useState(false);
+
+  // Cuerpo HTML completo del correo (con imágenes inline resueltas)
+  const [fullBodyHtml, setFullBodyHtml] = useState<string | null>(null);
+  const [loadingBody, setLoadingBody] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && comunicacion?.id) {
+      setLoadingBody(true);
+      correosJuridicosService.getCorreo(comunicacion.id)
+        .then((full: any) => {
+          if (full?.cuerpoHtml) setFullBodyHtml(full.cuerpoHtml);
+        })
+        .catch(() => {})
+        .finally(() => setLoadingBody(false));
+    } else {
+      setFullBodyHtml(null);
+    }
+  }, [isOpen, comunicacion?.id]);
 
   // Cargar adjuntos reales desde la API
   useEffect(() => {
@@ -86,34 +168,49 @@ export function ModalExpedienteComunicacion({
     loadAdjuntos();
   }, [isOpen, comunicacion?.id]);
 
+  // Cargar el historial del correo
+  useEffect(() => {
+    const loadHistorial = async () => {
+      if (!isOpen || !comunicacion?.id || tabActivo !== 'timeline') return;
+
+      setLoadingHistorial(true);
+      try {
+        const data = await correosJuridicosService.getHistorial(comunicacion.id);
+        setHistorial(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Error loading historial:', error);
+        setHistorial([]);
+      } finally {
+        setLoadingHistorial(false);
+      }
+    };
+
+    loadHistorial();
+  }, [isOpen, comunicacion?.id, tabActivo]);
+
   // ==================== DATOS MOCK ====================
 
-  const timeline = [
-    {
-      id: 'TL-001',
-      tipo: 'RECEPCIÓN',
-      descripcion: 'Comunicación recibida y radicada',
-      fecha: comunicacion.fechaRadicacion,
-      usuario: 'Sistema SIGL',
-      color: '#2962FF'
-    },
-    {
-      id: 'TL-002',
-      tipo: 'CLASIFICACIÓN',
-      descripcion: `IA clasificó como: ${comunicacion.clasificacionIA?.tipoDetectado || 'N/A'}`,
-      fecha: new Date(comunicacion.fechaRadicacion.getTime() + 60000),
-      usuario: 'Sistema IA',
-      color: '#8B5CF6'
-    },
-    {
-      id: 'TL-003',
-      tipo: 'ASIGNACIÓN',
-      descripcion: `Sugerencia: Derivar a ${comunicacion.clasificacionIA?.moduloSugerido || 'N/A'}`,
-      fecha: new Date(comunicacion.fechaRadicacion.getTime() + 120000),
-      usuario: 'Sistema SIGL',
-      color: '#10B981'
-    }
-  ];
+  // Dynamic Timeline mapped from fetched data instead of mock
+  const mappedTimeline = historial.length > 0 ? historial.map((h, i) => {
+    // Determine color and icon by event type
+    let color = '#71717A'; // default gray
+    if (h.tipoEvento === 'RECIBIDO') color = '#2563EB'; // blue
+    if (h.tipoEvento === 'LEIDO') color = '#10B981'; // green
+    if (h.tipoEvento === 'ARCHIVADO') color = '#8B5CF6'; // purple
+    if (h.tipoEvento === 'DESARCHIVADO') color = '#F59E0B'; // yellow
+    if (h.tipoEvento === 'ASOCIADO_PROCESO') color = '#E11D48'; // rose
+    if (h.tipoEvento === 'RESPONDIDO') color = '#0284C7'; // sky
+    if (h.tipoEvento === 'REENVIADO') color = '#F97316'; // orange
+
+    return {
+      id: h.id || `historial-${i}`,
+      tipo: h.tipoEvento,
+      descripcion: h.descripcion,
+      fecha: h.fechaCreacion,
+      usuario: h.usuario || 'Sistema',
+      color
+    };
+  }) : [];
 
   const comentarios = [
     {
@@ -207,14 +304,16 @@ export function ModalExpedienteComunicacion({
   const badgeTipo = {
     JUDICIAL: { label: 'Judicial', color: 'bg-blue-100 text-blue-700', icon: '⚖️' },
     CORREO: { label: 'Correo', color: 'bg-gray-100 text-gray-700', icon: '📧' },
-    OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700', icon: '📄' }
-  }[comunicacion.tipo];
+    OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700', icon: '📄' },
+    ENVIADO: { label: 'Enviado', color: 'bg-gray-100 text-gray-700', icon: '📤' }
+  }[comunicacion.tipo] || { label: 'Otro', color: 'bg-gray-100 text-gray-700', icon: '📋' };
 
   const getIcono = () => {
     switch (comunicacion.tipo) {
       case 'JUDICIAL': return Gavel;
       case 'CORREO': return Mail;
       case 'OFICIO': return FileText;
+      case 'ENVIADO': return Send;
       default: return Mail;
     }
   };
@@ -224,7 +323,7 @@ export function ModalExpedienteComunicacion({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent hideCloseButton className="max-w-4xl h-[95vh] flex flex-col p-0">
+        <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-4xl h-[95vh] flex flex-col p-0">
           <DialogTitle className="sr-only">Expediente Comunicación {comunicacion.id}</DialogTitle>
           <DialogDescription className="sr-only">
             Visualización completa de la comunicación
@@ -392,10 +491,22 @@ export function ModalExpedienteComunicacion({
                         <p className="font-bold text-gray-900">{comunicacion.asunto}</p>
                       </div>
                       <div className="bg-white p-4 rounded-lg border border-blue-200">
-                        <p className="text-xs text-gray-600 mb-2">Descripción</p>
-                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                          {comunicacion.descripcion}
-                        </p>
+                        <p className="text-xs text-gray-600 mb-2">Contenido</p>
+                        {loadingBody ? (
+                          <div className="flex items-center gap-2 py-4 text-gray-400">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span className="text-sm">Cargando contenido...</span>
+                          </div>
+                        ) : fullBodyHtml ? (
+                          <div
+                            className="text-sm text-gray-800 overflow-auto max-h-[400px] [&_img]:max-w-full [&_img]:h-auto"
+                            dangerouslySetInnerHTML={{ __html: fullBodyHtml }}
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                            {comunicacion.descripcion}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </Card>
@@ -491,14 +602,116 @@ export function ModalExpedienteComunicacion({
                           </div>
                         </div>
 
-                        <Button
-                          className="w-full"
-                          style={{ background: '#8B5CF6', color: '#FFFFFF' }}
-                          onClick={handleDerivarModulo}
-                        >
-                          <ExternalLink className="w-4 h-4 mr-2" />
-                          Derivar a {comunicacion.clasificacionIA.moduloSugerido}
-                        </Button>
+                        {/* SECCIÓN DE DERIVACIÓN MANUAL START */}
+                        <div className="mt-4 pt-4 border-t border-purple-200">
+                          <h4 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                            <Send className="w-4 h-4 text-purple-600" />
+                            Derivar a Proceso / Expediente
+                          </h4>
+
+                          {/* Selector de Módulo */}
+                          <div className="grid grid-cols-2 gap-3 mb-4">
+                            <button
+                              onClick={() => setSelectedModule('DEFENSA')}
+                              className={`py-2 px-3 rounded-md border text-sm transition-all flex items-center justify-center gap-2 ${selectedModule === 'DEFENSA'
+                                ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold shadow-sm'
+                                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                                }`}
+                            >
+                              <Gavel className="w-4 h-4" />
+                              Defensa Judicial
+                            </button>
+                            <button
+                              onClick={() => setSelectedModule('DISCIPLINARIO')}
+                              className={`py-2 px-3 rounded-md border text-sm transition-all flex items-center justify-center gap-2 ${selectedModule === 'DISCIPLINARIO'
+                                ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold shadow-sm'
+                                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                                }`}
+                            >
+                              <Scale className="w-4 h-4" />
+                              Disciplinario
+                            </button>
+                          </div>
+
+                          {/* Buscador (Solo si hay módulo seleccionado) */}
+                          {selectedModule && (
+                            <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                              <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                  <Input
+                                    placeholder={selectedModule === 'DEFENSA' ? "Filtrar por radicado, demandante o ID..." : "Filtrar por radicado o investigado..."}
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="pl-9 bg-white"
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                                  />
+                                </div>
+                                <Button onClick={handleSearch} disabled={isSearching} variant="default" className="bg-purple-600 hover:bg-purple-700">
+                                  {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                                </Button>
+                              </div>
+
+                              {/* Resultados */}
+                              {searchResults.length > 0 && (
+                                <div className="bg-white border border-gray-200 rounded-md max-h-[180px] overflow-y-auto shadow-inner">
+                                  {searchResults.map((proc) => (
+                                    <div
+                                      key={proc.id}
+                                      onClick={() => setSelectedProcess(proc)}
+                                      className={`p-3 text-sm border-b border-gray-100 cursor-pointer hover:bg-purple-50 transition-colors ${selectedProcess?.id === proc.id ? 'bg-purple-50 border-l-4 border-purple-600 pl-2' : ''
+                                        }`}
+                                    >
+                                      <div className="flex justify-between items-start">
+                                        <p className="font-bold text-gray-900">{proc.radicado}</p>
+                                        <Badge variant="outline" className="text-[10px]">{selectedModule === 'DEFENSA' ? 'Judicial' : 'Disciplinario'}</Badge>
+                                      </div>
+                                      <p className="text-gray-600 truncate mt-1">
+                                        {selectedModule === 'DEFENSA'
+                                          ? `Dte: ${proc.demandante} - Dda: ${proc.demandado}`
+                                          : `Inv: ${proc.investigado || proc.nombreInvestigado}`}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {searchResults.length === 0 && !isSearching && (
+                                <div className="text-center py-4 text-gray-500 italic bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                                  No se encontraron procesos con ese criterio
+                                </div>
+                              )}
+
+                              {/* Botón Acción Final */}
+                              <Button
+                                className="w-full h-10 font-bold shadow-md transform active:scale-95 transition-all"
+                                style={{ background: '#003DA5' }} // Corporate Blue
+                                disabled={!selectedProcess || linking}
+                                onClick={executeLink}
+                              >
+                                {linking ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Vinculando Correo...
+                                  </>
+                                ) : (
+                                  <>
+                                    <ExternalLink className="w-4 h-4 mr-2" />
+                                    Confirmar Vinculación al Expediente
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          )}
+
+                          {/* Info Default (Sin selección) */}
+                          {!selectedModule && (
+                            <div className="text-center p-4 bg-purple-50/50 rounded-lg border border-dashed border-purple-200 text-purple-800 text-sm">
+                              Seleccione el módulo destino para derivar esta comunicación
+                            </div>
+                          )}
+                        </div>
+                        {/* SECCIÓN DE DERIVACIÓN MANUAL END */}
                       </div>
                     </Card>
                   ) : (
@@ -510,38 +723,53 @@ export function ModalExpedienteComunicacion({
 
                 {/* TAB: TIMELINE */}
                 <TabsContent value="timeline" className="space-y-4 mt-0">
-                  <div className="space-y-3">
-                    {timeline.map((evento) => (
-                      <Card key={evento.id} className="p-4">
-                        <div className="flex items-start gap-4">
-                          <div
-                            className="p-2 rounded-lg flex-shrink-0"
-                            style={{ background: `${evento.color}20` }}
-                          >
-                            <Activity className="w-5 h-5" style={{ color: evento.color }} />
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-start justify-between mb-1">
-                              <h4 className="font-bold text-gray-900">{evento.descripcion}</h4>
-                              <Badge variant="outline" className="text-xs">
-                                {evento.tipo}
-                              </Badge>
+                  {loadingHistorial ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                      <span className="ml-3 text-gray-600">Cargando trazabilidad...</span>
+                    </div>
+                  ) : mappedTimeline.length === 0 ? (
+                    <Card className="p-8 bg-gray-50 border-gray-200 text-center">
+                      <History className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                      <p className="text-gray-500 font-medium">No hay historial disponible</p>
+                      <p className="text-sm text-gray-400 mt-1">
+                        Aún no se ha registrado ninguna acción sobre este correo.
+                      </p>
+                    </Card>
+                  ) : (
+                    <div className="space-y-3">
+                      {mappedTimeline.map((evento) => (
+                        <Card key={evento.id} className="p-4">
+                          <div className="flex items-start gap-4">
+                            <div
+                              className="p-2 rounded-lg flex-shrink-0"
+                              style={{ background: `${evento.color}20` }}
+                            >
+                              <Activity className="w-5 h-5" style={{ color: evento.color }} />
                             </div>
-                            <div className="flex items-center gap-4 text-xs text-gray-600">
-                              <span className="flex items-center gap-1">
-                                <User className="w-3 h-3" />
-                                {evento.usuario}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {new Date(evento.fecha).toLocaleString('es-CO')}
-                              </span>
+                            <div className="flex-1">
+                              <div className="flex items-start justify-between mb-1">
+                                <h4 className="font-bold text-gray-900">{evento.descripcion}</h4>
+                                <Badge variant="outline" className="text-xs">
+                                  {evento.tipo}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-4 text-xs text-gray-600">
+                                <span className="flex items-center gap-1">
+                                  <User className="w-3 h-3" />
+                                  {evento.usuario}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {new Date(evento.fecha).toLocaleString('es-CO')}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
                 </TabsContent>
 
                 {/* TAB: COMENTARIOS */}
@@ -613,10 +841,10 @@ export function ModalExpedienteComunicacion({
               </div>
               <div className="flex items-center gap-2">
                 {authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_ARCHIVAR) && (
-                <Button variant="outline" size="sm" onClick={handleArchivarLocal}>
-                  <Archive className="w-4 h-4 mr-2" />
-                  Archivar
-                </Button>
+                  <Button variant="outline" size="sm" onClick={handleArchivarLocal}>
+                    <Archive className="w-4 h-4 mr-2" />
+                    Archivar
+                  </Button>
                 )}
                 <Button onClick={onClose}>
                   Cerrar

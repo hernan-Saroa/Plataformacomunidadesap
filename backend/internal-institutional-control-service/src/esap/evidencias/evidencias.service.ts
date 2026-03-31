@@ -6,6 +6,7 @@ import { CreateEvidenciaDto } from './dto/create-evidencia.dto';
 import { ValidarEvidenciaDto } from './dto/validar-evidencia.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
+import { HistorialAuditoria, TipoEvento } from '../auditorias/entities/historial-auditoria.entity';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -30,11 +31,45 @@ export class EvidenciasService {
   constructor(
     @InjectRepository(EvidenciaDocumento)
     private readonly evidenciaRepository: Repository<EvidenciaDocumento>,
+    @InjectRepository(HistorialAuditoria)
+    private readonly historialRepository: Repository<HistorialAuditoria>,
     private readonly notificacionesService: NotificacionesService,
     private readonly dataSource: DataSource,
   ) {
     if (!fs.existsSync(this.uploadPath)) {
       fs.mkdirSync(this.uploadPath, { recursive: true });
+    }
+  }
+
+  /**
+   * Registra evento en el historial de la auditoría
+   */
+  private async registrarHistorial(
+    auditoriaId: string | null | undefined,
+    tipoEvento: TipoEvento,
+    accion: string,
+    descripcion: string,
+  ): Promise<void> {
+    if (!auditoriaId) return;
+    
+    try {
+      const ahora = new Date();
+      const fecha = ahora.toISOString().split('T')[0];
+      const hora = ahora.toTimeString().split(' ')[0];
+      
+      const historial = new HistorialAuditoria();
+      historial.auditoriaId = auditoriaId;
+      historial.tipoEvento = tipoEvento;
+      historial.fecha = new Date(fecha);
+      historial.hora = hora;
+      historial.usuarioId = null; // TODO: UUID de auth.personas desde contexto de autenticación
+      historial.accion = accion;
+      historial.descripcion = descripcion;
+      historial.cambios = [];
+      
+      await this.historialRepository.save(historial);
+    } catch (err) {
+      console.error('[EvidenciasService] Error registrando historial:', err);
     }
   }
 
@@ -105,6 +140,15 @@ export class EvidenciasService {
 
     const savedEvidencia = await this.evidenciaRepository.save(evidencia);
 
+    // ✅ Registrar en historial de auditoría (si está vinculada a una auditoría directamente o a través de hallazgo)
+    const auditoriaIdParaHistorial = savedEvidencia.auditoriaId || await this.obtenerAuditoriaDeHallazgo(savedEvidencia.hallazgoId);
+    await this.registrarHistorial(
+      auditoriaIdParaHistorial,
+      TipoEvento.DOCUMENTO,
+      'Evidencia cargada',
+      `Se cargó el documento "${savedEvidencia.nombre}" (${savedEvidencia.nombreArchivoOriginal})`,
+    );
+
     // Crear notificaciones después de guardar la evidencia
     try {
       await this.crearNotificacionesDocumentoAdjuntado(savedEvidencia);
@@ -172,6 +216,24 @@ export class EvidenciasService {
       where: { auditoriaId },
       order: { fechaSubida: 'DESC' },
     });
+  }
+
+  /**
+   * Obtiene el ID de auditoría a partir de un hallazgo
+   */
+  private async obtenerAuditoriaDeHallazgo(hallazgoId: string | null | undefined): Promise<string | null> {
+    if (!hallazgoId) return null;
+    
+    try {
+      const result = await this.dataSource.query(
+        'SELECT auditoria_id FROM control_interno.hallazgo WHERE id = $1',
+        [hallazgoId]
+      );
+      return result?.[0]?.auditoria_id || null;
+    } catch (err) {
+      console.error('[EvidenciasService] Error obteniendo auditoría de hallazgo:', err);
+      return null;
+    }
   }
 
   /**

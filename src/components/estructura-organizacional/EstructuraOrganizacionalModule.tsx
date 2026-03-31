@@ -19,7 +19,6 @@ import { toast } from 'sonner';
 import { estructuraService } from '../../services/estructuraService';
 import { CreateSeccionalSedeModal } from './CreateSeccionalSedeModal';
 import { useAuth } from '../../hooks';
-import { TERRITORIALES_ESAP } from '../../data/territoriales-cetap-completo';
 import type { Seccional, Sede, EstadisticasEstructuraOrganizacional } from '../../services/api/types';
 
 type TipoCreacion = 'seccional' | 'sede';
@@ -271,7 +270,11 @@ export function EstructuraOrganizacionalModule() {
             onEliminarSede={handleEliminarSede}
           />
         ) : (
-          <VistaListaTerritorialesCetap busqueda={busqueda} />
+          <VistaListaTerritorialesCetap
+            busqueda={busqueda}
+            seccionales={seccionales}
+            sedes={sedes}
+          />
         )
       )}
 
@@ -313,12 +316,13 @@ function VistaArbolSeccionalesSedes({
   onEliminarSeccional,
   onEliminarSede,
 }: VistaArbolProps) {
+  const [expandidosSedeCentral, setExpandidosSedeCentral] = useState(true); // ✅ CERRADO por defecto
   const [seccionalesExpandidas, setSeccionalesExpandidas] = useState<Record<number, boolean>>({});
 
   const toggleSeccional = (id: number) => {
     setSeccionalesExpandidas(prev => ({
       ...prev,
-      [id]: !prev[id]
+      [id]: !(prev[id] ?? false)
     }));
   };
 
@@ -346,8 +350,14 @@ function VistaArbolSeccionalesSedes({
     );
   };
 
-  // Filtrar seccionales que coinciden con la busqueda o tienen sedes que coinciden
-  const seccionalesFiltradas = seccionales.map(seccional => {
+  const sedeCentral = seccionales.find(
+    (seccional) => seccional.codSeccional?.toUpperCase() === 'SCENT'
+  ) ?? null;
+
+  // Filtrar territoriales (excluye sede central) que coinciden con la busqueda o tienen sedes que coinciden
+  const territorialesFiltradas = seccionales
+    .filter((seccional) => seccional.idSeccional !== sedeCentral?.idSeccional)
+    .map(seccional => {
     const seccionalMatch = filtrarSeccional(seccional);
     const sedesHijas = sedes.filter(s => s.idSeccional === seccional.idSeccional && filtrarSede(s));
 
@@ -383,18 +393,62 @@ function VistaArbolSeccionalesSedes({
       </div>
 
       <div className="space-y-2">
-        {seccionalesFiltradas.length === 0 ? (
+        {territorialesFiltradas.length === 0 && !sedeCentral ? (
           <div className="text-center py-8 text-gray-500">
             No se encontraron resultados para "{busqueda}"
           </div>
         ) : (
-          seccionalesFiltradas.map((item) => {
-            if (!item) return null;
-            const { seccional, sedes: sedesSeccional } = item;
-            const isExpandida = seccionalesExpandidas[seccional.idSeccional] !== false;
+          <>
+            {sedeCentral && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-3"
+              >
+                <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white">
+                  <button
+                    onClick={() => setExpandidosSedeCentral(!expandidosSedeCentral)}
+                    className="w-6 h-6 rounded flex items-center justify-center hover:bg-gray-100 transition-colors"
+                  >
+                    <ChevronRight className={`w-4 h-4 transition-transform ${expandidosSedeCentral ? 'rotate-90' : ''}`} />
+                  </button>
+                  <Badge className="bg-blue-100 text-blue-700 border-0">
+                    Sede Central
+                  </Badge>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-gray-900">
+                        {sedeCentral.nomSeccional}
+                      </span>
+                      {sedeCentral.codSeccional && (
+                        <span className="text-sm text-gray-500">({sedeCentral.codSeccional})</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-gray-600 mt-1">
+                      {sedeCentral.ubicacion && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />
+                          {sedeCentral.ubicacion.nomDivGeopolitica}
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1">
+                        <Building2 className="w-3 h-3" />
+                        {territorialesFiltradas.length} Territoriales
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+            {expandidosSedeCentral && (
+            <div className="ml-6 space-y-2">
+              {territorialesFiltradas.map((item) => {
+                if (!item) return null;
+                const { seccional, sedes: sedesSeccional } = item;
+                const isExpandida = seccionalesExpandidas[seccional.idSeccional] ?? false;
 
-            return (
-              <div key={seccional.idSeccional}>
+                return (
+                  <div key={seccional.idSeccional}>
                 <motion.div
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -408,9 +462,9 @@ function VistaArbolSeccionalesSedes({
                       <ChevronRight className={`w-4 h-4 transition-transform ${isExpandida ? 'rotate-90' : ''}`} />
                     </button>
 
-                    <Badge className="bg-green-100 text-green-700 border-0">
-                      Seccional
-                    </Badge>
+                      <Badge className="bg-green-100 text-green-700 border-0">
+                        Territorial
+                      </Badge>
 
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
@@ -481,7 +535,7 @@ function VistaArbolSeccionalesSedes({
                             <div className="w-6" />
 
                             <Badge className="bg-orange-100 text-orange-700 border-0 text-xs">
-                              Sede
+                              CETAP
                             </Badge>
 
                             <div className="flex-1">
@@ -537,9 +591,12 @@ function VistaArbolSeccionalesSedes({
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </div>
-            );
-          })
+                  </div>
+                );
+              })}
+            </div>
+            )}
+          </>
         )}
       </div>
     </Card>
@@ -550,37 +607,58 @@ function VistaArbolSeccionalesSedes({
 // VISTA ORGANIGRAMA - ESTRUCTURA JERÁRQUICA ESAP (WORLD-CLASS)
 // ============================================================================
 
-function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
-  const [territorialExpandida, setTerritorialExpandida] = useState<string | null>(null);
-  const [hoveredTerritorial, setHoveredTerritorial] = useState<string | null>(null);
+function VistaListaTerritorialesCetap({
+  busqueda,
+  seccionales,
+  sedes,
+}: {
+  busqueda: string;
+  seccionales: Seccional[];
+  sedes: Sede[];
+}) {
+  const [territorialExpandida, setTerritorialExpandida] = useState<number | null>(null);
+  const [hoveredTerritorial, setHoveredTerritorial] = useState<number | null>(null);
 
-  // Filtrar territoriales y CETAP según búsqueda
-  const territorialesFiltradas = TERRITORIALES_ESAP.map(territorial => {
-    const territorialMatch = busqueda === '' ||
-      territorial.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-      territorial.codigo.toLowerCase().includes(busqueda.toLowerCase()) ||
-      territorial.ciudadPrincipal.toLowerCase().includes(busqueda.toLowerCase());
+  const sedeCentral = seccionales.find(
+    (seccional) => seccional.codSeccional?.toUpperCase() === 'SCENT'
+  ) ?? null;
 
-    const cetapFiltrados = territorial.cetap.filter(cetap =>
-      busqueda === '' ||
-      cetap.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-      cetap.codigo.toLowerCase().includes(busqueda.toLowerCase()) ||
-      cetap.ciudad.toLowerCase().includes(busqueda.toLowerCase())
-    );
+  const searchLower = busqueda.trim().toLowerCase();
 
-    // Mostrar territorial si coincide o si tiene CETAP que coinciden
-    if (territorialMatch || cetapFiltrados.length > 0) {
-      return {
-        ...territorial,
-        cetap: cetapFiltrados.length > 0 ? cetapFiltrados : territorial.cetap
-      };
-    }
-    return null;
-  }).filter(Boolean);
+  const territorialesFiltradas = seccionales
+    .filter((seccional) => seccional.idSeccional !== sedeCentral?.idSeccional)
+    .map((seccional) => {
+      const sedesTerritorial = sedes.filter((sede) => sede.idSeccional === seccional.idSeccional);
 
-  // Calcular totales y estadísticas
-  const totalCetap = territorialesFiltradas.reduce((acc, t) => acc + (t?.cetap?.length || 0), 0);
-  const totalUsuariosEstimados = territorialesFiltradas.length * 45 + totalCetap * 12;
+      if (!searchLower) {
+        return { seccional, sedes: sedesTerritorial };
+      }
+
+      const matchSeccional =
+        seccional.nomSeccional.toLowerCase().includes(searchLower) ||
+        (seccional.codSeccional ?? '').toLowerCase().includes(searchLower) ||
+        (seccional.ubicacion?.nomDivGeopolitica ?? '').toLowerCase().includes(searchLower);
+
+      const sedesFiltradas = sedesTerritorial.filter(
+        (sede) =>
+          sede.nomSede.toLowerCase().includes(searchLower) ||
+          (sede.codSede ?? '').toLowerCase().includes(searchLower) ||
+          (sede.geopolitica?.nomDivGeopolitica ?? '').toLowerCase().includes(searchLower)
+      );
+
+      if (matchSeccional || sedesFiltradas.length > 0) {
+        return {
+          seccional,
+          sedes: sedesFiltradas.length > 0 ? sedesFiltradas : sedesTerritorial,
+        };
+      }
+
+      return null;
+    })
+    .filter(Boolean) as Array<{ seccional: Seccional; sedes: Sede[] }>;
+
+  const totalCetap = territorialesFiltradas.reduce((acc, item) => acc + item.sedes.length, 0);
+  const totalTerritoriales = territorialesFiltradas.length;
 
   return (
     <div className="space-y-6">
@@ -597,7 +675,7 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
             </div>
             <div>
               <p className="text-3xl font-bold text-gray-900 mb-1">1</p>
-              <p className="text-sm text-gray-600">Sede Central</p>
+              <p className="text-sm text-gray-600">{sedeCentral?.nomSeccional || 'Sede Central'}</p>
             </div>
           </div>
         </Card>
@@ -612,7 +690,7 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
               <Badge className="bg-blue-100 text-blue-700 border-0">Activas</Badge>
             </div>
             <div>
-              <p className="text-3xl font-bold text-gray-900 mb-1">{territorialesFiltradas.length}</p>
+              <p className="text-3xl font-bold text-gray-900 mb-1">{totalTerritoriales}</p>
               <p className="text-sm text-gray-600">Unidades Territoriales</p>
             </div>
           </div>
@@ -644,8 +722,10 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
               <Badge className="bg-blue-100 text-blue-700 border-0">Total</Badge>
             </div>
             <div>
-              <p className="text-3xl font-bold text-gray-900 mb-1">{totalUsuariosEstimados.toLocaleString()}</p>
-              <p className="text-sm text-gray-600">Usuarios Aprox.</p>
+              <p className="text-3xl font-bold text-gray-900 mb-1">
+                {(totalTerritoriales + totalCetap).toLocaleString()}
+              </p>
+              <p className="text-sm text-gray-600">Unidades Totales</p>
             </div>
           </div>
         </Card>
@@ -693,7 +773,9 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
                       <h3 className="text-2xl font-bold text-white mb-1">ESAP Colombia</h3>
                       <div className="flex items-center gap-2 text-blue-100">
                         <MapPin className="w-4 h-4" />
-                        <span className="text-sm">Bogotá D.C.</span>
+                        <span className="text-sm">
+                          {sedeCentral?.ubicacion?.nomDivGeopolitica ?? 'Sede principal'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -705,7 +787,7 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
                       </div>
                       <div>
                         <p className="text-xs text-blue-100">Territoriales</p>
-                        <p className="text-lg font-bold text-white">{territorialesFiltradas.length}</p>
+                        <p className="text-lg font-bold text-white">{totalTerritoriales}</p>
                       </div>
                     </div>
                     <div className="w-px h-10 bg-white/30" />
@@ -749,14 +831,14 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
           {/* NIVEL 2: TERRITORIALES - Grid Optimizado */}
           <div className="relative">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {territorialesFiltradas.map((territorial, index) => {
-                if (!territorial) return null;
-                const isExpanded = territorialExpandida === territorial.id;
-                const isHovered = hoveredTerritorial === territorial.id;
+              {territorialesFiltradas.map((item, index) => {
+                const { seccional, sedes: sedesTerritorial } = item;
+                const isExpanded = territorialExpandida === seccional.idSeccional;
+                const isHovered = hoveredTerritorial === seccional.idSeccional;
 
                 return (
                   <motion.div
-                    key={territorial.id}
+                    key={seccional.idSeccional}
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ 
@@ -765,7 +847,7 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
                       ease: [0.22, 1, 0.36, 1]
                     }}
                     className="relative"
-                    onMouseEnter={() => setHoveredTerritorial(territorial.id)}
+                    onMouseEnter={() => setHoveredTerritorial(seccional.idSeccional)}
                     onMouseLeave={() => setHoveredTerritorial(null)}
                   >
                     {/* Línea conectora SVG */}
@@ -831,7 +913,7 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
                               className="font-bold text-base line-clamp-2 mb-1.5 leading-tight"
                               style={{ color: isExpanded ? 'white' : '#111827' }}
                             >
-                              {territorial.nombre}
+                              {seccional.nomSeccional}
                             </h4>
                             <div className="flex items-center gap-1.5">
                               <MapPin 
@@ -842,7 +924,7 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
                                 className="text-sm truncate"
                                 style={{ color: isExpanded ? 'rgba(255,255,255,0.9)' : '#6B7280' }}
                               >
-                                {territorial.ciudadPrincipal}
+                                {seccional.ubicacion?.nomDivGeopolitica ?? 'Sin ubicación'}
                               </p>
                             </div>
                           </div>
@@ -873,13 +955,13 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
                                 className="text-lg font-bold leading-none"
                                 style={{ color: isExpanded ? 'white' : '#111827' }}
                               >
-                                {territorial.totalCetap}
+                                {sedesTerritorial.length}
                               </p>
                             </div>
                           </div>
                           <div className="w-px h-10" style={{ background: isExpanded ? 'rgba(255,255,255,0.3)' : '#BFDBFE' }} />
                           <div className="flex items-center gap-2 flex-1">
-                            <Users 
+                            <Network
                               className="w-4 h-4 shrink-0" 
                               style={{ color: isExpanded ? 'white' : '#2962FF' }}
                             />
@@ -888,13 +970,13 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
                                 className="text-xs"
                                 style={{ color: isExpanded ? 'rgba(255,255,255,0.8)' : '#6B7280' }}
                               >
-                                Usuarios
+                                Código
                               </p>
                               <p 
                                 className="text-lg font-bold leading-none"
                                 style={{ color: isExpanded ? 'white' : '#111827' }}
                               >
-                                ~{(45 + territorial.totalCetap * 12).toLocaleString()}
+                                {seccional.codSeccional ?? 'N/A'}
                               </p>
                             </div>
                           </div>
@@ -902,7 +984,7 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
 
                         {/* Action Button */}
                         <button
-                          onClick={() => setTerritorialExpandida(isExpanded ? null : territorial.id)}
+                          onClick={() => setTerritorialExpandida(isExpanded ? null : seccional.idSeccional)}
                           className="w-full py-2.5 rounded-xl font-medium text-sm transition-all duration-300 flex items-center justify-center gap-2"
                           style={{
                             background: isExpanded 
@@ -920,7 +1002,7 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
                           ) : (
                             <>
                               <ChevronRight className="w-4 h-4 -rotate-90" />
-                              Ver {territorial.totalCetap} CETAP
+                              Ver {sedesTerritorial.length} CETAP
                             </>
                           )}
                         </button>
@@ -928,7 +1010,7 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
 
                       {/* NIVEL 3: CETAP (expandible) - Diseño Mejorado */}
                       <AnimatePresence>
-                        {isExpanded && territorial.cetap.length > 0 && (
+                        {isExpanded && sedesTerritorial.length > 0 && (
                           <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
@@ -942,18 +1024,18 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
                               </div>
                               <div>
                                 <p className="text-xs font-semibold text-white/80">CETAP Asociados</p>
-                                <p className="text-sm font-bold text-white">{territorial.cetap.length} Unidades</p>
+                                <p className="text-sm font-bold text-white">{sedesTerritorial.length} Unidades</p>
                               </div>
                             </div>
                             
                             <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar-white pr-1">
-                              {territorial.cetap.map((cetap, cetapIndex) => (
+                              {sedesTerritorial.map((sede, sedeIndex) => (
                                 <motion.div
-                                  key={cetap.id}
+                                  key={sede.idSede}
                                   initial={{ opacity: 0, x: -20 }}
                                   animate={{ opacity: 1, x: 0 }}
                                   transition={{ 
-                                    delay: cetapIndex * 0.03,
+                                    delay: sedeIndex * 0.03,
                                     duration: 0.3,
                                     ease: [0.22, 1, 0.36, 1]
                                   }}
@@ -962,20 +1044,22 @@ function VistaListaTerritorialesCetap({ busqueda }: { busqueda: string }) {
                                   <div className="flex items-start gap-3">
                                     <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
                                       <span className="text-xs font-bold text-orange-700">
-                                        {cetapIndex + 1}
+                                        {sedeIndex + 1}
                                       </span>
                                     </div>
                                     <div className="flex-1 min-w-0">
                                       <p className="text-sm font-semibold text-gray-900 line-clamp-1 mb-1">
-                                        {cetap.nombre}
+                                        {sede.nomSede}
                                       </p>
                                       <div className="flex items-center gap-1.5">
                                         <MapPin className="w-3 h-3 text-gray-500 shrink-0" />
-                                        <p className="text-xs text-gray-600 truncate">{cetap.ciudad}</p>
+                                        <p className="text-xs text-gray-600 truncate">
+                                          {sede.geopolitica?.nomDivGeopolitica ?? 'Sin ubicación'}
+                                        </p>
                                       </div>
                                       <div className="flex items-center gap-1.5 mt-1">
                                         <Badge className="text-xs bg-gray-100 text-gray-700 border-0">
-                                          {cetap.codigo}
+                                          {sede.codSede || 'SIN-COD'}
                                         </Badge>
                                       </div>
                                     </div>
