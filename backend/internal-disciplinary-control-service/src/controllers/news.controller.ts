@@ -274,6 +274,21 @@ export class NewsController {
     return await this.newsService.archive(id, body.reason);
   }
 
+  @Patch(':id/restore')
+  @ApiOperation({
+    summary: 'Restaurar Noticia',
+    description: 'Restaura una noticia archivada al flujo activo (estado RADICADA)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Noticia restaurada',
+    type: DisciplinaryNews,
+  })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async restore(@Param('id') id: string): Promise<DisciplinaryNews> {
+    return await this.newsService.restore(id);
+  }
+
   /**
    * Asociar noticia a un proceso existente
    */

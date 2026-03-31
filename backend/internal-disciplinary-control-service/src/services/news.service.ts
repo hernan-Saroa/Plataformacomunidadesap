@@ -283,6 +283,22 @@ export class NewsService {
     return await this.newsRepository.save(noticia);
   }
 
+  async restore(id: string): Promise<DisciplinaryNews> {
+    const noticia = await this.findById(id);
+    noticia.estado = NewsStatus.RADICADA;
+
+    const historyEntry = {
+      id: Date.now().toString(),
+      tipo: 'restauracion',
+      usuario: 'Sistema',
+      fecha: new Date().toISOString(),
+      observaciones: 'Noticia restaurada al flujo activo',
+    };
+    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+
+    return await this.newsRepository.save(noticia);
+  }
+
   /**
    * Actualiza la etapa Kanban de una noticia
    */
