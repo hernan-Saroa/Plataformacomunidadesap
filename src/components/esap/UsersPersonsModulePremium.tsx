@@ -749,12 +749,14 @@ export function UsersPersonsModulePremium() {
 
       // Mapear datos del formulario al formato esperado por el backend
       const createUserData = {
-        first_name: userData.firstName,
-        last_name: userData.lastName,
-        identification_number: userData.documentNumber || userData.document || userData.identification_number,
+        first_name: String(userData.firstName || '').trim(),
+        last_name: String(userData.lastName || '').trim(),
+        identification_number: String(
+          userData.documentNumber || userData.document || userData.identification_number || ''
+        ).trim(),
         identification_type: userData.documentType || userData.identificationType || 'CC',
-        email: userData.email.toLowerCase(),
-        phone: userData.phone || '',
+        email: String(userData.email || '').trim().toLowerCase(),
+        phone: String(userData.phone || '').trim(),
         gender: userData.gender || '',
         roleIds: userData.roleIds || [],
         // Agregar seccional y sede si están definidos
@@ -776,6 +778,7 @@ export function UsersPersonsModulePremium() {
       toast.error('Error al crear usuario', {
         description: error?.message || 'No se pudo crear el usuario. Intente nuevamente.'
       });
+      throw error;
     } finally {
       setLoading(false);
     }

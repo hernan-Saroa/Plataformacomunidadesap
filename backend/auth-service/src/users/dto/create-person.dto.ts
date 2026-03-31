@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import { IsString, IsEmail, IsOptional, IsArray, IsUUID, IsNumber } from 'class-validator';
 
 export class CreatePersonDto {
@@ -30,10 +31,12 @@ export class CreatePersonDto {
   roleIds?: string[];
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   idSeccional?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   idSede?: number;
 }

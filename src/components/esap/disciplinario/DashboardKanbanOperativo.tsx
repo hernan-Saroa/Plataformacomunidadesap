@@ -851,6 +851,7 @@ interface VistaListaProps {
   onEditarNoticia?: (noticia: Noticia) => void; // ✅ AGREGADO: Coherencia con Kanban
   onEditarProceso?: (proceso: Proceso) => void; // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
   onCambiarEtapa?: (proceso: Proceso, nuevaEtapa: string) => void; // ✅ NUEVO: Handler para cambiar etapa
+  etapasConfig?: any[]; // ✅ NUEVO: Configuración de etapas desde backend
   isMobile?: boolean;
 }
 
@@ -877,6 +878,7 @@ function VistaLista({
   onEditarNoticia,
   onEditarProceso, // ✅ NUEVO: Editar proceso
   onCambiarEtapa, // ✅ NUEVO: Handler para cambiar etapa
+  etapasConfig,
   isMobile
 }: VistaListaProps) {
   const [filtroEtapa, setFiltroEtapa] = useState<string>('todos');
@@ -1234,6 +1236,7 @@ function VistaLista({
                           ) : (
                             <EtapaSelector
                               etapaActual={proceso!.etapaActual}
+                              etapasConfig={etapasConfig}
                               onCambiarEtapa={(nuevaEtapa) => onCambiarEtapa?.(proceso!, nuevaEtapa)}
                             />
                           )}
@@ -2131,14 +2134,79 @@ const ETAPAS_LISTA: { nombre: string; color: string; bg: string }[] = [
   { nombre: 'Fallo', color: '#059669', bg: '#D1FAE5' },
 ];
 
-function EtapaSelector({ etapaActual, onCambiarEtapa }: {
+function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
   etapaActual: string;
+  etapasConfig?: any[];
   onCambiarEtapa: (nuevaEtapa: string) => void;
 }) {
   const [abierto, setAbierto] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const currentIdx = ETAPAS_LISTA.findIndex(e => e.nombre === etapaActual);
-  const current = ETAPAS_LISTA[currentIdx] || ETAPAS_LISTA[0];
+
+  const normalizeStage = (value: string) =>
+    value
+      ?.toString()
+      .normalize('NFD')
+      .replace(/[ -]/g, (c) => c)
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+
+  const stageLabelMapLocal: Record<string, string> = {
+    RECEPCION: 'Recepción',
+    VALORACION: 'Valoración',
+    INDAGACION_PREVIA: 'Indagación',
+    INVESTIGACION: 'Investigación',
+    EVALUACION: 'Evaluación',
+    JUZGAMIENTO: 'Juzgamiento',
+    SEGUNDA_INSTANCIA: 'Segunda Instancia',
+    FALLO: 'Fallo',
+    ARCHIVO: 'Archivo'
+  };
+
+  const formatStageLabel = (stage: string) => {
+    if (!stage) return '';
+    const normalized = stage.trim();
+    if (stageLabelMapLocal[normalized]) return stageLabelMapLocal[normalized];
+    if (normalized.includes('_')) {
+      return normalized
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+    }
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  };
+
+  const stageColorMap: Record<string, { color: string; bg: string }> = {
+    Recepción: { color: '#6B7280', bg: '#F3F4F6' },
+    Valoración: { color: '#6B7280', bg: '#F3F4F6' },
+    Indagación: { color: '#6B7280', bg: '#F3F4F6' },
+    Investigación: { color: '#003DA5', bg: '#DBEAFE' },
+    Evaluación: { color: '#6B7280', bg: '#F3F4F6' },
+    Juzgamiento: { color: '#7C3AED', bg: '#EDE9FE' },
+    'Segunda Instancia': { color: '#6B7280', bg: '#F3F4F6' },
+    Fallo: { color: '#059669', bg: '#D1FAE5' },
+    Archivo: { color: '#059669', bg: '#D1FAE5' }
+  };
+
+  const etapasOrdenadas = etapasConfig && etapasConfig.length > 0
+    ? [...etapasConfig]
+        .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+        .map((etapa) => {
+          const raw = etapa.etapa || etapa.nombre || etapa.label || '';
+          const nombre = formatStageLabel(raw);
+          const palette = stageColorMap[nombre] || { color: '#374151', bg: '#F9FAFB' };
+          return {
+            nombre,
+            color: etapa.color || palette.color,
+            bg: etapa.bg || palette.bg
+          };
+        })
+    : ETAPAS_LISTA;
+
+  const etapaActualNormalizada = normalizeStage(formatStageLabel(etapaActual));
+  const currentIdxFound = etapasOrdenadas.findIndex(e => normalizeStage(e.nombre) === etapaActualNormalizada);
+  const currentIdx = currentIdxFound === -1 ? 0 : currentIdxFound;
+  const current = etapasOrdenadas[currentIdx] || etapasOrdenadas[0];
 
   useEffect(() => {
     if (!abierto) return;
@@ -2161,7 +2229,7 @@ function EtapaSelector({ etapaActual, onCambiarEtapa }: {
         }}
         title="Cambiar etapa del proceso"
       >
-        {etapaActual}
+        {formatStageLabel(etapaActual)}
         <ChevronDown className={`w-3 h-3 transition-transform ${abierto ? 'rotate-180' : ''}`} />
       </button>
 
@@ -2177,8 +2245,8 @@ function EtapaSelector({ etapaActual, onCambiarEtapa }: {
             <div className="px-2.5 py-1.5 border-b border-gray-100 bg-gray-50">
               <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Cambiar Etapa</p>
             </div>
-            {ETAPAS_LISTA.map((etapa, idx) => {
-              const isActive = etapa.nombre === etapaActual;
+            {etapasOrdenadas.map((etapa, idx) => {
+              const isActive = normalizeStage(etapa.nombre) === etapaActualNormalizada;
               const isPast = idx < currentIdx;
               const isNext = idx === currentIdx + 1;
               return (
@@ -2351,7 +2419,7 @@ export const normalizeNoticia = (raw: any): Noticia => {
 };
 
 export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
-  const stageLabelMap: Record<string, string> = { EVALUACION: 'Valoración', INDAGACION_PREVIA: 'Indagación', INVESTIGACION: 'Investigación', JUZGAMIENTO: 'Juzgamiento' };
+  const stageLabelMap: Record<string, string> = { RECEPCION: 'Recepción', VALORACION: 'Valoración', INDAGACION_PREVIA: 'Indagación', INVESTIGACION: 'Investigación', EVALUACION: 'Evaluación', JUZGAMIENTO: 'Juzgamiento', INDAGACION: 'Indagación', FALLO: 'Fallo', SEGUNDA_INSTANCIA: 'Segunda Instancia' };
   let etapa = proceso.kanbanStage || proceso.etapaActual;
 
   const match = currentStages.find(s => s.etapa === etapa || s.etapa.toUpperCase() === etapa.toUpperCase());
@@ -2667,8 +2735,11 @@ export function DashboardKanbanOperativo({
       console.log('[DashboardKanban] Noticias recibidas:', noticiasData.length);
       console.log('[DashboardKanban] Procesos recibidos:', procesosData.length);
 
-      // Separar noticias archivadas de las activas
-      const noticiasActivas = noticiasData.filter(n => (n as any).estado !== 'ARCHIVADA');
+      // Separar noticias archivadas de las activas. Excluir ASIGNADA porque ya tienen proceso asociado
+      const noticiasActivas = noticiasData.filter(n => {
+        const estado = (n as any).estado;
+        return estado !== 'ARCHIVADA' && estado !== 'ASIGNADA';
+      });
       const noticiasArchivadas = noticiasData.filter(n => (n as any).estado === 'ARCHIVADA');
 
       // Transformar noticias al formato interno
@@ -2715,10 +2786,15 @@ export function DashboardKanbanOperativo({
 
   // ==================== TRANSFORMADORES DE DATOS DESDE API ====================
   const stageLabelMap: Record<string, string> = {
-    EVALUACION: 'Valoración',
+    RECEPCION: 'Recepción',
+    VALORACION: 'Valoración',
     INDAGACION_PREVIA: 'Indagación',
     INVESTIGACION: 'Investigación',
-    JUZGAMIENTO: 'Juzgamiento'
+    EVALUACION: 'Evaluación',
+    JUZGAMIENTO: 'Juzgamiento',
+    INDAGACION: 'Indagación',
+    FALLO: 'Fallo',
+    SEGUNDA_INSTANCIA: 'Segunda Instancia'
   };
 
   // Normalizar estado de noticia
@@ -2997,6 +3073,43 @@ export function DashboardKanbanOperativo({
     return <FolderOpen className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
   }
 
+  const normalizeStageKey = (value: string) =>
+    value
+      ?.toString()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[_\s]+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+  const backendStageForLabel = (label: string) => {
+    const normalizedLabel = normalizeStageKey(label);
+
+    const mappedStage = etapasConfig.find(stageConfig => {
+      const raw = stageConfig.etapa || stageConfig.nombre || stageConfig.label || '';
+      const normalizedRaw = normalizeStageKey(raw);
+      return normalizedRaw === normalizedLabel || normalizedRaw.includes(normalizedLabel) || normalizedLabel.includes(normalizedRaw);
+    });
+    if (mappedStage?.etapa) {
+      return mappedStage.etapa;
+    }
+
+    const fallbackMap: Record<string, string> = {
+      'recepcion': 'RECEPCION',
+      'valoracion': 'VALORACION',
+      'indagacion': 'INDAGACION_PREVIA',
+      'indagacion previa': 'INDAGACION_PREVIA',
+      'investigacion': 'INVESTIGACION',
+      'evaluacion': 'EVALUACION',
+      'juzgamiento': 'JUZGAMIENTO',
+      'fallo': 'FALLO',
+      'segunda instancia': 'SEGUNDA_INSTANCIA',
+      'archivo': 'ARCHIVO'
+    };
+
+    return fallbackMap[normalizedLabel] || normalizedLabel.replace(/\s+/g, '_').toUpperCase();
+  };
+
   // ==================== HANDLERS ====================
   const handleDropItem = async (item: Item, nuevaEtapa: string) => {
     // ✅ NUEVO: Validar orden de etapas desde backend config
@@ -3066,21 +3179,10 @@ export function DashboardKanbanOperativo({
         // ✅ NUEVO: Persistir cambio de etapa en la base de datos
         const toastId = toast.loading('Cambiando etapa del proceso...');
         try {
-          // Mapear el nombre de la etapa al formato del backend
-          const stageMap: Record<string, string> = {
-            'Recepción': 'RECEPCION',
-            'Valoración': 'EVALUACION',
-            'Indagación': 'INDAGACION',
-            'Investigación': 'INVESTIGACION',
-            'Juzgamiento': 'JUZGAMIENTO',
-            'Fallo': 'FALLO',
-            'Archivo': 'ARCHIVO'
-          };
-          const backendStage = stageMap[nuevaEtapa] || nuevaEtapa.toUpperCase();
-          
-          // Llamar al backend para cambiar la etapa
-          await disciplinaryService.cambiarEtapa(item.id, backendStage, nuevaEtapa);
-          
+            const backendStage = backendStageForLabel(nuevaEtapa);
+
+            // Llamar al backend para cambiar la etapa
+            await disciplinaryService.cambiarEtapa(item.id, backendStage, nuevaEtapa);
           toast.success('Etapa actualizada', {
             id: toastId,
             description: `${item.numeroProceso} → ${nuevaEtapa}`
@@ -3411,7 +3513,7 @@ export function DashboardKanbanOperativo({
         abogadoNombre: nombreProfesional
       });
 
-      const nuevoProceso = toProcesoFromApi(procesoApi);
+      const nuevoProceso = toProcesoFromApi(procesoApi, etapasConfig);
 
       setItems(prev => [
         ...prev.filter(i => i.id !== itemSeleccionado.id),
@@ -3505,7 +3607,7 @@ export function DashboardKanbanOperativo({
       });
 
       // ✅ Mapear la respuesta de la API al formato que usa la UI
-      const nuevoProceso = toProcesoFromApi(procesoApi);
+      const nuevoProceso = toProcesoFromApi(procesoApi, etapasConfig);
 
       // ✅ Actualizar el tablón sin necesidad de recargar la página completa
       setItems(prev => [
@@ -3716,8 +3818,8 @@ export function DashboardKanbanOperativo({
     // Mapear el nombre de la etapa al formato del backend
     const stageMap: Record<string, string> = {
       'Recepción': 'RECEPCION',
-      'Valoración': 'EVALUACION',
-      'Indagación': 'INDAGACION',
+      'Valoración': 'VALORACION',
+      'Indagación': 'INDAGACION_PREVIA',
       'Investigación': 'INVESTIGACION',
       'Juzgamiento': 'JUZGAMIENTO',
       'Fallo': 'FALLO',
@@ -4317,6 +4419,60 @@ export function DashboardKanbanOperativo({
     setModalActivo('comentarios-proceso');
   };
 
+  // ✅ NUEVO: Handler específico para cambio de etapa desde la vista lista (sin restricciones de secuencia)
+  const handleCambiarEtapaLista = async (proceso: Proceso, nuevaEtapa: string) => {
+    if (proceso.etapaActual === nuevaEtapa) return;
+
+    const etapaAnterior = proceso.etapaActual;
+    const usuario = 'Usuario Actual';
+
+    const backendStage = backendStageForLabel(nuevaEtapa);
+
+    // Persistir cambio de etapa en la base de datos
+    const toastId = toast.loading('Cambiando etapa del proceso...');
+    try {
+      await disciplinaryService.cambiarEtapa(proceso.id, backendStage, nuevaEtapa);
+      
+      toast.success('Etapa actualizada', {
+        id: toastId,
+        description: `${proceso.numeroProceso} → ${nuevaEtapa}`
+      });
+    } catch (error: any) {
+      console.error('Error al cambiar etapa en BD:', error);
+      toast.error('Error al guardar cambio', {
+        id: toastId,
+        description: error?.message || 'No se pudo persistir el cambio en la base de datos'
+      });
+      return;
+    }
+
+    // Actualizar estado local
+    setItems(prev => prev.map(i =>
+      i.id === proceso.id && i.tipo === 'proceso'
+        ? {
+          ...i,
+          etapaActual: nuevaEtapa as any,
+          ultimaModificacion: new Date()
+        }
+        : i
+    ));
+
+    // Registrar en trazabilidad
+    const eventoTrazabilidad = {
+      id: `evt-${Date.now()}`,
+      tipo: 'cambio-estado' as const,
+      titulo: `Cambio de etapa: ${etapaAnterior} → ${nuevaEtapa}`,
+      descripcion: `El proceso fue movido de "${etapaAnterior}" a "${nuevaEtapa}" mediante selector de etapa`,
+      usuario: usuario,
+      fecha: new Date(),
+      procesoId: proceso.id,
+      etapaAnterior: etapaAnterior,
+      etapaNueva: nuevaEtapa
+    };
+
+    console.log('📋 Trazabilidad - Cambio de etapa (Lista):', eventoTrazabilidad);
+  };
+
   // Toggle colapsar/expandir columna
   const toggleColumnaColapsada = (nombreEtapa: string) => {
     setColumnasColapsadas(prev => {
@@ -4770,7 +4926,8 @@ export function DashboardKanbanOperativo({
             onVerNoticiaAsociada={handleVerNoticiaAsociada}
             onEditarNoticia={handleEditarNoticia}
             onEditarProceso={handleEditarProceso} // ✅ NUEVO: Editar proceso
-            onCambiarEtapa={(proceso, nuevaEtapa) => handleDropItem(proceso, nuevaEtapa)}
+            onCambiarEtapa={handleCambiarEtapaLista} // ✅ NUEVO: Handler específico para cambio de etapa en lista
+            etapasConfig={etapasConfig}
             isMobile={isMobile}
           />
         )}

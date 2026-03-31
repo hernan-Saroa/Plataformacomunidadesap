@@ -262,37 +262,8 @@ export class ProcessService {
         noticia.fechaRecepcion
       );
 
-      // Determinar etapa inicial basada en la columna kanban de la noticia
-      let etapaInicial = ProcessStage.EVALUACION; // Default
-      if (noticia.kanbanStage) {
-        // Mapear kanbanStage a ProcessStage
-        switch (noticia.kanbanStage.toUpperCase()) {
-          case 'EVALUACION':
-          case 'EVALUACIÓN':
-            etapaInicial = ProcessStage.EVALUACION;
-            break;
-          case 'INDAGACION':
-          case 'INDAGACION_PREVIA':
-          case 'INDAGACIÓN':
-          case 'INDAGACIÓN_PREVIA':
-            etapaInicial = ProcessStage.INDAGACION_PREVIA;
-            break;
-          case 'INVESTIGACION':
-          case 'INVESTIGACIÓN':
-            etapaInicial = ProcessStage.INVESTIGACION;
-            break;
-          case 'JUZGAMIENTO':
-            etapaInicial = ProcessStage.JUZGAMIENTO;
-            break;
-          case 'FALLO':
-          case 'SEGUNDA_INSTANCIA':
-          case 'SEGUNDA INSTANCIA':
-            etapaInicial = ProcessStage.SEGUNDA_INSTANCIA;
-            break;
-          default:
-            etapaInicial = ProcessStage.EVALUACION;
-        }
-      }
+      // Los procesos siempre inician en Valoración al ser creados desde una noticia
+      const etapaInicial = ProcessStage.VALORACION;
 
       // Calcular fecha de vencimiento de la etapa inicial
       const { fechaVencimiento } =
@@ -305,7 +276,7 @@ export class ProcessService {
         abogadoAsignado: abogado, // Establecer la relación directamente
         abogadoAsignadoId: abogado.id,
         etapaActual: etapaInicial,
-        kanbanStage: noticia.kanbanStage, // ✅ Mantener la misma columna kanban de la noticia
+        kanbanStage: 'Valoración', // El proceso inicia siempre en la columna Valoración del Kanban
         estado: ProcessStatus.ACTIVO,
         fechaPrescripcion,
         fechaVencimientoEtapa: fechaVencimiento,
@@ -317,7 +288,7 @@ export class ProcessService {
         abogadoNombre: abogado.nombreCompleto,
         abogadoCargo: abogado.cargo,
         etapaActual: etapaInicial,
-        kanbanStage: noticia.kanbanStage
+        kanbanStage: 'Valoración'
       });
 
       const procesoConcreado = await this.processRepository.save(proceso);
