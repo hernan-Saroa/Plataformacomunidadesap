@@ -23,7 +23,7 @@ import { toast } from 'sonner@2.0.3';
 interface CreatePersonModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (person: any) => void;
+  onCreate: (person: any) => Promise<void> | void;
   editMode?: boolean;
   initialData?: any;
 }
@@ -57,6 +57,7 @@ export function CreatePersonModal({
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Inicializar con datos de edición si existen
   useEffect(() => {
@@ -164,14 +165,16 @@ export function CreatePersonModal({
     setStep(step - 1);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
+
     if (validateStep(step)) {
       // Mostrar toast de carga
-      toast.loading('Creando usuario...', { id: 'create-user' });
       
       // Simular creación (en producción esto sería un API call)
-      setTimeout(() => {
-        onCreate({
+      try {
+        setIsSubmitting(true);
+        await onCreate({
           ...formData,
           id: initialData?.id || `user-${Date.now()}`, // Generar ID único
           fullName: `${formData.firstName} ${formData.lastName}`,
@@ -180,16 +183,15 @@ export function CreatePersonModal({
         });
         
         // Cerrar el toast de carga y mostrar éxito
-        toast.success(editMode ? 'Usuario actualizado' : 'Usuario creado exitosamente', {
-          id: 'create-user',
-          description: `${formData.firstName} ${formData.lastName} ha sido ${editMode ? 'actualizado' : 'registrado'} correctamente.`
-        });
         
-        onClose();
         if (!editMode) {
           resetForm();
         }
-      }, 1000); // Simular tiempo de procesamiento
+      } catch {
+        // El contenedor decide el mensaje y si el modal debe permanecer abierto.
+      } finally {
+        setIsSubmitting(false);
+      }
     } else {
       toast.error('Formulario incompleto', {
         description: 'Por favor completa todos los campos requeridos.'
@@ -236,7 +238,7 @@ export function CreatePersonModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onClick={onClose}
+          onClick={isSubmitting ? undefined : onClose}
           className="absolute inset-0 bg-black/50"
         />
 
@@ -251,8 +253,9 @@ export function CreatePersonModal({
           {/* Header - ESAP Blue */}
           <div className="relative px-6 py-5 bg-[#003DA5]">
             <button
-              onClick={onClose}
-              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
+              onClick={isSubmitting ? undefined : onClose}
+              disabled={isSubmitting}
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors disabled:opacity-60"
             >
               <X className="w-5 h-5" strokeWidth={2} />
             </button>
@@ -667,19 +670,27 @@ export function CreatePersonModal({
           <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between gap-3">
             <button
               onClick={step === 1 ? onClose : handleBack}
-              className="px-5 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-lg font-bold hover:bg-gray-50 transition-colors"
+              disabled={isSubmitting}
+              className="px-5 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-lg font-bold hover:bg-gray-50 transition-colors disabled:opacity-60"
             >
               {step === 1 ? 'Cancelar' : 'Atrás'}
             </button>
 
             <button
               onClick={step === totalSteps ? handleSubmit : handleNext}
-              className="px-5 py-2.5 bg-[#003DA5] text-white rounded-lg font-bold hover:bg-[#002d7a] transition-colors flex items-center gap-2"
+              disabled={isSubmitting}
+              className="px-5 py-2.5 bg-[#003DA5] text-white rounded-lg font-bold hover:bg-[#002d7a] transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {step === totalSteps ? (
                 <>
                   <CheckCircle className="w-4 h-4" strokeWidth={2.5} />
-                  {editMode ? 'Actualizar' : 'Crear Persona'}
+                  {isSubmitting
+                    ? editMode
+                      ? 'Actualizando...'
+                      : 'Creando...'
+                    : editMode
+                    ? 'Actualizar'
+                    : 'Crear Persona'}
                 </>
               ) : (
                 <>

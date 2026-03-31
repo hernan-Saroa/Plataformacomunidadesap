@@ -9,6 +9,9 @@ export class Person {
   @PrimaryColumn('uuid', { name: 'id_person' })
   id: string;
 
+  @Column({ name: 'id_tercero', type: 'bigint', nullable: true, select: false })
+  idTercero: string | null;
+
   @Column({ name: 'num_identificacion' })
   identification_number: string;
 
