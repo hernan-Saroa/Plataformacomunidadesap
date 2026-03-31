@@ -1352,12 +1352,6 @@ function TabGeneral({ auditoria, readOnly }: { auditoria: Auditoria; readOnly?: 
       <Card className="p-4 border-l-4 border-l-blue-600">
         <div className="flex items-start justify-between mb-3">
           <h3 className="text-sm font-bold text-gray-900">Resumen Ejecutivo</h3>
-          {!readOnly && (
-            <Button variant="ghost" size="sm">
-              <Edit2 className="w-4 h-4 mr-2" />
-              Editar
-            </Button>
-          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
