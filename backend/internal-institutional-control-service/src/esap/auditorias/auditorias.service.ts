@@ -623,35 +623,26 @@ export class AuditoriasService {
 
     // Guardar equipo de auditores si se proporciona
     if (createDto.equipoAuditores && Array.isArray(createDto.equipoAuditores) && createDto.equipoAuditores.length > 0) {
-      const equipo = createDto.equipoAuditores
+      const equipoPromises = createDto.equipoAuditores
         .filter(personaId => personaId)
-        .map((personaId) => {
-          // Convertir string a number si es necesario
-          let personaIdNum: number;
-          if (typeof personaId === 'string') {
-            // Si viene como "aud-001", extraer el número
-            if (personaId.startsWith('aud-')) {
-              personaIdNum = parseInt(personaId.replace('aud-', ''), 10);
-            } else {
-              // Si es solo un número como string, convertir directamente
-              personaIdNum = parseInt(personaId, 10);
-            }
-          } else {
-            personaIdNum = Number(personaId);
-          }
+        .map(async (personaId) => {
+          // Convertir el ID recibido a UUID usando mapIdTerceroToIdPerson
+          const personaUUID = await this.mapIdTerceroToIdPerson(personaId);
           
-          // Validar que sea un número válido
-          if (isNaN(personaIdNum)) {
-            throw new BadRequestException(`ID de persona inválido: ${personaId}`);
+          if (!personaUUID) {
+            console.warn(`[AuditoriasService.create] No se pudo mapear personaId ${personaId} a UUID`);
+            return null;
           }
           
           return this.equipoRepository.create({
             auditoriaId: auditoriaGuardada.id,
-            personaId: personaIdNum,
+            personaId: personaUUID,
             rol: 'Auditor',
             activo: true,
           });
         });
+
+      const equipo = (await Promise.all(equipoPromises)).filter(e => e !== null);
 
       if (equipo.length > 0) {
         await this.equipoRepository.save(equipo);

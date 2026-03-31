@@ -997,17 +997,82 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
     cargarDatos: refetchProfesionales
   } = useConfiguracionProfesionales();
 
+  // ✅ Calcular carga REAL de cada profesional a partir de las auditorías asignadas
+  const profesionalesConCarga = useMemo(() => {
+    // Helper para extraer nombre de un elemento del equipo (puede ser string u objeto)
+    const extraerNombre = (e: unknown): string => {
+      if (typeof e === 'string') return e.toLowerCase().trim();
+      if (e && typeof e === 'object' && 'nombre' in e) return String((e as any).nombre).toLowerCase().trim();
+      return '';
+    };
+    const extraerId = (e: unknown): string => {
+      if (typeof e === 'string') return e;
+      if (e && typeof e === 'object' && 'id' in e) return String((e as any).id);
+      return '';
+    };
+
+    return profesionalesOCIG.map(p => {
+      const nombre = p.usuario.nombre.toLowerCase().trim();
+      const configId = p.configuracion.id || '';
+      const idTercero = String(p.configuracion.idTercero);
+
+      // Auditorías donde este profesional es líder (match por nombre, id config, o idTercero)
+      const comoLider = auditorias.filter(a => {
+        const lider = (a.auditorLider || '').toLowerCase().trim();
+        return lider === nombre || a.auditorLider === configId || a.auditorLider === idTercero;
+      });
+
+      // Auditorías donde este profesional está en el equipo
+      const comoEquipo = auditorias.filter(a => {
+        if (comoLider.some(l => l.id === a.id)) return false; // No contar doble
+        return a.equipo.some(e => {
+          const miembroNombre = extraerNombre(e);
+          const miembroId = extraerId(e);
+          return miembroNombre === nombre || miembroId === configId || miembroId === idTercero;
+        });
+      });
+
+      const auditoriasTotales = comoLider.length + comoEquipo.length;
+      const horasLider = comoLider.reduce((sum, a) => sum + (a.horasEstimadas || 0), 0);
+      const horasEquipo = comoEquipo.reduce((sum, a) => sum + (a.horasEstimadas || 0), 0);
+      const horasAsignadas = horasLider + horasEquipo;
+
+      // Porcentaje de carga: auditorías asignadas vs capacidad máxima
+      const capacidad = p.configuracion.capacidadMaximaAuditorias || 4;
+      const porcentajePorAuditorias = Math.round((auditoriasTotales / capacidad) * 100);
+
+      // También considerar horas: horasAsignadas vs horasMensualesDisponibles
+      const horasDisponibles = p.configuracion.horasMensualesDisponibles || 150;
+      const porcentajePorHoras = horasDisponibles > 0 ? Math.round((horasAsignadas / horasDisponibles) * 100) : 0;
+
+      // Usar el mayor de los dos porcentajes como indicador de carga
+      const porcentajeCarga = Math.max(porcentajePorAuditorias, porcentajePorHoras);
+
+      return {
+        ...p,
+        estadisticas: {
+          auditoriasTotales,
+          auditoriasComoLider: comoLider.length,
+          auditoriasComoEquipo: comoEquipo.length,
+          cargaPonderada: porcentajeCarga,
+          porcentajeCarga,
+          horasAsignadas,
+        },
+      };
+    });
+  }, [profesionalesOCIG, auditorias]);
+
   // Calcular semáforo de carga para cada profesional
   const profesionalesConSemaforo = useMemo(() => {
-    return profesionalesOCIG.map(p => {
+    return profesionalesConCarga.map(p => {
       const porcentaje = p.estadisticas.porcentajeCarga;
       const semaforo = porcentaje > 90 ? 'rojo' : porcentaje >= 70 ? 'amarillo' : 'verde';
       return { ...p, semaforo, porcentaje };
     }).sort((a, b) => b.porcentaje - a.porcentaje);
-  }, [profesionalesOCIG]);
+  }, [profesionalesConCarga]);
 
-  const totalProfesionales = estadisticasGlobales.totalProfesionales;
-  const conCargaAlta = estadisticasGlobales.sobrecargados;
+  const totalProfesionales = profesionalesConCarga.length;
+  const conCargaAlta = profesionalesConSemaforo.filter(p => p.semaforo === 'rojo').length;
   const conCargaMedia = profesionalesConSemaforo.filter(p => p.semaforo === 'amarillo').length;
 
   return (

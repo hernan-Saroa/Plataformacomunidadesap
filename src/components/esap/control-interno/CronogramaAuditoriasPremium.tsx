@@ -39,7 +39,9 @@ import {
   Users,
   Target,
   Search, // 🆕 Agregado
-  MapPin   // 🆕 Agregado
+  MapPin, // 🆕 Agregado
+  CalendarOff,
+  type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 
@@ -53,6 +55,7 @@ import {
   type TipoAuditoria as TipoAuditoriaHook,
   type EstadoAuditoria as EstadoAuditoriaHook,
 } from './hooks/useProgramaAnualData';
+import { esFestivo } from '../gestion-legal/utils/diasHabiles';
 
 /** Colores por columna del tablero (misma semántica que `resolverColumnaKanban`) */
 const COLORES_POR_COLUMNA_KANBAN: Record<
@@ -172,6 +175,52 @@ const COLORES_TIPO: Record<string, string> = {
   'ESPECIAL': '#EF4444'
 };
 
+/** Color por tipo de auditoría (backend puede enviar Regular, GESTION, etc.) */
+function colorBordePorTipo(tipo: unknown): string {
+  const raw = String(tipo ?? '').trim();
+  if (!raw) return COLORES_TIPO.regular;
+  if (COLORES_TIPO[raw]) return COLORES_TIPO[raw];
+  const lower = raw.toLowerCase();
+  if (COLORES_TIPO[lower]) return COLORES_TIPO[lower];
+  const upper = raw.toUpperCase();
+  if (COLORES_TIPO[upper]) return COLORES_TIPO[upper];
+  if (lower.includes('territorial')) return COLORES_TIPO.territorial;
+  if (lower.includes('especial')) return COLORES_TIPO.especial;
+  return COLORES_TIPO.regular;
+}
+
+/** Auditorías en el rango del día; en festivos nacionales no se muestran chips (sáb/dom se tratan como días normales). */
+function auditoriasEnRangoDiaLaborable(
+  dia: Date,
+  auditorias: AuditoriaProgramada[]
+): AuditoriaProgramada[] {
+  if (esFestivo(dia)) return [];
+  return auditorias.filter((aud) => {
+    const inicio = new Date(aud.fechaInicio);
+    const fin = new Date(aud.fechaFin);
+    return dia >= inicio && dia <= fin;
+  });
+}
+
+/** Estilo rojo institucional para días festivos en el calendario */
+function estiloDiaFestivo(): {
+  cardClass: string;
+  badgeClass: string;
+  Icon: LucideIcon;
+  titulo: string;
+  subtitulo: string;
+} {
+  return {
+    cardClass:
+      'bg-gradient-to-br from-red-50 via-rose-50 to-red-100/90 border-red-300 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.75)] ring-1 ring-red-200/60',
+    badgeClass:
+      'bg-gradient-to-r from-red-700 to-red-800 text-white shadow-md ring-1 ring-red-900/25',
+    Icon: CalendarOff,
+    titulo: 'Festivo nacional',
+    subtitulo: 'Sin actividades de auditoría',
+  };
+}
+
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
@@ -210,9 +259,11 @@ export function CronogramaAuditoriasPremium({
       }
       
       // Filtro de búsqueda por nombre
-      const cumpleBusqueda = busqueda === '' || 
+      const codigoProceso = (aud as any).proceso?.codigo ?? '';
+      const cumpleBusqueda =
+        busqueda === '' ||
         aud.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-        aud.proceso.codigo.toLowerCase().includes(busqueda.toLowerCase());
+        String(codigoProceso).toLowerCase().includes(busqueda.toLowerCase());
       
       // Filtro de tipo (usamos el tipo operativo mapeado en el hook:
       // 'regular' | 'territorial' | 'especial')
@@ -489,6 +540,11 @@ export function CronogramaAuditoriasPremium({
       {/* LEYENDA */}
       {/* ═══════════════════════════════════════════════════════════════ */}
       <div className="bg-gray-50 px-6 py-4 border-t-2 border-gray-200">
+        <p className="text-[11px] text-gray-600 mb-3 max-w-3xl leading-relaxed">
+          <span className="font-bold text-gray-800">Festivos:</span> los días festivos nacionales (Colombia) se resaltan en{' '}
+          <span className="text-red-800 font-semibold">rojo</span> y no muestran auditorías. Sábados y domingos se ven como días normales. Lista de fechas en{' '}
+          <code className="text-[10px] bg-gray-200 px-1 rounded align-middle">diasHabiles.ts</code>.
+        </p>
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
             <span className="text-xs font-bold text-gray-600">Estados:</span>
@@ -531,11 +587,9 @@ interface VistaDiaProps {
 }
 
 function VistaDia({ fecha, auditorias, onSeleccionar }: VistaDiaProps) {
-  const auditoriasDelDia = auditorias.filter(aud => {
-    const inicio = new Date(aud.fechaInicio);
-    const fin = new Date(aud.fechaFin);
-    return fecha >= inicio && fecha <= fin;
-  });
+  const auditoriasDelDia = auditoriasEnRangoDiaLaborable(fecha, auditorias);
+  const esFestivoDia = esFestivo(fecha);
+  const festivoStyle = esFestivoDia ? estiloDiaFestivo() : null;
 
   return (
     <motion.div
@@ -549,11 +603,28 @@ function VistaDia({ fecha, auditorias, onSeleccionar }: VistaDiaProps) {
           {fecha.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </h3>
         <p className="text-sm text-gray-600">
-          {auditoriasDelDia.length} auditoría(s) en curso
+          {esFestivoDia
+            ? 'Festivo nacional: no se programan actividades de auditoría este día.'
+            : `${auditoriasDelDia.length} auditoría(s) en curso`}
         </p>
       </div>
 
-      {auditoriasDelDia.length > 0 ? (
+      {esFestivoDia && festivoStyle ? (
+        <div
+          className={`rounded-2xl border-2 border-red-200 p-8 text-center ${festivoStyle.cardClass}`}
+        >
+          <div
+            className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold mb-3 ${festivoStyle.badgeClass}`}
+          >
+            <festivoStyle.Icon className="w-5 h-5 shrink-0" aria-hidden />
+            {festivoStyle.titulo}
+          </div>
+          <p className="text-red-950/90 font-semibold text-sm mb-1">{festivoStyle.subtitulo}</p>
+          <p className="text-red-900/70 text-xs leading-relaxed max-w-md mx-auto">
+            Los sábados y domingos se muestran con normalidad; solo los festivos oficiales bloquean la vista de auditorías.
+          </p>
+        </div>
+      ) : auditoriasDelDia.length > 0 ? (
         <div className="space-y-3">
           {auditoriasDelDia.map((aud) => (
             <CardAuditoria
@@ -603,19 +674,19 @@ function VistaSemana({ fecha, auditorias, onSeleccionar }: VistaSemanaProps) {
     >
       <div className="grid grid-cols-7 gap-2 min-w-[700px]">
         {diasSemana.map((dia, idx) => {
-          const auditoriasDelDia = auditorias.filter(aud => {
-            const inicio = new Date(aud.fechaInicio);
-            const fin = new Date(aud.fechaFin);
-            return dia >= inicio && dia <= fin;
-          });
+          const auditoriasDelDia = auditoriasEnRangoDiaLaborable(dia, auditorias);
+          const esFestivoDia = esFestivo(dia);
+          const festivoStyle = esFestivoDia ? estiloDiaFestivo() : null;
 
           const esHoy = dia.toDateString() === new Date().toDateString();
 
           return (
             <div
               key={idx}
-              className={`bg-white rounded-xl border-2 p-3 min-h-[200px] ${
-                esHoy ? 'border-[#F57C00] ring-2 ring-[#F57C00]/30' : 'border-gray-200'
+              className={`rounded-xl border-2 p-3 min-h-[200px] transition-shadow ${
+                esFestivoDia && festivoStyle
+                  ? `${festivoStyle.cardClass}`
+                  : 'bg-white ' + (esHoy ? 'border-[#F57C00] ring-2 ring-[#F57C00]/30' : 'border-gray-200')
               }`}
             >
               <div className="text-center mb-3">
@@ -630,6 +701,19 @@ function VistaSemana({ fecha, auditorias, onSeleccionar }: VistaSemanaProps) {
               </div>
 
               <div className="space-y-2">
+                {esFestivoDia && festivoStyle && (
+                  <div className="flex flex-col items-center gap-1 py-1">
+                    <span
+                      className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold ${festivoStyle.badgeClass}`}
+                    >
+                      <festivoStyle.Icon className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                      Festivo
+                    </span>
+                    <span className="text-[9px] text-center text-red-800/90 font-medium leading-snug px-1">
+                      {festivoStyle.subtitulo}
+                    </span>
+                  </div>
+                )}
                 {auditoriasDelDia.slice(0, 3).map((aud) => {
                   const { colores } = obtenerEstadoVisual(aud);
                   return (
@@ -640,7 +724,7 @@ function VistaSemana({ fecha, auditorias, onSeleccionar }: VistaSemanaProps) {
                       style={{
                         backgroundColor: colores.bg,
                         color: colores.text,
-                        borderLeft: `3px solid ${COLORES_TIPO[aud.tipo]}`
+                        borderLeft: `3px solid ${colorBordePorTipo(aud.tipo)}`
                       }}
                     >
                       <div className="truncate">{aud.nombre}</div>
@@ -710,28 +794,45 @@ function VistaMes({ fecha, auditorias, onSeleccionar }: VistaMesProps) {
             return <div key={idx} className="aspect-square" />;
           }
 
-          const auditoriasDelDia = auditorias.filter(aud => {
-            const inicio = new Date(aud.fechaInicio);
-            const fin = new Date(aud.fechaFin);
-            return dia >= inicio && dia <= fin;
-          });
+          const auditoriasDelDia = auditoriasEnRangoDiaLaborable(dia, auditorias);
+          const esFestivoDia = esFestivo(dia);
+          const festivoStyle = esFestivoDia ? estiloDiaFestivo() : null;
 
           const esHoy = dia.toDateString() === new Date().toDateString();
 
           return (
             <div
               key={idx}
-              className={`bg-white rounded-lg border-2 p-2 min-h-[120px] ${
-                esHoy ? 'border-[#F57C00] ring-2 ring-[#F57C00]/30' : 'border-gray-200'
+              className={`rounded-lg border-2 p-2 min-h-[120px] transition-shadow ${
+                esFestivoDia && festivoStyle
+                  ? festivoStyle.cardClass
+                  : 'bg-white ' + (esHoy ? 'border-[#F57C00] ring-2 ring-[#F57C00]/30' : 'border-gray-200')
               }`}
             >
-              <div className={`text-sm font-black mb-2 ${
-                esHoy ? 'text-[#F57C00]' : 'text-gray-900'
-              }`}>
-                {dia.getDate()}
+              <div className="flex items-start justify-between gap-1 mb-1.5">
+                <span
+                  className={`text-sm font-black tabular-nums ${
+                    esFestivoDia ? 'text-red-800' : esHoy ? 'text-[#F57C00]' : 'text-gray-900'
+                  }`}
+                >
+                  {dia.getDate()}
+                </span>
+                {esFestivoDia && festivoStyle && (
+                  <span
+                    className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 shrink-0 ${festivoStyle.badgeClass}`}
+                    title="Festivo nacional · sin auditorías"
+                  >
+                    <festivoStyle.Icon className="w-2.5 h-2.5" aria-hidden />
+                  </span>
+                )}
               </div>
 
               <div className="space-y-1">
+                {esFestivoDia && festivoStyle && (
+                  <p className="text-[8px] font-bold text-center leading-tight text-red-800 mb-0.5 line-clamp-2">
+                    Festivo · sin auditorías
+                  </p>
+                )}
                 {auditoriasDelDia.slice(0, 2).map((aud) => {
                   const { colores } = obtenerEstadoVisual(aud);
                   return (
@@ -742,7 +843,7 @@ function VistaMes({ fecha, auditorias, onSeleccionar }: VistaMesProps) {
                       style={{
                         backgroundColor: colores.bg,
                         color: colores.text,
-                        borderLeft: `2px solid ${COLORES_TIPO[aud.tipo]}`
+                        borderLeft: `2px solid ${colorBordePorTipo(aud.tipo)}`
                       }}
                     >
                       <div className="truncate">{aud.nombre}</div>
@@ -865,14 +966,14 @@ function VistaAño({ fecha, auditorias, onSeleccionar }: VistaAñoProps) {
                       <div className="flex items-start gap-2 mb-2">
                         <div
                           className="w-3 h-3 rounded-full flex-shrink-0 mt-1"
-                          style={{ backgroundColor: COLORES_TIPO[auditoria.tipo] }}
+                          style={{ backgroundColor: colorBordePorTipo(auditoria.tipo) }}
                         />
                         <div className="flex-1 min-w-0">
                           <h4 className="text-sm font-black text-gray-900 leading-tight mb-1 truncate">
                             {auditoria.nombre}
                           </h4>
                           <p className="text-xs text-gray-600 truncate">
-                            {auditoria.proceso.nombre}
+                            {auditoria.proceso?.nombre ?? 'Sin proceso'}
                           </p>
                         </div>
                       </div>
@@ -1102,7 +1203,7 @@ function CardAuditoria({ auditoria, onClick, compact = false }: CardAuditoriaPro
           <p className={`text-gray-600 truncate ${
             compact ? 'text-xs' : 'text-sm'
           }`}>
-            {auditoria.proceso.nombre}
+            {auditoria.proceso?.nombre ?? 'Sin proceso'}
           </p>
           <div className={`flex items-center gap-3 mt-2 ${
             compact ? 'text-xs' : 'text-sm'
@@ -1153,7 +1254,7 @@ function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaPro
         <div
           className="px-6 py-4 rounded-t-2xl border-b-4"
           style={{
-            background: `linear-gradient(135deg, ${COLORES_TIPO[auditoria.tipo]}, ${colores.border})`,
+            background: `linear-gradient(135deg, ${colorBordePorTipo(auditoria.tipo)}, ${colores.border})`,
             borderColor: '#F57C00'
           }}
         >
@@ -1163,7 +1264,7 @@ function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaPro
                 {auditoria.nombre}
               </h3>
               <p className="text-sm text-white/90 font-medium">
-                {auditoria.proceso.nombre}
+                {auditoria.proceso?.nombre ?? 'Sin proceso'}
               </p>
             </div>
             <button
@@ -1220,14 +1321,14 @@ function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaPro
           </div>
 
           {/* Equipo */}
-          {auditoria.equipo.length > 0 && (
+          {(auditoria.equipo ?? []).length > 0 && (
             <div className="bg-blue-50 rounded-lg p-4 border-2 border-blue-200">
               <div className="text-xs font-bold text-gray-600 mb-2 flex items-center gap-2">
                 <Users className="w-4 h-4" />
                 Equipo Auditor
               </div>
               <div className="flex flex-wrap gap-2">
-                {auditoria.equipo.map((miembro, idx) => (
+                {(auditoria.equipo ?? []).map((miembro, idx) => (
                   <span
                     key={idx}
                     className="px-3 py-1 bg-white rounded-lg text-xs font-bold text-gray-700 border border-blue-300"

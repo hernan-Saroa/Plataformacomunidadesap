@@ -219,24 +219,89 @@ export class PlanesMejoramientoService {
   }
 
   /**
+   * Cuenta acciones terminadas (misma lógica que el Kanban / frontend)
+   */
+  private contarAccionesCompletadas(acciones: AccionCorrectiva[]): number {
+    if (!acciones?.length) return 0;
+    return acciones.filter((a) => {
+      const p = Number(a.porcentajeAvance ?? 0);
+      if (Number.isFinite(p) && p >= 100) return true;
+      const e = String(a.estado || '')
+        .toLowerCase()
+        .replace(/-/g, '_');
+      return e === 'completada' || e === 'implementada';
+    }).length;
+  }
+
+  /**
+   * Hallazgos cubiertos por el plan: cabecera del plan o IDs distintos en acciones o total en auditoría
+   */
+  private contarHallazgosParaKanban(plan: PlanMejoramiento, accionesRaw: AccionCorrectiva[]): number {
+    if (plan.hallazgoId || plan.hallazgo) return 1;
+    const ids = new Set(
+      accionesRaw
+        .map((a) => a.hallazgoId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    );
+    if (ids.size > 0) return ids.size;
+    const aud = plan.auditoria as { hallazgos?: number } | undefined;
+    const n = Number(aud?.hallazgos);
+    if (Number.isFinite(n) && n > 0) return n;
+    return 0;
+  }
+
+  /** Progreso del plan = promedio del % de avance reportado en cada acción (0–100) */
+  private promedioPorcentajeAvanceAcciones(accionesRaw: AccionCorrectiva[]): number {
+    if (!accionesRaw.length) return 0;
+    const sum = accionesRaw.reduce((s, a) => {
+      const p = Math.min(100, Math.max(0, Number(a.porcentajeAvance ?? 0)));
+      return s + (Number.isFinite(p) ? p : 0);
+    }, 0);
+    return Math.round(sum / accionesRaw.length);
+  }
+
+  /**
    * Serializa un plan de mejoramiento para la respuesta JSON
+   * Evita referencias circulares (accion.plan → plan) y expone totales para listados/Kanban
    */
   private serializePlanMejoramiento(plan: PlanMejoramiento): any {
+    const accionesRaw = plan.acciones ?? [];
+    const totalAcciones = accionesRaw.length;
+    const accionesCompletadas = this.contarAccionesCompletadas(accionesRaw);
+    const porcentajeAvance = this.promedioPorcentajeAvanceAcciones(accionesRaw);
+    const totalHallazgos = this.contarHallazgosParaKanban(plan, accionesRaw);
+
+    const acciones = accionesRaw.map((accion) => {
+      const { plan: _omitPlan, ...rest } = accion as AccionCorrectiva & { plan?: PlanMejoramiento };
+      return {
+        ...rest,
+        fechaInicio: this.serializeDate(accion.fechaInicio),
+        fechaFin: this.serializeDate(accion.fechaFin),
+      };
+    });
+
+    const seguimientos = plan.seguimientos?.map((seguimiento) => {
+      const { plan: _omitPlan, ...rest } = seguimiento as SeguimientoTrimestral & {
+        plan?: PlanMejoramiento;
+      };
+      return {
+        ...rest,
+        fechaInicio: this.serializeDate(seguimiento.fechaInicio),
+        fechaFin: this.serializeDate(seguimiento.fechaFin),
+        fechaSeguimiento: this.serializeDate(seguimiento.fechaSeguimiento),
+      };
+    });
+
     return {
       ...plan,
       fechaLimite: this.serializeDate(plan.fechaLimite),
       fechaAprobacion: this.serializeDate(plan.fechaAprobacion),
-      acciones: plan.acciones?.map(accion => ({
-        ...accion,
-        fechaInicio: this.serializeDate(accion.fechaInicio),
-        fechaFin: this.serializeDate(accion.fechaFin),
-      })),
-      seguimientos: plan.seguimientos?.map(seguimiento => ({
-        ...seguimiento,
-        fechaInicio: this.serializeDate(seguimiento.fechaInicio),
-        fechaFin: this.serializeDate(seguimiento.fechaFin),
-        fechaSeguimiento: this.serializeDate(seguimiento.fechaSeguimiento),
-      })),
+      acciones,
+      seguimientos,
+      totalHallazgos,
+      totalAcciones,
+      accionesCompletadas,
+      porcentajeAvance,
     };
   }
 

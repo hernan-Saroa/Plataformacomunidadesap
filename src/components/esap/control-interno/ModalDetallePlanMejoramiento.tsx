@@ -18,7 +18,7 @@
                                            * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
                                            */
 
-                                          import { useState, useMemo, useEffect } from 'react';
+                                          import { useState, useMemo, useEffect, useCallback } from 'react';
                                           import { createPortal } from 'react-dom';
                                           import { motion, AnimatePresence } from 'motion/react';
                                           import {
@@ -418,6 +418,33 @@
                                               eliminarAccion
                                             } = usePlanMejoramientoDetalle(planId);
 
+                                            const crearAccionYNotificar = useCallback(
+                                              async (data: any) => {
+                                                const ok = await crearAccion(data);
+                                                if (ok) onPlanActualizado?.();
+                                                return ok;
+                                              },
+                                              [crearAccion, onPlanActualizado]
+                                            );
+
+                                            const actualizarAccionYNotificar = useCallback(
+                                              async (accionId: string, data: any) => {
+                                                const ok = await actualizarAccion(accionId, data);
+                                                if (ok) onPlanActualizado?.();
+                                                return ok;
+                                              },
+                                              [actualizarAccion, onPlanActualizado]
+                                            );
+
+                                            const eliminarAccionYNotificar = useCallback(
+                                              async (accionId: string) => {
+                                                const ok = await eliminarAccion(accionId);
+                                                if (ok) onPlanActualizado?.();
+                                                return ok;
+                                              },
+                                              [eliminarAccion, onPlanActualizado]
+                                            );
+
                                             // Estado para el formulario de actualización
                                             const [datosActualizacion, setDatosActualizacion] = useState({
                                               estado: '',
@@ -485,7 +512,9 @@
                                               }
                                               
                                               const totalAcciones = plan.acciones.length;
-                                              const accionesCompletadas = plan.acciones.filter(a => a.estado === 'COMPLETADA').length;
+                                              const accionesCompletadas = plan.acciones.filter(
+                                                (a) => a.estado === 'COMPLETADA' || (a.progreso ?? 0) >= 100
+                                              ).length;
                                               const accionesEnEjecucion = plan.acciones.filter(a => a.estado === 'EN_EJECUCION').length;
                                               const accionesPendientes = plan.acciones.filter(a => a.estado === 'PENDIENTE').length;
                                               const accionesVencidas = plan.acciones.filter(a => a.estado === 'VENCIDA').length;
@@ -1017,15 +1046,15 @@
                                                         {tabActiva === 'hallazgos' && (
                                                           <TabHallazgos 
                                                             plan={plan} 
-                                                            onCrearAccion={crearAccion}
+                                                            onCrearAccion={crearAccionYNotificar}
                                                           />
                                                         )}
                                                         {tabActiva === 'acciones' && (
                                                           <TabAcciones 
                                                             plan={plan} 
-                                                            onActualizarAccion={actualizarAccion}
-                                                            onEliminarAccion={eliminarAccion}
-                                                            onCrearAccion={crearAccion}
+                                                            onActualizarAccion={actualizarAccionYNotificar}
+                                                            onEliminarAccion={eliminarAccionYNotificar}
+                                                            onCrearAccion={crearAccionYNotificar}
                                                             onRefresh={refetch}
                                                           />
                                                         )}
@@ -1503,8 +1532,30 @@
                                           }
 
                                           // ════════════════════════════════════════════════════════════════════════════
-                                          // TAB: ACCIONES
+                                          // TAB: ACCIONES — filtros por avance del HALLAZGO (0% / 1–99% / 100%)
                                           // ════════════════════════════════════════════════════════════════════════════
+
+                                          /** % de avance del hallazgo = proporción de acciones completadas (alineado con backend) */
+                                          function progresoHallazgoDesdeAcciones(
+                                            plan: PlanMejoramientoDetalle,
+                                            hallazgoId: string
+                                          ): number {
+                                            const accs = plan.acciones.filter((a) => a.hallazgoId === hallazgoId);
+                                            if (accs.length === 0) return 0;
+                                            const completadas = accs.filter(
+                                              (a) =>
+                                                a.estado === 'COMPLETADA' || (a.progreso ?? 0) >= 100
+                                            ).length;
+                                            return Math.round((completadas / accs.length) * 100);
+                                          }
+
+                                          type FiltroHallazgoAcciones = 'TODOS' | 'H_PENDIENTE' | 'H_EJECUCION' | 'H_COMPLETADA';
+
+                                          function bucketHallazgoPorPct(pct: number): Exclude<FiltroHallazgoAcciones, 'TODOS'> {
+                                            if (pct <= 0) return 'H_PENDIENTE';
+                                            if (pct >= 100) return 'H_COMPLETADA';
+                                            return 'H_EJECUCION';
+                                          }
 
                                           interface TabAccionesProps {
                                             plan: PlanMejoramientoDetalle;
@@ -1515,73 +1566,151 @@
                                           }
 
                                           function TabAcciones({ plan, onActualizarAccion, onEliminarAccion, onCrearAccion, onRefresh }: TabAccionesProps) {
-                                            const [filtroEstado, setFiltroEstado] = useState<'TODOS' | AccionCorrectiva['estado']>('TODOS');
+                                            const [filtroHallazgo, setFiltroHallazgo] = useState<FiltroHallazgoAcciones>('TODOS');
                                             const [modalCrearAccion, setModalCrearAccion] = useState(false);
 
-                                            const accionesFiltradas = filtroEstado === 'TODOS'
-                                              ? plan.acciones
-                                              : plan.acciones.filter(a => a.estado === filtroEstado);
+                                            const conteosPorBucket = useMemo(() => {
+                                              let pend = 0;
+                                              let ejec = 0;
+                                              let comp = 0;
+                                              for (const h of plan.hallazgos) {
+                                                const pct = progresoHallazgoDesdeAcciones(plan, h.id);
+                                                const b = bucketHallazgoPorPct(pct);
+                                                if (b === 'H_PENDIENTE') pend += 1;
+                                                else if (b === 'H_EJECUCION') ejec += 1;
+                                                else comp += 1;
+                                              }
+                                              return { pend, ejec, comp };
+                                            }, [plan.hallazgos, plan.acciones]);
+
+                                            const hallazgosFiltrados = useMemo(() => {
+                                              return plan.hallazgos.filter((h) => {
+                                                const pct = progresoHallazgoDesdeAcciones(plan, h.id);
+                                                const b = bucketHallazgoPorPct(pct);
+                                                if (filtroHallazgo === 'TODOS') return true;
+                                                return b === filtroHallazgo;
+                                              });
+                                            }, [plan.hallazgos, plan.acciones, filtroHallazgo]);
+
+                                            const accionesFiltradas = useMemo(() => {
+                                              const ids = new Set(hallazgosFiltrados.map((h) => h.id));
+                                              return plan.acciones.filter((a) => ids.has(a.hallazgoId));
+                                            }, [plan.acciones, hallazgosFiltrados]);
 
                                             return (
                                               <div className="space-y-4">
-                                                <div className="flex items-center justify-between mb-4">
-                                                  <div>
-                                                    <h3 className="text-base font-medium text-gray-900">Acciones Correctivas</h3>
-                                                    <p className="text-sm text-gray-600">{accionesFiltradas.length} acciones</p>
-                                                  </div>
+                                                <div className="flex flex-col gap-3 mb-4">
+                                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div>
+                                                      <h3 className="text-base font-medium text-gray-900">Acciones correctivas por hallazgo</h3>
+                                                      <p className="text-sm text-gray-600">
+                                                        Filtros según avance del hallazgo:{' '}
+                                                        <span className="font-medium text-gray-800">0% pendiente</span>,{' '}
+                                                        <span className="font-medium text-gray-800">1–99% en ejecución</span>,{' '}
+                                                        <span className="font-medium text-gray-800">100% completado</span>
+                                                      </p>
+                                                      <p className="text-xs text-gray-500 mt-1">
+                                                        {hallazgosFiltrados.length} hallazgo(s) · {accionesFiltradas.length} acción(es)
+                                                      </p>
+                                                    </div>
 
-                                                  <div className="flex gap-2 items-center">
-                                                    {/* Botón Nueva Acción */}
                                                     <button
                                                       onClick={() => setModalCrearAccion(true)}
-                                                      className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium mr-3"
+                                                      className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium"
                                                     >
                                                       <Plus className="w-4 h-4" />
                                                       Nueva Acción
                                                     </button>
+                                                  </div>
+
+                                                  <div className="flex flex-wrap gap-2 items-center">
                                                     <FiltroButton
-                                                      active={filtroEstado === 'TODOS'}
-                                                      onClick={() => setFiltroEstado('TODOS')}
-                                                      label="Todas"
+                                                      active={filtroHallazgo === 'TODOS'}
+                                                      onClick={() => setFiltroHallazgo('TODOS')}
+                                                      label={`Todas (${plan.hallazgos.length})`}
                                                     />
                                                     <FiltroButton
-                                                      active={filtroEstado === 'COMPLETADA'}
-                                                      onClick={() => setFiltroEstado('COMPLETADA')}
-                                                      label="Completadas"
-                                                      color="green"
+                                                      active={filtroHallazgo === 'H_PENDIENTE'}
+                                                      onClick={() => setFiltroHallazgo('H_PENDIENTE')}
+                                                      label={`Pendientes 0% (${conteosPorBucket.pend})`}
+                                                      color="gray"
                                                     />
                                                     <FiltroButton
-                                                      active={filtroEstado === 'EN_EJECUCION'}
-                                                      onClick={() => setFiltroEstado('EN_EJECUCION')}
-                                                      label="En Ejecución"
+                                                      active={filtroHallazgo === 'H_EJECUCION'}
+                                                      onClick={() => setFiltroHallazgo('H_EJECUCION')}
+                                                      label={`En ejecución (${conteosPorBucket.ejec})`}
                                                       color="yellow"
                                                     />
                                                     <FiltroButton
-                                                      active={filtroEstado === 'PENDIENTE'}
-                                                      onClick={() => setFiltroEstado('PENDIENTE')}
-                                                      label="Pendientes"
-                                                      color="gray"
+                                                      active={filtroHallazgo === 'H_COMPLETADA'}
+                                                      onClick={() => setFiltroHallazgo('H_COMPLETADA')}
+                                                      label={`Completadas (${conteosPorBucket.comp})`}
+                                                      color="green"
                                                     />
                                                   </div>
                                                 </div>
 
-                                                {accionesFiltradas.length === 0 ? (
+                                                {hallazgosFiltrados.length === 0 ? (
                                                   <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
                                                     <Target className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                                                    <p className="font-medium">Sin acciones {filtroEstado !== 'TODOS' ? 'en este estado' : ''}</p>
-                                                    <p className="text-sm mt-1">Haz clic en "Nueva Acción" para crear una acción correctiva</p>
+                                                    <p className="font-medium">
+                                                      {filtroHallazgo !== 'TODOS'
+                                                        ? 'No hay hallazgos en este avance'
+                                                        : 'Sin hallazgos en el plan'}
+                                                    </p>
+                                                    <p className="text-sm mt-1">
+                                                      {filtroHallazgo !== 'TODOS'
+                                                        ? 'Prueba otro filtro o revisa el tab Hallazgos.'
+                                                        : 'Haz clic en "Nueva Acción" para crear una acción correctiva'}
+                                                    </p>
                                                   </div>
                                                 ) : (
-                                                  accionesFiltradas.map((accion) => (
-                                                    <CardAccion 
-                                                      key={accion.id} 
-                                                      accion={accion} 
-                                                      plan={plan}
-                                                      onActualizarAccion={onActualizarAccion}
-                                                      onEliminarAccion={onEliminarAccion}
-                                                      onRefresh={onRefresh}
-                                                    />
-                                                  ))
+                                                  hallazgosFiltrados.map((hallazgo) => {
+                                                    const pct = progresoHallazgoDesdeAcciones(plan, hallazgo.id);
+                                                    const accsDeH = plan.acciones.filter((a) => a.hallazgoId === hallazgo.id);
+                                                    const desc = (hallazgo.descripcion || '').trim();
+                                                    const bucket = bucketHallazgoPorPct(pct);
+                                                    const bucketLabel =
+                                                      bucket === 'H_PENDIENTE'
+                                                        ? 'Pendiente'
+                                                        : bucket === 'H_COMPLETADA'
+                                                          ? 'Completado'
+                                                          : 'En ejecución';
+                                                    return (
+                                                      <div key={hallazgo.id} className="space-y-2">
+                                                        <div className="flex items-center justify-between px-1 pt-2 border-t border-gray-100 first:border-t-0 first:pt-0">
+                                                          <div className="flex items-center gap-2 min-w-0">
+                                                            <span className="text-sm font-semibold text-[#1e5da8] truncate">
+                                                              {hallazgo.codigo}
+                                                            </span>
+                                                            <span className="text-xs text-gray-500 truncate">
+                                                              {desc.length > 80 ? `${desc.slice(0, 80)}…` : desc}
+                                                            </span>
+                                                          </div>
+                                                          <span className="text-xs font-bold text-gray-700 shrink-0">
+                                                            {pct}% · {bucketLabel}
+                                                          </span>
+                                                        </div>
+                                                        {accsDeH.length === 0 ? (
+                                                          <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/50 px-4 py-3 text-sm text-amber-900">
+                                                            Sin acciones correctivas aún — el hallazgo permanece en <strong>0%</strong> hasta
+                                                            que registres acciones.
+                                                          </div>
+                                                        ) : (
+                                                          accsDeH.map((accion) => (
+                                                            <CardAccion
+                                                              key={accion.id}
+                                                              accion={accion}
+                                                              plan={plan}
+                                                              onActualizarAccion={onActualizarAccion}
+                                                              onEliminarAccion={onEliminarAccion}
+                                                              onRefresh={onRefresh}
+                                                            />
+                                                          ))
+                                                        )}
+                                                      </div>
+                                                    );
+                                                  })
                                                 )}
 
                                                 {/* Modal Crear Acción */}
