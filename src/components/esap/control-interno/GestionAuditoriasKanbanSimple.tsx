@@ -767,7 +767,7 @@ const AUDITORIAS_MOCK: Auditoria[] = [
 const COLUMNAS_KANBAN = [
   {
     id: 'Plan Anual',
-    titulo: 'Plan Anual',
+    titulo: 'Programa Anual',
     count: 0,
     icono: <Calendar className="w-4 h-4" style={{ color: '#003DA5' }} />,
     diasEstimados: 15
