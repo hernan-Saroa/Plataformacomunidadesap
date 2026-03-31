@@ -23,7 +23,7 @@ export class JuzgamientoController {
 
         // 2. Mapear al formato Kanban requerido por el frontend
         return rawExpedientes.map(exp => {
-            const diasRestantes = this.calculateDiasRestantes(exp.fechaLimiteEtapa);
+            const diasRestantes = this.calculateDiasRestantes(exp.fechaLimiteEtapa, exp.fechaPrescripcion);
 
             return {
                 id: exp.radicado, // Frontend expects "PD-2025-001" as ID
@@ -95,13 +95,22 @@ export class JuzgamientoController {
         };
     }
 
+    /** Fecha límite a partir de la cual aplica Ley 1952/2019 */
+    private readonly LEY_1952_DESDE = new Date('2021-06-30T00:00:00.000Z');
+
+    /** Determina la ley aplicable según la fecha de los hechos */
+    private calcularLeyAplicable(fechaHechos?: string | Date): string {
+        if (!fechaHechos) return 'Ley 1952 de 2019'; // Por defecto la más reciente
+        const fecha = new Date(fechaHechos);
+        return fecha < this.LEY_1952_DESDE ? 'Ley 734 de 2002' : 'Ley 1952 de 2019';
+    }
+
     @Post()
-    async create(@Body() data: Partial<Expediente>) {
+    async create(@Body() data: Partial<Expediente> & { fechaHechos?: string }) {
         // Auto-generar radicado PD-YYYY-NNNNN si no viene en el body
         if (!data.radicado) {
             const year = new Date().getFullYear();
             const prefix = `PD-${year}-`;
-            // Buscar último radicado disciplinario del año actual
             const allExpedientes = await this.expedienteService.listarExpedientes({
                 jurisdiccion: 'DISCIPLINARIO'
             });
@@ -118,11 +127,16 @@ export class JuzgamientoController {
             data.radicado = `${prefix}${String(maxSeq + 1).padStart(5, '0')}`;
         }
 
+        // Calcular ley aplicable según fecha de los hechos
+        const leyAplicable = this.calcularLeyAplicable(data.fechaHechos);
+
         return this.expedienteService.crearExpediente({
             ...data,
             jurisdiccion: 'DISCIPLINARIO',
             tipoProceso: 'Disciplinario',
-            etapa: 'E1_AVOCAMIENTO'
+            etapa: 'E1_AVOCAMIENTO',
+            leyAplicable,
+            fechaHechos: data.fechaHechos ? new Date(data.fechaHechos) : undefined,
         });
     }
 
@@ -134,9 +148,10 @@ export class JuzgamientoController {
         return this.expedienteService.updateExpediente(expediente.id, data);
     }
 
-    private calculateDiasRestantes(fechaLimite?: Date): number {
-        if (!fechaLimite) return 0;
-        const diffTime = new Date(fechaLimite).getTime() - new Date().getTime();
+    private calculateDiasRestantes(fechaLimiteEtapa?: Date, fechaPrescripcion?: Date): number {
+        const fecha = fechaLimiteEtapa ?? fechaPrescripcion;
+        if (!fecha) return 0;
+        const diffTime = new Date(fecha).getTime() - new Date().getTime();
         return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     }
 

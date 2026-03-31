@@ -15,6 +15,8 @@ import { TemplateConfigController } from './template-config.controller';
 import { TemplateConfigService } from './template-config.service';
 import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
 import { TechnicalBonusAssignment } from './technical-bonus-assignment.entity';
+import { LaborOracleIntegrationController } from './labor-oracle-integration.controller';
+import { LaborOracleIntegrationService } from './labor-oracle-integration.service';
 
 @Module({
   imports: [
@@ -30,13 +32,22 @@ import { TechnicalBonusAssignment } from './technical-bonus-assignment.entity';
       TechnicalBonusAssignment,
     ]),
   ],
-  controllers: [CertificatesController, TemplateConfigController],
+  controllers: [
+    CertificatesController,
+    TemplateConfigController,
+    LaborOracleIntegrationController,
+  ],
   providers: [
     CertificatesService,
     CertificateGeneratorService,
     TemplateConfigService,
     LaborCertificatePdfService,
+    LaborOracleIntegrationService,
   ],
-  exports: [CertificatesService, TemplateConfigService],
+  exports: [
+    CertificatesService,
+    TemplateConfigService,
+    LaborOracleIntegrationService,
+  ],
 })
 export class CertificatesModule {}
