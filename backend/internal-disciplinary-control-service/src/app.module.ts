@@ -24,6 +24,7 @@ import { EntidadRemision } from './entities/entidad-remision.entity';
 import { DisciplinaryProcessActuacion } from './entities/disciplinary-process-actuacion.entity';
 import { DisciplinaryProcessTask } from './entities/disciplinary-process-task.entity';
 import { DisciplinaryProcessNote } from './entities/disciplinary-process-note.entity';
+import { DisciplinaryNewsProcess } from './entities/disciplinary-news-process.entity';
 
 // Controllers
 import { NewsController } from './controllers/news.controller';
@@ -105,6 +106,7 @@ import { DisciplinaryProcessNotesService } from './services/disciplinary-process
     TypeOrmModule.forRoot(databaseConfig),
     TypeOrmModule.forFeature([
       DisciplinaryNews,
+      DisciplinaryNewsProcess,
       DisciplinaryProcess,
       LegalAuto,
       Sequence,

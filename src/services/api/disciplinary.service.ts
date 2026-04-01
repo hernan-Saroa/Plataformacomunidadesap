@@ -67,32 +67,44 @@ export interface DisciplinaryNews {
 //     // radicado, fechaRecepcion, estado, observaciones
 // }
 
+export interface DisciplinaryNewsProcess {
+     id: string;
+     newsId: string;
+     processId: string;
+     fechaAsociacion: string;
+     justificacion?: string;
+     createdAt: string;
+     updatedAt: string;
+     news?: DisciplinaryNews;
+     process?: DisciplinaryProcess;
+}
+
 export interface DisciplinaryProcess {
-    id: string;
-    radicadoProceso: string;
-    etapaActual: 'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO' | 'FALLO' | 'SEGUNDA_INSTANCIA' | 'INDAGACION';
-    kanbanStage?: string;
-    kanbanNotice?: string;
-    estado: 'ACTIVO' | 'SUSPENDIDO' | 'ARCHIVADO' | 'PRESCRITO';
-    abogadoAsignadoId: string;
-    abogadoAsignadoNombre: string;
-    fechaPrescripcion: string;
-    fechaVencimientoEtapa: string;
-    news: DisciplinaryNews;
-    createdAt: string;
-    updatedAt: string;
-    evidence?: any[];
-    // Estadísticas dinámicas
-    draftsCount?: number;
-    documentsCount?: number;
-    timePercentage?: number;
-    actuacionesCount?: number;
-    ultimaActuacion?: string | null;
-    ultimaActuacionFecha?: string | null;
-    tasksCount?: number;
-    completedTasksCount?: number;
-    pendingTasksCount?: number;
-    notesCount?: number;
+     id: string;
+     radicadoProceso: string;
+     etapaActual: 'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO' | 'FALLO' | 'SEGUNDA_INSTANCIA' | 'INDAGACION';
+     kanbanStage?: string;
+     kanbanNotice?: string;
+     estado: 'ACTIVO' | 'SUSPENDIDO' | 'ARCHIVADO' | 'PRESCRITO';
+     abogadoAsignadoId: string;
+     abogadoAsignadoNombre: string;
+     fechaPrescripcion: string;
+     fechaVencimientoEtapa: string;
+     news: DisciplinaryNews;
+     createdAt: string;
+     updatedAt: string;
+     evidence?: any[];
+     // Estadísticas dinámicas
+     draftsCount?: number;
+     documentsCount?: number;
+     timePercentage?: number;
+     actuacionesCount?: number;
+     ultimaActuacion?: string | null;
+     ultimaActuacionFecha?: string | null;
+     tasksCount?: number;
+     completedTasksCount?: number;
+     pendingTasksCount?: number;
+     notesCount?: number;
 }
 
 export interface ProcessStatistics {
@@ -1521,9 +1533,16 @@ class DisciplinaryService {
 
     // --- ASOCIACIONES ---
 
-    async asociarNoticiaAProceso(noticiaId: string, procesoId: string, justificacion: string): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-news/${noticiaId}/associate-process`, {
+    async asociarNoticiaAProceso(noticiaId: string, procesoId: string, justificacion: string): Promise<{ message: string; association?: any }> {
+        return apiClient.patch<{ message: string; association?: any }>(`${SERVICE_PREFIX}/disciplinary-news/${noticiaId}/associate-process`, {
             procesoDestinoId: procesoId,
+            justificacion,
+        });
+    }
+
+    async asociarNoticiaANoticia(noticiaId: string, noticiaDestinoId: string, justificacion: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-news/${noticiaId}/associate-news`, {
+            noticiaDestinoId,
             justificacion,
         });
     }
@@ -1539,6 +1558,13 @@ class DisciplinaryService {
             tipoAsociacion,
             justificacion,
         });
+    }
+
+    /**
+     * Obtener las noticias asociadas a un proceso específico
+     */
+    async getAssociatedNewsToProcess(processId: string): Promise<DisciplinaryNews[]> {
+        return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news/associated-to-process/${processId}`);
     }
 
 }
