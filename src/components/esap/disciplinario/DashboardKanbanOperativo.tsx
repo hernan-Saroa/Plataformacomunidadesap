@@ -3833,6 +3833,10 @@ export function DashboardKanbanOperativo({
     itemRestaurado.estado = item.tipo === 'noticia' ? 'pendiente' : itemRestaurado.estado;
     setItems(prev => [...prev, itemRestaurado]);
     setItemsArchivados(prev => prev.filter(i => i.id !== item.id));
+    // Persistir restauración en el backend
+    disciplinaryService.restoreNews(item.id).catch(err =>
+      console.error('[DashboardKanban] Error al restaurar noticia en backend:', err)
+    );
     toast.success('Restaurado al Flujo Activo', {
       description: `${item.numero || item.numeroProceso} ha sido restaurado y aparecerá nuevamente en el tablero.`,
     });

@@ -118,49 +118,145 @@ function calcularSemaforo(porcentajeAvance: number, diasRestantes: number): Sema
  * Calcula días restantes desde una fecha
  */
 function calcularDiasRestantes(fechaFin: string): number {
+  if (!fechaFin || String(fechaFin).trim() === '') return 0;
   const hoy = new Date();
   const fin = new Date(fechaFin);
+  if (Number.isNaN(fin.getTime())) return 0;
   const diff = Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
-  return diff;
+  return Number.isFinite(diff) ? diff : 0;
 }
 
 /**
  * Transforma un plan del backend al formato del Kanban
  */
-function esAccionCompletada(estado: string): boolean {
-  const e = String(estado || '').toLowerCase();
-  return e === 'completada' || e === 'implementada' || e === 'completado' || e === 'implementado';
+function esAccionCompletada(accion: any): boolean {
+  const p = Number(accion?.porcentajeAvance ?? accion?.progreso ?? accion?.porcentaje_avance);
+  if (Number.isFinite(p) && p >= 100) return true;
+  const e = String(accion?.estado || '')
+    .toLowerCase()
+    .replace(/-/g, '_');
+  return (
+    e === 'completada' ||
+    e === 'implementada' ||
+    e === 'completado' ||
+    e === 'implementado' ||
+    e === 'finalizada' ||
+    e === 'cerrada'
+  );
+}
+
+/** Promedio del % de avance por acción (mismo criterio que el backend en listados) */
+function promedioPorcentajeAvanceAcciones(acciones: any[]): number {
+  if (!acciones.length) return 0;
+  const sum = acciones.reduce((s, a) => {
+    const p = Math.min(100, Math.max(0, Number(a?.porcentajeAvance ?? a?.porcentaje_avance ?? 0)));
+    return s + (Number.isFinite(p) ? p : 0);
+  }, 0);
+  return Math.round(sum / acciones.length);
 }
 
 function transformarPlan(planBackend: any): PlanMejoramientoKanban {
-  const diasRestantes = calcularDiasRestantes(planBackend.fechaFin || planBackend.fecha_fin);
+  const fechaFinPlan =
+    planBackend.fechaFin ||
+    planBackend.fecha_fin ||
+    planBackend.fechaLimite ||
+    planBackend.fecha_limite ||
+    '';
+  const diasRestantes = calcularDiasRestantes(fechaFinPlan);
   
-  // Calcular acciones
+  // Calcular acciones (el backend puede enviar totales agregados sin depender del array)
   const acciones = planBackend.acciones || [];
-  const accionesCompletadas = acciones.length > 0
-    ? acciones.filter((a: any) => esAccionCompletada(a.estado)).length
-    : (planBackend.accionesCompletadas ?? planBackend.acciones_completadas ?? 0);
-  const totalAccionesCalc = acciones.length || (planBackend.totalAcciones ?? planBackend.total_acciones ?? 0);
-  // Calcular porcentaje desde acciones; si no hay datos, usar el del backend
-  const porcentajeAvance = totalAccionesCalc > 0
-    ? Math.round((accionesCompletadas / totalAccionesCalc) * 100)
-    : (planBackend.porcentajeAvance ?? planBackend.porcentaje_avance ?? 0);
+  const accionesCompletadasCalc =
+    acciones.length > 0 ? acciones.filter((a: any) => esAccionCompletada(a)).length : 0;
+  const accionesCompletadasRaw =
+    planBackend.accionesCompletadas ?? planBackend.acciones_completadas;
+  const accionesCompletadas =
+    accionesCompletadasRaw != null && accionesCompletadasRaw !== ''
+      ? Number(accionesCompletadasRaw) || 0
+      : accionesCompletadasCalc;
+  const totalAccionesRaw = planBackend.totalAcciones ?? planBackend.total_acciones;
+  const totalAccionesCalc =
+    totalAccionesRaw != null && totalAccionesRaw !== ''
+      ? Number(totalAccionesRaw) || 0
+      : acciones.length || 0;
+  const promedioDesdeAcciones = promedioPorcentajeAvanceAcciones(acciones);
+  const rawPct = planBackend.porcentajeAvance ?? planBackend.porcentaje_avance;
+  let porcentajeAvance: number;
+  if (acciones.length > 0) {
+    porcentajeAvance = promedioDesdeAcciones;
+  } else if (rawPct != null && rawPct !== '' && !Number.isNaN(Number(rawPct))) {
+    porcentajeAvance = Number(rawPct) || 0;
+  } else if (totalAccionesCalc > 0) {
+    porcentajeAvance = Math.round((accionesCompletadas / totalAccionesCalc) * 100);
+  } else {
+    porcentajeAvance = 0;
+  }
+  if (!Number.isFinite(porcentajeAvance)) porcentajeAvance = 0;
+  porcentajeAvance = Math.min(100, Math.max(0, porcentajeAvance));
   const accionesEnProceso = acciones.filter((a: any) => {
     const e = String(a.estado || '').toLowerCase().replace(/-/g, '_');
-    return e === 'en_progreso' || e === 'en_proceso' || e === 'en_ejecucion';
+    const p = Number(a.porcentajeAvance ?? a.porcentaje_avance ?? 0);
+    if (e === 'en_progreso' || e === 'en_proceso' || e === 'en_ejecucion') return true;
+    if ((e === 'programada' || e === 'pendiente') && p > 0 && p < 100) return true;
+    return false;
   }).length;
-  const accionesPendientes = acciones.filter((a: any) =>
-    ['pendiente', 'programada', 'sin_iniciar', 'sin iniciar'].includes(String(a.estado || '').toLowerCase())
-  ).length;
+  const accionesPendientes = acciones.filter((a: any) => {
+    const e = String(a.estado || '').toLowerCase();
+    const p = Number(a.porcentajeAvance ?? a.porcentaje_avance ?? 0);
+    if ((e === 'programada' || e === 'pendiente') && p > 0 && p < 100) return false;
+    return ['pendiente', 'programada', 'sin_iniciar', 'sin iniciar'].includes(e);
+  }).length;
+
+  const auditoriaObj = planBackend.auditoria;
 
   // Calcular hallazgos por gravedad
-  const hallazgos = planBackend.hallazgos || [];
-  const hallazgosCriticos = hallazgos.filter((h: any) => h.gravedad === 'GRAVE' || h.gravedad === 'critico').length;
-  const hallazgosModerados = hallazgos.filter((h: any) => h.gravedad === 'MODERADO' || h.gravedad === 'moderado').length;
-  const hallazgosLeves = hallazgos.filter((h: any) => h.gravedad === 'LEVE' || h.gravedad === 'leve').length;
+  const hallazgos = Array.isArray(planBackend.hallazgos)
+    ? planBackend.hallazgos
+    : planBackend.hallazgo
+      ? [planBackend.hallazgo]
+      : [];
+  let totalHallazgosBackend =
+    hallazgos.length ||
+    Number(planBackend.totalHallazgos ?? planBackend.total_hallazgos ?? planBackend.numeroHallazgos ?? 0) ||
+    0;
+  if (totalHallazgosBackend === 0 && (planBackend.hallazgoId || planBackend.hallazgo_id)) {
+    totalHallazgosBackend = 1;
+  }
+  if (totalHallazgosBackend === 0 && acciones.length > 0) {
+    const ids = new Set(
+      acciones
+        .map((a: any) => a.hallazgoId ?? a.hallazgo_id)
+        .filter((id: any) => typeof id === 'string' && id.length > 0)
+    );
+    if (ids.size > 0) totalHallazgosBackend = ids.size;
+  }
+  const hallazgosAuditoria = Number(
+    typeof auditoriaObj === 'object' && auditoriaObj !== null
+      ? (auditoriaObj as any).hallazgos
+      : NaN
+  );
+  if (totalHallazgosBackend === 0 && Number.isFinite(hallazgosAuditoria) && hallazgosAuditoria > 0) {
+    totalHallazgosBackend = hallazgosAuditoria;
+  }
+  const hallazgosCriticos = hallazgos.filter(
+    (h: any) =>
+      h.gravedad === 'GRAVE' ||
+      String(h?.gravedad ?? '').toLowerCase() === 'critico' ||
+      String(h?.categoria ?? '').toLowerCase() === 'critico'
+  ).length;
+  const hallazgosModerados = hallazgos.filter(
+    (h: any) =>
+      h.gravedad === 'MODERADO' ||
+      String(h?.gravedad ?? '').toLowerCase() === 'moderado' ||
+      String(h?.categoria ?? '').toLowerCase() === 'controversia'
+  ).length;
+  const hallazgosLeves = hallazgos.filter(
+    (h: any) =>
+      h.gravedad === 'LEVE' ||
+      String(h?.gravedad ?? '').toLowerCase() === 'leve' ||
+      String(h?.categoria ?? '').toLowerCase() === 'borrador'
+  ).length;
 
-  // Manejar auditoría - puede ser string u objeto
-  const auditoriaObj = planBackend.auditoria;
   const nombreAuditoria = planBackend.nombreAuditoria || 
     planBackend.nombre_auditoria || 
     planBackend.titulo ||
@@ -170,13 +266,8 @@ function transformarPlan(planBackend: any): PlanMejoramientoKanban {
     'Sin auditoría';
 
   /**
-   * Estado derivado desde las ACCIONES (origen de verdad):
-   * - Sin acciones → FORMULACION
-   * - Todas completadas → COMPLETADO
-   * - Con acciones, vencido, no todas completadas → CON_RETRASO
-   * - Con acciones, no vencido, no todas completadas → EN_EJECUCION
-   * - Con acciones, 0% completadas, no vencido → APROBADO (listo para ejecutar)
-   * - SUSPENDIDO solo si el backend lo envía explícitamente (acción manual)
+   * Estado Kanban por acciones y plazo. El backend suele dejar `borrador` aunque ya haya acciones:
+   * solo FORMULACION si aún no hay acciones; si hay acciones, se distribuye en Aprobado / Ejecución / etc.
    */
   const estadoBackend = String(planBackend.estado || '').trim().toLowerCase().replace(/-/g, '_');
   const explicitamenteSuspendido = ['suspendido', 'pausado'].includes(estadoBackend);
@@ -210,7 +301,7 @@ function transformarPlan(planBackend: any): PlanMejoramientoKanban {
     fechaFin: planBackend.fechaFin || planBackend.fecha_fin || planBackend.fechaLimite || '',
     estado: estadoPlan,
     semaforo: (planBackend.semaforo as SemaforoPlan) || calcularSemaforo(porcentajeAvance, diasRestantes),
-    totalHallazgos: hallazgos.length || planBackend.totalHallazgos || 0,
+    totalHallazgos: totalHallazgosBackend,
     totalAcciones: totalAccionesCalc,
     accionesCompletadas,
     accionesEnProceso,

@@ -237,6 +237,7 @@ export function mapBackendToUI(auditoria: AuditoriaResponse): AuditoriaUI {
     estado: mapearEstadoUI(auditoria.fase, auditoria.progreso, estadoKanban),
     // ✅ Conservar estadoKanban original para filtros
     estadoKanban: estadoKanban,
+    fase: auditoria.fase,
     auditorLider: auditoria.responsable,
     equipo: auditoria.equipoAuditores || [],
     avance: auditoria.progreso || 0,
@@ -265,6 +266,8 @@ export interface AuditoriaUI {
   estado: 'PROGRAMADA' | 'EN_EJECUCION' | 'COMPLETADA' | 'CANCELADA';
   // ✅ Estado Kanban original del backend (Planeación, Ejecución, Comunicación, Finalizada)
   estadoKanban?: string;
+  /** Fase backend (planeacion, en-curso, revision, completada) para estadísticas alineadas con Kanban */
+  fase?: string;
   auditorLider: string;
   equipo: string[];
   avance: number;

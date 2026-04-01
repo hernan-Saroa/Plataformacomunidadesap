@@ -213,16 +213,16 @@ export function SeccionDocumentosPorEtapa({ auditoriaId, etapa }: SeccionDocumen
                       )}
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
-                      <button type="button" onClick={() => handleDescargar(p)} className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded" title="Descargar plantilla">
-                        <Download className="w-4 h-4" />
+                      <button type="button" onClick={() => handleDescargar(p)} className="px-2 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs font-bold flex items-center gap-1" title="Descargar plantilla vacía">
+                        <Download className="w-3.5 h-3.5" /> Plantilla
                       </button>
                       {subido && docSubido ? (
                         <>
-                          <button type="button" onClick={() => handleDescargar(docSubido)} className="px-2 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded text-xs font-bold flex items-center gap-1" title="Descargar documento subido">
-                            <Download className="w-3.5 h-3.5" /> Descargar
+                          <button type="button" onClick={() => handleDescargar(docSubido)} className="px-2 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded text-xs font-bold flex items-center gap-1" title="Descargar documento diligenciado">
+                            <Download className="w-3.5 h-3.5" /> Documento
                           </button>
-                          <button type="button" onClick={() => setDocAEliminar(docSubido)} className="px-2 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded text-xs font-bold flex items-center gap-1" title="Eliminar">
-                            <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                          <button type="button" onClick={() => setDocAEliminar(docSubido)} className="px-2 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded text-xs font-bold flex items-center gap-1" title="Eliminar documento">
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </>
                       ) : (

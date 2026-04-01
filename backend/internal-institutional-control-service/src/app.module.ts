@@ -36,6 +36,7 @@ import { RegistroSeguimiento } from './esap/planes-mejoramiento/entities/registr
 import { EventoTimeline } from './esap/planes-mejoramiento/entities/evento-timeline.entity';
 import { Aprobacion } from './esap/aprobaciones/entities/aprobacion.entity';
 import { ProcesoAuditable } from './esap/universo-auditorias/entities/proceso-auditable.entity';
+import { EvaluacionProceso } from './esap/universo-auditorias/entities/evaluacion-proceso.entity';
 import { Documento } from './esap/documentos/entities/documento.entity';
 import { ProgramaAnual } from './esap/programa-anual/entities/programa-anual.entity';
 import { AuditoriaProgramada } from './esap/programa-anual/entities/auditoria-programada.entity';
@@ -117,6 +118,7 @@ import { ReunionCierre } from './esap/auditorias/entities/reunion-cierre.entity'
             EventoTimeline,
             Aprobacion,
             ProcesoAuditable,
+            EvaluacionProceso,
             Documento,
             ProgramaAnual,
             AuditoriaProgramada,
