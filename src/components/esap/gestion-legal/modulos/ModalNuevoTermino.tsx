@@ -129,7 +129,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent hideCloseButton className="w-[95vw] max-w-[600px] max-h-[90vh] md:max-h-[85vh] flex flex-col p-0 overflow-hidden">
+            <DialogContent hideCloseButton className="flex flex-col p-0 overflow-hidden" style={{ width: '660px', maxWidth: '90vw', minHeight: '580px', maxHeight: '88vh' }}>
                 <DialogTitle className="sr-only">Nueva Solicitud / Término</DialogTitle>
                 <DialogDescription className="sr-only">Formulario para crear un nuevo término o solicitud de informe</DialogDescription>
 
