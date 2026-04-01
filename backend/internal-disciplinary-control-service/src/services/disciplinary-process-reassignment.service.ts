@@ -75,7 +75,7 @@ export class DisciplinaryProcessReassignmentService {
     const request = this.reassignmentRepo.create({
       processId: dto.processId,
       currentProfessionalId: process.abogadoAsignado.id,
-      newProfessional: { id: dto.newProfessionalId },
+      newProfessionalId: dto.newProfessionalId,
       justification: dto.justification,
       priority: dto.priority || ReassignmentPriority.NORMAL,
       requestedBy: dto.requestedBy,

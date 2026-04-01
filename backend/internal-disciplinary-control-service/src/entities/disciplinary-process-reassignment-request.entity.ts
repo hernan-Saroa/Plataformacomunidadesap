@@ -2,8 +2,6 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
@@ -87,9 +85,9 @@ export class DisciplinaryProcessReassignmentRequest {
   @Column({ name: 'requested_by_id', type: 'varchar', length: 50, nullable: true })
   requestedById: string; // ID del usuario que solicita
 
-  @CreateDateColumn()
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 }
