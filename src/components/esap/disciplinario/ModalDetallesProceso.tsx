@@ -1659,6 +1659,9 @@ export function ModalDetallesProceso({
   const [creandoNota, setCreandoNota] = useState(false);
   const [notaPendienteEliminarId, setNotaPendienteEliminarId] = useState<string | null>(null);
   const [eliminandoNotaId, setEliminandoNotaId] = useState<string | null>(null);
+  const [noticiasAsociadas, setNoticiasAsociadas] = useState<any[]>([]);
+  const [noticiasAsociadasLoading, setNoticiasAsociadasLoading] = useState(false);
+  const [noticiasAsociadasError, setNoticiasAsociadasError] = useState<string | null>(null);
   const [previewArchivo, setPreviewArchivo] = useState<Archivo | null>(null);
   const [cargasActivas, setCargasActivas] = useState<CargaActiva[]>([]);
   const [mostrarAlertaCierre, setMostrarAlertaCierre] = useState(false);
@@ -1866,6 +1869,35 @@ export function ModalDetallesProceso({
       .finally(() => {
         if (!cancelled) {
           setNotasLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [proceso?.id]);
+
+  useEffect(() => {
+    if (!proceso?.id) return;
+
+    let cancelled = false;
+    setNoticiasAsociadasLoading(true);
+    setNoticiasAsociadasError(null);
+
+    disciplinaryService.getAssociatedNewsToProcess(proceso.id)
+      .then((data) => {
+        if (cancelled) return;
+        setNoticiasAsociadas(data || []);
+      })
+      .catch((error: any) => {
+        if (cancelled) return;
+        console.error('[ModalDetallesProceso] Error cargando noticias asociadas:', error);
+        setNoticiasAsociadas([]);
+        setNoticiasAsociadasError(error?.message || 'No fue posible cargar las noticias asociadas');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setNoticiasAsociadasLoading(false);
         }
       });
 
@@ -3577,6 +3609,84 @@ export function ModalDetallesProceso({
                         </div>
                       </div>
                     )}
+
+                    {/* ═══ NOTICIAS ASOCIADAS ═══ */}
+                    <div className="rounded-xl border border-purple-200 bg-purple-50/30 overflow-hidden">
+                      <div className="px-3 py-2 border-b border-purple-200" style={{ background: 'rgba(147, 51, 234, 0.05)' }}>
+                        <div className="flex items-center gap-2">
+                          <Share2 className="w-3.5 h-3.5" style={{ color: '#7C3AED' }} />
+                          <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#7C3AED' }}>
+                            Noticias Asociadas
+                          </span>
+                          {noticiasAsociadasLoading && (
+                            <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#7C3AED' }} />
+                          )}
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        {noticiasAsociadasLoading ? (
+                          <div className="flex items-center justify-center py-4 text-sm text-gray-500">
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            Cargando noticias asociadas...
+                          </div>
+                        ) : noticiasAsociadasError ? (
+                          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-xs text-red-700">
+                            <div className="flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4" />
+                              <span className="font-semibold">{noticiasAsociadasError}</span>
+                            </div>
+                          </div>
+                        ) : noticiasAsociadas.length === 0 ? (
+                          <div className="text-center py-4">
+                            <Share2 className="w-8 h-8 text-purple-200 mx-auto mb-2" />
+                            <p className="text-xs text-gray-500 font-medium">Sin noticias asociadas</p>
+                            <p className="text-[10px] text-gray-400 mt-1">Las noticias asociadas aparecerán aquí cuando se vinculen al proceso</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {noticiasAsociadas.map((noticia: any, idx: number) => (
+                              <div key={noticia.id || idx} className="flex items-start gap-3 p-3 rounded-lg border border-purple-100 bg-white hover:bg-purple-50/30 transition-colors">
+                                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F3E8FF' }}>
+                                  <Share2 className="w-4 h-4" style={{ color: '#7C3AED' }} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold text-gray-900">{noticia.titulo || 'Sin título'}</p>
+                                  <p className="text-[10px] text-gray-600 mt-0.5 leading-relaxed">{noticia.descripcion || 'Sin descripción'}</p>
+                                  <div className="flex items-center gap-3 mt-1.5 text-[9px] text-gray-500">
+                                    <span className="flex items-center gap-1">
+                                      <Calendar className="w-3 h-3" />
+                                      {noticia.fechaRecepcion ? new Date(noticia.fechaRecepcion).toLocaleDateString('es-CO') : 'Sin fecha'}
+                                    </span>
+                                    {noticia.prioridad && (
+                                      <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold"
+                                        style={{
+                                          backgroundColor: noticia.prioridad === 'alta' ? '#FEE2E2' : noticia.prioridad === 'media' ? '#FEF3C7' : '#ECFDF5',
+                                          color: noticia.prioridad === 'alta' ? '#991B1B' : noticia.prioridad === 'media' ? '#92400E' : '#065F46'
+                                        }}>
+                                        {noticia.prioridad.toUpperCase()}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {noticia.fechaAsociacion && (
+                                    <p className="text-[9px] text-purple-600 mt-1 font-medium">
+                                      Asociada el {new Date(noticia.fechaAsociacion).toLocaleDateString('es-CO', {
+                                        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                      })}
+                                    </p>
+                                  )}
+                                  {noticia.justificacion && (
+                                    <div className="mt-2 p-2 rounded-md bg-purple-50 border border-purple-100">
+                                      <p className="text-[9px] font-medium text-purple-800">Justificación:</p>
+                                      <p className="text-[9px] text-purple-700 mt-0.5">{noticia.justificacion}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
                     {/* ═══ SCORECARD: Progreso por Etapa ═══ */}
                     <div className="rounded-xl border border-gray-200 overflow-hidden">

@@ -21,22 +21,26 @@ export class DisciplinaryNewsProcess {
   @JoinColumn({ name: 'newsId' })
   news: DisciplinaryNews;
 
-  @Column('uuid')
+  @Column({ name: 'news_id', type: 'uuid' })
   newsId: string;
 
   @ManyToOne(() => DisciplinaryProcess, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'processId' })
+  @JoinColumn({ name: 'process_id' })
   process: DisciplinaryProcess;
 
-  @Column('uuid')
+  @Column({ name: 'process_id', type: 'uuid' })
   processId: string;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({
+    name: 'fecha_asociacion',
+    type: 'timestamp',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   fechaAsociacion: Date;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'justificacion', type: 'text', nullable: true })
   justificacion: string | null;
 
   @CreateDateColumn()
