@@ -581,7 +581,7 @@ export function WizardCrearAutoWorldClass({
                 )}
               </button>
 
-              <button
+              {/* <button
                 onClick={() => setVistaActual('lista')}
                 className={`relative px-5 py-3 rounded-t-2xl font-bold text-sm transition-all duration-300 ${vistaActual === 'lista'
                   ? 'text-blue-700'
@@ -607,7 +607,7 @@ export function WizardCrearAutoWorldClass({
                     transition={{ type: 'spring', duration: 0.5 }}
                   />
                 )}
-              </button>
+              </button> */}
             </div>
           </div>
         </div>

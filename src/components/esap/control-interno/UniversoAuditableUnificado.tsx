@@ -40,6 +40,8 @@ import { TooltipGuia } from './TooltipGuia';
 import { useUniversoAuditableData, type ProcesoAuditableUI } from './hooks/useUniversoAuditableData';
 import { useProgramaAnualData, calcularEstadisticas, type AuditoriaProgramadaUI, type AuditoriaCreateData } from './hooks/useProgramaAnualData';
 import type { Estadisticas, EstadoAuditoria, TipoAuditoria } from './hooks/useProgramaAnualData';
+// ✅ HOOK DE EVALUACIONES DAFP (nueva funcionalidad)
+import { useEvaluacionesProcesoData, type EvaluacionProcesoUI } from './hooks/useEvaluacionesProcesoData';
 // ✅ SERVICIO DE EXPORTACIÓN PDF
 import { exportarUniversoAuditablePDF, exportarUniversoAuditableExcel } from './services/exportarUniversoAuditablePDF';
 // ✅ UTILIDAD DE CONVERSIÓN (separada para reutilización)
@@ -92,6 +94,16 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     refetch: refetchProcesos,
   } = useUniversoAuditableData();
 
+  // ✅ HOOK DE EVALUACIONES DAFP - Para crear nuevas evaluaciones por proceso
+  const {
+    evaluaciones,
+    loading: loadingEvaluaciones,
+    agregarEvaluacion,
+    editarEvaluacion,
+    eliminarEvaluacion,
+    refetch: refetchEvaluaciones,
+  } = useEvaluacionesProcesoData({ vigencia });
+
   const {
     auditorias: auditoriasProgramadas,
     estadisticas,
@@ -114,25 +126,109 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
   const puedeEditarProceso = puedeRealizar('planificacion', 'edit');
   const puedeEliminarProceso = puedeRealizar('planificacion', 'delete');
 
-  const loading = loadingProcesos || loadingAuditorias;
+  const loading = loadingProcesos || loadingAuditorias || loadingEvaluaciones;
   const error = errorProcesos || errorAuditorias;
   const isOnline = isOnlineProcesos && isOnlineAuditorias;
 
   const [mostrarFormularioProceso, setMostrarFormularioProceso] = useState(false);
   const [procesoSeleccionado, setProcesoSeleccionado] = useState<ProcesoAuditable | null>(null);
+  const [evaluacionSeleccionada, setEvaluacionSeleccionada] = useState<EvaluacionProcesoUI | null>(null);
+
+  // ✅ MAPA de procesos por ID para lookup rápido
+  const procesosMap = useMemo(() => {
+    const map = new Map<string, ProcesoAuditable>();
+    procesos.forEach(p => map.set(p.id, p));
+    return map;
+  }, [procesos]);
+
+  // ✅ Convertir evaluaciones a formato ProcesoAuditableUI que la tabla espera
+  // Cada evaluación se muestra como una fila con datos del proceso + datos DAFP
+  const evaluacionesComoFilas = useMemo((): ProcesoAuditable[] => {
+    return evaluaciones.map(ev => {
+      const proceso = procesosMap.get(ev.procesoId);
+      // Mapear ponderación DAFP a nivel de riesgo UI
+      const mapPonderacion: Record<string, NivelRiesgo> = {
+        'EXTREMO': 'Crítico', 'ALTO': 'Alto', 'MODERADO': 'Medio', 'BAJO': 'Bajo', 'MUY BAJO': 'Bajo',
+      };
+      const nivelRiesgo = mapPonderacion[ev.ponderacionRiesgo || ''] || 'Medio';
+      return {
+        id: ev.id, // ID de la evaluación (no del proceso)
+        nombre: proceso?.nombre || ev.procesoNombre || 'Proceso desconocido',
+        tipo: proceso?.tipo || 'Apoyo' as any,
+        descripcion: `Vigencia ${ev.vigencia} — Corte ${ev.fechaCorte}`,
+        responsable: ev.dependenciaResponsable || proceso?.responsable || '',
+        nivelRiesgo,
+        puntajeRiesgo: ev.scoreRiesgo || 0,
+        calificacionDafp: ev.prioridadRegla || 0,
+        categoria: ev.decisionFinal || '',
+        auditable: ev.decisionFinal === 'INCLUIR PLAN ANUAL',
+        ultimaAuditoria: ev.fechaUltimaAuditoria,
+        resultadoUltimaAuditoria: ev.resultadoUltimaAuditoria,
+        frecuenciaAuditoria: 'Anual' as const,
+        activo: ev.activo,
+        codigo: proceso?.codigo || ev.procesoCodigo || '',
+        macroproceso: proceso?.macroproceso || '',
+        tipoProceso: proceso?.tipo || 'Apoyo' as any,
+        dependenciaResponsable: ev.dependenciaResponsable || '',
+        scoreRiesgo: ev.scoreRiesgo || 0,
+        frecuenciaSugerida: ev.planRotacion || 'Anual',
+        horasEstimadas: 0,
+        _backendId: ev.procesoId, // Guardamos ref al proceso maestro
+        _evaluacionRiesgo: {
+          riesgosExtremos: ev.riesgosExtremos,
+          riesgosAltos: ev.riesgosAltos,
+          riesgosModerados: ev.riesgosModerados,
+          riesgosBajos: ev.riesgosBajos,
+          totalRiesgos: ev.totalRiesgos,
+          requerimientoComite: ev.requerimientoComite,
+          requerimientoEntesReg: ev.requerimientoEntesReg,
+          fechaUltimaAuditoria: ev.fechaUltimaAuditoria,
+          resultadoUltimaAuditoria: ev.resultadoUltimaAuditoria,
+          ponderacionRiesgo: ev.ponderacionRiesgo,
+          decisionFinal: ev.decisionFinal,
+          motivoDecision: ev.motivoDecision,
+          prioridadRegla: ev.prioridadRegla,
+          vigencia: ev.vigencia,
+          fechaCorte: ev.fechaCorte,
+          criticidad: ev.criticidad,
+          exposicion: ev.exposicion,
+          mitigantes: ev.mitigantes,
+          scoreRiesgo: ev.scoreRiesgo,
+        } as any,
+      } as ProcesoAuditable;
+    });
+  }, [evaluaciones, procesosMap]);
+
+  // ✅ Estadísticas calculadas desde evaluaciones
+  const estadisticasEvaluaciones = useMemo(() => {
+    const total = evaluacionesComoFilas.length;
+    const criticos = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Crítico').length;
+    const altos = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Alto').length;
+    const medios = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Medio').length;
+    const bajos = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Bajo').length;
+    return {
+      ...estadisticas,
+      totalProcesos: total,
+      procesosAuditables: evaluacionesComoFilas.filter(e => e.auditable).length,
+      procesosCriticos: criticos,
+      procesosAltos: altos,
+      procesosMedios: medios,
+      procesosBajos: bajos,
+    };
+  }, [evaluacionesComoFilas, estadisticas]);
   
-  // Filtrar procesos
-  const procesosFiltrados = useMemo(() => {
-    return procesos.filter(proceso => {
-      const cumpleFiltroRiesgo = filtroNivelRiesgo === 'TODOS' || proceso.nivelRiesgo === filtroNivelRiesgo;
-      const cumpleFiltroTipo = filtroTipoProceso === 'TODOS' || proceso.tipo === filtroTipoProceso;
+  // Filtrar evaluaciones (misma lógica que antes pero sobre evaluaciones)
+  const evaluacionesFiltradas = useMemo(() => {
+    return evaluacionesComoFilas.filter(fila => {
+      const cumpleFiltroRiesgo = filtroNivelRiesgo === 'TODOS' || fila.nivelRiesgo === filtroNivelRiesgo;
+      const cumpleFiltroTipo = filtroTipoProceso === 'TODOS' || fila.tipo === filtroTipoProceso;
       const cumpleBusqueda = busqueda === '' || 
-        proceso.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-        proceso.responsable.toLowerCase().includes(busqueda.toLowerCase());
+        fila.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+        fila.dependenciaResponsable.toLowerCase().includes(busqueda.toLowerCase());
       
       return cumpleFiltroRiesgo && cumpleFiltroTipo && cumpleBusqueda;
     });
-  }, [procesos, filtroNivelRiesgo, filtroTipoProceso, busqueda]);
+  }, [evaluacionesComoFilas, filtroNivelRiesgo, filtroTipoProceso, busqueda]);
   
   // ✅ HANDLERS con integración backend
   const handleAgregarProceso = async (nuevoProceso: ProcesoAuditableData) => {
@@ -145,6 +241,70 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
   
   const handleEliminarProceso = async (id: string) => {
     await eliminarProceso(id);
+  };
+
+  // ✅ HANDLER para crear/editar EVALUACIONES DAFP (nuevos registros por proceso)
+  const handleAgregarEvaluacion = async (datos: ProcesoAuditableData, procesoId?: string) => {
+    if (!procesoId) {
+      toast.error('Debe seleccionar un proceso del catálogo');
+      return;
+    }
+    
+    const evaluacionData: Partial<EvaluacionProcesoUI> = {
+      procesoId,
+      vigencia: datos.vigencia || new Date().getFullYear(),
+      fechaCorte: datos.fechaCorte,
+      dependenciaResponsable: datos.dependenciaResponsable || '',
+      riesgosExtremos: datos.riesgosExtremos || 0,
+      riesgosAltos: datos.riesgosAltos || 0,
+      riesgosModerados: datos.riesgosModerados || 0,
+      riesgosBajos: datos.riesgosBajos || 0,
+      totalRiesgos: datos.totalRiesgos || 0,
+      requerimientoComite: datos.requerimientoComite || false,
+      requerimientoEntesReg: datos.requerimientoEntesReg || false,
+      fechaUltimaAuditoria: datos.fechaUltimaAuditoria || undefined,
+      resultadoUltimaAuditoria: datos.resultadoUltimaAuditoria,
+      criticidad: datos.criticidad || 0,
+      exposicion: datos.exposicion || 0,
+      mitigantes: datos.mitigantes || 0,
+      scoreRiesgo: datos.scoreRiesgoCEM || 0,
+      ponderacionRiesgo: datos.ponderacionRiesgo as any,
+      decisionFinal: datos.decisionFinal,
+      motivoDecision: datos.motivoDecision,
+      prioridadRegla: datos.prioridadRegla,
+    };
+
+    const result = await agregarEvaluacion(evaluacionData);
+    if (result) {
+      refetchEvaluaciones();
+    }
+  };
+
+  const handleEditarEvaluacion = async (datos: ProcesoAuditableData, evaluacionId: string) => {
+    const evaluacionData: Partial<EvaluacionProcesoUI> = {
+      vigencia: datos.vigencia || new Date().getFullYear(),
+      fechaCorte: datos.fechaCorte,
+      dependenciaResponsable: datos.dependenciaResponsable || '',
+      riesgosExtremos: datos.riesgosExtremos || 0,
+      riesgosAltos: datos.riesgosAltos || 0,
+      riesgosModerados: datos.riesgosModerados || 0,
+      riesgosBajos: datos.riesgosBajos || 0,
+      totalRiesgos: datos.totalRiesgos || 0,
+      requerimientoComite: datos.requerimientoComite || false,
+      requerimientoEntesReg: datos.requerimientoEntesReg || false,
+      fechaUltimaAuditoria: datos.fechaUltimaAuditoria || undefined,
+      resultadoUltimaAuditoria: datos.resultadoUltimaAuditoria,
+      criticidad: datos.criticidad || 0,
+      exposicion: datos.exposicion || 0,
+      mitigantes: datos.mitigantes || 0,
+      scoreRiesgo: datos.scoreRiesgoCEM || 0,
+      ponderacionRiesgo: datos.ponderacionRiesgo as any,
+      decisionFinal: datos.decisionFinal,
+      motivoDecision: datos.motivoDecision,
+      prioridadRegla: datos.prioridadRegla,
+    };
+
+    await editarEvaluacion(evaluacionId, evaluacionData);
   };
 
   return (
@@ -348,8 +508,8 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
             {tabActiva === 'universo' && (
               <TabUniversoAuditable
                 key="universo"
-                procesos={procesosFiltrados}
-                estadisticas={estadisticas}
+                procesos={evaluacionesFiltradas}
+                estadisticas={estadisticasEvaluaciones}
                 filtroRiesgo={filtroNivelRiesgo}
                 filtroTipo={filtroTipoProceso}
                 busqueda={busqueda}
@@ -358,14 +518,25 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
                 onBusquedaChange={setBusqueda}
                 onAgregarProceso={() => {
                   setProcesoSeleccionado(null);
+                  setEvaluacionSeleccionada(null);
                   setMostrarFormularioProceso(true);
                 }}
-                onEditarProceso={(proceso) => {
-                  setProcesoSeleccionado(proceso);
+                onEditarProceso={(filaEvaluacion) => {
+                  // Buscar el proceso maestro para pre-llenar el formulario
+                  const procesoMaestro = procesosMap.get(filaEvaluacion._backendId || '');
+                  if (procesoMaestro) setProcesoSeleccionado(procesoMaestro);
+                  // Guardar referencia a la evaluación que se edita
+                  const evOriginal = evaluaciones.find(e => e.id === filaEvaluacion.id);
+                  if (evOriginal) setEvaluacionSeleccionada(evOriginal);
                   setMostrarFormularioProceso(true);
                 }}
-                onEliminarProceso={handleEliminarProceso}
-                onGuardarEvaluacion={editarProceso}
+                onEliminarProceso={async (evaluacionId) => {
+                  await eliminarEvaluacion(evaluacionId);
+                }}
+                onGuardarEvaluacion={async (evaluacionId, datos) => {
+                  await editarEvaluacion(evaluacionId, datos);
+                  return true;
+                }}
                 puedeCrear={!modoSeguimiento && puedeCrearProceso}
                 puedeEditar={!modoSeguimiento && puedeEditarProceso}
                 puedeEliminar={!modoSeguimiento && puedeEliminarProceso}
@@ -451,22 +622,30 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       {/* Formulario para gestionar procesos del Universo Auditable */}
       {mostrarFormularioProceso && (
         <FormularioProcesoAuditable
+          key={evaluacionSeleccionada ? evaluacionSeleccionada.id : `nueva-${procesoSeleccionado?.id ?? 'p'}`}
           open={mostrarFormularioProceso}
           onClose={() => {
             setMostrarFormularioProceso(false);
             setProcesoSeleccionado(null);
+            setEvaluacionSeleccionada(null);
           }}
-          onSubmit={(proceso, procesoId) => {
-            if (procesoId || procesoSeleccionado) {
-              handleEditarProceso(proceso, procesoId || procesoSeleccionado!.id);
+          onSubmit={(proceso, procesoIdSeleccionado) => {
+            // ✅ FIX: Universo Auditable crea EVALUACIONES, no procesos
+            // El proceso maestro viene del catálogo (Configuración → Procesos)
+            // Aquí se crean evaluaciones DAFP del proceso seleccionado
+            if (evaluacionSeleccionada) {
+              // Modo EDIT: actualizar evaluación existente
+              handleEditarEvaluacion(proceso, evaluacionSeleccionada.id);
             } else {
-              handleAgregarProceso(proceso);
+              // Modo CREATE: crear nueva evaluación para el proceso seleccionado
+              handleAgregarEvaluacion(proceso, procesoIdSeleccionado || procesoSeleccionado?.id);
             }
             setMostrarFormularioProceso(false);
             setProcesoSeleccionado(null);
+            setEvaluacionSeleccionada(null);
           }}
-          procesoInicial={convertirProcesoAFormulario(procesoSeleccionado)}
-          mode={procesoSeleccionado ? 'edit' : 'create'}
+          procesoInicial={convertirProcesoAFormulario(procesoSeleccionado, evaluacionSeleccionada)}
+          mode={evaluacionSeleccionada ? 'edit' : 'create'}
           procesosCatalog={procesos.map(p => ({ id: p.id, nombre: p.nombre, codigo: p.codigo }))}
         />
       )}
@@ -574,16 +753,24 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-xl border-2 border-blue-200 p-6">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-blue-700">Total Programadas</span>
+            <span className="text-sm font-semibold text-blue-700">Total de auditorías</span>
             <CalendarIcon className="w-5 h-5 text-blue-600" />
           </div>
           <p className="text-3xl font-black text-blue-700">{estadisticas.totalProgramadas}</p>
-          <div className="mt-2 flex items-center gap-2 text-xs">
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-green-500"></div>
-              <span className="text-gray-600">{estadisticas.completadas} completadas</span>
-            </div>
-          </div>
+          <p className="mt-2 text-xs text-gray-600 leading-relaxed">
+            Mismo universo que el tablero Kanban:{' '}
+            <span className="font-semibold text-gray-800">
+              {estadisticas.enPlanAnual + estadisticas.enPlaneacion} planeación
+            </span>
+            {' · '}
+            <span className="font-semibold text-gray-800">{estadisticas.enEjecucion} ejecución</span>
+            {' · '}
+            <span className="font-semibold text-gray-800">{estadisticas.enComunicacion} comunicación</span>
+            {' · '}
+            <span className="font-semibold text-gray-800">{estadisticas.enSeguimiento} seguimiento</span>
+            {' · '}
+            <span className="font-semibold text-gray-800">{estadisticas.completadas} finalizadas</span>
+          </p>
         </div>
 
         <div className="bg-white rounded-xl border-2 border-yellow-200 p-6">
@@ -810,17 +997,82 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
     cargarDatos: refetchProfesionales
   } = useConfiguracionProfesionales();
 
+  // ✅ Calcular carga REAL de cada profesional a partir de las auditorías asignadas
+  const profesionalesConCarga = useMemo(() => {
+    // Helper para extraer nombre de un elemento del equipo (puede ser string u objeto)
+    const extraerNombre = (e: unknown): string => {
+      if (typeof e === 'string') return e.toLowerCase().trim();
+      if (e && typeof e === 'object' && 'nombre' in e) return String((e as any).nombre).toLowerCase().trim();
+      return '';
+    };
+    const extraerId = (e: unknown): string => {
+      if (typeof e === 'string') return e;
+      if (e && typeof e === 'object' && 'id' in e) return String((e as any).id);
+      return '';
+    };
+
+    return profesionalesOCIG.map(p => {
+      const nombre = p.usuario.nombre.toLowerCase().trim();
+      const configId = p.configuracion.id || '';
+      const idTercero = String(p.configuracion.idTercero);
+
+      // Auditorías donde este profesional es líder (match por nombre, id config, o idTercero)
+      const comoLider = auditorias.filter(a => {
+        const lider = (a.auditorLider || '').toLowerCase().trim();
+        return lider === nombre || a.auditorLider === configId || a.auditorLider === idTercero;
+      });
+
+      // Auditorías donde este profesional está en el equipo
+      const comoEquipo = auditorias.filter(a => {
+        if (comoLider.some(l => l.id === a.id)) return false; // No contar doble
+        return a.equipo.some(e => {
+          const miembroNombre = extraerNombre(e);
+          const miembroId = extraerId(e);
+          return miembroNombre === nombre || miembroId === configId || miembroId === idTercero;
+        });
+      });
+
+      const auditoriasTotales = comoLider.length + comoEquipo.length;
+      const horasLider = comoLider.reduce((sum, a) => sum + (a.horasEstimadas || 0), 0);
+      const horasEquipo = comoEquipo.reduce((sum, a) => sum + (a.horasEstimadas || 0), 0);
+      const horasAsignadas = horasLider + horasEquipo;
+
+      // Porcentaje de carga: auditorías asignadas vs capacidad máxima
+      const capacidad = p.configuracion.capacidadMaximaAuditorias || 4;
+      const porcentajePorAuditorias = Math.round((auditoriasTotales / capacidad) * 100);
+
+      // También considerar horas: horasAsignadas vs horasMensualesDisponibles
+      const horasDisponibles = p.configuracion.horasMensualesDisponibles || 150;
+      const porcentajePorHoras = horasDisponibles > 0 ? Math.round((horasAsignadas / horasDisponibles) * 100) : 0;
+
+      // Usar el mayor de los dos porcentajes como indicador de carga
+      const porcentajeCarga = Math.max(porcentajePorAuditorias, porcentajePorHoras);
+
+      return {
+        ...p,
+        estadisticas: {
+          auditoriasTotales,
+          auditoriasComoLider: comoLider.length,
+          auditoriasComoEquipo: comoEquipo.length,
+          cargaPonderada: porcentajeCarga,
+          porcentajeCarga,
+          horasAsignadas,
+        },
+      };
+    });
+  }, [profesionalesOCIG, auditorias]);
+
   // Calcular semáforo de carga para cada profesional
   const profesionalesConSemaforo = useMemo(() => {
-    return profesionalesOCIG.map(p => {
+    return profesionalesConCarga.map(p => {
       const porcentaje = p.estadisticas.porcentajeCarga;
       const semaforo = porcentaje > 90 ? 'rojo' : porcentaje >= 70 ? 'amarillo' : 'verde';
       return { ...p, semaforo, porcentaje };
     }).sort((a, b) => b.porcentaje - a.porcentaje);
-  }, [profesionalesOCIG]);
+  }, [profesionalesConCarga]);
 
-  const totalProfesionales = estadisticasGlobales.totalProfesionales;
-  const conCargaAlta = estadisticasGlobales.sobrecargados;
+  const totalProfesionales = profesionalesConCarga.length;
+  const conCargaAlta = profesionalesConSemaforo.filter(p => p.semaforo === 'rojo').length;
   const conCargaMedia = profesionalesConSemaforo.filter(p => p.semaforo === 'amarillo').length;
 
   return (

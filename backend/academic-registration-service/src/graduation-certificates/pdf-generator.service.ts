@@ -1,12 +1,27 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as QRCode from 'qrcode';
 import puppeteer from 'puppeteer';
 import { GraduationCertificate } from './graduation-certificate.entity';
+import { TemplateConfig } from './template-config.entity';
+import {
+  DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS,
+  GraduationCertificateTemplateSnapshot,
+  GraduationCertificateTemplateTexts,
+  parseGraduationCertificateTemplateSnapshot,
+  parseGraduationCertificateTemplateTexts,
+} from './certificate-template-texts';
 
 @Injectable()
 export class PdfGeneratorService {
+  constructor(
+    @InjectRepository(TemplateConfig)
+    private templateConfigRepository: Repository<TemplateConfig>,
+  ) {}
+
   private templatePath = this.resolveTemplatePath();
 
   private resolveTemplatePath(): string {
@@ -45,46 +60,95 @@ export class PdfGeneratorService {
     certificate: GraduationCertificate,
     frontendBaseUrl?: string,
   ): Promise<Buffer> {
-    // Leer plantilla HTML
     const templateHtml = fs.readFileSync(this.templatePath, 'utf-8');
+    const templateSnapshot = this.getTemplateSnapshot(certificate);
+    const templateTexts =
+      templateSnapshot?.texts || (await this.getTemplateTexts(certificate));
 
-    // Imágenes de encabezado y pie
     const headerImg = this.loadImageDataUrl('img_primera.png');
     const footerImg = this.loadImageDataUrl('img_segunda.png');
 
-    // URL de validación pública
     const baseUrl =
+      templateSnapshot?.validationBaseUrl ||
       frontendBaseUrl ||
       process.env.FRONTEND_URL ||
       'https://certificados.esap.edu.co';
     const validationUrl = `${baseUrl}/verificar-certificado/${certificate.verificationCode}`;
 
-    // Generar código QR con la URL completa
     const qrCodeDataUrl = await this.generateQRCode(validationUrl);
-
-    // Formatear fecha de expedición
     const fechaExpedicion = this.formatDate(
       certificate.issueDate || new Date(),
     );
+    const lugarFechaExpedicion = `${certificate.campus || 'Bogota'} (${certificate.campus?.toUpperCase() || 'BOGOTA'}) ${this.formatDateLong(certificate.graduationDate)}`;
 
-    // Formatear lugar y fecha de expedición del título
-    const lugarFechaExpedicion = `${certificate.campus || 'Bogotá'} (${certificate.campus?.toUpperCase() || 'BOYACÁ'}) ${this.formatDateLong(certificate.graduationDate)}`;
-
-    // Reemplazar variables en la plantilla
     const htmlContent = templateHtml
       .replace(/{{CODIGO_VALIDACION}}/g, certificate.verificationCode)
+      .replace(
+        /{{CITY_DATE_PREFIX}}/g,
+        this.escapeHtml(templateTexts.cityDatePrefix),
+      )
       .replace(/{{FECHA_EXPEDICION}}/g, fechaExpedicion)
-      .replace(/{{TITULO_OTORGADO}}/g, certificate.degreeTitle)
-      .replace(/{{NOMBRE_COMPLETO}}/g, certificate.fullName)
-      .replace(/{{NUMERO_DOCUMENTO}}/g, `CC ${certificate.idNumber}`)
-      .replace(/{{LUGAR_FECHA_EXPEDICION}}/g, lugarFechaExpedicion)
-      .replace(/{{REGISTRO_FOLIO}}/g, certificate.actaNumber || 'N/A')
+      .replace(
+        /{{INSTITUTION_TITLE}}/g,
+        this.escapeHtml(templateTexts.institutionTitle),
+      )
+      .replace(
+        /{{CERTIFICATE_TITLE}}/g,
+        this.escapeHtml(templateTexts.certificateTitle),
+      )
+      .replace(/{{ADDRESSEE}}/g, this.escapeHtml(templateTexts.addressee))
+      .replace(
+        /{{INTRO_PARAGRAPH}}/g,
+        this.formatMultilineText(templateTexts.introParagraph),
+      )
+      .replace(
+        /{{LABEL_DEGREE_TITLE}}/g,
+        this.escapeHtml(templateTexts.degreeLabel),
+      )
+      .replace(/{{TITULO_OTORGADO}}/g, this.escapeHtml(certificate.degreeTitle))
+      .replace(
+        /{{LABEL_GRADUATE_NAME}}/g,
+        this.escapeHtml(templateTexts.graduateNameLabel),
+      )
+      .replace(/{{NOMBRE_COMPLETO}}/g, this.escapeHtml(certificate.fullName))
+      .replace(
+        /{{LABEL_DOCUMENT_NUMBER}}/g,
+        this.escapeHtml(templateTexts.documentLabel),
+      )
+      .replace(/{{NUMERO_DOCUMENTO}}/g, this.escapeHtml(`CC ${certificate.idNumber}`))
+      .replace(
+        /{{LABEL_ISSUE_PLACE_DATE}}/g,
+        this.escapeHtml(templateTexts.issuePlaceDateLabel),
+      )
+      .replace(
+        /{{LUGAR_FECHA_EXPEDICION}}/g,
+        this.escapeHtml(lugarFechaExpedicion),
+      )
+      .replace(
+        /{{LABEL_REGISTRY}}/g,
+        this.escapeHtml(templateTexts.registryLabel),
+      )
+      .replace(
+        /{{REGISTRO_FOLIO}}/g,
+        this.escapeHtml(certificate.actaNumber || 'N/A'),
+      )
+      .replace(
+        /{{CLOSING_TEXT}}/g,
+        this.formatMultilineText(templateTexts.closingText),
+      )
+      .replace(
+        /{{SIGNER_TITLE}}/g,
+        this.formatMultilineText(templateTexts.signerTitle),
+      )
       .replace(/{{QR_CODE_URL}}/g, qrCodeDataUrl)
+      .replace(
+        /{{VALIDATION_MESSAGE}}/g,
+        this.formatMultilineText(templateTexts.validationMessage),
+      )
       .replace(/{{URL_VALIDACION}}/g, validationUrl)
       .replace(/{{HEADER_IMG}}/g, headerImg)
       .replace(/{{FOOTER_IMG}}/g, footerImg);
 
-    // Generar PDF con Puppeteer
     const executablePath =
       process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH;
     const browser = await puppeteer.launch({
@@ -94,7 +158,6 @@ export class PdfGeneratorService {
     });
 
     const page = await browser.newPage();
-    // Usar 'load' o 'domcontentloaded' es mas rapido y evita timeouts si hay recursos externos lentos
     await page.setContent(htmlContent, { waitUntil: 'load', timeout: 60000 });
 
     const pdfOutput = await page.pdf({
@@ -114,11 +177,11 @@ export class PdfGeneratorService {
   }
 
   /**
-   * Generar código QR como Data URL
+   * Generar codigo QR como Data URL
    */
   private async generateQRCode(data: string): Promise<string> {
     try {
-      const qrCodeDataUrl = await QRCode.toDataURL(data, {
+      return await QRCode.toDataURL(data, {
         width: 200,
         margin: 1,
         color: {
@@ -126,7 +189,6 @@ export class PdfGeneratorService {
           light: '#FFFFFF',
         },
       });
-      return qrCodeDataUrl;
     } catch (error) {
       console.error('Error generando QR Code:', error);
       return '';
@@ -165,8 +227,63 @@ export class PdfGeneratorService {
     return `data:${mime};base64,${buffer.toString('base64')}`;
   }
 
+  private async getTemplateTexts(
+    certificate: GraduationCertificate,
+  ): Promise<GraduationCertificateTemplateTexts> {
+    const snapshot = this.getTemplateSnapshot(certificate);
+    if (snapshot?.texts) {
+      return snapshot.texts;
+    }
+
+    const activeConfig = await this.templateConfigRepository.findOne({
+      where: { isActive: true },
+      order: { updatedAt: 'DESC', id: 'DESC' },
+    });
+
+    if (!activeConfig) {
+      return DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS;
+    }
+
+    const parsedTexts =
+      parseGraduationCertificateTemplateTexts(
+        activeConfig.certificateContentHtml,
+      ) || DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS;
+
+    return {
+      ...parsedTexts,
+      signerTitle:
+        activeConfig.signerTitleOverride || parsedTexts.signerTitle,
+    };
+  }
+
+  private getTemplateSnapshot(
+    certificate: GraduationCertificate,
+  ): GraduationCertificateTemplateSnapshot | null {
+    const certificateWithTemplate = certificate as GraduationCertificate & {
+      templateSnapshot?: GraduationCertificateTemplateSnapshot | string | null;
+      template_snapshot?: GraduationCertificateTemplateSnapshot | string | null;
+    };
+    return parseGraduationCertificateTemplateSnapshot(
+      certificateWithTemplate.templateSnapshot ??
+        certificateWithTemplate.template_snapshot,
+    );
+  }
+
+  private escapeHtml(value: string): string {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private formatMultilineText(value: string): string {
+    return this.escapeHtml(value).replace(/\r?\n/g, '<br/>');
+  }
+
   /**
-   * Formatear fecha en formato español
+   * Formatear fecha en formato espanol
    * Ejemplo: "24 de Diciembre de 2025"
    */
   private formatDate(date: Date | string): string {

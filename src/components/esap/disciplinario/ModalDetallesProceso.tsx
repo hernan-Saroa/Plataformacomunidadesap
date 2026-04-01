@@ -19,8 +19,9 @@ import {
   Send, RotateCcw, RefreshCw, Trash2,
   Layers, BarChart3, Filter, FileDown, List,
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
+import { ModalReasignarProfesional } from './ModalReasignarProfesional';
 import { authService } from '../../../services/api';
 import {
   disciplinaryService,
@@ -1659,6 +1660,9 @@ export function ModalDetallesProceso({
   const [creandoNota, setCreandoNota] = useState(false);
   const [notaPendienteEliminarId, setNotaPendienteEliminarId] = useState<string | null>(null);
   const [eliminandoNotaId, setEliminandoNotaId] = useState<string | null>(null);
+  const [noticiasAsociadas, setNoticiasAsociadas] = useState<any[]>([]);
+  const [noticiasAsociadasLoading, setNoticiasAsociadasLoading] = useState(false);
+  const [noticiasAsociadasError, setNoticiasAsociadasError] = useState<string | null>(null);
   const [previewArchivo, setPreviewArchivo] = useState<Archivo | null>(null);
   const [cargasActivas, setCargasActivas] = useState<CargaActiva[]>([]);
   const [mostrarAlertaCierre, setMostrarAlertaCierre] = useState(false);
@@ -1677,6 +1681,7 @@ export function ModalDetallesProceso({
   const [mostrarModalNuevaTarea, setMostrarModalNuevaTarea] = useState(false);
   const [creandoTarea, setCreandoTarea] = useState(false);
   const [actualizandoTareaId, setActualizandoTareaId] = useState<string | null>(null);
+  const [mostrarModalReasignar, setMostrarModalReasignar] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [autoEnviarRevision, setAutoEnviarRevision] = useState<Archivo | null>(null);
   const [autoRecargar, setAutoRecargar] = useState<Archivo | null>(null);
@@ -1866,6 +1871,35 @@ export function ModalDetallesProceso({
       .finally(() => {
         if (!cancelled) {
           setNotasLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [proceso?.id]);
+
+  useEffect(() => {
+    if (!proceso?.id) return;
+
+    let cancelled = false;
+    setNoticiasAsociadasLoading(true);
+    setNoticiasAsociadasError(null);
+
+    disciplinaryService.getAssociatedNewsToProcess(proceso.id)
+      .then((data) => {
+        if (cancelled) return;
+        setNoticiasAsociadas(data || []);
+      })
+      .catch((error: any) => {
+        if (cancelled) return;
+        console.error('[ModalDetallesProceso] Error cargando noticias asociadas:', error);
+        setNoticiasAsociadas([]);
+        setNoticiasAsociadasError(error?.message || 'No fue posible cargar las noticias asociadas');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setNoticiasAsociadasLoading(false);
         }
       });
 
@@ -2965,7 +2999,7 @@ export function ModalDetallesProceso({
   }, []);
 
   const handleAutoDevuelto = useCallback((archivoId: string, motivo: string, comentarios: string) => {
-    const enReal = archivosReales.find(a => a.id === archivoId);
+    const enReal = archivosBackend.find(a => a.id === archivoId);
     if (enReal) {
       enReal.estado = 'devuelto';
       enReal.observacionesDevolucion = `${motivo}: ${comentarios}`;
@@ -2980,6 +3014,35 @@ export function ModalDetallesProceso({
     });
     setAutoEnRevisionModal(null);
   }, []);
+
+  const handleSolicitarReasignacion = useCallback(async (
+    nuevoProfesionalId: string,
+    nuevoProfesionalNombre: string,
+    justificacion: string,
+    prioridad: 'NORMAL' | 'URGENTE'
+  ) => {
+    if (!proceso?.id) return;
+
+    try {
+      const user = authService.getCurrentUser();
+      await disciplinaryService.createReassignmentRequest({
+        processId: proceso.id,
+        newProfessionalId: nuevoProfesionalId,
+        justification: justificacion,
+        priority: prioridad,
+        requestedBy: user?.fullName || user?.email || 'Usuario del Sistema',
+        requestedById: user?.id,
+      });
+
+      toast.success('Solicitud de reasignación creada', {
+        description: `Se ha enviado la solicitud al Jefe OCID para aprobación`,
+        duration: 6000,
+      });
+    } catch (error: any) {
+      console.error('[ModalDetallesProceso] Error creando solicitud de reasignación:', error);
+      toast.error(error?.message || 'No fue posible crear la solicitud de reasignación');
+    }
+  }, [proceso?.id]);
 
   // ═══ Recargar Archivo (reemplazar auto corregido) ═══
   const handleRecargarArchivo = useCallback((archivo: Archivo) => {
@@ -2998,7 +3061,7 @@ export function ModalDetallesProceso({
     const nuevaVersion = (autoRecargar.version || 1) + 1;
 
     // Actualizar el archivo existente con nueva versión
-    const enReal = archivosReales.find(a => a.id === id);
+    const enReal = archivosBackend.find(a => a.id === id);
     if (enReal) {
       enReal.estado = 'borrador';
       enReal.version = nuevaVersion;
@@ -3486,9 +3549,21 @@ export function ModalDetallesProceso({
 
                       {/* Profesional Asignado */}
                       <div className="rounded-xl border border-gray-200 bg-white p-3">
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <Briefcase className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />
-                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Profesional Asignado</span>
+                        <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <Briefcase className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />
+                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Profesional Asignado</span>
+                          </div>
+                          <button
+                            onClick={() => setMostrarModalReasignar(true)}
+                            className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold rounded-lg border transition-all"
+                            style={{ borderColor: '#2962FF', color: '#2962FF', background: '#EFF6FF' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = '#DBEAFE'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = '#EFF6FF'; }}
+                            title="Solicitar reasignación del profesional">
+                            <Users className="w-2.5 h-2.5" />
+                            Reasignar
+                          </button>
                         </div>
                         <p className="text-sm font-bold text-gray-900">{getNombre(proceso.profesionalAsignado)}</p>
                         {getId(proceso.profesionalAsignado as any) && (
@@ -3577,6 +3652,84 @@ export function ModalDetallesProceso({
                         </div>
                       </div>
                     )}
+
+                    {/* ═══ NOTICIAS ASOCIADAS ═══ */}
+                    <div className="rounded-xl border border-purple-200 bg-purple-50/30 overflow-hidden">
+                      <div className="px-3 py-2 border-b border-purple-200" style={{ background: 'rgba(147, 51, 234, 0.05)' }}>
+                        <div className="flex items-center gap-2">
+                          <Share2 className="w-3.5 h-3.5" style={{ color: '#7C3AED' }} />
+                          <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#7C3AED' }}>
+                            Noticias Asociadas
+                          </span>
+                          {noticiasAsociadasLoading && (
+                            <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#7C3AED' }} />
+                          )}
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        {noticiasAsociadasLoading ? (
+                          <div className="flex items-center justify-center py-4 text-sm text-gray-500">
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            Cargando noticias asociadas...
+                          </div>
+                        ) : noticiasAsociadasError ? (
+                          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-xs text-red-700">
+                            <div className="flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4" />
+                              <span className="font-semibold">{noticiasAsociadasError}</span>
+                            </div>
+                          </div>
+                        ) : noticiasAsociadas.length === 0 ? (
+                          <div className="text-center py-4">
+                            <Share2 className="w-8 h-8 text-purple-200 mx-auto mb-2" />
+                            <p className="text-xs text-gray-500 font-medium">Sin noticias asociadas</p>
+                            <p className="text-[10px] text-gray-400 mt-1">Las noticias asociadas aparecerán aquí cuando se vinculen al proceso</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {noticiasAsociadas.map((noticia: any, idx: number) => (
+                              <div key={noticia.id || idx} className="flex items-start gap-3 p-3 rounded-lg border border-purple-100 bg-white hover:bg-purple-50/30 transition-colors">
+                                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F3E8FF' }}>
+                                  <Share2 className="w-4 h-4" style={{ color: '#7C3AED' }} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold text-gray-900">{noticia.titulo || 'Sin título'}</p>
+                                  <p className="text-[10px] text-gray-600 mt-0.5 leading-relaxed">{noticia.descripcion || 'Sin descripción'}</p>
+                                  <div className="flex items-center gap-3 mt-1.5 text-[9px] text-gray-500">
+                                    <span className="flex items-center gap-1">
+                                      <Calendar className="w-3 h-3" />
+                                      {noticia.fechaRecepcion ? new Date(noticia.fechaRecepcion).toLocaleDateString('es-CO') : 'Sin fecha'}
+                                    </span>
+                                    {noticia.prioridad && (
+                                      <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold"
+                                        style={{
+                                          backgroundColor: noticia.prioridad === 'alta' ? '#FEE2E2' : noticia.prioridad === 'media' ? '#FEF3C7' : '#ECFDF5',
+                                          color: noticia.prioridad === 'alta' ? '#991B1B' : noticia.prioridad === 'media' ? '#92400E' : '#065F46'
+                                        }}>
+                                        {noticia.prioridad.toUpperCase()}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {noticia.fechaAsociacion && (
+                                    <p className="text-[9px] text-purple-600 mt-1 font-medium">
+                                      Asociada el {new Date(noticia.fechaAsociacion).toLocaleDateString('es-CO', {
+                                        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                      })}
+                                    </p>
+                                  )}
+                                  {noticia.justificacion && (
+                                    <div className="mt-2 p-2 rounded-md bg-purple-50 border border-purple-100">
+                                      <p className="text-[9px] font-medium text-purple-800">Justificación:</p>
+                                      <p className="text-[9px] text-purple-700 mt-0.5">{noticia.justificacion}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
                     {/* ═══ SCORECARD: Progreso por Etapa ═══ */}
                     <div className="rounded-xl border border-gray-200 overflow-hidden">
@@ -5089,6 +5242,16 @@ export function ModalDetallesProceso({
             saving={creandoTarea}
             onClose={() => setMostrarModalNuevaTarea(false)}
             onSubmit={handleCrearTarea}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {mostrarModalReasignar && (
+          <ModalReasignarProfesional
+            proceso={proceso}
+            onClose={() => setMostrarModalReasignar(false)}
+            onSolicitarReasignacion={handleSolicitarReasignacion}
           />
         )}
       </AnimatePresence>

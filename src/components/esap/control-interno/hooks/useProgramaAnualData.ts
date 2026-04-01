@@ -45,6 +45,8 @@ export interface AuditoriaProgramadaUI {
   estado: EstadoAuditoria;
   // ✅ Estado Kanban original del backend para filtros (Planeación, Ejecución, Comunicación, Finalizada)
   estadoKanban?: string;
+  /** Fase backend (planeacion, en-curso, revision, completada) — respaldo si falta estadoKanban */
+  fase?: string;
   avance: number;
   horasEstimadas: number;
   horasReales: number;
@@ -70,10 +72,18 @@ export interface Estadisticas {
   procesosMedios: number;
   procesosBajos: number;
   // Programa Anual
+  /** Total de auditorías cargadas (mismo universo que el Kanban) */
   totalProgramadas: number;
+  /** Auditorías en columna Kanban Finalizada */
   completadas: number;
   enEjecucion: number;
+  /** Plan Anual + Planeación (etapas previas a ejecución) */
   programadas: number;
+  /** Desglose alineado con columnas del tablero */
+  enPlanAnual: number;
+  enPlaneacion: number;
+  enComunicacion: number;
+  enSeguimiento: number;
   coberturaCriticos: number;
   coberturaAltos: number;
   horasTotales: number;
@@ -82,6 +92,57 @@ export interface Estadisticas {
   vinculadasOCIG: number;
   conHallazgos: number;
   conPlanesMejoramiento: number;
+}
+
+/** Columnas normalizadas (misma lógica que `mapearFaseAEstado` en useAuditoriasKanban) */
+export type ColumnaKanban =
+  | 'plan_anual'
+  | 'planeacion'
+  | 'ejecucion'
+  | 'comunicacion'
+  | 'seguimiento'
+  | 'finalizada'
+  | 'desconocido';
+
+/**
+ * Resuelve la columna del tablero a partir de estadoKanban / fase / estado UI agregado.
+ */
+export function resolverColumnaKanban(
+  estadoKanban?: string | null,
+  faseBackend?: string | null,
+  estadoUi?: EstadoAuditoria
+): ColumnaKanban {
+  const raw = (estadoKanban || '').trim();
+  if (raw) {
+    const n = raw.toLowerCase();
+    if (
+      n === 'plan anual' ||
+      n === 'plan-anual' ||
+      n === 'backlog' ||
+      n === 'pendiente' ||
+      n === 'programada' ||
+      n === 'programado'
+    ) {
+      return 'plan_anual';
+    }
+    if (n === 'planeación' || n === 'planeacion' || n === 'planificación' || n === 'planificacion') {
+      return 'planeacion';
+    }
+    if (n === 'ejecución' || n === 'ejecucion') return 'ejecucion';
+    if (n === 'comunicación' || n === 'comunicacion' || n === 'informe') return 'comunicacion';
+    if (n === 'seguimiento') return 'seguimiento';
+    if (n === 'finalizada' || n === 'cierre' || n === 'completada') return 'finalizada';
+  }
+  const f = (faseBackend || '').toLowerCase().replace(/_/g, '-');
+  if (f === 'planeacion') return 'planeacion';
+  if (f === 'en-curso' || f === 'encurso') return 'ejecucion';
+  if (f === 'revision') return 'comunicacion';
+  if (f === 'completada') return 'finalizada';
+  if (estadoUi === 'EN_EJECUCION') return 'ejecucion';
+  if (estadoUi === 'PROGRAMADA') return 'planeacion';
+  if (estadoUi === 'COMPLETADA') return 'seguimiento';
+  if (estadoUi === 'CANCELADA') return 'desconocido';
+  return 'desconocido';
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -228,6 +289,7 @@ function mapAuditoriaBackendToUI(
     estado: mapEstadoAuditoria(auditoria.estado, auditoria.estadoKanban),
     // ✅ Conservar estadoKanban original para filtros
     estadoKanban: auditoria.estadoKanban,
+    fase: typeof auditoria.fase === 'string' ? auditoria.fase : undefined,
     avance: auditoria.avance || 0,
     horasEstimadas: (auditoria.duracionDias || 0) * 8,
     horasReales: auditoria.horasReales || 0,
@@ -253,6 +315,44 @@ export function calcularEstadisticas(
   const audCriticosCubiertos = auditorias.filter(a => a.proceso.nivelRiesgo === 'Crítico').length;
   const audAltosCubiertos = auditorias.filter(a => a.proceso.nivelRiesgo === 'Alto').length;
 
+  let enPlanAnual = 0;
+  let enPlaneacion = 0;
+  let enEjecucion = 0;
+  let enComunicacion = 0;
+  let enSeguimiento = 0;
+  let finalizadas = 0;
+
+  for (const a of auditorias) {
+    const col = resolverColumnaKanban(a.estadoKanban, a.fase, a.estado);
+    switch (col) {
+      case 'plan_anual':
+        enPlanAnual += 1;
+        break;
+      case 'planeacion':
+        enPlaneacion += 1;
+        break;
+      case 'ejecucion':
+        enEjecucion += 1;
+        break;
+      case 'comunicacion':
+        enComunicacion += 1;
+        break;
+      case 'seguimiento':
+        enSeguimiento += 1;
+        break;
+      case 'finalizada':
+        finalizadas += 1;
+        break;
+      default:
+        if (a.estado === 'EN_EJECUCION') enEjecucion += 1;
+        else if (a.estado === 'PROGRAMADA') enPlaneacion += 1;
+        else if (a.estado === 'COMPLETADA') enSeguimiento += 1;
+        break;
+    }
+  }
+
+  const programadasFases = enPlanAnual + enPlaneacion;
+
   return {
     totalProcesos: procesos.length,
     procesosAuditables: procesosAuditables.length,
@@ -262,9 +362,13 @@ export function calcularEstadisticas(
     procesosBajos: procesosAuditables.filter(p => p.nivelRiesgo === 'Bajo').length,
     
     totalProgramadas: auditorias.length,
-    completadas: auditorias.filter(a => a.estado === 'COMPLETADA').length,
-    enEjecucion: auditorias.filter(a => a.estado === 'EN_EJECUCION').length,
-    programadas: auditorias.filter(a => a.estado === 'PROGRAMADA').length,
+    completadas: finalizadas,
+    enEjecucion,
+    programadas: programadasFases,
+    enPlanAnual,
+    enPlaneacion,
+    enComunicacion,
+    enSeguimiento,
     
     coberturaCriticos: criticos.length > 0
       ? Math.round((audCriticosCubiertos / criticos.length) * 100)
@@ -430,6 +534,7 @@ export function useProgramaAnualData(
             estado: a.estado,
             // ✅ Propagar estadoKanban original para filtros del cronograma
             estadoKanban: a.estadoKanban,
+            fase: a.fase,
             avance: a.avance,
             horasEstimadas: a.horasEstimadas,
             horasReales: a.horasReales || 0,

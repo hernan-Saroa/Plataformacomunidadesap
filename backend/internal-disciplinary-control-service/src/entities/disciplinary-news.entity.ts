@@ -23,6 +23,7 @@ export enum NewsStatus {
   DEVUELTA = 'DEVUELTA',
   ARCHIVADA = 'ARCHIVADA',
   REMITIDA = 'REMITIDA',
+  ASOCIADA = 'ASOCIADA',
 }
 
 // export interface Apoderado {
@@ -119,6 +120,9 @@ export class DisciplinaryNews {
     (process) => process.news,
   )
   processes: DisciplinaryProcess[];
+
+  // Nota: Relación con asociaciones noticia-proceso se maneja via consultas directas
+  // para evitar dependencias circulares con DisciplinaryNewsProcess
 
   // Campos para asociar noticia a un proceso existente
   @Column({ name: 'proceso_asociado_id', type: 'uuid', nullable: true })
