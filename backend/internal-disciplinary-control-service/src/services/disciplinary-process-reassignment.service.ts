@@ -75,7 +75,7 @@ export class DisciplinaryProcessReassignmentService {
     const request = this.reassignmentRepo.create({
       processId: dto.processId,
       currentProfessionalId: process.abogadoAsignado.id,
-      newProfessionalId: dto.newProfessionalId,
+      newProfessional: { id: dto.newProfessionalId },
       justification: dto.justification,
       priority: dto.priority || ReassignmentPriority.NORMAL,
       requestedBy: dto.requestedBy,
@@ -106,7 +106,7 @@ export class DisciplinaryProcessReassignmentService {
     if (dto.approved) {
       // Aprobar: cambiar el profesional en el proceso
       await this.processRepo.update(request.processId, {
-        abogadoAsignadoId: request.newProfessionalId,
+        abogadoAsignadoId: request.newProfessional.id,
       });
 
       request.status = ReassignmentRequestStatus.APROBADA;

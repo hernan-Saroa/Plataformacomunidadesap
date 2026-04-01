@@ -20,8 +20,8 @@ CREATE TABLE IF NOT EXISTS internal_disciplinary_control.disciplinary_process_re
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT fk_process_id FOREIGN KEY (process_id) REFERENCES internal_disciplinary_control.disciplinary_processes(id) ON DELETE CASCADE,
-    CONSTRAINT fk_current_professional_id FOREIGN KEY (current_professional_id) REFERENCES internal_disciplinary_control.disciplinary_professionals(id) ON DELETE CASCADE,
-    CONSTRAINT fk_new_professional_id FOREIGN KEY (new_professional_id) REFERENCES internal_disciplinary_control.disciplinary_professionals(id) ON DELETE CASCADE,
+    CONSTRAINT fk_current_professional_id FOREIGN KEY (current_professional_id) REFERENCES internal_disciplinary_control.disciplinary_professional(id) ON DELETE CASCADE,
+    CONSTRAINT fk_new_professional_id FOREIGN KEY (new_professional_id) REFERENCES internal_disciplinary_control.disciplinary_professional(id) ON DELETE CASCADE,
     CONSTRAINT unique_pending_request_per_process EXCLUDE (process_id WITH =) WHERE (status = 'PENDIENTE')
 );
 

@@ -27,36 +27,37 @@ export class DisciplinaryProcessReassignmentRequest {
   id: string;
 
   @ManyToOne(() => DisciplinaryProcess, {
-    eager: true,
+    onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'processId' })
+  @JoinColumn({ name: 'process_id' })
   process: DisciplinaryProcess;
 
-  @Column('uuid')
+  @Column({ name: 'process_id', type: 'uuid' })
   processId: string;
 
   @ManyToOne(() => DisciplinaryProfessional, {
-    eager: true,
+    onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'currentProfessionalId' })
+  @JoinColumn({ name: 'current_professional_id' })
   currentProfessional: DisciplinaryProfessional;
 
-  @Column('uuid')
+  @Column({ name: 'current_professional_id', type: 'uuid' })
   currentProfessionalId: string;
 
   @ManyToOne(() => DisciplinaryProfessional, {
-    eager: true,
+    onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'newProfessionalId' })
+  @JoinColumn({ name: 'new_professional_id' })
   newProfessional: DisciplinaryProfessional;
 
-  @Column('uuid')
+  @Column({ name: 'new_professional_id', type: 'uuid' })
   newProfessionalId: string;
 
-  @Column({ type: 'text' })
+  @Column({ name: 'justification', type: 'text' })
   justification: string;
 
   @Column({
+    name: 'priority',
     type: 'enum',
     enum: ReassignmentPriority,
     default: ReassignmentPriority.NORMAL,
@@ -64,25 +65,26 @@ export class DisciplinaryProcessReassignmentRequest {
   priority: ReassignmentPriority;
 
   @Column({
+    name: 'status',
     type: 'enum',
     enum: ReassignmentRequestStatus,
     default: ReassignmentRequestStatus.PENDIENTE,
   })
   status: ReassignmentRequestStatus;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'jefe_observations', type: 'text', nullable: true })
   jefeObservations: string | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'rejection_reason', type: 'text', nullable: true })
   rejectionReason: string | null;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ name: 'resolved_at', type: 'timestamp', nullable: true })
   resolvedAt: Date;
 
-  @Column({ type: 'varchar', length: 100 })
+  @Column({ name: 'requested_by', type: 'varchar', length: 100 })
   requestedBy: string; // Nombre del usuario que solicita
 
-  @Column({ type: 'varchar', length: 50, nullable: true })
+  @Column({ name: 'requested_by_id', type: 'varchar', length: 50, nullable: true })
   requestedById: string; // ID del usuario que solicita
 
   @CreateDateColumn()

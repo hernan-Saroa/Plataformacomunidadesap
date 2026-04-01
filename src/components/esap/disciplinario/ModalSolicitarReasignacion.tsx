@@ -60,7 +60,7 @@ const PROFESIONALES: Profesional[] = [
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-export function ModalSolicitarReasignacion({ proceso, profesionales = [], onClose, onSolicitar }: ModalSolicitarReasignacionProps) {
+export function ModalSolicitarReasignacion({ proceso, profesionales = [], onClose }: ModalSolicitarReasignacionProps) {
   // Convertir profesionales del backend al formato esperado por el componente
   const profesionalesFormateados = profesionales.map(p => ({
     id: p.id,
@@ -82,7 +82,7 @@ export function ModalSolicitarReasignacion({ proceso, profesionales = [], onClos
 
   const [seleccionado, setSeleccionado] = useState('');
   const [justificacion, setJustificacion] = useState('');
-  const [prioridad, setPrioridad]       = useState<'urgente' | 'normal'>('normal');
+  const [prioridad, setPrioridad] = useState<'NORMAL' | 'URGENTE'>('NORMAL');
   const [busqueda, setBusqueda]         = useState('');
 
   const lista = useMemo(() => {
@@ -107,10 +107,29 @@ export function ModalSolicitarReasignacion({ proceso, profesionales = [], onClos
     ? nombreProfesionalActual.split(' ').slice(0, 2).map(n => n[0]).join('')
     : '?';
 
-  const handleSolicitar = () => {
+  const handleSolicitar = async () => {
     if (!seleccionado)           { toast.error('Selecciona el profesional destino'); return; }
     if (justificacion.length < 50) { toast.error('Justificación mínima: 50 caracteres'); return; }
-    onSolicitar(prof!.id, prof!.nombre, justificacion, prioridad);
+
+    try {
+      const user = authService.getCurrentUser();
+      await disciplinaryService.createReassignmentRequest({
+        processId: proceso.id,
+        newProfessionalId: prof!.id,
+        justification: justificacion.trim(),
+        priority: prioridad,
+        requestedBy: user?.fullName || user?.email || 'Usuario del Sistema',
+        requestedById: user?.id,
+      });
+      toast.success('Solicitud de reasignación creada', {
+        description: `Se ha enviado la solicitud al Jefe OCID para aprobación`,
+        duration: 6000,
+      });
+      onClose();
+    } catch (error: any) {
+      console.error('Error creando solicitud de reasignación:', error);
+      toast.error(error?.message || 'No fue posible crear la solicitud de reasignación');
+    }
   };
 
   const pie = (
@@ -157,15 +176,15 @@ export function ModalSolicitarReasignacion({ proceso, profesionales = [], onClos
       <div>
         <WCLabel>Prioridad de la solicitud</WCLabel>
         <div className="flex gap-2">
-          {(['normal', 'urgente'] as const).map(p => (
+          {(['NORMAL', 'URGENTE'] as const).map(p => (
             <button key={p} onClick={() => setPrioridad(p)}
               className="flex-1 py-2 rounded-xl border-2 text-sm font-bold transition-all"
               style={{
-                borderColor: prioridad === p ? (p === 'urgente' ? '#DC2626' : WC_TOKENS.primary) : '#E5E7EB',
-                background:  prioridad === p ? (p === 'urgente' ? '#FEF2F2' : WC_TOKENS.primaryBg) : '#FFF',
-                color:       prioridad === p ? (p === 'urgente' ? '#DC2626' : WC_TOKENS.primary)   : '#6B7280',
+                borderColor: prioridad === p ? (p === 'URGENTE' ? '#DC2626' : WC_TOKENS.primary) : '#E5E7EB',
+                background:  prioridad === p ? (p === 'URGENTE' ? '#FEF2F2' : WC_TOKENS.primaryBg) : '#FFF',
+                color:       prioridad === p ? (p === 'URGENTE' ? '#DC2626' : WC_TOKENS.primary)   : '#6B7280',
               }}>
-              {p === 'urgente' ? '🔴 Urgente' : '⚪ Normal'}
+              {p === 'URGENTE' ? '🔴 Urgente' : '⚪ Normal'}
             </button>
           ))}
         </div>
