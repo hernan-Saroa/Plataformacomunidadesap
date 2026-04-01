@@ -4,6 +4,7 @@ import { ModalButtonPrimary, ModalButtonCancel, ModalButtonGroup } from '@/compo
 import { Search, FileText, Scale, AlertCircle, CheckCircle2, Link2 } from 'lucide-react';
 import { Badge } from '../../ui/badge';
 import { toast } from 'sonner@2.0.3';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
 /**
  * ═══════════════════════════════════════════════════════════════
@@ -140,11 +141,8 @@ export function ModalAsociarNoticiaProceso({
     setIsSubmitting(true);
 
     try {
-      // Simular delay de API
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Ejecutar callback
-      onAsociar(noticia.id, procesoSeleccionado, justificacion.trim());
+      // Llamar al servicio API
+      await disciplinaryService.asociarNoticiaAProceso(noticia.id, procesoSeleccionado, justificacion.trim());
 
       // Success feedback
       const proceso = procesosDisponibles.find(p => p.id === procesoSeleccionado);
@@ -460,7 +458,7 @@ export function ModalAsociarNoticiaProceso({
                     <strong>Denunciado:</strong> {noticia.denunciado.nombre} ({noticia.denunciado.tipoIdentificacion} {noticia.denunciado.numeroIdentificacion})
                   </p>
                   <p className="pt-1 border-t border-green-200">
-                    Esta asociación quedará registrada en el historial del proceso y no se puede deshacer.
+                    Esta asociación quedará registrada en el historial del proceso. La noticia dejará de mostrarse de forma independiente y no se puede deshacer.
                   </p>
                 </div>
               </div>

@@ -601,7 +601,7 @@ export function WizardOficiosWorldClass({
                 )}
               </button>
               
-              <button
+              {/* <button
                 onClick={() => setVistaActual('lista')}
                 className={`relative px-5 py-3 rounded-t-2xl font-bold text-sm transition-all duration-300 ${
                   vistaActual === 'lista'
@@ -629,7 +629,7 @@ export function WizardOficiosWorldClass({
                     transition={{ type: 'spring', duration: 0.5 }}
                   />
                 )}
-              </button>
+              </button> */}
             </div>
           </div>
         </div>
