@@ -49,6 +49,35 @@ export class PlanesMejoramientoService {
     private readonly dataSource: DataSource,
   ) {}
 
+  private normalizarTexto(valor?: string | null): string {
+    return String(valor || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  private async validarCreacionSoloEnComunicacion(auditoriaId?: string | null): Promise<void> {
+    if (!auditoriaId) return;
+
+    const auditoria = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+      select: ['id', 'estadoKanban', 'fase'],
+    });
+
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${auditoriaId} no encontrada`);
+    }
+
+    const estadoKanban = this.normalizarTexto(String(auditoria.estadoKanban || ''));
+    const fase = this.normalizarTexto(String(auditoria.fase || ''));
+    const enComunicacion = estadoKanban === 'comunicacion' || fase === 'comunicacion';
+
+    if (!enComunicacion) {
+      throw new BadRequestException('El Plan de Mejoramiento solo puede crearse cuando la auditoría está en la etapa Comunicación');
+    }
+  }
+
   /**
    * Parsea una fecha string (YYYY-MM-DD) a Date sin conversión de zona horaria
    * Esto evita que las fechas se desplacen por diferencias de zona horaria
@@ -219,24 +248,89 @@ export class PlanesMejoramientoService {
   }
 
   /**
+   * Cuenta acciones terminadas (misma lógica que el Kanban / frontend)
+   */
+  private contarAccionesCompletadas(acciones: AccionCorrectiva[]): number {
+    if (!acciones?.length) return 0;
+    return acciones.filter((a) => {
+      const p = Number(a.porcentajeAvance ?? 0);
+      if (Number.isFinite(p) && p >= 100) return true;
+      const e = String(a.estado || '')
+        .toLowerCase()
+        .replace(/-/g, '_');
+      return e === 'completada' || e === 'implementada';
+    }).length;
+  }
+
+  /**
+   * Hallazgos cubiertos por el plan: cabecera del plan o IDs distintos en acciones o total en auditoría
+   */
+  private contarHallazgosParaKanban(plan: PlanMejoramiento, accionesRaw: AccionCorrectiva[]): number {
+    if (plan.hallazgoId || plan.hallazgo) return 1;
+    const ids = new Set(
+      accionesRaw
+        .map((a) => a.hallazgoId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    );
+    if (ids.size > 0) return ids.size;
+    const aud = plan.auditoria as { hallazgos?: number } | undefined;
+    const n = Number(aud?.hallazgos);
+    if (Number.isFinite(n) && n > 0) return n;
+    return 0;
+  }
+
+  /** Progreso del plan = promedio del % de avance reportado en cada acción (0–100) */
+  private promedioPorcentajeAvanceAcciones(accionesRaw: AccionCorrectiva[]): number {
+    if (!accionesRaw.length) return 0;
+    const sum = accionesRaw.reduce((s, a) => {
+      const p = Math.min(100, Math.max(0, Number(a.porcentajeAvance ?? 0)));
+      return s + (Number.isFinite(p) ? p : 0);
+    }, 0);
+    return Math.round(sum / accionesRaw.length);
+  }
+
+  /**
    * Serializa un plan de mejoramiento para la respuesta JSON
+   * Evita referencias circulares (accion.plan → plan) y expone totales para listados/Kanban
    */
   private serializePlanMejoramiento(plan: PlanMejoramiento): any {
+    const accionesRaw = plan.acciones ?? [];
+    const totalAcciones = accionesRaw.length;
+    const accionesCompletadas = this.contarAccionesCompletadas(accionesRaw);
+    const porcentajeAvance = this.promedioPorcentajeAvanceAcciones(accionesRaw);
+    const totalHallazgos = this.contarHallazgosParaKanban(plan, accionesRaw);
+
+    const acciones = accionesRaw.map((accion) => {
+      const { plan: _omitPlan, ...rest } = accion as AccionCorrectiva & { plan?: PlanMejoramiento };
+      return {
+        ...rest,
+        fechaInicio: this.serializeDate(accion.fechaInicio),
+        fechaFin: this.serializeDate(accion.fechaFin),
+      };
+    });
+
+    const seguimientos = plan.seguimientos?.map((seguimiento) => {
+      const { plan: _omitPlan, ...rest } = seguimiento as SeguimientoTrimestral & {
+        plan?: PlanMejoramiento;
+      };
+      return {
+        ...rest,
+        fechaInicio: this.serializeDate(seguimiento.fechaInicio),
+        fechaFin: this.serializeDate(seguimiento.fechaFin),
+        fechaSeguimiento: this.serializeDate(seguimiento.fechaSeguimiento),
+      };
+    });
+
     return {
       ...plan,
       fechaLimite: this.serializeDate(plan.fechaLimite),
       fechaAprobacion: this.serializeDate(plan.fechaAprobacion),
-      acciones: plan.acciones?.map(accion => ({
-        ...accion,
-        fechaInicio: this.serializeDate(accion.fechaInicio),
-        fechaFin: this.serializeDate(accion.fechaFin),
-      })),
-      seguimientos: plan.seguimientos?.map(seguimiento => ({
-        ...seguimiento,
-        fechaInicio: this.serializeDate(seguimiento.fechaInicio),
-        fechaFin: this.serializeDate(seguimiento.fechaFin),
-        fechaSeguimiento: this.serializeDate(seguimiento.fechaSeguimiento),
-      })),
+      acciones,
+      seguimientos,
+      totalHallazgos,
+      totalAcciones,
+      accionesCompletadas,
+      porcentajeAvance,
     };
   }
 
@@ -397,6 +491,8 @@ export class PlanesMejoramientoService {
       }
     }
 
+    await this.validarCreacionSoloEnComunicacion(auditoriaId);
+
     const plan = this.planRepository.create({
       codigo,
       titulo: createDto.titulo || `Plan de Mejoramiento ${codigo}`,
@@ -435,6 +531,27 @@ export class PlanesMejoramientoService {
 
       await this.accionRepository.save(acciones);
       console.log(`[PlanesMejoramientoService.create] ${acciones.length} acción(es) creada(s) para el plan ${savedPlan.codigo}`);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // REGISTRAR EVENTO EN EL TIMELINE
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      await this.registrarEvento(
+        savedPlan.id,
+        TipoEventoTimeline.CREACION,
+        `Plan de mejoramiento ${savedPlan.codigo} creado`,
+        undefined,
+        createDto.responsableImplementacion || 'Sistema',
+        {
+          titulo: savedPlan.titulo,
+          hallazgoId: hallazgoId,
+          auditoriaId: auditoriaId,
+          estado: savedPlan.estado,
+        },
+      );
+    } catch (eventoError) {
+      console.error('[PlanesMejoramientoService.create] Error al registrar evento:', eventoError);
     }
 
     // Crear notificaciones después de guardar el plan
@@ -528,7 +645,35 @@ export class PlanesMejoramientoService {
       }
     }
 
+    // Guardar estado anterior para detectar cambios
+    const estadoAnterior = plan.estado;
     const savedPlan = await this.planRepository.save(plan);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // REGISTRAR EVENTO EN EL TIMELINE
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      // Determinar si hubo cambio de estado
+      const cambioEstado = updateDto.estado && updateDto.estado !== estadoAnterior;
+      const descripcion = cambioEstado
+        ? `Plan ${savedPlan.codigo} cambió de estado: ${estadoAnterior} → ${savedPlan.estado}`
+        : `Plan ${savedPlan.codigo} actualizado`;
+      
+      await this.registrarEvento(
+        savedPlan.id,
+        cambioEstado ? TipoEventoTimeline.ESTADO : TipoEventoTimeline.ACTUALIZACION,
+        descripcion,
+        undefined,
+        updateDto.responsableImplementacion || savedPlan.responsableImplementacion || 'Sistema',
+        {
+          cambios: Object.keys(updateDto).filter(k => updateDto[k] !== undefined),
+          estadoAnterior: cambioEstado ? estadoAnterior : undefined,
+          estadoNuevo: cambioEstado ? savedPlan.estado : undefined,
+        },
+      );
+    } catch (eventoError) {
+      console.error('[PlanesMejoramientoService.update] Error al registrar evento:', eventoError);
+    }
 
     // Si el estado es REVISION, crear una aprobación pendiente si no existe
     if (savedPlan.estado === PlanMejoramientoEstado.REVISION) {
@@ -753,7 +898,25 @@ export class PlanesMejoramientoService {
       plan.estado = PlanMejoramientoEstado.EN_EJECUCION;
     }
 
-    return this.planRepository.save(plan);
+    const savedPlan = await this.planRepository.save(plan);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // REGISTRAR EVENTO DE APROBACIÓN EN EL TIMELINE
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      await this.registrarEvento(
+        savedPlan.id,
+        TipoEventoTimeline.APROBACION,
+        `Plan ${savedPlan.codigo} aprobado${observaciones ? `: ${observaciones.substring(0, 100)}` : ''}`,
+        undefined,
+        aprobadoPor || 'Sistema',
+        { estadoFinal: savedPlan.estado, observaciones },
+      );
+    } catch (eventoError) {
+      console.error('[PlanesMejoramientoService.aprobar] Error al registrar evento:', eventoError);
+    }
+
+    return savedPlan;
   }
 
   /**
@@ -769,7 +932,25 @@ export class PlanesMejoramientoService {
     plan.estado = PlanMejoramientoEstado.RECHAZADO;
     plan.motivoRechazo = motivo;
 
-    return this.planRepository.save(plan);
+    const savedPlan = await this.planRepository.save(plan);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // REGISTRAR EVENTO DE RECHAZO EN EL TIMELINE
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      await this.registrarEvento(
+        savedPlan.id,
+        TipoEventoTimeline.ESTADO,
+        `Plan ${savedPlan.codigo} rechazado: ${motivo.substring(0, 100)}`,
+        undefined,
+        'Sistema',
+        { estadoFinal: PlanMejoramientoEstado.RECHAZADO, motivo },
+      );
+    } catch (eventoError) {
+      console.error('[PlanesMejoramientoService.rechazar] Error al registrar evento:', eventoError);
+    }
+
+    return savedPlan;
   }
 
   /**
@@ -803,6 +984,28 @@ export class PlanesMejoramientoService {
     });
 
     const saved = await this.accionRepository.save(accion);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // REGISTRAR EVENTO DE CREACIÓN DE ACCIÓN EN EL TIMELINE
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      await this.registrarEvento(
+        planId,
+        TipoEventoTimeline.CREACION,
+        `Nueva acción correctiva creada: ${saved.descripcion.substring(0, 80)}${saved.descripcion.length > 80 ? '...' : ''}`,
+        undefined,
+        saved.responsable || 'Sistema',
+        {
+          accionId: saved.id,
+          tipo: saved.tipo,
+          responsable: saved.responsable,
+          fechaFin: this.serializeDate(saved.fechaFin),
+        },
+      );
+    } catch (eventoError) {
+      console.error('[PlanesMejoramientoService.createAccion] Error al registrar evento:', eventoError);
+    }
+
     // Serializar fechas para evitar problemas de zona horaria
     return {
       ...saved,
@@ -825,6 +1028,10 @@ export class PlanesMejoramientoService {
       throw new NotFoundException(`Acción con ID ${accionId} no encontrada en el plan`);
     }
 
+    // Guardar estado anterior para detectar cambios
+    const estadoAnterior = accion.estado;
+    const progresoAnterior = accion.porcentajeAvance;
+
     if (updateDto.hallazgoId !== undefined) accion.hallazgoId = updateDto.hallazgoId || null;
     if (updateDto.descripcion !== undefined) accion.descripcion = updateDto.descripcion;
     if (updateDto.tipo !== undefined) accion.tipo = updateDto.tipo;
@@ -839,6 +1046,47 @@ export class PlanesMejoramientoService {
     if (updateDto.porcentajeAvance !== undefined) accion.porcentajeAvance = updateDto.porcentajeAvance;
 
     const saved = await this.accionRepository.save(accion);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // REGISTRAR EVENTO DE ACTUALIZACIÓN DE ACCIÓN EN EL TIMELINE
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const cambioEstado = updateDto.estado && updateDto.estado !== estadoAnterior;
+      const cambioProgreso = updateDto.porcentajeAvance !== undefined && updateDto.porcentajeAvance !== progresoAnterior;
+      const accionCompletada = saved.estado === AccionCorrectivaEstado.IMPLEMENTADA || saved.porcentajeAvance === 100;
+      
+      let tipoEvento = TipoEventoTimeline.ACTUALIZACION;
+      let descripcion = `Acción actualizada: ${saved.descripcion.substring(0, 50)}...`;
+
+      if (accionCompletada && estadoAnterior !== AccionCorrectivaEstado.IMPLEMENTADA) {
+        tipoEvento = TipoEventoTimeline.COMPLETADA;
+        descripcion = `Acción completada: ${saved.descripcion.substring(0, 50)}...`;
+      } else if (cambioEstado) {
+        tipoEvento = TipoEventoTimeline.ESTADO;
+        descripcion = `Acción cambió de estado: ${estadoAnterior} → ${saved.estado}`;
+      } else if (cambioProgreso) {
+        tipoEvento = TipoEventoTimeline.PROGRESO;
+        descripcion = `Progreso actualizado: ${progresoAnterior}% → ${saved.porcentajeAvance}%`;
+      }
+
+      await this.registrarEvento(
+        planId,
+        tipoEvento,
+        descripcion,
+        undefined,
+        saved.responsable || 'Sistema',
+        {
+          accionId: saved.id,
+          estadoAnterior: cambioEstado ? estadoAnterior : undefined,
+          estadoNuevo: cambioEstado ? saved.estado : undefined,
+          progresoAnterior: cambioProgreso ? progresoAnterior : undefined,
+          progresoNuevo: cambioProgreso ? saved.porcentajeAvance : undefined,
+        },
+      );
+    } catch (eventoError) {
+      console.error('[PlanesMejoramientoService.updateAccion] Error al registrar evento:', eventoError);
+    }
+
     // Serializar fechas para evitar problemas de zona horaria
     return {
       ...saved,

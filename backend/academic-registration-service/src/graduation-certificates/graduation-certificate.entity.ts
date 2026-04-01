@@ -12,6 +12,7 @@ import { Graduate } from './graduate.entity';
 import { GraduationCertificateRequest } from './graduation-certificate-request.entity';
 import { CertificateValidation } from './certificate-validation.entity';
 import { CertificateDownload } from './certificate-download.entity';
+import type { GraduationCertificateTemplateSnapshot } from './certificate-template-texts';
 
 @Entity({ schema: 'academic_registration', name: 'graduation_certificates' })
 export class GraduationCertificate {
@@ -82,6 +83,9 @@ export class GraduationCertificate {
 
   @Column({ name: 'pdf_filename', length: 255, nullable: true })
   pdfFilename: string;
+
+  @Column({ name: 'template_snapshot', type: 'jsonb', nullable: true })
+  templateSnapshot: GraduationCertificateTemplateSnapshot | null;
 
   // Estado del certificado
   @Column({ length: 50, default: 'VALID' })

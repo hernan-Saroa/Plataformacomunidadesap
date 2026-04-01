@@ -109,13 +109,20 @@ const FESTIVOS_COLOMBIA: Record<number, string[]> = {
   ],
 };
 
+/** YYYY-MM-DD en calendario local (evita desfase UTC de toISOString en CO) */
+export function fechaLocalYMD(fecha: Date): string {
+  const y = fecha.getFullYear();
+  const m = String(fecha.getMonth() + 1).padStart(2, '0');
+  const d = String(fecha.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 /**
  * Verifica si una fecha es festivo en Colombia
  */
 export function esFestivo(fecha: Date): boolean {
   const year = fecha.getFullYear();
-  const fechaStr = fecha.toISOString().split('T')[0]; // Formato YYYY-MM-DD
-  
+  const fechaStr = fechaLocalYMD(fecha);
   const festivosDelAno = FESTIVOS_COLOMBIA[year] || [];
   return festivosDelAno.includes(fechaStr);
 }
@@ -126,6 +133,11 @@ export function esFestivo(fecha: Date): boolean {
 export function esFinDeSemana(fecha: Date): boolean {
   const diaSemana = fecha.getDay();
   return diaSemana === 0 || diaSemana === 6; // 0 = Domingo, 6 = Sábado
+}
+
+/** Sábado, domingo o festivo nacional (no laborable institucional típico) */
+export function esDiaNoLaborableEnColombia(fecha: Date): boolean {
+  return esFinDeSemana(fecha) || esFestivo(fecha);
 }
 
 /**

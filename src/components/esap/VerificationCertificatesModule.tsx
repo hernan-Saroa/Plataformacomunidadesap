@@ -41,7 +41,10 @@ import {
   RefreshCw,
   AlertTriangle,
   History,
-  Loader2
+  Loader2,
+  PencilLine,
+  RotateCcw,
+  Save
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Card } from '../ui/card';
@@ -51,6 +54,7 @@ import { PaginationPremium } from '../shared/PaginationPremium';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { Textarea } from '../ui/textarea';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,6 +67,8 @@ import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import graduadosService, {
   CertificadoGraduado,
   DescargaCertificado,
+  GraduationCertificateTemplateConfig,
+  GraduationCertificateTemplateTexts,
   SolicitudCertificadoGraduado,
   UpdateCertificadoPayload,
   ValidacionCertificado,
@@ -136,6 +142,44 @@ interface VerificationCertificatesModuleProps {
   onPendingCountChange?: (count: number) => void;
 }
 
+const DEFAULT_CERTIFICATE_TEMPLATE_TEXTS: GraduationCertificateTemplateTexts = {
+  cityDatePrefix: 'Bogota, D.C.,',
+  institutionTitle: 'ESCUELA SUPERIOR DE ADMINISTRACION PUBLICA - ESAP',
+  certificateTitle: 'Verificacion de titulo',
+  addressee: 'A QUIEN INTERESE',
+  introParagraph:
+    'De conformidad con los registros en el Sistema de Control Academico de la Escuela Superior de Administracion Publica -ESAP-, nos permitimos informar la verificacion del siguiente titulo academico:',
+  degreeLabel: 'Titulo otorgado:',
+  graduateNameLabel: 'Nombres y apellidos del egresado graduado:',
+  documentLabel: 'Numero de documento de identificacion:',
+  issuePlaceDateLabel: 'Lugar y fecha de expedicion del titulo:',
+  registryLabel: 'Registro - Folio - Libro:',
+  closingText: 'Cordialmente,',
+  signerTitle: 'Direccion Tecnica Registro y Control',
+  validationMessage:
+    'Puede validar la autenticidad de esta verificacion en',
+};
+
+const TEMPLATE_TEXT_FIELDS: Array<{
+  key: keyof GraduationCertificateTemplateTexts;
+  label: string;
+  rows?: number;
+}> = [
+  { key: 'cityDatePrefix', label: 'Ciudad y prefijo de fecha' },
+  { key: 'institutionTitle', label: 'Titulo institucional' },
+  { key: 'certificateTitle', label: 'Titulo del certificado' },
+  { key: 'addressee', label: 'Encabezado destinatario' },
+  { key: 'introParagraph', label: 'Parrafo introductorio', rows: 4 },
+  { key: 'degreeLabel', label: 'Etiqueta titulo otorgado' },
+  { key: 'graduateNameLabel', label: 'Etiqueta nombre del graduado' },
+  { key: 'documentLabel', label: 'Etiqueta documento' },
+  { key: 'issuePlaceDateLabel', label: 'Etiqueta lugar y fecha' },
+  { key: 'registryLabel', label: 'Etiqueta registro-folio-libro' },
+  { key: 'closingText', label: 'Texto de cierre' },
+  { key: 'signerTitle', label: 'Texto del firmante', rows: 2 },
+  { key: 'validationMessage', label: 'Mensaje de validacion', rows: 2 },
+];
+
 export function VerificationCertificatesModule({ onPendingCountChange }: VerificationCertificatesModuleProps = {}) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -165,9 +209,18 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [isLoadingGraduate, setIsLoadingGraduate] = useState(false);
   const [isExistingGraduate, setIsExistingGraduate] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isTemplateEditorOpen, setIsTemplateEditorOpen] = useState(false);
+  const [isLoadingTemplateConfig, setIsLoadingTemplateConfig] = useState(false);
+  const [isSavingTemplateConfig, setIsSavingTemplateConfig] = useState(false);
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
   const [isExporting, setIsExporting] = useState(false);
+  const [templateConfig, setTemplateConfig] =
+    useState<GraduationCertificateTemplateConfig | null>(null);
+  const [templateForm, setTemplateForm] =
+    useState<GraduationCertificateTemplateTexts>(
+      DEFAULT_CERTIFICATE_TEMPLATE_TEXTS,
+    );
   const [editCertificateForm, setEditCertificateForm] = useState({
     fullName: '',
     idNumber: '',
@@ -848,6 +901,108 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     }
   };
 
+  const resolveTemplateActor = () => {
+    const currentUser = authService.getCurrentUser() as any;
+    const fullName = String(
+      currentUser?.fullName ||
+        currentUser?.name ||
+        [currentUser?.firstName, currentUser?.lastName]
+          .filter(Boolean)
+          .join(' '),
+    ).trim();
+
+    return (
+      fullName ||
+      currentUser?.person?.email ||
+      currentUser?.email ||
+      'Sistema'
+    );
+  };
+
+  const handleOpenTemplateEditor = async () => {
+    setIsTemplateEditorOpen(true);
+    setIsLoadingTemplateConfig(true);
+
+    try {
+      const config = await graduadosService.plantilla.obtenerConfiguracion();
+      setTemplateConfig(config);
+      setTemplateForm(config?.texts || DEFAULT_CERTIFICATE_TEMPLATE_TEXTS);
+    } catch (error: any) {
+      console.error('Error cargando plantilla academica:', error);
+      setTemplateConfig(null);
+      setTemplateForm(DEFAULT_CERTIFICATE_TEMPLATE_TEXTS);
+      toast.error('No se pudo cargar la plantilla', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    } finally {
+      setIsLoadingTemplateConfig(false);
+    }
+  };
+
+  const handleTemplateTextChange = (
+    key: keyof GraduationCertificateTemplateTexts,
+    value: string,
+  ) => {
+    setTemplateForm((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const handleSaveTemplateConfig = async () => {
+    const invalidField = TEMPLATE_TEXT_FIELDS.find(({ key }) => {
+      const value = String(templateForm[key] || '').trim();
+      return !value;
+    });
+
+    if (invalidField) {
+      toast.error(`El campo "${invalidField.label}" es obligatorio`);
+      return;
+    }
+
+    setIsSavingTemplateConfig(true);
+    try {
+      const response = await graduadosService.plantilla.actualizarTextos({
+        ...templateForm,
+        updatedBy: resolveTemplateActor(),
+      });
+      setTemplateConfig(response);
+      setTemplateForm(response.texts);
+      toast.success('Plantilla actualizada', {
+        description:
+          'Los textos del certificado de registro academico quedaron guardados.',
+      });
+    } catch (error: any) {
+      console.error('Error guardando plantilla academica:', error);
+      toast.error('No se pudo guardar la plantilla', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    } finally {
+      setIsSavingTemplateConfig(false);
+    }
+  };
+
+  const handleResetTemplateConfig = async () => {
+    setIsSavingTemplateConfig(true);
+    try {
+      const response = await graduadosService.plantilla.restablecerTextos(
+        resolveTemplateActor(),
+      );
+      setTemplateConfig(response);
+      setTemplateForm(response.texts);
+      toast.success('Textos restablecidos', {
+        description: 'Se recupero la plantilla base del certificado.',
+      });
+    } catch (error: any) {
+      console.error('Error restableciendo plantilla academica:', error);
+      toast.error('No se pudo restablecer la plantilla', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    } finally {
+      setIsSavingTemplateConfig(false);
+    }
+  };
+
   const stats = useMemo(() => {
     return {
       total: certificates.length,
@@ -1378,6 +1533,40 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   };
 
   const hasActiveFilters = searchQuery || statusFilter !== 'all' || requesterTypeFilter !== 'all';
+  const previewCertificate = useMemo(() => {
+    const latestCertificate = certificates[0];
+    if (latestCertificate) {
+      return {
+        fullName: latestCertificate.graduate.fullName,
+        degreeTitle:
+          latestCertificate.degreeTitle || latestCertificate.graduate.program,
+        idNumber: `CC ${latestCertificate.graduate.document}`,
+        issuePlaceDate: `${latestCertificate.campus || latestCertificate.graduate.campus || 'Bogota'} ${formatDateOnly(latestCertificate.graduate.graduationDate, {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        }).toUpperCase()}`,
+        registry: latestCertificate.actaNumber || '3213-79-28',
+        validationCode: latestCertificate.qrCode,
+        validationUrl: getPublicValidationUrl(latestCertificate.qrCode),
+      };
+    }
+
+    return {
+      fullName: 'EDGAR ZUNIGA CABARCAS',
+      degreeTitle: 'MAESTRIA EN ADMINISTRACION PUBLICA',
+      idNumber: 'CC 1047430674',
+      issuePlaceDate:
+        'Bolivar - Cordoba - Sucre - San Andres 26 DE FEBRERO DE 2026',
+      registry: '3213-79-28',
+      validationCode: 'QR-GR-2026-0005-ao3uf5yrxp',
+      validationUrl: `${window.location.origin}/verificar-certificado/QR-GR-2026-0005-ao3uf5yrxp`,
+    };
+  }, [certificates]);
+  const hasTemplateChanges = useMemo(() => {
+    const baseTexts = templateConfig?.texts || DEFAULT_CERTIFICATE_TEMPLATE_TEXTS;
+    return JSON.stringify(baseTexts) !== JSON.stringify(templateForm);
+  }, [templateConfig?.texts, templateForm]);
 
   return (
     <div className="space-y-6">
@@ -1403,35 +1592,63 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         </div>
       </motion.div>
 
-          <div className="flex justify-end">
-            {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EXPORT) && (
-            <button
-              onClick={() => setIsExportModalOpen(true)}
-              className="inline-flex items-center justify-center gap-2 transition-all"
-              style={{
-                background: '#FFFFFF',
-                color: '#003DA5',
-                border: '2px solid #003DA5',
-                borderRadius: '8px',
-                padding: '12px 20px',
-                fontSize: '14px',
-                fontWeight: 500,
-                cursor: 'pointer'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#F0F6FF';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#FFFFFF';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              <Download className="w-5 h-5" strokeWidth={2} />
-              <span>Exportar</span>
-            </button>
-            )}
-          </div>
+      <div className="flex justify-end gap-3 flex-wrap">
+        {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EDIT) && (
+          <button
+            onClick={() => void handleOpenTemplateEditor()}
+            className="inline-flex items-center justify-center gap-2 transition-all"
+            style={{
+              background: '#003DA5',
+              color: '#FFFFFF',
+              border: '2px solid #003DA5',
+              borderRadius: '8px',
+              padding: '12px 20px',
+              fontSize: '14px',
+              fontWeight: 500,
+              cursor: 'pointer'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#0B4AB8';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#003DA5';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+          >
+            <PencilLine className="w-5 h-5" strokeWidth={2} />
+            <span>Editar Certificado</span>
+          </button>
+        )}
+
+        {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EXPORT) && (
+          <button
+            onClick={() => setIsExportModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 transition-all"
+            style={{
+              background: '#FFFFFF',
+              color: '#003DA5',
+              border: '2px solid #003DA5',
+              borderRadius: '8px',
+              padding: '12px 20px',
+              fontSize: '14px',
+              fontWeight: 500,
+              cursor: 'pointer'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#F0F6FF';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#FFFFFF';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+          >
+            <Download className="w-5 h-5" strokeWidth={2} />
+            <span>Exportar</span>
+          </button>
+        )}
+      </div>
 
       {/* Info Banner */}
       <motion.div
@@ -2411,6 +2628,265 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               <XCircle className="w-4 h-4" />
               Confirmar Revocación
             </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Editar plantilla del certificado academico */}
+      <Dialog open={isTemplateEditorOpen} onOpenChange={setIsTemplateEditorOpen}>
+        <DialogContent className="w-[96vw] max-w-7xl h-[92vh] max-h-[92vh] p-0 sm:p-0 overflow-hidden flex flex-col">
+          <DialogHeader className="px-5 pt-5 sm:px-6 sm:pt-6 shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <PencilLine className="w-5 h-5" style={{ color: '#003DA5' }} />
+              Editar Certificado
+            </DialogTitle>
+            <DialogDescription>
+              Edita solo los textos del certificado de registro academico. El QR, el codigo de validacion, los datos dinamicos y la URL publica siguen protegidos.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5 sm:px-6 sm:pb-6">
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] gap-6 py-2">
+              <div className="space-y-4 min-w-0">
+                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  <p className="font-semibold mb-1">Edicion controlada</p>
+                  <p>
+                    Aqui solo se modifican textos fijos de la plantilla. No se alteran variables del graduado, codigos QR, enlaces de validacion ni numeraciones ya emitidas.
+                  </p>
+                </div>
+
+                {templateConfig && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500">Version</p>
+                      <p className="text-sm font-semibold text-gray-900">{templateConfig.version}</p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500">Actualizado por</p>
+                      <p className="text-sm font-semibold text-gray-900">{templateConfig.updatedBy || 'Sistema'}</p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500">Ultima actualizacion</p>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {templateConfig.updatedAt
+                          ? new Date(templateConfig.updatedAt).toLocaleString('es-CO')
+                          : 'Sin registro'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {isLoadingTemplateConfig ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-5 text-sm text-gray-600">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Cargando configuracion de la plantilla...
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4">
+                    {TEMPLATE_TEXT_FIELDS.map((field) => (
+                      <div key={field.key} className="space-y-2">
+                        <Label htmlFor={`template-${field.key}`}>{field.label}</Label>
+                        {field.rows ? (
+                          <Textarea
+                            id={`template-${field.key}`}
+                            rows={field.rows}
+                            value={templateForm[field.key]}
+                            onChange={(e) =>
+                              handleTemplateTextChange(field.key, e.target.value)
+                            }
+                            placeholder={field.label}
+                          />
+                        ) : (
+                          <Input
+                            id={`template-${field.key}`}
+                            value={templateForm[field.key]}
+                            onChange={(e) =>
+                              handleTemplateTextChange(field.key, e.target.value)
+                            }
+                            placeholder={field.label}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="min-w-0">
+                <div className="rounded-xl border border-[#DDE6F3] bg-[#F7FAFF] p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">Vista previa</p>
+                      <p className="text-xs text-gray-500">
+                        Los valores del ejemplo representan campos dinamicos reales del certificado.
+                      </p>
+                    </div>
+                    <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+                      QR protegido
+                    </Badge>
+                  </div>
+
+                  <div className="mx-auto max-w-[780px] rounded-[24px] border border-blue-200 bg-gradient-to-b from-slate-50 via-blue-50/70 to-slate-100 p-4 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.45)]">
+                    <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-dashed border-blue-300 bg-white/85 px-4 py-3 shadow-sm">
+                      <div>
+                        <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-700">
+                          Previsualizacion protegida
+                        </p>
+                        <p className="mt-1 text-xs text-slate-600">
+                          Este recuadro es solo de referencia visual. Los textos se modifican desde el formulario.
+                        </p>
+                      </div>
+                      <Badge className="border-blue-200 bg-blue-100 text-blue-800 shadow-sm">
+                        Solo lectura
+                      </Badge>
+                    </div>
+
+                    <div className="relative overflow-hidden rounded-[20px] border border-slate-200 bg-white p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_30px_-20px_rgba(15,23,42,0.35)]">
+                      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-slate-100/90 to-transparent" />
+                      <div className="pointer-events-none absolute right-5 top-5 rounded-full border border-slate-200 bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500 shadow-sm backdrop-blur-sm">
+                        Muestra no editable
+                      </div>
+
+                      <div className="relative">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex min-w-0 items-center gap-3 rounded-lg bg-gray-100 px-4 py-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#C79A2B] text-xs font-black text-white">
+                              ES
+                            </div>
+                            <div className="text-base font-black tracking-wide text-[#444444]">
+                              FUNCION PUBLICA
+                            </div>
+                          </div>
+                          <div className="max-w-[220px] text-right text-[11px] font-semibold text-gray-700">
+                            Codigo para validaciones: {previewCertificate.validationCode}
+                          </div>
+                        </div>
+
+                        <div className="mt-6 text-sm text-gray-900">
+                          {templateForm.cityDatePrefix} {new Date().toLocaleDateString('es-CO', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </div>
+
+                        <div className="mt-10 text-center">
+                          <div className="text-[28px] font-black uppercase tracking-wide text-gray-900">
+                            {templateForm.institutionTitle}
+                          </div>
+                          <div className="mt-3 text-[22px] font-bold text-gray-900">
+                            {templateForm.certificateTitle}
+                          </div>
+                          <div className="mt-6 text-[20px] font-bold text-gray-900">
+                            {templateForm.addressee}
+                          </div>
+                        </div>
+
+                        <p className="mt-8 whitespace-pre-line text-justify text-[15px] leading-7 text-gray-900">
+                          {templateForm.introParagraph}
+                        </p>
+
+                        <div className="mt-8 overflow-hidden rounded-lg border border-gray-300">
+                          {[
+                            [templateForm.degreeLabel, previewCertificate.degreeTitle],
+                            [templateForm.graduateNameLabel, previewCertificate.fullName],
+                            [templateForm.documentLabel, previewCertificate.idNumber],
+                            [templateForm.issuePlaceDateLabel, previewCertificate.issuePlaceDate],
+                            [templateForm.registryLabel, previewCertificate.registry],
+                          ].map(([label, value], index) => (
+                            <div
+                              key={`${label}-${index}`}
+                              className="grid grid-cols-[42%_58%] border-b border-gray-300 last:border-b-0"
+                            >
+                              <div className="bg-gray-50 px-3 py-3 text-sm font-semibold text-gray-900">
+                                {label}
+                              </div>
+                              <div className="px-3 py-3 text-sm text-gray-900">{value}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mt-10 flex items-end justify-between gap-6">
+                          <div className="flex-1">
+                            <p className="whitespace-pre-line text-[15px] text-gray-900">
+                              {templateForm.closingText}
+                            </p>
+                            <p className="mt-8 whitespace-pre-line text-[16px] font-semibold text-gray-900">
+                              {templateForm.signerTitle}
+                            </p>
+                          </div>
+
+                          <div className="rounded-lg border border-gray-200 bg-white p-2">
+                            <QRCodeSVG
+                              value={previewCertificate.validationUrl}
+                              size={88}
+                              level="M"
+                              includeMargin
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-8 text-center">
+                          <p className="text-sm font-semibold text-gray-900">
+                            {templateForm.validationMessage}
+                          </p>
+                          <p className="mt-2 break-all text-xs font-medium text-blue-700">
+                            {previewCertificate.validationUrl}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-[11px] text-slate-600 shadow-sm">
+                      <span>La vista previa no es un campo editable.</span>
+                      <span className="font-semibold text-slate-700">
+                        QR, enlaces y variables reales siguen protegidos.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:justify-between border-t border-gray-200 px-5 py-4 sm:px-6 bg-white shrink-0">
+            <div className="text-xs text-gray-500">
+              {hasTemplateChanges
+                ? 'Hay cambios pendientes por guardar.'
+                : 'No hay cambios pendientes.'}
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={() => void handleResetTemplateConfig()}
+                className="px-4 py-2 text-sm font-medium rounded-lg border-2 inline-flex items-center gap-2"
+                style={{ borderColor: '#D1D5DB', color: '#374151' }}
+                disabled={isSavingTemplateConfig || isLoadingTemplateConfig}
+              >
+                <RotateCcw className="w-4 h-4" />
+                Restablecer formato original
+              </button>
+              <button
+                onClick={() => setIsTemplateEditorOpen(false)}
+                className="px-4 py-2 text-sm font-medium rounded-lg border-2"
+                style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
+                disabled={isSavingTemplateConfig}
+              >
+                Cerrar
+              </button>
+              <button
+                onClick={() => void handleSaveTemplateConfig()}
+                className="px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
+                style={{ background: '#003DA5', color: '#FFFFFF' }}
+                disabled={isSavingTemplateConfig || isLoadingTemplateConfig || !hasTemplateChanges}
+              >
+                {isSavingTemplateConfig ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                {isSavingTemplateConfig ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

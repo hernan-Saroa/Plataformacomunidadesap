@@ -265,6 +265,7 @@ CREATE TABLE academic_registration.graduation_certificates (
     signature_url text,
     pdf_url text,
     pdf_filename character varying(255),
+    template_snapshot jsonb,
     status character varying(50) DEFAULT 'VALID'::character varying,
     issue_date date DEFAULT CURRENT_DATE,
     expiry_date date,
@@ -283,6 +284,13 @@ CREATE TABLE academic_registration.graduation_certificates (
 --
 
 COMMENT ON TABLE academic_registration.graduation_certificates IS 'Certificados emitidos con códigos QR válidos';
+
+
+--
+-- Name: COLUMN graduation_certificates.template_snapshot; Type: COMMENT; Schema: academic_registration; Owner: -
+--
+
+COMMENT ON COLUMN academic_registration.graduation_certificates.template_snapshot IS 'Snapshot JSON de la plantilla usada al emitir el certificado';
 
 
 --

@@ -25,7 +25,7 @@ import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { CreateNoticiaModal } from '../CreateNoticiaModal';
 import { EditorDocumentos } from './EditorDocumentos';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
@@ -41,6 +41,7 @@ import { ModalDevolverNoticia } from './ModalDevolverNoticia';
 import { ModalRemitirCompetencia } from './ModalRemitirCompetencia';
 import { SistemaComentarios } from './SistemaComentarios';
 import { ModalAsociarNoticiaProceso } from './ModalAsociarNoticiaProceso'; // ✅ NUEVO
+import { ModalAsociarNoticiaANoticia } from './ModalAsociarNoticiaANoticia'; // ✅ NUEVO: Modal para asociar noticia a noticia
 import { ModalAsignarProfesional } from './ModalAsignarProfesional'; // ✅ NUEVO: Modal de asignación de profesional
 import { ModalSolicitarReasignacion } from './ModalSolicitarReasignacion'; // ✅ NUEVO: Modal de solicitud de reasignación
 import { ModalAprobarReasignacion } from './ModalAprobarReasignacion'; // ✅ NUEVO: Modal de aprobación de reasignación (Jefe OCID)
@@ -137,7 +138,7 @@ interface Noticia {
   denunciante: Persona | string;
   denunciado: Persona | string;
   hechos: string;
-  estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada' | 'remitida';
+  estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada' | 'remitida' | 'asociada';
   prioridad: 'alta' | 'media' | 'baja';
   diasPendientes: number;
   tipo: 'noticia';
@@ -277,6 +278,7 @@ type ModalType =
   | 'expediente-completo'
   | 'comentarios-proceso'
   | 'asociar-noticia-proceso'  // ✅ NUEVO: Modal para asociar noticia a proceso
+  | 'asociar-noticia-noticia'  // ✅ NUEVO: Modal para asociar noticia a noticia
   | 'asociar-proceso-proceso'  // ✅ NUEVO: Modal para asociar proceso disciplinario a otro proceso (Valoración → Fallo)
   | 'asignar-profesional'  // ✅ NUEVO: Modal para asignar profesional en transición Recepción → Valoración
   | 'solicitar-reasignacion'  // ✅ NUEVO: Modal para solicitar reasignación (estados posteriores a Recepción)
@@ -297,6 +299,7 @@ interface TarjetaNoticiaProps {
   onVerDetalles?: (noticia: Noticia) => void;
   onVerDetallesRemision?: (noticia: Noticia) => void; // ✅ NUEVO: Ver detalles de remisión
   onAsociarNoticiaProceso?: (noticia: Noticia) => void; // ✅ NUEVO: Asociar noticia a proceso
+  onAsociarNoticiaNoticia?: (noticia: Noticia) => void; // ✅ NUEVO: Asociar noticia a noticia
   onVerProcesoAsociado?: (procesoId: string) => void; // ✅ NUEVO: Ver proceso asociado
   onEditarNoticia?: (noticia: Noticia) => void; // ✅ NUEVO: Editar noticia
   vistaCompacta: boolean;
@@ -306,7 +309,7 @@ interface TarjetaNoticiaProps {
   etapa?: string; // ✅ NUEVO: Etapa actual para condicionales
 }
 
-function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa }: TarjetaNoticiaProps) {
+function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa }: TarjetaNoticiaProps) {
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
     item: { ...noticia, tipoItem: 'noticia' },
@@ -399,7 +402,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                   <button
                     onClick={(e) => { e.stopPropagation(); onVerProcesoAsociado(noticia.procesoAsociado!.id); }}
                     className="p-1 rounded hover:bg-purple-200 transition-colors flex-shrink-0"
-                    title="Ver proceso"
+                    title="Ver asociado"
                   >
                     <ExternalLink className="w-3 h-3 text-purple-600" />
                   </button>
@@ -480,6 +483,13 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                   onClick={() => onEditarNoticia(noticia)}
                   icon={<Edit className="w-3.5 h-3.5" />}
                   title="Editar noticia"
+                />
+              )}
+              {!noticia.procesoAsociado && onAsociarNoticiaNoticia && (
+                <KanbanButtonTertiary
+                  onClick={() => onAsociarNoticiaNoticia(noticia)}
+                  icon={<Link2 className="w-3.5 h-3.5" />}
+                  title="Asociar a otra noticia"
                 />
               )}
               {!noticia.procesoAsociado && onAsociarNoticiaProceso && (
@@ -571,6 +581,14 @@ function TarjetaProceso({
 
   // ✅ Validación defensiva: asegurar que noticiasAsociadas sea siempre un array
   const noticiasSeguras = Array.isArray(noticiasAsociadas) ? noticiasAsociadas : [];
+
+  // ✅ NUEVO: Expandir automáticamente cuando hay noticias asociadas
+  useEffect(() => {
+    if (noticiasSeguras.length > 0 && !noticiasExpanded) {
+      setNoticiasExpanded(true);
+    }
+  }, [noticiasSeguras.length, noticiasExpanded]);
+
 
   // ✅ NUEVO: Obtener acciones disponibles según la etapa
   const accionesDisponibles = obtenerAccionesPorEtapa(
@@ -846,6 +864,7 @@ interface VistaListaProps {
   onDevolverNoticia?: (noticia: Noticia) => void;
   onDevolverCompetencia?: (noticia: Noticia) => void; // ✅ AGREGADO: Coherencia con Kanban
   onAsociarNoticiaProceso?: (noticia: Noticia) => void; // ✅ AGREGADO: Coherencia con Kanban
+  onAsociarNoticiaNoticia?: (noticia: Noticia) => void; // ✅ NUEVO: Asociar noticia a noticia
   onVerProcesoAsociado?: (procesoId: string) => void; // ✅ AGREGADO: Coherencia con Kanban
   onVerNoticiaAsociada?: (noticia: Noticia) => void; // ✅ AGREGADO: Coherencia con Kanban
   onEditarNoticia?: (noticia: Noticia) => void; // ✅ AGREGADO: Coherencia con Kanban
@@ -873,6 +892,7 @@ function VistaLista({
   onDevolverNoticia,
   onDevolverCompetencia,
   onAsociarNoticiaProceso,
+  onAsociarNoticiaNoticia,
   onVerProcesoAsociado,
   onVerNoticiaAsociada,
   onEditarNoticia,
@@ -885,6 +905,10 @@ function VistaLista({
   const [searchTerm, setSearchTerm] = useState('');
 
   const itemsFiltrados = items.filter(item => {
+    if (item.tipo === 'noticia' && (item as Noticia).procesoAsociado) {
+      return false;
+    }
+
     const matchSearch = item.tipo === 'noticia'
       ? (item as Noticia).numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ((item as Noticia).denunciado && (typeof (item as Noticia).denunciado === 'string'
@@ -1407,6 +1431,7 @@ interface ColumnaKanbanProps {
   onVerDetallesNoticia?: (noticia: Noticia) => void;
   onVerDetallesRemision?: (noticia: Noticia) => void; // ✅ NUEVO: Ver detalles de remisión
   onAsociarNoticiaProceso?: (noticia: Noticia) => void; // ✅ NUEVO
+  onAsociarNoticiaNoticia?: (noticia: Noticia) => void; // ✅ NUEVO: Asociar noticia a noticia
   onVerProcesoAsociado?: (procesoId: string) => void; // ✅ NUEVO
   onVerNoticiaAsociada?: (noticia: Noticia) => void; // ✅ NUEVO: Ver noticia asociada desde proceso
   onEditarNoticia?: (noticia: Noticia) => void; // ✅ NUEVO: Editar noticia
@@ -1445,6 +1470,7 @@ function ColumnaKanban({
   onVerDetallesNoticia,
   onVerDetallesRemision, // ✅ NUEVO: Ver detalles de remisión
   onAsociarNoticiaProceso, // ✅ NUEVO
+  onAsociarNoticiaNoticia, // ✅ NUEVO: Asociar noticia a noticia
   onVerProcesoAsociado, // ✅ NUEVO
   onVerNoticiaAsociada, // ✅ NUEVO
   onEditarNoticia, // ✅ NUEVO: Editar noticia
@@ -1559,6 +1585,8 @@ function ColumnaKanban({
 
   const itemsFiltrados = items.filter(item => {
     if (item.tipo === 'noticia') {
+      const noticia = item as Noticia;
+      if (noticia.procesoAsociado) return false;
       // Las noticias se muestran en la etapa inicial (orden 1) - comparar de forma normalizada
       return etapaNormalizada === etapaInicialNormalizada;
     }
@@ -1579,8 +1607,16 @@ function ColumnaKanban({
 
   // ✅ NUEVO: Función para obtener noticias asociadas a un proceso específico
   const getNoticiasAsociadas = (procesoId: string): Noticia[] => {
-    return (items.filter(item => item.tipo === 'noticia') as Noticia[])
-      .filter(noticia => noticia.procesoAsociado?.id === procesoId);
+    return items.filter(item => item.tipo === 'noticia' && item.estado === 'asociada' && item.procesoAsociado?.id === procesoId) as Noticia[];
+  };
+
+  // ✅ NUEVO: Función para filtrar procesos que ya tienen noticias asociadas
+  const getProcesosSinNoticiasAsociadas = (procesos: Proceso[]): Proceso[] => {
+    return procesos.filter(proceso => {
+      // Verificar si el proceso ya tiene noticias asociadas en cache
+      const noticiasAsociadas = getNoticiasAsociadas(proceso.id);
+      return noticiasAsociadas.length === 0;
+    });
   };
 
   // Si está colapsada, mostrar versión minimal
@@ -1780,6 +1816,7 @@ function ColumnaKanban({
               onVerDetalles={onVerDetallesNoticia}
               onVerDetallesRemision={onVerDetallesRemision} // ✅ NUEVO: Ver detalles de remisión
               onAsociarNoticiaProceso={onAsociarNoticiaProceso} // ✅ NUEVO
+              onAsociarNoticiaNoticia={onAsociarNoticiaNoticia} // ✅ NUEVO: Asociar noticia a noticia
               onVerProcesoAsociado={onVerProcesoAsociado} // ✅ NUEVO
               onEditarNoticia={onEditarNoticia} // ✅ NUEVO: Editar noticia
               vistaCompacta={vistaCompacta}
@@ -2366,7 +2403,13 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     prioridad: (noticia as any).prioridad || 'media',
     diasPendientes: (noticia as any).diasPendientes ?? dias,
     tipo: 'noticia',
-    etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion'
+    etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion',
+    procesoAsociado: (noticia as any).procesoAsociadoId ? {
+      id: (noticia as any).procesoAsociadoId,
+      numeroProceso: (noticia as any).procesoAsociadoNumero || '',
+      fechaAsociacion: (noticia as any).procesoAsociadoFecha ? new Date((noticia as any).procesoAsociadoFecha).toISOString() : undefined,
+      justificacion: (noticia as any).procesoAsociadoJustificacion || ''
+    } : undefined
   };
 };
 
@@ -2483,6 +2526,11 @@ export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = [])
     tipo: 'proceso',
     hechos: proceso.news?.hechos,
     kanbanNotice: proceso.kanbanNotice || null,
+    procesoAsociadoId: proceso.procesoAsociadoId,
+    procesoAsociadoNumero: proceso.procesoAsociadoNumero,
+    procesoAsociadoTipo: proceso.procesoAsociadoTipo,
+    procesoAsociadoFecha: proceso.procesoAsociadoFecha,
+    procesoAsociadoJustificacion: proceso.procesoAsociadoJustificacion,
   };
 };
 
@@ -3785,6 +3833,10 @@ export function DashboardKanbanOperativo({
     itemRestaurado.estado = item.tipo === 'noticia' ? 'pendiente' : itemRestaurado.estado;
     setItems(prev => [...prev, itemRestaurado]);
     setItemsArchivados(prev => prev.filter(i => i.id !== item.id));
+    // Persistir restauración en el backend
+    disciplinaryService.restoreNews(item.id).catch(err =>
+      console.error('[DashboardKanban] Error al restaurar noticia en backend:', err)
+    );
     toast.success('Restaurado al Flujo Activo', {
       description: `${item.numero || item.numeroProceso} ha sido restaurado y aparecerá nuevamente en el tablero.`,
     });
@@ -4056,7 +4108,58 @@ export function DashboardKanbanOperativo({
     setModalActivo('asociar-noticia-proceso');
   };
 
-  const handleConfirmarAsociacion = (noticiaId: string, procesoId: string, justificacion: string) => {
+  const handleAsociarNoticiaNoticia = (noticia: Noticia) => {
+    setItemSeleccionado(noticia);
+    setModalActivo('asociar-noticia-noticia');
+  };
+
+  const handleConfirmarAsociacionNoticiaANoticia = async (
+    noticiaId: string,
+    noticiaDestinoId: string,
+    justificacion: string
+  ) => {
+    const noticia = items.find(i => i.id === noticiaId && i.tipo === 'noticia') as Noticia;
+    const noticiaDestino = items.find(i => i.id === noticiaDestinoId && i.tipo === 'noticia') as Noticia;
+
+    if (!noticia || !noticiaDestino) {
+      toast.error('Error al asociar noticia');
+      return;
+    }
+
+    const toastId = toast.loading('Asociando noticia a noticia...');
+    try {
+      await disciplinaryService.asociarNoticiaANoticia(noticiaId, noticiaDestinoId, justificacion);
+
+      setItems(prev => prev.map(item => {
+        if (item.id === noticiaId && item.tipo === 'noticia') {
+          return {
+            ...item,
+            procesoAsociado: {
+              id: noticiaDestinoId,
+              numeroProceso: noticiaDestino.numero,
+              fechaAsociacion: new Date().toISOString(),
+              justificacion,
+            },
+          } as Noticia;
+        }
+        return item;
+      }));
+
+      toast.success('Noticia asociada', {
+        id: toastId,
+        description: `${noticia.numero} asociada a ${noticiaDestino.numero}`
+      });
+    } catch (error: any) {
+      console.error('Error al asociar noticia a noticia:', error);
+      toast.error('Error al asociar noticia', {
+        id: toastId,
+        description: error?.message || 'No se pudo persistir la asociación en la base de datos'
+      });
+      return;
+    }
+  };
+
+  const handleConfirmarAsociacion = async (noticiaId: string, procesoId: string, justificacion: string) => {
     // Encontrar proceso y noticia
     const proceso = items.find(i => i.id === procesoId && i.tipo === 'proceso') as Proceso;
     const noticia = items.find(i => i.id === noticiaId && i.tipo === 'noticia') as Noticia;
@@ -4066,67 +4169,84 @@ export function DashboardKanbanOperativo({
       return;
     }
 
-    // En una implementación real, aquí se haría:
-    // 1. POST a /api/noticias/:noticiaId/asociar-proceso
-    // 2. Body: { procesoId, justificacion }
-    // 3. Se registra en historial del proceso
-    // 4. Se marca la noticia como asociada
+    const toastId = toast.loading('Asociando noticia al proceso...');
+    try {
+      await disciplinaryService.asociarNoticiaAProceso(noticiaId, procesoId, justificacion);
 
-    console.log('Asociación registrada:', {
-      noticiaId,
-      noticiaNumero: noticia.numero,
-      procesoId,
-      procesoNumero: proceso.numeroProceso,
-      justificacion,
-      timestamp: new Date().toISOString()
-    });
+      // Invalidar cache de noticias asociadas para este proceso
+      invalidateNoticiasAsociadasCache(procesoId);
 
-    // ✅ Actualizar la noticia con información del proceso asociado
-    setItems(prev => prev.map(item => {
-      if (item.id === noticiaId && item.tipo === 'noticia') {
-        return {
-          ...item,
-          procesoAsociado: {
-            id: procesoId,
-            numeroProceso: proceso.numeroProceso,
-            fechaAsociacion: new Date().toISOString(),
-            justificacion: justificacion
-          }
-        } as Noticia;
-      }
-      return item;
-    }));
+      setItems(prev => prev.map(item => {
+        if (item.id === noticiaId && item.tipo === 'noticia') {
+          return {
+            ...item,
+            procesoAsociado: {
+              id: procesoId,
+              numeroProceso: proceso.numeroProceso,
+              fechaAsociacion: new Date().toISOString(),
+              justificacion: justificacion
+            }
+          } as Noticia;
+        }
+        return item;
+      }));
 
-    // Cerrar modal
+      toast.success('Noticia asociada', {
+        id: toastId,
+        description: `${noticia.numero} asociada a ${proceso.numeroProceso}`
+      });
+    } catch (error: any) {
+      console.error('Error al asociar noticia:', error);
+      toast.error('Error al asociar noticia', {
+        id: toastId,
+        description: error?.message || 'No se pudo persistir la asociación en la base de datos'
+      });
+      return;
+    }
+
     setModalActivo(null);
     setItemSeleccionado(null);
   };
 
-  // ✅ NUEVO: Handler para ver proceso asociado
-  const handleVerProcesoAsociado = (procesoId: string) => {
-    const proceso = items.find(i => i.id === procesoId && i.tipo === 'proceso') as Proceso;
+  // ✅ NUEVO: Handler para ver elemento asociado (proceso o noticia)
+  const handleVerProcesoAsociado = (asociadoId: string) => {
+    const proceso = items.find(i => i.id === asociadoId && i.tipo === 'proceso') as Proceso;
+    const noticia = items.find(i => i.id === asociadoId && i.tipo === 'noticia') as Noticia;
 
     if (proceso) {
-      // Scroll hasta el proceso en el tablero (si está visible)
-      const procesoElement = document.getElementById(`proceso-${procesoId}`);
+      const procesoElement = document.getElementById(`proceso-${asociadoId}`);
       if (procesoElement) {
         procesoElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        // Highlight temporal
         procesoElement.classList.add('ring-4', 'ring-purple-500', 'ring-opacity-50');
         setTimeout(() => {
           procesoElement.classList.remove('ring-4', 'ring-purple-500', 'ring-opacity-50');
         }, 2000);
       }
 
-      // Abrir modal de detalles del proceso
       setItemSeleccionado(proceso);
       setModalActivo('ver-detalles');
 
       toast.info('Navegando al proceso asociado', {
-        description: proceso.numeroProceso
+        description: proceso.numeroProceso,
+      });
+    } else if (noticia) {
+      const noticiaElement = document.getElementById(`noticia-${asociadoId}`);
+      if (noticiaElement) {
+        noticiaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        noticiaElement.classList.add('ring-4', 'ring-purple-500', 'ring-opacity-50');
+        setTimeout(() => {
+          noticiaElement.classList.remove('ring-4', 'ring-purple-500', 'ring-opacity-50');
+        }, 2000);
+      }
+
+      setItemSeleccionado(noticia);
+      setModalActivo('ver-detalles');
+
+      toast.info('Navegando a la noticia asociada', {
+        description: noticia.numero,
       });
     } else {
-      toast.error('Proceso no encontrado en el tablero actual');
+      toast.error('Elemento asociado no encontrado en el tablero actual');
     }
   };
 
@@ -4922,6 +5042,7 @@ export function DashboardKanbanOperativo({
             onDevolverNoticia={handleDevolverNoticia}
             onDevolverCompetencia={handleDevolverCompetencia}
             onAsociarNoticiaProceso={handleAsociarNoticiaProceso}
+            onAsociarNoticiaNoticia={handleAsociarNoticiaNoticia}
             onVerProcesoAsociado={handleVerProcesoAsociado}
             onVerNoticiaAsociada={handleVerNoticiaAsociada}
             onEditarNoticia={handleEditarNoticia}
@@ -5648,9 +5769,24 @@ export function DashboardKanbanOperativo({
                 setModalActivo(null);
                 setItemSeleccionado(null);
               }}
-              noticia={itemSeleccionado}
+              noticia={itemSeleccionado as Noticia}
               procesosDisponibles={items.filter(i => i.tipo === 'proceso') as Proceso[]}
               onAsociar={handleConfirmarAsociacion}
+            />
+          )}
+
+          {/* ✅ NUEVO: Modal Asociar Noticia a Otra Noticia */}
+          {modalActivo === 'asociar-noticia-noticia' && itemSeleccionado && (
+            <ModalAsociarNoticiaANoticia
+              key="modal-asociar-noticia-noticia"
+              isOpen={true}
+              onClose={() => {
+                setModalActivo(null);
+                setItemSeleccionado(null);
+              }}
+              noticia={itemSeleccionado as Noticia}
+              noticiasDisponibles={(items.filter(i => i.tipo === 'noticia') as Noticia[]).filter(n => n.id !== itemSeleccionado.id && !n.procesoAsociado)}
+              onAsociar={handleConfirmarAsociacionNoticiaANoticia}
             />
           )}
 
