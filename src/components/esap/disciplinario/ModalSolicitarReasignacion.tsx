@@ -11,6 +11,8 @@ import {
   WCBadgeSemaforo, WCBarraCarga, WCAvatar, WCBadgeContrato, WCLeyendaSemaforo,
   WCWarningBox, wcSemaforo, WC_TOKENS
 } from './WorldClassModalBase';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { authService } from '../../../services/api';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -44,7 +46,6 @@ interface ModalSolicitarReasignacionProps {
     tipoContrato?: string;
   }[];
   onClose: () => void;
-  onSolicitar: (profesionalId: string, profesionalNombre: string, justificacion: string, prioridad: 'urgente' | 'normal') => void;
 }
 
 // ─── Mock ────────────────────────────────────────────────────────────────────

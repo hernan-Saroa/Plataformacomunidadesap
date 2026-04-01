@@ -19,8 +19,9 @@ import {
   Send, RotateCcw, RefreshCw, Trash2,
   Layers, BarChart3, Filter, FileDown, List,
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
+import { ModalReasignarProfesional } from './ModalReasignarProfesional';
 import { authService } from '../../../services/api';
 import {
   disciplinaryService,
@@ -1680,6 +1681,7 @@ export function ModalDetallesProceso({
   const [mostrarModalNuevaTarea, setMostrarModalNuevaTarea] = useState(false);
   const [creandoTarea, setCreandoTarea] = useState(false);
   const [actualizandoTareaId, setActualizandoTareaId] = useState<string | null>(null);
+  const [mostrarModalReasignar, setMostrarModalReasignar] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [autoEnviarRevision, setAutoEnviarRevision] = useState<Archivo | null>(null);
   const [autoRecargar, setAutoRecargar] = useState<Archivo | null>(null);
@@ -2997,7 +2999,7 @@ export function ModalDetallesProceso({
   }, []);
 
   const handleAutoDevuelto = useCallback((archivoId: string, motivo: string, comentarios: string) => {
-    const enReal = archivosReales.find(a => a.id === archivoId);
+    const enReal = archivosBackend.find(a => a.id === archivoId);
     if (enReal) {
       enReal.estado = 'devuelto';
       enReal.observacionesDevolucion = `${motivo}: ${comentarios}`;
@@ -3012,6 +3014,35 @@ export function ModalDetallesProceso({
     });
     setAutoEnRevisionModal(null);
   }, []);
+
+  const handleSolicitarReasignacion = useCallback(async (
+    nuevoProfesionalId: string,
+    nuevoProfesionalNombre: string,
+    justificacion: string,
+    prioridad: 'NORMAL' | 'URGENTE'
+  ) => {
+    if (!proceso?.id) return;
+
+    try {
+      const user = authService.getCurrentUser();
+      await disciplinaryService.createReassignmentRequest({
+        processId: proceso.id,
+        newProfessionalId: nuevoProfesionalId,
+        justification: justificacion,
+        priority: prioridad,
+        requestedBy: user?.fullName || user?.email || 'Usuario del Sistema',
+        requestedById: user?.id,
+      });
+
+      toast.success('Solicitud de reasignación creada', {
+        description: `Se ha enviado la solicitud al Jefe OCID para aprobación`,
+        duration: 6000,
+      });
+    } catch (error: any) {
+      console.error('[ModalDetallesProceso] Error creando solicitud de reasignación:', error);
+      toast.error(error?.message || 'No fue posible crear la solicitud de reasignación');
+    }
+  }, [proceso?.id]);
 
   // ═══ Recargar Archivo (reemplazar auto corregido) ═══
   const handleRecargarArchivo = useCallback((archivo: Archivo) => {
@@ -3030,7 +3061,7 @@ export function ModalDetallesProceso({
     const nuevaVersion = (autoRecargar.version || 1) + 1;
 
     // Actualizar el archivo existente con nueva versión
-    const enReal = archivosReales.find(a => a.id === id);
+    const enReal = archivosBackend.find(a => a.id === id);
     if (enReal) {
       enReal.estado = 'borrador';
       enReal.version = nuevaVersion;
@@ -3518,9 +3549,21 @@ export function ModalDetallesProceso({
 
                       {/* Profesional Asignado */}
                       <div className="rounded-xl border border-gray-200 bg-white p-3">
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <Briefcase className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />
-                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Profesional Asignado</span>
+                        <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <Briefcase className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />
+                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Profesional Asignado</span>
+                          </div>
+                          <button
+                            onClick={() => setMostrarModalReasignar(true)}
+                            className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold rounded-lg border transition-all"
+                            style={{ borderColor: '#2962FF', color: '#2962FF', background: '#EFF6FF' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = '#DBEAFE'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = '#EFF6FF'; }}
+                            title="Solicitar reasignación del profesional">
+                            <Users className="w-2.5 h-2.5" />
+                            Reasignar
+                          </button>
                         </div>
                         <p className="text-sm font-bold text-gray-900">{getNombre(proceso.profesionalAsignado)}</p>
                         {getId(proceso.profesionalAsignado as any) && (
@@ -5199,6 +5242,16 @@ export function ModalDetallesProceso({
             saving={creandoTarea}
             onClose={() => setMostrarModalNuevaTarea(false)}
             onSubmit={handleCrearTarea}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {mostrarModalReasignar && (
+          <ModalReasignarProfesional
+            proceso={proceso}
+            onClose={() => setMostrarModalReasignar(false)}
+            onSolicitarReasignacion={handleSolicitarReasignacion}
           />
         )}
       </AnimatePresence>

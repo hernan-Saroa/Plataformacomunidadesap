@@ -79,6 +79,45 @@ export interface DisciplinaryNewsProcess {
      process?: DisciplinaryProcess;
 }
 
+// ==================== SOLICITUDES DE REASIGNACIÓN ====================
+
+export interface CreateReassignmentRequestDto {
+  processId: string;
+  newProfessionalId: string;
+  justification: string;
+  priority?: 'NORMAL' | 'URGENTE';
+  requestedBy: string;
+  requestedById?: string;
+}
+
+export interface ApproveReassignmentRequestDto {
+  approved: boolean;
+  jefeObservations?: string;
+  rejectionReason?: string;
+  resolvedBy: string;
+  resolvedById?: string;
+}
+
+export interface DisciplinaryProcessReassignmentRequest {
+  id: string;
+  processId: string;
+  currentProfessionalId: string;
+  newProfessionalId: string;
+  justification: string;
+  priority: 'NORMAL' | 'URGENTE';
+  status: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
+  jefeObservations?: string;
+  rejectionReason?: string;
+  resolvedAt?: string;
+  requestedBy: string;
+  requestedById?: string;
+  createdAt: string;
+  updatedAt: string;
+  process?: DisciplinaryProcess;
+  currentProfessional?: any;
+  newProfessional?: any;
+}
+
 export interface DisciplinaryProcess {
      id: string;
      radicadoProceso: string;
@@ -1569,6 +1608,43 @@ class DisciplinaryService {
      */
     async getAssociatedNewsToProcess(processId: string): Promise<DisciplinaryNews[]> {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news/associated-to-process/${processId}`);
+    }
+
+    // ==================== SOLICITUDES DE REASIGNACIÓN ====================
+
+    /**
+     * Crear una solicitud de reasignación de proceso
+     */
+    async createReassignmentRequest(data: CreateReassignmentRequestDto): Promise<DisciplinaryProcessReassignmentRequest> {
+        return apiClient.post<DisciplinaryProcessReassignmentRequest>(`${SERVICE_PREFIX}/disciplinary-process-reassignment`, data);
+    }
+
+    /**
+     * Aprobar o rechazar una solicitud de reasignación
+     */
+    async approveReassignmentRequest(requestId: string, data: ApproveReassignmentRequestDto): Promise<DisciplinaryProcessReassignmentRequest> {
+        return apiClient.put<DisciplinaryProcessReassignmentRequest>(`${SERVICE_PREFIX}/disciplinary-process-reassignment/${requestId}/approve`, data);
+    }
+
+    /**
+     * Obtener solicitudes pendientes de reasignación
+     */
+    async getPendingReassignmentRequests(): Promise<DisciplinaryProcessReassignmentRequest[]> {
+        return apiClient.get<DisciplinaryProcessReassignmentRequest[]>(`${SERVICE_PREFIX}/disciplinary-process-reassignment/pending`);
+    }
+
+    /**
+     * Obtener una solicitud de reasignación por ID
+     */
+    async getReassignmentRequestById(id: string): Promise<DisciplinaryProcessReassignmentRequest> {
+        return apiClient.get<DisciplinaryProcessReassignmentRequest>(`${SERVICE_PREFIX}/disciplinary-process-reassignment/${id}`);
+    }
+
+    /**
+     * Obtener solicitudes de reasignación de un proceso
+     */
+    async getReassignmentRequestsByProcess(processId: string): Promise<DisciplinaryProcessReassignmentRequest[]> {
+        return apiClient.get<DisciplinaryProcessReassignmentRequest[]>(`${SERVICE_PREFIX}/disciplinary-process-reassignment/process/${processId}`);
     }
 
 }

@@ -2070,7 +2070,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
 
         {/* Contenido */}
         <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 200px)' }}>
-          <div className="space-y-3">
+          {/* <div className="space-y-3">
             {cargandoEvidencias && (
               <Card className="p-8 text-center">
                 <Clock className="w-10 h-10 mx-auto mb-3 text-gray-300 animate-pulse" />
@@ -2191,7 +2191,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                 </div>
               </Card>
             ))}
-          </div>
+          </div> */}
           {/* Botón de Subir */}
           {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_CREATE) && (
             <div className="relative">
