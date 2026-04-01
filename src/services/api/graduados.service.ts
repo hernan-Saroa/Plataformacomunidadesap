@@ -239,6 +239,31 @@ export interface DescargaCertificado {
   userAgent?: string;
 }
 
+export interface GraduationCertificateTemplateTexts {
+  cityDatePrefix: string;
+  institutionTitle: string;
+  certificateTitle: string;
+  addressee: string;
+  introParagraph: string;
+  degreeLabel: string;
+  graduateNameLabel: string;
+  documentLabel: string;
+  issuePlaceDateLabel: string;
+  registryLabel: string;
+  closingText: string;
+  signerTitle: string;
+  validationMessage: string;
+}
+
+export interface GraduationCertificateTemplateConfig {
+  id: number;
+  version: string;
+  status: string;
+  updatedAt?: string;
+  updatedBy?: string;
+  texts: GraduationCertificateTemplateTexts;
+}
+
 type ApiRequestOptions = {
   skipAuth?: boolean;
   skipErrorToast?: boolean;
@@ -647,6 +672,37 @@ const graduadosService = {
   /**
    * Administración de graduados (requiere autenticación)
    */
+  plantilla: {
+    obtenerConfiguracion: async (): Promise<GraduationCertificateTemplateConfig> => {
+      const response = await apiClient.get(
+        `${SERVICE_PREFIX}/certificates/template-config`,
+      );
+      return response;
+    },
+
+    actualizarTextos: async (
+      payload: Partial<GraduationCertificateTemplateTexts> & {
+        updatedBy?: string;
+      },
+    ): Promise<GraduationCertificateTemplateConfig> => {
+      const response = await apiClient.post(
+        `${SERVICE_PREFIX}/certificates/template-config/texts`,
+        payload,
+      );
+      return response;
+    },
+
+    restablecerTextos: async (
+      updatedBy?: string,
+    ): Promise<GraduationCertificateTemplateConfig> => {
+      const response = await apiClient.post(
+        `${SERVICE_PREFIX}/certificates/template-config/reset`,
+        { updatedBy },
+      );
+      return response;
+    },
+  },
+
   graduados: {
     /**
      * Listar todos los graduados desde academic-registration-service
