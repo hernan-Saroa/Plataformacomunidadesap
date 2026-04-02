@@ -2878,6 +2878,7 @@ export function ModalDetallesProceso({
 
       const borrador: BorradorPendiente = {
         id: `rev-${id}-${Date.now()}`,
+        autoId: id,
         numeroProceso: proceso.numeroProceso,
         titulo: autoEnviarRevision.nombre,
         plantilla: `Plantilla ${proceso.etapaActual}`,
@@ -2885,7 +2886,7 @@ export function ModalDetallesProceso({
         fechaEnvio: ahora,
         profesional: { nombre: profNombre, email: profEmail },
         observacionesProfesional: observacionesEnvio || 'Documento listo para revisión y aprobación del Jefe de OCID.',
-        contenido: `${autoEnviarRevision.nombre.toUpperCase()}\n\nPROCESO No: ${proceso.numeroProceso}\nETAPA: ${proceso.etapaActual}\n\n[Contenido del auto cargado en el sistema]`,
+        contenido: '',
         denunciado,
         etapa: proceso.etapaActual,
         prioridad: (proceso.prioridad as 'alta' | 'media' | 'baja') || 'media',
@@ -2939,6 +2940,7 @@ export function ModalDetallesProceso({
 
     const borrador: BorradorPendiente = {
       id: archivo.id,
+      autoId: archivo.id,
       numeroProceso: proceso.numeroProceso,
       titulo: archivo.nombre,
       plantilla: `Plantilla ${proceso.etapaActual}`,
@@ -2949,7 +2951,7 @@ export function ModalDetallesProceso({
         email: profEmail,
       },
       observacionesProfesional: 'Documento listo para revisión y aprobación del Jefe de OCID.',
-      contenido: `${archivo.nombre.toUpperCase()}\n\nPROCESO No: ${proceso.numeroProceso}\nETAPA: ${proceso.etapaActual}\n\n[Contenido del auto cargado en el sistema]`,
+      contenido: '',
       denunciado,
       etapa: proceso.etapaActual,
       prioridad: (proceso.prioridad as 'alta' | 'media' | 'baja') || 'media',

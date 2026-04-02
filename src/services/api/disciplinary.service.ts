@@ -850,6 +850,10 @@ class DisciplinaryService {
         return apiClient.get<LegalAuto[]>(`${SERVICE_PREFIX}/disciplinary-autos/by-process/${processId}`);
     }
 
+    async getAutoById(id: string): Promise<LegalAuto> {
+        return apiClient.get<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}`);
+    }
+
     async crearAuto(data: CreateAutoDto): Promise<LegalAuto> {
         return apiClient.post<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos`, data);
     }
