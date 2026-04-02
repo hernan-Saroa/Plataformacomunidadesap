@@ -2070,7 +2070,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
 
         {/* Contenido */}
         <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 200px)' }}>
-          {/* <div className="space-y-3">
+          <div className="space-y-3">
             {cargandoEvidencias && (
               <Card className="p-8 text-center">
                 <Clock className="w-10 h-10 mx-auto mb-3 text-gray-300 animate-pulse" />
@@ -2146,6 +2146,8 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                         const token = localStorage.getItem('esap_access_token');
                         const headers: HeadersInit = {};
                         if (token) headers['Authorization'] = `Bearer ${token}`;
+                        // Abrir ventana sincrónicamente para evitar bloqueo de popups
+                        const win = window.open('about:blank', '_blank');
                         fetch(viewUrl, { method: 'GET', headers, credentials: 'include' })
                           .then(res => {
                             if (!res.ok) throw new Error('No autorizado');
@@ -2153,10 +2155,15 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                           })
                           .then(blob => {
                             const objectUrl = URL.createObjectURL(blob);
-                            const win = window.open(objectUrl, '_blank');
-                            if (win) setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+                            if (win) {
+                              win.location.href = objectUrl;
+                              setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+                            }
                           })
-                          .catch(() => toast.error('No se pudo abrir el archivo'));
+                          .catch(() => {
+                            if (win) win.close();
+                            toast.error('No se pudo abrir el archivo');
+                          });
                       }}
                       title="Ver documento"
                       style={{ borderColor: '#003DA5', color: '#003DA5' }}
@@ -2191,7 +2198,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                 </div>
               </Card>
             ))}
-          </div> */}
+          </div>
           {/* Botón de Subir */}
           {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_CREATE) && (
             <div className="relative">
