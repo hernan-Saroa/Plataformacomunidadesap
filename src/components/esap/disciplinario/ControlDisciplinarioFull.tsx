@@ -151,38 +151,49 @@ export function ControlDisciplinarioFull() {
   }, []);
   
   // ✅ NUEVO: Estado para solicitudes de reasignación
-  const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([
-    {
-      id: 'r1',
-      procesoNumero: 'P-120-2025',
-      procesoId: 'proc-1',
-      etapaActual: 'Indagación Preliminar',
-      profesionalActual: { nombre: 'Juan Carlos Pérez', id: 'prof-1' },
-      profesionalNuevo: { nombre: 'María Torres', id: 'prof-2', cargaActual: '3', cargo: 'Profesional Universitario', especialidad: 'Derecho Disciplinario' },
-      solicitadoPor: 'Juan Carlos Pérez',
-      fechaSolicitud: '2025-01-10T14:30:00',
-      justificacion: 'Conflicto de interés por relación personal con el denunciado',
-      prioridad: 'normal' as const,
-      denunciado: 'Juan Pérez Gómez',
-      estado: 'pendiente' as const,
-    },
-    {
-      id: 'r2',
-      procesoNumero: 'P-089-2024',
-      procesoId: 'proc-2',
-      etapaActual: 'Valoración',
-      profesionalActual: { nombre: 'María Torres', id: 'prof-2' },
-      profesionalNuevo: { nombre: 'Carlos López', id: 'prof-3', cargaActual: '2', cargo: 'Profesional Especializado', especialidad: 'Derecho Penal' },
-      solicitadoPor: 'María Torres',
-      fechaSolicitud: '2025-01-09T10:00:00',
-      justificacion: 'Exceso de carga laboral actual (8 procesos activos)',
-      prioridad: 'urgente' as const,
-      denunciado: 'María González Castro',
-      estado: 'aprobada' as const,
-      fechaResolucion: '2025-01-10T09:00:00',
-      observacionesJefe: 'Aprobada por overload de trabajo',
-    }
-  ]);
+  const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([]);
+
+  // Cargar solicitudes de reasignación reales desde el backend
+  useEffect(() => {
+    const cargarSolicitudesReasignacion = async () => {
+      try {
+        const solicitudes = await disciplinaryService.getPendingReassignmentRequests();
+        const solicitudesMapeadas = solicitudes.map((solicitud: any) => ({
+          id: solicitud.id,
+          procesoNumero: solicitud.process?.radicadoProceso || solicitud.processId,
+          procesoId: solicitud.processId,
+          etapaActual: solicitud.process?.etapaActual || 'Sin etapa',
+          profesionalActual: {
+            nombre: solicitud.currentProfessional?.nombre || 'Profesional Actual',
+            id: solicitud.currentProfessionalId,
+          },
+          profesionalNuevo: {
+            nombre: solicitud.newProfessional?.nombre || 'Profesional Nuevo',
+            id: solicitud.newProfessionalId,
+            cargo: solicitud.newProfessional?.cargo || 'Sin cargo',
+            especialidad: solicitud.newProfessional?.especialidad || 'Sin especialidad',
+            cargaActual: solicitud.newProfessional?.procesosAsignados?.toString() || '0',
+          },
+          solicitadoPor: solicitud.requestedBy,
+          fechaSolicitud: solicitud.createdAt,
+          justificacion: solicitud.justification,
+          prioridad: solicitud.priority === 'URGENTE' ? 'urgente' as const : 'normal' as const,
+          denunciado: solicitud.process?.news?.disciplinable?.nombre || 'Sin información',
+          estado: solicitud.status === 'PENDIENTE' ? 'pendiente' as const :
+                 solicitud.status === 'APROBADA' ? 'aprobada' as const :
+                 'rechazada' as const,
+          fechaResolucion: solicitud.resolvedAt,
+          observacionesJefe: solicitud.jefeObservations,
+          motivoRechazo: solicitud.rejectionReason,
+        }));
+        setSolicitudesReasignacion(solicitudesMapeadas);
+      } catch (error) {
+        console.error('Error cargando solicitudes de reasignación:', error);
+        // Mantener array vacío si hay error
+      }
+    };
+    cargarSolicitudesReasignacion();
+  }, []);
 
   const hasPermissionBySection: Record<Section, boolean> = {
     dashboard: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_MANAGE),

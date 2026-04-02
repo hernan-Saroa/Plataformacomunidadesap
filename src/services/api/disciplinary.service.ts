@@ -1634,6 +1634,13 @@ class DisciplinaryService {
     }
 
     /**
+     * Obtener todas las solicitudes de reasignación
+     */
+    async getAllReassignmentRequests(): Promise<DisciplinaryProcessReassignmentRequest[]> {
+        return apiClient.get<DisciplinaryProcessReassignmentRequest[]>(`${SERVICE_PREFIX}/disciplinary-process-reassignment`);
+    }
+
+    /**
      * Obtener una solicitud de reasignación por ID
      */
     async getReassignmentRequestById(id: string): Promise<DisciplinaryProcessReassignmentRequest> {
