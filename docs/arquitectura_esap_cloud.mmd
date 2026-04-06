@@ -1,0 +1,87 @@
+flowchart LR
+  Browser(["BROWSER"]) --> Route
+  Mobile(["MOBILE"]) --> Route
+
+  subgraph Cloud["CLOUD NETWORK"]
+    direction LR
+
+    subgraph Cluster["DOCKER / CONTAINER CLUSTER"]
+      direction LR
+
+      subgraph Public["PUBLIC ROUTE"]
+        Route["Nginx Ingress<br/>Public Route"]
+      end
+
+      subgraph Front["FRONTEND SERVICES"]
+        Web["Web SPA<br/>React + Vite"]
+      end
+
+      subgraph Common["COMMON CHANNEL SERVICES"]
+        GW["API Gateway<br/>/{service}/api/v{version}/*"]
+        Auth["Auth Service"]
+      end
+
+      subgraph Back["BACKEND SERVICES"]
+        Academic["Academic Services<br/>Registration + Certification + PTA"]
+        Control["Control Services<br/>Institucional + Disciplinario + Legal"]
+        Support["Support Services<br/>Notifications + Audit + Others"]
+      end
+
+      subgraph Data["DATABASE SERVICES"]
+        PG[("PostgreSQL")]
+        RD[("Redis")]
+        FS[("File Storage / Volumes")]
+      end
+    end
+  end
+
+  Route --> Web
+  Web -->|/services/*| GW
+
+  GW --> Auth
+  GW --> Academic
+  GW --> Control
+  GW --> Support
+
+  Auth --> PG
+  Academic --> PG
+  Control --> PG
+  Support --> PG
+
+  Auth --> RD
+  Academic --> RD
+  Control --> RD
+
+  Academic --> FS
+  Control --> FS
+
+  subgraph Build["BUILD & DEPLOY (DOCKER)"]
+    Repo["Source Code"] --> BuildFE["Build FE Image<br/>Dockerfile.frontend.*"]
+    Repo --> BuildBE["Build BE Images<br/>Dockerfiles microservices"]
+    BuildFE --> Compose["docker compose<br/>dev qa pre prod"]
+    BuildBE --> Compose
+  end
+
+  Compose -. deploys .-> Cluster
+
+  subgraph External["EXTERNAL SERVICES"]
+    OAuth["Microsoft OAuth"]
+    Graph["Microsoft Graph"]
+    OO["OnlyOffice"]
+    SMTP["SMTP"]
+  end
+
+  Auth <--> OAuth
+  Control <--> Graph
+  Control <--> OO
+  Support --> SMTP
+
+  style Cloud fill:#edf4ff,stroke:#1f4d8f,stroke-width:2px
+  style Cluster fill:#ffffff,stroke:#1f4d8f,stroke-width:1.5px,stroke-dasharray: 6 4
+  style Public fill:#ffffff,stroke:#3b82f6,stroke-width:1px,stroke-dasharray: 4 3
+  style Front fill:#ffffff,stroke:#3b82f6,stroke-width:1px,stroke-dasharray: 4 3
+  style Common fill:#ffffff,stroke:#3b82f6,stroke-width:1px,stroke-dasharray: 4 3
+  style Back fill:#ffffff,stroke:#3b82f6,stroke-width:1px,stroke-dasharray: 4 3
+  style Data fill:#ffffff,stroke:#3b82f6,stroke-width:1px,stroke-dasharray: 4 3
+  style Build fill:#fff7e8,stroke:#c58a00,stroke-width:1.5px,stroke-dasharray: 6 4
+  style External fill:#f7fbff,stroke:#6b7280,stroke-width:1px,stroke-dasharray: 4 3
