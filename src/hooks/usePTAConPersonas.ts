@@ -32,18 +32,18 @@ interface UsePTAConPersonasReturn {
   puedeCrearPTA: boolean;
   puedeAprobarPTAs: boolean;
   nivelAprobacion: 'coordinador-nucleo' | 'director-territorial' | 'subdirector-academico' | null;
-  
+
   // Estado del PTA actual
   pta: ReturnType<typeof usePTA>['pta'];
   isLoading: boolean;
   isSaving: boolean;
-  
+
   // Acciones
   inicializarNuevoPTA: (periodo: string) => Promise<void>;
   cargarPTA: (ptaId: string) => Promise<void>;
   guardarPTA: () => Promise<void>;
   enviarAAprobacion: () => Promise<string>;
-  
+
   // Gestión de actividades
   agregarAsignatura: ReturnType<typeof usePTA>['agregarAsignatura'];
   editarAsignatura: ReturnType<typeof usePTA>['editarAsignatura'];
@@ -57,7 +57,7 @@ interface UsePTAConPersonasReturn {
   agregarActividadComplementaria: ReturnType<typeof usePTA>['agregarActividadComplementaria'];
   editarActividadComplementaria: ReturnType<typeof usePTA>['editarActividadComplementaria'];
   eliminarActividadComplementaria: ReturnType<typeof usePTA>['eliminarActividadComplementaria'];
-  
+
   // Cálculos
   calcularHorasTotales: ReturnType<typeof usePTA>['calcularHorasTotales'];
   calcularHorasDocencia: ReturnType<typeof usePTA>['calcularHorasDocencia'];
@@ -65,7 +65,7 @@ interface UsePTAConPersonasReturn {
   calcularHorasExtension: ReturnType<typeof usePTA>['calcularHorasExtension'];
   calcularHorasComplementarias: ReturnType<typeof usePTA>['calcularHorasComplementarias'];
   calcularEvidenciasCompletas: ReturnType<typeof usePTA>['calcularEvidenciasCompletas'];
-  
+
   // Estadísticas
   estadisticas: {
     horasProgramables: number;
@@ -114,7 +114,7 @@ interface UsePTAConPersonasReturn {
 export function usePTAConPersonas(userId?: string): UsePTAConPersonasReturn {
   // Contexto del PTA
   const ptaContext = usePTA();
-  
+
   // Estado del usuario actual
   const [usuarioActual, setUsuarioActual] = useState<MockUserWithSedes | null>(null);
   const [docenteInfo, setDocenteInfo] = useState<DocentePTA | null>(null);
@@ -128,28 +128,61 @@ export function usePTAConPersonas(userId?: string): UsePTAConPersonasReturn {
     const cargarUsuario = () => {
       setIsLoadingUser(true);
       try {
-        // TODO: En producción, esto debería venir de useAuth()
-        // Por ahora, simulamos con el primer docente de los datos mock
-        let usuario: MockUserWithSedes | undefined;
-        
-        if (userId) {
-          usuario = MOCK_USERS_WITH_SEDES.find(u => u.id === userId);
-        } else {
-          // Buscar el primer usuario con rol de docente
-          usuario = MOCK_USERS_WITH_SEDES.find(u => 
-            u.roles.some(r => r.code === 'DOCENTE')
-          );
-        }
+        // Leer el usuario real desde localStorage
+        const userDataRaw = localStorage.getItem('esap_user_data');
 
-        if (usuario) {
-          setUsuarioActual(usuario);
-          
-          // Obtener información del docente desde el servicio de integración
+        if (userDataRaw) {
+          const userData = JSON.parse(userDataRaw);
+
+          // Construir el objeto usuario compatible con MockUserWithSedes
+          const usuarioReal: MockUserWithSedes = {
+            id: userData.id,
+            personId: userData.person?.id || userData.id,
+            documentNumber: userData.person?.identification_number || '0',
+            documentType: 'CC',
+            firstName: userData.person?.first_name || 'Super',
+            lastName: userData.person?.last_name || 'Usuario',
+            email: userData.username || userData.email || '',
+            phone: userData.person?.phone || '',
+            location: 'Bogotá',
+            status: 'active',
+            roles: (userData.roles || []).map((r: any) => ({
+              id: r.id || '',
+              name: r.name || '',
+              code: r.code || '',
+              permissions: r.permissions || []
+            })),
+            sedes: [],
+            createdAt: new Date().toISOString()
+          };
+
+          setUsuarioActual(usuarioReal);
+
+          // Intentar buscar info de docente
           const docente = personasPTAIntegrationService.buscarDocente({
-            personId: usuario.personId
+            personId: userData.person?.id
           });
-          
           setDocenteInfo(docente);
+
+        } else {
+          // Fallback a datos mock si no hay localStorage
+          const usuario = MOCK_USERS_WITH_SEDES.find(u =>
+            userId
+              ? u.id === userId
+              : u.roles.some(r =>
+                (r.code ?? '').includes('DOCENTE') ||
+                (r.code ?? '').includes('ADMIN') ||
+                (r.name ?? '').toLowerCase().includes('docente')
+              )
+          );
+
+          if (usuario) {
+            setUsuarioActual(usuario);
+            const docente = personasPTAIntegrationService.buscarDocente({
+              personId: usuario.personId
+            });
+            setDocenteInfo(docente);
+          }
         }
       } catch (error) {
         console.error('[usePTAConPersonas] Error al cargar usuario:', error);
@@ -167,8 +200,9 @@ export function usePTAConPersonas(userId?: string): UsePTAConPersonasReturn {
 
   const esDocente = useMemo(() => {
     if (!usuarioActual) return false;
-    return usuarioActual.roles.some(r => 
-      r.code === 'DOCENTE' || r.name.toLowerCase().includes('docente')
+    return usuarioActual.roles.some(r =>
+      (r.code ?? '') === 'DOCENTE' ||
+      (r.name ?? '').toLowerCase().includes('docente')
     );
   }, [usuarioActual]);
 
@@ -178,14 +212,58 @@ export function usePTAConPersonas(userId?: string): UsePTAConPersonasReturn {
   }, [docenteInfo]);
 
   const puedeAprobarPTAs = useMemo(() => {
-    if (!docenteInfo) return false;
-    return personasPTAIntegrationService.puedeAprobarPTAs(docenteInfo.personId);
-  }, [docenteInfo]);
+    if (!usuarioActual) return false;
+
+    const rolesAprobadores = [
+      'SUPER_ADMIN', 'Administrativo', 'Director',
+      'Coordinador', 'Subdirector', 'ADMIN'
+    ];
+
+    return usuarioActual.roles.some(r =>
+      rolesAprobadores.includes(r.code ?? '') ||
+      rolesAprobadores.includes(r.name ?? '') ||
+      (r.code ?? '').includes('ADMIN') ||
+      (r.code ?? '').includes('SUPER') ||
+      (r.name ?? '').toLowerCase().includes('director') ||
+      (r.name ?? '').toLowerCase().includes('coordinador') ||
+      (r.name ?? '').toLowerCase().includes('administrativo') ||
+      (r.name ?? '').toLowerCase().includes('administrador')
+    );
+  }, [usuarioActual, docenteInfo]);
 
   const nivelAprobacion = useMemo(() => {
+    if (!usuarioActual) return null;
+
+    const roles = usuarioActual.roles.map(r =>
+      ((r.code ?? '') + ' ' + (r.name ?? '')).toLowerCase()
+    );
+
+    if (roles.some(r =>
+      r.includes('super_admin') ||
+      r.includes('subdirector') ||
+      r.includes('super administrador')
+    )) {
+      return 'subdirector-academico' as const;
+    }
+    if (roles.some(r => r.includes('director'))) {
+      return 'director-territorial' as const;
+    }
+    if (roles.some(r => r.includes('coordinador'))) {
+      return 'coordinador-nucleo' as const;
+    }
+    if (roles.some(r =>
+      r.includes('administrativo') ||
+      r.includes('admin')
+    )) {
+      return 'subdirector-academico' as const;
+    }
+
+    // Fallback al servicio si hay docenteInfo
     if (!docenteInfo) return null;
-    return personasPTAIntegrationService.obtenerNivelAprobacionUsuario(docenteInfo.personId);
-  }, [docenteInfo]);
+    return personasPTAIntegrationService.obtenerNivelAprobacionUsuario(
+      docenteInfo.personId
+    );
+  }, [usuarioActual, docenteInfo]);
 
   // ============================================================================
   // ACCIONES SIMPLIFICADAS
@@ -198,7 +276,6 @@ export function usePTAConPersonas(userId?: string): UsePTAConPersonasReturn {
     if (!docenteInfo) {
       throw new Error('No hay información del docente');
     }
-
     await ptaContext.inicializarPTAConPersonId(docenteInfo.personId, periodo);
   };
 
@@ -209,8 +286,8 @@ export function usePTAConPersonas(userId?: string): UsePTAConPersonasReturn {
   const estadisticas = useMemo(() => {
     const horasProgramables = docenteInfo?.horasProgramables || 0;
     const horasUtilizadas = ptaContext.calcularHorasTotales();
-    const porcentajeCompletado = horasProgramables > 0 
-      ? (horasUtilizadas / horasProgramables) * 100 
+    const porcentajeCompletado = horasProgramables > 0
+      ? (horasUtilizadas / horasProgramables) * 100
       : 0;
     const horasRestantes = Math.max(0, horasProgramables - horasUtilizadas);
     const cumpleRequisitos = Math.abs(horasUtilizadas - horasProgramables) < 1; // Margen de 1 hora
@@ -236,18 +313,18 @@ export function usePTAConPersonas(userId?: string): UsePTAConPersonasReturn {
     puedeCrearPTA,
     puedeAprobarPTAs,
     nivelAprobacion,
-    
+
     // Estado del PTA
     pta: ptaContext.pta,
     isLoading: isLoadingUser || ptaContext.isLoading,
     isSaving: ptaContext.isSaving,
-    
+
     // Acciones
     inicializarNuevoPTA,
     cargarPTA: ptaContext.cargarPTA,
     guardarPTA: ptaContext.guardarPTA,
     enviarAAprobacion: ptaContext.enviarAAprobacion,
-    
+
     // Gestión de actividades
     agregarAsignatura: ptaContext.agregarAsignatura,
     editarAsignatura: ptaContext.editarAsignatura,
@@ -261,7 +338,7 @@ export function usePTAConPersonas(userId?: string): UsePTAConPersonasReturn {
     agregarActividadComplementaria: ptaContext.agregarActividadComplementaria,
     editarActividadComplementaria: ptaContext.editarActividadComplementaria,
     eliminarActividadComplementaria: ptaContext.eliminarActividadComplementaria,
-    
+
     // Cálculos
     calcularHorasTotales: ptaContext.calcularHorasTotales,
     calcularHorasDocencia: ptaContext.calcularHorasDocencia,
@@ -269,7 +346,7 @@ export function usePTAConPersonas(userId?: string): UsePTAConPersonasReturn {
     calcularHorasExtension: ptaContext.calcularHorasExtension,
     calcularHorasComplementarias: ptaContext.calcularHorasComplementarias,
     calcularEvidenciasCompletas: ptaContext.calcularEvidenciasCompletas,
-    
+
     // Estadísticas
     estadisticas
   };

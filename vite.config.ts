@@ -51,6 +51,7 @@
         '@': path.resolve(__dirname, './src'),
       },
     },
+<<<<<<< Updated upstream
     build: {
       target: 'esnext',
       outDir: 'build',
@@ -60,3 +61,72 @@
       open: true,
     },
   });
+=======
+  },
+  build: {
+    target: 'esnext',
+    outDir: 'build',
+  },
+  server: {
+    port: 3000,
+    open: true,
+    proxy: {
+      '/auth/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/auth\/api\/v\d+/, ''),
+      },
+      '/registro-academico/api': {
+        target: 'http://localhost:3002',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/registro-academico\/api\/v\d+/, ''),
+      },
+      '/pta/api': {
+        target: 'http://localhost:3003',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/pta\/api\/v\d+/, ''),
+      },
+      '/certificados/api': {
+        target: 'http://localhost:3004',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/certificados\/api\/v\d+/, ''),
+      },
+      '/control-disciplinario/api': {
+        target: 'http://localhost:3005',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/control-disciplinario\/api\/v\d+/, ''),
+      },
+      '/interoperabilidad/api': {
+        target: 'http://localhost:3006',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/interoperabilidad\/api\/v\d+/, ''),
+      },
+      '/control-institucional/api': {
+        target: 'http://localhost:3007',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/control-institucional\/api\/v\d+/, ''),
+      },
+      '/legal/api': {
+        target: 'http://localhost:3008',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/legal\/api\/v\d+/, ''),
+      },
+      '/notificaciones/api': {
+        target: 'http://localhost:3009',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/notificaciones\/api\/v\d+/, ''),
+      },
+      '/viaticos/api': {
+        target: 'http://localhost:3010',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/viaticos\/api\/v\d+/, ''),
+      },
+      '/audit/api': {
+        target: 'http://localhost:3011',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/audit\/api\/v\d+/, ''),
+      },
+    },
+  },
+});
+>>>>>>> Stashed changes

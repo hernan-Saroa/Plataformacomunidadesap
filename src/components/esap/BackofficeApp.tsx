@@ -362,7 +362,14 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'certificados-laborales':
         return (
           <Suspense fallback={<ModuleLoader />}>
+<<<<<<< Updated upstream
             <CertificadosLaboralesRouter />
+=======
+            <CertificadosLaboralesRouter
+              userRoles={userRoles || []}
+              userEmail={currentUser.email}
+            />
+>>>>>>> Stashed changes
           </Suspense>
         );
       
@@ -388,14 +395,36 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         );
       
       case 'gestion-profesoral':
+        // Determinar rol del usuario para gestión-profesoral
+        const getRolGestionProfesoral = (): 'docente' | 'coordinador' | 'director' | 'subdirector' | 'admin' | 'superuser' => {
+          const roles = userRoles || [];
+          const rolesLower = roles.map(r => r.toLowerCase());
+
+          if (rolesLower.some(r => r.includes('superuser') || r.includes('super-admin'))) return 'superuser';
+          if (rolesLower.some(r => r.includes('docente'))) return 'docente';
+          if (rolesLower.some(r => r.includes('director'))) return 'director';
+          if (rolesLower.some(r => r.includes('subdirector'))) return 'subdirector';
+          if (rolesLower.some(r => r.includes('coordinador'))) return 'coordinador';
+          if (rolesLower.some(r => r.includes('admin'))) return 'admin';
+
+          // Por defecto, si no se detecta rol específico, mostrar como coordinador
+          return 'coordinador';
+        };
+
         return (
           <Suspense fallback={<ModuleLoader />}>
             <GestionProfesoralApp 
               usuario={{ 
                 nombre: currentUser.name, 
                 email: currentUser.email,
+<<<<<<< Updated upstream
                 rol: 'admin' // Por defecto admin, puede ser 'docente', 'coordinador', etc.
               }} 
+=======
+                rol: getRolGestionProfesoral(),
+                cedula: currentUser.personId
+              }}
+>>>>>>> Stashed changes
               onLogout={handleLogout}
             />
           </Suspense>
@@ -417,6 +446,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         <div className="min-h-screen bg-gray-50 grid grid-cols-1 md:grid-cols-[auto_1fr]">
           {/* Sidebar - Ocultar para usuario de procesos (auditado) */}
           {userData?.module !== 'procesos' && (
+<<<<<<< Updated upstream
             <SidebarPremium
               isOpen={sidebarOpen}
               onClose={() => setSidebarOpen(false)}
@@ -452,6 +482,51 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
           {/* ✅ MAIN CONTENT - Flexbox Column */}
           <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
+=======
+            <>
+              {/* Spacer for Fixed Sidebar to prevent content overlap */}
+              <div
+                className={`hidden md:block shrink-0 transition-[width] duration-300 ${sidebarCollapsed
+                  ? 'w-[80px]'
+                  : 'w-[280px] md:w-[260px] lg:w-[220px] xl:w-[240px] 2xl:w-[260px]'
+                  }`}
+              />
+              <SidebarPremium
+                isOpen={sidebarOpen}
+                onClose={() => setSidebarOpen(false)}
+                isCollapsed={sidebarCollapsed}
+                onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+                currentModule={currentModule}
+                currentSidebarModule={currentSidebarModule}
+                onModuleChange={(sidebarModule) => {
+                  const mappedModule = mapSidebarToModule(sidebarModule);
+                  setCurrentSidebarModule(sidebarModule);
+                  setCurrentModule(mappedModule);
+                  setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
+                }}
+                userEmail={currentUser.email}
+                certificatesPendingCount={certificatesPendingCount}
+                assignedModules={userData?.modules}
+                restrictedMode={
+                  userData?.module === 'control-interno'
+                    ? 'control-interno'
+                    : userData?.module === 'control-disciplinario'
+                      ? 'control-disciplinario'
+                      : userData?.module === 'registro-academico'
+                        ? 'registro-academico'
+                        : userData?.module === 'certificados-laborales'
+                          ? 'certificados-laborales'
+                          : userData?.module === 'gestion-legal'
+                            ? 'gestion-legal'
+                            : undefined
+                }
+              />
+            </>
+          )}
+
+          {/* ✅ MAIN CONTENT - Flexbox Column */}
+          <div className="flex flex-col h-screen bg-gray-50 overflow-hidden" style={{ marginLeft: sidebarCollapsed ? '70px' : '0' }}>
+>>>>>>> Stashed changes
             {/* Top Bar - Ocultar para usuario de procesos (auditado) */}
             {userData?.module !== 'procesos' && (
               <TopBar

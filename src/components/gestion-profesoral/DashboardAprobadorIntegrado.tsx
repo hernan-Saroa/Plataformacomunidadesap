@@ -31,7 +31,7 @@ import { usePTAConPersonas } from '../../hooks/usePTAConPersonas';
 import { ptaPersonasService } from '../../services/ptaPersonasService';
 import { personasPTAIntegrationService } from '../../services/personasPTAIntegrationService';
 import { notificacionesPersonasPTAService } from '../../services/notificacionesPersonasPTA';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 // ============================================================================
 // TIPOS
@@ -76,6 +76,10 @@ export function DashboardAprobadorIntegrado({
     isLoading
   } = usePTAConPersonas();
 
+  console.log('isLoading:', isLoading);
+  console.log('usuarioActual:', usuarioActual);
+  console.log('puedeAprobarPTAs:', puedeAprobarPTAs);
+
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'todos' | 'pendiente' | 'aprobado' | 'rechazado'>('todos');
   const [filtroTerritorial, setFiltroTerritorial] = useState<string>('todos');
@@ -94,10 +98,10 @@ export function DashboardAprobadorIntegrado({
     // Filtrar según nivel de aprobación
     if (nivelAprobacion === 'coordinador-nucleo') {
       // Solo docentes del mismo núcleo y sede
-      const miSede = usuarioActual.sedes.find(s => s.nivel === 'sede');
+      const miSede = usuarioActual.sedes.find(s => s.nivel === 'territorial');
       if (miSede) {
-        docentes = docentes.filter(d => 
-          d.sedeVinculacion === miSede.name &&
+        docentes = docentes.filter(d =>
+          d.sedeVinculacion === miSede.nombre &&
           d.nucleoTematico === docenteInfo?.nucleoTematico
         );
       }
@@ -105,7 +109,7 @@ export function DashboardAprobadorIntegrado({
       // Solo docentes de mi territorial
       const miTerritorial = usuarioActual.sedes.find(s => s.nivel === 'territorial');
       if (miTerritorial) {
-        docentes = docentes.filter(d => d.territorial === miTerritorial.name);
+        docentes = docentes.filter(d => d.territorial === miTerritorial.nombre);
       }
     }
     // subdirector-academico ve todos (nacional)
@@ -179,7 +183,7 @@ export function DashboardAprobadorIntegrado({
     try {
       // Buscar el docente
       const docente = personasPTAIntegrationService.buscarDocente({
-        nombreCompleto: pta.docenteNombre
+        email: pta.docenteEmail
       });
 
       if (!docente) {
@@ -191,7 +195,7 @@ export function DashboardAprobadorIntegrado({
         docente.personId,
         pta.id,
         pta.nivelActual,
-        usuarioActual?.nombres + ' ' + usuarioActual?.apellidos || 'Aprobador',
+        ((usuarioActual?.firstName || '') + ' ' + (usuarioActual?.lastName || '')).trim() || 'Aprobador',
         `PTA-2025-${pta.id}`
       );
 
@@ -210,7 +214,7 @@ export function DashboardAprobadorIntegrado({
   const handleRechazar = async (pta: PTAParaAprobar, motivo: string) => {
     try {
       const docente = personasPTAIntegrationService.buscarDocente({
-        nombreCompleto: pta.docenteNombre
+        email: pta.docenteEmail
       });
 
       if (!docente) {
@@ -218,14 +222,13 @@ export function DashboardAprobadorIntegrado({
       }
 
       // Enviar notificación
-      await notificacionesPersonasPTAService.notificarRechazo(
+      await notificacionesPersonasPTAService.notificarAprobacion(
         docente.personId,
         pta.id,
-        usuarioActual?.nombres + ' ' + usuarioActual?.apellidos || 'Aprobador',
-        motivo,
+        pta.nivelActual,
+        ((usuarioActual?.firstName || '') + ' ' + (usuarioActual?.lastName || '')).trim() || 'Aprobador',
         `PTA-2025-${pta.id}`
       );
-
       toast.success('PTA Rechazado', {
         description: 'Se ha enviado la notificación al docente'
       });
@@ -242,14 +245,14 @@ export function DashboardAprobadorIntegrado({
   // VALIDACIONES
   // ============================================================================
 
-  if (isLoading) {
+  // Esperar a que termine de cargar antes de evaluar permisos
+  if (isLoading || !usuarioActual) {
     return <LoadingState />;
   }
 
   if (!puedeAprobarPTAs) {
     return <ErrorState mensaje="No tienes permisos para aprobar PTAs" />;
   }
-
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -314,7 +317,7 @@ export function DashboardAprobadorIntegrado({
                     pta={pta}
                     onVerDetalle={() => onVerDetalle?.(pta.id)}
                     onAprobar={() => handleAprobar(pta)}
-                    onRechazar={(motivo) => handleRechazar(pta, motivo)}
+                    onRechazar={(motivo: string) => handleRechazar(pta, motivo)}
                   />
                 ))
               )}
@@ -361,7 +364,7 @@ function HeaderAprobador({ usuarioActual, nivelAprobacion, estadisticas }: any) 
               Panel de Aprobación
             </h1>
             <p className="text-purple-100">
-              {nivelTexto[nivelAprobacion || 'coordinador-nucleo']}
+              {nivelTexto[(nivelAprobacion || 'coordinador-nucleo') as keyof typeof nivelTexto]}
             </p>
           </div>
 
@@ -571,15 +574,15 @@ function InfoAprobador({ nivelAprobacion, usuarioActual }: any) {
 
       <div className="space-y-2">
         <p className="text-sm text-purple-700">
-          <strong>Nivel:</strong> {nivelTexto[nivelAprobacion || 'coordinador-nucleo']}
+          {nivelTexto[(nivelAprobacion || 'coordinador-nucleo') as keyof typeof nivelTexto]}
         </p>
         <p className="text-sm text-purple-700">
           <strong>Alcance:</strong>{' '}
           {nivelAprobacion === 'coordinador-nucleo'
             ? 'Tu núcleo temático'
             : nivelAprobacion === 'director-territorial'
-            ? 'Tu territorial'
-            : 'Nacional'}
+              ? 'Tu territorial'
+              : 'Nacional'}
         </p>
       </div>
     </div>

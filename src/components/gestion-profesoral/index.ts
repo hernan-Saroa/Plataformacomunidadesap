@@ -33,6 +33,7 @@ export { DashboardDocente } from './DashboardDocente';
 export { ModalProrrateo } from './ModalProrrateo';
 
 export { DashboardAprobador } from './DashboardAprobador';
+export { DashboardAprobadorIntegrado } from './DashboardAprobadorIntegrado';
 export { ModalAprobacion } from './ModalAprobacion';
 export type { AccionAprobacion } from './ModalAprobacion';
 export { VistaDetallePTA } from './VistaDetallePTA';

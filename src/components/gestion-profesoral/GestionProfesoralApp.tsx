@@ -24,12 +24,12 @@ import { notificationService, type Notificacion } from '../../services/notificat
 // TIPOS
 // ============================================================================
 
-type Vista = 'dashboard' | 'crear-pta' | 'detalle-pta';
+type Vista = 'dashboard' | 'crear-pta' | 'detalle-pta' | 'dashboard-docente' | 'dashboard-aprobador' | 'visualizador-ajustes';
 
 interface Usuario {
   nombre: string;
   email: string;
-  rol: 'docente' | 'coordinador' | 'director' | 'subdirector' | 'admin';
+  rol: 'docente' | 'coordinador' | 'director' | 'subdirector' | 'admin' | 'superuser';
   cedula?: string;
 }
 
@@ -75,6 +75,11 @@ export function GestionProfesoralApp({ usuario, onLogout }: GestionProfesoralApp
   const [ptaSeleccionado, setPTASeleccionado] = useState<string | null>(null);
   const [modalAprobacionVisible, setModalAprobacionVisible] = useState(false);
   const [accionAprobacion, setAccionAprobacion] = useState<AccionAprobacion | null>(null);
+
+  // Verificar si es superuser o tiene acceso completo al módulo
+  // Si el usuario llegó a este componente, tiene acceso al módulo de gestión-profesoral
+  // Por lo tanto, se le debe mostrar el selector de vista para acceder a todos los componentes
+  const esSuperuser = usuario.rol === 'superuser' || usuario.rol === 'admin';
 
   // ============================================================================
   // INICIALIZAR NOTIFICACIONES MOCK
@@ -185,13 +190,208 @@ export function GestionProfesoralApp({ usuario, onLogout }: GestionProfesoralApp
   };
 
   // ============================================================================
-  // EFFECTS
+  // RENDER - SELECTOR DE VISTA PARA SUPERUSER
   // ============================================================================
 
-  // (Ya no necesitamos subscribirnos aquí, el NotificationCenter lo hace internamente)
+  if (esSuperuser) {
+    return (
+      <PTAProvider>
+        <div className="min-h-screen bg-gray-50">
+          {/* Header con selector de vista */}
+          <div className="bg-white shadow-sm border-b border-gray-200">
+            <div className="max-w-7xl mx-auto px-4 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Gestión Profesoral</h1>
+                  <p className="text-sm text-gray-600">Modo Superuser - Acceso a todos los componentes</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Usuario:</span>
+                  <span className="text-sm font-medium text-gray-900">{usuario.nombre}</span>
+                  <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-semibold rounded-full">
+                    {usuario.rol.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+
+              {/* Navegación de vistas */}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  onClick={() => setVistaActual('dashboard')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${vistaActual === 'dashboard'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                >
+                  📊 Dashboard Principal
+                </button>
+                <button
+                  onClick={() => setVistaActual('dashboard-docente')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${vistaActual === 'dashboard-docente'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                >
+                  👨‍🏫 Dashboard Docente
+                </button>
+                <button
+                  onClick={() => setVistaActual('dashboard-aprobador')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${vistaActual === 'dashboard-aprobador'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                >
+                  ✅ Dashboard Aprobador
+                </button>
+                <button
+                  onClick={() => setVistaActual('crear-pta')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${vistaActual === 'crear-pta'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                >
+                  ➕ Crear PTA (Wizard)
+                </button>
+                <button
+                  onClick={() => setVistaActual('visualizador-ajustes')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${vistaActual === 'visualizador-ajustes'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                >
+                  ⚙️ Visualizador Ajustes
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Contenido según vista seleccionada */}
+          <div className="max-w-7xl mx-auto px-4 py-6">
+            {vistaActual === 'dashboard' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Vista General - Todos los Componentes</h2>
+                  <p className="text-gray-600 mb-4">Selecciona una vista específica del menú superior para ver cada componente.</p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                      <h3 className="font-medium text-blue-900">👨‍🏫 Dashboard Docente</h3>
+                      <p className="text-sm text-blue-700 mt-1">Vista del docente con sus PTAs</p>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+                      <h3 className="font-medium text-green-900">✅ Dashboard Aprobador</h3>
+                      <p className="text-sm text-green-700 mt-1">Vista del aprobador con PTAs pendientes</p>
+                    </div>
+                    <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                      <h3 className="font-medium text-purple-900">➕ Wizard Crear PTA</h3>
+                      <p className="text-sm text-purple-700 mt-1">Formulario para crear nuevo PTA</p>
+                    </div>
+                    <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                      <h3 className="font-medium text-orange-900">⚙️ Visualizador Ajustes</h3>
+                      <p className="text-sm text-orange-700 mt-1">Panel de ajustes del PTA</p>
+                    </div>
+                    <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+                      <h3 className="font-medium text-red-900">📋 Vista Detalle PTA</h3>
+                      <p className="text-sm text-red-700 mt-1">Detalle completo de un PTA</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                      <h3 className="font-medium text-gray-900">🔔 Notificaciones</h3>
+                      <p className="text-sm text-gray-700 mt-1">Centro de notificaciones</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {vistaActual === 'dashboard-docente' && (
+              <DashboardDocente
+                docente={{
+                  cedula: DOCENTE_MOCK.cedula,
+                  nombreCompleto: DOCENTE_MOCK.nombreCompleto,
+                  email: usuario.email
+                }}
+                onCrearNuevo={handleCrearNuevoPTA}
+                onVerDetalle={handleVerDetallePTA}
+                onEditar={handleEditarPTA}
+                onDuplicar={handleDuplicarPTA}
+                onEliminar={handleEliminarPTA}
+              />
+            )}
+
+            {vistaActual === 'dashboard-aprobador' && (
+              <DashboardAprobadorIntegrado
+                onVerDetalle={handleVerDetallePTA}
+                onAprobar={(ptaId) => handleAbrirModalAprobacion(ptaId, 'aprobar')}
+                onRechazar={(ptaId) => handleAbrirModalAprobacion(ptaId, 'rechazar')}
+              />
+            )}
+
+            {vistaActual === 'crear-pta' && (
+              <WizardCrearPTA
+                docenteInfo={DOCENTE_MOCK}
+                onGuardar={handleGuardarPTA}
+                onEnviar={handleEnviarPTA}
+                onCancelar={handleCancelarCreacion}
+              />
+            )}
+
+            {vistaActual === 'visualizador-ajustes' && (
+              <VisualizadorPTAAjustes
+                usuario={{
+                  nombre: usuario.nombre,
+                  email: usuario.email
+                }}
+                onLogout={onLogout}
+              />
+            )}
+
+            {vistaActual === 'detalle-pta' && ptaSeleccionado && (
+              <VistaDetallePTA
+                ptaId={ptaSeleccionado}
+                onClose={() => setVistaActual('dashboard')}
+                onAprobar={() => handleAbrirModalAprobacion(ptaSeleccionado, 'aprobar')}
+                onRechazar={() => handleAbrirModalAprobacion(ptaSeleccionado, 'rechazar')}
+              />
+            )}
+          </div>
+
+          {/* Modal de Aprobación */}
+          {modalAprobacionVisible && accionAprobacion && ptaSeleccionado && (
+            <ModalAprobacion
+              isOpen={modalAprobacionVisible}
+              onClose={handleCerrarModalAprobacion}
+              accion={accionAprobacion}
+              ptaInfo={{
+                id: ptaSeleccionado,
+                docenteNombre: 'Dr. Carlos Alberto Méndez Rivera',
+                periodoAcademico: '2025-1'
+              }}
+              nivelAprobador={1}
+              onConfirmar={(observaciones) => {
+                if (accionAprobacion === 'aprobar') {
+                  handleAprobarPTA(ptaSeleccionado);
+                } else {
+                  handleRechazarPTA(ptaSeleccionado);
+                }
+              }}
+            />
+          )}
+
+          {/* Centro de Notificaciones (fixed top-right) */}
+          <div className="fixed top-4 right-4 z-50">
+            <NotificationCenter
+              usuarioCedula={usuario.cedula || '000000'}
+              usuarioEmail={usuario.email}
+              onClickNotificacion={handleClickNotificacion}
+            />
+          </div>
+        </div>
+      </PTAProvider>
+    );
+  }
 
   // ============================================================================
-  // RENDER
+  // RENDER - VISTA NORMAL (NO SUPERUSER)
   // ============================================================================
 
   // Vista según rol del usuario
@@ -234,7 +434,8 @@ export function GestionProfesoralApp({ usuario, onLogout }: GestionProfesoralApp
     coordinador: 1,
     director: 2,
     subdirector: 3,
-    admin: 1 // Admin puede ver como nivel 1
+    admin: 1, // Admin puede ver como nivel 1
+    superuser: 1 // Superuser puede ver como nivel 1
   }[usuario.rol] as 1 | 2 | 3;
 
   // Si estamos viendo detalle de un PTA
@@ -272,44 +473,190 @@ export function GestionProfesoralApp({ usuario, onLogout }: GestionProfesoralApp
     );
   }
 
-  // Dashboard de aprobadores
+  // Vista para aprobadores con acceso a todos los componentes
+  // Mostrar selector de vista para que el usuario pueda acceder a todos los componentes
   return (
     <PTAProvider>
-      <DashboardAprobadorIntegrado
-        onVerDetalle={handleVerDetallePTA}
-        onAprobar={(ptaId) => handleAbrirModalAprobacion(ptaId, 'aprobar')}
-        onRechazar={(ptaId) => handleAbrirModalAprobacion(ptaId, 'rechazar')}
-      />
+      <div className="min-h-screen bg-gray-50">
+        {/* Header con selector de vista */}
+        <div className="bg-white shadow-sm border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Gestión Profesoral</h1>
+                <p className="text-sm text-gray-600">Acceso a todos los componentes del módulo</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">Usuario:</span>
+                <span className="text-sm font-medium text-gray-900">{usuario.nombre}</span>
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">
+                  {usuario.rol.toUpperCase()}
+                </span>
+              </div>
+            </div>
 
-      {modalAprobacionVisible && accionAprobacion && ptaSeleccionado && (
-        <ModalAprobacion
-          isOpen={modalAprobacionVisible}
-          onClose={handleCerrarModalAprobacion}
-          accion={accionAprobacion}
-          ptaInfo={{
-            id: ptaSeleccionado,
-            docenteNombre: 'Dr. Carlos Alberto Méndez Rivera', // TODO: Cargar del PTA
-            periodoAcademico: '2025-1' // TODO: Cargar del PTA
-          }}
-          nivelAprobador={nivelAprobador}
-          onConfirmar={(observaciones) => {
-            console.log('Observaciones:', observaciones);
-            if (accionAprobacion === 'aprobar') {
-              handleAprobarPTA(ptaSeleccionado);
-            } else {
-              handleRechazarPTA(ptaSeleccionado);
-            }
-          }}
-        />
-      )}
+            {/* Navegación de vistas */}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={() => setVistaActual('dashboard')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${vistaActual === 'dashboard'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+              >
+                📊 Dashboard Principal
+              </button>
+              <button
+                onClick={() => setVistaActual('dashboard-docente')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${vistaActual === 'dashboard-docente'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+              >
+                👨‍🏫 Dashboard Docente
+              </button>
+              <button
+                onClick={() => setVistaActual('dashboard-aprobador')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${vistaActual === 'dashboard-aprobador'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+              >
+                ✅ Dashboard Aprobador
+              </button>
+              <button
+                onClick={() => setVistaActual('crear-pta')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${vistaActual === 'crear-pta'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+              >
+                ➕ Crear PTA (Wizard)
+              </button>
+              <button
+                onClick={() => setVistaActual('visualizador-ajustes')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${vistaActual === 'visualizador-ajustes'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+              >
+                ⚙️ Visualizador Ajustes
+              </button>
+            </div>
+          </div>
+        </div>
 
-      {/* Centro de Notificaciones (fixed top-right) */}
-      <div className="fixed top-4 right-4 z-50">
-        <NotificationCenter 
-          usuarioCedula={usuario.cedula || '000000'}
-          usuarioEmail={usuario.email}
-          onClickNotificacion={handleClickNotificacion}
-        />
+        {/* Contenido según vista seleccionada */}
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          {vistaActual === 'dashboard' && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Vista General - Todos los Componentes</h2>
+                <p className="text-gray-600 mb-4">Selecciona una vista específica del menú superior para ver cada componente.</p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                    <h3 className="font-medium text-blue-900">👨‍🏫 Dashboard Docente</h3>
+                    <p className="text-sm text-blue-700 mt-1">Vista del docente con sus PTAs</p>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+                    <h3 className="font-medium text-green-900">✅ Dashboard Aprobador</h3>
+                    <p className="text-sm text-green-700 mt-1">Vista del aprobador con PTAs pendientes</p>
+                  </div>
+                  <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                    <h3 className="font-medium text-purple-900">➕ Wizard Crear PTA</h3>
+                    <p className="text-sm text-purple-700 mt-1">Formulario para crear nuevo PTA</p>
+                  </div>
+                  <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                    <h3 className="font-medium text-orange-900">⚙️ Visualizador Ajustes</h3>
+                    <p className="text-sm text-orange-700 mt-1">Panel de ajustes del PTA</p>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+                    <h3 className="font-medium text-red-900">📋 Vista Detalle PTA</h3>
+                    <p className="text-sm text-red-700 mt-1">Detalle completo de un PTA</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <h3 className="font-medium text-gray-900">🔔 Notificaciones</h3>
+                    <p className="text-sm text-gray-700 mt-1">Centro de notificaciones</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {vistaActual === 'dashboard-docente' && (
+            <DashboardDocente
+              docente={{
+                cedula: DOCENTE_MOCK.cedula,
+                nombreCompleto: DOCENTE_MOCK.nombreCompleto,
+                email: usuario.email
+              }}
+              onCrearNuevo={handleCrearNuevoPTA}
+              onVerDetalle={handleVerDetallePTA}
+              onEditar={handleEditarPTA}
+              onDuplicar={handleDuplicarPTA}
+              onEliminar={handleEliminarPTA}
+            />
+          )}
+
+          {vistaActual === 'dashboard-aprobador' && (
+            <DashboardAprobadorIntegrado
+              onVerDetalle={handleVerDetallePTA}
+              onAprobar={(ptaId) => handleAbrirModalAprobacion(ptaId, 'aprobar')}
+              onRechazar={(ptaId) => handleAbrirModalAprobacion(ptaId, 'rechazar')}
+            />
+          )}
+
+          {vistaActual === 'crear-pta' && (
+            <WizardCrearPTA
+              docenteInfo={DOCENTE_MOCK}
+              onGuardar={handleGuardarPTA}
+              onEnviar={handleEnviarPTA}
+              onCancelar={handleCancelarCreacion}
+            />
+          )}
+
+          {vistaActual === 'visualizador-ajustes' && (
+            <VisualizadorPTAAjustes
+              usuario={{
+                nombre: usuario.nombre,
+                email: usuario.email
+              }}
+              onLogout={onLogout}
+            />
+          )}
+        </div>
+
+        {/* Modal de Aprobación */}
+        {modalAprobacionVisible && accionAprobacion && ptaSeleccionado && (
+          <ModalAprobacion
+            isOpen={modalAprobacionVisible}
+            onClose={handleCerrarModalAprobacion}
+            accion={accionAprobacion}
+            ptaInfo={{
+              id: ptaSeleccionado,
+              docenteNombre: 'Dr. Carlos Alberto Méndez Rivera',
+              periodoAcademico: '2025-1'
+            }}
+            nivelAprobador={nivelAprobador}
+            onConfirmar={(observaciones) => {
+              if (accionAprobacion === 'aprobar') {
+                handleAprobarPTA(ptaSeleccionado);
+              } else {
+                handleRechazarPTA(ptaSeleccionado);
+              }
+            }}
+          />
+        )}
+
+        {/* Centro de Notificaciones (fixed top-right) */}
+        <div className="fixed top-4 right-4 z-50">
+          <NotificationCenter
+            usuarioCedula={usuario.cedula || '000000'}
+            usuarioEmail={usuario.email}
+            onClickNotificacion={handleClickNotificacion}
+          />
+        </div>
       </div>
     </PTAProvider>
   );

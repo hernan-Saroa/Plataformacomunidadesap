@@ -139,7 +139,178 @@ const ENDPOINTS = {
     CONSOLIDADO: '/control-interno/reportes/consolidado',
     INDICADORES: '/control-interno/reportes/indicadores',
   }
+<<<<<<< Updated upstream
 };
+=======
+
+  private async tryRefreshToken(): Promise<boolean> {
+    try {
+      const refreshToken = localStorage.getItem('esap_refresh_token');
+      if (!refreshToken) return false;
+      const res = await fetch('/auth/api/v1/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      const newToken = data?.data?.accessToken || data?.accessToken;
+      if (!newToken) return false;
+      localStorage.setItem('esap_auth_token', newToken);
+      localStorage.setItem('esap_access_token', newToken);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {},
+    isRetry = false
+  ): Promise<T> {
+    const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
+
+    const token = localStorage.getItem('esap_auth_token');
+    const defaultHeaders: HeadersInit = {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Accept': 'application/json; charset=utf-8',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    const response = await fetch(url, {
+      ...options,
+      headers: { ...defaultHeaders, ...options.headers },
+    });
+
+    // Refresh automático en 401 (jwt expirado)
+    if (response.status === 401 && !isRetry) {
+      const refreshed = await this.tryRefreshToken();
+      if (refreshed) return this.request<T>(endpoint, options, true);
+    }
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: response.statusText }));
+      throw new Error(error.message || `HTTP ${response.status}`);
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (response.status === 204 || !contentType?.includes('application/json')) {
+      return {} as T;
+    }
+
+    try {
+      const text = await response.text();
+      return text ? JSON.parse(text) : ({} as T);
+    } catch {
+      return {} as T;
+    }
+  }
+
+  async get<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, { method: 'GET' });
+  }
+
+  async post<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async put<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async patch<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PATCH',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async delete<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, { method: 'DELETE' });
+  }
+
+  async upload<T>(
+    endpoint: string,
+    formData: FormData,
+    onProgress?: (progress: number) => void
+  ): Promise<T> {
+    const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
+    
+    // Agregar token si existe
+    const headers: HeadersInit = {};
+    const token = localStorage.getItem('esap_auth_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    // NO establecer Content-Type para FormData - el navegador lo hará automáticamente con el boundary
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      // Manejar progreso
+      if (onProgress) {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const percentComplete = (e.loaded / e.total) * 100;
+            onProgress(percentComplete);
+          }
+        });
+      }
+
+      // Manejar respuesta
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response = xhr.responseText 
+              ? JSON.parse(xhr.responseText) 
+              : {};
+            resolve(response as T);
+          } catch (error) {
+            resolve({} as T);
+          }
+        } else {
+          try {
+            const error = xhr.responseText 
+              ? JSON.parse(xhr.responseText) 
+              : { message: `HTTP ${xhr.status}` };
+            reject(new Error(error.message || `HTTP ${xhr.status}`));
+          } catch {
+            reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+          }
+        }
+      });
+
+      // Manejar errores
+      xhr.addEventListener('error', () => {
+        reject(new Error('Error de red al subir el archivo'));
+      });
+
+      xhr.addEventListener('abort', () => {
+        reject(new Error('Carga cancelada'));
+      });
+
+      // Abrir y enviar
+      xhr.open('POST', url);
+      
+      // Establecer headers
+      Object.keys(headers).forEach(key => {
+        xhr.setRequestHeader(key, headers[key]);
+      });
+
+      xhr.send(formData);
+    });
+  }
+}
+
+const client = new ControlInternoAPIClient();
+>>>>>>> Stashed changes
 
 // ============================================================================
 // SERVICIO DE CONTROL INTERNO

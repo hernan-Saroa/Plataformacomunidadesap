@@ -821,49 +821,39 @@ export function HallazgosYMejoramientoCompleto() {
         </div>
 
         {/* FLUJO VISUAL */}
-        <Card className="p-6 bg-gradient-to-r from-orange-50 to-purple-50">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <div
-                className={`text-center p-4 rounded-lg transition-all cursor-pointer ${
-                  tabActivo === 'hallazgos' ? 'bg-orange-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
-                }`}
-                onClick={() => setTabActivo('hallazgos')}
-              >
-                <AlertTriangle className={`w-8 h-8 mx-auto mb-2 ${tabActivo === 'hallazgos' ? 'text-white' : 'text-orange-600'}`} />
-                <p className="font-bold text-sm">1. Hallazgos</p>
-                <p className="text-xs opacity-80">Identificación</p>
-              </div>
+        <Card className="p-4 bg-gradient-to-r from-orange-50 to-purple-50">
+          <div className="grid grid-cols-3 gap-2">
+            <div
+              className={`text-center p-3 rounded-lg transition-all cursor-pointer ${
+                tabActivo === 'hallazgos' ? 'bg-orange-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+              onClick={() => setTabActivo('hallazgos')}
+            >
+              <AlertTriangle className={`w-6 h-6 mx-auto mb-1 ${tabActivo === 'hallazgos' ? 'text-white' : 'text-orange-600'}`} />
+              <p className="font-bold text-xs sm:text-sm">1. Hallazgos</p>
+              <p className="text-xs opacity-80 hidden sm:block">Identificación</p>
             </div>
 
-            <ChevronRight className="w-6 h-6 text-gray-400 mx-2" />
-
-            <div className="flex-1">
-              <div
-                className={`text-center p-4 rounded-lg transition-all cursor-pointer ${
-                  tabActivo === 'planes' ? 'bg-orange-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
-                }`}
-                onClick={() => setTabActivo('planes')}
-              >
-                <ListChecks className={`w-8 h-8 mx-auto mb-2 ${tabActivo === 'planes' ? 'text-white' : 'text-blue-600'}`} />
-                <p className="font-bold text-sm">2. Planes</p>
-                <p className="text-xs opacity-80">Mejoramiento</p>
-              </div>
+            <div
+              className={`text-center p-3 rounded-lg transition-all cursor-pointer ${
+                tabActivo === 'planes' ? 'bg-orange-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+              onClick={() => setTabActivo('planes')}
+            >
+              <ListChecks className={`w-6 h-6 mx-auto mb-1 ${tabActivo === 'planes' ? 'text-white' : 'text-blue-600'}`} />
+              <p className="font-bold text-xs sm:text-sm">2. Planes</p>
+              <p className="text-xs opacity-80 hidden sm:block">Mejoramiento</p>
             </div>
 
-            <ChevronRight className="w-6 h-6 text-gray-400 mx-2" />
-
-            <div className="flex-1">
-              <div
-                className={`text-center p-4 rounded-lg transition-all cursor-pointer ${
-                  tabActivo === 'seguimiento' ? 'bg-orange-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
-                }`}
-                onClick={() => setTabActivo('seguimiento')}
-              >
-                <Activity className={`w-8 h-8 mx-auto mb-2 ${tabActivo === 'seguimiento' ? 'text-white' : 'text-green-600'}`} />
-                <p className="font-bold text-sm">3. Seguimiento</p>
-                <p className="text-xs opacity-80">Monitoreo</p>
-              </div>
+            <div
+              className={`text-center p-3 rounded-lg transition-all cursor-pointer ${
+                tabActivo === 'seguimiento' ? 'bg-orange-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+              onClick={() => setTabActivo('seguimiento')}
+            >
+              <Activity className={`w-6 h-6 mx-auto mb-1 ${tabActivo === 'seguimiento' ? 'text-white' : 'text-green-600'}`} />
+              <p className="font-bold text-xs sm:text-sm">3. Seguimiento</p>
+              <p className="text-xs opacity-80 hidden sm:block">Monitoreo</p>
             </div>
           </div>
         </Card>
@@ -917,26 +907,6 @@ function TabHallazgos() {
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
-      {/* ESTADÍSTICAS */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="p-4 border-2" style={{ borderColor: '#F97316', background: '#FFF7ED' }}>
-          <p className="text-sm font-bold text-gray-700 mb-1">Total Hallazgos</p>
-          <p className="text-3xl font-black" style={{ color: '#F97316' }}>{estadisticas.total}</p>
-        </Card>
-        <Card className="p-4 border-2" style={{ borderColor: '#DC2626', background: '#FEE2E2' }}>
-          <p className="text-sm font-bold text-gray-700 mb-1">Detectados</p>
-          <p className="text-3xl font-black" style={{ color: '#DC2626' }}>{estadisticas.detectados}</p>
-        </Card>
-        <Card className="p-4 border-2" style={{ borderColor: '#8B5CF6', background: '#F3E8FF' }}>
-          <p className="text-sm font-bold text-gray-700 mb-1">En Seguimiento</p>
-          <p className="text-3xl font-black" style={{ color: '#8B5CF6' }}>{estadisticas.enSeguimiento}</p>
-        </Card>
-        <Card className="p-4 border-2" style={{ borderColor: '#10B981', background: '#D1FAE5' }}>
-          <p className="text-sm font-bold text-gray-700 mb-1">Cerrados</p>
-          <p className="text-3xl font-black" style={{ color: '#10B981' }}>{estadisticas.cerrados}</p>
-        </Card>
-      </div>
-
       {/* BARRA DE HERRAMIENTAS */}
       <Card className="p-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -998,22 +968,25 @@ function TabHallazgos() {
 
       {/* VISTA KANBAN */}
       {vista === 'kanban' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          {COLUMNAS_KANBAN_HALLAZGOS.map(columna => {
-            const hallazgosColumna = hallazgosFiltrados.filter(h => h.estado === columna.id);
-            return (
-              <ColumnaKanbanHallazgo
-                key={columna.id}
-                columna={columna}
-                hallazgos={hallazgosColumna}
-                onDrop={(hallazgoId) => moverHallazgo(hallazgoId, columna.id)}
-                onAbrirDetalle={(hallazgo) => {
-                  setHallazgoSeleccionado(hallazgo);
-                  setMostrarDetalle(true);
-                }}
-              />
-            );
-          })}
+        <div className="overflow-x-auto pb-2">
+          <div className="flex gap-4" style={{ minWidth: `${COLUMNAS_KANBAN_HALLAZGOS.length * 240}px` }}>
+            {COLUMNAS_KANBAN_HALLAZGOS.map(columna => {
+              const hallazgosColumna = hallazgosFiltrados.filter(h => h.estado === columna.id);
+              return (
+                <div key={columna.id} className="flex-1" style={{ minWidth: '220px' }}>
+                  <ColumnaKanbanHallazgo
+                    columna={columna}
+                    hallazgos={hallazgosColumna}
+                    onDrop={(hallazgoId) => moverHallazgo(hallazgoId, columna.id)}
+                    onAbrirDetalle={(hallazgo) => {
+                      setHallazgoSeleccionado(hallazgo);
+                      setMostrarDetalle(true);
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
