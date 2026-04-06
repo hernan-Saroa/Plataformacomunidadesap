@@ -415,9 +415,35 @@ function ModalAlertaCierreUpload({ cantidadCargas, onCancelarYCerrar, onContinua
 
 // ─── Sub-componente: Vista previa de documento ───────────────────────────────
 
-function PreviewDocumento({ archivo, onClose }: { archivo: Archivo; onClose: () => void }) {
+function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; procesoId: string; onClose: () => void }) {
+  const [documentUrl, setDocumentUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const isZip   = archivo.extension === 'zip';
-  const isImage = ['jpg', 'png', 'jpeg'].includes(archivo.extension);
+  const isImage = ['jpg', 'png', 'jpeg', 'gif', 'webp'].includes(archivo.extension);
+  const isPdf   = archivo.extension === 'pdf';
+
+  useEffect(() => {
+    if (isZip) return; // No preview for ZIP
+
+    const loadDocument = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // For now, we'll use the download URL if available, otherwise construct it
+        // This is a simplified approach - in production you'd want proper URL construction
+        const url = `http://localhost:3005/control-disciplinario/api/v1/disciplinary-processes/${procesoId}/documents/${archivo.id}/download`;
+        setDocumentUrl(url);
+      } catch (err) {
+        setError('No se pudo cargar el documento');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDocument();
+  }, [archivo.id, procesoId, isZip]);
 
   const TIPO_META: Record<string, { color: string; bg: string; label: string }> = {
     auto:      { color: '#7C3AED', bg: '#F5F3FF', label: 'Auto'      },
@@ -3046,6 +3072,32 @@ export function ModalDetallesProceso({
     }
   }, [proceso?.id]);
 
+  // ─── Handlers para documentos ───────────────────────────────────────────────────
+
+  const handleVerDocumento = useCallback((archivo: Archivo) => {
+    if (!proceso?.id) return;
+
+    // Para PDFs e imágenes, abrir visor
+    if (archivo.extension === 'pdf' || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(archivo.extension)) {
+      setPreviewArchivo(archivo);
+    } else {
+      // Para otros tipos, descargar
+      handleDescargarDocumento(archivo);
+    }
+  }, [proceso?.id]);
+
+  const handleDescargarDocumento = useCallback(async (archivo: Archivo) => {
+    if (!proceso?.id) return;
+
+    try {
+      await disciplinaryService.downloadDocument(proceso.id, archivo.id, archivo.nombre + '.' + archivo.extension);
+      toast.success('Documento descargado correctamente');
+    } catch (error: any) {
+      console.error('[ModalDetallesProceso] Error descargando documento:', error);
+      toast.error(error?.message || 'No fue posible descargar el documento');
+    }
+  }, [proceso?.id]);
+
   // ═══ Recargar Archivo (reemplazar auto corregido) ═══
   const handleRecargarArchivo = useCallback((archivo: Archivo) => {
     setAutoRecargar(archivo);
@@ -3178,14 +3230,25 @@ export function ModalDetallesProceso({
                 <RefreshCw className="w-3 h-3" /><span className="hidden sm:inline">Recargar</span>
               </button>
             )}
-            <button onClick={() => setPreviewArchivo(archivo)}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all"
-              style={{ borderColor: '#2962FF', color: '#003DA5', background: '#EFF6FF' }}
-              onMouseEnter={e => e.currentTarget.style.background = '#DBEAFE'}
-              onMouseLeave={e => e.currentTarget.style.background = '#EFF6FF'}
-              title={isZip ? 'No hay vista disponible para .ZIP' : 'Ver documento'}>
-              <Eye className="w-3 h-3" /><span className="hidden sm:inline">Ver</span>
-            </button>
+            {isZip ? (
+              <button onClick={() => handleDescargarDocumento(archivo)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all"
+                style={{ borderColor: '#D97706', color: '#92400E', background: '#FFFBEB' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#FEF3C7'}
+                onMouseLeave={e => e.currentTarget.style.background = '#FFFBEB'}
+                title="Descargar archivo .ZIP">
+                <Download className="w-3 h-3" /><span className="hidden sm:inline">Descargar</span>
+              </button>
+            ) : (
+              <button onClick={() => handleVerDocumento(archivo)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all"
+                style={{ borderColor: '#2962FF', color: '#003DA5', background: '#EFF6FF' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#DBEAFE'}
+                onMouseLeave={e => e.currentTarget.style.background = '#EFF6FF'}
+                title="Ver documento">
+                <Eye className="w-3 h-3" /><span className="hidden sm:inline">Ver</span>
+              </button>
+            )}
             <button onClick={() => toast.success(`Descargando: ${archivo.nombre}.${archivo.extension}`)}
               className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all border-gray-300 text-gray-600 bg-white hover:bg-gray-50"
               title="Descargar archivo">
@@ -3619,21 +3682,21 @@ export function ModalDetallesProceso({
                       </div>
                     )}
 
-                    {/* Archivos Adjuntos de la Noticia */}
-                    {cantAdjuntos > 0 && (
+                    {/* Documentos del Expediente desde DB */}
+                    {TODOS_ARCHIVOS.length > 0 && (
                       <div className="rounded-xl border border-gray-200 p-3">
                         <div className="flex items-center gap-1.5 mb-2">
                           <Paperclip className="w-3.5 h-3.5 text-gray-500" />
                           <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">
-                            Adjuntos de la Noticia ({cantAdjuntos})
+                            Documentos del Expediente ({TODOS_ARCHIVOS.length})
                           </span>
                         </div>
                         <div className="space-y-1.5">
-                          {proceso.archivosAdjuntos!.map((archivo, idx) => {
-                            const esImagen = archivo.tipo.includes('image');
-                            const esPdf = archivo.tipo.includes('pdf');
+                          {TODOS_ARCHIVOS.slice(0, 3).map((archivo) => {
+                            const esImagen = archivo.extension === 'jpg' || archivo.extension === 'png' || archivo.extension === 'jpeg' || archivo.extension === 'gif';
+                            const esPdf = archivo.extension === 'pdf';
                             return (
-                              <div key={idx} className="flex items-center gap-2.5 p-2 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors">
+                              <div key={archivo.id} className="flex items-center gap-2.5 p-2 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors">
                                 <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
                                   style={{ backgroundColor: esPdf ? '#FEE2E2' : esImagen ? '#EDE9FE' : '#F3F4F6' }}>
                                   <FileText className="w-3.5 h-3.5" style={{ color: esPdf ? '#DC2626' : esImagen ? '#7C3AED' : '#6B7280' }} />
@@ -3641,16 +3704,24 @@ export function ModalDetallesProceso({
                                 <div className="flex-1 min-w-0">
                                   <p className="text-xs font-semibold text-gray-900 truncate">{archivo.nombre}</p>
                                   <p className="text-[10px] text-gray-400">
-                                    {archivo.tamano < 1024 * 1024 ? `${(archivo.tamano / 1024).toFixed(0)} KB` : `${(archivo.tamano / (1024 * 1024)).toFixed(1)} MB`}
-                                    {' · '}{new Date(archivo.fechaSubida).toLocaleDateString('es-CO')}
+                                    {archivo.tamaño} · {archivo.fecha} · {archivo.firmante}
                                   </p>
                                 </div>
-                                <button className="p-1.5 rounded-lg hover:bg-gray-200 transition-colors" onClick={() => toast.success(`Descargando: ${archivo.nombre}`)}>
+                                <button className="p-1.5 rounded-lg hover:bg-gray-200 transition-colors" onClick={() => handleDescargarDocumento(archivo)}>
                                   <Download className="w-3.5 h-3.5 text-gray-400" />
                                 </button>
                               </div>
                             );
                           })}
+                          {TODOS_ARCHIVOS.length > 3 && (
+                            <button
+                              onClick={() => setTabActiva('archivos')}
+                              className="w-full flex items-center gap-1 px-3 py-2 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors text-xs font-semibold text-blue-700"
+                            >
+                              <FolderOpen className="w-3.5 h-3.5" />
+                              Ver todos los {TODOS_ARCHIVOS.length} documentos
+                            </button>
+                          )}
                         </div>
                       </div>
                     )}
@@ -5204,6 +5275,7 @@ export function ModalDetallesProceso({
         {previewArchivo && (
           <PreviewDocumento
             archivo={previewArchivo}
+            procesoId={proceso.id}
             onClose={() => setPreviewArchivo(null)}
           />
         )}
