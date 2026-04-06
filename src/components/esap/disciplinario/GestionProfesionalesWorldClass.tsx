@@ -10,7 +10,7 @@
  * - Integración con nomenclatura única de procesos
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Search, Filter, Download, Eye, MoreVertical,
@@ -22,6 +22,7 @@ import {
   ArrowUpDown, ArrowUp, ArrowDown, Table2, Grid3x3, FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
 // ============================================================================
 // INTERFACES
@@ -192,7 +193,47 @@ interface Props {
 
 export function GestionProfesionalesWorldClass({ onVerProcesos }: Props) {
   // Estados principales
-  const [profesionales] = useState<Profesional[]>(PROFESIONALES_MOCK);
+  const [profesionales, setProfesionales] = useState<Profesional[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Cargar profesionales desde el backend
+  useEffect(() => {
+    const fetchProfesionales = async () => {
+      try {
+        setLoading(true);
+        const data = await disciplinaryService.getProfesionales();
+        // Mapear los datos del backend al formato del componente
+        const mappedProfesionales: Profesional[] = data.map((p: any) => ({
+          id: p.id,
+          nombre: p.nombreCompleto || p.nombre || '',
+          cargo: p.cargo || 'Profesional',
+          especialidad: p.especialidad || 'General',
+          email: p.email || '',
+          telefono: p.telefono || 'N/A',
+          procesosAsignados: p.procesosAsignados || 0,
+          capacidadMaxima: p.capacidadMaxima || 10,
+          procesosVencidos: p.procesosVencidos || 0,
+          procesosEnRiesgo: p.procesosEnRiesgo || 0,
+          procesosAlDia: p.procesosAlDia || p.procesosAsignados || 0,
+          fechaIngreso: p.fechaIngreso || new Date().toISOString().split('T')[0],
+          estado: ((p.estado || 'ACTIVO').toLowerCase() === 'activo' ? 'activo' : (p.estado || 'ACTIVO').toLowerCase() === 'vacaciones' ? 'vacaciones' : (p.estado || 'ACTIVO').toLowerCase() === 'comision' ? 'comision' : 'inactivo') as 'activo' | 'inactivo' | 'vacaciones' | 'comision',
+          tipoContrato: (p.tipoContrato || 'Contratista') as 'Planta' | 'Contratista' | 'OPS',
+          territorial: p.territorial || 'Nacional',
+          etapasAsignadas: p.etapasAsignadas || []
+        }));
+        setProfesionales(mappedProfesionales);
+      } catch (error) {
+        console.error('Error fetching professionals:', error);
+        toast.error('Error al cargar profesionales');
+        // Usar datos mock como fallback
+        setProfesionales(PROFESIONALES_MOCK);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfesionales();
+  }, []);
   const [profesionalSeleccionado, setProfesionalSeleccionado] = useState<Profesional | null>(null);
   
   // Estados de UI
@@ -532,7 +573,12 @@ export function GestionProfesionalesWorldClass({ onVerProcesos }: Props) {
 
       {/* Listado de profesionales */}
       <div className="flex-1 overflow-y-auto">
-        {profesionalesFiltrados.length === 0 ? (
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-12">
+            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="text-gray-500 font-medium">Cargando profesionales...</p>
+          </div>
+        ) : profesionalesFiltrados.length === 0 ? (
           <div className="text-center py-12">
             <Users className="w-12 h-12 mx-auto mb-4" style={{ color: '#9CA3AF' }} />
             <p className="font-semibold" style={{ color: '#6B7280' }}>

@@ -47,7 +47,7 @@ export class TareasAuditoriaService {
       historial.tipoEvento = tipoEvento;
       historial.fecha = new Date(fecha);
       historial.hora = hora;
-      historial.usuarioId = 1; // TODO: Obtener del contexto de autenticación
+      historial.usuarioId = null; // TODO: UUID de auth.personas desde contexto de autenticación
       historial.accion = accion;
       historial.descripcion = descripcion;
       historial.cambios = [];

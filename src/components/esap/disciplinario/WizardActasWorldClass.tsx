@@ -797,7 +797,7 @@ export function WizardActasWorldClass({
                 )}
               </button>
               
-              <button
+              {/* <button
                 onClick={() => setVistaActual('lista')}
                 className={`relative px-4 sm:px-5 py-3 rounded-t-2xl font-bold text-sm transition-all duration-300 shrink-0 ${
                   vistaActual === 'lista'
@@ -825,7 +825,7 @@ export function WizardActasWorldClass({
                     transition={{ type: 'spring', duration: 0.5 }}
                   />
                 )}
-              </button>
+              </button> */}
             </div>
           </div>
         </div>

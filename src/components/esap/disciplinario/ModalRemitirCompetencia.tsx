@@ -5,13 +5,14 @@
  * Genera numero RC (Remision por Competencia) y registra en bitacora.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Send, AlertTriangle, FileText, Building2, Info, ExternalLink, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   WorldClassModal, WCLabel, WCSelect, WCTextarea, WCResumenBloque,
   WCInfoBox, WCWarningBox, WCBotonPrimario, WCBotonSecundario, WCInput,
 } from './WorldClassModalBase';
+import { tiposRemisionService, TipoRemision } from '../../../services/api/tiposRemisionService';
 
 interface NoticiaRemitirProps {
   id: string;
@@ -53,13 +54,7 @@ const ENTIDADES_POR_DEFECTO = [
   { id: 'oficina-control', nombre: 'Oficina de Control Interno Disciplinario (otra entidad)', correo: '' },
 ];
 
-const TIPOS_REMISION = [
-  { value: 'sin-competencia',      label: 'Sin competencia disciplinaria' },
-  { value: 'factor-territorial',   label: 'Por factor territorial' },
-  { value: 'factor-funcional',     label: 'Por factor funcional (servidor de otra entidad)' },
-  { value: 'naturaleza-falta',     label: 'Por naturaleza de la falta (penal, fiscal)' },
-  { value: 'prelacion-competencia', label: 'Por prelacion de competencia (Procuraduria)' },
-];
+// Los tipos de remisión se cargan dinámicamente desde el backend
 
 const FUNDAMENTOS_LEGALES = [
   { value: 'art-2-ley-1952',    label: 'Art. 2 - Ley 1952 de 2019 (Titularidad de la accion)' },
@@ -75,6 +70,33 @@ export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClos
   const [tipoRemision, setTipoRemision] = useState('');
   const [justificacion, setJustificacion] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [tiposRemision, setTiposRemision] = useState<TipoRemision[]>([]);
+  const [loadingTipos, setLoadingTipos] = useState(true);
+
+  // Cargar tipos de remisión desde el backend
+  useEffect(() => {
+    cargarTiposRemision();
+  }, []);
+
+  const cargarTiposRemision = async () => {
+    try {
+      setLoadingTipos(true);
+      const data = await tiposRemisionService.getActivas();
+      setTiposRemision(data);
+    } catch (error) {
+      console.error('Error al cargar tipos de remisión:', error);
+      // Fallback a datos hardcodeados si falla el backend
+      setTiposRemision([
+        { id: 'sin-competencia', codigo: 'sin-competencia', nombre: 'Sin competencia disciplinaria', activo: true },
+        { id: 'factor-territorial', codigo: 'factor-territorial', nombre: 'Por factor territorial', activo: true },
+        { id: 'factor-funcional', codigo: 'factor-funcional', nombre: 'Por factor funcional (servidor de otra entidad)', activo: true },
+        { id: 'naturaleza-falta', codigo: 'naturaleza-falta', nombre: 'Por naturaleza de la falta (penal, fiscal)', activo: true },
+        { id: 'prelacion-competencia', codigo: 'prelacion-competencia', nombre: 'Por prelacion de competencia (Procuraduria)', activo: true },
+      ]);
+    } finally {
+      setLoadingTipos(false);
+    }
+  };
 
   // Combinar entidades configuradas con las por defecto
   const entidades = (entidadesConfiguradas && entidadesConfiguradas.length > 0)
@@ -203,11 +225,15 @@ export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClos
       {/* Tipo de remision */}
       <div>
         <WCLabel required>Tipo de remision</WCLabel>
-        <WCSelect value={tipoRemision} onChange={e => setTipoRemision(e.target.value)}>
+        <WCSelect value={tipoRemision} onChange={e => setTipoRemision(e.target.value)} disabled={loadingTipos}>
           <option value="">Selecciona el tipo...</option>
-          {TIPOS_REMISION.map(t => (
-            <option key={t.value} value={t.value}>{t.label}</option>
-          ))}
+          {loadingTipos ? (
+            <option value="" disabled>Cargando tipos...</option>
+          ) : (
+            tiposRemision.map(t => (
+              <option key={t.id} value={t.codigo}>{t.nombre}</option>
+            ))
+          )}
         </WCSelect>
       </div>
 

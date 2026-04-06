@@ -248,14 +248,13 @@ export function ModalReunionApertura({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const esVirtual = modalidad === 'virtual';
     const form = e.target as HTMLFormElement;
     const obs = (form.elements.namedItem('observaciones') as HTMLTextAreaElement)?.value || '';
     if (!fecha || !hora) {
       toast.error('Complete Fecha y Hora');
       return;
     }
-    if (!esVirtual && (!participantes || !temasTratados)) {
+    if (!participantes || !temasTratados) {
       toast.error('Complete Participantes y Temas tratados');
       return;
     }
@@ -266,12 +265,12 @@ export function ModalReunionApertura({
         hora,
         modalidad,
         lugar,
-        participantes: esVirtual ? '' : participantes,
-        temasTratados: esVirtual ? '' : temasTratados,
-        elaboradoPor: esVirtual ? '' : elaboradoPor,
-        revisadoPor: esVirtual ? '' : revisadoPor,
-        observaciones: esVirtual ? '' : obs,
-        actaBibliotecaId: esVirtual ? undefined : (actaBibliotecaId || undefined),
+        participantes,
+        temasTratados,
+        elaboradoPor,
+        revisadoPor,
+        observaciones: obs,
+        actaBibliotecaId: actaBibliotecaId || undefined,
       };
       if (onGuardar) {
         await onGuardar(datos);
@@ -314,7 +313,7 @@ export function ModalReunionApertura({
           revisadoPor={revisadoPor}
           setRevisadoPor={setRevisadoPor}
           observaciones={observaciones}
-          mostrarCamposDetalle={modalidad === 'presencial'}
+          mostrarCamposDetalle={true}
         >
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -323,8 +322,8 @@ export function ModalReunionApertura({
                 className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-0.5">Hora</label>
-              <input type="time" value={hora} onChange={(e) => setHora(e.target.value)}
+              <label className="block text-xs font-medium text-gray-700 mb-0.5">Hora *</label>
+              <input type="time" value={hora} onChange={(e) => setHora(e.target.value)} required
                 className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
@@ -343,7 +342,7 @@ export function ModalReunionApertura({
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-0.5">
-              {modalidad === 'virtual' ? 'Link de reunión' : 'Lugar'}
+              {modalidad === 'virtual' ? 'Link de reunión (URL)' : 'Lugar'}
             </label>
             <input
               type={modalidad === 'virtual' ? 'url' : 'text'}
@@ -353,22 +352,18 @@ export function ModalReunionApertura({
               className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          {modalidad === 'presencial' && (
-            <>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-0.5">Participantes *</label>
-                <textarea value={participantes} onChange={(e) => setParticipantes(e.target.value)} rows={3} required
-                  placeholder="Ej: Fernando Ávila, Lucía Torres..."
-                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[70px]" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-0.5">Temas tratados *</label>
-                <textarea value={temasTratados} onChange={(e) => setTemasTratados(e.target.value)} rows={4} required
-                  placeholder="Presentación equipo, alcance, cronograma..."
-                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[90px]" />
-              </div>
-            </>
-          )}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-0.5">Participantes *</label>
+            <textarea value={participantes} onChange={(e) => setParticipantes(e.target.value)} rows={3} required
+              placeholder="Ej: Fernando Ávila, Lucía Torres..."
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[70px]" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-0.5">Temas tratados *</label>
+            <textarea value={temasTratados} onChange={(e) => setTemasTratados(e.target.value)} rows={4} required
+              placeholder="Presentación equipo, alcance, cronograma..."
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[90px]" />
+          </div>
         </FormReunionBase>
       </DialogContent>
     </Dialog>
@@ -434,14 +429,13 @@ export function ModalReunionCierre({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const esVirtual = modalidad === 'virtual';
     const form = e.target as HTMLFormElement;
     const obs = (form.elements.namedItem('observaciones') as HTMLTextAreaElement)?.value || '';
     if (!fecha || !hora) {
       toast.error('Complete Fecha y Hora');
       return;
     }
-    if (!esVirtual && (!participantes || !temasTratados)) {
+    if (!participantes || !temasTratados) {
       toast.error('Complete Participantes y Temas tratados');
       return;
     }
@@ -452,12 +446,12 @@ export function ModalReunionCierre({
         hora,
         modalidad,
         lugar,
-        participantes: esVirtual ? '' : participantes,
-        temasTratados: esVirtual ? '' : temasTratados,
-        elaboradoPor: esVirtual ? '' : elaboradoPor,
-        revisadoPor: esVirtual ? '' : revisadoPor,
-        observaciones: esVirtual ? '' : obs,
-        actaBibliotecaId: esVirtual ? undefined : (actaBibliotecaId || undefined),
+        participantes,
+        temasTratados,
+        elaboradoPor,
+        revisadoPor,
+        observaciones: obs,
+        actaBibliotecaId: actaBibliotecaId || undefined,
       };
       if (onGuardar) {
         await onGuardar(datos);
@@ -500,7 +494,7 @@ export function ModalReunionCierre({
           revisadoPor={revisadoPor}
           setRevisadoPor={setRevisadoPor}
           observaciones={observaciones}
-          mostrarCamposDetalle={modalidad === 'presencial'}
+          mostrarCamposDetalle={true}
         >
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -509,8 +503,8 @@ export function ModalReunionCierre({
                 className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-0.5">Hora</label>
-              <input type="time" value={hora} onChange={(e) => setHora(e.target.value)}
+              <label className="block text-xs font-medium text-gray-700 mb-0.5">Hora *</label>
+              <input type="time" value={hora} onChange={(e) => setHora(e.target.value)} required
                 className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
@@ -529,7 +523,7 @@ export function ModalReunionCierre({
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-0.5">
-              {modalidad === 'virtual' ? 'Link de reunión' : 'Lugar'}
+              {modalidad === 'virtual' ? 'Link de reunión (URL)' : 'Lugar'}
             </label>
             <input
               type={modalidad === 'virtual' ? 'url' : 'text'}
@@ -539,22 +533,18 @@ export function ModalReunionCierre({
               className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          {modalidad === 'presencial' && (
-            <>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-0.5">Participantes *</label>
-                <textarea value={participantes} onChange={(e) => setParticipantes(e.target.value)} rows={3} required
-                  placeholder="Ej: Auditor Líder, responsable del área..."
-                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[70px]" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-0.5">Temas tratados *</label>
-                <textarea value={temasTratados} onChange={(e) => setTemasTratados(e.target.value)} rows={4} required
-                  placeholder="Hallazgos, evidencias, acuerdos..."
-                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[90px]" />
-              </div>
-            </>
-          )}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-0.5">Participantes *</label>
+            <textarea value={participantes} onChange={(e) => setParticipantes(e.target.value)} rows={3} required
+              placeholder="Ej: Auditor Líder, responsable del área..."
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[70px]" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-0.5">Temas tratados *</label>
+            <textarea value={temasTratados} onChange={(e) => setTemasTratados(e.target.value)} rows={4} required
+              placeholder="Hallazgos, evidencias, acuerdos..."
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 min-h-[90px]" />
+          </div>
         </FormReunionBase>
       </DialogContent>
     </Dialog>

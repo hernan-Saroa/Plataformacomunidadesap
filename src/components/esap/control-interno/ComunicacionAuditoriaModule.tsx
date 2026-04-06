@@ -359,6 +359,10 @@ export const ComunicacionAuditoriaModule: React.FC<{
           fechaInicio: audData.fechaInicio || prev.fechaInicio,
           fechaFin: audData.fechaFin || prev.fechaFin,
           hallazgos: h,
+          ...(audData.tipo && { tipo: audData.tipo }),
+          ...((audData.estadoKanban || audData.fase) && { estado: audData.estadoKanban || audData.fase }),
+          ...((audData.nivelRiesgo || audData.riesgoKanban || audData.calificacionRiesgo) && { nivelRiesgo: audData.nivelRiesgo || audData.riesgoKanban || audData.calificacionRiesgo }),
+          ...(audData.auditorLider?.email && { auditorLiderEmail: audData.auditorLider.email }),
           // Variables para PDF e informe (procedentes de BD)
           ...(audData.territorial && { territorial: audData.territorial }),
           ...(audData.alcance && { alcance: audData.alcance }),
@@ -369,6 +373,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
           ...(audData.responsable && { responsable: audData.responsable }),
           ...(audData.responsableAreaNombre && { responsableUnidad: audData.responsableAreaNombre }),
           ...(audData.responsableAreaCargo && { cargo: audData.responsableAreaCargo }),
+          ...(audData.responsableAreaEmail && { responsableEmail: audData.responsableAreaEmail }),
           ...(audData.areaObjetivo && { areaResponsable: audData.areaObjetivo }),
           ...(audData.territorialInfo && {
             lugarEjecucion: audData.territorialInfo.ciudad
@@ -874,13 +879,43 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 onDescargarPDF={async () => {
                   try {
                     const { exportarPDFInformeCierre } = await import('./services/exportarPDFInformeCierreEjecutivo');
+                    const totalHallazgos = hallazgos.length;
+                    const hallazgosCriticos = hallazgos.filter((h) => String(h.gravedad || '').toUpperCase() === 'CRITICO').length;
+                    const hallazgosMayores = hallazgos.filter((h) => String(h.gravedad || '').toUpperCase() === 'GRAVE').length;
+                    const hallazgosMenores = hallazgos.filter((h) => {
+                      const g = String(h.gravedad || '').toUpperCase();
+                      return g === 'MODERADO' || g === 'LEVE';
+                    }).length;
+
                     const datos: import('./services/exportarPDFInformeCierreEjecutivo').DatosInformeCierre = {
                       auditoria: {
                         codigo: auditoria.codigo,
                         nombre: auditoria.nombre,
+                        tipo: (auditoria as any).tipo || (auditoria as any).tipoAuditoria,
+                        estado: (auditoria as any).estado || estadoAuditoriaProp,
+                        areaAuditable: (auditoria as any).areaAuditable || (auditoria as any).areaResponsable || (auditoria as any).areaObjetivo,
+                        procesoNombre: auditoria.proceso,
+                        nivelRiesgo: (auditoria as any).nivelRiesgo || (auditoria as any).riesgoKanban || (auditoria as any).calificacionRiesgo,
                         auditorLider: typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre || '—',
+                        auditorLiderEmail: (auditoria as any).auditorLiderEmail || (auditoria as any).auditorLider?.email,
                         territorial: (auditoria as any).territorial,
+                        responsableArea: {
+                          nombre: (auditoria as any).responsableArea?.nombre || (auditoria as any).responsableUnidad || (auditoria as any).responsable,
+                          cargo: (auditoria as any).responsableArea?.cargo || (auditoria as any).cargo,
+                          email: (auditoria as any).responsableArea?.email || (auditoria as any).responsableEmail,
+                          telefono: (auditoria as any).responsableArea?.telefono,
+                        },
+                        equipoAuditores: (auditoria as any).equipoAuditores,
                         cronograma: { fechaInicio: auditoria.fechaInicio, fechaFin: auditoria.fechaFin },
+                        progreso: { general: (auditoria as any).progresoGeneral },
+                        estadisticas: {
+                          totalHallazgos,
+                          hallazgosCriticos,
+                          hallazgosMayores,
+                          hallazgosMenores,
+                          documentosCargados: (auditoria as any).documentosCargados || (auditoria as any).totalDocumentos,
+                          notificacionesEnviadas: (auditoria as any).notificacionesEnviadas,
+                        },
                       },
                       resumen: resumenCierre ? { ...resumenCierre, leccionesAprendidas, recomendacionesFuturasAuditorias: recomendacionesFuturas } : null,
                       planes: planesParaVerificacion || [],

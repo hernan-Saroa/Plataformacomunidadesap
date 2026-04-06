@@ -233,11 +233,31 @@ function generarIniciales(nombre: string): string {
 }
 
 /**
- * Formatea fecha al formato DD/MM/YYYY
+ * Formatea fecha al formato DD/MM/YYYY (sin problemas de timezone)
  */
 function formatearFecha(fecha: string): string {
   if (!fecha) return '';
-  const date = new Date(fecha);
+  
+  // Limpiar parte de tiempo si existe
+  const fechaLimpia = fecha.split('T')[0];
+  
+  // Si ya está en formato DD/MM/YYYY, retornar directamente
+  if (fechaLimpia.includes('/')) return fechaLimpia;
+  
+  // Parsear formato ISO YYYY-MM-DD manualmente para evitar problemas de timezone
+  if (fechaLimpia.includes('-')) {
+    const partes = fechaLimpia.split('-');
+    if (partes.length === 3) {
+      const [anio, mes, dia] = partes;
+      // Validar que son números válidos
+      if (!isNaN(Number(anio)) && !isNaN(Number(mes)) && !isNaN(Number(dia))) {
+        return `${dia}/${mes}/${anio}`;
+      }
+    }
+  }
+  
+  // Fallback: usar Date pero con hora 12:00 para evitar cambio de día
+  const date = new Date(fecha + 'T12:00:00');
   if (isNaN(date.getTime())) return fecha;
   
   const dia = date.getDate().toString().padStart(2, '0');
@@ -360,12 +380,24 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     fechaInicio: formatearFecha(auditoriaBackend.fechaInicio),
     // ✅ CRONOGRAMA 3 ETAPAS COMPLETO
     // Etapa 1: Planeación
-    fechaFinPlaneacion: auditoriaBackend.fechaFinPlaneacion ? formatearFecha(auditoriaBackend.fechaFinPlaneacion) : undefined,
+    fechaFinPlaneacion: (() => {
+      const val = auditoriaBackend.fechaFinPlaneacion;
+      return val ? formatearFecha(val) : undefined;
+    })(),
     // Etapa 2: Ejecución
-    fechaInicioEjecucion: auditoriaBackend.fechaInicioEjecucion ? formatearFecha(auditoriaBackend.fechaInicioEjecucion) : undefined,
-    fechaFinEjecucion: auditoriaBackend.fechaFinEjecucion ? formatearFecha(auditoriaBackend.fechaFinEjecucion) : undefined,
+    fechaInicioEjecucion: (() => {
+      const val = auditoriaBackend.fechaInicioEjecucion;
+      return val ? formatearFecha(val) : undefined;
+    })(),
+    fechaFinEjecucion: (() => {
+      const val = auditoriaBackend.fechaFinEjecucion;
+      return val ? formatearFecha(val) : undefined;
+    })(),
     // Etapa 3: Comunicación
-    fechaInicioComunicacion: auditoriaBackend.fechaInicioComunicacion ? formatearFecha(auditoriaBackend.fechaInicioComunicacion) : undefined,
+    fechaInicioComunicacion: (() => {
+      const val = auditoriaBackend.fechaInicioComunicacion;
+      return val ? formatearFecha(val) : undefined;
+    })(),
     fechaFin: formatearFecha(auditoriaBackend.fechaFin),
     progreso,
     // Asegurar que hallazgos sea un número
@@ -474,7 +506,6 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
           iniciales: generarIniciales(a.nombre)
         }));
         setAuditores(auditoresTransformados);
-        console.log(`✅ [useAuditoriasKanban] ${auditoresTransformados.length} auditores cargados`);
         return auditoresTransformados;
       }
       return [];
@@ -492,21 +523,15 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
       setLoading(true);
       setError(null);
 
-      console.log('🔍 [useAuditoriasKanban] Iniciando carga de auditorías...');
-
       // Obtener auditorías del backend
       const response = await controlInternoService.getAuditorias();
-      
-      console.log('📦 [useAuditoriasKanban] Respuesta del backend:', response);
       
       if (Array.isArray(response)) {
         // ✅ MEJORADO: Pasar auditores disponibles para resolver nombres
         const auditoriasTransformadas = response.map(aud => 
           transformarAuditoria(aud, auditoresDisponibles)
         );
-        console.log('🔄 [useAuditoriasKanban] Auditorías transformadas:', auditoriasTransformadas);
         setAuditorias(auditoriasTransformadas);
-        console.log(`✅ [useAuditoriasKanban] ${auditoriasTransformadas.length} auditorías cargadas del backend`);
       } else {
         console.warn('[useAuditoriasKanban] Respuesta no es array:', response);
         setAuditorias([]);

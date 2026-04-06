@@ -24,6 +24,8 @@ import { EntidadRemision } from './entities/entidad-remision.entity';
 import { DisciplinaryProcessActuacion } from './entities/disciplinary-process-actuacion.entity';
 import { DisciplinaryProcessTask } from './entities/disciplinary-process-task.entity';
 import { DisciplinaryProcessNote } from './entities/disciplinary-process-note.entity';
+import { DisciplinaryNewsProcess } from './entities/disciplinary-news-process.entity';
+import { DisciplinaryProcessReassignmentRequest } from './entities/disciplinary-process-reassignment-request.entity';
 
 // Controllers
 import { NewsController } from './controllers/news.controller';
@@ -39,6 +41,7 @@ import { JobsController } from './controllers/jobs.controller';
 import { DisciplinaryProcessActuacionesController } from './controllers/disciplinary-process-actuaciones.controller';
 import { DisciplinaryProcessTasksController } from './controllers/disciplinary-process-tasks.controller';
 import { DisciplinaryProcessNotesController } from './controllers/disciplinary-process-notes.controller';
+import { DisciplinaryProcessReassignmentController } from './controllers/disciplinary-process-reassignment.controller';
 
 // Services
 import { NewsService } from './services/news.service';
@@ -84,9 +87,13 @@ import { CompartirExpedienteService } from './services/compartir-expediente.serv
 import { ExpedienteCompartido } from './entities/expediente-compartido.entity';
 import { EntidadRemisionController } from './controllers/entidad-remision.controller';
 import { EntidadRemisionService } from './services/entidad-remision.service';
+import { TipoRemision } from './entities/tipo-remision.entity';
+import { TipoRemisionController } from './controllers/tipo-remision.controller';
+import { TipoRemisionService } from './services/tipo-remision.service';
 import { DisciplinaryProcessActuacionesService } from './services/disciplinary-process-actuaciones.service';
 import { DisciplinaryProcessTasksService } from './services/disciplinary-process-tasks.service';
 import { DisciplinaryProcessNotesService } from './services/disciplinary-process-notes.service';
+import { DisciplinaryProcessReassignmentService } from './services/disciplinary-process-reassignment.service';
 
 @Module({
   imports: [
@@ -102,6 +109,7 @@ import { DisciplinaryProcessNotesService } from './services/disciplinary-process
     TypeOrmModule.forRoot(databaseConfig),
     TypeOrmModule.forFeature([
       DisciplinaryNews,
+      DisciplinaryNewsProcess,
       DisciplinaryProcess,
       LegalAuto,
       Sequence,
@@ -120,9 +128,11 @@ import { DisciplinaryProcessNotesService } from './services/disciplinary-process
       ActaConfiguration,
       ExpedienteCompartido,
       EntidadRemision,
+      TipoRemision,
       DisciplinaryProcessActuacion,
       DisciplinaryProcessTask,
       DisciplinaryProcessNote,
+      DisciplinaryProcessReassignmentRequest,
     ]),
   ],
   controllers: [
@@ -148,6 +158,8 @@ import { DisciplinaryProcessNotesService } from './services/disciplinary-process
     ActasConfigurationController,
     CompartirExpedienteController,
     EntidadRemisionController,
+    TipoRemisionController,
+    DisciplinaryProcessReassignmentController,
   ],
   providers: [
     AppService,
@@ -172,9 +184,11 @@ import { DisciplinaryProcessNotesService } from './services/disciplinary-process
     ActasConfigurationService,
     CompartirExpedienteService,
     EntidadRemisionService,
+    TipoRemisionService,
     DisciplinaryProcessActuacionesService,
     DisciplinaryProcessTasksService,
     DisciplinaryProcessNotesService,
+    DisciplinaryProcessReassignmentService,
   ],
 })
 export class AppModule { }

@@ -175,6 +175,9 @@ export class Expediente {
     @Column({ name: 'ley_aplicable', nullable: true, length: 100 })
     leyAplicable: string;
 
+    @Column({ name: 'fecha_hechos', type: 'timestamp', nullable: true })
+    fechaHechos: Date;
+
     @Column({ name: 'tipo_falta', nullable: true, length: 50 })
     tipoFalta: string;
 

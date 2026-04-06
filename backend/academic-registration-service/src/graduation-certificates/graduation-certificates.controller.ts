@@ -16,6 +16,7 @@ import { LandingCertificateRequestDto } from './dto/landing-certificate-request.
 import { SearchGraduateCandidatesDto } from './dto/search-graduate-candidates.dto';
 import type { ApproveRequestDto } from './dto/approve-request.dto';
 import type { UpdateCertificateDto } from './dto/update-certificate.dto';
+import type { UpdateTemplateTextsDto } from './dto/update-template-texts.dto';
 import type { Request, Response } from 'express';
 import { Public } from '../auth/public.decorator';
 
@@ -551,6 +552,41 @@ export class GraduationCertificatesController {
   @Get('graduados')
   async listarGraduados() {
     return await this.service.listarGraduados();
+  }
+
+  /**
+   * GET /academic-registration/api/v1/certificates/template-config
+   * Obtiene la configuracion editable de textos para el certificado academico
+   */
+  @Get('template-config')
+  async obtenerConfiguracionPlantilla() {
+    return await this.service.obtenerConfiguracionPlantillaCertificado();
+  }
+
+  /**
+   * POST /academic-registration/api/v1/certificates/template-config/texts
+   * Actualiza los textos de la plantilla del certificado academico
+   */
+  @Post('template-config/texts')
+  @HttpCode(HttpStatus.OK)
+  async actualizarTextosPlantilla(
+    @Body() payload: UpdateTemplateTextsDto,
+  ) {
+    return await this.service.actualizarTextosPlantillaCertificado(payload);
+  }
+
+  /**
+   * POST /academic-registration/api/v1/certificates/template-config/reset
+   * Restablece la plantilla editable a sus textos predeterminados
+   */
+  @Post('template-config/reset')
+  @HttpCode(HttpStatus.OK)
+  async restablecerTextosPlantilla(
+    @Body() body: { updatedBy?: string },
+  ) {
+    return await this.service.restablecerTextosPlantillaCertificado(
+      body?.updatedBy,
+    );
   }
 
   /**

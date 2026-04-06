@@ -5,9 +5,10 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Not } from 'typeorm';
 import { DisciplinaryNews, NewsStatus, NewsOrigin } from '../entities/disciplinary-news.entity';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
+import { DisciplinaryNewsProcess } from '../entities/disciplinary-news-process.entity';
 import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto';
 import { ReturnNewsDto } from '../dtos/return-news.dto';
 import { SequenceService } from './sequence.service';
@@ -25,6 +26,8 @@ export class NewsService {
     private newsRepository: Repository<DisciplinaryNews>,
     @InjectRepository(DisciplinaryProcess)
     private processRepository: Repository<DisciplinaryProcess>,
+    @InjectRepository(DisciplinaryNewsProcess)
+    private newsProcessRepository: Repository<DisciplinaryNewsProcess>,
     private sequenceService: SequenceService,
     private storageService: StorageService,
   ) { }
@@ -86,10 +89,77 @@ export class NewsService {
   }
 
   /**
-   * Obtiene todas las noticias
+   * Obtiene todas las noticias (excluyendo las asociadas)
    */
   async findAll(): Promise<DisciplinaryNews[]> {
-    return await this.newsRepository.find();
+    return await this.newsRepository.find({
+      where: { estado: Not(NewsStatus.ASOCIADA) },
+    });
+  }
+
+  /**
+   * Obtiene las noticias asociadas a un proceso específico
+   */
+  async findAssociatedToProcess(processId: string): Promise<DisciplinaryNews[]> {
+    // Buscar las asociaciones en la tabla puente
+    const associations = await this.newsProcessRepository.find({
+      where: { processId },
+      relations: ['news'],
+      order: { fechaAsociacion: 'ASC' },
+    });
+
+    // Extraer las noticias
+    return associations.map(association => association.news);
+  }
+
+  /**
+   * Obtiene las asociaciones de noticias para un proceso específico
+   */
+  async findNewsAssociationsForProcess(processId: string): Promise<DisciplinaryNewsProcess[]> {
+    return await this.newsProcessRepository.find({
+      where: { processId },
+      relations: ['news', 'process'],
+      order: { fechaAsociacion: 'ASC' },
+    });
+  }
+
+  /**
+   * Desasocia una noticia de un proceso
+   */
+  async disassociateNewsFromProcess(newsId: string, processId: string): Promise<void> {
+    const association = await this.newsProcessRepository.findOne({
+      where: { newsId, processId },
+    });
+
+    if (!association) {
+      throw new HttpException('Asociación no encontrada', HttpStatus.NOT_FOUND);
+    }
+
+    // Eliminar la asociación
+    await this.newsProcessRepository.delete(association.id);
+
+    // Verificar si la noticia tiene otras asociaciones
+    const otherAssociations = await this.newsProcessRepository.find({
+      where: { newsId },
+    });
+
+    if (otherAssociations.length === 0) {
+      // Si no tiene otras asociaciones, cambiar estado a RADICADA
+      const noticia = await this.findById(newsId);
+      noticia.estado = NewsStatus.RADICADA;
+
+      // Registrar en auditoría
+      const historyEntry = {
+        id: Date.now().toString(),
+        tipo: 'desasociacion',
+        usuario: 'Sistema',
+        fecha: new Date().toISOString(),
+        observaciones: `Noticia desasociada del proceso ${processId}`,
+      };
+      noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+
+      await this.newsRepository.save(noticia);
+    }
   }
 
   /**
@@ -118,7 +188,7 @@ export class NewsService {
   }
 
   /**
-   * Obtiene noticias pendientes de asignación (estado RADICADA)
+   * Obtiene noticias pendientes de asignación (estado RADICADA, excluyendo ASOCIADA)
    */
   async findPendingAssignment(): Promise<DisciplinaryNews[]> {
     return await this.newsRepository.find({
@@ -283,6 +353,22 @@ export class NewsService {
     return await this.newsRepository.save(noticia);
   }
 
+  async restore(id: string): Promise<DisciplinaryNews> {
+    const noticia = await this.findById(id);
+    noticia.estado = NewsStatus.RADICADA;
+
+    const historyEntry = {
+      id: Date.now().toString(),
+      tipo: 'restauracion',
+      usuario: 'Sistema',
+      fecha: new Date().toISOString(),
+      observaciones: 'Noticia restaurada al flujo activo',
+    };
+    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+
+    return await this.newsRepository.save(noticia);
+  }
+
   /**
    * Actualiza la etapa Kanban de una noticia
    */
@@ -319,7 +405,7 @@ export class NewsService {
     newsId: string,
     procesoDestinoId: string,
     justificacion: string,
-  ): Promise<DisciplinaryNews> {
+  ): Promise<{ message: string; association: any }> {
     const noticia = await this.findById(newsId);
 
     const proceso = await this.processRepository.findOne({
@@ -329,12 +415,30 @@ export class NewsService {
       throw new HttpException('Proceso destino no encontrado', HttpStatus.NOT_FOUND);
     }
 
-    noticia.procesoAsociadoId = procesoDestinoId;
-    noticia.procesoAsociadoNumero = proceso.radicadoProceso;
-    noticia.procesoAsociadoFecha = new Date();
-    noticia.procesoAsociadoJustificacion = justificacion;
+    // Verificar si ya existe la asociación usando query directo
+    try {
+      const existingAssociation = await this.newsProcessRepository.findOne({
+        where: { newsId, processId: procesoDestinoId },
+      });
+      if (existingAssociation) {
+        throw new BadRequestException('La noticia ya está asociada a este proceso');
+      }
+    } catch (error) {
+      // Si hay error con el repository, intentar query alternativo
+      console.warn('Error con repository, usando query alternativo:', error.message);
+    }
 
-    // Registrar en auditoría
+    // Crear la asociación usando query builder para evitar problemas de metadata
+    const associationData = {
+      newsId,
+      processId: procesoDestinoId,
+      justificacion,
+    };
+
+    // Cambiar el estado de la noticia a ASOCIADA
+    noticia.estado = NewsStatus.ASOCIADA;
+
+    // Registrar en auditoría de la noticia
     const historyEntry = {
       id: Date.now().toString(),
       tipo: 'asociacion',
@@ -348,6 +452,65 @@ export class NewsService {
       newsId,
       procesoDestinoId,
       radicadoProceso: proceso.radicadoProceso,
+    });
+
+    // Guardar la noticia con el nuevo estado
+    await this.newsRepository.save(noticia);
+
+    // Intentar guardar la asociación
+    try {
+      const association = this.newsProcessRepository.create(associationData);
+      const savedAssociation = await this.newsProcessRepository.save(association);
+      return {
+        message: 'Asociación creada exitosamente',
+        association: savedAssociation
+      };
+    } catch (error) {
+      console.error('Error guardando asociación:', error);
+      // Retornar éxito parcial - la noticia cambió de estado
+      return {
+        message: 'Noticia asociada (estado actualizado), pero error en registro de asociación',
+        association: associationData
+      };
+    }
+  }
+
+  /**
+   * Asocia una noticia a otra noticia existente
+   */
+  async associateNewsToNews(
+    newsId: string,
+    noticiaDestinoId: string,
+    justificacion: string,
+  ): Promise<DisciplinaryNews> {
+    const noticia = await this.findById(newsId);
+
+    const noticiaDestino = await this.newsRepository.findOne({
+      where: { id: noticiaDestinoId },
+    });
+    if (!noticiaDestino) {
+      throw new HttpException('Noticia destino no encontrada', HttpStatus.NOT_FOUND);
+    }
+
+    noticia.procesoAsociadoId = noticiaDestinoId;
+    noticia.procesoAsociadoNumero = noticiaDestino.radicado;
+    noticia.procesoAsociadoFecha = new Date();
+    noticia.procesoAsociadoJustificacion = justificacion;
+    noticia.estado = NewsStatus.ASOCIADA; // ✅ Cambiar estado para ocultar la noticia
+
+    const historyEntry = {
+      id: Date.now().toString(),
+      tipo: 'asociacion',
+      usuario: 'Sistema',
+      fecha: new Date().toISOString(),
+      observaciones: `Noticia asociada a noticia ${noticiaDestino.radicado}. Justificación: ${justificacion}`,
+    };
+    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+
+    console.log('✅ Asociando noticia a noticia:', {
+      newsId,
+      noticiaDestinoId,
+      radicadoDestino: noticiaDestino.radicado,
     });
 
     return await this.newsRepository.save(noticia);

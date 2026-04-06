@@ -19,8 +19,9 @@ import {
   Send, RotateCcw, RefreshCw, Trash2,
   Layers, BarChart3, Filter, FileDown, List,
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
+import { ModalReasignarProfesional } from './ModalReasignarProfesional';
 import { authService } from '../../../services/api';
 import {
   disciplinaryService,
@@ -614,117 +615,124 @@ function ModalConfirmarEnvioRevision({
   onConfirmar: () => void;
   onCancelar: () => void;
 }) {
+  console.log('[DEBUG] ModalConfirmarEnvioRevision render archivo:', archivo);
   return createPortal(
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className="fixed inset-0 z-[500] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
-      onClick={(e) => e.target === e.currentTarget && onCancelar()}>
-      <motion.div
-        initial={{ opacity: 0, scale: 0.97, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.97, y: 12 }} transition={{ duration: 0.2 }}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ width: '92vw', maxWidth: 540, minHeight: 320 }}>
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 pt-5 pb-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ backgroundColor: '#EFF6FF', border: '2px solid #93C5FD' }}>
-            <Send className="w-5 h-5" style={{ color: '#003DA5' }} />
+    archivo ? (
+      <div
+        className="fixed inset-0 z-[9999] flex items-center justify-center"
+        style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+        onClick={(e) => e.target === e.currentTarget && onCancelar()}
+      >
+        <motion.div
+          key={`modal-confirmar-envio-revision-${archivo.id}`}
+          initial={{ opacity: 0, scale: 0.97, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.97, y: 12 }}
+          transition={{ duration: 0.2 }}
+          onClick={(e) => e.stopPropagation()}
+          className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+          style={{ width: '92vw', maxWidth: 540, minHeight: 320 }}
+        >
+          {/* Header */}
+          <div className="flex items-center gap-3 px-5 pt-5 pb-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: '#EFF6FF', border: '2px solid #93C5FD' }}>
+              <Send className="w-5 h-5" style={{ color: '#003DA5' }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-base font-black text-gray-900">Enviar a Revisión y Aprobación</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                El documento será enviado al Jefe OCID para revisión
+              </p>
+            </div>
+            <button onClick={onCancelar}
+              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+              <X className="w-4 h-4 text-gray-400" />
+            </button>
           </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-base font-black text-gray-900">Enviar a Revisión y Aprobación</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              El documento será enviado al Jefe OCID para revisión
-            </p>
-          </div>
-          <button onClick={onCancelar}
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
-            <X className="w-4 h-4 text-gray-400" />
-          </button>
-        </div>
 
-        {/* Información del auto */}
-        <div className="px-5 py-3">
-          <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
-            <div className="flex items-start gap-2.5">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: '#F5F3FF' }}>
-                <Scale className="w-4 h-4" style={{ color: '#7C3AED' }} />
+          {/* Información del auto */}
+          <div className="px-5 py-3">
+            <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
+              <div className="flex items-start gap-2.5">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ backgroundColor: '#F5F3FF' }}>
+                  <Scale className="w-4 h-4" style={{ color: '#7C3AED' }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-gray-900 truncate">{archivo.nombre}</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">
+                    {archivo.firmante} · {archivo.fecha} · {archivo.tamaño}
+                    {archivo.version && archivo.version > 1 && ` · Versión ${archivo.version}`}
+                  </p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-gray-900 truncate">{archivo.nombre}</p>
-                <p className="text-[10px] text-gray-500 mt-0.5">
-                  {archivo.firmante} · {archivo.fecha} · {archivo.tamaño}
-                  {archivo.version && archivo.version > 1 && ` · Versión ${archivo.version}`}
+            </div>
+
+            {/* Flujo visual */}
+            <div className="flex items-center gap-2 mt-3 px-1">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold" style={{ color: '#7C3AED' }}>
+                <FileText className="w-3 h-3" />
+                <span>Auto</span>
+              </div>
+              <div className="flex-1 h-px bg-gray-200 relative">
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-0.5 bg-gradient-to-r from-purple-300 to-blue-400" />
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] font-bold" style={{ color: '#003DA5' }}>
+                <Shield className="w-3 h-3" />
+                <span>Revisión Jefe OCID</span>
+              </div>
+              <div className="flex-1 h-px bg-gray-200 relative">
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-0.5 bg-gradient-to-r from-blue-300 to-green-300" />
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] font-bold text-green-600">
+                <CheckCircle className="w-3 h-3" />
+                <span>Aprobado</span>
+              </div>
+            </div>
+
+            {/* Observaciones opcionales */}
+            <div className="mt-3">
+              <label className="text-[11px] font-bold text-gray-700 mb-1.5 block">
+                Observaciones para el revisor <span className="text-gray-400 font-normal">(opcional)</span>
+              </label>
+              <textarea
+                value={observaciones}
+                onChange={(e) => onObservacionesChange(e.target.value)}
+                rows={3}
+                placeholder="Ej: Se adjuntan todos los documentos soporte. La conducta presunta está claramente configurada..."
+                className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 resize-none"
+              />
+            </div>
+
+            {/* Info box */}
+            <div className="mt-3 p-2.5 rounded-lg border" style={{ background: '#FFFBEB', borderColor: '#FCD34D' }}>
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] text-amber-800 leading-relaxed">
+                  Una vez enviado, el documento no podrá ser modificado hasta que el Jefe OCID lo apruebe o devuelva.
+                  El estado cambiará a <strong>"En Revisión"</strong> y aparecerá en el módulo <strong>Revisión y Aprobación</strong>.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Flujo visual */}
-          <div className="flex items-center gap-2 mt-3 px-1">
-            <div className="flex items-center gap-1.5 text-[10px] font-bold" style={{ color: '#7C3AED' }}>
-              <FileText className="w-3 h-3" />
-              <span>Auto</span>
-            </div>
-            <div className="flex-1 h-px bg-gray-200 relative">
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-0.5 bg-gradient-to-r from-purple-300 to-blue-400" />
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px] font-bold" style={{ color: '#003DA5' }}>
-              <Shield className="w-3 h-3" />
-              <span>Revisión Jefe OCID</span>
-            </div>
-            <div className="flex-1 h-px bg-gray-200 relative">
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-0.5 bg-gradient-to-r from-blue-300 to-green-300" />
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px] font-bold text-green-600">
-              <CheckCircle className="w-3 h-3" />
-              <span>Aprobado</span>
-            </div>
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 px-5 pb-5 pt-2 border-t border-gray-100 mt-auto">
+            <button onClick={onCancelar}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-all">
+              Cancelar
+            </button>
+            <button onClick={onConfirmar}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg text-white transition-all hover:opacity-90"
+              style={{ background: '#003DA5' }}>
+              <Send className="w-3.5 h-3.5" />
+              Enviar a Revisión y Aprobación
+            </button>
           </div>
-
-          {/* Observaciones opcionales */}
-          <div className="mt-3">
-            <label className="text-[11px] font-bold text-gray-700 mb-1.5 block">
-              Observaciones para el revisor <span className="text-gray-400 font-normal">(opcional)</span>
-            </label>
-            <textarea
-              value={observaciones}
-              onChange={(e) => onObservacionesChange(e.target.value)}
-              rows={3}
-              placeholder="Ej: Se adjuntan todos los documentos soporte. La conducta presunta está claramente configurada..."
-              className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 resize-none"
-            />
-          </div>
-
-          {/* Info box */}
-          <div className="mt-3 p-2.5 rounded-lg border" style={{ background: '#FFFBEB', borderColor: '#FCD34D' }}>
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-              <p className="text-[10px] text-amber-800 leading-relaxed">
-                Una vez enviado, el documento no podrá ser modificado hasta que el Jefe OCID lo apruebe o devuelva.
-                El estado cambiará a <strong>"En Revisión"</strong> y aparecerá en el módulo <strong>Revisión y Aprobación</strong>.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 pb-5 pt-2 border-t border-gray-100 mt-auto">
-          <button onClick={onCancelar}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-all">
-            Cancelar
-          </button>
-          <button onClick={onConfirmar}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg text-white transition-all hover:opacity-90"
-            style={{ background: '#003DA5' }}>
-            <Send className="w-3.5 h-3.5" />
-            Enviar a Revisión y Aprobación
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>,
+        </motion.div>
+      </div>
+    ) : null,
     document.body
   );
 }
@@ -1652,6 +1660,9 @@ export function ModalDetallesProceso({
   const [creandoNota, setCreandoNota] = useState(false);
   const [notaPendienteEliminarId, setNotaPendienteEliminarId] = useState<string | null>(null);
   const [eliminandoNotaId, setEliminandoNotaId] = useState<string | null>(null);
+  const [noticiasAsociadas, setNoticiasAsociadas] = useState<any[]>([]);
+  const [noticiasAsociadasLoading, setNoticiasAsociadasLoading] = useState(false);
+  const [noticiasAsociadasError, setNoticiasAsociadasError] = useState<string | null>(null);
   const [previewArchivo, setPreviewArchivo] = useState<Archivo | null>(null);
   const [cargasActivas, setCargasActivas] = useState<CargaActiva[]>([]);
   const [mostrarAlertaCierre, setMostrarAlertaCierre] = useState(false);
@@ -1670,6 +1681,7 @@ export function ModalDetallesProceso({
   const [mostrarModalNuevaTarea, setMostrarModalNuevaTarea] = useState(false);
   const [creandoTarea, setCreandoTarea] = useState(false);
   const [actualizandoTareaId, setActualizandoTareaId] = useState<string | null>(null);
+  const [mostrarModalReasignar, setMostrarModalReasignar] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [autoEnviarRevision, setAutoEnviarRevision] = useState<Archivo | null>(null);
   const [autoRecargar, setAutoRecargar] = useState<Archivo | null>(null);
@@ -1679,6 +1691,9 @@ export function ModalDetallesProceso({
   const inputArchivoRef = useRef<HTMLInputElement>(null);
   const inputRecargarRef = useRef<HTMLInputElement>(null);
   const cargasRef = useRef<CargaActiva[]>([]);
+  const colaCargasRef = useRef<Promise<void>>(Promise.resolve());
+  const cancelarPendientesRef = useRef(false);
+  const [archivosEnColaCount, setArchivosEnColaCount] = useState(0);
   cargasRef.current = cargasActivas;
   const currentUser = authService.getCurrentUser();
   const usuarioCargaActual = currentUser?.fullName
@@ -1864,6 +1879,35 @@ export function ModalDetallesProceso({
     };
   }, [proceso?.id]);
 
+  useEffect(() => {
+    if (!proceso?.id) return;
+
+    let cancelled = false;
+    setNoticiasAsociadasLoading(true);
+    setNoticiasAsociadasError(null);
+
+    disciplinaryService.getAssociatedNewsToProcess(proceso.id)
+      .then((data) => {
+        if (cancelled) return;
+        setNoticiasAsociadas(data || []);
+      })
+      .catch((error: any) => {
+        if (cancelled) return;
+        console.error('[ModalDetallesProceso] Error cargando noticias asociadas:', error);
+        setNoticiasAsociadas([]);
+        setNoticiasAsociadasError(error?.message || 'No fue posible cargar las noticias asociadas');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setNoticiasAsociadasLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [proceso?.id]);
+
   // ═══ Navegación rápida desde Scorecard ═══
   const navigateToTab = useCallback((tab: Tab, etapa: string) => {
     setTabActiva(tab);
@@ -1984,7 +2028,7 @@ export function ModalDetallesProceso({
   // ═══ Protección beforeunload ═══
   useEffect(() => {
     const cargasEnCurso = cargasActivas.filter(c => c.estado === 'subiendo' || c.estado === 'procesando' || c.estado === 'validando');
-    if (cargasEnCurso.length === 0) return;
+    if (cargasEnCurso.length === 0 && archivosEnColaCount === 0) return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = 'Hay archivos en proceso de carga. Si cierra la ventana, se perderán.';
@@ -1992,20 +2036,23 @@ export function ModalDetallesProceso({
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [cargasActivas]);
+  }, [archivosEnColaCount, cargasActivas]);
 
   // ═══ Cierre protegido ═══
   const cargasEnCursoCount = cargasActivas.filter(c => c.estado === 'subiendo' || c.estado === 'procesando' || c.estado === 'validando').length;
+  const cargasPendientesCount = cargasEnCursoCount + archivosEnColaCount;
 
   const handleIntentoCerrar = useCallback(() => {
-    if (cargasEnCursoCount > 0) {
+    if (cargasPendientesCount > 0) {
       setMostrarAlertaCierre(true);
     } else {
       onClose();
     }
-  }, [cargasEnCursoCount, onClose]);
+  }, [cargasPendientesCount, onClose]);
 
   const handleCancelarYCerrar = useCallback(() => {
+    cancelarPendientesRef.current = true;
+    setArchivosEnColaCount(0);
     // Cancelar todas las cargas activas
     cargasRef.current.forEach(c => {
       if (c.estado === 'subiendo' || c.estado === 'procesando' || c.estado === 'validando') {
@@ -2156,10 +2203,10 @@ export function ModalDetallesProceso({
   }, []);
 
   // ═══ Handler de selección de archivos ═══
-  const subirArchivoReal = useCallback((archivo: File) => {
+  const subirArchivoReal = useCallback((archivo: File): Promise<void> => {
     if (!proceso?.id) {
       toast.error('No se pudo identificar el proceso para cargar el archivo');
-      return;
+      return Promise.resolve();
     }
 
     const id = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -2208,7 +2255,7 @@ export function ModalDetallesProceso({
       iniciadoEn: uploadStartTime,
     }));
 
-    void disciplinaryService.uploadDocumento(
+    return disciplinaryService.uploadDocumento(
       proceso.id,
       archivo,
       'EVIDENCIA',
@@ -2341,6 +2388,25 @@ export function ModalDetallesProceso({
       });
   }, [cargarDocumentosExpediente, proceso?.etapaActual, proceso?.id, usuarioCargaActual]);
 
+  const encolarCargaArchivo = useCallback((archivo: File) => {
+    setArchivosEnColaCount(prev => prev + 1);
+
+    const siguiente = colaCargasRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (cancelarPendientesRef.current) {
+          setArchivosEnColaCount(prev => Math.max(prev - 1, 0));
+          return;
+        }
+
+        setArchivosEnColaCount(prev => Math.max(prev - 1, 0));
+        await subirArchivoReal(archivo);
+      });
+
+    colaCargasRef.current = siguiente.catch(() => undefined);
+    return siguiente;
+  }, [subirArchivoReal]);
+
   const handleFilesSelected = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return;
     const archivos = Array.from(files);
@@ -2365,6 +2431,7 @@ export function ModalDetallesProceso({
     }
 
     if (validos.length === 0) return;
+    cancelarPendientesRef.current = false;
 
     // Notificar y comenzar carga
     const grandes = validos.filter(f => f.size > LIMITE_CARGA_DIRECTA);
@@ -2375,11 +2442,20 @@ export function ModalDetallesProceso({
       });
     }
 
-    validos.forEach(archivo => subirArchivoReal(archivo));
+    if (validos.length > 1) {
+      toast.info(`${validos.length} archivos agregados a la cola`, {
+        description: 'Se subirÃ¡n uno por uno para respetar el patrÃ³n estable de carga del servidor.',
+        duration: 5000,
+      });
+    }
+
+    validos.forEach(archivo => {
+      void encolarCargaArchivo(archivo);
+    });
 
     // Reset input
     if (inputArchivoRef.current) inputArchivoRef.current.value = '';
-  }, [subirArchivoReal]);
+  }, [encolarCargaArchivo]);
 
   // ═══ Cancelar una carga individual ═══
   const cancelarCarga = useCallback((id: string) => {
@@ -2748,13 +2824,16 @@ export function ModalDetallesProceso({
   const [debeReabrir, setDebeReabrir] = useState(false);
 
   const handleEnviarARevision = useCallback((archivo: Archivo) => {
-    console.log('[DEBUG] handleEnviarARevision llamado con archivo:', archivo);
+    console.log('[DEBUG] handleEnviarARevision recibido archivo:', archivo);
     // Primero mostrar el modal de confirmación SIN cerrar el modal principal
     // Esto evita que el componente se desmonte antes de mostrar la confirmación
     setAutoEnviarRevision(archivo);
     setObservacionesEnvio('');
-    console.log('[DEBUG] autoEnviarRevision establecido, valor actual:', archivo);
   }, []);
+
+  useEffect(() => {
+    console.log('[DEBUG] autoEnviarRevision cambió:', autoEnviarRevision);
+  }, [autoEnviarRevision]);
 
   const confirmarEnvioRevision = useCallback(async () => {
     if (!autoEnviarRevision) return;
@@ -2799,6 +2878,7 @@ export function ModalDetallesProceso({
 
       const borrador: BorradorPendiente = {
         id: `rev-${id}-${Date.now()}`,
+        autoId: id,
         numeroProceso: proceso.numeroProceso,
         titulo: autoEnviarRevision.nombre,
         plantilla: `Plantilla ${proceso.etapaActual}`,
@@ -2806,7 +2886,7 @@ export function ModalDetallesProceso({
         fechaEnvio: ahora,
         profesional: { nombre: profNombre, email: profEmail },
         observacionesProfesional: observacionesEnvio || 'Documento listo para revisión y aprobación del Jefe de OCID.',
-        contenido: `${autoEnviarRevision.nombre.toUpperCase()}\n\nPROCESO No: ${proceso.numeroProceso}\nETAPA: ${proceso.etapaActual}\n\n[Contenido del auto cargado en el sistema]`,
+        contenido: '',
         denunciado,
         etapa: proceso.etapaActual,
         prioridad: (proceso.prioridad as 'alta' | 'media' | 'baja') || 'media',
@@ -2860,6 +2940,7 @@ export function ModalDetallesProceso({
 
     const borrador: BorradorPendiente = {
       id: archivo.id,
+      autoId: archivo.id,
       numeroProceso: proceso.numeroProceso,
       titulo: archivo.nombre,
       plantilla: `Plantilla ${proceso.etapaActual}`,
@@ -2870,7 +2951,7 @@ export function ModalDetallesProceso({
         email: profEmail,
       },
       observacionesProfesional: 'Documento listo para revisión y aprobación del Jefe de OCID.',
-      contenido: `${archivo.nombre.toUpperCase()}\n\nPROCESO No: ${proceso.numeroProceso}\nETAPA: ${proceso.etapaActual}\n\n[Contenido del auto cargado en el sistema]`,
+      contenido: '',
       denunciado,
       etapa: proceso.etapaActual,
       prioridad: (proceso.prioridad as 'alta' | 'media' | 'baja') || 'media',
@@ -2920,7 +3001,7 @@ export function ModalDetallesProceso({
   }, []);
 
   const handleAutoDevuelto = useCallback((archivoId: string, motivo: string, comentarios: string) => {
-    const enReal = archivosReales.find(a => a.id === archivoId);
+    const enReal = archivosBackend.find(a => a.id === archivoId);
     if (enReal) {
       enReal.estado = 'devuelto';
       enReal.observacionesDevolucion = `${motivo}: ${comentarios}`;
@@ -2935,6 +3016,35 @@ export function ModalDetallesProceso({
     });
     setAutoEnRevisionModal(null);
   }, []);
+
+  const handleSolicitarReasignacion = useCallback(async (
+    nuevoProfesionalId: string,
+    nuevoProfesionalNombre: string,
+    justificacion: string,
+    prioridad: 'NORMAL' | 'URGENTE'
+  ) => {
+    if (!proceso?.id) return;
+
+    try {
+      const user = authService.getCurrentUser();
+      await disciplinaryService.createReassignmentRequest({
+        processId: proceso.id,
+        newProfessionalId: nuevoProfesionalId,
+        justification: justificacion,
+        priority: prioridad,
+        requestedBy: user?.fullName || user?.email || 'Usuario del Sistema',
+        requestedById: user?.id,
+      });
+
+      toast.success('Solicitud de reasignación creada', {
+        description: `Se ha enviado la solicitud al Jefe OCID para aprobación`,
+        duration: 6000,
+      });
+    } catch (error: any) {
+      console.error('[ModalDetallesProceso] Error creando solicitud de reasignación:', error);
+      toast.error(error?.message || 'No fue posible crear la solicitud de reasignación');
+    }
+  }, [proceso?.id]);
 
   // ═══ Recargar Archivo (reemplazar auto corregido) ═══
   const handleRecargarArchivo = useCallback((archivo: Archivo) => {
@@ -2953,7 +3063,7 @@ export function ModalDetallesProceso({
     const nuevaVersion = (autoRecargar.version || 1) + 1;
 
     // Actualizar el archivo existente con nueva versión
-    const enReal = archivosReales.find(a => a.id === id);
+    const enReal = archivosBackend.find(a => a.id === id);
     if (enReal) {
       enReal.estado = 'borrador';
       enReal.version = nuevaVersion;
@@ -3441,9 +3551,21 @@ export function ModalDetallesProceso({
 
                       {/* Profesional Asignado */}
                       <div className="rounded-xl border border-gray-200 bg-white p-3">
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <Briefcase className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />
-                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Profesional Asignado</span>
+                        <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <Briefcase className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />
+                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Profesional Asignado</span>
+                          </div>
+                          <button
+                            onClick={() => setMostrarModalReasignar(true)}
+                            className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold rounded-lg border transition-all"
+                            style={{ borderColor: '#2962FF', color: '#2962FF', background: '#EFF6FF' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = '#DBEAFE'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = '#EFF6FF'; }}
+                            title="Solicitar reasignación del profesional">
+                            <Users className="w-2.5 h-2.5" />
+                            Reasignar
+                          </button>
                         </div>
                         <p className="text-sm font-bold text-gray-900">{getNombre(proceso.profesionalAsignado)}</p>
                         {getId(proceso.profesionalAsignado as any) && (
@@ -3532,6 +3654,84 @@ export function ModalDetallesProceso({
                         </div>
                       </div>
                     )}
+
+                    {/* ═══ NOTICIAS ASOCIADAS ═══ */}
+                    <div className="rounded-xl border border-purple-200 bg-purple-50/30 overflow-hidden">
+                      <div className="px-3 py-2 border-b border-purple-200" style={{ background: 'rgba(147, 51, 234, 0.05)' }}>
+                        <div className="flex items-center gap-2">
+                          <Share2 className="w-3.5 h-3.5" style={{ color: '#7C3AED' }} />
+                          <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#7C3AED' }}>
+                            Noticias Asociadas
+                          </span>
+                          {noticiasAsociadasLoading && (
+                            <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#7C3AED' }} />
+                          )}
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        {noticiasAsociadasLoading ? (
+                          <div className="flex items-center justify-center py-4 text-sm text-gray-500">
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            Cargando noticias asociadas...
+                          </div>
+                        ) : noticiasAsociadasError ? (
+                          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-xs text-red-700">
+                            <div className="flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4" />
+                              <span className="font-semibold">{noticiasAsociadasError}</span>
+                            </div>
+                          </div>
+                        ) : noticiasAsociadas.length === 0 ? (
+                          <div className="text-center py-4">
+                            <Share2 className="w-8 h-8 text-purple-200 mx-auto mb-2" />
+                            <p className="text-xs text-gray-500 font-medium">Sin noticias asociadas</p>
+                            <p className="text-[10px] text-gray-400 mt-1">Las noticias asociadas aparecerán aquí cuando se vinculen al proceso</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {noticiasAsociadas.map((noticia: any, idx: number) => (
+                              <div key={noticia.id || idx} className="flex items-start gap-3 p-3 rounded-lg border border-purple-100 bg-white hover:bg-purple-50/30 transition-colors">
+                                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F3E8FF' }}>
+                                  <Share2 className="w-4 h-4" style={{ color: '#7C3AED' }} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold text-gray-900">{noticia.titulo || 'Sin título'}</p>
+                                  <p className="text-[10px] text-gray-600 mt-0.5 leading-relaxed">{noticia.descripcion || 'Sin descripción'}</p>
+                                  <div className="flex items-center gap-3 mt-1.5 text-[9px] text-gray-500">
+                                    <span className="flex items-center gap-1">
+                                      <Calendar className="w-3 h-3" />
+                                      {noticia.fechaRecepcion ? new Date(noticia.fechaRecepcion).toLocaleDateString('es-CO') : 'Sin fecha'}
+                                    </span>
+                                    {noticia.prioridad && (
+                                      <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold"
+                                        style={{
+                                          backgroundColor: noticia.prioridad === 'alta' ? '#FEE2E2' : noticia.prioridad === 'media' ? '#FEF3C7' : '#ECFDF5',
+                                          color: noticia.prioridad === 'alta' ? '#991B1B' : noticia.prioridad === 'media' ? '#92400E' : '#065F46'
+                                        }}>
+                                        {noticia.prioridad.toUpperCase()}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {noticia.fechaAsociacion && (
+                                    <p className="text-[9px] text-purple-600 mt-1 font-medium">
+                                      Asociada el {new Date(noticia.fechaAsociacion).toLocaleDateString('es-CO', {
+                                        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                      })}
+                                    </p>
+                                  )}
+                                  {noticia.justificacion && (
+                                    <div className="mt-2 p-2 rounded-md bg-purple-50 border border-purple-100">
+                                      <p className="text-[9px] font-medium text-purple-800">Justificación:</p>
+                                      <p className="text-[9px] text-purple-700 mt-0.5">{noticia.justificacion}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
                     {/* ═══ SCORECARD: Progreso por Etapa ═══ */}
                     <div className="rounded-xl border border-gray-200 overflow-hidden">
@@ -3964,13 +4164,18 @@ export function ModalDetallesProceso({
                     </div>
 
                     {/* Cargas activas */}
-                    {cargasActivas.length > 0 && (
+                    {(cargasActivas.length > 0 || archivosEnColaCount > 0) && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-1.5">
                           <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#003DA5' }} />
                           <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#003DA5' }}>
                             Cargas en progreso ({cargasActivas.filter(c => c.estado === 'subiendo' || c.estado === 'procesando' || c.estado === 'validando').length})
                           </span>
+                          {archivosEnColaCount > 0 && (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide bg-amber-100 text-amber-700">
+                              En cola: {archivosEnColaCount}
+                            </span>
+                          )}
                         </div>
                         {cargasActivas.map(carga => {
                           const activo = carga.estado === 'subiendo' || carga.estado === 'procesando' || carga.estado === 'validando';
@@ -4971,34 +5176,32 @@ export function ModalDetallesProceso({
       {/* ═══ Sub-modal: Confirmar envío a Revisión y Aprobación (z-[600]) ═══ */}
       <AnimatePresence>
         {autoEnviarRevision && (
-          createPortal(
-            <ModalConfirmarEnvioRevision
+          <ModalConfirmarEnvioRevision
+              key={`confirmar-envio-revision-${autoEnviarRevision.id}`}
               archivo={autoEnviarRevision}
               proceso={{
-                numeroProceso: proceso.numeroProceso,
-                etapaActual: proceso.etapaActual,
-                profesionalAsignado: typeof proceso.profesionalAsignado === 'object' && proceso.profesionalAsignado
-                  ? { nombre: (proceso.profesionalAsignado as any)?.nombre || '' }
-                  : typeof proceso.profesionalAsignado === 'string'
-                    ? { nombre: proceso.profesionalAsignado }
-                    : undefined
-              }}
-              observaciones={observacionesEnvio}
-              onObservacionesChange={setObservacionesEnvio}
-              onConfirmar={() => {
-                confirmarEnvioRevision();
-                // Cerrar el modal principal después de confirmar
-                onClose();
-              }}
-              onCancelar={() => {
-                setAutoEnviarRevision(null);
-                setObservacionesEnvio('');
-                // Cerrar el modal principal cuando se cancela
-                onClose();
-              }}
-            />,
-            document.body
-          )
+              numeroProceso: proceso.numeroProceso,
+              etapaActual: proceso.etapaActual,
+              profesionalAsignado: typeof proceso.profesionalAsignado === 'object' && proceso.profesionalAsignado
+                ? { nombre: (proceso.profesionalAsignado as any)?.nombre || '' }
+                : typeof proceso.profesionalAsignado === 'string'
+                  ? { nombre: proceso.profesionalAsignado }
+                  : undefined
+            }}
+            observaciones={observacionesEnvio}
+            onObservacionesChange={setObservacionesEnvio}
+            onConfirmar={() => {
+              confirmarEnvioRevision();
+              // Cerrar el modal principal después de confirmar
+              onClose();
+            }}
+            onCancelar={() => {
+              setAutoEnviarRevision(null);
+              setObservacionesEnvio('');
+              // Cerrar el modal principal cuando se cancela
+              onClose();
+            }}
+          />
         )}
       </AnimatePresence>
 
@@ -5041,6 +5244,16 @@ export function ModalDetallesProceso({
             saving={creandoTarea}
             onClose={() => setMostrarModalNuevaTarea(false)}
             onSubmit={handleCrearTarea}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {mostrarModalReasignar && (
+          <ModalReasignarProfesional
+            proceso={proceso}
+            onClose={() => setMostrarModalReasignar(false)}
+            onSolicitarReasignacion={handleSolicitarReasignacion}
           />
         )}
       </AnimatePresence>

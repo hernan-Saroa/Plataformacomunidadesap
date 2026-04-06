@@ -767,7 +767,7 @@ const AUDITORIAS_MOCK: Auditoria[] = [
 const COLUMNAS_KANBAN = [
   {
     id: 'Plan Anual',
-    titulo: 'Plan Anual',
+    titulo: 'Programa Anual',
     count: 0,
     icono: <Calendar className="w-4 h-4" style={{ color: '#003DA5' }} />,
     diasEstimados: 15
@@ -826,6 +826,7 @@ interface TarjetaAuditoriaProps {
   onEliminar: (aud: Auditoria) => void;
   onEditar: (aud: Auditoria) => void;
   onCrearPlan?: (aud: Auditoria) => void; // ← NUEVO: Crear Plan de Mejoramiento
+  puedeCrearPlan?: (aud: Auditoria) => boolean;
   colapsada?: boolean; // NUEVO: Estado de colapso
   onToggleColapso?: (id: string) => void; // NUEVO: Toggle colapso
   // ✅ Funciones de conteo dinámico
@@ -854,6 +855,7 @@ function TarjetaAuditoria({
   onEliminar,
   onEditar,
   onCrearPlan,
+  puedeCrearPlan,
   colapsada = false,
   onToggleColapso,
   contarHallazgos,
@@ -881,6 +883,9 @@ function TarjetaAuditoria({
   };
 
   const semaforo = semaforoIndicator[auditoria.semaforo];
+  const mostrarBotonCrearPlan = puedeCrearPlan
+    ? puedeCrearPlan(auditoria)
+    : auditoria.estado === 'Comunicación' && auditoria.hallazgos > 0;
 
   // VERSIÓN COLAPSADA
   if (colapsada) {
@@ -1298,8 +1303,8 @@ function TarjetaAuditoria({
               )}
             </div>
 
-            {/* Botón Crear Plan: solo en Comunicación/Seguimiento. En Finalizada el plan ya se creó en Comunicación. */}
-            {auditoria.estado !== 'Finalizada' && auditoria.hallazgos > 0 && onCrearPlan && (
+            {/* Botón Crear Plan: exclusivo de la etapa Comunicación */}
+            {mostrarBotonCrearPlan && onCrearPlan && (
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1543,6 +1548,7 @@ interface ColumnaKanbanProps {
   onEliminar: (aud: Auditoria) => void;
   onEditar: (aud: Auditoria) => void;
   onCrearPlan?: (aud: Auditoria) => void; // ← NUEVO
+  puedeCrearPlan?: (aud: Auditoria) => boolean;
   tarjetasColapsadas?: Set<string>; // ← NUEVO: Set de IDs de tarjetas colapsadas
   onToggleColapsoTarjeta?: (id: string) => void; // ← NUEVO: Toggle para tarjetas individuales
   // ✅ Funciones de conteo dinámico
@@ -1570,6 +1576,7 @@ function ColumnaKanban({
   onEliminar,
   onEditar,
   onCrearPlan,
+  puedeCrearPlan,
   tarjetasColapsadas,
   onToggleColapsoTarjeta,
   contarHallazgos,
@@ -1785,6 +1792,7 @@ function ColumnaKanban({
               onEliminar={onEliminar}
               onEditar={onEditar}
               onCrearPlan={onCrearPlan}
+              puedeCrearPlan={puedeCrearPlan}
               contarHallazgos={contarHallazgos}
               contarHallazgosCriticos={contarHallazgosCriticos}
               contarTareasPendientes={contarTareasPendientes}
@@ -1870,6 +1878,7 @@ export function GestionAuditoriasKanbanSimple() {
   const [modoVista, setModoVista] = useState<'ajustado' | 'confortable'>('ajustado'); // Vista ajustada vs scroll
   const [columnaActiva, setColumnaActiva] = useState(0); // Para navegación por columnas
   const [mostrarMinimapa, setMostrarMinimapa] = useState(false); // Minimapa del tablero
+  const [auditoriasConPlan, setAuditoriasConPlan] = useState<Set<string>>(new Set());
 
   // ✅ NUEVO: Integración con Context - Recibir auditorías del Programa Anual
   const { 
@@ -1879,14 +1888,29 @@ export function GestionAuditoriasKanbanSimple() {
     seleccionarAuditoria
   } = useIntegracionAuditoriaPlanes();
 
+  const extraerAuditoriaIdPlan = (plan: any): string | null => {
+    const auditoriaId =
+      plan?.auditoriaId ||
+      plan?.auditoria_id ||
+      plan?.auditoria?.id ||
+      plan?.hallazgo?.auditoriaId ||
+      plan?.hallazgo?.auditoriaEntity?.id;
+
+    if (!auditoriaId) return null;
+    const idNormalizado = String(auditoriaId).trim();
+    return idNormalizado || null;
+  };
+
+  const puedeMostrarCrearPlan = (auditoria: Auditoria): boolean => {
+    return (
+      auditoria.estado === 'Comunicación' &&
+      auditoria.hallazgos > 0 &&
+      !auditoriasConPlan.has(auditoria.id)
+    );
+  };
+
   // ✅ SINCRONIZAR: Auditorías del backend con estado local
   useEffect(() => {
-    console.log('🔄 [SYNC] Hook disparado:', { 
-      auditoriasBackend: auditoriasBackend?.length, 
-      cargandoBackend,
-      primerAuditoria: auditoriasBackend?.[0]
-    });
-    
     // Solo sincronizar cuando terminó de cargar y hay datos
     if (!cargandoBackend && auditoriasBackend && auditoriasBackend.length > 0) {
       // Transformar auditorías del backend al formato local
@@ -1903,8 +1927,10 @@ export function GestionAuditoriasKanbanSimple() {
         auditorAsignado: aud.auditorAsignado,
         auditorLiderId: aud.auditorLiderId, // ✅ Preservar ID del auditor líder
         fechaInicio: aud.fechaInicio,
-        fechaFinPlaneacion: aud.fechaFinPlaneacion, // ✅ Fecha fin de Planeación / Inicio Ejecución
-        fechaFinEjecucion: aud.fechaFinEjecucion, // ✅ Fecha fin de Ejecución / Inicio Comunicación
+        fechaFinPlaneacion: aud.fechaFinPlaneacion, // ✅ Fecha fin de Planeación
+        fechaInicioEjecucion: aud.fechaInicioEjecucion, // ✅ Fecha inicio de Ejecución
+        fechaFinEjecucion: aud.fechaFinEjecucion, // ✅ Fecha fin de Ejecución
+        fechaInicioComunicacion: aud.fechaInicioComunicacion, // ✅ Fecha inicio de Comunicación
         fechaFin: aud.fechaFin,
         progreso: aud.progreso,
         hallazgos: aud.hallazgos,
@@ -1929,7 +1955,6 @@ export function GestionAuditoriasKanbanSimple() {
         documentoCierre: aud.documentoCierre,
       } as Auditoria));
       setAuditorias(auditoriasTransformadas);
-      console.log(`✅ [GestionAuditorias] ${auditoriasTransformadas.length} auditorías sincronizadas desde backend`);
       
       // ✅ CARGAR TAREAS: Cargar tareas para cada auditoría desde el backend
       auditoriasTransformadas.forEach(aud => {
@@ -1938,6 +1963,37 @@ export function GestionAuditoriasKanbanSimple() {
     }
     // No cargar MOCK automáticamente - el usuario decide en desarrollo
   }, [auditoriasBackend, cargandoBackend, cargarTareas]);
+
+  useEffect(() => {
+    let activo = true;
+
+    const cargarAuditoriasConPlan = async () => {
+      if (cargandoBackend) return;
+
+      try {
+        const planes = await controlInternoService.getPlanesMejoramiento();
+        if (!activo) return;
+
+        const idsConPlan = new Set<string>();
+        (planes || []).forEach((plan: any) => {
+          const auditoriaId = extraerAuditoriaIdPlan(plan);
+          if (auditoriaId) {
+            idsConPlan.add(auditoriaId);
+          }
+        });
+
+        setAuditoriasConPlan(idsConPlan);
+      } catch (error) {
+        console.warn('No se pudieron cargar planes de mejoramiento para validar auditorías:', error);
+      }
+    };
+
+    cargarAuditoriasConPlan();
+
+    return () => {
+      activo = false;
+    };
+  }, [cargandoBackend, auditoriasBackend]);
 
   // ✅ NUEVO: Effect para detectar scroll horizontal disponible
   useEffect(() => {
@@ -2276,22 +2332,30 @@ export function GestionAuditoriasKanbanSimple() {
       console.log('   fechaInicioEjecucionCalculada:', fechaInicioEjecucionCalculada);
       console.log('   fechaInicioComunicacionCalculada:', fechaInicioComunicacionCalculada);
       
-      // Preparar datos para el backend
+      // Preparar datos para el backend (incluir equipo auditor y riesgos — antes no se enviaban)
       const datosBackend = {
         nombre: data.titulo,
         descripcion: data.descripcion || '',
         tipo: data.tipoAuditoria || 'Regular',
         territorial: data.territorial || 'Nacional',
         sede: data.territorial || 'Nacional',
-        responsable: 'aud-001', // TODO: Obtener del usuario logueado
+        responsable: data.auditorLider || data.supervisorAsignado || 'Por asignar',
         fechaInicio: data.fechaInicio || data.fechaInicioPlaneacion,
         fechaFin: data.fechaFin || data.fechaFinComunicacion,
         areaObjetivo: data.areaObjetivo || 'Control Interno',
         procesoAuditado: data.procesoAuditado || 'General',
         calificacionRiesgo: data.nivelRiesgo || 'Medio',
+        nivelRiesgo: data.nivelRiesgo || 'Medio',
         alcance: data.alcance || data.descripcion || '',
+        presupuestoEstimado: data.presupuestoEstimado,
         objetivos: data.objetivos || [],
         criteriosAuditoria: data.criteriosAuditoria || [], // El backend usa criteriosAuditoria
+        normatividadAplicable: data.normatividadAplicable || [],
+        riesgosIdentificados: data.riesgosIdentificados || [],
+        controlesAplicar: data.controlesAplicar || [],
+        auditorLiderId: data.auditorLider || undefined,
+        auditorAsignadoId: data.auditorAsignado || undefined,
+        supervisorAsignadoId: data.supervisorAsignado || undefined,
         equipoAuditores: data.equipoAuditores || [],
         // ✅ Incluir TODAS las fechas del cronograma de 3 etapas
         // Etapa 1: Planeación
@@ -2862,6 +2926,16 @@ export function GestionAuditoriasKanbanSimple() {
   
   const handleCrearPlan = async (auditoria: Auditoria) => {
     try {
+      if (auditoria.estado !== 'Comunicación') {
+        toast.error('El Plan de Mejoramiento solo se puede crear en la etapa Comunicación');
+        return;
+      }
+
+      if (auditoriasConPlan.has(auditoria.id)) {
+        toast.info('Esta auditoría ya tiene un plan de mejoramiento creado');
+        return;
+      }
+
       // 1. Obtener hallazgos reales del backend si existen
       let hallazgosReales: HallazgoAuditoria[] = [];
       try {
@@ -2912,6 +2986,12 @@ export function GestionAuditoriasKanbanSimple() {
       toast.success(`Plan de Mejoramiento creado para ${auditoria.codigo}`, {
         description: `${hallazgos.length} hallazgos detectados. Ahora puede formular acciones correctivas.`,
         duration: 5000
+      });
+
+      setAuditoriasConPlan((prev) => {
+        const siguiente = new Set(prev);
+        siguiente.add(auditoria.id);
+        return siguiente;
       });
     } catch (err) {
       console.error('Error en handleCrearPlan:', err);
@@ -3622,6 +3702,7 @@ export function GestionAuditoriasKanbanSimple() {
                     onArchivar={handleArchivar}
                     onEliminar={handleEliminar}
                     onCrearPlan={handleCrearPlan}
+                    puedeCrearPlan={puedeMostrarCrearPlan}
                     onEditar={handleEditarAuditoria}
                     tarjetasColapsadas={tarjetasColapsadas}
                     onToggleColapsoTarjeta={toggleTarjetaColapsada}
@@ -4054,8 +4135,8 @@ export function GestionAuditoriasKanbanSimple() {
                         Proceso de Auditoría
                       </Button>
                       
-                      {/* Crear Plan: solo en Comunicación/Seguimiento. En Finalizada el plan se creó en Comunicación. */}
-                      {auditoria.estado !== 'Finalizada' && auditoria.hallazgos > 0 && (
+                      {/* Crear Plan: exclusivo de la etapa Comunicación */}
+                      {puedeMostrarCrearPlan(auditoria) && (
                         <Button 
                           size="sm" 
                           className="gap-2 flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white" 
@@ -4274,41 +4355,53 @@ export function GestionAuditoriasKanbanSimple() {
         {modalInicioAuditoriaOpen && auditoriaSeleccionada && (
           <InicioAuditoriaWizardWorldClass
             isOpen={modalInicioAuditoriaOpen}
-            auditoria={{
-              id: auditoriaSeleccionada.id,
-              codigo: auditoriaSeleccionada.codigo,
-              titulo: auditoriaSeleccionada.titulo,
-              descripcion: auditoriaSeleccionada.descripcion || 'Auditoría de Gestión Administrativa',
-              territorial: auditoriaSeleccionada.territorial,
-              areaAuditable: auditoriaSeleccionada.areaObjetivo || 'Control Interno',
-              procesoNombre: auditoriaSeleccionada.areaObjetivo || auditoriaSeleccionada.titulo,
-              responsableArea: {
-                nombre: 'Responsable del Área',
-                cargo: 'Director',
-                email: 'responsable@esap.edu.co'
-              },
-              auditorLider: {
-                nombre: auditoriaSeleccionada.auditorLider?.nombre || 'Sin asignar',
-                cargo: auditoriaSeleccionada.auditorLider?.cargo || 'Auditor',
-                email: auditoriaSeleccionada.auditorLider?.nombre?.toLowerCase().replace(' ', '.') + '@esap.edu.co' || 'auditor@esap.edu.co'
-              },
-              equipoAuditores: auditoriaSeleccionada.auditorAsignado ? [
-                {
-                  nombre: auditoriaSeleccionada.auditorAsignado?.nombre || 'Sin asignar',
-                  cargo: auditoriaSeleccionada.auditorAsignado?.cargo || 'Auditor'
-                }
-              ] : [],
-              fechaInicio: auditoriaSeleccionada.fechaInicio,
-              fechaFin: auditoriaSeleccionada.fechaFin,
-              objetivos: auditoriaSeleccionada.objetivos || [],
-              criterios: auditoriaSeleccionada.criterios || [],
-              calificacionRiesgo: auditoriaSeleccionada.calificacionRiesgo,
-              duracionDias: {
-                planeacion: 7,
-                ejecucion: 20,
-                comunicacion: 12
-              }
-            }}
+            auditoria={(() => {
+              // DEBUG: Ver TODA la auditoría seleccionada (no solo fechas)
+              console.log('[InicioAuditoriaWizard] TODA auditoriaSeleccionada:', JSON.stringify(auditoriaSeleccionada, null, 2));
+              console.log('[InicioAuditoriaWizard] Fechas específicas:', {
+                fechaInicio: auditoriaSeleccionada.fechaInicio,
+                fechaFinPlaneacion: auditoriaSeleccionada.fechaFinPlaneacion,
+                fechaInicioEjecucion: auditoriaSeleccionada.fechaInicioEjecucion,
+                fechaFinEjecucion: auditoriaSeleccionada.fechaFinEjecucion,
+                fechaInicioComunicacion: auditoriaSeleccionada.fechaInicioComunicacion,
+                fechaFin: auditoriaSeleccionada.fechaFin,
+              });
+              return {
+                id: auditoriaSeleccionada.id,
+                codigo: auditoriaSeleccionada.codigo,
+                titulo: auditoriaSeleccionada.titulo,
+                descripcion: auditoriaSeleccionada.descripcion || 'Auditoría de Gestión Administrativa',
+                territorial: auditoriaSeleccionada.territorial,
+                areaAuditable: auditoriaSeleccionada.areaObjetivo || 'Control Interno',
+                procesoNombre: auditoriaSeleccionada.areaObjetivo || auditoriaSeleccionada.titulo,
+                responsableArea: {
+                  nombre: 'Responsable del Área',
+                  cargo: 'Director',
+                  email: 'responsable@esap.edu.co'
+                },
+                auditorLider: {
+                  nombre: auditoriaSeleccionada.auditorLider?.nombre || 'Sin asignar',
+                  cargo: auditoriaSeleccionada.auditorLider?.cargo || 'Auditor',
+                  email: auditoriaSeleccionada.auditorLider?.nombre?.toLowerCase().replace(' ', '.') + '@esap.edu.co' || 'auditor@esap.edu.co'
+                },
+                equipoAuditores: auditoriaSeleccionada.auditorAsignado ? [
+                  {
+                    nombre: auditoriaSeleccionada.auditorAsignado?.nombre || 'Sin asignar',
+                    cargo: auditoriaSeleccionada.auditorAsignado?.cargo || 'Auditor'
+                  }
+                ] : [],
+                // Cronograma de 3 etapas - fechas reales
+                fechaInicio: auditoriaSeleccionada.fechaInicio,
+                fechaFinPlaneacion: auditoriaSeleccionada.fechaFinPlaneacion,
+                fechaInicioEjecucion: auditoriaSeleccionada.fechaInicioEjecucion,
+                fechaFinEjecucion: auditoriaSeleccionada.fechaFinEjecucion,
+                fechaInicioComunicacion: auditoriaSeleccionada.fechaInicioComunicacion,
+                fechaFin: auditoriaSeleccionada.fechaFin,
+                objetivos: auditoriaSeleccionada.objetivos || [],
+                criterios: auditoriaSeleccionada.criterios || [],
+                calificacionRiesgo: auditoriaSeleccionada.calificacionRiesgo,
+              };
+            })()}
             onClose={() => {
               setModalInicioAuditoriaOpen(false);
               setAuditoriaSeleccionada(null);

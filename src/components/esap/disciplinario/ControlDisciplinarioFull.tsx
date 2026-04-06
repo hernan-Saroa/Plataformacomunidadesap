@@ -151,38 +151,60 @@ export function ControlDisciplinarioFull() {
   }, []);
   
   // ✅ NUEVO: Estado para solicitudes de reasignación
-  const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([
-    {
-      id: 'r1',
-      procesoNumero: 'P-120-2025',
-      procesoId: 'proc-1',
-      etapaActual: 'Indagación Preliminar',
-      profesionalActual: { nombre: 'Juan Carlos Pérez', id: 'prof-1' },
-      profesionalNuevo: { nombre: 'María Torres', id: 'prof-2', cargaActual: '3', cargo: 'Profesional Universitario', especialidad: 'Derecho Disciplinario' },
-      solicitadoPor: 'Juan Carlos Pérez',
-      fechaSolicitud: '2025-01-10T14:30:00',
-      justificacion: 'Conflicto de interés por relación personal con el denunciado',
-      prioridad: 'normal' as const,
-      denunciado: 'Juan Pérez Gómez',
-      estado: 'pendiente' as const,
-    },
-    {
-      id: 'r2',
-      procesoNumero: 'P-089-2024',
-      procesoId: 'proc-2',
-      etapaActual: 'Valoración',
-      profesionalActual: { nombre: 'María Torres', id: 'prof-2' },
-      profesionalNuevo: { nombre: 'Carlos López', id: 'prof-3', cargaActual: '2', cargo: 'Profesional Especializado', especialidad: 'Derecho Penal' },
-      solicitadoPor: 'María Torres',
-      fechaSolicitud: '2025-01-09T10:00:00',
-      justificacion: 'Exceso de carga laboral actual (8 procesos activos)',
-      prioridad: 'urgente' as const,
-      denunciado: 'María González Castro',
-      estado: 'aprobada' as const,
-      fechaResolucion: '2025-01-10T09:00:00',
-      observacionesJefe: 'Aprobada por overload de trabajo',
-    }
-  ]);
+  const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([]);
+
+  // Cargar solicitudes de reasignación reales desde el backend
+  useEffect(() => {
+    const cargarSolicitudesReasignacion = async () => {
+      try {
+        console.log('Cargando solicitudes de reasignación (todas)...');
+        let solicitudes;
+        try {
+          solicitudes = await disciplinaryService.getAllReassignmentRequests();
+          console.log('Solicitudes obtenidas (todas):', solicitudes.length);
+        } catch (error) {
+          console.log('Error cargando todas las solicitudes, intentando con pendientes...', error);
+          solicitudes = await disciplinaryService.getPendingReassignmentRequests();
+          console.log('Solicitudes obtenidas (pendientes):', solicitudes.length);
+        }
+
+        const solicitudesMapeadas = solicitudes.map((solicitud: any) => ({
+          id: solicitud.id,
+          procesoNumero: solicitud.process?.radicadoProceso || solicitud.processId,
+          procesoId: solicitud.processId,
+          etapaActual: solicitud.process?.etapaActual || 'Sin etapa',
+          profesionalActual: {
+            nombre: solicitud.currentProfessional?.nombreCompleto || 'Profesional Actual',
+            id: solicitud.currentProfessionalId,
+          },
+          profesionalNuevo: {
+            nombre: solicitud.newProfessional?.nombreCompleto || 'Profesional Nuevo',
+            id: solicitud.newProfessionalId,
+            cargo: solicitud.newProfessional?.cargo || 'Sin cargo',
+            especialidad: solicitud.newProfessional?.especialidad || 'Sin especialidad',
+            cargaActual: solicitud.newProfessional?.procesosAsignados?.toString() || '-',
+          },
+          solicitadoPor: solicitud.requestedBy,
+          fechaSolicitud: solicitud.createdAt,
+          justificacion: solicitud.justification,
+          prioridad: solicitud.priority === 'URGENTE' ? 'urgente' as const : 'normal' as const,
+          denunciado: solicitud.process?.news?.disciplinable?.nombre || 'Sin información',
+          estado: solicitud.status === 'PENDIENTE' ? 'pendiente' as const :
+                 solicitud.status === 'APROBADA' ? 'aprobada' as const :
+                 'rechazada' as const,
+          fechaResolucion: solicitud.resolvedAt,
+          observacionesJefe: solicitud.jefeObservations,
+          motivoRechazo: solicitud.rejectionReason,
+        }));
+        console.log('Solicitudes cargadas exitosamente:', solicitudesMapeadas.length);
+        setSolicitudesReasignacion(solicitudesMapeadas);
+      } catch (error) {
+        console.error('Error cargando solicitudes de reasignación:', error);
+        // Mantener array vacío si hay error
+      }
+    };
+    cargarSolicitudesReasignacion();
+  }, []);
 
   const hasPermissionBySection: Record<Section, boolean> = {
     dashboard: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_MANAGE),
@@ -343,39 +365,121 @@ export function ControlDisciplinarioFull() {
   }, [borradores]);
 
   // ✅ NUEVO: Handler para aprobar reasignación
-  const handleAprobarReasignacion = useCallback((solicitudId: string, observaciones: string) => {
-    setSolicitudesReasignacion(prev => prev.map(s =>
-      s.id === solicitudId
-        ? {
-            ...s,
-            estado: 'aprobada' as const,
-            fechaResolucion: new Date().toISOString(),
-            observacionesJefe: observaciones,
-          }
-        : s
-    ));
-    toast.success('Reasignación aprobada', {
-      description: 'El proceso ha sido reasignado al nuevo profesional',
-      duration: 5000,
-    });
+  const handleAprobarReasignacion = useCallback(async (solicitudId: string, observaciones: string) => {
+    try {
+      const user = authService.getCurrentUser();
+      const approveData = {
+        approved: true,
+        jefeObservations: observaciones,
+        resolvedBy: user?.fullName || 'Jefe OCID',
+        resolvedById: user?.id || '',
+      };
+
+      const updatedRequest = await disciplinaryService.approveReassignmentRequest(solicitudId, approveData);
+
+      // Actualizar la solicitud específica en el estado local
+      setSolicitudesReasignacion(prev => prev.map(s =>
+        s.id === solicitudId
+          ? {
+              id: updatedRequest.id,
+              procesoNumero: updatedRequest.process?.radicadoProceso || updatedRequest.processId,
+              procesoId: updatedRequest.processId,
+              etapaActual: updatedRequest.process?.etapaActual || 'Sin etapa',
+              profesionalActual: {
+                nombre: updatedRequest.currentProfessional?.nombre || 'Profesional Actual',
+                id: updatedRequest.currentProfessionalId,
+              },
+              profesionalNuevo: {
+                nombre: updatedRequest.newProfessional?.nombre || 'Profesional Nuevo',
+                id: updatedRequest.newProfessionalId,
+                cargo: updatedRequest.newProfessional?.cargo || 'Sin cargo',
+                especialidad: updatedRequest.newProfessional?.especialidad || 'Sin especialidad',
+                cargaActual: updatedRequest.newProfessional?.procesosAsignados?.toString() || '0',
+              },
+              solicitadoPor: updatedRequest.requestedBy,
+              fechaSolicitud: updatedRequest.createdAt,
+              justificacion: updatedRequest.justification,
+              prioridad: updatedRequest.priority === 'URGENTE' ? 'urgente' as const : 'normal' as const,
+              denunciado: updatedRequest.process?.news?.disciplinable?.nombre || 'Sin información',
+              estado: updatedRequest.status === 'PENDIENTE' ? 'pendiente' as const :
+                     updatedRequest.status === 'APROBADA' ? 'aprobada' as const :
+                     'rechazada' as const,
+              fechaResolucion: updatedRequest.resolvedAt,
+              observacionesJefe: updatedRequest.jefeObservations,
+              motivoRechazo: updatedRequest.rejectionReason,
+            }
+          : s
+      ));
+
+      toast.success('Reasignación aprobada', {
+        description: 'El proceso ha sido reasignado al nuevo profesional',
+        duration: 5000,
+      });
+    } catch (error) {
+      console.error('Error al aprobar reasignación:', error);
+      toast.error('Error al aprobar reasignación', {
+        description: 'No se pudo conectar con el servidor. Intente nuevamente.',
+      });
+    }
   }, []);
 
   // ✅ NUEVO: Handler para rechazar reasignación
-  const handleRechazarReasignacion = useCallback((solicitudId: string, motivoRechazo: string) => {
-    setSolicitudesReasignacion(prev => prev.map(s =>
-      s.id === solicitudId
-        ? {
-            ...s,
-            estado: 'rechazada' as const,
-            fechaResolucion: new Date().toISOString(),
-            motivoRechazo,
-          }
-        : s
-    ));
-    toast.warning('Reasignación rechazada', {
-      description: 'La solicitud de reasignación ha sido rechazada',
-      duration: 5000,
-    });
+  const handleRechazarReasignacion = useCallback(async (solicitudId: string, motivoRechazo: string) => {
+    try {
+      const user = authService.getCurrentUser();
+      const rejectData = {
+        approved: false,
+        rejectionReason: motivoRechazo,
+        resolvedBy: user?.fullName || 'Jefe OCID',
+        resolvedById: user?.id || '',
+      };
+
+      const updatedRequest = await disciplinaryService.approveReassignmentRequest(solicitudId, rejectData);
+
+      // Actualizar la solicitud específica en el estado local
+      setSolicitudesReasignacion(prev => prev.map(s =>
+        s.id === solicitudId
+          ? {
+              id: updatedRequest.id,
+              procesoNumero: updatedRequest.process?.radicadoProceso || updatedRequest.processId,
+              procesoId: updatedRequest.processId,
+              etapaActual: updatedRequest.process?.etapaActual || 'Sin etapa',
+              profesionalActual: {
+                nombre: updatedRequest.currentProfessional?.nombre || 'Profesional Actual',
+                id: updatedRequest.currentProfessionalId,
+              },
+              profesionalNuevo: {
+                nombre: updatedRequest.newProfessional?.nombre || 'Profesional Nuevo',
+                id: updatedRequest.newProfessionalId,
+                cargo: updatedRequest.newProfessional?.cargo || 'Sin cargo',
+                especialidad: updatedRequest.newProfessional?.especialidad || 'Sin especialidad',
+                cargaActual: updatedRequest.newProfessional?.procesosAsignados?.toString() || '0',
+              },
+              solicitadoPor: updatedRequest.requestedBy,
+              fechaSolicitud: updatedRequest.createdAt,
+              justificacion: updatedRequest.justification,
+              prioridad: updatedRequest.priority === 'URGENTE' ? 'urgente' as const : 'normal' as const,
+              denunciado: updatedRequest.process?.news?.disciplinable?.nombre || 'Sin información',
+              estado: updatedRequest.status === 'PENDIENTE' ? 'pendiente' as const :
+                     updatedRequest.status === 'APROBADA' ? 'aprobada' as const :
+                     'rechazada' as const,
+              fechaResolucion: updatedRequest.resolvedAt,
+              observacionesJefe: updatedRequest.jefeObservations,
+              motivoRechazo: updatedRequest.rejectionReason,
+            }
+          : s
+      ));
+
+      toast.warning('Reasignación rechazada', {
+        description: 'La solicitud de reasignación ha sido rechazada',
+        duration: 5000,
+      });
+    } catch (error) {
+      console.error('Error al rechazar reasignación:', error);
+      toast.error('Error al rechazar reasignación', {
+        description: 'No se pudo conectar con el servidor. Intente nuevamente.',
+      });
+    }
   }, []);
 
   return (

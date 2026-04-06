@@ -31,7 +31,10 @@ const formatFileSize = (size?: number) => {
 };
 
 // Construir URL para archivos de evidencias del servicio control-disciplinario
-const buildEvidenciaFileUrl = (archivoUrl: string, forDownload: boolean = false, originalName?: string): string => {
+const buildEvidenciaFileUrl = (archivoUrl: string, forInlineView: boolean = false, originalName?: string): string => {
+  const withViewParam = (url: string) =>
+    forInlineView ? (url.includes('?') ? `${url}&view=true` : `${url}?view=true`) : url;
+
   // Si no hay URL, retornar vacio
   if (!archivoUrl) {
     console.warn('buildEvidenciaFileUrl: archivoUrl es vacio o nulo');
@@ -40,62 +43,51 @@ const buildEvidenciaFileUrl = (archivoUrl: string, forDownload: boolean = false,
 
   // Si la URL ya es una ruta absoluta o URL completa, retornarla tal cual
   if (archivoUrl.startsWith('http://') || archivoUrl.startsWith('https://')) {
-    return archivoUrl;
+    return withViewParam(archivoUrl);
   }
 
   // Si la URL ya es una ruta de API del control-disciplinario (comienza con /control-disciplinario/)
   // El backend retorna: /control-disciplinario/api/v1/disciplinary-processes/.../download
   if (archivoUrl.startsWith('/control-disciplinario/')) {
-    // Extraer la ruta relativa despues de /control-disciplinario
-    // /control-disciplinario/api/v1/... -> /api/v1/...
     const path = archivoUrl.replace(/^\/control-disciplinario/, '');
-    
+
     console.log('buildEvidenciaFileUrl: path extraido =', path);
-    
-    // Construir la URL completa usando buildApiUrl con la ruta relativa
+
     if (API_MODE === 'direct') {
-      // En direct mode el backend no tiene prefijo /api/v1
       const directPath = path.replace(/^\/api\/v\d+/, '');
       const result = `${MICROSERVICE_URLS['control-disciplinario']}${directPath}`;
       console.log('buildEvidenciaFileUrl (direct):', result);
-      return result;
+      return withViewParam(result);
     }
     const result = buildApiUrl('control-disciplinario', path);
     console.log('buildEvidenciaFileUrl (gateway):', result);
-    return result;
+    return withViewParam(result);
   }
 
   // Si es una ruta de archivo del backend (/files/filename.pdf)
-  // El backend tiene el endpoint /files/:filename en files.controller.ts
   if (archivoUrl.startsWith('/files/')) {
     const filename = archivoUrl.replace(/^\/files\//, '');
-    
     if (API_MODE === 'direct') {
-      // En modo directo, usar la URL directa del microservicio
-      return `${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`;
+      return withViewParam(`${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`);
     }
-    // En modo gateway, usar la ruta /files/ que mapea a forwardStatic
-    // El gateway espera: /{service}/files/{filename} -> reenvía a {service}/files/{filename}
-    return buildApiUrl('control-disciplinario', `/files/${filename}`);
+    return withViewParam(buildApiUrl('control-disciplinario', `/files/${filename}`));
   }
 
-  // Si es una ruta de archivo antigua (files/filename.pdf sin slash inicial), procesarla para backward compatibility
+  // Ruta antigua sin slash inicial
   if (archivoUrl.startsWith('files/')) {
     const filename = archivoUrl.replace(/^files\//, '');
-    
     if (API_MODE === 'direct') {
-      return `${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`;
+      return withViewParam(`${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`);
     }
-    return buildApiUrl('control-disciplinario', `/files/${filename}`);
+    return withViewParam(buildApiUrl('control-disciplinario', `/files/${filename}`));
   }
 
-  // Si es una ruta relativa simple (nombre de archivo), asume que es un archivo en /files/
-  // Agregar el prefijo /files/
+  // Ruta relativa simple — asumir /files/
   const filename = archivoUrl.includes('/') ? archivoUrl.split('/').pop() : archivoUrl;
   if (API_MODE === 'direct') {
-    return `${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`;
+    return withViewParam(`${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`);
   }
-  return buildApiUrl('control-disciplinario', `/files/${filename}`);
+  return withViewParam(buildApiUrl('control-disciplinario', `/files/${filename}`));
 };
 
 // Verificar si un archivo puede visualizarse en el navegador
@@ -2154,6 +2146,8 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                         const token = localStorage.getItem('esap_access_token');
                         const headers: HeadersInit = {};
                         if (token) headers['Authorization'] = `Bearer ${token}`;
+                        // Abrir ventana sincrónicamente para evitar bloqueo de popups
+                        const win = window.open('about:blank', '_blank');
                         fetch(viewUrl, { method: 'GET', headers, credentials: 'include' })
                           .then(res => {
                             if (!res.ok) throw new Error('No autorizado');
@@ -2161,10 +2155,15 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                           })
                           .then(blob => {
                             const objectUrl = URL.createObjectURL(blob);
-                            const win = window.open(objectUrl, '_blank');
-                            if (win) setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+                            if (win) {
+                              win.location.href = objectUrl;
+                              setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+                            }
                           })
-                          .catch(() => toast.error('No se pudo abrir el archivo'));
+                          .catch(() => {
+                            if (win) win.close();
+                            toast.error('No se pudo abrir el archivo');
+                          });
                       }}
                       title="Ver documento"
                       style={{ borderColor: '#003DA5', color: '#003DA5' }}

@@ -15,9 +15,10 @@ import { Card } from '../../../ui/card';
 import { toast } from 'sonner';
 
 import { disciplinaryService } from '../../../../services/api/disciplinary.service';
+import { legalService } from '../../../../services/api/legal.service';
 import {
   Gavel, User, FileText, AlertTriangle, Calendar,
-  Save, X, Building, Info, CheckCircle
+  Save, X, Building, Info, CheckCircle, Scale
 } from 'lucide-react';
 
 // ✅ Importar sistema de validación
@@ -26,7 +27,6 @@ import { FormField, FormSection, FormProgress } from '../design-system/FormField
 import { ModalHeaderClean } from './ModalHeaderClean';
 
 // ✅ Importar hooks responsive
-import { useIsMobile } from '../../../../hooks/useIsMobile';
 import { useKeyboardVisible } from '../../../../hooks/useKeyboardVisible';
 
 interface ModalNuevoProcesoDisciplinarioProps {
@@ -51,7 +51,7 @@ export function ModalNuevoProcesoDisciplinario({
     descripcionHechos: '',
     investigador: '',
     abogadoAsignado: '',
-    fechaApertura: '',
+    fechaHechos: '',
     observaciones: ''
   };
 
@@ -82,10 +82,10 @@ export function ModalNuevoProcesoDisciplinario({
     investigador: [
       CommonValidations.required('El investigador asignado es obligatorio')
     ],
-    fechaApertura: [
-      CommonValidations.required('La fecha de apertura es obligatoria'),
-      CommonValidations.pastDate('La fecha debe ser pasada o actual')
-    ]
+    fechaHechos: [
+      CommonValidations.required('La fecha de los hechos es obligatoria'),
+      CommonValidations.pastDate('La fecha de los hechos debe ser pasada o actual')
+    ],
   };
 
   // ========== HOOK DE VALIDACIÓN ==========
@@ -104,12 +104,24 @@ export function ModalNuevoProcesoDisciplinario({
 
   const [guardando, setGuardando] = useState(false);
 
+  // ========== CONFIGURACIÓN DE PRESCRIPCIÓN ==========
+  const [prescriptionYears, setPrescriptionYears] = useState<number>(5);
+
+  // ========== LEY APLICABLE DINÁMICA ==========
+  /** Fecha límite: igual o posterior → Ley 1952/2019; antes → Ley 734/2002 */
+  const LEY_1952_DESDE = new Date('2021-06-30T00:00:00.000Z');
+  const leyAplicable = formData.fechaHechos
+    ? (new Date(formData.fechaHechos) < LEY_1952_DESDE ? 'Ley 734 de 2002' : 'Ley 1952 de 2019')
+    : null;
+  const esLey1952 = leyAplicable === 'Ley 1952 de 2019';
+
   // ========== PROFESIONALES DESDE BACKEND (control-disciplinario-service) ==========
   // ✅ Usa el mismo endpoint que el módulo disciplinario (funciona en QA sin cambios de docker)
   const [profesionales, setProfesionales] = useState<{ id: string; nombreCompleto: string; especialidad: string }[]>([]);
 
   useEffect(() => {
     if (isOpen) {
+      // Cargar profesionales
       disciplinaryService.getProfesionales()
         .then((data: any[]) => {
           setProfesionales(
@@ -125,6 +137,16 @@ export function ModalNuevoProcesoDisciplinario({
         .catch((err: any) => {
           console.error('Error cargando profesionales:', err);
           setProfesionales([]);
+        });
+
+      // Cargar configuración de prescripción disciplinaria
+      legalService.getConfiguration('prescripcion_juzgamiento')
+        .then((config: any) => {
+          const years = config?.value?.years ?? 5;
+          setPrescriptionYears(Number(years));
+        })
+        .catch(() => {
+          setPrescriptionYears(5); // Valor por defecto normativo
         });
     }
   }, [isOpen]);
@@ -186,15 +208,17 @@ export function ModalNuevoProcesoDisciplinario({
       // POST /legal/api/v1/juzgamiento -> JuzgamientoController.create()
       // =============================================
       const expedienteData = {
-        demandado: formData.investigado,           // Nombre del investigado
-        cargoInvestigado: formData.cargo,           // Cargo del investigado
-        dependenciaInvestigado: depLabel,           // Dependencia
-        tipoFalta: formData.tipoFalta,             // LEVE, GRAVE, GRAVISIMA
+        demandado: formData.investigado,
+        cargoInvestigado: formData.cargo,
+        dependenciaInvestigado: depLabel,
+        tipoFalta: formData.tipoFalta,
         hechos: formData.descripcionHechos + (formData.observaciones ? `\n\nObservaciones: ${formData.observaciones}` : ''),
-        abogadoSustanciador: investigadorNombre,   // Investigador asignado
-        fechaRadicacion: new Date(formData.fechaApertura).toISOString(),
-        demandante: 'Oficina de Control Interno',  // Quien inicia
-        numeroIdDemandado: formData.identificacion, // CC del investigado
+        abogadoSustanciador: investigadorNombre,
+        fechaRadicacion: new Date(formData.fechaHechos).toISOString(),
+        fechaHechos: new Date(formData.fechaHechos).toISOString(),
+        demandante: 'Oficina de Control Interno',
+        numeroIdDemandado: formData.identificacion,
+        // leyAplicable se calcula en el backend según fechaHechos
       };
 
       console.log('⚖️ Creando proceso disciplinario...', expedienteData);
@@ -243,7 +267,6 @@ export function ModalNuevoProcesoDisciplinario({
   };
 
   // ✅ Hooks responsive
-  const isMobile = useIsMobile();
   const keyboardVisible = useKeyboardVisible();
 
   return (
@@ -490,31 +513,53 @@ export function ModalNuevoProcesoDisciplinario({
             {/* ✅ SECCIÓN 4: FECHAS */}
             <FormSection
               title="Fechas del Proceso"
-              description="Fechas relevantes para el cómputo de términos"
+              description="Fechas relevantes para el cómputo de términos y determinación de la ley aplicable"
               icon={<Calendar />}
               color="green"
             >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  name="fechaApertura"
-                  label="Fecha de Auto de Apertura"
-                  type="date"
-                  value={formData.fechaApertura}
-                  onChange={(val) => updateField('fechaApertura', val)}
-                  onBlur={() => touchField('fechaApertura')}
-                  required
-                  error={errors.fechaApertura}
-                  state={getFieldState('fechaApertura')}
-                  tooltip="Fecha de expedición del auto que ordena la apertura de la investigación"
-                  icon={<Calendar className="w-4 h-4" />}
-                />
+              <FormField
+                name="fechaHechos"
+                label="Fecha de los Hechos"
+                type="date"
+                value={formData.fechaHechos}
+                onChange={(val) => updateField('fechaHechos', val)}
+                onBlur={() => touchField('fechaHechos')}
+                required
+                error={errors.fechaHechos}
+                state={getFieldState('fechaHechos')}
+                tooltip="Fecha en que ocurrieron los hechos disciplinarios. Determina la ley aplicable y el cómputo de prescripción."
+                icon={<Calendar className="w-4 h-4" />}
+              />
 
-                <div className="flex items-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <Info className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0" />
-                  <div className="text-xs text-blue-900">
-                    <p className="font-bold">Término inicial: 90 días</p>
-                    <p>Según Ley 734/2002 para etapa de indagación</p>
-                  </div>
+              {/* ✅ RECUADRO DINÁMICO DE LEY APLICABLE */}
+              <div className={`flex items-start gap-3 p-4 rounded-lg border ${
+                leyAplicable === null
+                  ? 'bg-gray-50 border-gray-200'
+                  : esLey1952
+                    ? 'bg-blue-50 border-blue-300'
+                    : 'bg-amber-50 border-amber-300'
+              }`}>
+                <Scale className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                  leyAplicable === null ? 'text-gray-400' : esLey1952 ? 'text-blue-600' : 'text-amber-600'
+                }`} />
+                <div className="text-sm">
+                  {leyAplicable === null ? (
+                    <p className="text-gray-500 font-medium">Ingrese la fecha de los hechos para determinar la ley aplicable</p>
+                  ) : (
+                    <>
+                      <p className={`font-bold text-base ${esLey1952 ? 'text-blue-900' : 'text-amber-900'}`}>
+                        {leyAplicable}
+                      </p>
+                      <p className={`mt-1 ${esLey1952 ? 'text-blue-700' : 'text-amber-700'}`}>
+                        {esLey1952
+                          ? 'Código General Disciplinario — vigente desde el 30 de junio de 2021'
+                          : 'Código Disciplinario Único — aplicable a hechos anteriores al 30 de junio de 2021'}
+                      </p>
+                      <p className={`mt-1.5 text-xs ${esLey1952 ? 'text-blue-600' : 'text-amber-600'}`}>
+                        Término de prescripción: <strong>{prescriptionYears} {prescriptionYears === 1 ? 'año' : 'años'}</strong> contados desde la fecha del auto de apertura
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             </FormSection>

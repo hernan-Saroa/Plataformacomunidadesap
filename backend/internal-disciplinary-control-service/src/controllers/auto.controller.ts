@@ -123,6 +123,15 @@ export class AutoController {
   }
 
   /**
+   * Obtener Auto por ID
+   */
+  @Get(':id')
+  @ApiOperation({ summary: 'Obtener Auto por ID', description: 'Retorna un auto específico por su ID' })
+  async findOne(@Param('id') id: string): Promise<LegalAuto> {
+    return await this.autoService.findById(id);
+  }
+
+  /**
    * Actualizar Auto (Metadata y Contenido)
    */
   @Put(':id')

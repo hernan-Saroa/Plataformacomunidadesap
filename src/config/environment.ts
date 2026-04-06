@@ -61,6 +61,48 @@ const rewriteLoopbackUrl = (rawUrl: string): string => {
 const withLocalhost = (port: number, override?: string) =>
   rewriteLoopbackUrl(override || `http://localhost:${port}`);
 
+const normalizeConfiguredGatewayUrl = (rawUrl: string): string => {
+  const rewrittenUrl = rewriteLoopbackUrl(rawUrl);
+
+  if (typeof window === 'undefined' || !window.location?.origin) {
+    return rewrittenUrl;
+  }
+
+  try {
+    return new URL(rewrittenUrl, window.location.origin).toString().replace(/\/$/, '');
+  } catch {
+    return rewrittenUrl;
+  }
+};
+
+const getBrowserGatewayUrl = (): string | null => {
+  if (typeof window === 'undefined' || !window.location?.hostname) {
+    return null;
+  }
+
+  const { protocol, hostname, origin } = window.location;
+
+  if (isLoopbackHost(hostname)) {
+    return `${protocol}//${hostname}:3000`;
+  }
+
+  return `${origin.replace(/\/$/, '')}/services`;
+};
+
+export const getApiGatewayBaseUrl = (): string => {
+  const configuredUrl = VITE_API_URL ? normalizeConfiguredGatewayUrl(VITE_API_URL) : undefined;
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+
+  const browserUrl = getBrowserGatewayUrl();
+  if (browserUrl) {
+    return browserUrl;
+  }
+
+  return API_GATEWAY_URLS[ENV as keyof typeof API_GATEWAY_URLS] || API_GATEWAY_URLS.development;
+};
+
 export const API_MODE = VITE_API_MODE || (isLocalhost ? 'direct' : 'gateway');
 
 // URL de OnlyOffice Document Server
@@ -107,7 +149,7 @@ export const getServiceUrl = (serviceName: keyof typeof MICROSERVICE_URLS): stri
   if (API_MODE === 'direct') {
     return MICROSERVICE_URLS[serviceName] || API_GATEWAY_URLS.development;
   }
-  return VITE_API_URL || API_GATEWAY_URLS[ENV as keyof typeof API_GATEWAY_URLS] || API_GATEWAY_URLS.development;
+  return getApiGatewayBaseUrl();
 };
 
 /**
@@ -180,7 +222,7 @@ export const buildServiceAssetUrl = (
 // Configuración general
 export const config = {
   // URL base del API Gateway - usa VITE_API_URL si existe, sino el fallback por entorno
-  API_BASE_URL: VITE_API_URL || API_GATEWAY_URLS[ENV as keyof typeof API_GATEWAY_URLS],
+  API_BASE_URL: getApiGatewayBaseUrl(),
 
   // Versión del API por defecto
   API_VERSION: 'v1',
@@ -196,8 +238,7 @@ export const config = {
 
   // WebSocket URL (para notificaciones en tiempo real)
   WS_URL: (() => {
-    const defaultHttp =
-      VITE_API_URL || API_GATEWAY_URLS[ENV as keyof typeof API_GATEWAY_URLS] || API_GATEWAY_URLS.development;
+    const defaultHttp = getApiGatewayBaseUrl();
 
     const asWs = (() => {
       try {

@@ -67,32 +67,83 @@ export interface DisciplinaryNews {
 //     // radicado, fechaRecepcion, estado, observaciones
 // }
 
+export interface DisciplinaryNewsProcess {
+     id: string;
+     newsId: string;
+     processId: string;
+     fechaAsociacion: string;
+     justificacion?: string;
+     createdAt: string;
+     updatedAt: string;
+     news?: DisciplinaryNews;
+     process?: DisciplinaryProcess;
+}
+
+// ==================== SOLICITUDES DE REASIGNACIÓN ====================
+
+export interface CreateReassignmentRequestDto {
+  processId: string;
+  newProfessionalId: string;
+  justification: string;
+  priority?: 'NORMAL' | 'URGENTE';
+  requestedBy: string;
+  requestedById?: string;
+}
+
+export interface ApproveReassignmentRequestDto {
+  approved: boolean;
+  jefeObservations?: string;
+  rejectionReason?: string;
+  resolvedBy: string;
+  resolvedById?: string;
+}
+
+export interface DisciplinaryProcessReassignmentRequest {
+  id: string;
+  processId: string;
+  currentProfessionalId: string;
+  newProfessionalId: string;
+  justification: string;
+  priority: 'NORMAL' | 'URGENTE';
+  status: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
+  jefeObservations?: string;
+  rejectionReason?: string;
+  resolvedAt?: string;
+  requestedBy: string;
+  requestedById?: string;
+  createdAt: string;
+  updatedAt: string;
+  process?: DisciplinaryProcess;
+  currentProfessional?: any;
+  newProfessional?: any;
+}
+
 export interface DisciplinaryProcess {
-    id: string;
-    radicadoProceso: string;
-    etapaActual: 'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO' | 'FALLO' | 'SEGUNDA_INSTANCIA' | 'INDAGACION';
-    kanbanStage?: string;
-    kanbanNotice?: string;
-    estado: 'ACTIVO' | 'SUSPENDIDO' | 'ARCHIVADO' | 'PRESCRITO';
-    abogadoAsignadoId: string;
-    abogadoAsignadoNombre: string;
-    fechaPrescripcion: string;
-    fechaVencimientoEtapa: string;
-    news: DisciplinaryNews;
-    createdAt: string;
-    updatedAt: string;
-    evidence?: any[];
-    // Estadísticas dinámicas
-    draftsCount?: number;
-    documentsCount?: number;
-    timePercentage?: number;
-    actuacionesCount?: number;
-    ultimaActuacion?: string | null;
-    ultimaActuacionFecha?: string | null;
-    tasksCount?: number;
-    completedTasksCount?: number;
-    pendingTasksCount?: number;
-    notesCount?: number;
+     id: string;
+     radicadoProceso: string;
+     etapaActual: 'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO' | 'FALLO' | 'SEGUNDA_INSTANCIA' | 'INDAGACION';
+     kanbanStage?: string;
+     kanbanNotice?: string;
+     estado: 'ACTIVO' | 'SUSPENDIDO' | 'ARCHIVADO' | 'PRESCRITO';
+     abogadoAsignadoId: string;
+     abogadoAsignadoNombre: string;
+     fechaPrescripcion: string;
+     fechaVencimientoEtapa: string;
+     news: DisciplinaryNews;
+     createdAt: string;
+     updatedAt: string;
+     evidence?: any[];
+     // Estadísticas dinámicas
+     draftsCount?: number;
+     documentsCount?: number;
+     timePercentage?: number;
+     actuacionesCount?: number;
+     ultimaActuacion?: string | null;
+     ultimaActuacionFecha?: string | null;
+     tasksCount?: number;
+     completedTasksCount?: number;
+     pendingTasksCount?: number;
+     notesCount?: number;
 }
 
 export interface ProcessStatistics {
@@ -422,6 +473,14 @@ class DisciplinaryService {
 
     async getAllNoticias(): Promise<DisciplinaryNews[]> {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news`);
+    }
+
+    async archiveNews(id: string, reason: string): Promise<DisciplinaryNews> {
+        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/archive`, { reason });
+    }
+
+    async restoreNews(id: string): Promise<DisciplinaryNews> {
+        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/restore`, {});
     }
 
     /**
@@ -789,6 +848,10 @@ class DisciplinaryService {
 
     async getAutosPorProceso(processId: string): Promise<LegalAuto[]> {
         return apiClient.get<LegalAuto[]>(`${SERVICE_PREFIX}/disciplinary-autos/by-process/${processId}`);
+    }
+
+    async getAutoById(id: string): Promise<LegalAuto> {
+        return apiClient.get<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}`);
     }
 
     async crearAuto(data: CreateAutoDto): Promise<LegalAuto> {
@@ -1517,9 +1580,16 @@ class DisciplinaryService {
 
     // --- ASOCIACIONES ---
 
-    async asociarNoticiaAProceso(noticiaId: string, procesoId: string, justificacion: string): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-news/${noticiaId}/associate-process`, {
+    async asociarNoticiaAProceso(noticiaId: string, procesoId: string, justificacion: string): Promise<{ message: string; association?: any }> {
+        return apiClient.patch<{ message: string; association?: any }>(`${SERVICE_PREFIX}/disciplinary-news/${noticiaId}/associate-process`, {
             procesoDestinoId: procesoId,
+            justificacion,
+        });
+    }
+
+    async asociarNoticiaANoticia(noticiaId: string, noticiaDestinoId: string, justificacion: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-news/${noticiaId}/associate-news`, {
+            noticiaDestinoId,
             justificacion,
         });
     }
@@ -1535,6 +1605,57 @@ class DisciplinaryService {
             tipoAsociacion,
             justificacion,
         });
+    }
+
+    /**
+     * Obtener las noticias asociadas a un proceso específico
+     */
+    async getAssociatedNewsToProcess(processId: string): Promise<DisciplinaryNews[]> {
+        return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news/associated-to-process/${processId}`);
+    }
+
+    // ==================== SOLICITUDES DE REASIGNACIÓN ====================
+
+    /**
+     * Crear una solicitud de reasignación de proceso
+     */
+    async createReassignmentRequest(data: CreateReassignmentRequestDto): Promise<DisciplinaryProcessReassignmentRequest> {
+        return apiClient.post<DisciplinaryProcessReassignmentRequest>(`${SERVICE_PREFIX}/disciplinary-process-reassignment`, data);
+    }
+
+    /**
+     * Aprobar o rechazar una solicitud de reasignación
+     */
+    async approveReassignmentRequest(requestId: string, data: ApproveReassignmentRequestDto): Promise<DisciplinaryProcessReassignmentRequest> {
+        return apiClient.put<DisciplinaryProcessReassignmentRequest>(`${SERVICE_PREFIX}/disciplinary-process-reassignment/${requestId}/approve`, data);
+    }
+
+    /**
+     * Obtener solicitudes pendientes de reasignación
+     */
+    async getPendingReassignmentRequests(): Promise<DisciplinaryProcessReassignmentRequest[]> {
+        return apiClient.get<DisciplinaryProcessReassignmentRequest[]>(`${SERVICE_PREFIX}/disciplinary-process-reassignment/pending`);
+    }
+
+    /**
+     * Obtener todas las solicitudes de reasignación
+     */
+    async getAllReassignmentRequests(): Promise<DisciplinaryProcessReassignmentRequest[]> {
+        return apiClient.get<DisciplinaryProcessReassignmentRequest[]>(`${SERVICE_PREFIX}/disciplinary-process-reassignment`);
+    }
+
+    /**
+     * Obtener una solicitud de reasignación por ID
+     */
+    async getReassignmentRequestById(id: string): Promise<DisciplinaryProcessReassignmentRequest> {
+        return apiClient.get<DisciplinaryProcessReassignmentRequest>(`${SERVICE_PREFIX}/disciplinary-process-reassignment/${id}`);
+    }
+
+    /**
+     * Obtener solicitudes de reasignación de un proceso
+     */
+    async getReassignmentRequestsByProcess(processId: string): Promise<DisciplinaryProcessReassignmentRequest[]> {
+        return apiClient.get<DisciplinaryProcessReassignmentRequest[]>(`${SERVICE_PREFIX}/disciplinary-process-reassignment/process/${processId}`);
     }
 
 }
