@@ -174,15 +174,15 @@ export function ControlDisciplinarioFull() {
           procesoId: solicitud.processId,
           etapaActual: solicitud.process?.etapaActual || 'Sin etapa',
           profesionalActual: {
-            nombre: solicitud.currentProfessional?.nombre || 'Profesional Actual',
+            nombre: solicitud.currentProfessional?.nombreCompleto || 'Profesional Actual',
             id: solicitud.currentProfessionalId,
           },
           profesionalNuevo: {
-            nombre: solicitud.newProfessional?.nombre || 'Profesional Nuevo',
+            nombre: solicitud.newProfessional?.nombreCompleto || 'Profesional Nuevo',
             id: solicitud.newProfessionalId,
             cargo: solicitud.newProfessional?.cargo || 'Sin cargo',
             especialidad: solicitud.newProfessional?.especialidad || 'Sin especialidad',
-            cargaActual: solicitud.newProfessional?.procesosAsignados?.toString() || '0',
+            cargaActual: solicitud.newProfessional?.procesosAsignados?.toString() || '-',
           },
           solicitadoPor: solicitud.requestedBy,
           fechaSolicitud: solicitud.createdAt,
