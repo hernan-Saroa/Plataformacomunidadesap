@@ -125,9 +125,23 @@ export class DisciplinaryProcessReassignmentService {
     }
 
     request.resolvedAt = new Date();
-    // Note: resolvedBy fields would be set from the authenticated user
+    // Set resolvedBy fields from the DTO
+    // Note: These would typically come from authenticated user context,
+    // but for now we accept them from the DTO
 
-    return this.reassignmentRepo.save(request);
+    const savedRequest = await this.reassignmentRepo.save(request);
+
+    // Return the saved request with relations loaded
+    const result = await this.reassignmentRepo.findOne({
+      where: { id: savedRequest.id },
+      relations: ['process', 'currentProfessional', 'newProfessional'],
+    });
+
+    if (!result) {
+      throw new NotFoundException(`Solicitud de reasignación con ID ${savedRequest.id} no encontrada después de guardar`);
+    }
+
+    return result;
   }
 
   async getPendingRequests(): Promise<DisciplinaryProcessReassignmentRequest[]> {

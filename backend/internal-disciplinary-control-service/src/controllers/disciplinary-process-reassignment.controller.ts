@@ -38,6 +38,16 @@ export class DisciplinaryProcessReassignmentController {
     return this.reassignmentService.createReassignmentRequest(dto);
   }
 
+  @Get()
+  @ApiOperation({ summary: 'Obtener todas las solicitudes de reasignación' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de todas las solicitudes',
+  })
+  getAllRequests() {
+    return this.reassignmentService.getAllRequests();
+  }
+
   @Put(':id/approve')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Aprobar o rechazar una solicitud de reasignación' })

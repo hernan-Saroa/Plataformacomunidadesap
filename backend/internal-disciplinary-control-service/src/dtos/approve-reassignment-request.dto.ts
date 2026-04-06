@@ -12,8 +12,9 @@ export class ApproveReassignmentRequestDto {
   @IsString()
   rejectionReason?: string;
 
+  @IsOptional()
   @IsString()
-  resolvedBy: string;
+  resolvedBy?: string;
 
   @IsOptional()
   @IsString()
