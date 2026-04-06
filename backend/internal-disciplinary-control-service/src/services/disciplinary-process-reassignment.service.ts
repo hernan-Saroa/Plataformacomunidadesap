@@ -158,4 +158,11 @@ export class DisciplinaryProcessReassignmentService {
       order: { createdAt: 'DESC' },
     });
   }
+
+  async getAllRequests(): Promise<DisciplinaryProcessReassignmentRequest[]> {
+    return this.reassignmentRepo.find({
+      relations: ['process', 'currentProfessional', 'newProfessional'],
+      order: { createdAt: 'DESC' },
+    });
+  }
 }

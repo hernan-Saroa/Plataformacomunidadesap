@@ -850,6 +850,10 @@ class DisciplinaryService {
         return apiClient.get<LegalAuto[]>(`${SERVICE_PREFIX}/disciplinary-autos/by-process/${processId}`);
     }
 
+    async getAutoById(id: string): Promise<LegalAuto> {
+        return apiClient.get<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}`);
+    }
+
     async crearAuto(data: CreateAutoDto): Promise<LegalAuto> {
         return apiClient.post<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos`, data);
     }
@@ -1631,6 +1635,13 @@ class DisciplinaryService {
      */
     async getPendingReassignmentRequests(): Promise<DisciplinaryProcessReassignmentRequest[]> {
         return apiClient.get<DisciplinaryProcessReassignmentRequest[]>(`${SERVICE_PREFIX}/disciplinary-process-reassignment/pending`);
+    }
+
+    /**
+     * Obtener todas las solicitudes de reasignación
+     */
+    async getAllReassignmentRequests(): Promise<DisciplinaryProcessReassignmentRequest[]> {
+        return apiClient.get<DisciplinaryProcessReassignmentRequest[]>(`${SERVICE_PREFIX}/disciplinary-process-reassignment`);
     }
 
     /**

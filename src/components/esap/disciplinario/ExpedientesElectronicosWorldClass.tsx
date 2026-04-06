@@ -1057,7 +1057,8 @@ export function ExpedientesElectronicosWorldClass() {
     
     try {
       // Construir la URL del documento usando buildApiUrl (respeta gateway/direct)
-      const restPath = `/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download`;
+      // ?view=true hace que el backend devuelva Content-Type correcto (ej. application/pdf) e inline
+      const restPath = `/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download?view=true`;
       const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
       const token = localStorage.getItem('esap_access_token');
 
@@ -1748,7 +1749,8 @@ export function ExpedientesElectronicosWorldClass() {
                   {getFileType(documentoParaVer.archivoAcceso) === 'pdf' && (
                     <iframe
                       src={documentoUrl}
-                      className="w-full h-full"
+                      className="w-full"
+                      style={{ height: '65vh', minHeight: '400px', border: 'none' }}
                       title="Visor PDF"
                     />
                   )}

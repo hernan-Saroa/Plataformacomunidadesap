@@ -2465,7 +2465,8 @@ export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = [])
   const stageLabelMap: Record<string, string> = { RECEPCION: 'Recepción', VALORACION: 'Valoración', INDAGACION_PREVIA: 'Indagación', INVESTIGACION: 'Investigación', EVALUACION: 'Evaluación', JUZGAMIENTO: 'Juzgamiento', INDAGACION: 'Indagación', FALLO: 'Fallo', SEGUNDA_INSTANCIA: 'Segunda Instancia' };
   let etapa = proceso.kanbanStage || proceso.etapaActual;
 
-  const match = currentStages.find(s => s.etapa === etapa || s.etapa.toUpperCase() === etapa.toUpperCase());
+  const normComp = (s: string) => s?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase() || '';
+  const match = currentStages.find(s => s.etapa === etapa || normComp(s.etapa) === normComp(etapa));
   if (match) {
     etapa = match.etapa;
   } else {
@@ -3139,7 +3140,7 @@ export function DashboardKanbanOperativo({
       return normalizedRaw === normalizedLabel || normalizedRaw.includes(normalizedLabel) || normalizedLabel.includes(normalizedRaw);
     });
     if (mappedStage?.etapa) {
-      return mappedStage.etapa;
+      return mappedStage.etapa.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
     }
 
     const fallbackMap: Record<string, string> = {
@@ -3794,37 +3795,42 @@ export function DashboardKanbanOperativo({
     setModalActivo('archivar-noticia');
   };
 
-  const handleConfirmarArchivo = () => {
-    // Mover al listado de archivados con metadata de archivo
+  const handleConfirmarArchivo = async () => {
+    const noticiaAArchivar = itemSeleccionado;
+    setModalActivo(null);
+    setItemSeleccionado(null);
+
+    try {
+      await disciplinaryService.archiveNews(noticiaAArchivar.id, 'Archivado por el operador disciplinario');
+    } catch (err) {
+      console.error('[DashboardKanban] Error al archivar en backend:', err);
+      toast.error('Error al archivar', {
+        description: 'No se pudo archivar la noticia. Intenta de nuevo.',
+      });
+      return;
+    }
+
+    // Solo actualizar UI si el backend confirmó el archivo
     const itemArchivado = {
-      ...itemSeleccionado,
+      ...noticiaAArchivar,
       estado: 'archivada' as any,
       fechaArchivo: new Date().toISOString(),
       motivoArchivo: 'Archivado por el operador disciplinario',
       bitacora: [
-        ...(itemSeleccionado as any).bitacora || [],
+        ...(noticiaAArchivar as any).bitacora || [],
         {
           fecha: new Date().toISOString(),
           accion: 'Archivo de Noticia',
-          detalle: `Noticia ${itemSeleccionado.numero || itemSeleccionado.numeroProceso} archivada por el operador disciplinario.`,
+          detalle: `Noticia ${noticiaAArchivar.numero || noticiaAArchivar.numeroProceso} archivada por el operador disciplinario.`,
           usuario: 'Usuario Actual',
         }
       ],
     };
     setItemsArchivados(prev => [itemArchivado, ...prev]);
-    // Remover del Kanban (la noticia archivada sale del flujo activo)
-    setTimeout(() => {
-      setItems(prev => prev.filter(i => i.id !== itemSeleccionado.id));
-    }, 100);
-    // ✅ Persistir archivo en el backend
-    disciplinaryService.archiveNews(itemSeleccionado.id, 'Archivado por el operador disciplinario').catch(err =>
-      console.error('[DashboardKanban] Error al archivar en backend:', err)
-    );
+    setItems(prev => prev.filter(i => i.id !== noticiaAArchivar.id));
     toast.success('Noticia Archivada Exitosamente', {
-      description: `${itemSeleccionado.numero || itemSeleccionado.numeroProceso} — La noticia ha sido archivada. Puedes consultarla en la pestaña "Archivados".`,
+      description: `${noticiaAArchivar.numero || noticiaAArchivar.numeroProceso} — La noticia ha sido archivada. Puedes consultarla en la pestaña "Archivados".`,
     });
-    setModalActivo(null);
-    setItemSeleccionado(null);
   };
 
   const handleDesarchivar = (item: any) => {
