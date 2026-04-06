@@ -1,0 +1,25 @@
+flowchart LR
+  Users["Usuarios"] --> Edge
+
+  subgraph Docker["Plataforma desplegada con Docker"]
+    direction LR
+    Build["Build de imagenes<br/>Dockerfiles"] --> Compose["docker compose"]
+
+    Edge["Nginx Front Door"] --> FE["Frontend SPA"]
+    FE --> GW["API Gateway"]
+
+    GW --> Dom["Microservicios por dominio<br/>Identidad Academico Control Transversales"]
+    Dom --> Data[("PostgreSQL Redis Files")]
+  end
+
+  subgraph Ext["Integraciones"]
+    OAuth["Microsoft OAuth"]
+    Graph["Microsoft Graph"]
+    Office["OnlyOffice"]
+    Mail["SMTP"]
+  end
+
+  Dom <--> OAuth
+  Dom <--> Graph
+  Dom <--> Office
+  Dom --> Mail
