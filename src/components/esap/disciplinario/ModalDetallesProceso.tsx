@@ -3695,8 +3695,8 @@ export function ModalDetallesProceso({
                                   <Share2 className="w-4 h-4" style={{ color: '#7C3AED' }} />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-bold text-gray-900">{noticia.titulo || 'Sin título'}</p>
-                                  <p className="text-[10px] text-gray-600 mt-0.5 leading-relaxed">{noticia.descripcion || 'Sin descripción'}</p>
+                                  <p className="text-xs font-bold text-gray-900">{noticia.radicado || 'Sin título'}</p>
+                                  <p className="text-[10px] text-gray-600 mt-0.5 leading-relaxed">{noticia.hechos || 'Sin descripción'}</p>
                                   <div className="flex items-center gap-3 mt-1.5 text-[9px] text-gray-500">
                                     <span className="flex items-center gap-1">
                                       <Calendar className="w-3 h-3" />
@@ -3723,6 +3723,62 @@ export function ModalDetallesProceso({
                                     <div className="mt-2 p-2 rounded-md bg-purple-50 border border-purple-100">
                                       <p className="text-[9px] font-medium text-purple-800">Justificación:</p>
                                       <p className="text-[9px] text-purple-700 mt-0.5">{noticia.justificacion}</p>
+                                    </div>
+                                  )}
+                                  {noticia.observaciones && (
+                                    <div className="mt-2 p-2 rounded-md bg-amber-50 border border-amber-100">
+                                      <p className="text-[9px] font-medium text-amber-800">Observaciones:</p>
+                                      <p className="text-[9px] text-amber-700 mt-0.5">{noticia.observaciones}</p>
+                                    </div>
+                                  )}
+                                  {noticia.disciplinable && (
+                                    <div className="mt-2 p-2 rounded-md bg-red-50 border border-red-100">
+                                      <p className="text-[9px] font-medium text-red-800">Disciplinable:</p>
+                                      <div className="mt-1 space-y-0.5">
+                                        <p className="text-[8px] text-red-700">Nombre: {noticia.disciplinable.nombre || 'Sin información'}</p>
+                                        {noticia.disciplinable.cargo && <p className="text-[8px] text-red-700">Cargo: {noticia.disciplinable.cargo}</p>}
+                                        {noticia.disciplinable.dependencia && <p className="text-[8px] text-red-700">Dependencia: {noticia.disciplinable.dependencia}</p>}
+                                        {noticia.disciplinable.numeroIdentificacion && noticia.disciplinable.tipoIdentificacion && (
+                                          <p className="text-[8px] text-red-700">
+                                            ID: {noticia.disciplinable.tipoIdentificacion} {noticia.disciplinable.numeroIdentificacion}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {noticia.denunciante && (
+                                    <div className="mt-2 p-2 rounded-md bg-blue-50 border border-blue-100">
+                                      <p className="text-[9px] font-medium text-blue-800">Denunciante:</p>
+                                      <div className="mt-1 space-y-0.5">
+                                        <p className="text-[8px] text-blue-700">Nombre: {noticia.denunciante.nombre || 'Sin información'}</p>
+                                        {noticia.denunciante.cargo && <p className="text-[8px] text-blue-700">Cargo: {noticia.denunciante.cargo}</p>}
+                                        {noticia.denunciante.entidad && <p className="text-[8px] text-blue-700">Entidad: {noticia.denunciante.entidad}</p>}
+                                        {noticia.denunciante.numeroIdentificacion && noticia.denunciante.tipoIdentificacion && (
+                                          <p className="text-[8px] text-blue-700">
+                                            ID: {noticia.denunciante.tipoIdentificacion} {noticia.denunciante.numeroIdentificacion}
+                                          </p>
+                                        )}
+                                        {noticia.denunciante.telefono && <p className="text-[8px] text-blue-700">Teléfono: {noticia.denunciante.telefono}</p>}
+                                        {noticia.denunciante.correo && <p className="text-[8px] text-blue-700">Correo: {noticia.denunciante.correo}</p>}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {(noticia.origen) && (
+                                    <div className="mt-2 p-2 rounded-md bg-green-50 border border-green-100">
+                                      
+                                      <div className="mt-1 space-y-0.5">
+                                        {noticia.origen && <p className="text-[8px] text-green-700">Origen: {noticia.origen}</p>}
+                                        
+                                      </div>
+                                    </div>
+                                  )}
+                                  {(noticia.territorial) && (
+                                    <div className="mt-2 p-2 rounded-md bg-green-50 border border-green-100">
+                                      
+                                      <div className="mt-1 space-y-0.5">
+                                        
+                                        {noticia.territorial && <p className="text-[8px] text-green-700">Territorial: {noticia.territorial}</p>}
+                                      </div>
                                     </div>
                                   )}
                                 </div>
