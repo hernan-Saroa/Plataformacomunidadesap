@@ -32,6 +32,7 @@ import {
   type DisciplinaryProcessNote,
   type DisciplinaryProcessTask,
 } from '../../../services/api/disciplinary.service';
+import { API_MODE, buildApiUrl } from '../../../config/environment';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -187,6 +188,10 @@ interface Archivo {
   observacionesDevolucion?: string;
   fechaEnvioRevision?: string;
   etapaProceso?: string;
+  downloadUrl?: string | null;
+  urlExterna?: string | null;
+  archivoNombre?: string;
+  fileType?: string | null;
 }
 
 interface ModalDetallesProcesoProps {
@@ -304,6 +309,155 @@ function validarArchivo(archivo: File): { valido: boolean; error?: string } {
   return { valido: true };
 }
 
+type PreviewKind = 'zip' | 'image' | 'video' | 'audio' | 'pdf' | 'html' | 'office' | 'other';
+
+function getPreviewKind(extension: Extension): PreviewKind {
+  if (extension === 'zip') return 'zip';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) return 'image';
+  if (['mp4', 'webm', 'mov', 'avi'].includes(extension)) return 'video';
+  if (['mp3', 'wav', 'ogg'].includes(extension)) return 'audio';
+  if (extension === 'pdf') return 'pdf';
+  if (extension === 'html') return 'html';
+  if (['doc', 'docx', 'xls', 'xlsx'].includes(extension)) return 'office';
+  return 'other';
+}
+
+function getMimeTypeFromExtension(extension: Extension): string {
+  switch (extension) {
+    case 'pdf':
+      return 'application/pdf';
+    case 'doc':
+      return 'application/msword';
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'xls':
+      return 'application/vnd.ms-excel';
+    case 'xlsx':
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    case 'mp4':
+      return 'video/mp4';
+    case 'webm':
+      return 'video/webm';
+    case 'mov':
+      return 'video/quicktime';
+    case 'avi':
+      return 'video/x-msvideo';
+    case 'mp3':
+      return 'audio/mpeg';
+    case 'wav':
+      return 'audio/wav';
+    case 'ogg':
+      return 'audio/ogg';
+    case 'html':
+      return 'text/html';
+    case 'zip':
+      return 'application/zip';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+function getArchivoDownloadName(archivo: Archivo): string {
+  const nombreBase = (archivo.archivoNombre || archivo.nombre || 'documento').trim();
+  const sufijo = `.${archivo.extension}`;
+  return nombreBase.toLowerCase().endsWith(sufijo.toLowerCase())
+    ? nombreBase
+    : `${nombreBase}${sufijo}`;
+}
+
+function appendQueryParam(url: string, key: string, value: string): string {
+  const [urlWithoutHash, hash = ''] = url.split('#', 2);
+  const existing = new RegExp(`([?&])${key}=`);
+
+  if (existing.test(urlWithoutHash)) {
+    return url;
+  }
+
+  const separator = urlWithoutHash.includes('?') ? '&' : '?';
+  return `${urlWithoutHash}${separator}${key}=${encodeURIComponent(value)}${hash ? `#${hash}` : ''}`;
+}
+
+function normalizeControlDisciplinarioPath(rawUrl: string): string {
+  let path = rawUrl.trim();
+
+  if (/^https?:\/\//i.test(path)) {
+    try {
+      const url = new URL(path);
+      const normalizedPathname = url.pathname.replace(/\/{2,}/g, '/');
+      const managedPath =
+        normalizedPathname.startsWith('/control-disciplinario/') ||
+        normalizedPathname.startsWith('/api/v1/') ||
+        normalizedPathname.startsWith('/disciplinary-processes/') ||
+        normalizedPathname.startsWith('/files/') ||
+        normalizedPathname.startsWith('/uploads/');
+
+      if (!managedPath) {
+        return rawUrl;
+      }
+
+      path = `${normalizedPathname}${url.search}${url.hash}`;
+    } catch {
+      return rawUrl;
+    }
+  }
+
+  path = path.replace(/\/{2,}/g, '/');
+
+  if (path.startsWith('/control-disciplinario/')) {
+    path = path.replace(/^\/control-disciplinario/, '');
+  }
+
+  path = path.replace(/\/{2,}/g, '/');
+
+  if (API_MODE === 'direct' && /^\/api\/v1(\/|$)/.test(path)) {
+    path = path.replace(/^\/api\/v1/, '');
+  }
+
+  path = path.replace(/\/{2,}/g, '/');
+
+  return path.startsWith('/') ? path : `/${path}`;
+}
+
+function resolveControlDisciplinarioUrl(rawUrl: string): string {
+  const normalizedPath = normalizeControlDisciplinarioPath(rawUrl);
+
+  if (/^https?:\/\//i.test(normalizedPath)) {
+    return normalizedPath;
+  }
+
+  return buildApiUrl('control-disciplinario', normalizedPath);
+}
+
+function resolveArchivoRequestUrl(archivo: Archivo, procesoId: string, inline = false): string {
+  if (archivo.urlExterna) {
+    return archivo.urlExterna;
+  }
+
+  let rawUrl = archivo.downloadUrl;
+
+  if (!rawUrl) {
+    rawUrl = API_MODE === 'direct'
+      ? `/disciplinary-processes/${procesoId}/documents/${archivo.id}/download`
+      : `/api/v1/disciplinary-processes/${procesoId}/documents/${archivo.id}/download`;
+  }
+
+  const resolvedUrl = resolveControlDisciplinarioUrl(rawUrl);
+  const shouldForceInline = inline && /\/disciplinary-processes\/.+\/documents\/.+\/download/.test(rawUrl);
+
+  return shouldForceInline
+    ? appendQueryParam(resolvedUrl, 'view', 'true')
+    : resolvedUrl;
+}
+
 // ─── Toast Progreso de Carga ──────────────────────────────────────────────────
 
 function ToastProgresoCarga({ carga }: { carga: CargaActiva }) {
@@ -417,33 +571,100 @@ function ModalAlertaCierreUpload({ cantidadCargas, onCancelarYCerrar, onContinua
 
 function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; procesoId: string; onClose: () => void }) {
   const [documentUrl, setDocumentUrl] = useState<string | null>(null);
+  const [documentMimeType, setDocumentMimeType] = useState<string>(getMimeTypeFromExtension(archivo.extension));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const isZip   = archivo.extension === 'zip';
-  const isImage = ['jpg', 'png', 'jpeg', 'gif', 'webp'].includes(archivo.extension);
-  const isPdf   = archivo.extension === 'pdf';
+  const previewKind = getPreviewKind(archivo.extension);
+  const isZip = previewKind === 'zip';
+  const isImage = previewKind === 'image';
+  const isPdf = previewKind === 'pdf';
+  const isVideo = previewKind === 'video';
+  const isAudio = previewKind === 'audio';
+  const isHtml = previewKind === 'html';
 
   useEffect(() => {
-    if (isZip) return; // No preview for ZIP
+    let blobUrl: string | null = null;
+    let cancelled = false;
+
+    if (isZip) {
+      setDocumentUrl(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
 
     const loadDocument = async () => {
       setLoading(true);
       setError(null);
+      setDocumentUrl(null);
+      setDocumentMimeType(archivo.fileType || getMimeTypeFromExtension(archivo.extension));
+
       try {
-        // For now, we'll use the download URL if available, otherwise construct it
-        // This is a simplified approach - in production you'd want proper URL construction
-        const url = `http://localhost:3005/control-disciplinario/api/v1/disciplinary-processes/${procesoId}/documents/${archivo.id}/download`;
-        setDocumentUrl(url);
-      } catch (err) {
-        setError('No se pudo cargar el documento');
+        if (archivo.urlExterna) {
+          if (cancelled) return;
+          setDocumentUrl(archivo.urlExterna);
+          return;
+        }
+
+        const requestUrl = resolveArchivoRequestUrl(archivo, procesoId, true);
+        const token = localStorage.getItem('esap_access_token');
+        const headers: HeadersInit = { Accept: '*/*' };
+
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+
+        const response = await fetch(requestUrl, {
+          method: 'GET',
+          headers,
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          let errorMessage = `Error ${response.status}: ${response.statusText}`;
+
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.message || errorMessage;
+          } catch {
+            if (errorText) {
+              errorMessage = errorText;
+            }
+          }
+
+          throw new Error(errorMessage);
+        }
+
+        const blob = await response.blob();
+
+        if (cancelled) {
+          return;
+        }
+
+        blobUrl = window.URL.createObjectURL(blob);
+        setDocumentUrl(blobUrl);
+        setDocumentMimeType(blob.type || archivo.fileType || getMimeTypeFromExtension(archivo.extension));
+      } catch (err: any) {
+        if (cancelled) return;
+        setError(err?.message || 'No se pudo cargar el documento');
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
-    loadDocument();
-  }, [archivo.id, procesoId, isZip]);
+    void loadDocument();
+
+    return () => {
+      cancelled = true;
+      if (blobUrl) {
+        window.URL.revokeObjectURL(blobUrl);
+      }
+    };
+  }, [archivo.downloadUrl, archivo.extension, archivo.fileType, archivo.id, archivo.urlExterna, isZip, procesoId, reloadKey]);
 
   const TIPO_META: Record<string, { color: string; bg: string; label: string }> = {
     auto:      { color: '#7C3AED', bg: '#F5F3FF', label: 'Auto'      },
@@ -453,28 +674,33 @@ function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; p
   };
   const meta = TIPO_META[archivo.tipo];
 
-  return createPortal(
+  return (
     <motion.div
       key="preview-overlay"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
-      className="fixed inset-0 z-[300] flex items-center justify-center p-6"
-      style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}
+      className="absolute inset-0 z-[80] flex items-center justify-center p-4 sm:p-5"
+      style={{ backgroundColor: 'rgba(15,23,42,0.44)', backdropFilter: 'blur(6px)' }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div
-        initial={{ scale: 0.95, y: 10 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.95, y: 10 }}
-        transition={{ duration: 0.15 }}
-        className="bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden"
-        style={{ maxWidth: 780, maxHeight: '85vh' }}
+        initial={{ scale: 0.96, y: 8, opacity: 0 }}
+        animate={{ scale: 1, y: 0, opacity: 1 }}
+        exit={{ scale: 0.96, y: 8, opacity: 0 }}
+        transition={{ duration: 0.18 }}
+        className="relative w-full flex flex-col overflow-hidden rounded-[30px] border border-slate-200/75 bg-white ring-1 ring-black/5"
+        style={{
+          maxWidth: 'min(100%, 940px)',
+          height: 'min(calc(100% - 24px), 712px)',
+          boxShadow: '0 22px 58px rgba(15, 23, 42, 0.20), 0 8px 20px rgba(15, 23, 42, 0.10)',
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.985) 0%, rgba(248,250,252,0.97) 100%)',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header preview */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-shrink-0"
+        <div className="flex items-center justify-between px-5 py-3.5 flex-shrink-0 rounded-t-[30px] border-b border-white/10"
           style={{ background: 'linear-gradient(135deg, #003DA5 0%, #1565C0 100%)' }}>
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}>
@@ -492,25 +718,48 @@ function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; p
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-            {!isZip && (
-              <button
-                onClick={() => toast.success(`Descargando: ${archivo.nombre}`)}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-lg transition-all"
-                style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}
-              >
-                <Download className="w-3 h-3" />Descargar
-              </button>
-            )}
-            <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
+          <div className="flex items-center flex-shrink-0 ml-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-xl transition-colors hover:bg-white/12 focus:outline-none focus:ring-2 focus:ring-white/30"
+            >
               <X className="w-4 h-4 text-white" />
             </button>
           </div>
         </div>
 
         {/* Área de vista previa */}
-        <div className="flex-1 overflow-hidden flex items-center justify-center bg-gray-100 min-h-0" style={{ minHeight: 380 }}>
-          {isZip ? (
+        <div className="flex-1 overflow-hidden flex items-center justify-center min-h-0" style={{ minHeight: 380, background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)' }}>
+          {loading ? (
+            <div className="flex flex-col items-center gap-4 py-12 px-8 text-center">
+              <Loader2 className="w-10 h-10 animate-spin" style={{ color: '#003DA5' }} />
+              <div>
+                <p className="text-sm font-black text-gray-800 mb-1">Cargando documento</p>
+                <p className="text-xs text-gray-500">Se estÃ¡ preparando la vista previa de {archivo.nombre}</p>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center gap-4 py-12 px-8 text-center">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: '#FEE2E2', border: '2px solid #FCA5A5' }}>
+                <AlertCircle className="w-8 h-8 text-red-500" />
+              </div>
+              <div>
+                <p className="text-sm font-black text-gray-800 mb-1">No se pudo cargar el documento</p>
+                <p className="text-xs text-gray-500 max-w-sm leading-relaxed">{error}</p>
+                <p className="text-[11px] text-gray-400 mt-2">Puede cerrar esta vista y usar el boton de descarga del documento.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReloadKey(prev => prev + 1)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm text-white transition-all hover:opacity-90"
+                style={{ background: 'linear-gradient(135deg, #003DA5 0%, #1565C0 100%)' }}
+              >
+                <RefreshCw className="w-4 h-4" />
+                Reintentar
+              </button>
+            </div>
+          ) : isZip ? (
             /* ZIP: sin vista disponible */
             <div className="flex flex-col items-center gap-4 py-12 px-8 text-center">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: '#FEF3C7', border: '2px solid #FCD34D' }}>
@@ -519,25 +768,30 @@ function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; p
               <div>
                 <p className="text-sm font-black text-gray-800 mb-1">No hay vista previa disponible</p>
                 <p className="text-xs text-gray-500 max-w-xs leading-relaxed">
-                  Los archivos <span className="font-bold text-gray-700">.ZIP</span> no pueden visualizarse directamente. Descárguelo para acceder a su contenido.
+                  Los archivos <span className="font-bold text-gray-700">.ZIP</span> no pueden visualizarse directamente. Use el boton de descarga de la lista para acceder a su contenido.
                 </p>
               </div>
-              <button
-                onClick={() => toast.success(`Descargando: ${archivo.nombre}`)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm text-white transition-all hover:opacity-90"
-                style={{ background: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)' }}
-              >
-                <Download className="w-4 h-4" />
-                Descargar archivo .ZIP
-              </button>
+            </div>
+          ) : !documentUrl ? (
+            <div className="flex flex-col items-center gap-4 py-12 px-8 text-center">
+              <AlertCircle className="w-10 h-10 text-amber-500" />
+              <div>
+                <p className="text-sm font-black text-gray-800 mb-1">No hay una vista disponible</p>
+                <p className="text-xs text-gray-500">No se encontro una URL valida para mostrar este archivo.</p>
+              </div>
             </div>
           ) : isImage ? (
             /* Imagen */
-            <div className="flex flex-col items-center gap-4 py-8 px-6 w-full">
-              <div className="relative w-full rounded-xl overflow-hidden border-2 border-gray-200 bg-gray-200 flex items-center justify-center"
+            <div className="flex h-full w-full flex-col items-center gap-4 px-5 py-5">
+              <div className="relative w-full max-w-5xl rounded-[26px] overflow-hidden border border-slate-200/80 bg-[radial-gradient(circle_at_top,#FFFFFF_0%,#E2E8F0_100%)] shadow-[0_18px_45px_rgba(15,23,42,0.14)] flex items-center justify-center"
                 style={{ minHeight: 280 }}>
+                <img
+                  src={documentUrl}
+                  alt={archivo.nombre}
+                  className="absolute inset-0 h-full w-full object-contain p-3"
+                />
                 {/* Placeholder imagen (sin URL real en mock) */}
-                <div className="flex flex-col items-center gap-3 py-12">
+                <div className="hidden flex-col items-center gap-3 py-12">
                   <div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ background: '#FFFBEB', border: '2px solid #FDE68A' }}>
                     <Image className="w-7 h-7" style={{ color: '#D97706' }} />
                   </div>
@@ -555,9 +809,79 @@ function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; p
                 <span>Firmado por: <strong>{archivo.firmante}</strong> · {archivo.fecha}</span>
               </div>
             </div>
+          ) : isVideo ? (
+            <div className="flex h-full w-full items-center justify-center px-5 py-5">
+              <div className="flex h-full w-full max-w-5xl overflow-hidden rounded-[26px] bg-[#020617] shadow-[0_24px_60px_rgba(2,6,23,0.26)] ring-1 ring-black/10">
+                <video
+                  src={documentUrl}
+                  controls
+                  className="h-full w-full object-contain"
+                  style={{ maxHeight: '100%' }}
+                >
+                  Tu navegador no soporta la reproduccion de este video.
+                </video>
+              </div>
+            </div>
+          ) : isAudio ? (
+            <div className="flex flex-col items-center gap-6 py-12 px-8 text-center w-full">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: '#E0EDFF', border: '2px solid #BFDBFE' }}>
+                <FileText className="w-8 h-8" style={{ color: '#003DA5' }} />
+              </div>
+              <div>
+                <p className="text-sm font-black text-gray-800 mb-1">{archivo.nombre}</p>
+                <p className="text-xs text-gray-500">Reproductor de audio</p>
+              </div>
+              <audio src={documentUrl} controls className="w-full max-w-xl">
+                Tu navegador no soporta la reproduccion de audio.
+              </audio>
+            </div>
+          ) : isPdf ? (
+            <div className="h-full w-full px-5 py-5">
+              <div className="h-full w-full overflow-hidden rounded-[26px] border border-slate-200/80 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.12)]">
+                <iframe
+                  src={documentUrl}
+                  className="w-full h-full border-0 bg-white"
+                  title={`Vista previa de ${archivo.nombre}`}
+                />
+              </div>
+            </div>
+          ) : isHtml ? (
+            <div className="h-full w-full px-5 py-5">
+              <div className="h-full w-full overflow-hidden rounded-[26px] border border-slate-200/80 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.12)]">
+                <iframe
+                  src={documentUrl}
+                  className="w-full h-full border-0 bg-white"
+                  title={`Vista previa de ${archivo.nombre}`}
+                  sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                />
+              </div>
+            </div>
+          ) : previewKind === 'office' || previewKind === 'other' ? (
+            <div className="h-full w-full px-5 py-5">
+              <div className="h-full w-full overflow-hidden rounded-[26px] border border-slate-200/80 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.12)]">
+                <object
+                  data={documentUrl}
+                  type={documentMimeType}
+                  className="w-full h-full"
+                >
+                  <div className="flex flex-col items-center gap-4 py-12 px-8 text-center">
+                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: '#EFF6FF', border: '2px solid #BFDBFE' }}>
+                      <FileText className="w-8 h-8" style={{ color: '#003DA5' }} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-black text-gray-800 mb-1">Vista previa limitada en navegador</p>
+                      <p className="text-xs text-gray-500 max-w-sm leading-relaxed">
+                        Este tipo de archivo no siempre puede mostrarse embebido. Si necesita el archivo completo, use el boton de descarga del documento.
+                      </p>
+                    </div>
+                  </div>
+                </object>
+              </div>
+            </div>
           ) : (
             /* PDF / DOCX / Otros — visor simulado */
-            <div className="w-full h-full flex flex-col" style={{ minHeight: 380 }}>
+            <div className="h-full w-full px-5 py-5" style={{ minHeight: 380 }}>
+              <div className="w-full h-full flex flex-col overflow-hidden rounded-[26px] border border-slate-200/80 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.12)]">
               {/* Barra de PDF viewer */}
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-300 bg-gray-200 flex-shrink-0">
                 <span className="text-[10px] text-gray-600 font-medium">{archivo.nombre}.{archivo.extension}</span>
@@ -608,24 +932,27 @@ function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; p
                   </div>
                 </div>
               </div>
+              </div>
             </div>
           )}
         </div>
 
         {/* Footer preview */}
-        <div className="flex items-center justify-between px-4 py-2 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+        <div
+          className="flex items-center justify-between px-5 py-3 border-t border-slate-200/70 rounded-b-[30px] bg-white flex-shrink-0"
+          style={{ background: 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)' }}
+        >
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 text-[9px] font-bold rounded-full" style={{ backgroundColor: meta.bg, color: meta.color }}>{meta.label}</span>
             <span className="text-[10px] text-gray-500">{archivo.tamaño} · .{archivo.extension.toUpperCase()}</span>
           </div>
-          <button onClick={onClose}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100 transition-all">
+          <button type="button" onClick={onClose}
+            className="flex items-center gap-1 px-3.5 py-2 text-xs font-semibold rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-all">
             <X className="w-3 h-3" />Cerrar vista
           </button>
         </div>
       </motion.div>
-    </motion.div>,
-    document.body
+    </motion.div>
   );
 }
 
@@ -1792,6 +2119,10 @@ export function ModalDetallesProceso({
           extension: ext as Extension,
           version: doc.version || 1,
           etapaProceso: doc.etapa,
+          downloadUrl: doc.downloadUrl || null,
+          urlExterna: doc.urlExterna || null,
+          archivoNombre: doc.archivoNombre || doc.nombre,
+          fileType: doc.fileType || null,
         };
       });
       setArchivosBackend(mapped);
@@ -2516,7 +2847,7 @@ export function ModalDetallesProceso({
   const ec              = etapaColor(proceso.etapaActual);
   const barColor        = proceso.semaforo === 'verde' ? '#10B981' : proceso.semaforo === 'amarillo' ? '#F59E0B' : '#EF4444';
 
-  const TODOS_ARCHIVOS = [...archivosBackend, ...archivosSubidos];
+  const TODOS_ARCHIVOS = archivosBackend;
   const ultimaActuacionActual = actuaciones[0]?.descripcion || proceso.ultimaActuacion;
 
   // Extraer etapas únicas de los archivos para el filtro
@@ -3078,19 +3409,26 @@ export function ModalDetallesProceso({
     if (!proceso?.id) return;
 
     // Para PDFs e imágenes, abrir visor
-    if (archivo.extension === 'pdf' || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(archivo.extension)) {
-      setPreviewArchivo(archivo);
-    } else {
-      // Para otros tipos, descargar
-      handleDescargarDocumento(archivo);
-    }
+    setPreviewArchivo(archivo);
   }, [proceso?.id]);
 
   const handleDescargarDocumento = useCallback(async (archivo: Archivo) => {
     if (!proceso?.id) return;
 
     try {
-      await disciplinaryService.downloadDocument(proceso.id, archivo.id, archivo.nombre + '.' + archivo.extension);
+      const nombreArchivo = getArchivoDownloadName(archivo);
+
+      if (archivo.urlExterna && !archivo.downloadUrl) {
+        window.open(archivo.urlExterna, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
+      if (archivo.downloadUrl) {
+        await disciplinaryService.downloadFileFromUrl(archivo.downloadUrl, nombreArchivo);
+      } else {
+        await disciplinaryService.downloadDocument(proceso.id, archivo.id, nombreArchivo);
+      }
+
       toast.success('Documento descargado correctamente');
     } catch (error: any) {
       console.error('[ModalDetallesProceso] Error descargando documento:', error);
@@ -3201,7 +3539,7 @@ export function ModalDetallesProceso({
           </div>
           <div className="flex items-center gap-1 flex-shrink-0 ml-1">
             {estaEnRevision && (
-              <button onClick={() => handleAbrirRevision(archivo)}
+              <button type="button" onClick={(e) => { e.stopPropagation(); handleAbrirRevision(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all text-white"
                 style={{ background: '#003DA5' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#002870'}
@@ -3211,7 +3549,7 @@ export function ModalDetallesProceso({
               </button>
             )}
             {puedeEnviarRevision && (
-              <button onClick={() => handleEnviarARevision(archivo)}
+              <button type="button" onClick={(e) => { e.stopPropagation(); handleEnviarARevision(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all text-white"
                 style={{ background: '#003DA5' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#002870'}
@@ -3221,7 +3559,7 @@ export function ModalDetallesProceso({
               </button>
             )}
             {puedeRecargar && (
-              <button onClick={() => handleRecargarArchivo(archivo)}
+              <button type="button" onClick={(e) => { e.stopPropagation(); handleRecargarArchivo(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all"
                 style={{ borderColor: '#D97706', color: '#92400E', background: '#FFFBEB' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#FEF3C7'}
@@ -3231,7 +3569,7 @@ export function ModalDetallesProceso({
               </button>
             )}
             {isZip ? (
-              <button onClick={() => handleDescargarDocumento(archivo)}
+              <button type="button" onClick={(e) => { e.stopPropagation(); void handleDescargarDocumento(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all"
                 style={{ borderColor: '#D97706', color: '#92400E', background: '#FFFBEB' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#FEF3C7'}
@@ -3240,7 +3578,7 @@ export function ModalDetallesProceso({
                 <Download className="w-3 h-3" /><span className="hidden sm:inline">Descargar</span>
               </button>
             ) : (
-              <button onClick={() => handleVerDocumento(archivo)}
+              <button type="button" onClick={(e) => { e.stopPropagation(); handleVerDocumento(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all"
                 style={{ borderColor: '#2962FF', color: '#003DA5', background: '#EFF6FF' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#DBEAFE'}
@@ -3249,7 +3587,7 @@ export function ModalDetallesProceso({
                 <Eye className="w-3 h-3" /><span className="hidden sm:inline">Ver</span>
               </button>
             )}
-            <button onClick={() => toast.success(`Descargando: ${archivo.nombre}.${archivo.extension}`)}
+            <button type="button" onClick={(e) => { e.stopPropagation(); void handleDescargarDocumento(archivo); }}
               className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all border-gray-300 text-gray-600 bg-white hover:bg-gray-50"
               title="Descargar archivo">
               <Download className="w-3 h-3" /><span className="hidden sm:inline">Descargar</span>
@@ -3293,7 +3631,7 @@ export function ModalDetallesProceso({
         onClick={(e) => e.target === e.currentTarget && handleIntentoCerrar()}
       >
         <motion.div
-          className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+          className="relative bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
           style={{ width: '92vw', height: '88vh', maxWidth: 840, maxHeight: '95vh', minHeight: 'min(480px, 80vh)' }}
           initial={{ opacity: 0, scale: 0.97, y: 12 }}
           animate={{ opacity: 1, scale: 1,    y: 0  }}
@@ -5267,19 +5605,17 @@ export function ModalDetallesProceso({
               </button>
             </div>
           </div>
+          <AnimatePresence>
+            {previewArchivo && (
+              <PreviewDocumento
+                archivo={previewArchivo}
+                procesoId={proceso.id}
+                onClose={() => setPreviewArchivo(null)}
+              />
+            )}
+          </AnimatePresence>
         </motion.div>
       </div>
-
-      {/* Vista previa de documento (portal anidado, z-[300]) */}
-      <AnimatePresence>
-        {previewArchivo && (
-          <PreviewDocumento
-            archivo={previewArchivo}
-            procesoId={proceso.id}
-            onClose={() => setPreviewArchivo(null)}
-          />
-        )}
-      </AnimatePresence>
 
       {/* Input oculto para recargar archivo de auto */}
       <input
