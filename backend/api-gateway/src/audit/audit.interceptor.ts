@@ -56,13 +56,26 @@ export class AuditInterceptor implements NestInterceptor {
         const responseTime = Date.now() - startTime;
         const statusCode = response.statusCode;
 
-        // Capturar body de respuesta (solo si es pequeño)
-        const responseBody = this.shouldLogResponse(data)
-          ? this.sanitizeBody(data)
+        // Leer cuerpo de respuesta desde res.locals (guardado por gateway.service)
+        const localsBody = (response as any).locals?.auditResponseBody ?? null;
+        const responseBody = this.shouldLogResponse(localsBody)
+          ? this.sanitizeBody(localsBody)
           : null;
         const responseBodySize = responseBody
           ? JSON.stringify(responseBody).length
           : 0;
+
+        // Para POST: newData = requestBody (lo que se intentó crear)
+        // Para PUT/PATCH: newData = responseBody (el objeto actualizado si fue exitoso)
+        // Esto permite al audit-service generar el diff de cambios
+        const newData = ['POST', 'PUT', 'PATCH'].includes(method)
+          ? (method === 'POST' ? requestBody : (responseBody || requestBody))
+          : undefined;
+
+        // Si la respuesta es un error, extraer el mensaje
+        const errorMessage = statusCode >= 400
+          ? (responseBody?.message || responseBody?.error || `Error HTTP ${statusCode}`)
+          : undefined;
 
         // Preparar datos del log
         const logData: CreateAuditLogDto = {
@@ -88,6 +101,8 @@ export class AuditInterceptor implements NestInterceptor {
           responseBody,
           responseBodySize,
           responseSizeBytes: responseBodySize,
+          newData,
+          errorMessage,
         };
 
         // Registrar de forma asíncrona (no bloquea la respuesta)
@@ -123,6 +138,7 @@ export class AuditInterceptor implements NestInterceptor {
           responseTimeMs: responseTime,
           requestBody,
           requestBodySize,
+          newData: ['POST', 'PUT', 'PATCH'].includes(method) ? requestBody : undefined,
           errorMessage: error.message,
           errorStack: error.stack,
         };
@@ -168,8 +184,14 @@ export class AuditInterceptor implements NestInterceptor {
   }
 
   private shouldLogBody(request: Request): boolean {
-    const contentLength = parseInt(request.headers['content-length'] || '0', 10);
-    return contentLength > 0 && contentLength < 10240;
+    if (!request.body || typeof request.body !== 'object') return false;
+    if (Object.keys(request.body).length === 0) return false;
+    try {
+      const bodyStr = JSON.stringify(request.body);
+      return bodyStr.length < 10240;
+    } catch {
+      return false;
+    }
   }
 
   private shouldLogResponse(data: any): boolean {

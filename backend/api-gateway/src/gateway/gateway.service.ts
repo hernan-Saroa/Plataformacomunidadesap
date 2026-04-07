@@ -226,17 +226,24 @@ export class GatewayService {
         }
       });
 
+      // Intentar parsear arraybuffer a JSON para guardar en locals (auditoría)
+      let parsedResponseBody: any = null;
+      try {
+        const buffer = Buffer.from(response.data);
+        const jsonString = buffer.toString('utf-8');
+        parsedResponseBody = JSON.parse(jsonString);
+      } catch (_) { /* no es JSON */ }
+
+      // Guardar cuerpo de respuesta para el interceptor de auditoría
+      res.locals.auditResponseBody = parsedResponseBody;
+      res.locals.auditResponseStatus = response.status;
+
       // Si la respuesta es un error (4xx, 5xx), intentar parsear el arraybuffer como JSON
       if (response.status >= 400) {
-        try {
-          const buffer = Buffer.from(response.data);
-          const jsonString = buffer.toString('utf-8');
-          const errorData = JSON.parse(jsonString);
-          return res.status(response.status).json(errorData);
-        } catch (parseError) {
-          // Si no es JSON, enviar el buffer directamente
-          return res.status(response.status).send(response.data);
+        if (parsedResponseBody !== null) {
+          return res.status(response.status).json(parsedResponseBody);
         }
+        return res.status(response.status).send(response.data);
       }
 
       return res.status(response.status).send(response.data);
