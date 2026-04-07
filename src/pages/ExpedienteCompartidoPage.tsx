@@ -177,14 +177,15 @@ export function ExpedienteCompartidoPage() {
     setErrorPDF(null);
 
     try {
-      if (!expedienteData?.proceso.id || !doc.id) {
+      if (!token || !doc.id) {
         throw new Error('Información del documento incompleta');
       }
 
+      // Usar el endpoint público para descarga de documentos compartidos
       const endpoint = API_MODE === 'direct'
-        ? `/disciplinary-processes/${expedienteData.proceso.id}/documents/${doc.id}/download`
-        : `/api/v1/disciplinary-processes/${expedienteData.proceso.id}/documents/${doc.id}/download`;
-      
+        ? `/compartir-expediente/documento/${token}/${doc.id}/download?view=true`
+        : `/api/v1/compartir-expediente/documento/${token}/${doc.id}/download?view=true`;
+
       const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
 
       const response = await fetch(downloadUrl, {
@@ -212,22 +213,28 @@ export function ExpedienteCompartidoPage() {
   // Descargar documento
   const handleDescargarDocumento = async (doc: Documento) => {
     try {
-      if (!expedienteData?.proceso.id || !doc.id) {
+      if (!token || !doc.id) {
         toast.error('Información del documento incompleta');
         return;
       }
 
       toast.loading('Descargando documento...', { id: 'download' });
 
-      if (doc.downloadUrl) {
-        await disciplinaryService.downloadFileFromUrl(doc.downloadUrl, doc.nombre);
-      } else {
-        await disciplinaryService.downloadDocument(
-          expedienteData.proceso.id,
-          doc.id,
-          doc.nombre
-        );
-      }
+      // Usar el endpoint público para descarga de documentos compartidos
+      const endpoint = API_MODE === 'direct'
+        ? `/compartir-expediente/documento/${token}/${doc.id}/download`
+        : `/api/v1/compartir-expediente/documento/${token}/${doc.id}/download`;
+
+      const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
+
+      // Crear un enlace temporal para descargar
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = doc.nombre || 'documento';
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
       toast.success('Descarga completada', {
         id: 'download',
