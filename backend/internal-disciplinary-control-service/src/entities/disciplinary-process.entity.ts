@@ -105,6 +105,9 @@ export class DisciplinaryProcess {
   @OneToMany(() => Evidence, (evidence) => evidence.process)
   evidence: Evidence[];
 
+  // Nota: Relación con asociaciones noticia-proceso se maneja via consultas directas
+  // para evitar dependencias circulares con DisciplinaryNewsProcess
+
   // ✅ NUEVO: Campos para asociar proceso a otro proceso
   @Column({ name: 'proceso_asociado_id', type: 'uuid', nullable: true })
   procesoAsociadoId: string | null;

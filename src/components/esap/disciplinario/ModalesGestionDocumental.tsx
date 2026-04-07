@@ -2146,6 +2146,8 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                         const token = localStorage.getItem('esap_access_token');
                         const headers: HeadersInit = {};
                         if (token) headers['Authorization'] = `Bearer ${token}`;
+                        // Abrir ventana sincrónicamente para evitar bloqueo de popups
+                        const win = window.open('about:blank', '_blank');
                         fetch(viewUrl, { method: 'GET', headers, credentials: 'include' })
                           .then(res => {
                             if (!res.ok) throw new Error('No autorizado');
@@ -2153,10 +2155,15 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                           })
                           .then(blob => {
                             const objectUrl = URL.createObjectURL(blob);
-                            const win = window.open(objectUrl, '_blank');
-                            if (win) setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+                            if (win) {
+                              win.location.href = objectUrl;
+                              setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+                            }
                           })
-                          .catch(() => toast.error('No se pudo abrir el archivo'));
+                          .catch(() => {
+                            if (win) win.close();
+                            toast.error('No se pudo abrir el archivo');
+                          });
                       }}
                       title="Ver documento"
                       style={{ borderColor: '#003DA5', color: '#003DA5' }}

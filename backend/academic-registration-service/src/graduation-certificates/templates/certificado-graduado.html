@@ -176,50 +176,49 @@
 
         <!-- Fecha y Ciudad -->
         <div class="fecha-ciudad">
-            Bogot&aacute;, D.C., {{FECHA_EXPEDICION}}
+            {{CITY_DATE_PREFIX}} {{FECHA_EXPEDICION}}
         </div>
 
         <!-- T&iacute;tulo Principal -->
         <div class="titulo-principal">
-            Escuela Superior de Administraci&oacute;n P&uacute;blica - ESAP
+            {{INSTITUTION_TITLE}}
         </div>
 
         <div class="subtitulo">
-            Verificaci&oacute;n de t&iacute;tulo
+            {{CERTIFICATE_TITLE}}
         </div>
 
         <div style="text-align: center; font-weight: bold; margin-bottom: 0.6cm;">
-            A QUIEN INTERESE
+            {{ADDRESSEE}}
         </div>
 
         <!-- Contenido -->
         <div class="contenido">
             <p>
-                De conformidad con los registros en el Sistema de Control Acad&eacute;mico de la Escuela Superior de
-                Administraci&oacute;n P&uacute;blica -ESAP-, nos permitimos informar la verificaci&oacute;n del siguiente t&iacute;tulo acad&eacute;mico:
+                {{INTRO_PARAGRAPH}}
             </p>
         </div>
 
         <!-- Tabla de Datos -->
         <table class="datos-tabla">
             <tr>
-                <td>T&iacute;tulo otorgado:</td>
+                <td>{{LABEL_DEGREE_TITLE}}</td>
                 <td>{{TITULO_OTORGADO}}</td>
             </tr>
             <tr>
-                <td>Nombres y apellidos del egresado graduado:</td>
+                <td>{{LABEL_GRADUATE_NAME}}</td>
                 <td>{{NOMBRE_COMPLETO}}</td>
             </tr>
             <tr>
-                <td>N&uacute;mero de documento de identificaci&oacute;n:</td>
+                <td>{{LABEL_DOCUMENT_NUMBER}}</td>
                 <td>{{NUMERO_DOCUMENTO}}</td>
             </tr>
             <tr>
-                <td>Lugar y fecha de expedici&oacute;n del t&iacute;tulo:</td>
+                <td>{{LABEL_ISSUE_PLACE_DATE}}</td>
                 <td>{{LUGAR_FECHA_EXPEDICION}}</td>
             </tr>
             <tr>
-                <td>Registro &ndash; Folio - Libro:</td>
+                <td>{{LABEL_REGISTRY}}</td>
                 <td>{{REGISTRO_FOLIO}}</td>
             </tr>
         </table>
@@ -229,12 +228,12 @@
             <div style="flex: 1;">
                 <!-- Cordialmente -->
                 <div class="contenido" style="margin-bottom: 0.2cm;">
-                    <p>Cordialmente,</p>
+                    <p>{{CLOSING_TEXT}}</p>
                 </div>
 
                 <!-- Firma -->
                 <div class="firma-seccion">
-                    <div class="firma-nombre">Direcci&oacute;n T&eacute;cnica Registro y Control</div>
+                    <div class="firma-nombre">{{SIGNER_TITLE}}</div>
                 </div>
             </div>
 
@@ -246,7 +245,7 @@
 
         <!-- URL de Validaci&oacute;n -->
         <div class="validacion-url">
-            Puede validar la autenticidad de esta verificaci&oacute;n en<br/>
+            {{VALIDATION_MESSAGE}}<br/>
             <a href="{{URL_VALIDACION}}">{{URL_VALIDACION}}</a>
         </div>
 

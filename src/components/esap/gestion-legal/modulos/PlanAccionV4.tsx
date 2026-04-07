@@ -375,6 +375,17 @@ export function ModuloPlanAccionV4() {
     }
   };
 
+  const handleEliminar = async (indicador: Indicador) => {
+    try {
+      await legalService.eliminarPeiIndicador(indicador.id);
+      setIndicadores(prev => prev.filter(ind => ind.id !== indicador.id));
+      toast.success('Plan eliminado exitosamente');
+    } catch (error) {
+      console.error('Error deleting indicator:', error);
+      toast.error('Error al eliminar el plan');
+    }
+  };
+
   const handleArchivar = async (indicador: Indicador) => {
     try {
       await legalService.archivarPeiIndicador(indicador.id);
@@ -779,6 +790,7 @@ export function ModuloPlanAccionV4() {
               onEditarIndicador={handleEditarIndicador}
               onCargarAvance={handleCargarAvance}
               onArchivar={handleArchivar}
+            onEliminar={handleEliminar}
             />
           )}
           {tipoVista === 'timeline' && <VistaTimeline indicadores={indicadoresFiltrados} />}
@@ -851,6 +863,7 @@ interface VistaListaProps {
   onEditarIndicador: (indicador: Indicador) => void;
   onCargarAvance: (indicador: Indicador) => void;
   onArchivar: (indicador: Indicador) => void;
+  onEliminar: (indicador: Indicador) => void;
 }
 
 function VistaLista({
@@ -860,7 +873,8 @@ function VistaLista({
   onVerDetalles,
   onEditarIndicador,
   onCargarAvance,
-  onArchivar
+  onArchivar,
+  onEliminar
 }: VistaListaProps) {
   return (
     <div className="space-y-3">
@@ -1009,8 +1023,12 @@ function VistaLista({
                                     <Edit className="w-4 h-4 mr-2" /> Editar
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => onArchivar(ind)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                  <DropdownMenuItem onClick={() => onArchivar(ind)} className="text-orange-600 focus:text-orange-600 focus:bg-orange-50">
                                     <Archive className="w-4 h-4 mr-2" /> Archivar
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => onEliminar(ind)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                    <Trash2 className="w-4 h-4 mr-2" /> Eliminar
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
