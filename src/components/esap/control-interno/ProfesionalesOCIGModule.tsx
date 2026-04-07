@@ -1,5 +1,5 @@
 /**
- * PROFESIONALES OCIG - Gestión de Equipo de Control Interno
+ * PROFESIONALES OCI - Gestión de Equipo de Control Interno
  * Configuración de capacidad y disponibilidad horaria de profesionales
  * VERSIÓN: 1.0
  */
@@ -25,7 +25,7 @@ import { toast } from 'sonner';
 // INTERFACES
 // ============================================================================
 
-interface ProfesionalOCIG {
+interface ProfesionalOCI {
     id: string;
     nombre: string;
     cargo: string;
@@ -40,7 +40,7 @@ interface ProfesionalOCIG {
 // MOCK DATA
 // ============================================================================
 
-const PROFESIONALES_MOCK: ProfesionalOCIG[] = [
+const PROFESIONALES_MOCK: ProfesionalOCI[] = [
     {
         id: '1',
         nombre: 'Mario Oswaldo Bernal',
@@ -97,11 +97,11 @@ const PROFESIONALES_MOCK: ProfesionalOCIG[] = [
 // COMPONENTE PRINCIPAL
 // ============================================================================
 
-export function ProfesionalesOCIGModule() {
-    const [profesionales, setProfesionales] = useState<ProfesionalOCIG[]>(PROFESIONALES_MOCK);
+export function ProfesionalesOCIModule() {
+    const [profesionales, setProfesionales] = useState<ProfesionalOCI[]>(PROFESIONALES_MOCK);
     const [showModal, setShowModal] = useState(false);
-    const [editando, setEditando] = useState<ProfesionalOCIG | null>(null);
-    const [formData, setFormData] = useState<Partial<ProfesionalOCIG>>({});
+    const [editando, setEditando] = useState<ProfesionalOCI | null>(null);
+    const [formData, setFormData] = useState<Partial<ProfesionalOCI>>({});
 
     // Estadísticas
     const totalProfesionales = profesionales.filter(p => p.estado === 'activo').length;
@@ -123,7 +123,7 @@ export function ProfesionalesOCIGModule() {
         setShowModal(true);
     };
 
-    const handleEditar = (prof: ProfesionalOCIG) => {
+    const handleEditar = (prof: ProfesionalOCI) => {
         setEditando(prof);
         setFormData({ ...prof });
         setShowModal(true);
@@ -146,12 +146,12 @@ export function ProfesionalesOCIGModule() {
         if (editando) {
             setProfesionales(prev =>
                 prev.map(p =>
-                    p.id === editando.id ? { ...p, ...formData } as ProfesionalOCIG : p
+                    p.id === editando.id ? { ...p, ...formData } as ProfesionalOCI : p
                 )
             );
             toast.success('Profesional actualizado correctamente');
         } else {
-            const nuevo: ProfesionalOCIG = {
+            const nuevo: ProfesionalOCI = {
                 id: Date.now().toString(),
                 nombre: formData.nombre || '',
                 cargo: formData.cargo || '',
@@ -173,7 +173,7 @@ export function ProfesionalesOCIGModule() {
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-900">
-                        Configuración de Profesionales OCIG
+                        Configuración de Profesionales OCI
                     </h2>
                     <p className="text-gray-500 mt-1">
                         Gestiona la capacidad de auditorías y disponibilidad horaria de cada profesional
@@ -223,7 +223,7 @@ export function ProfesionalesOCIGModule() {
             {/* Lista de Profesionales */}
             <div>
                 <h3 className="text-lg font-semibold text-gray-800 mb-1">
-                    Profesionales del Equipo OCIG
+                    Profesionales del Equipo OCI
                 </h3>
                 <p className="text-sm text-gray-500 mb-6">
                     Configure la capacidad máxima y horas disponibles para cada profesional
@@ -290,7 +290,7 @@ function StatCard({ label, value, subtitle, icon, color }: {
 }
 
 function ProfesionalCard({ profesional, onEditar, onEliminar }: {
-    profesional: ProfesionalOCIG;
+    profesional: ProfesionalOCI;
     onEditar: () => void;
     onEliminar: () => void;
 }) {
@@ -362,8 +362,8 @@ function ProfesionalCard({ profesional, onEditar, onEliminar }: {
 }
 
 function ModalProfesional({ formData, setFormData, onGuardar, onCerrar, esEdicion }: {
-    formData: Partial<ProfesionalOCIG>;
-    setFormData: (data: Partial<ProfesionalOCIG>) => void;
+    formData: Partial<ProfesionalOCI>;
+    setFormData: (data: Partial<ProfesionalOCI>) => void;
     onGuardar: () => void;
     onCerrar: () => void;
     esEdicion: boolean;

@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * PLAN ANUAL DE AUDITORÍA INTERNA - OCIG ESAP
+ * PLAN ANUAL DE AUDITORÍA INTERNA - OCI ESAP
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Base legal: Decreto 648 de 2017
@@ -76,7 +76,7 @@ interface Actividad {
   // ═══════════════════════════════════════════════════════════════════════
   // VERIFICACIÓN DEL DIRECTOR
   // ═══════════════════════════════════════════════════════════════════════
-  requiereVerificacionDirector: boolean; // Indica si requiere verificación del Director OCIG
+  requiereVerificacionDirector: boolean; // Indica si requiere verificación del Director OCI
   verificadaPorDirector?: boolean; // Indica si fue verificada por el Director
   fechaVerificacion?: string; // Fecha de verificación del Director
   observacionesDirector?: string; // Observaciones del Director al verificar
@@ -555,7 +555,7 @@ const ACTIVIDADES_ROL_5: Omit<Actividad, 'id' | 'responsable' | 'porcentajeAvanc
     requiereVerificacionDirector: true
   },
   {
-    nombre: 'Informe de Gestión Anual de la OCIG',
+    nombre: 'Informe de Gestión Anual de la OCI',
     descripcion: 'Consolidar y presentar la gestión anual de la Oficina de Control Interno con estadísticas y resultados',
     fechaInicio: '2026-01-01',
     fechaFin: '2026-01-31',
@@ -566,7 +566,7 @@ const ACTIVIDADES_ROL_5: Omit<Actividad, 'id' | 'responsable' | 'porcentajeAvanc
   },
   {
     nombre: 'Informe de Seguimiento a Denuncias y Quejas',
-    descripcion: 'Consolidar el seguimiento realizado a denuncias y quejas recibidas por la OCIG',
+    descripcion: 'Consolidar el seguimiento realizado a denuncias y quejas recibidas por la OCI',
     fechaInicio: '2026-01-01',
     fechaFin: '2026-12-31',
     control: 'Semestral',
@@ -620,18 +620,26 @@ function crearPlanInicial(vigencia: number, jefeOCI: Auditor, rolesConfig?: any)
 
     return actividadesBase.map(act => {
       // ✅ NUEVO: Buscar configuración desde el wizard
-      let requiereAutorizacionJefeOCIG = false;
+      let requiereAutorizacionJefeOCI = false;
       let tipoEvidenciaConfig: 'SOLO_CHECK' | 'OBSERVACIONES' | 'ADJUNTOS' | 'COMPLETO' | undefined;
       
       if (configuracionRol) {
         const actividadConfig = configuracionRol.actividadesSeleccionadas?.find((a: any) => a.nombre === act.nombre);
-        requiereAutorizacionJefeOCIG = actividadConfig?.requiereAutorizacionJefeOCIG || false;
+        requiereAutorizacionJefeOCI = actividadConfig?.requiereAutorizacionJefeOCI || false;
         tipoEvidenciaConfig = actividadConfig?.tipoEvidencia;
       }
 
+      // ✅ Responsables específicos de la actividad (del wizard) o del rol como fallback
+      const actividadConfig2 = configuracionRol?.actividadesSeleccionadas?.find((a: any) => a.nombre === act.nombre);
+      const responsablesActividad: any[] = actividadConfig2?.responsables?.length
+        ? actividadConfig2.responsables
+        : [];
+
       // ✅ Asignar responsable rotativamente si hay responsables configurados
       let responsableAsignado = null;
-      if (responsablesDelRol.length > 0) {
+      if (responsablesActividad.length > 0) {
+        responsableAsignado = responsablesActividad[0];
+      } else if (responsablesDelRol.length > 0) {
         responsableAsignado = responsablesDelRol[indiceResponsable % responsablesDelRol.length];
         indiceResponsable++;
       }
@@ -688,11 +696,12 @@ function crearPlanInicial(vigencia: number, jefeOCI: Auditor, rolesConfig?: any)
         ...act,
         id: contadorActividades++,
         responsable: responsableAsignado, // ✅ NUEVO: Asignar responsable desde wizard
+        responsables: responsablesActividad.length > 0 ? responsablesActividad : (responsablesDelRol.length > 0 ? [responsableAsignado].filter(Boolean) : []),
         porcentajeAvance: 0,
         estado: 'PENDIENTE' as EstadoActividad,
         requiereVerificacionDirector: act.requiereVerificacionDirector ?? false,
-        requiereAutorizacionJefeOCIG, // ✅ NUEVO: Transferir configuración del wizard
-        autorizadaPorJefeOCIG: false,
+        requiereAutorizacionJefeOCI, // ✅ NUEVO: Transferir configuración del wizard
+        autorizadaPorJefeOCI: false,
         configuracionEvidencias,
         adjuntos: [],
         bitacoraObservaciones: []
@@ -754,9 +763,12 @@ function crearPlanInicial(vigencia: number, jefeOCI: Auditor, rolesConfig?: any)
             configuracionEvidencias = CONFIGURACIONES_PREDEFINIDAS.FLEXIBLE;
         }
 
-        // ✅ Asignar responsable rotativamente
+        // ✅ Asignar responsable rotativamente (o usar los específicos de la actividad)
         let responsableAsignado = null;
-        if (responsablesDelRol.length > 0) {
+        const responsablesActividadCustom: any[] = act.responsables?.length ? act.responsables : [];
+        if (responsablesActividadCustom.length > 0) {
+          responsableAsignado = responsablesActividadCustom[0];
+        } else if (responsablesDelRol.length > 0) {
           responsableAsignado = responsablesDelRol[indiceResponsableCustom % responsablesDelRol.length];
           indiceResponsableCustom++;
         }
@@ -765,11 +777,12 @@ function crearPlanInicial(vigencia: number, jefeOCI: Auditor, rolesConfig?: any)
           ...act,
           id: contadorActividades++,
           responsable: responsableAsignado, // ✅ NUEVO: Asignar responsable desde wizard
+          responsables: responsablesActividadCustom.length > 0 ? responsablesActividadCustom : (responsableAsignado ? [responsableAsignado] : []),
           porcentajeAvance: 0,
           estado: 'PENDIENTE' as EstadoActividad,
           requiereVerificacionDirector: false,
-          requiereAutorizacionJefeOCIG: act.requiereAutorizacionJefeOCIG || false,
-          autorizadaPorJefeOCIG: false,
+          requiereAutorizacionJefeOCI: act.requiereAutorizacionJefeOCI || false,
+          autorizadaPorJefeOCI: false,
           configuracionEvidencias,
           adjuntos: [],
           bitacoraObservaciones: []
@@ -889,7 +902,7 @@ function crearPlanConDatosMock(vigencia: number, jefeOCI: Auditor): PlanAnual {
             },
             {
               id: `obs-${actividad.id}-3`,
-              texto: `Actividad finalizada exitosamente. Informe presentado al Director OCIG para revisión y aprobación. Todas las evidencias documentales fueron recopiladas y archivadas.`,
+              texto: `Actividad finalizada exitosamente. Informe presentado al Director OCI para revisión y aprobación. Todas las evidencias documentales fueron recopiladas y archivadas.`,
               fechaCreacion: '2026-02-01',
               horaCreacion: '16:45:00',
               responsable: {
@@ -1402,7 +1415,18 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                 url: adj.url
               })),
               bitacoraObservaciones: actExtendido.bitacoraObservaciones || [],
-              activo: actExtendido.activo ?? act.activo ?? true
+              activo: actExtendido.activo ?? act.activo ?? true,
+              // Múltiples responsables del backend
+              responsables: (actExtendido.responsables || []).map((r: any) => ({
+                id: r.id,
+                nombre: r.nombre,
+                cargo: r.cargo || 'Auditor',
+                email: r.email || ''
+              })),
+              // Puntos de control persistidos
+              puntosControl: actExtendido.puntos_control || [],
+              frecuenciaPuntosControl: actExtendido.frecuencia_puntos_control || null,
+              fechaCorte: formatearFecha(actExtendido.fecha_corte) || '',
             };
           })
         }))
@@ -1482,6 +1506,10 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     });
 
     if (planCreado && planCreado.roles) {
+      let actividadesCreadas = 0;
+      let actividadesFallidas = 0;
+      const erroresPorActividad: string[] = [];
+
       // Crear actividades para cada rol
       for (const rolConfig of rolesConfig) {
         // Buscar el rol correspondiente en el plan creado
@@ -1495,14 +1523,6 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           ];
 
           const responsablesDelRol = rolConfig.responsables || [];
-          console.log(`\n📋 [Rol ${rolConfig.numero}: ${rolConfig.nombre}]`);
-          console.log(`   Total actividades: ${todasActividades.length}`);
-          console.log(`   Responsables asignados: ${responsablesDelRol.length}`, responsablesDelRol.map((r: any) => r.nombre));
-          if (responsablesDelRol.length > 0) {
-            console.log(`   ✅ Las actividades se distribuirán entre los responsables`);
-          } else {
-            console.log(`   ⚠️ Las actividades quedarán "Por asignar"`);
-          }
 
           // Crear cada actividad en el backend
           for (let i = 0; i < todasActividades.length; i++) {
@@ -1514,10 +1534,14 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             const responsablesDelRol = rolConfig.responsables || [];
             let responsable: string;
             
-            if (responsablesDelRol.length > 0) {
-              // Asignar responsable rotativo de los asignados al rol
+            if (act.responsables && act.responsables.length > 0) {
+              // Usar el primer responsable asignado a la actividad
+              responsable = act.responsables[0].nombre || 'Por asignar';
+              console.log(`🆕 [handleCrearPlan] Actividad "${act.nombre}" → Responsable (actividad): ${responsable}`);
+            } else if (responsablesDelRol.length > 0) {
+              // Fallback: asignar responsable rotativo de los asignados al rol
               responsable = responsablesDelRol[i % responsablesDelRol.length]?.nombre || 'Por asignar';
-              console.log(`🆕 [handleCrearPlan] Actividad "${act.nombre}" → Responsable: ${responsable}`);
+              console.log(`🆕 [handleCrearPlan] Actividad "${act.nombre}" → Responsable (rol): ${responsable}`);
             } else {
               // Rol sin responsables asignados → actividad queda "Por asignar"
               responsable = 'Por asignar';
@@ -1568,10 +1592,14 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               };
             }
 
-            await actividadesApi.create(rolBackend.id, {
+            const resultActividad = await actividadesApi.create(rolBackend.id, {
               nombre: act.nombre,
               descripcion: act.descripcion || '',
               responsable: responsable,
+              responsables: act.responsables && act.responsables.length > 0
+                ? act.responsables
+                : (responsablesDelRol.length > 0 ? [responsablesDelRol[i % responsablesDelRol.length]] : []),
+              fecha_corte: act.fechaCorte || undefined,
               fecha_inicio: act.fechaInicio || `${vigencia}-01-01`,
               fecha_fin: act.fechaFin || `${vigencia}-12-31`,
               observaciones: act.seguimiento || '',
@@ -1580,8 +1608,19 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               evaluacion: act.evaluacion || '',
               seguimiento: act.seguimiento || '',
               requiereVerificacionDirector: act.requiereVerificacionDirector || false,
-              configuracionEvidencias: configuracionEvidencias
+              configuracionEvidencias: configuracionEvidencias,
+              puntos_control: act.puntosControl && act.puntosControl.length > 0 ? act.puntosControl : undefined,
+              frecuencia_puntos_control: act.frecuenciaPuntosControl || undefined,
             });
+
+            if (resultActividad.success) {
+              actividadesCreadas++;
+            } else {
+              actividadesFallidas++;
+              const nombreCorto = act.nombre.slice(0, 50);
+              erroresPorActividad.push(`"${nombreCorto}": ${resultActividad.error || 'Error desconocido'}`);
+              console.error(`❌ Error creando actividad "${act.nombre}":`, resultActividad.error);
+            }
           }
         }
       }
@@ -1589,9 +1628,22 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       // Recargar datos del backend
       await recargarPlan();
       setVista('dashboard');
-      toast.success('Plan creado exitosamente', {
-        description: `Plan anual ${vigencia} con actividades guardado en el sistema`
-      });
+
+      if (actividadesFallidas === 0) {
+        toast.success('Plan creado exitosamente', {
+          description: `Plan anual ${vigencia} — ${actividadesCreadas} actividades guardadas`
+        });
+      } else if (actividadesCreadas > 0) {
+        toast.warning('Plan creado con errores parciales', {
+          description: `${actividadesCreadas} actividades guardadas, ${actividadesFallidas} fallaron. Error: ${erroresPorActividad[0]}`,
+          duration: 10000
+        });
+      } else {
+        toast.error('El plan se creó pero no se guardaron las actividades', {
+          description: `Error: ${erroresPorActividad[0] || 'Error de conexión con el servidor'}`,
+          duration: 10000
+        });
+      }
     } else {
       // Error al crear - NO cargar datos mock, solo mostrar error
       toast.error('Error al crear el plan', {
@@ -1633,8 +1685,14 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             planesAnteriores={planesAnteriores}
             onCrearNuevo={() => setVista('wizard')}
             onAbrirPlan={(plan) => {
-              setPlanActual(plan);
-              setVista('dashboard');
+              // Si el plan ya está cargado para ese mismo año, ir directo al dashboard
+              if (plan.vigencia === añoActual && planActual) {
+                setVista('dashboard');
+              } else {
+                // Cambiar el año para que el hook re-fetche el plan completo (con roles y actividades)
+                setAñoActual(plan.vigencia);
+                // El useEffect de planDesdeBackend se encargará de setPlanActual y setVista('dashboard')
+              }
             }}
             // onCargarMock comentado - ahora se carga desde backend
           />
@@ -1721,7 +1779,7 @@ function PantallaInicio({ planesAnteriores, onCrearNuevo, onAbrirPlan, onCargarM
             Plan Anual de Auditoría Interna
           </h1>
           <p className="text-lg text-gray-600">
-            Oficina de Control Interno de Gestión (OCIG) • Decreto 648 de 2017
+            Oficina de Control Interno de Gestión (OCI) • Decreto 648 de 2017
           </p>
         </div>
 

@@ -9,7 +9,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
  * 
  * ✨ Características Premium:
- * - Header corporativo unificado (HeaderModuloCIG)
+ * - Header corporativo unificado (HeaderModulOCIG)
  * - Dashboard con 6 KPIs detallados
  * - Vista de Catálogo con filtros avanzados
  * - Vista de Generados con historial completo
@@ -30,7 +30,7 @@ import { toast } from 'sonner@2.0.3';
 
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
-import { HeaderModuloCIG } from './HeaderModuloCIG';
+import { HeaderModulOCIG } from './HeaderModulOCIG';
 
 // Catálogo
 import { 
@@ -177,7 +177,7 @@ export default function InformesLeyModulePremium() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <HeaderModuloCIG
+      <HeaderModulOCIG
         titulo="Informes de Ley"
         subtitulo="Control Interno de Gestión"
       />

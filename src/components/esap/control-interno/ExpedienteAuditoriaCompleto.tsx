@@ -907,7 +907,7 @@ export function ExpedienteAuditoriaCompleto({
       const mes = String(fecha.getMonth() + 1).padStart(2, '0');
       const dia = String(fecha.getDate()).padStart(2, '0');
       const consecutivo = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
-      const nomenclatura = `ESAP-DN-OCIG-IF-${consecutivo}-${año}`;
+      const nomenclatura = `ESAP-DN-OCI-IF-${consecutivo}-${año}`;
       
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
@@ -1073,7 +1073,7 @@ export function ExpedienteAuditoriaCompleto({
         doc.setFontSize(8);
         doc.setTextColor(100, 100, 100);
         doc.setFont('helvetica', 'normal');
-        doc.text(`Informe generado el ${dia}/${mes}/${año} - OCIG - Página ${i} de ${totalPages}`, pageWidth / 2, pageHeight - 15, { align: 'center' });
+        doc.text(`Informe generado el ${dia}/${mes}/${año} - OCI - Página ${i} de ${totalPages}`, pageWidth / 2, pageHeight - 15, { align: 'center' });
         doc.text(nomenclatura, pageWidth / 2, pageHeight - 10, { align: 'center' });
       }
       

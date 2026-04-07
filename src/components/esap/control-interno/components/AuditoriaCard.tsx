@@ -1,10 +1,10 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * CARD DE AUDITORÍA - DISEÑO OFICIAL OCIG
+ * CARD DE AUDITORÍA - DISEÑO OFICIAL OCI
  * ═════════════════════════════════════════════════════════════════════════
  * 
  * Componente de tarjeta para el tablero Kanban de auditorías
- * Basado en especificaciones de PROMPT_FIGMA_OCIG_COMPLETO.md
+ * Basado en especificaciones de PROMPT_FIGMA_OCI_COMPLETO.md
  * 
  * Dimensiones: 280px ancho, altura variable
  * Padding: 16px
@@ -23,7 +23,7 @@ import {
   calcularDiasRestantes,
   getTextoAlerta,
   type EstadoKanban 
-} from '../utils/esapThemeOCIG';
+} from '../utils/esapThemeOCI';
 
 // ═════════════════════════════════════════════════════════════════════════
 // TIPOS

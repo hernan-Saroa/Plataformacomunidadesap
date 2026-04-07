@@ -3,7 +3,7 @@
  * MODALES AUDITORÍAS - WORLD CLASS VERSION
  * ═════════════════════════════════════════════════════════════════════════
  * 
- * Modales premium para gestión de auditorías OCIG:
+ * Modales premium para gestión de auditorías OCI:
  * - ModalFormularioAuditoria (Crear/Editar) - Diseño wizard mejorado
  * - ModalDetalleAuditoria (Ver detalle) - Layout premium con tabs
  * - ModalHistorial (Timeline) - Cronología visual mejorada
@@ -32,7 +32,7 @@ import {
 import { toast } from 'sonner';
 import { ModalBaseWorldClass } from '../ModalBaseWorldClass';
 import { motion } from 'motion/react';
-import { auditoriasApi, configuracionesProfesionalesOCIGApi } from '../services/api';
+import { auditoriasApi, configuracionesProfesionalesOCIApi } from '../services/api';
 
 // ═════════════════════════════════════════════════════════════════════════
 // TIPOS COMPARTIDOS
@@ -249,16 +249,16 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
     }
   }, [isOpen, auditoria]);
 
-  // Cargar auditores desde configuraciones OCIG (profesionales configurados)
+  // Cargar auditores desde configuraciones OCI (profesionales configurados)
   useEffect(() => {
     const cargarAuditores = async () => {
       if (!isOpen) return;
       
       setCargandoAuditores(true);
       try {
-        // Usar profesionales configurados en OCIG en lugar de personas disponibles
-        const response = await configuracionesProfesionalesOCIGApi.getAll();
-        console.log('[ModalEdicion] Profesionales OCIG response:', response);
+        // Usar profesionales configurados en OCI en lugar de personas disponibles
+        const response = await configuracionesProfesionalesOCIApi.getAll();
+        console.log('[ModalEdicion] Profesionales OCI response:', response);
         
         if (response.success && response.data && response.data.length > 0) {
           const auditores = response.data
@@ -266,13 +266,13 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
             .map((config: any) => ({
               id: String(config.idTercero),
               nombre: config.nombre || `Profesional ${config.idTercero}`,
-              cargo: config.rolOcig || 'Auditor'
+              cargo: config.rolOCI || 'Auditor'
             }));
           setAuditoresDisponibles(auditores);
-          console.log('[ModalEdicion] Auditores OCIG cargados:', auditores.length);
+          console.log('[ModalEdicion] Auditores OCI cargados:', auditores.length);
         } else {
-          // Si no hay profesionales OCIG configurados, usar fallback
-          console.warn('[ModalEdicion] No hay profesionales OCIG configurados, usando fallback');
+          // Si no hay profesionales OCI configurados, usar fallback
+          console.warn('[ModalEdicion] No hay profesionales OCI configurados, usando fallback');
           setAuditoresDisponibles(AUDITORES_FALLBACK);
         }
       } catch (error) {
@@ -450,7 +450,7 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
     <ModalBaseWorldClass
       isOpen={isOpen}
       onClose={onClose}
-      title={auditoria ? 'Editar Auditoría' : 'Nueva Auditoría OCIG'}
+      title={auditoria ? 'Editar Auditoría' : 'Nueva Auditoría OCI'}
       subtitle={paso === 1 ? 'Información Básica' : 'Alcance y Objetivos'}
       size="xl"
       headerIcon={headerIcon}
@@ -1037,9 +1037,9 @@ export function ModalDetalleAuditoria({ isOpen, onClose, auditoria }: ModalDetal
 
   // Timeline de actividades
   const timeline = [
-    { id: '1', fecha: '2025-01-15 10:00', titulo: 'Auditoría creada', descripcion: 'Se creó la auditoría en el sistema OCIG', usuario: 'Mario Bernal', tipo: 'success', icono: CheckCircle },
+    { id: '1', fecha: '2025-01-15 10:00', titulo: 'Auditoría creada', descripcion: 'Se creó la auditoría en el sistema OCI', usuario: 'Mario Bernal', tipo: 'success', icono: CheckCircle },
     { id: '2', fecha: '2025-01-15 14:30', titulo: 'Equipo asignado', descripcion: 'Se asignó el equipo auditor completo', usuario: 'Mario Bernal', tipo: 'info', icono: Users },
-    { id: '3', fecha: '2025-01-18 09:00', titulo: 'Plan de trabajo aprobado', descripcion: 'El plan de auditoría fue aprobado por el jefe OCIG', usuario: 'Fernando Ávila', tipo: 'success', icono: FileCheck },
+    { id: '3', fecha: '2025-01-18 09:00', titulo: 'Plan de trabajo aprobado', descripcion: 'El plan de auditoría fue aprobado por el jefe OCI', usuario: 'Fernando Ávila', tipo: 'success', icono: FileCheck },
     { id: '4', fecha: '2025-01-20 11:30', titulo: 'Inicio de ejecución', descripcion: 'Se dio inicio a las actividades de campo', usuario: 'Catalina Rubio', tipo: 'warning', icono: Activity },
     { id: '5', fecha: '2025-01-22 16:00', titulo: 'Primer hallazgo registrado', descripcion: 'Se identificó inconsistencia en documentación', usuario: 'Laura Villa', tipo: 'alert', icono: AlertTriangle }
   ];

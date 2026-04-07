@@ -1,10 +1,10 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * TEMA CORPORATIVO ESAP - OCIG (Oficina de Control Interno de Gestión)
+ * TEMA CORPORATIVO ESAP - OCI (Oficina de Control Interno de Gestión)
  * ═════════════════════════════════════════════════════════════════════════
  * 
  * Sistema de diseño oficial para el módulo de Control Interno
- * Basado en las especificaciones de PROMPT_FIGMA_OCIG_COMPLETO.md
+ * Basado en las especificaciones de PROMPT_FIGMA_OCI_COMPLETO.md
  * 
  * @version 2.0
  * @updated 30 Enero 2025

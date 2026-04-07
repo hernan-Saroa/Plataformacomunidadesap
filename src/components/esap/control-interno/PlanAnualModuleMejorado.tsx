@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * PLAN OPERATIVO OCIG - VERSIÓN MEJORADA V5.0
+ * PLAN OPERATIVO OCI - VERSIÓN MEJORADA V5.0
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * 📋 BASADO EN: RolesOCI_Estructurado.md - Decreto 648/2017
@@ -180,7 +180,7 @@ export function PlanAnualModuleMejorado() {
     });
     setModalAprobarOpen(true);
     toast.info('Plan enviado a aprobación', {
-      description: 'Esperando decisión del Jefe de OCIG'
+      description: 'Esperando decisión del Jefe de OCI'
     });
   };
 
@@ -194,7 +194,7 @@ export function PlanAnualModuleMejorado() {
         fechaUltimaModificacion: new Date().toISOString()
       });
       toast.success('✅ Plan Aprobado', {
-        description: 'El Plan Anual OCIG ha sido aprobado y está vigente'
+        description: 'El Plan Anual OCI ha sido aprobado y está vigente'
       });
     } else {
       setPlanData({
@@ -265,7 +265,7 @@ export function PlanAnualModuleMejorado() {
                 </div>
                 <div>
                   <h1 className="text-3xl font-bold text-gray-900">
-                    Plan Operativo OCIG {planData.año}
+                    Plan Operativo OCI {planData.año}
                   </h1>
                   <p className="text-sm text-gray-600 mt-1">
                     Decreto 648/2017 • Versión {planData.version} • 

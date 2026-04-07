@@ -24,7 +24,7 @@ import {
   Filter, X, Save, Paperclip, List, Calendar, Users, Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { HeaderModuloCIG } from './HeaderModuloCIG';
+import { HeaderModulOCIG } from './HeaderModulOCIG';
 import { controlInternoService, ListaChequeo as ListaChequeoService } from '../../../services/api/controlInternoService';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 
@@ -142,7 +142,7 @@ interface ListaChequeo {
   ultimaModificacion: string;
   completitud: number; // 0-100%
   activa: boolean;
-  // ✅ VINCULACIÓN DIRECTA CON AUDITORÍAS OCIG
+  // ✅ VINCULACIÓN DIRECTA CON AUDITORÍAS OCI
   auditoriaId?: string; // ID de la auditoría a la que pertenece esta lista
   auditoriaCodigoNombre?: string; // Código y nombre legible (ej: "AUD-2026-001 - Auditoría Contabilidad")
   fasesImpactadas?: {
@@ -398,7 +398,7 @@ export function ListasChequeoModule({ tabActiva: tabActivaProp, onTabChange, tab
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <HeaderModuloCIG 
+      <HeaderModulOCIG 
         titulo="Biblioteca" 
         subtitulo="Control Interno de Gestión" 
       />
@@ -1122,7 +1122,7 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
       ultimaModificacion: new Date().toISOString(),
       completitud: 0,
       activa: true,
-      // ✅ VINCULACIÓN CON AUDITORÍAS OCIG
+      // ✅ VINCULACIÓN CON AUDITORÍAS OCI
       auditoriaId: nuevaLista.auditoriaId,
       auditoriaCodigoNombre: nuevaLista.auditoriaCodigoNombre,
       fasesImpactadas: nuevaLista.fasesImpactadas,
@@ -1501,13 +1501,13 @@ function TarjetaListaChequeo({ lista, onVer, onEditar, onEliminar }: TarjetaList
           ></div>
         </div>
 
-        {/* ✅ VINCULACIÓN CON AUDITORÍA OCIG */}
+        {/* ✅ VINCULACIÓN CON AUDITORÍA OCI */}
         {lista.auditoriaId && lista.auditoriaCodigoNombre && (
           <div className="mb-4 p-3 bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-lg">
             <div className="flex items-start gap-2 mb-2">
               <AlertCircle className="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-purple-900">🔗 Vinculada a Auditoría OCIG:</p>
+                <p className="text-xs font-bold text-purple-900">🔗 Vinculada a Auditoría OCI:</p>
                 <p className="text-sm font-black text-purple-700 truncate">{lista.auditoriaCodigoNombre}</p>
               </div>
             </div>
@@ -1652,7 +1652,7 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
   const [nuevoItemTexto, setNuevoItemTexto] = useState('');
   const [plantillaItemActual, setPlantillaItemActual] = useState<string>(''); // Plantilla para el ítem que se está creando
   
-  // ✅ VINCULACIÓN CON AUDITORÍAS OCIG
+  // ✅ VINCULACIÓN CON AUDITORÍAS OCI
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState(listaEditar?.auditoriaId || '');
   const [fasesSeleccionadas, setFasesSeleccionadas] = useState(listaEditar?.fasesImpactadas || {
     planeacion: false,
@@ -1753,7 +1753,7 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
       etapaKanban,
       items, // Items ya tienen sus plantillas asociadas
       documentosAdjuntos: [], // Ya no se usan documentos separados
-      // ✅ VINCULACIÓN CON AUDITORÍAS OCIG
+      // ✅ VINCULACIÓN CON AUDITORÍAS OCI
       ...auditoriaInfo,
       // ✅ LEGACY: GESTIÓN DOCUMENTAL (mantener compatibilidad)
       etapaProceso: etapaProceso || undefined,
@@ -1846,13 +1846,13 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
           </div>
 
           {/* ═══════════════════════════════════════════════════════════════ */}
-          {/* SECCIÓN: VINCULACIÓN CON AUDITORÍAS OCIG */}
+          {/* SECCIÓN: VINCULACIÓN CON AUDITORÍAS OCI */}
           {/* ═══════════════════════════════════════════════════════════════ */}
           
           <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-300 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-3">
               <AlertCircle className="w-5 h-5 text-purple-600" />
-              <h3 className="text-sm font-black text-purple-900">🔗 Vinculación con Auditorías OCIG</h3>
+              <h3 className="text-sm font-black text-purple-900">🔗 Vinculación con Auditorías OCI</h3>
             </div>
             <p className="text-xs text-purple-700 mb-4">
               <strong>Clave:</strong> Vincula esta lista a una auditoría específica y define qué fases impactará. Esto permite trazabilidad completa y actualización automática del progreso de la auditoría.
@@ -1862,7 +1862,7 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
               {/* Selector de Auditoría */}
               <div className="bg-white rounded-lg p-3 border-2 border-purple-200">
                 <label className="block text-xs font-bold text-gray-900 mb-2">
-                  🎯 Auditoría OCIG <span className="text-purple-600">(Recomendado)</span>
+                  🎯 Auditoría OCI <span className="text-purple-600">(Recomendado)</span>
                 </label>
                 <select
                   value={auditoriaSeleccionada}

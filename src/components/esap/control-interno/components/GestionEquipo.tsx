@@ -1,6 +1,6 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * GESTIÓN DE EQUIPO - OCIG
+ * GESTIÓN DE EQUIPO - OCI
  * ═════════════════════════════════════════════════════════════════════════
  * 
  * Componente para gestionar el equipo de una auditoría
@@ -11,7 +11,7 @@
 
 import React, { useState } from 'react';
 import { Plus, Trash2, Mail, Phone, User, Crown, Shield } from 'lucide-react';
-import { ESAP_CLASSES } from '../utils/esapThemeOCIG';
+import { ESAP_CLASSES } from '../utils/esapThemeOCI';
 import { toast } from 'sonner@2.0.3';
 
 // ═════════════════════════════════════════════════════════════════════════

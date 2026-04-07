@@ -1,10 +1,10 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * DASHBOARD PRINCIPAL OCIG
+ * DASHBOARD PRINCIPAL OCI
  * ═════════════════════════════════════════════════════════════════════════
  * 
  * Vista ejecutiva con KPIs, gráficos y accesos rápidos
- * Basado en especificaciones de PROMPT_FIGMA_OCIG_COMPLETO.md
+ * Basado en especificaciones de PROMPT_FIGMA_OCI_COMPLETO.md
  * 
  * Incluye:
  * - Saludo personalizado
@@ -22,14 +22,14 @@ import { Plus, LayoutGrid, BarChart3, Download } from 'lucide-react';
 import { KPICard } from './KPICard';
 import { VencimientosWidget, type Vencimiento } from './VencimientosWidget';
 import { AccesosRapidos, type AccesoRapido } from './AccesosRapidos';
-import { ESAP_COLORS } from '../utils/esapThemeOCIG';
+import { ESAP_COLORS } from '../utils/esapThemeOCI';
 import { toast } from 'sonner@2.0.3';
 
 // ═════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ═════════════════════════════════════════════════════════════════════════
 
-interface DashboardOCIGProps {
+interface DashboardOCIProps {
   usuario?: {
     nombre: string;
     rol: string;
@@ -79,12 +79,12 @@ const AUDITORIAS_POR_ESTADO = [
 // COMPONENTE PRINCIPAL
 // ═════════════════════════════════════════════════════════════════════════
 
-export function DashboardOCIG({
+export function DashboardOCI({
   usuario = { nombre: 'Mario Bernal', rol: 'Jefe OCI' },
   onNuevaAuditoria,
   onVerKanban,
   className = '',
-}: DashboardOCIGProps) {
+}: DashboardOCIProps) {
   
   // Fecha actual
   const fechaActual = useMemo(() => {
@@ -370,4 +370,4 @@ function GraficoCumplimientoPlanes() {
 // EXPORTS
 // ═════════════════════════════════════════════════════════════════════════
 
-export default DashboardOCIG;
+export default DashboardOCI;

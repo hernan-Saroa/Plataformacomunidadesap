@@ -82,7 +82,7 @@ interface NotificacionEnviada {
 
 // Roles del sistema
 const ROLES_SISTEMA = [
-  'Jefe OCIG',
+  'Jefe OCI',
   'Auditor Líder',
   'Auditor Equipo',
   'Auditado',
@@ -114,7 +114,7 @@ const EVENTOS_NOTIFICABLES_MOCK: EventoNotificable[] = [
     descripcion: 'Notifica cuando una auditoría cambia de etapa en el Kanban',
     activo: true,
     canal: 'sistema',
-    destinatarios: ['Auditor Líder', 'Jefe OCIG'],
+    destinatarios: ['Auditor Líder', 'Jefe OCI'],
     condicion: 'Al mover tarjeta entre columnas'
   },
   {
@@ -124,7 +124,7 @@ const EVENTOS_NOTIFICABLES_MOCK: EventoNotificable[] = [
     descripcion: 'Alerta cuando una auditoría está por vencer su SLA en la etapa actual',
     activo: true,
     canal: 'ambos',
-    destinatarios: ['Auditor Líder', 'Jefe OCIG'],
+    destinatarios: ['Auditor Líder', 'Jefe OCI'],
     condicion: '3 días antes del vencimiento',
     plantillaEmail: 'La auditoría [NOMBRE] vence en [DÍAS] días en etapa [ETAPA]'
   },
@@ -135,7 +135,7 @@ const EVENTOS_NOTIFICABLES_MOCK: EventoNotificable[] = [
     descripcion: 'Notifica cuando una auditoría supera el SLA de su etapa',
     activo: true,
     canal: 'ambos',
-    destinatarios: ['Auditor Líder', 'Jefe OCIG'],
+    destinatarios: ['Auditor Líder', 'Jefe OCI'],
     condicion: 'Al vencer el SLA'
   },
   {
@@ -145,7 +145,7 @@ const EVENTOS_NOTIFICABLES_MOCK: EventoNotificable[] = [
     descripcion: 'Alerta cuando una columna alcanza su límite de trabajo en progreso',
     activo: true,
     canal: 'sistema',
-    destinatarios: ['Jefe OCIG'],
+    destinatarios: ['Jefe OCI'],
     condicion: 'Al alcanzar límite WIP'
   },
 
@@ -188,7 +188,7 @@ const EVENTOS_NOTIFICABLES_MOCK: EventoNotificable[] = [
     descripcion: 'Notifica cuando una auditoría se completa',
     activo: true,
     canal: 'sistema',
-    destinatarios: ['Auditor Líder', 'Jefe OCIG', 'Auditado'],
+    destinatarios: ['Auditor Líder', 'Jefe OCI', 'Auditado'],
     condicion: 'Al marcar como finalizada'
   },
 
@@ -200,7 +200,7 @@ const EVENTOS_NOTIFICABLES_MOCK: EventoNotificable[] = [
     descripcion: 'Recordatorio de seguimiento trimestral del plan de mejoramiento',
     activo: true,
     canal: 'ambos',
-    destinatarios: ['Responsable Plan Mejoramiento', 'Jefe OCIG'],
+    destinatarios: ['Responsable Plan Mejoramiento', 'Jefe OCI'],
     condicion: '7 días antes del seguimiento',
     plantillaEmail: 'El seguimiento trimestral del PM [CÓDIGO] vence el [FECHA]'
   },
@@ -221,7 +221,7 @@ const EVENTOS_NOTIFICABLES_MOCK: EventoNotificable[] = [
     descripcion: 'Alerta cuando una acción supera su fecha de cumplimiento',
     activo: true,
     canal: 'ambos',
-    destinatarios: ['Responsable Plan Mejoramiento', 'Jefe Dependencia', 'Jefe OCIG'],
+    destinatarios: ['Responsable Plan Mejoramiento', 'Jefe Dependencia', 'Jefe OCI'],
     condicion: 'Al día siguiente del vencimiento'
   },
 
@@ -256,7 +256,7 @@ const EVENTOS_NOTIFICABLES_MOCK: EventoNotificable[] = [
     descripcion: 'Alerta cuando un auditor supera 90% de su capacidad',
     activo: true,
     canal: 'sistema',
-    destinatarios: ['Jefe OCIG'],
+    destinatarios: ['Jefe OCI'],
     condicion: 'Al superar 90% de capacidad'
   },
   {
@@ -294,7 +294,7 @@ const NOTIFICACIONES_ENVIADAS_MOCK: NotificacionEnviada[] = [
     id: 'N-002',
     eventoId: 'EVT-APR-001',
     titulo: 'Informe Aprobado',
-    mensaje: 'El Informe Pormenorizado 2025-S1 ha sido aprobado por el Jefe de OCIG.',
+    mensaje: 'El Informe Pormenorizado 2025-S1 ha sido aprobado por el Jefe de OCI.',
     destinatario: 'Ana María López Gómez',
     canal: 'sistema',
     fechaEnvio: '2025-09-30T14:22:00',

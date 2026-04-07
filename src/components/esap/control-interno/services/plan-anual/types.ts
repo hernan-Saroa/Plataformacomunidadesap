@@ -33,6 +33,8 @@ export interface Actividad {
   nombre: string;
   descripcion?: string;
   responsable: string;
+  responsables?: { id: string; nombre: string; cargo: string; email: string }[];
+  fecha_corte?: string;
   fecha_inicio: string; // ISO date string
   fecha_fin: string;    // ISO date string
   estado: EstadoActividad;
@@ -124,6 +126,8 @@ export interface CreateActividadDto {
   nombre: string;
   descripcion?: string;
   responsable: string;
+  responsables?: { id: string; nombre: string; cargo: string; email: string }[];
+  fecha_corte?: string;
   fecha_inicio: string;
   fecha_fin: string;
   prioridad?: PrioridadActividad;
@@ -134,12 +138,16 @@ export interface CreateActividadDto {
   seguimiento?: string;
   requiereVerificacionDirector?: boolean;
   configuracionEvidencias?: ConfiguracionEvidencias;
+  puntos_control?: any[];
+  frecuencia_puntos_control?: string;
 }
 
 export interface UpdateActividadDto {
   nombre?: string;
   descripcion?: string;
   responsable?: string;
+  responsables?: { id: string; nombre: string; cargo: string; email: string }[];
+  fecha_corte?: string;
   fecha_inicio?: string;
   fecha_fin?: string;
   estado?: EstadoActividad;
