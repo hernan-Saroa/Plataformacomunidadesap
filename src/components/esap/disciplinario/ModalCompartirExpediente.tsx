@@ -307,7 +307,7 @@ export function ModalCompartirExpediente({ expediente, onClose }: ModalCompartir
       showBackButton={true}
     >
       {/* Content */}
-      <div className="space-y-6">
+      <div className="space-y-6 bg-white">
         {/* Selección de método */}
         <div>
           <h3 className={`font-bold text-gray-900 mb-3 flex items-center gap-2 ${isMobile ? 'text-sm' : 'text-base'}`}>
