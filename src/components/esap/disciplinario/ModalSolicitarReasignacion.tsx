@@ -3,7 +3,7 @@
  * Vista única: selección de profesional destino + justificación
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { UserCheck, Users, Search, Check, AlertTriangle, CheckCircle, AlertCircle, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -61,23 +61,45 @@ const PROFESIONALES: Profesional[] = [
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export function ModalSolicitarReasignacion({ proceso, profesionales = [], onClose }: ModalSolicitarReasignacionProps) {
-  // Convertir profesionales del backend al formato esperado por el componente
-  const profesionalesFormateados = profesionales.map(p => ({
+  const [profesionalesCargados, setProfesionalesCargados] = useState<any[]>([]);
+
+  // Cargar profesionales desde el backend si no se pasaron como props
+  useEffect(() => {
+    const cargarProfesionales = async () => {
+      if (profesionales.length > 0) {
+        setProfesionalesCargados(profesionales);
+        return;
+      }
+
+      try {
+        const data = await disciplinaryService.getProfesionales();
+        setProfesionalesCargados(data);
+      } catch (error) {
+        console.error('Error cargando profesionales:', error);
+        setProfesionalesCargados([]);
+      }
+    };
+
+    cargarProfesionales();
+  }, [profesionales]);
+
+  // Convertir profesionales al formato esperado por el componente
+  const profesionalesFormateados = profesionalesCargados.map(p => ({
     id: p.id,
     nombre: p.nombreCompleto || p.nombre || '',
     cargo: p.cargo || 'Profesional',
     especialidad: p.cargo || 'Derecho Disciplinario', // Usar cargo como especialidad
     procesosAsignados: p.procesosAsignados || 0,
     capacidadMaxima: p.capacidadMaxima || 10,
-    procesosVencidos: 0, // No viene del backend
-    procesosEnRiesgo: 0, // No viene del backend
-    procesosAlDia: p.procesosAsignados || 0, // No viene del backend
+    procesosVencidos: p.procesosVencidos || 0,
+    procesosEnRiesgo: p.procesosEnRiesgo || 0,
+    procesosAlDia: p.procesosAlDia || p.procesosAsignados || 0,
     estado: (p.estado || 'ACTIVO').toLowerCase() === 'activo' ? 'activo' : 'inactivo',
     tipoContrato: (p.tipoContrato === 'Planta' || p.tipoContrato === 'Contratista' || p.tipoContrato === 'OPS') ? p.tipoContrato : 'Planta' as const,
     territorial: p.territorial || 'Sede Central'
   }));
 
-  // Usar profesionales del backend si existen, si no usar mock
+  // Usar profesionales formateados, o mock si no hay datos
   const profesionalesAMostrar = profesionalesFormateados.length > 0 ? profesionalesFormateados : PROFESIONALES;
 
   const [seleccionado, setSeleccionado] = useState('');
@@ -85,18 +107,51 @@ export function ModalSolicitarReasignacion({ proceso, profesionales = [], onClos
   const [prioridad, setPrioridad] = useState<'NORMAL' | 'URGENTE'>('NORMAL');
   const [busqueda, setBusqueda]         = useState('');
 
+  // Normalizar nombre para comparación (quitar acentos, espacios extra, etc.)
+  const normalizarNombre = (nombre: string) => {
+    return nombre
+      .toLowerCase()
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // quitar acentos
+      .replace(/\s+/g, ' '); // espacios múltiples a uno
+  };
+
+  // Obtener el nombre del profesional actual asignado
+  const getNombreProfesionalActual = () => {
+    if (!proceso.profesionalAsignado) return null;
+    if (typeof proceso.profesionalAsignado === 'string') {
+      return proceso.profesionalAsignado;
+    }
+    return proceso.profesionalAsignado.nombre;
+  };
+
   const lista = useMemo(() => {
     const t = busqueda.toLowerCase();
+    const nombreActual = getNombreProfesionalActual();
+    const nombreActualNormalizado = nombreActual ? normalizarNombre(nombreActual) : null;
+
     const r = profesionalesAMostrar
       .filter(p => p.estado === 'activo')
-      .filter(p => p.id !== proceso.profesionalAsignadoId)
+      .filter(p => {
+        // Excluir por ID si está disponible
+        if (proceso.profesionalAsignadoId) {
+          return p.id !== proceso.profesionalAsignadoId;
+        }
+        // Excluir por nombre si no hay ID
+        if (nombreActualNormalizado) {
+          const nombrePNormalizado = normalizarNombre(p.nombre);
+          return nombrePNormalizado !== nombreActualNormalizado;
+        }
+        return true; // Si no hay info del profesional actual, incluir todos
+      })
       .filter(p => !t || p.nombre.toLowerCase().includes(t) || (p.especialidad && p.especialidad.toLowerCase().includes(t)));
     return [...r].sort((a, b) => {
       const ord = { verde: 0, amarillo: 1, rojo: 2, gris: 3 };
       return ord[wcSemaforo(a.procesosAsignados, a.capacidadMaxima, a.estado)] -
              ord[wcSemaforo(b.procesosAsignados, b.capacidadMaxima, b.estado)];
     });
-  }, [busqueda, proceso.profesionalAsignadoId, profesionalesAMostrar]);
+  }, [busqueda, proceso.profesionalAsignadoId, proceso.profesionalAsignado, profesionalesAMostrar]);
 
   const prof = profesionalesAMostrar.find(p => p.id === seleccionado);
   const nombreProfesionalActual =
@@ -234,7 +289,14 @@ export function ModalSolicitarReasignacion({ proceso, profesionales = [], onClos
                       <MapPin className="w-3 h-3" />{p.territorial.replace('Territorial ', '').replace('Dirección ', 'Dir. ')}
                     </span>
                   </div>
-                  <WCBarraCarga asignados={p.procesosAsignados} capacidad={p.capacidadMaxima} semaforo={sem} />
+                  <WCBarraCarga
+                    asignados={p.procesosAsignados}
+                    capacidad={p.capacidadMaxima}
+                    semaforo={sem}
+                    alDia={p.procesosAlDia}
+                    enRiesgo={p.procesosEnRiesgo}
+                    vencidos={p.procesosVencidos}
+                  />
                 </div>
                 {sel && (
                   <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center" style={{ background: WC_TOKENS.primary }}>

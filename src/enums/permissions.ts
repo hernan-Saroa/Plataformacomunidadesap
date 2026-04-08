@@ -262,6 +262,14 @@ export enum Permissions {
   CONTROL_INTERNO_EXPEDIENTES_MANAGE = 'control-interno.expedientes.manage',
   CONTROL_INTERNO_EXPEDIENTES_UPLOAD = 'control-interno.expedientes.upload',
 
+  // Biblioteca / Listas de Chequeo
+  CONTROL_INTERNO_LISTAS_CHEQUEO_VIEW = 'control-interno.listas-chequeo.view',
+  CONTROL_INTERNO_LISTAS_CHEQUEO_CREATE = 'control-interno.listas-chequeo.create',
+  CONTROL_INTERNO_LISTAS_CHEQUEO_EDIT = 'control-interno.listas-chequeo.edit',
+  CONTROL_INTERNO_LISTAS_CHEQUEO_DELETE = 'control-interno.listas-chequeo.delete',
+  CONTROL_INTERNO_LISTAS_CHEQUEO_APPLY = 'control-interno.listas-chequeo.apply',
+  CONTROL_INTERNO_LISTAS_CHEQUEO_EXPORT = 'control-interno.listas-chequeo.export',
+
   // Configuraciones
   CONTROL_INTERNO_CONFIGURACIONES_MANAGE = 'control-interno.configuraciones.manage',
   CONTROL_INTERNO_CONFIGURACIONES_CONFIG_AUDIT_TIPO_CREATE = 'control-interno.configuraciones.config-audit.tipo.create',

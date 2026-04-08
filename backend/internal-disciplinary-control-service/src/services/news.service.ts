@@ -47,10 +47,14 @@ export class NewsService {
       const adjuntos: string[] = Array.isArray(createNewsDto.adjuntos)
         ? [...createNewsDto.adjuntos]
         : [];
+      console.log(`[DEBUG] NewsService.create - Radicado: ${radicado}, Adjuntos iniciales: ${adjuntos.length}, Files recibidos: ${files?.length || 0}`);
       if (files && files.length > 0) {
+        console.log(`[DEBUG] Procesando ${files.length} archivos...`);
         const stored = await this.storageService.saveMultipleFiles(radicado, files);
+        console.log(`[DEBUG] Archivos guardados: ${stored.length} - ${stored.join(', ')}`);
         adjuntos.push(...stored);
       }
+      console.log(`[DEBUG] Adjuntos finales: ${adjuntos.length} - ${adjuntos.join(', ')}`);
 
       // Crear historial inicial
       const initialHistory = [{

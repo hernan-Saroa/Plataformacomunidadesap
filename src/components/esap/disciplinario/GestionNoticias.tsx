@@ -111,6 +111,13 @@ interface NoticiaDisciplinaria {
   hechos?: string;
   dependenciaDenunciado?: string;
   adjuntos?: string[];
+  archivosAdjuntos?: Array<{
+    nombre: string;
+    tipo: string;
+    tamano: number;
+    fechaSubida: string;
+    url: string;
+  }>;
   profesionalAsignado?: string;
   procesoAsociado?: string;
   // Campos de remision por competencia
@@ -894,6 +901,14 @@ export function GestionNoticias() {
             identificacion: d.cedula || d.identificacion || ''
           })),
           adjuntos: news.adjuntos || [],
+          archivosAdjuntos: (news.adjuntos || []).map((path: string) => ({
+            nombre: path.split('/').pop() || path,
+            tipo: path.toLowerCase().includes('pdf') ? 'application/pdf' : path.toLowerCase().includes('jpg') || path.toLowerCase().includes('png') ? 'image' : path.toLowerCase().includes('mp4') || path.toLowerCase().includes('avi') ? 'video' : 'application/octet-stream',
+            tamano: 0,
+            fechaSubida: new Date().toISOString(),
+            url: path,
+            fullUrl: disciplinaryService.getFileUrl(path),
+          })),
           estado: getFrontendStatus(rawStatus),
           estadoLabel: getFrontendStatusLabels(rawStatus),
           // Campos de remision por competencia
@@ -1112,6 +1127,8 @@ export function GestionNoticias() {
   const handleCreateNoticia = async (data: any) => {
     try {
       setLoading(true);
+      console.log('[DEBUG] handleCreateNoticia - data.archivosAdjuntos:', data.archivosAdjuntos);
+      console.log('[DEBUG] handleCreateNoticia - archivos length:', data.archivosAdjuntos?.length || 0);
 
       // Map Denunciante(s)
       const denuncianteData = (data.denunciantes && data.denunciantes.length > 0)
@@ -1857,6 +1874,9 @@ export function GestionNoticias() {
             onClose={() => {
               setShowDetallesModal(false);
               setNoticiaSeleccionada(null);
+            }}
+            onDownload={async (url, filename) => {
+              await disciplinaryService.downloadFileFromUrl(disciplinaryService.getFileUrl(url), filename);
             }}
           />
         )}

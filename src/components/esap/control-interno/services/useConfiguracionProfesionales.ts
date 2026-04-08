@@ -20,8 +20,8 @@ import {
 
 // Usuario del sistema obtenido del backend
 export interface UsuarioSistema {
-  id: string;           // id_tercero como string
-  idTercero: number;    // id_tercero como número (para el backend)
+  id: string;           // id_person UUID
+  idTercero: string;    // id_person UUID (para el backend)
   nombre: string;
   identificacion: string;
   email: string;
@@ -34,8 +34,8 @@ export interface UsuarioSistema {
 // Configuración OCI del profesional
 export interface ConfiguracionOCI {
   id?: string;          // UUID de la configuración (si existe en BD)
-  usuarioId: string;    // id_tercero como string (para compatibilidad)
-  idTercero: number;    // id_tercero como número (para el backend)
+  usuarioId: string;    // id_person UUID
+  idTercero: string;    // id_person UUID (para el backend)
   rolOCI: 'Jefe OCI' | 'Auditor Sénior' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
   especialidades: string[];
   capacidadMaximaAuditorias: number;
@@ -113,7 +113,7 @@ interface PersonaDisponible {
 function convertirPersonaAUsuarioSistema(persona: PersonaDisponible): UsuarioSistema {
   return {
     id: persona.id,
-    idTercero: persona.idPersona,
+    idTercero: String(persona.idPersona),
     nombre: persona.nombre,
     identificacion: persona.numeroIdentificacion,
     email: persona.email,
@@ -128,8 +128,8 @@ function convertirConfigBackendALocal(config: ConfigBackend): ConfiguracionOCI {
   return {
     id: config.id,
     usuarioId: String(config.idTercero),
-    idTercero: config.idTercero,
-    rolOCI: config.rolOCI as ConfiguracionOCI['rolOCI'],
+    idTercero: String(config.idTercero),
+    rolOCI: (config.rolOcig ?? config.rolOCI) as ConfiguracionOCI['rolOCI'],
     especialidades: config.especialidades,
     capacidadMaximaAuditorias: config.capacidadMaximaAuditorias,
     horasMensualesDisponibles: config.horasMensualesDisponibles,
@@ -217,7 +217,7 @@ export function useConfiguracionProfesionales() {
       .map(config => {
         // Buscar usuario en la lista del backend - comparar como números para evitar problemas de tipos
         let usuario = usuariosControlInterno.find(
-          u => Number(u.id) === Number(config.idTercero) || Number(u.idTercero) === Number(config.idTercero)
+          u => u.id === String(config.idTercero) || u.idTercero === String(config.idTercero)
         );
         
         // Si no se encuentra en usuarios disponibles, crear usuario temporal desde los datos enriquecidos de la configuración
@@ -229,7 +229,7 @@ export function useConfiguracionProfesionales() {
             nombre: config.nombre,
             identificacion: config.identificacion || '',
             email: config.email || '',
-            cargo: config.rolOCI,
+            cargo: config.rolOCI as string,
             area: 'OCI',
             activo: true
           };
@@ -272,7 +272,7 @@ export function useConfiguracionProfesionales() {
     try {
       const response = await configuracionesProfesionalesOCIApi.create({
         idTercero: config.idTercero,
-        rolOCI: config.rolOCI,
+        rolOcig: config.rolOCI,
         especialidades: config.especialidades,
         capacidadMaximaAuditorias: config.capacidadMaximaAuditorias,
         horasMensualesDisponibles: config.horasMensualesDisponibles,
@@ -303,7 +303,7 @@ export function useConfiguracionProfesionales() {
       }
 
       const response = await configuracionesProfesionalesOCIApi.update(configActual.id, {
-        rolOCI: cambios.rolOCI,
+        rolOcig: cambios.rolOCI,
         especialidades: cambios.especialidades,
         capacidadMaximaAuditorias: cambios.capacidadMaximaAuditorias,
         horasMensualesDisponibles: cambios.horasMensualesDisponibles,
