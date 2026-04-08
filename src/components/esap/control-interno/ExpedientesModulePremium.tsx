@@ -34,7 +34,7 @@ import { getServiceUrl, API_MODE } from '../../../config/environment';
 
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
-import { HeaderModulOCIG } from './HeaderModulOCIG';
+import { HeaderModulOCIG } from './HeaderModuloCIG';
 
 // ✅ FASE 1 DÍA 3: Componentes responsive
 import { Container4K } from '../../ui/container-4k';

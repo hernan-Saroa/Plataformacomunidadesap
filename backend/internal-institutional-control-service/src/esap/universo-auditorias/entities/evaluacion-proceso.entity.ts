@@ -88,7 +88,7 @@ export class EvaluacionProceso {
   totalRiesgos: number;
 
   // ═══════════════════════════════════════════════════════════════════════
-  // SECCIÓN 2: REQUERIMIENTOS ESPECIALES (J, K)
+  // SECCIÓN 2: REQUERIMIENTOS ESPECIALES (J, K) — legacy, se mantienen
   // ═══════════════════════════════════════════════════════════════════════
 
   @Column({ name: 'requerimiento_comite', type: 'boolean', default: false })
@@ -98,49 +98,79 @@ export class EvaluacionProceso {
   requerimientoEntesReg: boolean;
 
   // ═══════════════════════════════════════════════════════════════════════
-  // SECCIÓN 3: INFORMACIÓN DE AUDITORÍA ANTERIOR (L, N)
+  // SECCIÓN 3: INFORMACIÓN DE AUDITORÍA ANTERIOR (L, N) — legacy
   // ═══════════════════════════════════════════════════════════════════════
 
   @Column({ name: 'fecha_ultima_auditoria', type: 'date', nullable: true })
   fechaUltimaAuditoria?: Date;
 
   @Column({ name: 'resultado_ultima_auditoria', type: 'varchar', length: 100, nullable: true })
-  resultadoUltimaAuditoria?: string; // 'Adecuado', 'Con observaciones', 'Con debilidades', 'Sin auditoría previa'
+  resultadoUltimaAuditoria?: string;
 
   // ═══════════════════════════════════════════════════════════════════════
-  // SCORE DE RIESGO C+E-M (modelo simplificado 0-15)
+  // SCORE DE RIESGO C+E-M — legacy, se mantiene
   // ═══════════════════════════════════════════════════════════════════════
 
   @Column({ type: 'integer', default: 0 })
-  criticidad: number; // 0-5
+  criticidad: number;
 
   @Column({ type: 'integer', default: 0 })
-  exposicion: number; // 0-5
+  exposicion: number;
 
   @Column({ type: 'integer', default: 0 })
-  mitigantes: number; // 0-5
+  mitigantes: number;
 
   @Column({ name: 'score_riesgo', type: 'integer', default: 0 })
-  scoreRiesgo: number; // C + E - M (0-15)
+  scoreRiesgo: number;
 
   // ═══════════════════════════════════════════════════════════════════════
-  // CÁLCULOS AUTOMÁTICOS DAFP
+  // CRITERIOS DE PRIORIZACIÓN DAFP (RE-E-GE-034) — migración 179
+  // Fórmula: Ponderación = RI×0.4 + Tiempo×0.1 + AD×0.1 + Obj×0.1 + Hall×0.3
+  // ═══════════════════════════════════════════════════════════════════════
+
+  @Column({ name: 'tiempo_ultima_auditoria', type: 'integer', default: 0 })
+  tiempoUltimaAuditoria: number; // 1=≤1año … 5=>4años/Nunca
+
+  @Column({ name: 'temas_alta_direccion', type: 'integer', default: 0 })
+  temasAltaDireccion: number; // 2=Bajo … 5=Muy relevante
+
+  @Column({ name: 'objetivos_estrategicos', type: 'integer', default: 0 })
+  objetivosEstrategicos: number; // 2=1obj … 5=4+obj
+
+  @Column({ name: 'hallazgos_anteriores', type: 'integer', default: 0 })
+  hallazgosAnteriores: number; // 1=Sin … 5=7+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // RESULTADOS DAFP CALCULADOS — migración 179
+  // ═══════════════════════════════════════════════════════════════════════
+
+  @Column({ name: 'ponderacion_final_dafp', type: 'decimal', precision: 4, scale: 2, default: 0 })
+  ponderacionFinalDafp: number;
+
+  @Column({ name: 'nivel_criticidad_dafp', type: 'varchar', length: 20, nullable: true })
+  nivelCriticidadDafp?: string; // 'Extremo' | 'Alto' | 'Moderado' | 'Bajo'
+
+  @Column({ name: 'ciclo_rotacion_dafp', type: 'varchar', length: 20, nullable: true })
+  cicloRotacionDafp?: string; // 'Cada año' | 'Cada 2 años' | 'Cada 3 años'
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CÁLCULOS AUTOMÁTICOS DAFP — legacy
   // ═══════════════════════════════════════════════════════════════════════
 
   @Column({ name: 'ponderacion_riesgo', type: 'varchar', length: 20, nullable: true })
-  ponderacionRiesgo?: string; // 'EXTREMO', 'ALTO', 'MODERADO', 'BAJO', 'MUY BAJO'
+  ponderacionRiesgo?: string;
 
   @Column({ name: 'dias_transcurridos', type: 'integer', nullable: true })
   diasTranscurridos?: number;
 
   @Column({ name: 'plan_rotacion', type: 'varchar', length: 20, nullable: true })
-  planRotacion?: string; // '1 año', '2 años', '3 años', '4 años'
+  planRotacion?: string;
 
   @Column({ name: 'dias_rotacion', type: 'integer', default: 360 })
   diasRotacion: number;
 
   @Column({ name: 'decision_rotacion', type: 'varchar', length: 20, nullable: true })
-  decisionRotacion?: string; // 'Incluir', 'Omitir', 'Pendiente'
+  decisionRotacion?: string;
 
   // ═══════════════════════════════════════════════════════════════════════
   // DECISIÓN FINAL

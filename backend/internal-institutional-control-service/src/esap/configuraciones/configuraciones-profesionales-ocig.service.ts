@@ -256,6 +256,7 @@ export class ConfiguracionesProfesionalesOCIGService {
       nombre: string;
       email: string;
       identificacion: string;
+      rolCode: string;
     }>
   > {
     try {
@@ -270,15 +271,25 @@ export class ConfiguracionesProfesionalesOCIGService {
         idsConfigurados,
       );
 
-      // Construir query para buscar personas en auth.personas
+      // Construir query: solo personas con rol de tipo INTERNO activo
       let query = `
-        SELECT 
+        SELECT DISTINCT ON (p.id_tercero)
           p.id_tercero,
           p.nom_largo,
           p.dir_email,
-          p.num_identificacion
+          p.num_identificacion,
+          r.code AS rol_code
         FROM auth.personas p
-        WHERE 1=1
+        INNER JOIN auth."user" u ON u.id_tercero = p.id_tercero AND u.is_active = true
+        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user AND ur.is_active = true
+        INNER JOIN auth.role r ON r.id = ur.id_rol AND r.is_active = true
+        WHERE (
+          r.type = 'INTERNO'
+          OR r.code ILIKE '%OCI%'
+          OR r.code ILIKE '%AUDITOR%'
+          OR r.code ILIKE '%CONTROL%'
+          OR r.code ILIKE '%PROFESIONAL%'
+        )
       `;
 
       const params: (number | string)[] = [];
@@ -301,8 +312,8 @@ export class ConfiguracionesProfesionalesOCIGService {
         paramIndex++;
       }
 
-      // Ordenar y limitar resultados
-      query += ` ORDER BY p.nom_largo ASC LIMIT 50`;
+      // Ordenar y limitar resultados (DISTINCT ON requiere p.id_tercero primero)
+      query += ` ORDER BY p.id_tercero, p.nom_largo ASC LIMIT 50`;
 
       console.log('[buscarPersonasCandidatas] Query:', query);
       console.log('[buscarPersonasCandidatas] Params:', params);
@@ -312,6 +323,7 @@ export class ConfiguracionesProfesionalesOCIGService {
         nom_largo: string | null;
         dir_email: string | null;
         num_identificacion: string | null;
+        rol_code: string | null;
       }> = await this.configRepository.query(query, params);
 
       console.log(
@@ -326,6 +338,7 @@ export class ConfiguracionesProfesionalesOCIGService {
         nombre: p.nom_largo || 'Sin Nombre',
         email: p.dir_email || '',
         identificacion: p.num_identificacion || '',
+        rolCode: p.rol_code || '',
       }));
     } catch (error) {
       console.error('[buscarPersonasCandidatas] Error:', error);

@@ -545,10 +545,6 @@ class DisciplinaryService {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/status`, { status: newStatus });
     }
 
-    async archiveNews(id: string, reason: string): Promise<DisciplinaryNews> {
-        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/archive`, { reason });
-    }
-
     /**
      * Remitir noticia por competencia a otra entidad
      * Envía un correo con la información de la noticia a la entidad destinataria

@@ -12,7 +12,7 @@ import { motion } from "motion/react";
 import { PlaneacionAuditoriaModule } from "./PlaneacionAuditoriaModule";
 import { EjecucionAuditoriaModule } from "./EjecucionAuditoriaModule";
 import { ComunicacionAuditoriaModule } from "./ComunicacionAuditoriaModule";
-import { HeaderModulOCIG } from "./HeaderModulOCIG";
+import { HeaderModulOCIG } from "./HeaderModuloCIG";
 
 export function ProcesoAuditoriaModule() {
   const [tabActiva, setTabActiva] = useState("planeacion");

@@ -14,7 +14,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Calendar, Clock, Plus, Trash2, Save, AlertCircle,
@@ -158,6 +158,24 @@ function formatearFecha(fecha: string): string {
   return `${f.getDate()} ${meses[f.getMonth()]} ${f.getFullYear()}`;
 }
 
+/** Determina el badge de estado visual de un checkpoint */
+function getEstadoBadge(punto: PuntoControl, esActivo: boolean): { label: string; classes: string } {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const fecha = new Date(punto.fechaProgramada + 'T00:00:00');
+
+  if (punto.estado === 'completado') {
+    return { label: '\u2705 Completado', classes: 'bg-green-100 text-green-700 border border-green-200' };
+  }
+  if (fecha < hoy) {
+    return { label: '\u26a0\ufe0f Vencido', classes: 'bg-red-100 text-red-700 border border-red-200' };
+  }
+  if (esActivo) {
+    return { label: '\ud83d\udd35 Activo', classes: 'bg-blue-100 text-blue-700 border border-blue-200' };
+  }
+  return { label: '\u23f3 Futuro', classes: 'bg-gray-100 text-gray-500 border border-gray-200' };
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
@@ -192,8 +210,12 @@ export function ModalConfiguracionPuntosControl({
   const [puntosControl, setPuntosControl] = useState<PuntoControl[]>(puntosControlExistentes);
   const [mostrarFormNuevo, setMostrarFormNuevo] = useState(false);
   const [puntoEditando, setPuntoEditando] = useState<string | null>(null);
-  // Confirmación inline al cambiar frecuencia
-  const [frecuenciaPendiente, setFrecuenciaPendiente] = useState<FrecuenciaPuntoControl | null>(null);
+  // Evitar que el efecto sobreescriba cortes existentes al montar
+  const initialized = useRef(false);
+  // Rastrear si el usuario editó fechas de corte individuales manualmente
+  const manualmenteEditado = useRef(false);
+  // Detectar cuándo cambió la frecuencia vs la fecha de corte
+  const prevFrecuencia = useRef<FrecuenciaPuntoControl>(frecuenciaActual || 'trimestral');
   
   // Form para nuevo punto personalizado
   const [nuevoPunto, setNuevoPunto] = useState({
@@ -210,18 +232,44 @@ export function ModalConfiguracionPuntosControl({
   });
 
   // Regenerar puntos cuando cambia la frecuencia o la fecha de corte
+  // - Cambio de frecuencia: siempre regenera y resetea flag de edición manual
+  // - Cambio de fecha de corte: solo regenera si el usuario NO editó manualmente los checkpoints
   useEffect(() => {
+    if (!initialized.current) {
+      initialized.current = true;
+      prevFrecuencia.current = frecuenciaSeleccionada;
+      if (puntosControlExistentes.length === 0 && frecuenciaSeleccionada !== 'personalizada') {
+        setPuntosControl(generarPuntosControlAutomaticos(
+          frecuenciaSeleccionada,
+          fechaInicioActividad,
+          fechaCorteLocal || fechaFinActividad,
+          nombreActividad
+        ));
+      }
+      return;
+    }
+
+    const frecuenciaCambio = prevFrecuencia.current !== frecuenciaSeleccionada;
+    prevFrecuencia.current = frecuenciaSeleccionada;
+
     if (frecuenciaSeleccionada !== 'personalizada') {
-      const puntosGenerados = generarPuntosControlAutomaticos(
-        frecuenciaSeleccionada,
-        fechaInicioActividad,
-        fechaCorteLocal || fechaFinActividad,
-        nombreActividad
-      );
-      setPuntosControl(puntosGenerados);
+      // Frecuencia cambió: regenerar siempre y limpiar flag de edición manual
+      // Fecha de corte cambió: regenerar solo si no hay ediciones manuales
+      if (frecuenciaCambio || !manualmenteEditado.current) {
+        setPuntosControl(generarPuntosControlAutomaticos(
+          frecuenciaSeleccionada,
+          fechaInicioActividad,
+          fechaCorteLocal || fechaFinActividad,
+          nombreActividad
+        ));
+      }
+      if (frecuenciaCambio) {
+        manualmenteEditado.current = false;
+      }
     } else {
-      // Mantener existentes o limpiar
+      // Modo personalizada: mantener existentes
       setPuntosControl(puntosControlExistentes.length > 0 ? puntosControlExistentes : []);
+      manualmenteEditado.current = false;
     }
   }, [frecuenciaSeleccionada, fechaInicioActividad, fechaCorteLocal]);
 
@@ -294,6 +342,7 @@ export function ModalConfiguracionPuntosControl({
           : p
       ).sort((a, b) => new Date(a.fechaProgramada).getTime() - new Date(b.fechaProgramada).getTime())
     );
+    manualmenteEditado.current = true;
 
     setPuntoEditando(null);
     setPuntoEditandoData({ nombre: '', descripcion: '', fechaProgramada: '' });
@@ -302,23 +351,7 @@ export function ModalConfiguracionPuntosControl({
 
   const handleCambiarFrecuencia = (nuevaFrecuencia: FrecuenciaPuntoControl) => {
     if (nuevaFrecuencia === frecuenciaSeleccionada) return;
-    // Si ya hay puntos, mostrar confirmación inline
-    if (puntosControl.length > 0) {
-      setFrecuenciaPendiente(nuevaFrecuencia);
-      return;
-    }
     setFrecuenciaSeleccionada(nuevaFrecuencia);
-  };
-
-  const confirmarCambioFrecuencia = () => {
-    if (frecuenciaPendiente) {
-      setFrecuenciaSeleccionada(frecuenciaPendiente);
-      setFrecuenciaPendiente(null);
-    }
-  };
-
-  const cancelarCambioFrecuencia = () => {
-    setFrecuenciaPendiente(null);
   };
 
   const handleGuardar = () => {
@@ -337,15 +370,21 @@ export function ModalConfiguracionPuntosControl({
     label: string; 
     descripcion: string; 
     color: string;
-    cantidad: number;
   }[] = [
-    { value: 'mensual', label: 'Mensual', descripcion: '12 checkpoints', color: 'bg-blue-500', cantidad: 12 },
-    { value: 'trimestral', label: 'Trimestral', descripcion: '4 checkpoints', color: 'bg-purple-500', cantidad: 4 },
-    { value: 'semestral', label: 'Semestral', descripcion: '2 checkpoints', color: 'bg-green-500', cantidad: 2 },
-    { value: 'anual', label: 'Anual', descripcion: '1 checkpoint', color: 'bg-orange-500', cantidad: 1 },
-    { value: 'semanal', label: 'Semanal', descripcion: '52 checkpoints', color: 'bg-red-500', cantidad: 52 },
-    { value: 'personalizada', label: 'Personalizada', descripcion: 'Fechas manuales', color: 'bg-gray-500', cantidad: 0 }
+    { value: 'mensual', label: 'Mensual', descripcion: 'Fin de cada mes', color: 'bg-blue-500' },
+    { value: 'trimestral', label: 'Trimestral', descripcion: 'Cada trimestre', color: 'bg-purple-500' },
+    { value: 'semestral', label: 'Semestral', descripcion: 'Cada semestre', color: 'bg-green-500' },
+    { value: 'anual', label: 'Anual', descripcion: 'Una vez al año', color: 'bg-orange-500' },
+    { value: 'semanal', label: 'Semanal', descripcion: 'Cada 7 días', color: 'bg-red-500' },
+    { value: 'personalizada', label: 'Personalizada', descripcion: 'Fechas manuales', color: 'bg-gray-500' }
   ];
+
+  // Detectar el checkpoint "activo": el primero cuya fecha sea >= hoy
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const activoId = [...puntosControl]
+    .filter(p => new Date(p.fechaProgramada + 'T00:00:00') >= hoy)
+    .sort((a, b) => new Date(a.fechaProgramada).getTime() - new Date(b.fechaProgramada).getTime())[0]?.id ?? null;
 
   if (!isOpen) return null;
 
@@ -353,7 +392,7 @@ export function ModalConfiguracionPuntosControl({
     <AnimatePresence>
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-2 sm:p-4"
           onClick={onClose}
         >
           <motion.div
@@ -362,16 +401,16 @@ export function ModalConfiguracionPuntosControl({
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.2 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] flex flex-col overflow-hidden"
           >
             {/* Header */}
-            <div className="bg-gradient-to-r from-[#2962FF] to-[#003DA5] px-6 py-5 text-white flex items-center justify-between flex-shrink-0">
+            <div className="bg-gradient-to-r from-[#2962FF] to-[#003DA5] px-4 py-4 sm:px-6 sm:py-5 text-white flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="bg-white/20 p-2.5 rounded-xl backdrop-blur-sm">
                   <CalendarClock className="w-6 h-6" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold">Configurar Fechas de Corte</h2>
+                  <h2 className="text-base sm:text-xl font-bold">Configurar Fechas de Corte</h2>
                   <p className="text-white/90 text-sm mt-0.5">{nombreActividad}</p>
                 </div>
               </div>
@@ -385,7 +424,7 @@ export function ModalConfiguracionPuntosControl({
             </div>
 
             {/* Contenido con scroll */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
               
               {/* Periodo de la actividad */}
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4">
@@ -432,7 +471,7 @@ export function ModalConfiguracionPuntosControl({
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <Zap className="w-4 h-4 text-gray-600" />
-                  <h3 className="font-semibold text-gray-900">Frecuencia de seguimiento</h3>
+                  <h3 className="font-semibold text-gray-900">Periodicidad de seguimiento</h3>
                 </div>
                 
                 {/* Mensaje informativo sobre edición */}
@@ -445,42 +484,6 @@ export function ModalConfiguracionPuntosControl({
                   </div>
                 )}
                 
-                {/* Confirmación inline al cambiar frecuencia */}
-                {frecuenciaPendiente && (() => {
-                  const frecInfo = frecuenciasDisponibles.find(f => f.value === frecuenciaPendiente);
-                  return (
-                    <div className="mb-3 bg-amber-50 border-2 border-amber-400 rounded-xl p-4">
-                      <div className="flex items-start gap-3">
-                        <div className="bg-amber-100 p-1.5 rounded-lg flex-shrink-0 mt-0.5">
-                          <AlertCircle className="w-5 h-5 text-amber-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-amber-900">¿Cambiar a frecuencia {frecInfo?.label}?</p>
-                          <p className="text-xs text-amber-700 mt-1">
-                            {frecuenciaPendiente === 'personalizada'
-                              ? `Las ${puntosControl.length} fechas actuales se mantendrán y podrás editarlas manualmente.`
-                              : `Las ${puntosControl.length} fechas actuales serán reemplazadas por ${frecInfo?.cantidad} nuevas fechas de corte auto-generadas.`}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 mt-3 justify-end">
-                        <button
-                          onClick={cancelarCambioFrecuencia}
-                          className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                        >
-                          Cancelar
-                        </button>
-                        <button
-                          onClick={confirmarCambioFrecuencia}
-                          className="px-3 py-1.5 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors"
-                        >
-                          Sí, cambiar
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })()}
-
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {frecuenciasDisponibles.map((frec) => (
                     <button
@@ -532,7 +535,7 @@ export function ModalConfiguracionPuntosControl({
                       onChange={(e) => setNuevoPunto({ ...nuevoPunto, nombre: e.target.value })}
                       className="w-full px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500"
                     />
-                    <div className="flex gap-2 items-end">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
                       <div className="flex-1">
                         <label className="block text-xs text-gray-500 mb-1">Fecha de corte</label>
                         <input
@@ -542,21 +545,23 @@ export function ModalConfiguracionPuntosControl({
                           className="w-full px-3 py-2 bg-white border-2 border-orange-300 rounded-lg text-sm focus:outline-none focus:border-orange-500"
                         />
                       </div>
-                      <button
-                        onClick={handleAgregarPunto}
-                        className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
-                      >
-                        Agregar
-                      </button>
-                      <button
-                        onClick={() => {
-                          setMostrarFormNuevo(false);
-                          setNuevoPunto({ nombre: '', descripcion: '', fechaProgramada: '' });
-                        }}
-                        className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-colors"
-                      >
-                        Cancelar
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleAgregarPunto}
+                          className="flex-1 sm:flex-none px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+                        >
+                          Agregar
+                        </button>
+                        <button
+                          onClick={() => {
+                            setMostrarFormNuevo(false);
+                            setNuevoPunto({ nombre: '', descripcion: '', fechaProgramada: '' });
+                          }}
+                          className="flex-1 sm:flex-none px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -586,27 +591,31 @@ export function ModalConfiguracionPuntosControl({
                               placeholder="Nombre del período"
                               className="w-full px-3 py-2 bg-white border-2 border-yellow-400 rounded-lg text-sm font-medium focus:outline-none focus:border-yellow-600"
                             />
-                            <div className="flex gap-2 items-center">
+                            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                               <label className="text-xs text-gray-600 whitespace-nowrap">Fecha de corte:</label>
                               <input
                                 type="date"
                                 value={puntoEditandoData.fechaProgramada}
+                                min={index === 0 ? fechaInicioActividad : puntosControl[index - 1].fechaProgramada}
+                                max={index === puntosControl.length - 1 ? fechaCorteLocal : puntosControl[index + 1].fechaProgramada}
                                 onChange={(e) => setPuntoEditandoData({ ...puntoEditandoData, fechaProgramada: e.target.value })}
                                 className="flex-1 px-3 py-2 bg-white border-2 border-yellow-400 rounded-lg text-sm focus:outline-none focus:border-yellow-600"
                               />
-                              <button
-                                onClick={() => handleGuardarEdicion(punto.id)}
-                                className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
-                              >
-                                <Check className="w-4 h-4" />
-                                Guardar
-                              </button>
-                              <button
-                                onClick={handleCancelarEdicion}
-                                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-colors"
-                              >
-                                Cancelar
-                              </button>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleGuardarEdicion(punto.id)}
+                                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                >
+                                  <Check className="w-4 h-4" />
+                                  Guardar
+                                </button>
+                                <button
+                                  onClick={handleCancelarEdicion}
+                                  className="flex-1 sm:flex-none px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -614,41 +623,84 @@ export function ModalConfiguracionPuntosControl({
                         // VISTA NORMAL
                         <div
                           key={punto.id}
-                          className="flex items-center gap-3 bg-white border-2 border-gray-200 rounded-xl px-4 py-3 hover:border-blue-200 transition-colors"
+                          className={`flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 bg-white border-2 rounded-xl px-4 py-3 transition-colors ${
+                            punto.id === activoId
+                              ? 'border-blue-400 shadow-sm shadow-blue-100'
+                              : 'border-gray-200 hover:border-blue-200'
+                          }`}
                         >
-                          <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 font-bold text-sm flex items-center justify-center flex-shrink-0">
-                            {index + 1}
+                          {/* Fila superior: número + nombre + badge + botones (móvil) */}
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className={`w-8 h-8 rounded-lg font-bold text-sm flex items-center justify-center flex-shrink-0 ${
+                              punto.id === activoId ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {index + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-sm text-gray-800 truncate">{punto.nombre}</p>
+                              {(() => {
+                                const badge = getEstadoBadge(punto, punto.id === activoId);
+                                return (
+                                  <span className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full mt-0.5 ${badge.classes}`}>
+                                    {badge.label}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                            {frecuenciaSeleccionada === 'personalizada' && (
+                              <div className="flex gap-1 sm:hidden flex-shrink-0">
+                                <button
+                                  onClick={() => handleIniciarEdicion(punto)}
+                                  className="p-1.5 hover:bg-blue-100 text-blue-600 rounded-lg transition-all"
+                                  title="Editar nombre"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleEliminarPunto(punto.id)}
+                                  className="p-1.5 hover:bg-red-100 text-red-600 rounded-lg transition-all"
+                                  title="Eliminar"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
                           </div>
-                          <p className="flex-1 font-semibold text-sm text-gray-800">{punto.nombre}</p>
+                          {/* Fila inferior: fecha + botones desktop */}
                           <div className="flex items-center gap-2">
                             <Calendar className="w-4 h-4 text-orange-500 flex-shrink-0" />
                             <input
                               type="date"
                               value={punto.fechaProgramada}
-                              onChange={(e) => setPuntosControl(prev =>
-                                prev.map(p => p.id === punto.id ? { ...p, fechaProgramada: e.target.value } : p)
-                              )}
-                              className="px-3 py-1.5 border-2 border-orange-200 rounded-lg text-sm font-medium text-gray-700 focus:outline-none focus:border-orange-500"
+                              min={index === 0 ? fechaInicioActividad : puntosControl[index - 1].fechaProgramada}
+                              max={index === puntosControl.length - 1 ? fechaCorteLocal : puntosControl[index + 1].fechaProgramada}
+                              onChange={(e) => {
+                                manualmenteEditado.current = true;
+                                setPuntosControl(prev =>
+                                  prev.map(p => p.id === punto.id ? { ...p, fechaProgramada: e.target.value } : p)
+                                );
+                              }}
+                              className="flex-1 sm:flex-none px-3 py-1.5 border-2 border-orange-200 rounded-lg text-sm font-medium text-gray-700 focus:outline-none focus:border-orange-500"
                             />
+                            {frecuenciaSeleccionada === 'personalizada' && (
+                              <div className="hidden sm:flex gap-1">
+                                <button
+                                  onClick={() => handleIniciarEdicion(punto)}
+                                  className="p-1.5 hover:bg-blue-100 text-blue-600 rounded-lg transition-all"
+                                  title="Editar nombre"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleEliminarPunto(punto.id)}
+                                  className="p-1.5 hover:bg-red-100 text-red-600 rounded-lg transition-all"
+                                  title="Eliminar"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
                           </div>
-                          {frecuenciaSeleccionada === 'personalizada' && (
-                            <div className="flex gap-1">
-                              <button
-                                onClick={() => handleIniciarEdicion(punto)}
-                                className="p-1.5 hover:bg-blue-100 text-blue-600 rounded-lg transition-all"
-                                title="Editar nombre"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleEliminarPunto(punto.id)}
-                                className="p-1.5 hover:bg-red-100 text-red-600 rounded-lg transition-all"
-                                title="Eliminar"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          )}
                         </div>
                       )
                     ))}
@@ -675,7 +727,7 @@ export function ModalConfiguracionPuntosControl({
             </div>
 
             {/* Footer */}
-            <div className="border-t-2 border-gray-200 px-6 py-4 bg-gray-50 flex items-center justify-between flex-shrink-0">
+            <div className="border-t-2 border-gray-200 px-4 py-3 sm:px-6 sm:py-4 bg-gray-50 flex items-center justify-between flex-shrink-0">
               <button
                 onClick={onClose}
                 className="px-5 py-2.5 bg-white border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
