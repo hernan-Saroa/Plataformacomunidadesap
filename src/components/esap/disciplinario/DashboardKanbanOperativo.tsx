@@ -920,7 +920,15 @@ function VistaLista({
         : (item as Proceso).denunciado.nombre?.toLowerCase().includes(searchTerm.toLowerCase())));
 
     const matchEtapa = filtroEtapa === 'todos' ||
-      (item.tipo === 'noticia' && filtroEtapa === 'Recepción') ||
+      (item.tipo === 'noticia' && (
+        // Para noticias, verificar si el filtro corresponde a la primera etapa configurada
+        (etapasConfig && etapasConfig.length > 0
+          ? (() => {
+              const primeraEtapa = etapasConfig.sort((a, b) => (a.orden || 0) - (b.orden || 0))[0];
+              return (primeraEtapa?.etapa || primeraEtapa?.nombre) === filtroEtapa;
+            })()
+          : filtroEtapa === 'Recepción')
+      )) ||
       (item.tipo === 'proceso' && (item as Proceso).etapaActual === filtroEtapa);
 
     return matchSearch && matchEtapa;
@@ -953,18 +961,38 @@ function VistaLista({
           </div>
           <select
             className={`${isMobile ? 'px-3 py-2 text-sm' : 'px-4 py-2.5'} rounded-lg border-2 focus:outline-none font-semibold`}
-            style={{ borderColor: '#E5E7EB', color: '#4B5563' }}
+            style={{ borderColor: '#E5E7EB', color: '#000000', backgroundColor: '#FFFFFF' }}
             value={filtroEtapa}
             onChange={(e) => setFiltroEtapa(e.target.value)}
           >
             <option value="todos">Todas las etapas</option>
-            <option value="Recepción">Recepción (Noticias) - 3 días</option>
-            <option value="Valoración">Valoración - 10 días</option>
-            <option value="Indagación">Indagación - 40 días</option>
-            <option value="Investigación">Investigación - 60 días</option>
-            <option value="Juzgamiento">Juzgamiento - 50 días</option>
-            <option value="Fallo">Fallo - 10 días</option>
-            <option value="Archivo">Archivo - Completado</option>
+            {(() => {
+              if (etapasConfig && etapasConfig.length > 0) {
+                return etapasConfig
+                  .sort((a, b) => (a.orden || 0) - (b.orden || 0))
+                  .map((etapa) => {
+                    const nombreEtapa = etapa.etapa || etapa.nombre || 'Sin nombre';
+                    return (
+                      <option key={etapa.id || `etapa-${Math.random()}`} value={nombreEtapa}>
+                        {nombreEtapa}
+                      </option>
+                    );
+                  });
+              } else {
+                // Fallback options
+                return (
+                  <>
+                    <option value="Recepción">Recepción (Noticias) - 3 días</option>
+                    <option value="Valoración">Valoración - 10 días</option>
+                    <option value="Indagación">Indagación - 40 días</option>
+                    <option value="Investigación">Investigación - 60 días</option>
+                    <option value="Juzgamiento">Juzgamiento - 50 días</option>
+                    <option value="Fallo">Fallo - 10 días</option>
+                    <option value="Archivo">Archivo - Completado</option>
+                  </>
+                );
+              }
+            })()}
           </select>
         </div>
       </Card>
@@ -1574,8 +1602,10 @@ function ColumnaKanban({
 
   // ✅ NUEVO: Obtener la etapa inicial (orden 1) desde la configuración
   const etapaInicial = etapasConfig.length > 0
-    ? etapasConfig
-        .sort((a, b) => (a.orden || 0) - (b.orden || 0))[0]?.etapa || 'RECEPCION'
+    ? (() => {
+        const primeraEtapa = etapasConfig.sort((a, b) => (a.orden || 0) - (b.orden || 0))[0];
+        return primeraEtapa?.etapa || primeraEtapa?.nombre || 'RECEPCION';
+      })()
     : 'RECEPCION';
 
   // Normalizar para comparación (sin tilde, minúsculas)
@@ -2895,13 +2925,13 @@ export function DashboardKanbanOperativo({
 
     if (etapaRaw) {
       // Buscar coincidencia en etapas del backend
-      const match = currentStages.find(s => s.etapa === etapaRaw || s.etapa.toUpperCase() === etapaRaw.toUpperCase());
+      const match = currentStages.find(s => s.etapa === etapaRaw || s.nombre === etapaRaw || s.etapa?.toUpperCase() === etapaRaw.toUpperCase() || s.nombre?.toUpperCase() === etapaRaw.toUpperCase());
       if (match) {
-        etapaNormalizada = match.etapa;
+        etapaNormalizada = match.etapa || match.nombre || etapaRaw;
       } else {
         // Fallback a mapeo legacy
         etapaNormalizada = stageLabelMap[etapaRaw] || etapaRaw;
-        // Fallback final: Title Case
+        // Fallback final: Title Case (solo si es uppercase)
         if (etapaNormalizada === etapaNormalizada.toUpperCase() && etapaNormalizada.length > 3) {
           etapaNormalizada = etapaNormalizada.charAt(0).toUpperCase() + etapaNormalizada.slice(1).toLowerCase();
         }
@@ -2910,7 +2940,8 @@ export function DashboardKanbanOperativo({
       // ✅ NUEVO: Si no hay etapa, usar la primera etapa de la configuración (menor orden)
       if (currentStages.length > 0) {
         const etapasOrdenadas = [...currentStages].sort((a, b) => (a.orden || 0) - (b.orden || 0));
-        etapaNormalizada = etapasOrdenadas[0]?.etapa || 'Recepcion';
+        const primeraEtapa = etapasOrdenadas[0];
+        etapaNormalizada = primeraEtapa?.etapa || primeraEtapa?.nombre || 'Recepcion';
       } else {
         etapaNormalizada = 'Recepcion';
       }
@@ -3003,9 +3034,9 @@ export function DashboardKanbanOperativo({
       etapa = 'Recepción';
     } else {
       // Normalizar etapa: buscar coincidencia exacta o insensible en las etapas del backend
-      const match = currentStages.find(s => s.etapa === etapa || s.etapa.toUpperCase() === etapa.toUpperCase());
+      const match = currentStages.find(s => s.etapa === etapa || s.nombre === etapa || s.etapa?.toUpperCase() === etapa.toUpperCase() || s.nombre?.toUpperCase() === etapa.toUpperCase());
       if (match) {
-        etapa = match.etapa;
+        etapa = match.etapa || match.nombre || etapa;
       } else {
         // Fallback a mapeo legacy
         etapa = stageLabelMap[etapa] || etapa;
