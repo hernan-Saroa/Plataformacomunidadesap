@@ -217,7 +217,10 @@ export function ModalAsociarProcesoAProceso({
   // RENDER
   // ════════════════════════════════════════════════════════════════
 
-  if (!procesoOrigen) return null;
+  // Validación más robusta: verificar que el proceso tenga los campos requeridos
+  if (!procesoOrigen || procesoOrigen.tipo !== 'proceso' || !procesoOrigen.id || !procesoOrigen.numeroProceso) {
+    return null;
+  }
 
   const procesoSeleccionadoData = procesoSeleccionado
     ? procesosDisponibles.find(p => p.id === procesoSeleccionado)
