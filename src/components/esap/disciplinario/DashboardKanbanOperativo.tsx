@@ -1016,13 +1016,13 @@ function VistaLista({
                     <p className="text-xs text-gray-500 mb-1">Denunciado:</p>
                     <p className="font-bold text-sm text-gray-900">
                       {isNoticia
-                        ? (typeof noticia!.denunciado === 'string' ? noticia!.denunciado : noticia!.denunciado.nombre)
-                        : (typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre)}
+                        ? (!noticia!.denunciado ? 'N/A' : typeof noticia!.denunciado === 'string' ? noticia!.denunciado : noticia!.denunciado.nombre)
+                        : (!proceso!.denunciado ? 'N/A' : typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre)}
                     </p>
                     <p className="text-xs text-gray-600 mt-0.5">
                       {isNoticia
-                        ? (typeof noticia!.denunciado !== 'string' && `${noticia!.denunciado.tipoIdentificacion} ${noticia!.denunciado.numeroIdentificacion}`)
-                        : (typeof proceso!.denunciado !== 'string' ? `${proceso!.denunciado.tipoIdentificacion} ${proceso!.denunciado.numeroIdentificacion}` : proceso!.cedula ? `CC: ${proceso!.cedula}` : '')}
+                        ? (noticia!.denunciado && typeof noticia!.denunciado !== 'string' && `${noticia!.denunciado.tipoIdentificacion} ${noticia!.denunciado.numeroIdentificacion}`)
+                        : (proceso!.denunciado && typeof proceso!.denunciado !== 'string' ? `${proceso!.denunciado.tipoIdentificacion} ${proceso!.denunciado.numeroIdentificacion}` : proceso!.cedula ? `CC: ${proceso!.cedula}` : '')}
                     </p>
                   </div>
 
@@ -2552,6 +2552,21 @@ export function DashboardKanbanOperativo({
   // ✅ NUEVO: Hook responsive centralizado
   const { isMobile, isTablet, isDesktop, width } = useResponsive();
 
+  // ✅ DATOS DESDE BACKEND (API REST) - Carga lazy desde disciplinaryService
+  const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dataError, setDataError] = useState<string | null>(null);
+
+  const [itemSeleccionado, setItemSeleccionado] = useState<any>(null);
+  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
+
+  // ✅ Auto-switch from kanban to lista on mobile
+  useEffect(() => {
+    if (isMobile && tipoVista === 'kanban') {
+      setTipoVista('lista');
+    }
+  }, [isMobile, tipoVista]);
+
   // ✅ Medir ancho REAL del contenedor (no del viewport)
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(width);
@@ -2566,14 +2581,6 @@ export function DashboardKanbanOperativo({
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, []);
-
-  // ✅ DATOS DESDE BACKEND (API REST) - Carga lazy desde disciplinaryService
-  const [items, setItems] = useState<Item[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [dataError, setDataError] = useState<string | null>(null);
-
-  const [itemSeleccionado, setItemSeleccionado] = useState<any>(null);
-  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
 
   // ✅ ESTADO PARA MODALES
   const [modalActivo, setModalActivo] = useState<ModalType>(null);
@@ -4862,7 +4869,7 @@ export function DashboardKanbanOperativo({
             <div className="flex items-center gap-3 flex-shrink-0">
               <KanbanViewToggle
                 options={[
-                  { value: 'kanban', icon: <Columns3 style={{ width: 16, height: 16 }} />, label: 'Kanban' },
+                  ...(isMobile ? [] : [{ value: 'kanban', icon: <Columns3 style={{ width: 16, height: 16 }} />, label: 'Kanban' }]),
                   { value: 'lista', icon: <List style={{ width: 16, height: 16 }} />, label: 'Lista' },
                   { value: 'archivados', icon: <Archive style={{ width: 16, height: 16 }} />, label: 'Archivados', badge: itemsArchivados.length > 0 ? itemsArchivados.length : undefined },
                 ]}
