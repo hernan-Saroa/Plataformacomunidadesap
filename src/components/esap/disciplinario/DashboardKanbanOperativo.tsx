@@ -2593,6 +2593,9 @@ export function DashboardKanbanOperativo({
   const kanbanTopScrollRef = useRef<HTMLDivElement>(null);
   const kanbanContentWidthRef = useRef<HTMLDivElement>(null);
 
+  // ✅ FILTRO POR TIPO: todos, noticia, proceso
+  const [filtroTipo, setFiltroTipo] = useState<'todos' | 'noticia' | 'proceso'>('todos');
+
   // ✅ Sincronizar scroll horizontal entre barra superior y contenedor Kanban
   useEffect(() => {
     const top = kanbanTopScrollRef.current;
@@ -4701,7 +4704,12 @@ export function DashboardKanbanOperativo({
       return false; // No mostrar noticias cuando hay filtro de profesional
     })
     : items
-  ).filter(item => itemMatchesSearch(item, normalizedGlobalQuery));
+  ).filter(item => {
+    // Filtro por tipo
+    if (filtroTipo !== 'todos' && item.tipo !== filtroTipo) return false;
+    // Filtro por búsqueda
+    return itemMatchesSearch(item, normalizedGlobalQuery);
+  });
 
   // ✅ También filtrar archivados por búsqueda global
   const itemsArchivadosFiltrados = itemsArchivados.filter(item =>
@@ -4880,8 +4888,28 @@ export function DashboardKanbanOperativo({
               )}
             </div>
 
-            {/* Controles — Design Standard: ViewToggle + CTA */}
+            {/* Controles — Design Standard: Filtro Tipo + ViewToggle + CTA */}
             <div className="flex items-center gap-3 flex-shrink-0">
+              {/* Filtro por tipo */}
+              <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-gray-100">
+                {([
+                  { value: 'todos', label: 'Todos' },
+                  { value: 'noticia', label: 'Noticias' },
+                  { value: 'proceso', label: 'Procesos' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setFiltroTipo(opt.value)}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${filtroTipo === opt.value
+                      ? 'bg-white shadow-sm text-gray-900'
+                      : 'text-gray-500 hover:bg-gray-200'
+                      }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
               <KanbanViewToggle
                 options={[
                   ...(isMobile ? [] : [{ value: 'kanban', icon: <Columns3 style={{ width: 16, height: 16 }} />, label: 'Kanban' }]),
