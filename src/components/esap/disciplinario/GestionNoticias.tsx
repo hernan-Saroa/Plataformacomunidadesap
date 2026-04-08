@@ -1112,6 +1112,8 @@ export function GestionNoticias() {
   const handleCreateNoticia = async (data: any) => {
     try {
       setLoading(true);
+      console.log('[DEBUG] handleCreateNoticia - data.archivosAdjuntos:', data.archivosAdjuntos);
+      console.log('[DEBUG] handleCreateNoticia - archivos length:', data.archivosAdjuntos?.length || 0);
 
       // Map Denunciante(s)
       const denuncianteData = (data.denunciantes && data.denunciantes.length > 0)

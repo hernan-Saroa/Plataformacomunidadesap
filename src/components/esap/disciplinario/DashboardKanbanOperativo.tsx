@@ -3367,7 +3367,7 @@ export function DashboardKanbanOperativo({
       console.log('[DashboardKanban] Enviando datos al backend:', JSON.stringify(newsData, null, 2));
 
       // Llamar al backend para crear la noticia
-      const noticiaCreada = await disciplinaryService.radicarNoticia(newsData);
+      const noticiaCreada = await disciplinaryService.radicarNoticia(newsData, data.archivosAdjuntos || []);
       
       console.log('[DashboardKanban] Noticia creada en backend:', noticiaCreada);
 

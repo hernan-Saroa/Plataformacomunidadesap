@@ -486,10 +486,15 @@ class DisciplinaryService {
         }
 
         // Archivos con el campo correcto que espera el backend
+        console.log('[DEBUG] radicarNoticia - files received:', files);
+        console.log('[DEBUG] radicarNoticia - files length:', files?.length || 0);
         if (files && files.length > 0) {
-            files.forEach((file) => {
-                formData.append('files', file); // Backend usa 'files', no 'adjuntos'
-            });
+          files.forEach((file, index) => {
+            console.log(`[DEBUG] Appending file ${index}: ${file.name}, size: ${file.size}`);
+            formData.append('files', file); // Backend usa 'files', no 'adjuntos'
+          });
+        } else {
+          console.log('[DEBUG] No files to append');
         }
 
         return apiClient.upload<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
