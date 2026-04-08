@@ -1,5 +1,5 @@
 /**
- * Gestión de Auditorías - Tablero Kanban OCIG
+ * Gestión de Auditorías - Tablero Kanban OCI
  * Versión: 4.0 | Drag & Drop, Filtros, Vista Kanban/Lista, Semáforos
  */
 
@@ -3204,7 +3204,7 @@ export function GestionAuditoriasKanbanSimple() {
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-3xl font-black leading-tight" style={{ color: '#F97316' }}>
-                  Auditorías OCIG
+                  Auditorías OCI
                 </h2>
                 <p className="text-gray-600 mt-1">{auditoriasFiltradas.length} auditorías</p>
               </div>

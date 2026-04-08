@@ -663,12 +663,12 @@ export const informesLeyApi = {
   },
 };
 
-// ==================== CONFIGURACIONES PROFESIONALES OCIG ====================
+// ==================== CONFIGURACIONES PROFESIONALES OCI ====================
 
-export interface ConfiguracionProfesionalOCIG {
+export interface ConfiguracionProfesionalOCI {
   id: string;
   idTercero: number;
-  rolOcig: 'Jefe OCIG' | 'Auditor Sénior' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
+  rolOCI: 'Jefe OCI' | 'Auditor Sénior' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
   especialidades: string[];
   capacidadMaximaAuditorias: number;
   horasMensualesDisponibles: number;
@@ -684,9 +684,9 @@ export interface ConfiguracionProfesionalOCIG {
   identificacion?: string;
 }
 
-export interface CreateConfiguracionProfesionalOCIGDto {
+export interface CreateConfiguracionProfesionalOCIDto {
   idTercero: number;
-  rolOcig: string;
+  rolOCI: string;
   especialidades: string[];
   capacidadMaximaAuditorias?: number;
   horasMensualesDisponibles?: number;
@@ -694,8 +694,8 @@ export interface CreateConfiguracionProfesionalOCIGDto {
   observaciones?: string;
 }
 
-export interface UpdateConfiguracionProfesionalOCIGDto {
-  rolOcig?: string;
+export interface UpdateConfiguracionProfesionalOCIDto {
+  rolOCI?: string;
   especialidades?: string[];
   capacidadMaximaAuditorias?: number;
   horasMensualesDisponibles?: number;
@@ -704,17 +704,17 @@ export interface UpdateConfiguracionProfesionalOCIGDto {
   observaciones?: string;
 }
 
-export const configuracionesProfesionalesOCIGApi = {
+export const configuracionesProfesionalesOCIApi = {
   /**
-   * Obtener todas las configuraciones de profesionales OCIG
+   * Obtener todas las configuraciones de profesionales OCI
    */
-  getAll: async (includeInactive: boolean = false): Promise<ApiResponse<ConfiguracionProfesionalOCIG[]>> => {
+  getAll: async (includeInactive: boolean = false): Promise<ApiResponse<ConfiguracionProfesionalOCI[]>> => {
     const params = includeInactive ? '?includeInactive=true' : '';
-    return apiRequest<ConfiguracionProfesionalOCIG[]>(`/configuraciones/profesionales-ocig${params}`);
+    return apiRequest<ConfiguracionProfesionalOCI[]>(`/configuraciones/profesionales-ocig${params}`);
   },
 
   /**
-   * Buscar personas candidatas de auth.personas que pueden ser profesionales OCIG
+   * Buscar personas candidatas de auth.personas que pueden ser profesionales OCI
    * (personas que AÚN NO están configuradas)
    */
   buscarCandidatos: async (busqueda?: string): Promise<ApiResponse<any[]>> => {
@@ -725,29 +725,29 @@ export const configuracionesProfesionalesOCIGApi = {
   /**
    * Obtener configuración por ID
    */
-  getById: async (id: string): Promise<ApiResponse<ConfiguracionProfesionalOCIG>> => {
-    return apiRequest<ConfiguracionProfesionalOCIG>(`/configuraciones/profesionales-ocig/${id}`);
+  getById: async (id: string): Promise<ApiResponse<ConfiguracionProfesionalOCI>> => {
+    return apiRequest<ConfiguracionProfesionalOCI>(`/configuraciones/profesionales-ocig/${id}`);
   },
 
   /**
    * Obtener configuración por ID de tercero
    */
-  getByIdTercero: async (idTercero: number): Promise<ApiResponse<ConfiguracionProfesionalOCIG | null>> => {
-    return apiRequest<ConfiguracionProfesionalOCIG | null>(`/configuraciones/profesionales-ocig/tercero/${idTercero}`);
+  getByIdTercero: async (idTercero: number): Promise<ApiResponse<ConfiguracionProfesionalOCI | null>> => {
+    return apiRequest<ConfiguracionProfesionalOCI | null>(`/configuraciones/profesionales-ocig/tercero/${idTercero}`);
   },
 
   /**
    * Obtener profesionales que pueden ser líderes
    */
-  getLideresPotenciales: async (): Promise<ApiResponse<ConfiguracionProfesionalOCIG[]>> => {
-    return apiRequest<ConfiguracionProfesionalOCIG[]>('/configuraciones/profesionales-ocig/lideres');
+  getLideresPotenciales: async (): Promise<ApiResponse<ConfiguracionProfesionalOCI[]>> => {
+    return apiRequest<ConfiguracionProfesionalOCI[]>('/configuraciones/profesionales-ocig/lideres');
   },
 
   /**
-   * Crear configuración de profesional OCIG
+   * Crear configuración de profesional OCI
    */
-  create: async (data: CreateConfiguracionProfesionalOCIGDto): Promise<ApiResponse<ConfiguracionProfesionalOCIG>> => {
-    return apiRequest<ConfiguracionProfesionalOCIG>('/configuraciones/profesionales-ocig', {
+  create: async (data: CreateConfiguracionProfesionalOCIDto): Promise<ApiResponse<ConfiguracionProfesionalOCI>> => {
+    return apiRequest<ConfiguracionProfesionalOCI>('/configuraciones/profesionales-ocig', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -756,8 +756,8 @@ export const configuracionesProfesionalesOCIGApi = {
   /**
    * Actualizar configuración por ID
    */
-  update: async (id: string, data: UpdateConfiguracionProfesionalOCIGDto): Promise<ApiResponse<ConfiguracionProfesionalOCIG>> => {
-    return apiRequest<ConfiguracionProfesionalOCIG>(`/configuraciones/profesionales-ocig/${id}`, {
+  update: async (id: string, data: UpdateConfiguracionProfesionalOCIDto): Promise<ApiResponse<ConfiguracionProfesionalOCI>> => {
+    return apiRequest<ConfiguracionProfesionalOCI>(`/configuraciones/profesionales-ocig/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -766,8 +766,8 @@ export const configuracionesProfesionalesOCIGApi = {
   /**
    * Actualizar configuración por ID de tercero
    */
-  updateByIdTercero: async (idTercero: number, data: UpdateConfiguracionProfesionalOCIGDto): Promise<ApiResponse<ConfiguracionProfesionalOCIG>> => {
-    return apiRequest<ConfiguracionProfesionalOCIG>(`/configuraciones/profesionales-ocig/tercero/${idTercero}`, {
+  updateByIdTercero: async (idTercero: number, data: UpdateConfiguracionProfesionalOCIDto): Promise<ApiResponse<ConfiguracionProfesionalOCI>> => {
+    return apiRequest<ConfiguracionProfesionalOCI>(`/configuraciones/profesionales-ocig/tercero/${idTercero}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -802,5 +802,5 @@ export const controlInternoApi = {
   planAnual5Roles: planAnual5RolesApi,
   listasChequeo: listasChequeoApi,
   informesLey: informesLeyApi,
-  configuracionesProfesionalesOCIG: configuracionesProfesionalesOCIGApi,
+  configuracionesProfesionalesOCI: configuracionesProfesionalesOCIApi,
 };

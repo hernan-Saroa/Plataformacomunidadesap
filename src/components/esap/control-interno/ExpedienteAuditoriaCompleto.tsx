@@ -907,7 +907,7 @@ export function ExpedienteAuditoriaCompleto({
       const mes = String(fecha.getMonth() + 1).padStart(2, '0');
       const dia = String(fecha.getDate()).padStart(2, '0');
       const consecutivo = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
-      const nomenclatura = `ESAP-DN-OCIG-IF-${consecutivo}-${año}`;
+      const nomenclatura = `ESAP-DN-OCI-IF-${consecutivo}-${año}`;
       
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
@@ -1073,7 +1073,7 @@ export function ExpedienteAuditoriaCompleto({
         doc.setFontSize(8);
         doc.setTextColor(100, 100, 100);
         doc.setFont('helvetica', 'normal');
-        doc.text(`Informe generado el ${dia}/${mes}/${año} - OCIG - Página ${i} de ${totalPages}`, pageWidth / 2, pageHeight - 15, { align: 'center' });
+        doc.text(`Informe generado el ${dia}/${mes}/${año} - OCI - Página ${i} de ${totalPages}`, pageWidth / 2, pageHeight - 15, { align: 'center' });
         doc.text(nomenclatura, pageWidth / 2, pageHeight - 10, { align: 'center' });
       }
       
@@ -1129,7 +1129,7 @@ export function ExpedienteAuditoriaCompleto({
         {/* ═════════════════════════════════════════════════════════════════
             HEADER GRADIENTE - SEGÚN ESTÁNDAR WIZARD WORLD CLASS
             ═════════════════════════════════════════════════════════════════ */}
-        <div className="flex-shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4">
+        <div className="shrink-0 bg-linear-to-r from-blue-600 to-blue-700 text-white px-6 py-4">
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
@@ -1186,7 +1186,7 @@ export function ExpedienteAuditoriaCompleto({
         {/* ═════════════════════════════════════════════════════════════════
             TABS PERSONALIZADOS (No está en estándar, pero se mantiene)
             ═════════════════════════════════════════════════════════════════ */}
-        <div className="flex-shrink-0 border-b bg-gray-50">
+        <div className="shrink-0 border-b bg-gray-50">
           <div className="flex overflow-x-auto px-6 scrollbar-hide">
             {(PESTANAS_BASE.filter((p) => p.id !== 'finalizada' || auditoria?.estado === 'finalizada')).map((pestana) => {
               const Icon = pestana.icon;
@@ -1298,7 +1298,7 @@ export function ExpedienteAuditoriaCompleto({
         {/* ═════════════════════════════════════════════════════════════════
             FOOTER - SEGÚN ESTÁNDAR WIZARD WORLD CLASS
             ═════════════════════════════════════════════════════════════════ */}
-        <div className="flex-shrink-0 bg-gradient-to-r from-gray-50 to-white border-t-2 border-gray-200 px-6 py-4">
+        <div className="shrink-0 bg-linear-to-r from-gray-50 to-white border-t-2 border-gray-200 px-6 py-4">
           <div className="flex items-center justify-between">
             {/* ACCIONES PRIMARIAS - SEGÚN ESTÁNDAR */}
             <div className="flex items-center gap-3">
@@ -1461,7 +1461,7 @@ function TabGeneral({ auditoria, readOnly }: { auditoria: Auditoria; readOnly?: 
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2.5">
             <motion.div
-              className="h-full bg-gradient-to-r from-blue-500 to-purple-600 rounded-full"
+              className="h-full bg-linear-to-r from-blue-500 to-purple-600 rounded-full"
               initial={{ width: 0 }}
               animate={{ width: `${(auditoria.cronograma.diasTranscurridos / auditoria.cronograma.duracionDias) * 100}%` }}
               transition={{ duration: 0.6 }}
@@ -2064,7 +2064,7 @@ function TabHistorial({ eventos }: { eventos: EventoHistorial[] }) {
           {eventos.map((evento) => (
             <Card key={evento.id} className="p-4 border-l-4 hover:shadow-md transition-all" style={{ borderLeftColor: evento.color }}>
               <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg flex-shrink-0" style={{ background: `${evento.color}20` }}>
+                <div className="p-2 rounded-lg shrink-0" style={{ background: `${evento.color}20` }}>
                   <div style={{ color: evento.color }}>{evento.icono}</div>
                 </div>
                 <div className="flex-1">
@@ -2330,7 +2330,7 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
                 <Card key={accion.id} className={`p-4 border-l-4 ${esCumplida ? 'border-l-green-600 bg-green-50/50' : esParcial ? 'border-l-amber-500 bg-amber-50/50' : 'border-l-gray-400 bg-gray-50'}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
                     <div className="flex items-start gap-3 flex-1">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-sm font-bold flex-shrink-0">{idx + 1}</div>
+                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-sm font-bold shrink-0">{idx + 1}</div>
                       <div>
                         <p className="font-medium text-gray-900">{accion.descripcion}</p>
                         <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-600">
@@ -2346,7 +2346,7 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
                   </div>
                   {(accion.observacionOci || accion.evidenciaVerificada) && (
                     <div className="mt-2 pl-11 text-sm text-gray-600 flex items-start gap-2">
-                      <MessageSquare className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <MessageSquare className="w-4 h-4 shrink-0 mt-0.5" />
                       <span className="italic">{accion.observacionOci || accion.evidenciaVerificada}</span>
                     </div>
                   )}

@@ -73,7 +73,7 @@ export interface AuditStats {
 
 class AuditService {
   async getLogs(params?: QueryAuditLogsParams): Promise<AuditLogsResponse> {
-    return apiClient.get<AuditLogsResponse>(`${SERVICE_PREFIX}/logs`, { params });
+    return apiClient.get<AuditLogsResponse>(`${SERVICE_PREFIX}/logs`, params);
   }
 
   async getStats(startDate?: string, endDate?: string): Promise<AuditStats> {

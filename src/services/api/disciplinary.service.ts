@@ -13,6 +13,49 @@ import { API_MODE, MICROSERVICE_URLS, buildApiUrl, getServiceUrl } from '../../c
 // Nueva estructura: /{service}/api/v{version}/{path}
 const SERVICE_PREFIX = '/control-disciplinario/api/v1';
 
+const normalizeControlDisciplinarioPath = (rawUrl: string): string => {
+    if (!rawUrl) return rawUrl;
+
+    let path = rawUrl.trim();
+
+    if (/^https?:\/\//i.test(path)) {
+        try {
+            const url = new URL(path);
+            const normalizedPathname = url.pathname.replace(/\/{2,}/g, '/');
+            const managedPath =
+                normalizedPathname.startsWith('/control-disciplinario/') ||
+                normalizedPathname.startsWith('/api/v1/') ||
+                normalizedPathname.startsWith('/disciplinary-processes/') ||
+                normalizedPathname.startsWith('/files/') ||
+                normalizedPathname.startsWith('/uploads/');
+
+            if (!managedPath) {
+                return rawUrl;
+            }
+
+            path = `${normalizedPathname}${url.search}${url.hash}`;
+        } catch {
+            return rawUrl;
+        }
+    }
+
+    path = path.replace(/\/{2,}/g, '/');
+
+    if (path.startsWith('/control-disciplinario/')) {
+        path = path.replace(/^\/control-disciplinario/, '');
+    }
+
+    path = path.replace(/\/{2,}/g, '/');
+
+    if (API_MODE === 'direct' && /^\/api\/v1(\/|$)/.test(path)) {
+        path = path.replace(/^\/api\/v1/, '');
+    }
+
+    path = path.replace(/\/{2,}/g, '/');
+
+    return path.startsWith('/') ? path : `/${path}`;
+};
+
 // ============================================================================
 // TIPOS Y DTOs
 // ============================================================================
@@ -745,8 +788,12 @@ class DisciplinaryService {
      */
     async downloadFileFromUrl(url: string, filename: string): Promise<void> {
         // Verificar si la URL ya es absoluta (contiene protocolo)
-        let fullUrl: string;
+        const normalizedUrl = normalizeControlDisciplinarioPath(url);
+        const fullUrl = /^https?:\/\//i.test(normalizedUrl)
+            ? normalizedUrl + (normalizedUrl.includes('?') ? '&' : '?') + 't=' + Date.now()
+            : buildApiUrl('control-disciplinario', normalizedUrl) + (normalizedUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
 
+        /* Legacy path normalization kept for reference.
         if (/^https?:\/\//i.test(url)) {
             // URL ya es absoluta, usarla directamente
             fullUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
@@ -763,6 +810,7 @@ class DisciplinaryService {
             // URL relativa, construir URL completa
             fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
         }
+        */
 
         const token = localStorage.getItem('esap_access_token');
         const headers: HeadersInit = {

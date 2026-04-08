@@ -4,7 +4,7 @@
  * ============================================
  * 
  * Visualización interactiva del cronograma anual
- * de informes obligatorios de la OCIG
+ * de informes obligatorios de la OCI
  * 
  * CARACTERÍSTICAS:
  * - Vista mensual con alertas

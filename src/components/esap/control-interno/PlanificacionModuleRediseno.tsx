@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * PLANIFICACIÓN OCIG - MÓDULOS SEPARADOS V4.0
+ * PLANIFICACIÓN OCI - MÓDULOS SEPARADOS V4.0
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * 🎯 ESTRUCTURA MODULAR:
@@ -33,8 +33,8 @@ import {
 // Componentes del sistema
 import { PlanAnualAuditoriaDefinitivo as PlanAnualOperativo } from './PlanAnualAuditoriaDefinitivo';
 import { UniversoAuditorias } from './UniversoAuditorias';
-import { ProgramaAnualCIG } from './ProgramaAnualCIG';
-import { HeaderModuloCIG } from './HeaderModuloCIG';
+import { ProgramaAnualOCIG } from './ProgramaAnualCIG';
+import { HeaderModulOCIG } from './HeaderModulOCIG';
 // ✅ INTEGRACIÓN BACKEND: Hook para obtener estadísticas reales
 import { useUniversoAuditableData } from './hooks/useUniversoAuditableData';
 import { useProgramaAnualData, calcularEstadisticas } from './hooks/useProgramaAnualData';
@@ -151,7 +151,7 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa', onNav
 
   // Determinar título y subtítulo según la vista
   const tituloModulo = vista === 'plan-operativo' 
-    ? 'Plan Anual de Auditoría OCIG' 
+    ? 'Plan Anual de Auditoría OCI' 
     : 'Programa de Auditoría';
   
   const subtituloModulo = vista === 'plan-operativo'
@@ -161,11 +161,11 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa', onNav
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* HEADER PREMIUM CON HEADERMODULOCIG */}
+      {/* HEADER PREMIUM CON HeaderModulOCIG */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       <div className="flex-shrink-0 bg-white border-b border-gray-200">
-        <div className="px-6 py-4">
-          <HeaderModuloCIG
+        <div className="px-6 py-6">
+          <HeaderModulOCIG
             titulo={tituloModulo}
             subtitulo={subtituloModulo}
           />
@@ -319,13 +319,16 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa', onNav
             </div>
           </div>
 
-          {/* Banner de Ayuda Contextual */}
+          {/* Banner de Ayuda Contextual - ESPACIADO UNIFICADO */}
           {tabActual && (
-            <div className="flex-shrink-0 bg-blue-50 border-b border-blue-100 px-6 py-3">
-              <div className="flex items-start gap-3">
-                <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-blue-900">
-                  <span className="font-medium">{tabActual.label}:</span> {tabActual.descripcion}
+            <div className="flex-shrink-0 bg-blue-50 border-b border-blue-100 px-6 py-6">
+              <div className="flex items-start gap-4">
+                <div className="p-2 bg-blue-600 rounded-lg shadow-md flex-shrink-0">
+                  <Info className="w-4 h-4 text-white" />
+                </div>
+                <p className="text-sm text-blue-900 leading-relaxed">
+                  <span className="font-bold uppercase tracking-wider text-[10px] text-blue-600 block mb-1">{tabActual.label}</span>
+                  {tabActual.descripcion}
                 </p>
               </div>
             </div>
@@ -348,7 +351,7 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa', onNav
           >
             {tabActiva === 'plan-anual' && <PlanAnualOperativo onNavegarModulo={onNavegarModulo} />}
             {tabActiva === 'universo' && <UniversoAuditorias />}
-            {tabActiva === 'programa' && <ProgramaAnualCIG />}
+            {tabActiva === 'programa' && <ProgramaAnualOCIG />}
           </motion.div>
         </AnimatePresence>
       </div>

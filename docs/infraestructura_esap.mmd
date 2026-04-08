@@ -1,0 +1,84 @@
+flowchart LR
+  Browser(["USUARIOS WEB"]) --> Entry
+  Admin(["EQUIPO DEVOPS"]) --> Entry
+
+  subgraph Cloud["CLOUD NETWORK"]
+    direction LR
+
+    subgraph Build["BUILD & RELEASE (DOCKER)"]
+      Repo["Repositorio Git"] --> BuildFE["Build Frontend Image"]
+      Repo --> BuildBE["Build Backend Images"]
+      BuildFE --> Compose["docker compose\n(dev qa pre prod)"]
+      BuildBE --> Compose
+    end
+
+    subgraph Infra["INFRASTRUCTURE CLUSTER (VM / DOCKER HOST)"]
+      direction LR
+
+      subgraph Edge["EDGE / ENTRYPOINT"]
+        Entry["Public IP + Nginx Reverse Proxy"]
+      end
+
+      subgraph App["APPLICATION CONTAINERS"]
+        FE["frontend container"]
+        GW["api-gateway container"]
+        MS["microservices containers\n(auth academic cert legal control notif etc)"]
+      end
+
+      subgraph Data["DATA CONTAINERS"]
+        PG[("postgres container")]
+        RD[("redis container")]
+      end
+
+      subgraph Storage["PERSISTENT STORAGE"]
+        VPG[("pgdata volumes")]
+        VRD[("redisdata volumes")]
+        VUP[("uploads volumes")]
+        BK[("db backups + migrations")]
+      end
+
+      subgraph Aux["AUXILIARY INFRA SERVICES"]
+        OO["onlyoffice"]
+        SQ["sonarqube (dev/qa)"]
+      end
+    end
+  end
+
+  Entry --> FE
+  FE -->|/services/*| GW
+  GW --> MS
+
+  MS --> PG
+  MS --> RD
+  MS --> VUP
+
+  PG --> VPG
+  RD --> VRD
+  BK --> PG
+
+  Compose -. deploys .-> FE
+  Compose -. deploys .-> GW
+  Compose -. deploys .-> MS
+  Compose -. deploys .-> PG
+  Compose -. deploys .-> RD
+  Compose -. deploys .-> OO
+
+  subgraph External["EXTERNAL DEPENDENCIES"]
+    DNS["DNS / Domain"]
+    SMTP["SMTP Provider"]
+    AZ["Microsoft Azure (OAuth / Graph)"]
+  end
+
+  Entry <--> DNS
+  MS --> SMTP
+  MS <--> AZ
+
+  style Cloud fill:#edf4ff,stroke:#1f4d8f,stroke-width:2px
+  style Infra fill:#ffffff,stroke:#1f4d8f,stroke-width:1.5px,stroke-dasharray: 6 4
+  style Edge fill:#ffffff,stroke:#3b82f6,stroke-width:1px,stroke-dasharray: 4 3
+  style App fill:#ffffff,stroke:#3b82f6,stroke-width:1px,stroke-dasharray: 4 3
+  style Data fill:#ffffff,stroke:#3b82f6,stroke-width:1px,stroke-dasharray: 4 3
+  style Storage fill:#ffffff,stroke:#3b82f6,stroke-width:1px,stroke-dasharray: 4 3
+  style Aux fill:#ffffff,stroke:#3b82f6,stroke-width:1px,stroke-dasharray: 4 3
+  style Build fill:#fff7e8,stroke:#c58a00,stroke-width:1.5px,stroke-dasharray: 6 4
+  style External fill:#f7fbff,stroke:#6b7280,stroke-width:1px,stroke-dasharray: 4 3

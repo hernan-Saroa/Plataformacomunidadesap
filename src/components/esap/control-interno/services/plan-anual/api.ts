@@ -447,7 +447,7 @@ export const actividadesExtendidoApi = {
   },
 
   /**
-   * Verificar actividad por el Director OCIG
+   * Verificar actividad por el Director OCI
    */
   verificarPorDirector: async (
     actividadId: string,

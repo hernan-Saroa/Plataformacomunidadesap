@@ -309,8 +309,9 @@ export class PlanAnual5RolesService {
     const query = `
       INSERT INTO control_interno.actividad_plan_anual_5 
       (rol_id, plan_id, nombre, descripcion, responsable, fecha_inicio, fecha_fin, estado, porcentaje_avance, observaciones, prioridad,
-       control, evaluacion, seguimiento, requiere_verificacion_director, verificada_por_director, fecha_verificacion, observaciones_director, configuracion_evidencias)
-      VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+       control, evaluacion, seguimiento, requiere_verificacion_director, verificada_por_director, fecha_verificacion, observaciones_director, configuracion_evidencias,
+       puntos_control, frecuencia_puntos_control, responsables, fecha_corte)
+      VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23::date)
       RETURNING *
     `;
     
@@ -335,6 +336,11 @@ export class PlanAnual5RolesService {
       createDto.fechaVerificacion || null,
       createDto.observacionesDirector || null,
       JSON.stringify(configEvidencias),
+      // Puntos de control y responsables múltiples
+      JSON.stringify(createDto.puntos_control || []),
+      createDto.frecuencia_puntos_control || null,
+      JSON.stringify(createDto.responsables || []),
+      createDto.fecha_corte || null,
     ]);
 
     const saved = result[0];
@@ -533,6 +539,34 @@ export class PlanAnual5RolesService {
       updates.push(`seguimiento = $${paramIndex++}`);
       values.push(updateDto.seguimiento);
       cambios.push({ campo: 'seguimiento', valorAnterior: actividad.seguimiento || '', valorNuevo: updateDto.seguimiento });
+    }
+    // Entradas de seguimiento vinculadas a puntos de control
+    if ((updateDto as any).entradas_seguimiento !== undefined) {
+      const entradasStr = JSON.stringify((updateDto as any).entradas_seguimiento);
+      updates.push(`entradas_seguimiento = $${paramIndex++}::jsonb`);
+      values.push(entradasStr);
+      cambios.push({ campo: 'entradas_seguimiento', valorAnterior: '(array)', valorNuevo: `${((updateDto as any).entradas_seguimiento as any[]).length} entradas` });
+    }
+    // Puntos de control y responsables múltiples
+    if (updateDto.puntos_control !== undefined) {
+      updates.push(`puntos_control = $${paramIndex++}::jsonb`);
+      values.push(JSON.stringify(updateDto.puntos_control));
+      cambios.push({ campo: 'puntos_control', valorAnterior: '(array)', valorNuevo: `${updateDto.puntos_control.length} puntos` });
+    }
+    if (updateDto.frecuencia_puntos_control !== undefined) {
+      updates.push(`frecuencia_puntos_control = $${paramIndex++}`);
+      values.push(updateDto.frecuencia_puntos_control);
+      cambios.push({ campo: 'frecuencia_puntos_control', valorAnterior: '', valorNuevo: updateDto.frecuencia_puntos_control });
+    }
+    if (updateDto.responsables !== undefined) {
+      updates.push(`responsables = $${paramIndex++}::jsonb`);
+      values.push(JSON.stringify(updateDto.responsables));
+      cambios.push({ campo: 'responsables', valorAnterior: '(array)', valorNuevo: `${updateDto.responsables.length} responsables` });
+    }
+    if (updateDto.fecha_corte !== undefined) {
+      updates.push(`fecha_corte = $${paramIndex++}::date`);
+      values.push(updateDto.fecha_corte || null);
+      cambios.push({ campo: 'fecha_corte', valorAnterior: '', valorNuevo: updateDto.fecha_corte || '' });
     }
     if (updateDto.configuracionEvidencias !== undefined) {
       const configStr = JSON.stringify(updateDto.configuracionEvidencias);

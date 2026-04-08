@@ -1,13 +1,13 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * PROGRAMA DE AUDITORÍA - OCIG ESAP
+ * PROGRAMA DE AUDITORÍA - OCI ESAP
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Módulo único y completo que integra:
  * - Universo Auditable (DÓNDE se puede auditar)
  * - Programa Anual de Auditorías (CUÁNDO auditar)
- * - Profesionales OCIG (QUIÉN audita)
- * - Integración con Auditorías OCIG (ejecución)
+ * - Profesionales OCI (QUIÉN audita)
+ * - Integración con Auditorías OCI (ejecución)
  * - Integración con Planes de Mejoramiento (hallazgos)
  * 
  * Base normativa:
@@ -46,8 +46,8 @@ import { useEvaluacionesProcesoData, type EvaluacionProcesoUI } from './hooks/us
 import { exportarUniversoAuditablePDF, exportarUniversoAuditableExcel } from './services/exportarUniversoAuditablePDF';
 // ✅ UTILIDAD DE CONVERSIÓN (separada para reutilización)
 import { convertirProcesoAFormularioDafp as convertirProcesoAFormulario } from './utils/procesoAuditableConverters';
-// ✅ HOOK DE CONFIGURACIÓN DE PROFESIONALES OCIG (backend)
-import { useConfiguracionProfesionales, type ProfesionalOCIG } from './services/useConfiguracionProfesionales';
+// ✅ HOOK DE CONFIGURACIÓN DE PROFESIONALES OCI (backend)
+import { useConfiguracionProfesionales, type ProfesionalOCI } from './services/useConfiguracionProfesionales';
 // ✅ HOOK DE PERMISOS FLEXIBLE
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 
@@ -114,9 +114,9 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     refetch: refetchAuditorias,
   } = useProgramaAnualData({ vigencia, procesos });
 
-  // ✅ HOOK DE PROFESIONALES OCIG (para badge del tab)
+  // ✅ HOOK DE PROFESIONALES OCI (para badge del tab)
   const {
-    profesionalesOCIG,
+    profesionalesOCI,
     loading: loadingProfesionales,
   } = useConfiguracionProfesionales();
 
@@ -483,7 +483,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
               <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
                 tabActiva === 'profesionales' ? 'bg-white/20' : 'bg-gray-200'
               }`}>
-                {loadingProfesionales ? '...' : profesionalesOCIG.length}
+                {loadingProfesionales ? '...' : profesionalesOCI.length}
               </span>
             </button>
           </div>
@@ -948,10 +948,10 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
 
                     {/* Etiquetas de vinculación */}
                     <div className="flex items-center gap-2">
-                      {auditoria.auditoriaOCIGId && (
+                      {auditoria.auditoriaOCIId && (
                         <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold flex items-center gap-1">
                           <Link2 className="w-3 h-3" />
-                          Vinculada OCIG
+                          Vinculada OCI
                         </span>
                       )}
                       {auditoria.hallazgosCount > 0 && (
@@ -979,7 +979,7 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// TAB 3: PROFESIONALES (conectado con backend de configuración OCIG)
+// TAB 3: PROFESIONALES (conectado con backend de configuración OCI)
 // ════════════════════════════════════════════════════════════════════════════
 
 interface TabProfesionalesProps {
@@ -988,9 +988,9 @@ interface TabProfesionalesProps {
 }
 
 function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
-  // ✅ HOOK DE BACKEND - Carga profesionales configurados en OCIG
+  // ✅ HOOK DE BACKEND - Carga profesionales configurados en OCI
   const {
-    profesionalesOCIG,
+    profesionalesOCI,
     estadisticasGlobales,
     loading: loadingProfesionales,
     error: errorProfesionales,
@@ -1011,7 +1011,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
       return '';
     };
 
-    return profesionalesOCIG.map(p => {
+    return profesionalesOCI.map(p => {
       const nombre = p.usuario.nombre.toLowerCase().trim();
       const configId = p.configuracion.id || '';
       const idTercero = String(p.configuracion.idTercero);
@@ -1060,7 +1060,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
         },
       };
     });
-  }, [profesionalesOCIG, auditorias]);
+  }, [profesionalesOCI, auditorias]);
 
   // Calcular semáforo de carga para cada profesional
   const profesionalesConSemaforo = useMemo(() => {
@@ -1141,10 +1141,10 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
       {!loadingProfesionales && (
         <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
           <h2 className="text-xl font-black text-gray-900 mb-4">
-            Equipo OCIG Configurado
+            Equipo OCI Configurado
           </h2>
           <p className="text-sm text-gray-600 mb-6">
-            Profesionales configurados en el módulo OCIG con su rol, especialidades y capacidad.
+            Profesionales configurados en el módulo OCI con su rol, especialidades y capacidad.
           </p>
 
           <div className="space-y-4">
@@ -1166,7 +1166,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
                     <div>
                       <p className="font-bold text-gray-900 text-base">{p.usuario.nombre}</p>
                       <p className="text-sm text-blue-700 font-semibold mt-0.5">
-                        {p.configuracion.rolOCIG}
+                        {p.configuracion.rolOCI}
                       </p>
                       <div className="flex flex-wrap gap-1 mt-2">
                         {p.configuracion.especialidades.slice(0, 3).map((esp, i) => (
@@ -1230,8 +1230,8 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
             {profesionalesConSemaforo.length === 0 && !loadingProfesionales && (
               <div className="text-center py-10">
                 <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500 font-semibold">No hay profesionales configurados en OCIG</p>
-                <p className="text-sm text-gray-400 mt-1">Configure profesionales en el módulo de Configuración OCIG</p>
+                <p className="text-gray-500 font-semibold">No hay profesionales configurados en OCI</p>
+                <p className="text-sm text-gray-400 mt-1">Configure profesionales en el módulo de Configuración OCI</p>
               </div>
             )}
           </div>
@@ -1240,7 +1240,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
 
       <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
         <p className="text-sm text-blue-800">
-          La configuración detallada de perfiles y capacidades puede gestionarse en <strong>Configuraciones → Profesionales OCIG</strong>.
+          La configuración detallada de perfiles y capacidades puede gestionarse en <strong>Configuraciones → Profesionales OCI</strong>.
         </p>
       </div>
     </motion.div>

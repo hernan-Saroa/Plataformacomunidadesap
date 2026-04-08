@@ -91,10 +91,10 @@ export async function exportarAuditoriasExcel(
     console.log('📊 Generando Excel de Auditorías...');
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'ESAP - OCIG';
+    workbook.creator = 'ESAP - OCI';
     workbook.created = new Date();
 
-    const worksheet = workbook.addWorksheet('Auditorías OCIG', {
+    const worksheet = workbook.addWorksheet('Auditorías OCI', {
       pageSetup: {
         paperSize: 9, // A4
         orientation: 'landscape',
@@ -305,7 +305,7 @@ export async function exportarAuditoriasExcel(
     const footerRow = headerRow + auditorias.length + 2;
     worksheet.mergeCells(`A${footerRow}:K${footerRow}`);
     const footerCell = worksheet.getCell(`A${footerRow}`);
-    footerCell.value = `Documento generado el ${new Date().toLocaleString('es-CO')} - Oficina de Control Interno de Gestión OCIG`;
+    footerCell.value = `Documento generado el ${new Date().toLocaleString('es-CO')} - Oficina de Control Interno de Gestión OCI`;
     footerCell.font = { size: 9, italic: true, color: { argb: 'FF666666' } };
     footerCell.alignment = { horizontal: 'center' };
 
@@ -320,7 +320,7 @@ export async function exportarAuditoriasExcel(
     
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
-    const nombreArchivo = `Auditorias_OCIG_${new Date().toISOString().split('T')[0]}.xlsx`;
+    const nombreArchivo = `Auditorias_OCI_${new Date().toISOString().split('T')[0]}.xlsx`;
     link.href = url;
     link.download = nombreArchivo;
     link.click();
