@@ -4463,18 +4463,18 @@ export function ModalDetallesProceso({
                         <option value="oficio">Oficios</option>
                         <option value="acta">Actas</option>
                       </select>
-                      <button onClick={() => inputArchivoRef.current?.click()}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg text-white"
-                        style={{ background: '#003DA5' }}>
-                        <Upload className="w-3.5 h-3.5" />Cargar
-                      </button>
-                      <input ref={inputArchivoRef} type="file" multiple className="hidden"
-                        accept={EXTENSIONES_PERMITIDAS.map(e => `.${e}`).join(',')}
-                        onChange={(e) => handleFilesSelected(e.target.files)} />
-                      <button onClick={() => toast.info('Descargando todos...')}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">
-                        <Download className="w-3.5 h-3.5" />Todos
-                      </button>
+                       {/* <button onClick={() => inputArchivoRef.current?.click()}
+                         className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg text-white"
+                         style={{ background: '#003DA5' }}>
+                         <Upload className="w-3.5 h-3.5" />Cargar
+                       </button>
+                       <input ref={inputArchivoRef} type="file" multiple className="hidden"
+                         accept={EXTENSIONES_PERMITIDAS.map(e => `.${e}`).join(',')}
+                         onChange={(e) => handleFilesSelected(e.target.files)} />
+                       <button onClick={() => toast.info('Descargando todos...')}
+                         className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">
+                         <Download className="w-3.5 h-3.5" />Todos
+                       </button> */}
                     </div>
 
                     {/* ═══ Filtro por Etapa + Toggle vista agrupada ═══ */}
@@ -4602,106 +4602,106 @@ export function ModalDetallesProceso({
                       )}
                     </div>
 
-                    {/* Zona Drag & Drop */}
-                    <div
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                      onClick={() => inputArchivoRef.current?.click()}
-                      className="relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all"
-                      style={{
-                        borderColor: dragging ? '#003DA5' : '#D1D5DB',
-                        backgroundColor: dragging ? '#EFF6FF' : '#FAFAFA',
-                      }}
-                    >
-                      <div className="flex flex-col items-center gap-1.5">
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                          style={{ backgroundColor: dragging ? '#DBEAFE' : '#F3F4F6' }}>
-                          <Upload className="w-4 h-4" style={{ color: dragging ? '#003DA5' : '#9CA3AF' }} />
-                        </div>
-                        <p className="text-xs font-semibold" style={{ color: dragging ? '#003DA5' : '#6B7280' }}>
-                          {dragging ? 'Suelte aquí para cargar' : 'Arrastre archivos aquí o haga clic para seleccionar'}
-                        </p>
-                        <p className="text-[10px] text-gray-400">
-                          Máximo 10 GB por archivo · Archivos grandes (&gt;200 MB) se cargan en segundo plano
-                        </p>
-                        <span className="px-2 py-0.5 text-[9px] font-bold rounded inline-flex items-center gap-1 mt-0.5"
-                          style={{ backgroundColor: ec.bg, color: ec.text, border: `1px solid ${ec.text}22` }}>
-                          <Zap className="w-2.5 h-2.5" />Se marcara como: {proceso.etapaActual}
-                        </span>
-                      </div>
-                    </div>
+                     {/* Zona Drag & Drop - OCULTADO */}
+                     {/* <div
+                       onDragOver={handleDragOver}
+                       onDragLeave={handleDragLeave}
+                       onDrop={handleDrop}
+                       onClick={() => inputArchivoRef.current?.click()}
+                       className="relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all"
+                       style={{
+                         borderColor: dragging ? '#003DA5' : '#D1D5DB',
+                         backgroundColor: dragging ? '#EFF6FF' : '#FAFAFA',
+                       }}
+                     >
+                       <div className="flex flex-col items-center gap-1.5">
+                         <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+                           style={{ backgroundColor: dragging ? '#DBEAFE' : '#F3F4F6' }}>
+                           <Upload className="w-4 h-4" style={{ color: dragging ? '#003DA5' : '#9CA3AF' }} />
+                         </div>
+                         <p className="text-xs font-semibold" style={{ color: dragging ? '#003DA5' : '#6B7280' }}>
+                           {dragging ? 'Suelte aquí para cargar' : 'Arrastre archivos aquí o haga clic para seleccionar'}
+                         </p>
+                         <p className="text-[10px] text-gray-400">
+                           Máximo 10 GB por archivo · Archivos grandes (&gt;200 MB) se cargan en segundo plano
+                         </p>
+                         <span className="px-2 py-0.5 text-[9px] font-bold rounded inline-flex items-center gap-1 mt-0.5"
+                           style={{ backgroundColor: ec.bg, color: ec.text, border: `1px solid ${ec.text}22` }}>
+                           <Zap className="w-2.5 h-2.5" />Se marcara como: {proceso.etapaActual}
+                         </span>
+                       </div>
+                     </div> */}
 
-                    {/* Cargas activas */}
-                    {(cargasActivas.length > 0 || archivosEnColaCount > 0) && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-1.5">
-                          <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#003DA5' }} />
-                          <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#003DA5' }}>
-                            Cargas en progreso ({cargasActivas.filter(c => c.estado === 'subiendo' || c.estado === 'procesando' || c.estado === 'validando').length})
-                          </span>
-                          {archivosEnColaCount > 0 && (
-                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide bg-amber-100 text-amber-700">
-                              En cola: {archivosEnColaCount}
-                            </span>
-                          )}
-                        </div>
-                        {cargasActivas.map(carga => {
-                          const activo = carga.estado === 'subiendo' || carga.estado === 'procesando' || carga.estado === 'validando';
-                          const pctRound = Math.round(carga.progreso);
-                          return (
-                            <div key={carga.id}
-                              className="flex items-center gap-2.5 p-2.5 rounded-xl border transition-all"
-                              style={{
-                                borderColor: carga.estado === 'completado' ? '#6EE7B7'
-                                  : carga.estado === 'error' || carga.estado === 'cancelado' ? '#FCA5A5'
-                                  : '#93C5FD',
-                                backgroundColor: carga.estado === 'completado' ? '#F0FDF4'
-                                  : carga.estado === 'error' || carga.estado === 'cancelado' ? '#FEF2F2'
-                                  : '#EFF6FF',
-                              }}>
-                              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                                style={{ backgroundColor: activo ? '#DBEAFE' : carga.estado === 'completado' ? '#D1FAE5' : '#FEE2E2' }}>
-                                {activo ? <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#003DA5' }} />
-                                  : carga.estado === 'completado' ? <CheckCircle className="w-4 h-4 text-green-600" />
-                                  : <XCircle className="w-4 h-4 text-red-500" />}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-xs font-semibold text-gray-900 truncate">{carga.nombre}</p>
-                                  {carga.esGrande && (
-                                    <span className="px-1.5 py-0.5 text-[8px] font-bold rounded bg-amber-100 text-amber-700 flex-shrink-0">GRANDE</span>
-                                  )}
-                                </div>
-                                <p className="text-[10px] text-gray-500 mt-0.5">
-                                  {carga.estado === 'subiendo' && `${formatBytes(carga.bytesSubidos)} / ${formatBytes(carga.tamano)} · ${carga.velocidad}`}
-                                  {carga.estado === 'validando' && 'Validando...'}
-                                  {carga.estado === 'procesando' && 'Procesando en servidor...'}
-                                  {carga.estado === 'completado' && `${formatBytes(carga.tamano)} · Completado`}
-                                  {carga.estado === 'error' && (carga.error || 'Error')}
-                                  {carga.estado === 'cancelado' && 'Cancelado'}
-                                </p>
-                                {activo && (
-                                  <div className="w-full h-1.5 bg-white/60 rounded-full overflow-hidden mt-1.5">
-                                    <div className="h-full rounded-full transition-all duration-300"
-                                      style={{ width: `${pctRound}%`, background: '#003DA5' }} />
-                                  </div>
-                                )}
-                              </div>
-                              {activo && (
-                                <div className="flex items-center gap-2 flex-shrink-0">
-                                  <span className="text-xs font-black" style={{ color: '#003DA5' }}>{pctRound}%</span>
-                                  <button onClick={() => cancelarCarga(carga.id)}
-                                    className="p-1 rounded-lg hover:bg-red-100 transition-colors" title="Cancelar carga">
-                                    <XCircle className="w-3.5 h-3.5 text-red-400 hover:text-red-600" />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                     {/* Cargas activas - OCULTADO */}
+                     {/* {(cargasActivas.length > 0 || archivosEnColaCount > 0) && (
+                       <div className="space-y-2">
+                         <div className="flex items-center gap-1.5">
+                           <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#003DA5' }} />
+                           <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#003DA5' }}>
+                             Cargas en progreso ({cargasActivas.filter(c => c.estado === 'subiendo' || c.estado === 'procesando' || c.estado === 'validando').length})
+                           </span>
+                           {archivosEnColaCount > 0 && (
+                             <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide bg-amber-100 text-amber-700">
+                               En cola: {archivosEnColaCount}
+                             </span>
+                           )}
+                         </div>
+                         {cargasActivas.map(carga => {
+                           const activo = carga.estado === 'subiendo' || carga.estado === 'procesando' || carga.estado === 'validando';
+                           const pctRound = Math.round(carga.progreso);
+                           return (
+                             <div key={carga.id}
+                               className="flex items-center gap-2.5 p-2.5 rounded-xl border transition-all"
+                               style={{
+                                 borderColor: carga.estado === 'completado' ? '#6EE7B7'
+                                   : carga.estado === 'error' || carga.estado === 'cancelado' ? '#FCA5A5'
+                                   : '#93C5FD',
+                                 backgroundColor: carga.estado === 'completado' ? '#F0FDF4'
+                                   : carga.estado === 'error' || carga.estado === 'cancelado' ? '#FEF2F2'
+                                   : '#EFF6FF',
+                               }}>
+                               <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                                 style={{ backgroundColor: activo ? '#DBEAFE' : carga.estado === 'completado' ? '#D1FAE5' : '#FEE2E2' }}>
+                                 {activo ? <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#003DA5' }} />
+                                   : carga.estado === 'completado' ? <CheckCircle className="w-4 h-4 text-green-600" />
+                                   : <XCircle className="w-4 h-4 text-red-500" />}
+                               </div>
+                               <div className="flex-1 min-w-0">
+                                 <div className="flex items-center gap-2">
+                                   <p className="text-xs font-semibold text-gray-900 truncate">{carga.nombre}</p>
+                                   {carga.esGrande && (
+                                     <span className="px-1.5 py-0.5 text-[8px] font-bold rounded bg-amber-100 text-amber-700 flex-shrink-0">GRANDE</span>
+                                   )}
+                                 </div>
+                                 <p className="text-[10px] text-gray-500 mt-0.5">
+                                   {carga.estado === 'subiendo' && `${formatBytes(carga.bytesSubidos)} / ${formatBytes(carga.tamano)} · ${carga.velocidad}`}
+                                   {carga.estado === 'validando' && 'Validando...'}
+                                   {carga.estado === 'procesando' && 'Procesando en servidor...'}
+                                   {carga.estado === 'completado' && `${formatBytes(carga.tamano)} · Completado`}
+                                   {carga.estado === 'error' && (carga.error || 'Error')}
+                                   {carga.estado === 'cancelado' && 'Cancelado'}
+                                 </p>
+                                 {activo && (
+                                   <div className="w-full h-1.5 bg-white/60 rounded-full overflow-hidden mt-1.5">
+                                     <div className="h-full rounded-full transition-all duration-300"
+                                       style={{ width: `${pctRound}%`, background: '#003DA5' }} />
+                                   </div>
+                                 )}
+                               </div>
+                               {activo && (
+                                 <div className="flex items-center gap-2 flex-shrink-0">
+                                   <span className="text-xs font-black" style={{ color: '#003DA5' }}>{pctRound}%</span>
+                                   <button onClick={() => cancelarCarga(carga.id)}
+                                     className="p-1 rounded-lg hover:bg-red-100 transition-colors" title="Cancelar carga">
+                                     <XCircle className="w-3.5 h-3.5 text-red-400 hover:text-red-600" />
+                                   </button>
+                                 </div>
+                               )}
+                             </div>
+                           );
+                         })}
+                       </div>
+                     )} */}
 
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold" style={{ color: archivosFiltrados.length === 0 ? '#F59E0B' : '#003DA5' }}>
