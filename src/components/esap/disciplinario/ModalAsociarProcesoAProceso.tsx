@@ -242,8 +242,12 @@ export function ModalAsociarProcesoAProceso({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{
+        backgroundColor: 'rgba(0,0,0,0.60)',
+        padding: '4vh 4vw',
+        zIndex: 9998
+      }}
       onClick={(e) => !isSubmitting && e.target === e.currentTarget && handleClose()}
     >
       <motion.div

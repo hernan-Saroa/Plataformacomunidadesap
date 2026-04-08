@@ -230,7 +230,8 @@ export function ModalSubirDocumento({ isOpen = true, proceso, onClose, onConfirm
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 p-4 z-[200]"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 p-4"
+      style={{ zIndex: 9998 }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div

@@ -11,6 +11,7 @@
  */
 
 import { useState, useMemo, useEffect } from 'react';
+import { useResponsive } from './hooks/useResponsive';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Search, Filter, Download, Eye, MoreVertical,
@@ -195,6 +196,9 @@ export function GestionProfesionalesWorldClass({ onVerProcesos }: Props) {
   // Estados principales
   const [profesionales, setProfesionales] = useState<Profesional[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Hook responsive
+  const { isMobile, isTablet } = useResponsive();
 
   // Cargar profesionales desde el backend
   useEffect(() => {
@@ -587,6 +591,100 @@ export function GestionProfesionalesWorldClass({ onVerProcesos }: Props) {
             <p className="text-sm mt-1" style={{ color: '#9CA3AF' }}>
               Intenta ajustar los filtros de búsqueda
             </p>
+          </div>
+        ) : isMobile ? (
+          /* Vista de tarjetas para móvil */
+          <div className="space-y-3">
+            {profesionalesFiltrados.map((profesional) => {
+              const estadoColors = getEstadoColor(profesional.estado);
+              const cargaColors = getCargaColor(profesional);
+
+              return (
+                <div key={profesional.id} className="bg-white rounded-xl border-2 p-4" style={{ borderColor: '#E5E7EB' }}>
+                  {/* Header */}
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div
+                        className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)' }}
+                      >
+                        <User className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-sm truncate" style={{ color: '#1F2937' }}>
+                          {profesional.nombre}
+                        </p>
+                        <p className="text-xs text-gray-500 truncate">{profesional.cargo}</p>
+                      </div>
+                    </div>
+                    <div
+                      className="px-2 py-1 rounded-lg text-xs font-semibold flex-shrink-0"
+                      style={{ background: estadoColors.bg, color: estadoColors.text }}
+                    >
+                      {getEstadoLabel(profesional.estado)}
+                    </div>
+                  </div>
+
+                  {/* Info adicional */}
+                  <div className="space-y-2 mb-3">
+                    <div className="flex items-center gap-2 text-xs text-gray-600">
+                      <Award className="w-3 h-3" />
+                      <span>{profesional.especialidad}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-gray-600">
+                      <MapPin className="w-3 h-3" />
+                      <span>{profesional.territorial}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-gray-600">
+                      <Briefcase className="w-3 h-3" />
+                      <span>{profesional.tipoContrato}</span>
+                    </div>
+                  </div>
+
+                  {/* Métricas */}
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="text-center p-2 rounded-lg" style={{ background: cargaColors.bg }}>
+                      <p className="text-xs font-bold" style={{ color: cargaColors.text }}>
+                        {profesional.procesosAsignados}/{profesional.capacidadMaxima}
+                      </p>
+                      <p className="text-xs text-gray-600">Procesos</p>
+                    </div>
+                    <div className="text-center p-2 rounded-lg bg-green-50">
+                      <p className="text-xs font-bold text-green-700">{profesional.procesosAlDia}</p>
+                      <p className="text-xs text-gray-600">Al día</p>
+                    </div>
+                  </div>
+
+                  {/* Riesgos */}
+                  {(profesional.procesosEnRiesgo > 0 || profesional.procesosVencidos > 0) && (
+                    <div className="flex items-center gap-4 text-xs">
+                      {profesional.procesosEnRiesgo > 0 && (
+                        <div className="flex items-center gap-1 text-orange-600">
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>{profesional.procesosEnRiesgo} en riesgo</span>
+                        </div>
+                      )}
+                      {profesional.procesosVencidos > 0 && (
+                        <div className="flex items-center gap-1 text-red-600">
+                          <AlertCircle className="w-3 h-3" />
+                          <span>{profesional.procesosVencidos} vencidos</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Acción */}
+                  <button
+                    onClick={() => onVerProcesos?.(profesional)}
+                    className="w-full mt-3 px-3 py-2 rounded-lg font-semibold text-white flex items-center justify-center gap-2 hover:opacity-90 transition-all text-xs"
+                    style={{ background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)' }}
+                  >
+                    <Eye className="w-3 h-3" />
+                    Ver Procesos
+                  </button>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
