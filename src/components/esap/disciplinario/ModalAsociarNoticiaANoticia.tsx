@@ -131,7 +131,7 @@ export function ModalAsociarNoticiaANoticia({
       onClose={handleClose}
       title="Asociar Noticia a Otra Noticia"
       size="lg"
-      zIndex={200}
+      zIndex={9999999}
       disableBackdropClick={isSubmitting}
       disableEscapeKey={isSubmitting}
       footer={

@@ -2418,6 +2418,7 @@ export function DashboardKanbanOperativo({
 
   // ✅ NUEVO: Estado para profesionales cargados desde el backend
   const [profesionalesList, setProfesionalesList] = useState<{ id: string; nombre: string }[]>([]);
+  const [profesionalesCompletos, setProfesionalesCompletos] = useState<any[]>([]);
   const [profesionalesLoading, setProfesionalesLoading] = useState(true);
 
   // ✅ NUEVO: Estado para solicitudes de reasignación pendientes
@@ -2436,56 +2437,9 @@ export function DashboardKanbanOperativo({
         }
       }
     } catch (error) {
-      console.error('Error al cargar entidades de remisión:', error);
-    }
-  }, []);
-
-  // ✅ NUEVO: Cargar entidades de remisión desde el backend
-  const cargarEntidadesRemision = async () => {
-    setEntidadesLoading(true);
-    setEntidadesError(null);
-    try {
-      const entidades = await entidadesRemisionService.getActivas();
-      setEntidadesRemision(entidades);
-    } catch (error: any) {
-      console.error('Error al cargar entidades de remisión:', error);
-      setEntidadesError(error?.message || 'Error al cargar entidades de remisión');
-      // Fallback: intentar cargar desde localStorage si el backend falla
-      try {
-        const configString = localStorage.getItem('disciplinario-configuracion');
-        if (configString) {
-          const config = JSON.parse(configString);
-          if (config.entidadesRemision) {
-            setEntidadesRemision(config.entidadesRemision.filter((e: any) => e.activo));
-          }
-        }
-      } catch (localError) {
-        console.error('Error al cargar desde localStorage:', localError);
-      }
-    } finally {
-      setEntidadesLoading(false);
-    }
-  };
-
-  // ✅ NUEVO: Cargar profesionales desde el backend
-  const cargarProfesionales = async () => {
-    setProfesionalesLoading(true);
-    try {
-      const profesionales = await disciplinaryService.getProfesionales();
-      console.log('[DashboardKanban] Profesionales recibidos del backend:', profesionales);
-
-      // Mapear al formato esperado: { id, nombre }
-      const profesionalesFormateados = profesionales.map((p: any) => ({
-        id: p.id,
-        nombre: p.nombreCompleto || p.nombre || p.email || `Profesional ${p.id}`
-      }));
-
-      console.log('[DashboardKanban] Profesionales formateados:', profesionalesFormateados);
-      setProfesionalesList(profesionalesFormateados);
-    } catch (error: any) {
-      console.error('Error al cargar profesionales:', error);
-      // Fallback vacío si falla
+      console.error('Error cargando profesionales:', error);
       setProfesionalesList([]);
+      setProfesionalesCompletos([]);
     } finally {
       setProfesionalesLoading(false);
     }
@@ -5428,11 +5382,11 @@ export function DashboardKanbanOperativo({
             <ModalSolicitarReasignacion
               key="modal-solicitar-reasignacion"
               proceso={itemSeleccionado}
+              profesionales={profesionalesCompletos}
               onClose={() => {
                 setModalActivo(null);
                 setItemSeleccionado(null);
               }}
-              onSolicitar={handleConfirmarSolicitudReasignacion}
             />
           )}
 

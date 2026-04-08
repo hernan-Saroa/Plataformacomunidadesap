@@ -249,7 +249,7 @@ export function ModalAsociarProcesoAProceso({
       style={{
         backgroundColor: 'rgba(0,0,0,0.60)',
         padding: '4vh 4vw',
-        zIndex: 9998
+        zIndex: 9999999
       }}
       onClick={(e) => !isSubmitting && e.target === e.currentTarget && handleClose()}
     >

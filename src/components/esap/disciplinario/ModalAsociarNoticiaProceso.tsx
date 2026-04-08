@@ -189,7 +189,7 @@ export function ModalAsociarNoticiaProceso({
       onClose={handleClose}
       title="Asociar Noticia a Proceso Existente"
       size="lg"
-      zIndex={200}
+      zIndex={9999999}
       disableBackdropClick={isSubmitting}
       disableEscapeKey={isSubmitting}
       footer={
