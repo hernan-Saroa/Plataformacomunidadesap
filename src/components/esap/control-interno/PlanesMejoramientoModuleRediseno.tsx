@@ -35,7 +35,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
-import { HeaderModulOCIG } from './HeaderModulOCIG';
+import { HeaderModulOCIG } from './HeaderModuloCIG';
 import { ModalDetallePlanMejoramiento } from './ModalDetallePlanMejoramiento';
 
 // Integración

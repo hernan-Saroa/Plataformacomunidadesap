@@ -34,7 +34,7 @@ import {
 import { PlanAnualAuditoriaDefinitivo as PlanAnualOperativo } from './PlanAnualAuditoriaDefinitivo';
 import { UniversoAuditorias } from './UniversoAuditorias';
 import { ProgramaAnualOCIG } from './ProgramaAnualCIG';
-import { HeaderModulOCIG } from './HeaderModulOCIG';
+import { HeaderModulOCIG } from './HeaderModuloCIG';
 // ✅ INTEGRACIÓN BACKEND: Hook para obtener estadísticas reales
 import { useUniversoAuditableData } from './hooks/useUniversoAuditableData';
 import { useProgramaAnualData, calcularEstadisticas } from './hooks/useProgramaAnualData';

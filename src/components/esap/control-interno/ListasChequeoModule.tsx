@@ -24,7 +24,7 @@ import {
   Filter, X, Save, Paperclip, List, Calendar, Users, Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { HeaderModulOCIG } from './HeaderModulOCIG';
+import { HeaderModulOCIG } from './HeaderModuloCIG';
 import { controlInternoService, ListaChequeo as ListaChequeoService } from '../../../services/api/controlInternoService';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 

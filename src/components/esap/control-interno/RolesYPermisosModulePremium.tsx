@@ -22,7 +22,7 @@ import {
   Search, CheckCircle2, XCircle, AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import { HeaderModulOCIG } from './HeaderModulOCIG';
+import { HeaderModulOCIG } from './HeaderModuloCIG';
 import { TooltipGuia } from './TooltipGuia';
 import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';
 

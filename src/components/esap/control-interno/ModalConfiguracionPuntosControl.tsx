@@ -210,8 +210,6 @@ export function ModalConfiguracionPuntosControl({
   const [puntosControl, setPuntosControl] = useState<PuntoControl[]>(puntosControlExistentes);
   const [mostrarFormNuevo, setMostrarFormNuevo] = useState(false);
   const [puntoEditando, setPuntoEditando] = useState<string | null>(null);
-  // Confirmación inline al cambiar frecuencia
-  const [frecuenciaPendiente, setFrecuenciaPendiente] = useState<FrecuenciaPuntoControl | null>(null);
   // Evitar que el efecto sobreescriba cortes existentes al montar
   const initialized = useRef(false);
   // Rastrear si el usuario editó fechas de corte individuales manualmente
@@ -353,23 +351,7 @@ export function ModalConfiguracionPuntosControl({
 
   const handleCambiarFrecuencia = (nuevaFrecuencia: FrecuenciaPuntoControl) => {
     if (nuevaFrecuencia === frecuenciaSeleccionada) return;
-    // Si ya hay puntos, mostrar confirmación inline
-    if (puntosControl.length > 0) {
-      setFrecuenciaPendiente(nuevaFrecuencia);
-      return;
-    }
     setFrecuenciaSeleccionada(nuevaFrecuencia);
-  };
-
-  const confirmarCambioFrecuencia = () => {
-    if (frecuenciaPendiente) {
-      setFrecuenciaSeleccionada(frecuenciaPendiente);
-      setFrecuenciaPendiente(null);
-    }
-  };
-
-  const cancelarCambioFrecuencia = () => {
-    setFrecuenciaPendiente(null);
   };
 
   const handleGuardar = () => {
@@ -396,11 +378,6 @@ export function ModalConfiguracionPuntosControl({
     { value: 'semanal', label: 'Semanal', descripcion: 'Cada 7 días', color: 'bg-red-500' },
     { value: 'personalizada', label: 'Personalizada', descripcion: 'Fechas manuales', color: 'bg-gray-500' }
   ];
-
-  // Cantidad real de cortes que generaría la frecuencia pendiente (para el diálogo de confirmación)
-  const cantidadCortesPendiente = frecuenciaPendiente && frecuenciaPendiente !== 'personalizada'
-    ? generarPuntosControlAutomaticos(frecuenciaPendiente, fechaInicioActividad, fechaCorteLocal || fechaFinActividad, nombreActividad).length
-    : 0;
 
   // Detectar el checkpoint "activo": el primero cuya fecha sea >= hoy
   const hoy = new Date();
@@ -494,7 +471,7 @@ export function ModalConfiguracionPuntosControl({
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <Zap className="w-4 h-4 text-gray-600" />
-                  <h3 className="font-semibold text-gray-900">Frecuencia de seguimiento</h3>
+                  <h3 className="font-semibold text-gray-900">Periodicidad de seguimiento</h3>
                 </div>
                 
                 {/* Mensaje informativo sobre edición */}
@@ -507,42 +484,6 @@ export function ModalConfiguracionPuntosControl({
                   </div>
                 )}
                 
-                {/* Confirmación inline al cambiar frecuencia */}
-                {frecuenciaPendiente && (() => {
-                  const frecInfo = frecuenciasDisponibles.find(f => f.value === frecuenciaPendiente);
-                  return (
-                    <div className="mb-3 bg-amber-50 border-2 border-amber-400 rounded-xl p-4">
-                      <div className="flex items-start gap-3">
-                        <div className="bg-amber-100 p-1.5 rounded-lg flex-shrink-0 mt-0.5">
-                          <AlertCircle className="w-5 h-5 text-amber-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-amber-900">¿Cambiar a frecuencia {frecInfo?.label}?</p>
-                          <p className="text-xs text-amber-700 mt-1">
-                            {frecuenciaPendiente === 'personalizada'
-                              ? `Las ${puntosControl.length} fechas actuales se mantendrán y podrás editarlas manualmente.`
-                              : `Las ${puntosControl.length} fechas actuales serán reemplazadas por ${cantidadCortesPendiente} nuevas fechas de corte auto-generadas.`}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 mt-3 justify-end">
-                        <button
-                          onClick={cancelarCambioFrecuencia}
-                          className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                        >
-                          Cancelar
-                        </button>
-                        <button
-                          onClick={confirmarCambioFrecuencia}
-                          className="px-3 py-1.5 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors"
-                        >
-                          Sí, cambiar
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })()}
-
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {frecuenciasDisponibles.map((frec) => (
                     <button
@@ -655,6 +596,8 @@ export function ModalConfiguracionPuntosControl({
                               <input
                                 type="date"
                                 value={puntoEditandoData.fechaProgramada}
+                                min={index === 0 ? fechaInicioActividad : puntosControl[index - 1].fechaProgramada}
+                                max={index === puntosControl.length - 1 ? fechaCorteLocal : puntosControl[index + 1].fechaProgramada}
                                 onChange={(e) => setPuntoEditandoData({ ...puntoEditandoData, fechaProgramada: e.target.value })}
                                 className="flex-1 px-3 py-2 bg-white border-2 border-yellow-400 rounded-lg text-sm focus:outline-none focus:border-yellow-600"
                               />
@@ -729,6 +672,8 @@ export function ModalConfiguracionPuntosControl({
                             <input
                               type="date"
                               value={punto.fechaProgramada}
+                              min={index === 0 ? fechaInicioActividad : puntosControl[index - 1].fechaProgramada}
+                              max={index === puntosControl.length - 1 ? fechaCorteLocal : puntosControl[index + 1].fechaProgramada}
                               onChange={(e) => {
                                 manualmenteEditado.current = true;
                                 setPuntosControl(prev =>

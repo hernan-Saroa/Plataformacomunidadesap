@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Settings, Bell, Sliders, Columns, Users, Layers } from 'lucide-react';
-import { HeaderModulOCIG } from './HeaderModulOCIG';
+import { HeaderModulOCIG } from './HeaderModuloCIG';
 import { NotificacionesModule } from './NotificacionesModule';
 import { ConfiguracionAuditoriasModule } from './ConfiguracionAuditoriasModule';
 import { ConfiguracionKanbanModule } from './ConfiguracionKanbanModule';

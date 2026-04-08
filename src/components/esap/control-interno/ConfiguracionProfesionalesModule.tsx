@@ -590,6 +590,22 @@ function TarjetaProfesional({
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// HELPER: MAPEAR ROL DEL SISTEMA A ROL OCI
+// ════════════════════════════════════════════════════════════════════════════
+
+function mapRolCodeARolOCI(rolCode?: string): ConfiguracionOCI['rolOCI'] {
+  const mapa: Record<string, ConfiguracionOCI['rolOCI']> = {
+    'JEFE_OCI':              'Jefe OCI',
+    'JEFE_CONTROL_INTERNO':  'Jefe OCI',
+    'AUDITOR_LIDER':         'Auditor Sénior',
+    'CONTROL_INTERNO':       'Auditor',
+    'PROFESIONAL_AUDITOR':   'Auditor',
+    'AUXILIAR_AUDITORIA':    'Apoyo Técnico',
+  };
+  return mapa[(rolCode ?? '').toUpperCase()] ?? 'Auditor';
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MODAL: AGREGAR PROFESIONAL AL EQUIPO OCI
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -603,7 +619,6 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<string>('');
   const [openCombobox, setOpenCombobox] = useState(false);
   const [openEspecialidades, setOpenEspecialidades] = useState(false);
-  const [rolOCI, setRolOCI] = useState<ConfiguracionOCI['rolOCI']>('Auditor');
   const [especialidades, setEspecialidades] = useState<string[]>([]);
   const [capacidad, setCapacidad] = useState(4);
   const [horas, setHoras] = useState(150);
@@ -633,7 +648,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
     const nuevaConfig: ConfiguracionOCI = {
       usuarioId: usuarioSeleccionado,
       idTercero: usuario.idTercero,
-      rolOCI,
+      rolOCI: mapRolCodeARolOCI(usuario.rolCode),
       especialidades,
       capacidadMaximaAuditorias: capacidad,
       horasMensualesDisponibles: horas,
@@ -744,6 +759,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                             <div className="flex flex-col min-w-0 flex-1">
                               <span className="font-semibold truncate">{usuario.nombre}</span>
                               <span className="text-xs text-gray-500 truncate">{usuario.email}</span>
+                              <span className="text-xs text-blue-600 font-semibold mt-0.5">{mapRolCodeARolOCI(usuario.rolCode)}</span>
                             </div>
                           </CommandItem>
                         ))}
@@ -759,22 +775,22 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
               )}
             </div>
 
-            {/* Rol OCI */}
-            <div>
-              <label className="block text-sm font-bold text-gray-900 mb-2">
-                Rol en OCI <span className="text-red-600">*</span>
-              </label>
-              <Select value={rolOCI} onValueChange={(value) => setRolOCI(value as any)}>
-                <SelectTrigger className="w-full font-semibold">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLES_OCI.map(rol => (
-                    <SelectItem key={rol} value={rol}>{rol}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Rol en OCI - leído del sistema */}
+            {usuarioSeleccionado && (() => {
+              const u = usuariosDisponibles.find(x => x.id === usuarioSeleccionado);
+              const rolMapeado = mapRolCodeARolOCI(u?.rolCode);
+              return (
+                <div>
+                  <label className="block text-sm font-bold text-gray-900 mb-2">
+                    Rol en OCI
+                  </label>
+                  <div className="flex items-center justify-between px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-lg">
+                    <span className="font-bold text-blue-800">{rolMapeado}</span>
+                    <span className="text-xs text-blue-500">Tomado del sistema</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Especialidades */}
             <div>

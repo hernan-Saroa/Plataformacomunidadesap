@@ -28,6 +28,7 @@ export interface UsuarioSistema {
   cargo?: string;
   area?: string;
   activo: boolean;
+  rolCode?: string;     // código de rol del sistema (ej: 'JEFE_OCI', 'AUDITOR')
 }
 
 // Configuración OCI del profesional
@@ -118,7 +119,8 @@ function convertirPersonaAUsuarioSistema(persona: PersonaDisponible): UsuarioSis
     email: persona.email,
     cargo: persona.cargo,
     area: undefined,
-    activo: true
+    activo: true,
+    rolCode: persona.rolCode
   };
 }
 
@@ -174,7 +176,8 @@ export function useConfiguracionProfesionales() {
         email: p.email,
         cargo: '',
         area: undefined,
-        activo: true
+        activo: true,
+        rolCode: p.rolCode
       }));
       setUsuariosControlInterno(usuarios);
       
