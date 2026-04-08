@@ -561,14 +561,13 @@ export function FormularioProcesoDafpVisual({
                 {/* Vigencia + Fecha de corte */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] text-gray-600 mb-1">Vigencia <span className="text-red-500">*</span></label>
-                    <input
-                      type="number"
-                      value={formData.vigencia}
-                      onChange={(e) => handleChange('vigencia', parseInt(e.target.value))}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-[#2962FF] outline-none text-center font-semibold"
-                      required
-                    />
+                    <label className="block text-[11px] text-gray-600 mb-1">
+                      Vigencia
+                      <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">AUTO</span>
+                    </label>
+                    <div className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-center font-semibold text-[#003DA5]">
+                      {formData.vigencia}
+                    </div>
                   </div>
                   <div>
                     <label className="block text-[11px] text-gray-600 mb-1">Fecha de Corte <span className="text-red-500">*</span></label>
