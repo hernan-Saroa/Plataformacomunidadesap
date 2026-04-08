@@ -197,6 +197,19 @@ const HALL_OPTIONS = [
   { value: 5, label: '7 o más hallazgos' },
 ];
 
+function getVigenciaFromStorage(): number {
+  try {
+    const raw = localStorage.getItem('esap:plan_anual_activo');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.vigencia && typeof parsed.vigencia === 'number') return parsed.vigencia;
+    }
+  } catch {
+    // ignore
+  }
+  return new Date().getFullYear();
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
@@ -214,7 +227,7 @@ export function FormularioProcesoDafpVisual({
 
   const defaultData = (): FormularioDafpData => ({
     nombre: '',
-    vigencia: new Date().getFullYear(),
+    vigencia: getVigenciaFromStorage(),
     fechaCorte: new Date().toISOString().split('T')[0],
     riesgosExtremos: 0,
     riesgosAltos: 0,
@@ -415,7 +428,7 @@ export function FormularioProcesoDafpVisual({
   // ════════════════════════════════════════════════════════════════════════════
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -433,7 +446,7 @@ export function FormularioProcesoDafpVisual({
                 <h2 className="text-sm font-semibold text-white leading-tight">
                   {mode === 'create' ? 'Agregar Proceso' : 'Editar Proceso'} — Universo de Auditoría
                 </h2>
-                <p className="text-[11px] text-white/75">
+                <p className="text-[11px] text-white">
                   Evaluación DAFP · RE-E-GE-034 · Cálculo Automático
                 </p>
               </div>
@@ -548,14 +561,13 @@ export function FormularioProcesoDafpVisual({
                 {/* Vigencia + Fecha de corte */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] text-gray-600 mb-1">Vigencia <span className="text-red-500">*</span></label>
-                    <input
-                      type="number"
-                      value={formData.vigencia}
-                      onChange={(e) => handleChange('vigencia', parseInt(e.target.value))}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-[#2962FF] outline-none text-center font-semibold"
-                      required
-                    />
+                    <label className="block text-[11px] text-gray-600 mb-1">
+                      Vigencia
+                      <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">AUTO</span>
+                    </label>
+                    <div className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-center font-semibold text-[#003DA5]">
+                      {formData.vigencia}
+                    </div>
                   </div>
                   <div>
                     <label className="block text-[11px] text-gray-600 mb-1">Fecha de Corte <span className="text-red-500">*</span></label>
