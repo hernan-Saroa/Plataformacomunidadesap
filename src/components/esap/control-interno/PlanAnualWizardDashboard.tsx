@@ -170,19 +170,11 @@ function calcularPorcentajeCortes(actividad: Actividad): number {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
 
-  const cortesVencidos = cortes.filter(c => {
-    const fc = new Date(c.fechaProgramada + 'T00:00:00');
-    return fc <= hoy;
-  });
+  // Cumplido = tiene al menos una entrada, sin importar si la fecha ya venció o es futura
+  const cumplidos = cortes.filter(corte =>
+    entradas.some(e => e.puntoControlId === corte.id)
+  );
 
-  if (cortesVencidos.length === 0) return 0;
-
-  const cumplidos = cortesVencidos.filter(corte => {
-    // Cumplido = tiene al menos una entrada, sin importar si fue registrada tarde
-    return entradas.some(e => e.puntoControlId === corte.id);
-  });
-
-  // Dividir entre el total de cortes (no solo los vencidos) para que cada corte valga 1/total
   return Math.round((cumplidos.length / cortes.length) * 100);
 }
 
@@ -4066,6 +4058,10 @@ function SeccionGestionYSeguimiento({
                             const cumplidos = pasados.filter(esCumplido).length;
                             const pctActual = calcularPorcentajeCortes(actividad);
                             const expandido = futuroExpandido[actividad.id] ?? false;
+                            // Activo = primer corte (por fecha) que todavía no tiene ninguna entrada
+                            const corteActivoId = [...cortes]
+                              .sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada))
+                              .find(c => !esCumplido(c))?.id;
 
                             return (
                               <div className="bg-white rounded-lg border-2 border-orange-200">
@@ -4090,17 +4086,16 @@ function SeccionGestionYSeguimiento({
                                     const pasado = c.fechaProgramada <= hoy;
                                     const cumplido = esCumplido(c);
                                     const entradasC = entradas.filter(e => e.puntoControlId === c.id);
-                                    const aTiempo = cumplido && pasado && entradasC.some(e => e.fechaRegistro <= c.fechaProgramada);
-                                    const conRetraso = cumplido && pasado && !aTiempo;
-                                    const fueAnticipado = cumplido && !pasado;
+                                    const aTiempo = cumplido && entradasC.some(e => e.fechaRegistro <= c.fechaProgramada);
+                                    const conRetraso = cumplido && !aTiempo;
                                     return (
                                       <span key={c.id} className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold border-2 ${
-                                        fueAnticipado ? 'bg-gray-500 border-gray-600 text-white' :
                                         aTiempo ? 'bg-green-500 border-green-600 text-white' :
                                         conRetraso ? 'bg-orange-600 border-orange-700 text-white' :
+                                        c.id === corteActivoId ? 'bg-blue-500 border-blue-600 text-white' :
                                         pasado ? 'bg-red-500 border-red-600 text-white' :
                                         'bg-gray-300 border-gray-400 text-gray-700'
-                                      }`} title={`${c.nombre} · ${c.fechaProgramada}${fueAnticipado ? ' (anticipado)' : ''}`}>
+                                      }`} title={`${c.nombre} · ${c.fechaProgramada}`}>
                                         {i + 1}
                                       </span>
                                     );
@@ -4115,30 +4110,29 @@ function SeccionGestionYSeguimiento({
                                       const cumplido = esCumplido(corte);
                                       const entradasCorte = entradas.filter(e => e.puntoControlId === corte.id);
                                       // Cumplido a tiempo = tiene al menos una entrada registrada antes o en la fecha del corte
-                                      const aTiempo = cumplido && pasado && entradasCorte.some(e => e.fechaRegistro <= corte.fechaProgramada);
-                                      const conRetraso = cumplido && pasado && !aTiempo;
-                                      const fueAnticipado = cumplido && !pasado;
+                                      const aTiempo = cumplido && entradasCorte.some(e => e.fechaRegistro <= corte.fechaProgramada);
+                                      const conRetraso = cumplido && !aTiempo;
                                       return (
                                         <div key={corte.id} className={`rounded-lg border p-3 ${
-                                          fueAnticipado ? 'border-gray-300 bg-gray-50' :
-                                          !pasado ? 'border-gray-200 bg-gray-50 opacity-40' :
+                                          corte.id === corteActivoId ? 'border-blue-300 bg-blue-50' :
                                           aTiempo ? 'border-green-200 bg-green-50' :
                                           conRetraso ? 'border-orange-300 bg-orange-50' :
-                                          'border-red-200 bg-red-50'
+                                          pasado ? 'border-red-200 bg-red-50' :
+                                          'border-gray-200 bg-gray-50 opacity-50'
                                         }`}>
                                           <div className="flex items-start justify-between gap-2">
                                             <div>
-                                              <span className="text-sm font-semibold text-gray-800">{corte.nombre}</span>
+                                              <span className={`text-sm font-semibold ${corte.id === corteActivoId || pasado ? 'text-gray-800' : 'text-gray-400'}`}>{corte.nombre}</span>
                                               <span className="ml-2 text-xs text-gray-500">{corte.fechaProgramada}</span>
                                             </div>
                                             <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                                              fueAnticipado ? 'bg-gray-200 text-gray-600' :
                                               aTiempo ? 'bg-green-200 text-green-800' :
                                               conRetraso ? 'bg-orange-200 text-orange-800' :
+                                              corte.id === corteActivoId ? 'bg-blue-200 text-blue-800' :
                                               pasado ? 'bg-red-200 text-red-800' :
                                               'bg-gray-200 text-gray-500'
                                             }`}>
-                                              {fueAnticipado ? '📅 Anticipado' : aTiempo ? '✓ Cumplido' : conRetraso ? '✓ Con retraso' : pasado ? '✗ Sin registrar' : '⏳ Próximo'}
+                                              {aTiempo ? '✓ Cumplido' : conRetraso ? '✓ Con retraso' : corte.id === corteActivoId ? '📍 Activo' : pasado ? '✗ Sin registrar' : '⏳ Futuro'}
                                             </span>
                                           </div>
                                           {/* Entradas del corte */}
@@ -4146,27 +4140,23 @@ function SeccionGestionYSeguimiento({
                                             <div className="mt-2 space-y-1">
                                               {entradasCorte.map(ent => (
                                                 <div key={ent.id} className={`text-xs bg-white rounded p-2 text-gray-700 border ${
-                                                  fueAnticipado ? 'border-gray-300' : aTiempo ? 'border-green-300' : 'border-orange-300'
+                                                  aTiempo ? 'border-green-300' : 'border-orange-300'
                                                 }`}>
-                                                  <span className={`font-medium ${
-                                                    fueAnticipado ? 'text-gray-600' : aTiempo ? 'text-green-700' : 'text-orange-700'
-                                                  }`}>{ent.fechaRegistro}</span>{' · '}{ent.texto}
+                                                  <span className={`font-medium ${aTiempo ? 'text-green-700' : 'text-orange-700'}`}>{ent.fechaRegistro}</span>{' · '}{ent.texto}
                                                 </div>
                                               ))}
                                             </div>
                                           )}
-                                          {/* Botón agregar entrada (todos los cortes, incluidos futuros) */}
-                                          {puedeGestionarEvidencias && (
+                                          {/* Botón agregar entrada (cortes vencidos y activo actual) */}
+                                          {(pasado || corte.id === corteActivoId) && puedeGestionarEvidencias && (
                                             <button
                                               onClick={() => {
                                                 setModalCorteId(corte.id);
                                                 setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero });
                                               }}
-                                              className={`mt-2 text-xs font-medium flex items-center gap-1 ${
-                                                pasado ? 'text-orange-600 hover:text-orange-800' : 'text-blue-600 hover:text-blue-800'
-                                              }`}
+                                              className="mt-2 text-xs text-orange-600 hover:text-orange-800 font-medium flex items-center gap-1"
                                             >
-                                              <span className="text-base leading-none">+</span> {cumplido ? 'Agregar otra entrada' : pasado ? 'Agregar entrada' : 'Registrar anticipadamente'}
+                                              <span className="text-base leading-none">+</span> {cumplido ? 'Agregar otra entrada' : 'Agregar entrada'}
                                             </button>
                                           )}
                                         </div>
@@ -4249,7 +4239,16 @@ function SeccionGestionYSeguimiento({
                             )}
                             {puedeGestionarEvidencias && (
                               <button
-                                onClick={() => setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero })}
+                                onClick={() => {
+                                  // Auto-detectar corte activo: el primero sin entradas (por fecha)
+                                  const cortes = actividad.puntosControl || [];
+                                  const entradasAct = actividad.entradasSeguimiento || [];
+                                  const corteActivo = [...cortes]
+                                    .sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada))
+                                    .find(c => !entradasAct.some(e => e.puntoControlId === c.id));
+                                  setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero });
+                                  if (corteActivo) setModalCorteId(corteActivo.id);
+                                }}
                                 className={`w-full px-4 py-3 text-white rounded-lg font-semibold flex items-center justify-center gap-2 ${
                                   actividad.configuracionEvidencias 
                                     ? 'bg-green-600 hover:bg-green-700' 
@@ -4379,9 +4378,14 @@ function SeccionGestionYSeguimiento({
                 obsListExistente = [...obsListExistente, autoObs];
               }
 
-              // Construir JSON unificado con todas las obs (incluidas las nuevas auto-generadas)
-              // para que aparezcan en el modal de evidencias cuando se abra después
-              const observacionesActualizadas = JSON.stringify(obsListExistente);
+              // Marcar las obs recién guardadas como 'saved-' para que no se dupliquen
+              // si el usuario abre el modal de nuevo (el filtro solo toma las que empiezan con 'obs-')
+              const obsListMarcadas = obsListExistente.map(o =>
+                nuevasObs.some(n => n.id === o.id)
+                  ? { ...o, id: o.id.replace('obs-', 'saved-') }
+                  : o
+              );
+              const observacionesActualizadas = JSON.stringify(obsListMarcadas);
 
               const corteIdTarget = modalCorteId;
               const nuevasEntradas: EntradaSeguimiento[] = nuevasObs.map(obs => ({
