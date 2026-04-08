@@ -9,7 +9,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
   TrendingUp, FileCheck, AlertCircle, BookOpen, Download, FileText,
-  Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, FileSpreadsheet, RefreshCw, Settings
+  Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, FileSpreadsheet, RefreshCw, Settings,
+  ChevronDown, ChevronUp
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ModalGestionAdjuntos } from './ModalGestionAdjuntosActividades';
@@ -83,9 +84,28 @@ interface Actividad {
   // ✅ NUEVO: Sistema de puntos de control
   puntosControl?: PuntoControl[]; // Puntos de control configurados
   frecuenciaPuntosControl?: FrecuenciaPuntoControl; // Frecuencia configurada
-  
+
+  // ✅ NUEVO: Entradas de seguimiento vinculadas a puntos de control
+  entradasSeguimiento?: EntradaSeguimiento[];
+
   // Soft delete
   activo?: boolean;
+}
+
+interface EntradaSeguimiento {
+  id: string;
+  puntoControlId: string;   // ID del punto de control (pc-auto-1, etc.)
+  fechaRegistro: string;    // ISO date — se compara con fechaProgramada del corte
+  registradoPor: string;
+  usuarioId?: string;
+  texto?: string;           // observación escrita (opcional)
+  archivos?: Array<{        // evidencias adjuntas (opcional)
+    nombre: string;
+    url: string;
+    tipo: string;
+    tamanio: number;
+  }>;
+  tipo: 'seguimiento' | 'hallazgo' | 'cierre';
 }
 
 interface ArchivoAdjunto {
@@ -135,6 +155,43 @@ function contarObservaciones(obs: ObservacionCumplimiento[] | string | undefined
  */
 function tieneObservaciones(obs: ObservacionCumplimiento[] | string | undefined): boolean {
   return contarObservaciones(obs) > 0;
+}
+
+/**
+ * Calcula el % de avance basado en cortes de seguimiento.
+ * Solo cuenta los cortes cuya fechaProgramada <= hoy.
+ * Un corte se considera cumplido si tiene ≥1 EntradaSeguimiento con fechaRegistro <= fechaProgramada del corte.
+ */
+function calcularPorcentajeCortes(actividad: Actividad): number {
+  const cortes = actividad.puntosControl;
+  const entradas = actividad.entradasSeguimiento || [];
+  if (!cortes || cortes.length === 0) return actividad.porcentajeAvance;
+
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  const cortesVencidos = cortes.filter(c => {
+    const fc = new Date(c.fechaProgramada + 'T00:00:00');
+    return fc <= hoy;
+  });
+
+  if (cortesVencidos.length === 0) return 0;
+
+  const cumplidos = cortesVencidos.filter(corte => {
+    // Cumplido = tiene al menos una entrada, sin importar si fue registrada tarde
+    return entradas.some(e => e.puntoControlId === corte.id);
+  });
+
+  // Dividir entre el total de cortes (no solo los vencidos) para que cada corte valga 1/total
+  return Math.round((cumplidos.length / cortes.length) * 100);
+}
+
+/** Días restantes hasta una fecha (negativo = ya venció) */
+function diasHastaFecha(fechaISO: string): number {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const f = new Date(fechaISO + 'T00:00:00');
+  return Math.round((f.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 interface Rol {
@@ -2167,6 +2224,8 @@ interface DashboardPlanProps {
   onCambiarPlan?: (planId: string) => void; // Callback para cambiar de plan activo
 }
 
+const PLAN_ANUAL_STORAGE_KEY = 'esap:plan_anual_activo';
+
 export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan }: DashboardPlanProps) {
   const [seccion, setSeccion] = useState<'gestion' | 'asignar' | 'aprobar'>('gestion');
   const [mostrarModalExportacion, setMostrarModalExportacion] = useState(false);
@@ -2215,6 +2274,17 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
     
     cargarAuditores();
   }, []);
+
+  // Sincronizar plan activo en localStorage cuando el plan cambia
+  useEffect(() => {
+    localStorage.setItem(PLAN_ANUAL_STORAGE_KEY, JSON.stringify({
+      id: plan.id,
+      vigencia: plan.vigencia,
+      estado: plan.estado,
+      version: plan.version,
+      jefeOCINombre: plan.jefeOCI?.nombre ?? ''
+    }));
+  }, [plan.id]);
 
   // Estadísticas
   const totalActividades = plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0);
@@ -2420,23 +2490,43 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="bg-white border-b-2 border-gray-200 px-6 py-6">
+      <div className="bg-white border-b-2 border-gray-200 px-8 py-6">
+        <div className="max-w-7xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          {/* Izquierda: icono + título + badge de estado */}
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0 shadow-lg">
               <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-black text-gray-900 truncate tracking-tight">Plan Anual de Auditoría {plan.vigencia}</h1>
-              <p className="text-xs sm:text-sm text-gray-600 truncate opacity-80">{plan.id} • Versión {plan.version} • {plan.jefeOCI.nombre}</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-black text-gray-900 truncate tracking-tight">Plan Anual de Auditoría {plan.vigencia}</h1>
+                <span className={`px-2.5 py-0.5 rounded-full font-bold border text-xs whitespace-nowrap ${plan.estado === 'VIGENTE' ? 'bg-green-100 text-green-700 border-green-300' : plan.estado === 'APROBADO' ? 'bg-blue-100 text-blue-700 border-blue-300' : plan.estado === 'EN_REVISION' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-gray-100 text-gray-600 border-gray-300'}`}>
+                  {plan.estado === 'BORRADOR' ? 'Borrador' : plan.estado === 'EN_REVISION' ? 'En revisión' : plan.estado === 'APROBADO' ? 'Aprobado' : plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado'}
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-gray-500 truncate mt-0.5">Versión {plan.version} • {plan.jefeOCI.nombre}</p>
             </div>
           </div>
 
+          {/* Derecha: selector de plan + botones de acción */}
           <div className="flex flex-row flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
             {planesDisponibles.length > 1 && onCambiarPlan && (
               <select
                 value={plan.id}
-                onChange={(e) => onCambiarPlan(e.target.value)}
+                onChange={(e) => {
+                  const planSeleccionado = planesDisponibles.find(p => p.id === e.target.value);
+                  if (planSeleccionado) {
+                    localStorage.setItem(PLAN_ANUAL_STORAGE_KEY, JSON.stringify({
+                      id: planSeleccionado.id,
+                      vigencia: planSeleccionado.vigencia,
+                      estado: planSeleccionado.estado,
+                      version: planSeleccionado.version,
+                      jefeOCINombre: planSeleccionado.jefeOCI?.nombre ?? ''
+                    }));
+                  }
+                  onCambiarPlan(e.target.value);
+                }}
                 className="px-3 py-1.5 sm:py-2 border-2 border-blue-300 rounded-lg text-sm font-medium bg-blue-50 text-blue-900 focus:outline-none focus:border-blue-500"
               >
                 {planesDisponibles.map((p) => (
@@ -2447,18 +2537,13 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               </select>
             )}
 
-            <span className={`px-3 py-1.5 rounded-lg font-bold border-2 text-xs sm:text-sm whitespace-nowrap ${plan.estado === 'VIGENTE' ? 'bg-green-100 text-green-700 border-green-300' : plan.estado === 'APROBADO' ? 'bg-blue-100 text-blue-700 border-blue-300' : plan.estado === 'EN_REVISION' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-gray-100 text-gray-700 border-gray-300'}`}>
-              {plan.estado === 'BORRADOR' ? 'Borrador' : plan.estado === 'EN_REVISION' ? 'En revisión' : plan.estado === 'APROBADO' ? 'Aprobado' : plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado'}
-            </span>
-
             {onCrearNuevo && (
               <button 
                 onClick={onCrearNuevo}
                 className="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg text-xs sm:text-sm whitespace-nowrap"
               >
                 <Plus className="w-4 h-4" />
-                <span className="hidden xs:inline">Nuevo Plan</span>
-                <span className="xs:hidden">Nuevo</span>
+                Nuevo Plan
               </button>
             )}
 
@@ -2658,9 +2743,10 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
             </button>
           ))}
         </div>
+        </div>{/* cierre max-w-7xl */}
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-gray-50 p-8">
+      <div className="flex-1 overflow-y-auto bg-gray-50 px-8 py-6">
         <div className="max-w-7xl mx-auto">
           <AnimatePresence mode="wait">
             {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} />}
@@ -2699,6 +2785,14 @@ function SeccionGestionYSeguimiento({
   const [modalAdjuntos, setModalAdjuntos] = useState<{ actividadId: number | string; rolNumero: number } | null>(null);
   const [nuevaObservacion, setNuevaObservacion] = useState('');
   const [mostrarSelectorApoyo, setMostrarSelectorApoyo] = useState(false);
+
+  // ── ENTRADAS DE SEGUIMIENTO POR CORTE ────────────────────────────────────
+  const [corteConFormAbierto, setCorteConFormAbierto] = useState<string | null>(null);
+  const [formEntrada, setFormEntrada] = useState<{ texto: string; tipo: 'seguimiento' | 'hallazgo' | 'cierre' }>({ texto: '', tipo: 'seguimiento' });
+  const [guardandoEntrada, setGuardandoEntrada] = useState(false);
+  const [futuroExpandido, setFuturoExpandido] = useState<Record<string, boolean>>({});
+  const [modalCorteId, setModalCorteId] = useState<string | null>(null);
+
   // Modal de confirmación para desactivar/activar actividades
   const [modalConfirmacion, setModalConfirmacion] = useState<{
     visible: boolean;
@@ -3155,6 +3249,78 @@ function SeccionGestionYSeguimiento({
     toast.success('Responsable de apoyo eliminado');
   };
 
+  const agregarEntrada = async (rolNumero: number, actividadId: number | string, puntoControlId: string) => {
+    if (!formEntrada.texto.trim()) {
+      toast.error('Observación requerida', { description: 'Escribe al menos una observación para registrar la entrada.' });
+      return;
+    }
+    setGuardandoEntrada(true);
+    try {
+      const actividadActual = plan.roles
+        .find(r => r.numero === rolNumero)
+        ?.actividades.find(a => a.id === actividadId);
+
+      const nuevaEntrada: EntradaSeguimiento = {
+        id: crypto.randomUUID(),
+        puntoControlId,
+        fechaRegistro: new Date().toISOString().split('T')[0],
+        registradoPor: 'Usuario',
+        texto: formEntrada.texto.trim(),
+        tipo: formEntrada.tipo,
+      };
+
+      const entradasActualizadas = [...(actividadActual?.entradasSeguimiento || []), nuevaEntrada];
+      const actividadConEntradas = { ...(actividadActual || {}), entradasSeguimiento: entradasActualizadas } as Actividad;
+      const nuevoPct = calcularPorcentajeCortes(actividadConEntradas);
+
+      const nuevoEstado: EstadoActividad =
+        nuevoPct === 100 ? 'COMPLETADA' :
+        nuevoPct > 0 ? 'EN_EJECUCION' :
+        'PENDIENTE';
+      const estadoBackend =
+        nuevoEstado === 'COMPLETADA' ? 'completada' :
+        nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' :
+        'pendiente';
+
+      const response = await actividadesApi.update(String(actividadId), {
+        entradas_seguimiento: entradasActualizadas,
+        porcentaje_avance: nuevoPct,
+        estado: estadoBackend as any,
+      });
+
+      if (!response.success) {
+        toast.error('Error al guardar', { description: response.error || 'No se pudo guardar la entrada.' });
+        return;
+      }
+
+      const planActualizado = {
+        ...plan,
+        roles: plan.roles.map(rol => {
+          if (rol.numero === rolNumero) {
+            return {
+              ...rol,
+              actividades: rol.actividades.map(act => {
+                if (act.id === actividadId) {
+                  return { ...act, entradasSeguimiento: entradasActualizadas, porcentajeAvance: nuevoPct, estado: nuevoEstado };
+                }
+                return act;
+              })
+            };
+          }
+          return rol;
+        })
+      };
+      onActualizar(planActualizado);
+      setCorteConFormAbierto(null);
+      setFormEntrada({ texto: '', tipo: 'seguimiento' });
+      toast.success('Entrada registrada', { description: 'El seguimiento del corte fue guardado.' });
+    } catch (e: any) {
+      toast.error('Error inesperado', { description: e?.message || 'Intenta de nuevo.' });
+    } finally {
+      setGuardandoEntrada(false);
+    }
+  };
+
   const guardarSeguimiento = async (rolNumero: number, actividadId: number | string) => {
     const actividadActual = plan.roles
       .find(r => r.numero === rolNumero)
@@ -3171,9 +3337,14 @@ function SeccionGestionYSeguimiento({
       return;
     }
 
+    // Si tiene cortes configurados, el % se calcula automáticamente; si no, conservar el actual
+    const pctFinal = actividadActual?.puntosControl && actividadActual.puntosControl.length > 0
+      ? calcularPorcentajeCortes(actividadActual)
+      : actividadActual?.porcentajeAvance ?? 0;
+
     const nuevoEstado: EstadoActividad = 
-      formulario.porcentaje === 100 ? 'COMPLETADA' :
-      formulario.porcentaje > 0 ? 'EN_EJECUCION' :
+      pctFinal === 100 ? 'COMPLETADA' :
+      pctFinal > 0 ? 'EN_EJECUCION' :
       'PENDIENTE';
 
     // Mapear estado del frontend al formato del backend
@@ -3187,11 +3358,12 @@ function SeccionGestionYSeguimiento({
     try {
       // Preparar payload - Backend espera estos campos exactos
       const payload = {
-        estado: estadoBackend,
-        porcentaje_avance: formulario.porcentaje,
+        estado: estadoBackend as any,
+        porcentaje_avance: pctFinal,
         control: formulario.control,
         evaluacion: formulario.evaluacion,
-        seguimiento: formulario.seguimiento
+        seguimiento: formulario.seguimiento,
+        ...(actividadActual?.entradasSeguimiento ? { entradas_seguimiento: actividadActual.entradasSeguimiento } : {})
       };
       
       console.log('[GUARDAR] Payload:', payload);
@@ -3233,7 +3405,7 @@ function SeccionGestionYSeguimiento({
                   control: formulario.control,
                   evaluacion: formulario.evaluacion,
                   seguimiento: formulario.seguimiento,
-                  porcentajeAvance: formulario.porcentaje,
+                  porcentajeAvance: pctFinal,
                   estado: nuevoEstado
                 };
               }
@@ -3745,7 +3917,7 @@ function SeccionGestionYSeguimiento({
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
                       <SemaforoSeguimientoPAI 
-                        porcentaje={actividad.porcentajeAvance}
+                        porcentaje={actividad.puntosControl && actividad.puntosControl.length > 0 ? calcularPorcentajeCortes(actividad) : actividad.porcentajeAvance}
                         variant="bar"
                         size="md"
                         showLabel={true}
@@ -3881,61 +4053,121 @@ function SeccionGestionYSeguimiento({
                         </h4>
 
                         <div className="space-y-4">
-                          {/* Banner informativo si tiene puntos de control */}
-                          {actividad.puntosControl && actividad.puntosControl.length > 0 && (
-                            <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4 flex items-start gap-3">
-                              <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                              <div className="flex-1">
-                                <p className="font-semibold text-green-900 text-sm mb-1">
-                                  Actividad con puntos de control configurados
-                                </p>
-                                <p className="text-xs text-green-700">
-                                  <strong>{actividad.puntosControl.filter(p => p.estado === 'completado').length}</strong> de <strong>{actividad.puntosControl.length}</strong> puntos completados • 
-                                  Periodicidad: <strong>{actividad.frecuenciaPuntosControl}</strong>
-                                </p>
-                                <p className="text-xs text-green-600 mt-1">
-                                  El porcentaje y la periodicidad se calculan automáticamente según los puntos de control
-                                </p>
-                              </div>
-                            </div>
-                          )}
+                          {/* ── CORTES DE SEGUIMIENTO (colapsable, todos juntos) ── */}
+                          {actividad.puntosControl && actividad.puntosControl.length > 0 ? (() => {
+                            const hoy = new Date().toISOString().split('T')[0];
+                            const cortes = actividad.puntosControl!;
+                            const entradas = actividad.entradasSeguimiento || [];
 
-                          {/* Porcentaje de avance */}
-                          <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
-                            <label className="block text-sm font-semibold mb-3 flex items-center gap-2">
-                              Porcentaje de avance
-                              {actividad.puntosControl && actividad.puntosControl.length > 0 && (
-                                <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded uppercase">
-                                  Automático
-                                </span>
-                              )}
-                            </label>
-                            <div className="flex items-center gap-4">
-                              <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                step="5"
-                                value={formulario.porcentaje}
-                                onChange={(e) => setFormulario({ ...formulario, porcentaje: parseInt(e.target.value) })}
-                                disabled={!!(actividad.puntosControl && actividad.puntosControl.length > 0)}
-                                className="flex-1"
-                              />
-                              <div className={`w-20 px-4 py-2 border-2 rounded-lg text-center ${
-                                actividad.puntosControl && actividad.puntosControl.length > 0 
-                                  ? 'bg-green-100 border-green-300' 
-                                  : 'bg-gray-100 border-gray-300'
-                              }`}>
-                                <span className="text-2xl font-bold">{formulario.porcentaje}</span>
-                                <span className="text-sm">%</span>
+                            const esCumplido = (corte: PuntoControl) =>
+                              entradas.some(e => e.puntoControlId === corte.id);
+
+                            const pasados = cortes.filter(c => c.fechaProgramada <= hoy);
+                            const cumplidos = pasados.filter(esCumplido).length;
+                            const pctActual = calcularPorcentajeCortes(actividad);
+                            const expandido = futuroExpandido[actividad.id] ?? false;
+
+                            return (
+                              <div className="bg-white rounded-lg border-2 border-orange-200">
+                                {/* Header colapsable */}
+                                <button
+                                  onClick={() => setFuturoExpandido(prev => ({ ...prev, [actividad.id]: !expandido }))}
+                                  className="w-full flex items-center justify-between p-3 hover:bg-orange-50 rounded-t-lg"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {expandido
+                                      ? <ChevronUp className="w-4 h-4 text-orange-600" />
+                                      : <ChevronDown className="w-4 h-4 text-orange-600" />}
+                                    <span className="text-xs font-bold text-orange-700 uppercase tracking-wide">Cortes de seguimiento</span>
+                                    <span className="text-xs text-gray-500">({cumplidos}/{cortes.length} cumplidos)</span>
+                                  </div>
+                                  <span className="text-xs font-bold text-orange-600">{pctActual}%</span>
+                                </button>
+
+                                {/* Dots siempre visibles */}
+                                <div className="px-3 pb-2 flex items-center gap-1 flex-wrap">
+                                  {cortes.map((c, i) => {
+                                    const pasado = c.fechaProgramada <= hoy;
+                                    const cumplido = esCumplido(c);
+                                    const entradasC = entradas.filter(e => e.puntoControlId === c.id);
+                                    const aTiempo = cumplido && entradasC.some(e => e.fechaRegistro <= c.fechaProgramada);
+                                    const conRetraso = cumplido && !aTiempo;
+                                    return (
+                                      <span key={c.id} className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold border-2 ${
+                                        aTiempo ? 'bg-green-500 border-green-600 text-white' :
+                                        conRetraso ? 'bg-orange-600 border-orange-700 text-white' :
+                                        pasado ? 'bg-red-500 border-red-600 text-white' :
+                                        'bg-gray-300 border-gray-400 text-gray-700'
+                                      }`} title={`${c.nombre} · ${c.fechaProgramada}`}>
+                                        {i + 1}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+
+                                {/* Lista completa colapsable */}
+                                {expandido && (
+                                  <div className="border-t border-orange-100 p-3 space-y-2">
+                                    {cortes.map(corte => {
+                                      const pasado = corte.fechaProgramada <= hoy;
+                                      const cumplido = esCumplido(corte);
+                                      const entradasCorte = entradas.filter(e => e.puntoControlId === corte.id);
+                                      // Cumplido a tiempo = tiene al menos una entrada registrada antes o en la fecha del corte
+                                      const aTiempo = cumplido && entradasCorte.some(e => e.fechaRegistro <= corte.fechaProgramada);
+                                      const conRetraso = cumplido && !aTiempo;
+                                      return (
+                                        <div key={corte.id} className={`rounded-lg border p-3 ${
+                                          !pasado ? 'border-gray-200 bg-gray-50 opacity-50' :
+                                          aTiempo ? 'border-green-200 bg-green-50' :
+                                          conRetraso ? 'border-orange-300 bg-orange-50' :
+                                          'border-red-200 bg-red-50'
+                                        }`}>
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div>
+                                              <span className={`text-sm font-semibold ${pasado ? 'text-gray-800' : 'text-gray-400'}`}>{corte.nombre}</span>
+                                              <span className="ml-2 text-xs text-gray-500">{corte.fechaProgramada}</span>
+                                            </div>
+                                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                                              aTiempo ? 'bg-green-200 text-green-800' :
+                                              conRetraso ? 'bg-orange-200 text-orange-800' :
+                                              pasado ? 'bg-red-200 text-red-800' :
+                                              'bg-gray-200 text-gray-500'
+                                            }`}>
+                                              {aTiempo ? '✓ Cumplido' : conRetraso ? '✓ Con retraso' : pasado ? '✗ Sin registrar' : '⏳ Futuro'}
+                                            </span>
+                                          </div>
+                                          {/* Entradas del corte */}
+                                          {entradasCorte.length > 0 && (
+                                            <div className="mt-2 space-y-1">
+                                              {entradasCorte.map(ent => (
+                                                <div key={ent.id} className={`text-xs bg-white rounded p-2 text-gray-700 border ${
+                                                  aTiempo ? 'border-green-300' : 'border-orange-300'
+                                                }`}>
+                                                  <span className={`font-medium ${aTiempo ? 'text-green-700' : 'text-orange-700'}`}>{ent.fechaRegistro}</span>{' · '}{ent.texto}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                          {/* Botón agregar entrada (solo cortes vencidos) */}
+                                          {pasado && puedeGestionarEvidencias && (
+                                            <button
+                                              onClick={() => {
+                                                setModalCorteId(corte.id);
+                                                setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero });
+                                              }}
+                                              className="mt-2 text-xs text-orange-600 hover:text-orange-800 font-medium flex items-center gap-1"
+                                            >
+                                              <span className="text-base leading-none">+</span> {cumplido ? 'Agregar otra entrada' : 'Agregar entrada'}
+                                            </button>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                            {actividad.puntosControl && actividad.puntosControl.length > 0 && (
-                              <p className="text-xs text-gray-500 mt-2 italic">
-                                Calculado automáticamente: {actividad.puntosControl.filter(p => p.estado === 'completado').length}/{actividad.puntosControl.length} puntos completados
-                              </p>
-                            )}
-                          </div>
+                            );
+                          })() : null}
 
                           {/* Evaluación */}
                           <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
@@ -3962,9 +4194,6 @@ function SeccionGestionYSeguimiento({
                               placeholder="Ejemplo: Se completó la auditoría al proceso X, se identificaron 3 hallazgos menores, se emitió informe el día DD/MM/AAAA..."
                               rows={4}
                             />
-                            <p className="text-xs text-gray-500 mt-2">
-                              ℹ️ Este campo es diferente de las <strong>Observaciones</strong> del botón "Gestionar evidencias" (abajo). Aquí registra las acciones concretas realizadas.
-                            </p>
                           </div>
 
                           {/* Botón gestionar evidencias */}
@@ -3973,7 +4202,6 @@ function SeccionGestionYSeguimiento({
                               ? 'border-green-300' 
                               : 'border-gray-200'
                           }`}>
-                            {/* Info de configuración de evidencias */}
                             {actividad.configuracionEvidencias && (
                               <div className="mb-3 p-3 bg-green-50 rounded-lg border border-green-200">
                                 <p className="text-xs font-semibold text-green-800 mb-2 flex items-center gap-1">
@@ -4010,8 +4238,6 @@ function SeccionGestionYSeguimiento({
                                 </p>
                               </div>
                             )}
-                            
-                            {/* Botón Gestionar evidencias - Solo visible si puede editar o hacer seguimiento */}
                             {puedeGestionarEvidencias && (
                               <button
                                 onClick={() => setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero })}
@@ -4039,7 +4265,7 @@ function SeccionGestionYSeguimiento({
                             </div>
                           </div>
 
-                          {/* Botones de seguimiento - Solo visibles si puede editar o hacer seguimiento */}
+                          {/* Botones guardar/cancelar */}
                           {puedeGestionarEvidencias && (
                             <div className="flex gap-3">
                               <button
@@ -4056,26 +4282,26 @@ function SeccionGestionYSeguimiento({
                                     <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
                                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                                  </svg>
-                                  Guardando...
-                                </>
-                              ) : (
-                                <>
-                                  <Check className="w-5 h-5" />
-                                  Guardar
-                                </>
-                              )}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setActividadExpandida(null);
-                                setNuevaObservacion('');
-                                setMostrarSelectorApoyo(false);
-                              }}
-                              className="px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-semibold"
-                            >
-                              Cancelar
-                            </button>
+                                    </svg>
+                                    Guardando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Check className="w-5 h-5" />
+                                    Guardar
+                                  </>
+                                )}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setActividadExpandida(null);
+                                  setNuevaObservacion('');
+                                  setMostrarSelectorApoyo(false);
+                                }}
+                                className="px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-semibold"
+                              >
+                                Cancelar
+                              </button>
                             </div>
                           )}
                         </div>
@@ -4099,18 +4325,127 @@ function SeccionGestionYSeguimiento({
           actividad={plan.roles
             .find(r => r.numero === modalAdjuntos.rolNumero)
             ?.actividades.find(a => a.id === modalAdjuntos.actividadId)!}
-          onCerrar={() => setModalAdjuntos(null)}
+          modoEntradaCorte={!!modalCorteId}
+          onCerrar={() => { setModalAdjuntos(null); setModalCorteId(null); }}
           onActualizar={async (adjuntos, observaciones) => {
             // Obtener actividad actual
-            const actividad = plan.roles
+            const actividadActual = plan.roles
               .find(r => r.numero === modalAdjuntos.rolNumero)
               ?.actividades.find(a => a.id === modalAdjuntos.actividadId);
 
-            const adjuntosOriginales = actividad?.adjuntos || [];
-
-            // Intentar sincronizar con backend
+            const adjuntosOriginales = actividadActual?.adjuntos || [];
             const actividadIdStr = String(modalAdjuntos.actividadId);
 
+            // ── CONTEXTO CORTE: crear EntradaSeguimiento desde observaciones y/o adjuntos nuevos ──
+            if (modalCorteId) {
+              let nuevasObs: Array<{ id: string; texto: string; fechaRegistro: string }> = [];
+              let obsListExistente: any[] = [];
+              try {
+                const parsed = JSON.parse(observaciones);
+                if (Array.isArray(parsed)) {
+                  obsListExistente = parsed;
+                  nuevasObs = parsed.filter(o => typeof o.id === 'string' && o.id.startsWith('obs-'));
+                }
+              } catch { /* no JSON */ }
+
+              const nuevosAdjuntos = adjuntos.filter(a => !adjuntosOriginales.find(o => o.id === a.id));
+
+              // Si no hay observaciones ni archivos nuevos, no hay nada que registrar
+              if (nuevasObs.length === 0 && nuevosAdjuntos.length === 0) {
+                toast.warning('Agrega al menos una observación o un archivo para registrar la entrada', { duration: 3000 });
+                return;
+              }
+
+              // Si solo hay archivos sin observación, generar entrada automática con nombres de archivos
+              if (nuevasObs.length === 0 && nuevosAdjuntos.length > 0) {
+                const hoy = new Date().toISOString().split('T')[0];
+                const autoObs = {
+                  id: `obs-${Date.now()}`,
+                  texto: `Evidencia adjuntada: ${nuevosAdjuntos.map(a => a.nombre).join(', ')}`,
+                  fechaRegistro: hoy,
+                  autor: 'Usuario',
+                };
+                nuevasObs = [autoObs];
+                // Agregar también al obsListExistente para que aparezca en el modal
+                obsListExistente = [...obsListExistente, autoObs];
+              }
+
+              // Construir JSON unificado con todas las obs (incluidas las nuevas auto-generadas)
+              // para que aparezcan en el modal de evidencias cuando se abra después
+              const observacionesActualizadas = JSON.stringify(obsListExistente);
+
+              const corteIdTarget = modalCorteId;
+              const nuevasEntradas: EntradaSeguimiento[] = nuevasObs.map(obs => ({
+                id: `ent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                puntoControlId: corteIdTarget,
+                fechaRegistro: obs.fechaRegistro || new Date().toISOString().split('T')[0],
+                registradoPor: 'Usuario',
+                texto: obs.texto,
+                tipo: 'seguimiento' as const,
+              }));
+
+              const entradasActualizadas = [...(actividadActual?.entradasSeguimiento || []), ...nuevasEntradas];
+              const actividadConEntradas = { ...(actividadActual || {}), entradasSeguimiento: entradasActualizadas } as Actividad;
+              const nuevoPct = calcularPorcentajeCortes(actividadConEntradas);
+              const nuevoEstado: EstadoActividad = nuevoPct === 100 ? 'COMPLETADA' : nuevoPct > 0 ? 'EN_EJECUCION' : 'PENDIENTE';
+              const estadoBackend = nuevoEstado === 'COMPLETADA' ? 'completada' : nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' : 'pendiente';
+
+              setGuardandoEntrada(true);
+              try {
+                const response = await actividadesApi.update(actividadIdStr, {
+                  entradas_seguimiento: entradasActualizadas,
+                  porcentaje_avance: nuevoPct,
+                  estado: estadoBackend as any,
+                  observaciones: observacionesActualizadas,
+                });
+                if (!response.success) {
+                  toast.error('Error al guardar entrada', { description: response.error });
+                } else {
+                  // Guardar adjuntos si los hay
+                  if (adjuntos.length > 0) {
+                    await guardarEvidencias(
+                      actividadIdStr,
+                      adjuntos.map(a => ({ ...a, esNuevo: !adjuntosOriginales.find(o => o.id === a.id) })),
+                      adjuntosOriginales,
+                      observacionesActualizadas
+                    );
+                  }
+                  const planActualizado = {
+                    ...plan,
+                    roles: plan.roles.map(r => {
+                      if (r.numero === modalAdjuntos.rolNumero) {
+                        return {
+                          ...r,
+                          actividades: r.actividades.map(act => {
+                            if (act.id === modalAdjuntos.actividadId) {
+                              return {
+                                ...act,
+                                entradasSeguimiento: entradasActualizadas,
+                                porcentajeAvance: nuevoPct,
+                                estado: nuevoEstado,
+                                observacionesCumplimiento: observacionesActualizadas,
+                              };
+                            }
+                            return act;
+                          })
+                        };
+                      }
+                      return r;
+                    })
+                  };
+                  onActualizar(planActualizado);
+                  toast.success('Entrada registrada correctamente');
+                  setModalAdjuntos(null);
+                  setModalCorteId(null);
+                  try { await onRefetchPlan?.(); } catch { /* ignore */ }
+                }
+              } finally {
+                setGuardandoEntrada(false);
+              }
+              return;
+            }
+
+            // ── FLUJO NORMAL: gestión de adjuntos y observaciones sin corte ──
             const guardadoOk = await guardarEvidencias(
               actividadIdStr,
               adjuntos.map(a => ({ ...a, esNuevo: !adjuntosOriginales.find(o => o.id === a.id) })),
@@ -4361,19 +4696,7 @@ function SeccionGestionYSeguimiento({
                   </div>
 
                   {/* Control */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">
-                      🔍 Control (periodicidad)
-                    </label>
-                    <textarea
-                      value={formularioEdicion.control}
-                      onChange={(e) => setFormularioEdicion(prev => ({ ...prev, control: e.target.value }))}
-                      rows={2}
-                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
-                      placeholder="Ej: Se hace seguimiento semestral, cuatrimestral, mensual..."
-                    />
-                  </div>
-
+                 
                   {/* Evaluación */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">
@@ -5275,7 +5598,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
     try {
       // Preparar payload - Backend espera estos campos exactos
       const payload = {
-        estado: estadoBackend,
+        estado: estadoBackend as any,
         porcentaje_avance: formulario.porcentaje,
         control: formulario.control,
         evaluacion: formulario.evaluacion,

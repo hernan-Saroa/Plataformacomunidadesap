@@ -125,6 +125,54 @@ export class ActividadPlanAnual5 {
     seguimiento?: { programadas: number; finalizadas: number; en_proceso: number; pendientes: number };
   };
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PUNTOS DE CONTROL, FRECUENCIA, RESPONSABLES Y FECHA DE CORTE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Column({ type: 'jsonb', name: 'puntos_control', default: [] })
+  puntos_control: Array<{
+    id: string;
+    orden: number;
+    nombre: string;
+    descripcion?: string;
+    fechaProgramada: string;
+    fechaReal: string | null;
+    responsable: string;
+    estado: 'pendiente' | 'en-progreso' | 'completado' | 'omitido';
+    observaciones?: string;
+    evidencias?: any[];
+  }>;
+
+  @Column({ type: 'varchar', length: 20, name: 'frecuencia_puntos_control', nullable: true })
+  frecuencia_puntos_control: string;
+
+  @Column({ type: 'jsonb', name: 'responsables', default: [] })
+  responsables: Array<{ id: string; nombre: string; cargo: string; email: string }>;
+
+  @Column({ type: 'date', name: 'fecha_corte', nullable: true })
+  fecha_corte: Date;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ENTRADAS DE SEGUIMIENTO - vinculadas a puntos de control
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Column({ type: 'jsonb', name: 'entradas_seguimiento', default: [] })
+  entradas_seguimiento: Array<{
+    id: string;
+    puntoControlId: string;    // ID del punto de control al que pertenece
+    fechaRegistro: string;     // ISO date string - se compara con fechaProgramada del corte
+    registradoPor: string;     // nombre del usuario que registró
+    usuarioId?: string;        // id del usuario
+    texto?: string;            // observación escrita (opcional)
+    archivos?: Array<{         // evidencias adjuntas (opcional)
+      nombre: string;
+      url: string;
+      tipo: string;
+      tamanio: number;
+    }>;
+    tipo: 'seguimiento' | 'hallazgo' | 'cierre';
+  }>;
+
   // Relación con adjuntos
   @OneToMany(() => AdjuntoActividadPlanAnual5, (adjunto) => adjunto.actividad, { cascade: true })
   adjuntos: AdjuntoActividadPlanAnual5[];

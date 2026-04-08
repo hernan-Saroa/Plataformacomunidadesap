@@ -160,6 +160,16 @@ export interface UpdateActividadDto {
   seguimiento?: string;
   requiereVerificacionDirector?: boolean;
   configuracionEvidencias?: ConfiguracionEvidencias;
+  entradas_seguimiento?: Array<{
+    id: string;
+    puntoControlId: string;
+    fechaRegistro: string;
+    registradoPor: string;
+    usuarioId?: string;
+    texto?: string;
+    archivos?: Array<{ nombre: string; url: string; tipo: string; tamanio: number }>;
+    tipo: 'seguimiento' | 'hallazgo' | 'cierre';
+  }>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

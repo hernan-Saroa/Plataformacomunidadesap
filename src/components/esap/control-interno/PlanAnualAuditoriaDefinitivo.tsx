@@ -1426,6 +1426,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               // Puntos de control persistidos
               puntosControl: actExtendido.puntos_control || [],
               frecuenciaPuntosControl: actExtendido.frecuencia_puntos_control || null,
+              entradasSeguimiento: actExtendido.entradas_seguimiento || actExtendido.entradasSeguimiento || [],
               fechaCorte: formatearFecha(actExtendido.fecha_corte) || '',
             };
           })

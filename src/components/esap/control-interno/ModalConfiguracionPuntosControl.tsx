@@ -53,6 +53,12 @@ export interface PuntoControl {
 // UTILIDADES
 // ════════════════════════════════════════════════════════════════════════════
 
+/** Devuelve el último día del mes dado */
+function finDeMes(año: number, mes: number): Date {
+  return new Date(año, mes + 1, 0);
+}
+
+/** Genera fechas de corte reales basadas en el calendario, no en intervalos iguales */
 function generarPuntosControlAutomaticos(
   frecuencia: FrecuenciaPuntoControl,
   fechaInicio: string,
@@ -61,69 +67,89 @@ function generarPuntosControlAutomaticos(
 ): PuntoControl[] {
   if (frecuencia === 'personalizada') return [];
 
-  const inicio = new Date(fechaInicio);
-  const fin = new Date(fechaFin);
-  const puntos: PuntoControl[] = [];
-
-  let cantidadPuntos: number;
-  let nombreFrecuencia: string;
-
-  switch (frecuencia) {
-    case 'anual':
-      cantidadPuntos = 1;
-      nombreFrecuencia = 'Anual';
-      break;
-    case 'semestral':
-      cantidadPuntos = 2;
-      nombreFrecuencia = 'Semestral';
-      break;
-    case 'trimestral':
-      cantidadPuntos = 4;
-      nombreFrecuencia = 'Trimestral';
-      break;
-    case 'mensual':
-      cantidadPuntos = 12;
-      nombreFrecuencia = 'Mensual';
-      break;
-    case 'semanal':
-      cantidadPuntos = 52;
-      nombreFrecuencia = 'Semanal';
-      break;
-    default:
-      return [];
-  }
-
-  const duracionTotal = fin.getTime() - inicio.getTime();
-  const intervalo = duracionTotal / cantidadPuntos;
-
+  const inicio = new Date(fechaInicio + 'T00:00:00');
+  const fin = new Date(fechaFin + 'T00:00:00');
   const mesesAbrev = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  for (let i = 0; i < cantidadPuntos; i++) {
-    const fechaPunto = new Date(inicio.getTime() + (intervalo * (i + 1)));
-    const labelPeriodo = frecuencia === 'mensual'
-      ? `Corte ${mesesAbrev[fechaPunto.getMonth()]} ${fechaPunto.getFullYear()}`
-      : frecuencia === 'trimestral'
-      ? `Corte Q${i + 1}`
-      : frecuencia === 'semestral'
-      ? `Corte Semestre ${i + 1}`
-      : frecuencia === 'anual'
-      ? 'Corte Anual'
-      : `Corte Semana ${i + 1}`;
 
-    puntos.push({
-      id: `pc-auto-${i + 1}`,
-      orden: i + 1,
-      nombre: labelPeriodo,
-      descripcion: '',
-      fechaProgramada: fechaPunto.toISOString().split('T')[0],
-      fechaReal: null,
-      responsable: '',
-      estado: 'pendiente',
-      observaciones: '',
-      evidencias: []
-    });
+  // Generar candidatos de fechas de corte según el calendario real
+  const candidatos: { fecha: Date; label: string }[] = [];
+
+  if (frecuencia === 'trimestral') {
+    // Cortes trimestrales: 31 Mar, 30 Jun, 30 Sep, 31 Dic
+    const mesesCorteQ = [2, 5, 8, 11]; // 0-indexed
+    const labelsQ = ['Q1', 'Q2', 'Q3', 'Q4'];
+    for (let año = inicio.getFullYear(); año <= fin.getFullYear(); año++) {
+      mesesCorteQ.forEach((mes, idx) => {
+        const f = finDeMes(año, mes);
+        if (f > inicio && f <= fin) {
+          candidatos.push({ fecha: f, label: `Corte ${labelsQ[idx]} ${año}` });
+        }
+      });
+    }
+  } else if (frecuencia === 'semestral') {
+    // Cortes semestrales: 30 Jun, 31 Dic
+    const mesesCorteS = [5, 11];
+    const labelsS = ['Semestre 1', 'Semestre 2'];
+    for (let año = inicio.getFullYear(); año <= fin.getFullYear(); año++) {
+      mesesCorteS.forEach((mes, idx) => {
+        const f = finDeMes(año, mes);
+        if (f > inicio && f <= fin) {
+          candidatos.push({ fecha: f, label: `Corte ${labelsS[idx]} ${año}` });
+        }
+      });
+    }
+  } else if (frecuencia === 'mensual') {
+    // Último día de cada mes dentro del rango
+    let cursor = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
+    while (cursor <= fin) {
+      const f = finDeMes(cursor.getFullYear(), cursor.getMonth());
+      if (f > inicio && f <= fin) {
+        candidatos.push({
+          fecha: f,
+          label: `Corte ${mesesAbrev[f.getMonth()]} ${f.getFullYear()}`
+        });
+      }
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    }
+  } else if (frecuencia === 'anual') {
+    for (let año = inicio.getFullYear(); año <= fin.getFullYear(); año++) {
+      const f = finDeMes(año, 11); // 31 Dic
+      if (f > inicio && f <= fin) {
+        candidatos.push({ fecha: f, label: `Corte Anual ${año}` });
+      }
+    }
+  } else if (frecuencia === 'semanal') {
+    // Cada 7 días a partir del inicio
+    const cursor = new Date(inicio);
+    cursor.setDate(cursor.getDate() + 7);
+    let semana = 1;
+    while (cursor <= fin) {
+      candidatos.push({
+        fecha: new Date(cursor),
+        label: `Corte Semana ${semana}`
+      });
+      cursor.setDate(cursor.getDate() + 7);
+      semana++;
+    }
   }
 
-  return puntos;
+  // Si no hay candidatos dentro del rango (periodo muy corto), caer en 1 corte al final
+  if (candidatos.length === 0) {
+    candidatos.push({ fecha: fin, label: 'Corte Final' });
+  }
+
+  return candidatos.map((c, i) => ({
+    id: `pc-auto-${i + 1}`,
+    orden: i + 1,
+    nombre: c.label,
+    descripcion: '',
+    fechaProgramada: c.fecha.toISOString().split('T')[0],
+    fechaReal: null,
+    responsable: '',
+    estado: 'pendiente',
+    observaciones: '',
+    evidencias: []
+  }));
 }
 
 function formatearFecha(fecha: string): string {
