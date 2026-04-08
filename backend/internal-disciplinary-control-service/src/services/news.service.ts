@@ -433,45 +433,49 @@ export class NewsService {
       newsId,
       processId: procesoDestinoId,
       justificacion,
+      fechaAsociacion: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
-
-    // Cambiar el estado de la noticia a ASOCIADA
-    noticia.estado = NewsStatus.ASOCIADA;
-
-    // Registrar en auditoría de la noticia
-    const historyEntry = {
-      id: Date.now().toString(),
-      tipo: 'asociacion',
-      usuario: 'Sistema',
-      fecha: new Date().toISOString(),
-      observaciones: `Noticia asociada al proceso ${proceso.radicadoProceso}. Justificación: ${justificacion}`,
-    };
-    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
-
+  
     console.log('✅ Asociando noticia a proceso:', {
       newsId,
       procesoDestinoId,
       radicadoProceso: proceso.radicadoProceso,
     });
-
-    // Guardar la noticia con el nuevo estado
-    await this.newsRepository.save(noticia);
-
-    // Intentar guardar la asociación
+  
+    // Intentar guardar la asociación PRIMERO
     try {
       const association = this.newsProcessRepository.create(associationData);
       const savedAssociation = await this.newsProcessRepository.save(association);
+  
+      // Solo si la asociación se guarda exitosamente, cambiar el estado de la noticia
+      noticia.estado = NewsStatus.ASOCIADA;
+  
+      // Registrar en auditoría de la noticia
+      const historyEntry = {
+        id: Date.now().toString(),
+        tipo: 'asociacion',
+        usuario: 'Sistema',
+        fecha: new Date().toISOString(),
+        observaciones: `Noticia asociada al proceso ${proceso.radicadoProceso}. Justificación: ${justificacion}`,
+      };
+      noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+  
+      // Guardar la noticia con el nuevo estado
+      await this.newsRepository.save(noticia);
+  
       return {
         message: 'Asociación creada exitosamente',
         association: savedAssociation
       };
     } catch (error) {
       console.error('Error guardando asociación:', error);
-      // Retornar éxito parcial - la noticia cambió de estado
-      return {
-        message: 'Noticia asociada (estado actualizado), pero error en registro de asociación',
-        association: associationData
-      };
+      // Si falla la asociación, NO cambiar el estado de la noticia
+      throw new HttpException(
+        `Error al crear la asociación: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 

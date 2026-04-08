@@ -1,6 +1,6 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * COLUMNA KANBAN - DISEÑO OFICIAL OCIG
+ * COLUMNA KANBAN - DISEÑO OFICIAL OCI
  * ═════════════════════════════════════════════════════════════════════════
  * 
  * Columna para el tablero Kanban de auditorías
@@ -13,7 +13,7 @@
 
 import React from 'react';
 import { Plus, Download } from 'lucide-react';
-import { ESAP_COLORS, getKanbanColumnColor, type EstadoKanban } from '../utils/esapThemeOCIG';
+import { ESAP_COLORS, getKanbanColumnColor, type EstadoKanban } from '../utils/esapThemeOCI';
 import { AuditoriaCard, type AuditoriaCardData } from './AuditoriaCard';
 import { toast } from 'sonner';
 

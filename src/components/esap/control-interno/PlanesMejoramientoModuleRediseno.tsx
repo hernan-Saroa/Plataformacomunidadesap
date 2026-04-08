@@ -35,7 +35,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
-import { HeaderModuloCIG } from './HeaderModuloCIG';
+import { HeaderModulOCIG } from './HeaderModulOCIG';
 import { ModalDetallePlanMejoramiento } from './ModalDetallePlanMejoramiento';
 
 // Integración
@@ -660,7 +660,7 @@ export function PlanesMejoramientoModuleRediseno() {
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="min-h-screen bg-gray-50">
-        <HeaderModuloCIG
+        <HeaderModulOCIG
           titulo="Planes de Mejoramiento"
           subtitulo="Control Interno de Gestión"
         />

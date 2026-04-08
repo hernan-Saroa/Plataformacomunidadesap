@@ -6,7 +6,7 @@
  * Sistema de sincronización bidireccional entre:
  * - Rol 4 del Plan Anual de Auditoría
  * - Programa de Auditorías
- * - Módulo de Auditorías OCIG
+ * - Módulo de Auditorías OCI
  * - Planes de Mejoramiento
  * 
  * FUNCIONALIDADES:

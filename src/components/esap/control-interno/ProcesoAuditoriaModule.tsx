@@ -12,7 +12,7 @@ import { motion } from "motion/react";
 import { PlaneacionAuditoriaModule } from "./PlaneacionAuditoriaModule";
 import { EjecucionAuditoriaModule } from "./EjecucionAuditoriaModule";
 import { ComunicacionAuditoriaModule } from "./ComunicacionAuditoriaModule";
-import { HeaderModuloCIG } from "./HeaderModuloCIG";
+import { HeaderModulOCIG } from "./HeaderModulOCIG";
 
 export function ProcesoAuditoriaModule() {
   const [tabActiva, setTabActiva] = useState("planeacion");
@@ -34,7 +34,7 @@ export function ProcesoAuditoriaModule() {
     <div className="h-full flex flex-col">
       {/* Encabezado con Título en Naranja */}
       <div className="bg-white px-4 md:px-6 pt-6 pb-4">
-        <HeaderModuloCIG
+        <HeaderModulOCIG
           titulo="Proceso de Auditoría"
           subtitulo="Planeación, ejecución y comunicación de auditorías"
         />

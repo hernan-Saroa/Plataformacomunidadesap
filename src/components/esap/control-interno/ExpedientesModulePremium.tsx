@@ -34,7 +34,7 @@ import { getServiceUrl, API_MODE } from '../../../config/environment';
 
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
-import { HeaderModuloCIG } from './HeaderModuloCIG';
+import { HeaderModulOCIG } from './HeaderModulOCIG';
 
 // ✅ FASE 1 DÍA 3: Componentes responsive
 import { Container4K } from '../../ui/container-4k';
@@ -255,7 +255,7 @@ function mapAuditoriaToExpediente(auditoria: any, documentos: Documento[]): Expe
 export function ExpedientesModulePremium() {
   return (
     <div className="min-h-screen bg-gray-50">
-      <HeaderModuloCIG
+      <HeaderModulOCIG
         titulo="Expedientes"
         subtitulo="Control Interno de Gestión"
       />

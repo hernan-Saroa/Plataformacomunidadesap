@@ -176,7 +176,7 @@ export async function exportarPlanAnualExcel(plan: PlanAnual): Promise<Resultado
 
     ws.mergeCells('C2:J2');
     const subtitleCell = ws.getCell('C2');
-    subtitleCell.value = 'Oficina de Control Interno de Gestión - OCIG';
+    subtitleCell.value = 'Oficina de Control Interno de Gestión - OCI';
     subtitleCell.font = { name: 'Calibri', size: 10, color: { argb: '444444' } };
     subtitleCell.alignment = { horizontal: 'center', vertical: 'middle' };
     subtitleCell.border = { bottom: { style: 'thin' } };

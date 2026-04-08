@@ -218,7 +218,7 @@ export function ResponsiveModal({
 
   // Clases base
   const overlayClasses = `
-    fixed inset-0 bg-black/50 backdrop-blur-sm
+    fixed inset-0 bg-black/50 backdrop-blur-sm z-99999
     transition-opacity duration-300
     ${isOpen ? 'opacity-100' : 'opacity-0'}
   `;
@@ -233,7 +233,6 @@ export function ResponsiveModal({
   const modalContent = (
     <div
       className={overlayClasses}
-      style={{ zIndex }}
       onClick={handleBackdropClick}
       role="presentation"
     >

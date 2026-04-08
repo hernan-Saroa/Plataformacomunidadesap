@@ -18,7 +18,7 @@ export class DisciplinaryNewsProcess {
   @ManyToOne(() => DisciplinaryNews, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'newsId' })
+  @JoinColumn({ name: 'news_id' })
   news: DisciplinaryNews;
 
   @Column({ name: 'news_id', type: 'uuid' })
@@ -43,9 +43,9 @@ export class DisciplinaryNewsProcess {
   @Column({ name: 'justificacion', type: 'text', nullable: true })
   justificacion: string | null;
 
-  @CreateDateColumn()
+  @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @Column({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 }

@@ -163,7 +163,7 @@ function crearEncabezadoFormulario(doc: jsPDF, logoBase64?: string): number {
   
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text('Oficina de Control Interno de Gestión - OCIG', tituloCentro, margen + 19, { align: 'center' });
+  doc.text('Oficina de Control Interno de Gestión - OCI', tituloCentro, margen + 19, { align: 'center' });
   
   doc.setFontSize(8);
   doc.setTextColor(0, 61, 165);
@@ -427,7 +427,7 @@ export async function exportarPlanMejoramientoPDF(
       doc.setFontSize(8);
       doc.setTextColor(...COLORES_ESAP.gris);
       doc.setFont('helvetica', 'normal');
-      doc.text('Oficina de Control Interno de Gestión - OCIG', margin, pageHeight - 10);
+      doc.text('Oficina de Control Interno de Gestión - OCI', margin, pageHeight - 10);
       
       doc.text(`Página ${i} de ${totalPages}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
     }

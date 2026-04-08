@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * SERVICIO DE AUDITORÍAS - OCIG ESAP
+ * SERVICIO DE AUDITORÍAS - OCI ESAP
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Servicio centralizado para operaciones CRUD de auditorías.
@@ -278,7 +278,7 @@ export interface AuditoriaUI {
   alcance?: string;
   horasReales?: number;
   hallazgosCount?: number;
-  auditoriaOCIGId?: string;
+  auditoriaOCIId?: string;
   planMejoramientoId?: string;
   procesoId?: string;
 }

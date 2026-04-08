@@ -1,6 +1,6 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * ACCESOS RÁPIDOS - DASHBOARD OCIG
+ * ACCESOS RÁPIDOS - DASHBOARD OCI
  * ═════════════════════════════════════════════════════════════════════════
  * 
  * Botones de acceso rápido a acciones frecuentes

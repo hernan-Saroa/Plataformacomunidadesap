@@ -1,6 +1,6 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * TIMELINE DE ACTIVIDADES - OCIG
+ * TIMELINE DE ACTIVIDADES - OCI
  * ═════════════════════════════════════════════════════════════════════════
  * 
  * Línea de tiempo con actividades de auditoría
