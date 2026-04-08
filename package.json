@@ -51,6 +51,7 @@
         "jspdf": "*",
         "jspdf-autotable": "^5.0.7",
         "jsqr": "*",
+        "lodash": "^4.18.1",
         "lucide-react": "^0.487.0",
         "motion": "*",
         "pdfjs-dist": "3.11.174",
