@@ -141,29 +141,24 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     return map;
   }, [procesos]);
 
-  // ✅ Convertir evaluaciones a formato ProcesoAuditableUI que la tabla espera
-  // Cada evaluación se muestra como una fila con datos del proceso + datos DAFP
+  // ✅ Convertir evaluaciones DAFP registradas a filas de la tabla.
+  // Solo muestra procesos que hayan sido evaluados por el formulario DAFP.
   const evaluacionesComoFilas = useMemo((): ProcesoAuditable[] => {
-    console.log('[evaluacionesComoFilas] Evaluaciones recebias:', JSON.stringify(evaluaciones, (key, val) => key === 'createdAt' || key === 'updatedAt' ? undefined : val, 2));
+    const nivelRiesgoMap: Record<string, NivelRiesgo> = {
+      'Extremo': 'Crítico', 'Alto': 'Alto', 'Moderado': 'Medio', 'Bajo': 'Bajo',
+    };
+    const mapPonderacion: Record<string, NivelRiesgo> = {
+      'EXTREMO': 'Crítico', 'ALTO': 'Alto', 'MODERADO': 'Medio', 'BAJO': 'Bajo', 'MUY BAJO': 'Bajo',
+    };
+
     return evaluaciones.map(ev => {
       const proceso = procesosMap.get(ev.procesoId);
-      // Mapear ponderación DAFP a nivel de riesgo UI -优先 usar nuevo campo nivelCriticidadDafp
-      const mapPonderacion: Record<string, NivelRiesgo> = {
-        'EXTREMO': 'Crítico', 'ALTO': 'Alto', 'MODERADO': 'Medio', 'BAJO': 'Bajo', 'MUY BAJO': 'Bajo',
-      };
-      // Usar nivelCriticidadDafp (migración 179) o ponderacionRiesgo legacy
-      const nivelRiesgoMap: Record<string, NivelRiesgo> = {
-        'Extremo': 'Crítico', 'Alto': 'Alto', 'Moderado': 'Medio', 'Bajo': 'Bajo',
-      };
       const nivelRiesgo = nivelRiesgoMap[ev.nivelCriticidadDafp || ''] || mapPonderacion[ev.ponderacionRiesgo || ''] || 'Medio';
-      // Calcular score en escala 0-100 desde ponderación DAFP
       const scoreCalculado = ev.ponderacionFinalDafp ? +(ev.ponderacionFinalDafp * 20).toFixed(0) : (ev.scoreRiesgo || 0);
-      // Usar cicloRotacionDafp (migración 179) o planRotacion legacy
       const frecuencia = ev.cicloRotacionDafp || ev.planRotacion || 'Anual';
-      
       return {
-        id: ev.id, // ID de la evaluación (no del proceso)
-        nombre: proceso?.nombre || ev.procesoNombre || 'Proceso desconocido',
+        id: ev.id,
+        nombre: proceso?.nombre || ev.nombreProceso || '',
         tipo: proceso?.tipo || 'Apoyo' as any,
         descripcion: `Vigencia ${ev.vigencia} — Corte ${ev.fechaCorte}`,
         responsable: ev.dependenciaResponsable || proceso?.responsable || '',
@@ -175,49 +170,29 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
         ultimaAuditoria: ev.fechaUltimaAuditoria,
         resultadoUltimaAuditoria: ev.resultadoUltimaAuditoria,
         frecuenciaAuditoria: frecuencia as any,
-        activo: ev.activo,
-        codigo: proceso?.codigo || ev.procesoCodigo || '',
+        activo: ev.activo ?? proceso?.activo,
+        codigo: proceso?.codigo || '',
         macroproceso: proceso?.macroproceso || '',
         tipoProceso: proceso?.tipo || 'Apoyo' as any,
-        dependenciaResponsable: ev.dependenciaResponsable || '',
+        dependenciaResponsable: ev.dependenciaResponsable || proceso?.dependenciaResponsable || '',
         scoreRiesgo: scoreCalculado,
         frecuenciaSugerida: frecuencia,
         horasEstimadas: 0,
-        _backendId: ev.procesoId, // Guardamos ref al proceso maestro
+        _backendId: ev.procesoId,
         _evaluacionRiesgo: {
-          // Riesgos inherentes
-          riesgosExtremos: ev.riesgosExtremos,
-          riesgosAltos: ev.riesgosAltos,
-          riesgosModerados: ev.riesgosModerados,
-          riesgosBajos: ev.riesgosBajos,
+          riesgosExtremos: ev.riesgosExtremos, riesgosAltos: ev.riesgosAltos,
+          riesgosModerados: ev.riesgosModerados, riesgosBajos: ev.riesgosBajos,
           totalRiesgos: ev.totalRiesgos,
-          // Requerimientos especiales
-          requerimientoComite: ev.requerimientoComite,
-          requerimientoEntesReg: ev.requerimientoEntesReg,
-          // Auditoría anterior
-          fechaUltimaAuditoria: ev.fechaUltimaAuditoria,
-          resultadoUltimaAuditoria: ev.resultadoUltimaAuditoria,
-          // Score legacy
+          requerimientoComite: ev.requerimientoComite, requerimientoEntesReg: ev.requerimientoEntesReg,
+          fechaUltimaAuditoria: ev.fechaUltimaAuditoria, resultadoUltimaAuditoria: ev.resultadoUltimaAuditoria,
           ponderacionRiesgo: ev.ponderacionRiesgo,
-          criticidad: ev.criticidad,
-          exposicion: ev.exposicion,
-          mitigantes: ev.mitigantes,
-          scoreRiesgo: ev.scoreRiesgo,
-          // Criterios DAFP (migración 179)
-          tiempoUltimaAuditoria: ev.tiempoUltimaAuditoria,
-          temasAltaDireccion: ev.temasAltaDireccion,
-          objetivosEstrategicos: ev.objetivosEstrategicos,
-          hallazgosAnteriores: ev.hallazgosAnteriores,
-          ponderacionFinalDafp: ev.ponderacionFinalDafp,
-          nivelCriticidadDafp: ev.nivelCriticidadDafp,
+          criticidad: ev.criticidad, exposicion: ev.exposicion, mitigantes: ev.mitigantes, scoreRiesgo: ev.scoreRiesgo,
+          tiempoUltimaAuditoria: ev.tiempoUltimaAuditoria, temasAltaDireccion: ev.temasAltaDireccion,
+          objetivosEstrategicos: ev.objetivosEstrategicos, hallazgosAnteriores: ev.hallazgosAnteriores,
+          ponderacionFinalDafp: ev.ponderacionFinalDafp, nivelCriticidadDafp: ev.nivelCriticidadDafp,
           cicloRotacionDafp: ev.cicloRotacionDafp,
-          // Decisión
-          decisionFinal: ev.decisionFinal,
-          motivoDecision: ev.motivoDecision,
-          prioridadRegla: ev.prioridadRegla,
-          // Metadatos
-          vigencia: ev.vigencia,
-          fechaCorte: ev.fechaCorte,
+          decisionFinal: ev.decisionFinal, motivoDecision: ev.motivoDecision, prioridadRegla: ev.prioridadRegla,
+          vigencia: ev.vigencia, fechaCorte: ev.fechaCorte,
         } as any,
       } as ProcesoAuditable;
     });

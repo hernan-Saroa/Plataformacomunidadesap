@@ -4117,11 +4117,21 @@ export function DashboardKanbanOperativo({
 
   // ✅ NUEVO: Handler para asociar noticia a proceso
   const handleAsociarNoticiaProceso = (noticia: Noticia) => {
+    // Limpiar estado previo antes de abrir el modal
+    setModalActivo(null);
+    setItemSeleccionado(null);
+
+    // Establecer el nuevo estado
     setItemSeleccionado(noticia);
     setModalActivo('asociar-noticia-proceso');
   };
 
   const handleAsociarNoticiaNoticia = (noticia: Noticia) => {
+    // Limpiar estado previo antes de abrir el modal
+    setModalActivo(null);
+    setItemSeleccionado(null);
+
+    // Establecer el nuevo estado
     setItemSeleccionado(noticia);
     setModalActivo('asociar-noticia-noticia');
   };
@@ -4310,14 +4320,11 @@ export function DashboardKanbanOperativo({
 
   // ✅ NUEVO: Handler para asociar proceso a proceso (estados post-Recepción)
   const handleAsociarProcesoProceso = (proceso: Proceso) => {
-    // Validar que el proceso no esté en Recepción
-    if (proceso.etapaActual === 'Recepción') {
-      toast.error('No disponible en Recepción', {
-        description: 'La asociación de procesos solo está disponible desde Valoración en adelante'
-      });
-      return;
-    }
+    // Limpiar estado previo antes de abrir el modal
+    setModalActivo(null);
+    setItemSeleccionado(null);
 
+    // Establecer el nuevo estado
     setItemSeleccionado(proceso);
     setModalActivo('asociar-proceso-proceso');
   };
@@ -5774,49 +5781,43 @@ export function DashboardKanbanOperativo({
           )}
 
           {/* ✅ NUEVO: Modal Asociar Noticia a Proceso Existente */}
-          {modalActivo === 'asociar-noticia-proceso' && itemSeleccionado && (
-            <ModalAsociarNoticiaProceso
-              key="modal-asociar-noticia-proceso"
-              isOpen={true}
-              onClose={() => {
-                setModalActivo(null);
-                setItemSeleccionado(null);
-              }}
-              noticia={itemSeleccionado as Noticia}
-              procesosDisponibles={items.filter(i => i.tipo === 'proceso') as Proceso[]}
-              onAsociar={handleConfirmarAsociacion}
-            />
-          )}
+          <ModalAsociarNoticiaProceso
+            key="modal-asociar-noticia-proceso"
+            isOpen={modalActivo === 'asociar-noticia-proceso' && !!itemSeleccionado}
+            onClose={() => {
+              setModalActivo(null);
+              setItemSeleccionado(null);
+            }}
+            noticia={itemSeleccionado?.tipo === 'noticia' ? itemSeleccionado as Noticia : null}
+            procesosDisponibles={items.filter(i => i.tipo === 'proceso') as Proceso[]}
+            onAsociar={handleConfirmarAsociacion}
+          />
 
           {/* ✅ NUEVO: Modal Asociar Noticia a Otra Noticia */}
-          {modalActivo === 'asociar-noticia-noticia' && itemSeleccionado && (
-            <ModalAsociarNoticiaANoticia
-              key="modal-asociar-noticia-noticia"
-              isOpen={true}
-              onClose={() => {
-                setModalActivo(null);
-                setItemSeleccionado(null);
-              }}
-              noticia={itemSeleccionado as Noticia}
-              noticiasDisponibles={(items.filter(i => i.tipo === 'noticia') as Noticia[]).filter(n => n.id !== itemSeleccionado.id && !n.procesoAsociado)}
-              onAsociar={handleConfirmarAsociacionNoticiaANoticia}
-            />
-          )}
+          <ModalAsociarNoticiaANoticia
+            key="modal-asociar-noticia-noticia"
+            isOpen={modalActivo === 'asociar-noticia-noticia' && !!itemSeleccionado}
+            onClose={() => {
+              setModalActivo(null);
+              setItemSeleccionado(null);
+            }}
+            noticia={itemSeleccionado?.tipo === 'noticia' ? itemSeleccionado as Noticia : null}
+            noticiasDisponibles={items.filter(i => i.tipo === 'noticia' && i.id !== itemSeleccionado?.id) as Noticia[]}
+            onAsociar={handleConfirmarAsociacionNoticiaANoticia}
+          />
 
           {/* ✅ NUEVO: Modal Asociar Proceso a Proceso (estados post-Recepción) */}
-          {modalActivo === 'asociar-proceso-proceso' && itemSeleccionado && (
-            <ModalAsociarProcesoAProceso
-              key="modal-asociar-proceso-proceso"
-              isOpen={true}
-              onClose={() => {
-                setModalActivo(null);
-                setItemSeleccionado(null);
-              }}
-              procesoOrigen={itemSeleccionado as Proceso}
-              procesosDisponibles={items.filter(i => i.tipo === 'proceso' && i.id !== itemSeleccionado.id) as Proceso[]}
-              onAsociar={handleConfirmarAsociacionProcesoProceso}
-            />
-          )}
+          <ModalAsociarProcesoAProceso
+            key="modal-asociar-proceso-proceso"
+            isOpen={modalActivo === 'asociar-proceso-proceso' && !!itemSeleccionado}
+            onClose={() => {
+              setModalActivo(null);
+              setItemSeleccionado(null);
+            }}
+            procesoOrigen={itemSeleccionado?.tipo === 'proceso' ? itemSeleccionado as Proceso : null}
+            procesosDisponibles={items.filter(i => i.tipo === 'proceso' && i.id !== itemSeleccionado?.id) as Proceso[]}
+            onAsociar={handleConfirmarAsociacionProcesoProceso}
+          />
 
           {/* ✅ NUEVO: Modal Asignar Profesional en transición Recepción → Valoración */}
           {modalActivo === 'asignar-profesional' && itemSeleccionado && (

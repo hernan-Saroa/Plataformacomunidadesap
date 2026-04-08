@@ -168,7 +168,10 @@ export function ModalAsociarNoticiaProceso({
   // RENDER
   // ════════════════════════════════════════════════════════════════
 
-  if (!noticia) return null;
+  // Validación más robusta: verificar que la noticia tenga los campos requeridos
+  if (!noticia || noticia.tipo !== 'noticia' || !noticia.id || !noticia.numero) {
+    return null;
+  }
 
   const procesoSeleccionadoData = procesoSeleccionado
     ? procesosDisponibles.find(p => p.id === procesoSeleccionado)
@@ -186,7 +189,7 @@ export function ModalAsociarNoticiaProceso({
       onClose={handleClose}
       title="Asociar Noticia a Proceso Existente"
       size="lg"
-      zIndex={200}
+      zIndex={9999999}
       disableBackdropClick={isSubmitting}
       disableEscapeKey={isSubmitting}
       footer={
