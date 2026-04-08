@@ -118,6 +118,15 @@ export function ControlDisciplinarioFull() {
   // Estado para verificar autenticación
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
+  type Section = 'dashboard' | 'aprobacion' | 'expediente' | 'terminos' | 'profesionales' | 'config';
+  const [currentSection, setCurrentSection] = useState<Section>('dashboard');
+  const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
+  const [borradores, setBorradores] = useState<BorradorPendiente[]>(BORRADORES_INICIALES);
+  const [revisionLog, setRevisionLog] = useState<ResultadoRevision[]>([]);
+
+  // ✅ NUEVO: Estado para solicitudes de reasignación
+  const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([]);
+
   // Verificar autenticación al montar el componente
   useEffect(() => {
     const checkAuth = () => {
@@ -132,22 +141,6 @@ export function ControlDisciplinarioFull() {
 
     checkAuth();
   }, []);
-
-  // Mostrar spinner mientras se verifica la autenticación
-  if (isAuthenticated === null) {
-    return <AuthLoadingSpinner />;
-  }
-
-  // Si no está autenticado, no renderizar nada (ya se redirigió)
-  if (!isAuthenticated) {
-    return null;
-  }
-
-  type Section = 'dashboard' | 'aprobacion' | 'expediente' | 'terminos' | 'profesionales' | 'config';
-  const [currentSection, setCurrentSection] = useState<Section>('dashboard');
-  const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
-  const [borradores, setBorradores] = useState<BorradorPendiente[]>(BORRADORES_INICIALES);
-  const [revisionLog, setRevisionLog] = useState<ResultadoRevision[]>([]);
 
   // Cargar autos reales con estado REVISION_JEFE desde el backend
   useEffect(() => {
@@ -191,9 +184,6 @@ export function ControlDisciplinarioFull() {
     };
     cargarAutosEnRevision();
   }, []);
-  
-  // ✅ NUEVO: Estado para solicitudes de reasignación
-  const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([]);
 
   // Cargar solicitudes de reasignación reales desde el backend
   useEffect(() => {
@@ -267,32 +257,6 @@ export function ControlDisciplinarioFull() {
       setCurrentSection(getFirstAllowedSection());
     }
   }, [currentSection]);
-
-  const menuItems: MenuItem[] = [
-    { id: 'dashboard', label: 'Procesos', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5', visible: hasPermissionBySection.dashboard },
-    {
-      id: 'aprobacion',
-      label: 'Revisión y Aprobación',
-      icon: <CheckCircle className="w-5 h-5" />,
-      color: '#10B981',
-      visible: hasPermissionBySection.aprobacion,
-      badge: borradores.filter(b => b.estado === 'pendiente_revision' || b.estado === 'en_revision').length || undefined
-    },
-    { id: 'expediente', label: 'Expediente Electrónico', icon: <Archive className="w-5 h-5" />, color: '#8B5CF6', visible: hasPermissionBySection.expediente },
-    { id: 'terminos', label: 'Términos y Alertas', icon: <Clock className="w-5 h-5" />, color: '#F59E0B', visible: hasPermissionBySection.terminos },
-    { id: 'profesionales', label: 'Profesionales', icon: <Users className="w-5 h-5" />, color: '#003DA5', visible: hasPermissionBySection.profesionales },
-    { id: 'config', label: 'Configuración', icon: <Settings className="w-5 h-5" />, color: '#6B7280', visible: hasPermissionBySection.config }
-  ];
-
-  const getTitleForSection = () => {
-    const item = menuItems.find(m => m.id === currentSection);
-    return item?.label || 'Control Interno Disciplinario';
-  };
-
-  const handleVerProcesosProfesional = (profesional: any) => {
-    setFiltroProfesional(profesional.id);
-    setCurrentSection(hasPermissionBySection.dashboard ? 'dashboard' : getFirstAllowedSection());
-  };
 
   const handleLimpiarFiltroProfesional = () => {
     setFiltroProfesional(null);
@@ -523,6 +487,44 @@ export function ControlDisciplinarioFull() {
       });
     }
   }, []);
+
+  const handleVerProcesosProfesional = (profesional: any) => {
+    setFiltroProfesional(profesional.id);
+    setCurrentSection(hasPermissionBySection.dashboard ? 'dashboard' : getFirstAllowedSection());
+  };
+
+  // Mostrar spinner mientras se verifica la autenticación
+  if (isAuthenticated === null) {
+    return <AuthLoadingSpinner />;
+  }
+
+  // Si no está autenticado, no renderizar nada (ya se redirigió)
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  const menuItems: MenuItem[] = [
+    { id: 'dashboard', label: 'Procesos', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5', visible: hasPermissionBySection.dashboard },
+    {
+      id: 'aprobacion',
+      label: 'Revisión y Aprobación',
+      icon: <CheckCircle className="w-5 h-5" />,
+      color: '#10B981',
+      visible: hasPermissionBySection.aprobacion,
+      badge: borradores.filter(b => b.estado === 'pendiente_revision' || b.estado === 'en_revision').length || undefined
+    },
+    { id: 'expediente', label: 'Expediente Electrónico', icon: <Archive className="w-5 h-5" />, color: '#8B5CF6', visible: hasPermissionBySection.expediente },
+    { id: 'terminos', label: 'Términos y Alertas', icon: <Clock className="w-5 h-5" />, color: '#F59E0B', visible: hasPermissionBySection.terminos },
+    { id: 'profesionales', label: 'Profesionales', icon: <Users className="w-5 h-5" />, color: '#003DA5', visible: hasPermissionBySection.profesionales },
+    { id: 'config', label: 'Configuración', icon: <Settings className="w-5 h-5" />, color: '#6B7280', visible: hasPermissionBySection.config }
+  ];
+
+  const getTitleForSection = () => {
+    const item = menuItems.find(m => m.id === currentSection);
+    return item?.label || 'Control Interno Disciplinario';
+  };
+
+
 
   return (
     <ModuleLayout
