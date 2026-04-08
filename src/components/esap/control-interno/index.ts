@@ -7,7 +7,7 @@
 export { ControlInternoFull } from './ControlInternoFull';
 
 // ⭐ COMPONENTES DE UI
-export { HeaderModulOCIG } from './HeaderModulOCIG';
+export { HeaderModulOCIG } from './HeaderModuloCIG';
 
 // ⭐ MÓDULOS PRINCIPALES
 export { PlanificacionModuleRediseno } from './PlanificacionModuleRediseno';

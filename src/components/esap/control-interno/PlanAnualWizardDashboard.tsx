@@ -1687,10 +1687,10 @@ function Paso2({
                                         <div className="text-left">
                                           <div className="text-xs font-bold text-amber-800">
                                             {actividadData?.puntosControl && actividadData.puntosControl.length > 0
-                                              ? `${actividadData.puntosControl.length} puntos de control · ${actividadData.frecuenciaPuntosControl || 'trimestral'}`
-                                              : '4 puntos de control auto-generados'}
+                                              ? `${actividadData.puntosControl.length} fechas de corte · ${actividadData.frecuenciaPuntosControl || 'trimestral'}`
+                                              : 'Configurar periodicidad de seguimiento'}
                                           </div>
-                                          <div className="text-[10px] text-amber-600">Toca para personalizar fechas y frecuencia</div>
+                                          <div className="text-[10px] text-amber-600">Toca para configurar fechas y periodicidad</div>
                                         </div>
                                       </div>
                                       <Settings className="w-4 h-4 text-amber-500 flex-shrink-0" />
@@ -1918,10 +1918,10 @@ function Paso2({
                                       <div className="text-left">
                                         <div className="text-xs font-bold text-amber-800">
                                           {actividad.puntosControl && actividad.puntosControl.length > 0
-                                            ? `${actividad.puntosControl.length} puntos de control · ${actividad.frecuenciaPuntosControl || 'trimestral'}`
-                                            : '4 puntos de control auto-generados'}
+                                            ? `${actividad.puntosControl.length} fechas de corte · ${actividad.frecuenciaPuntosControl || 'trimestral'}`
+                                            : 'Configurar periodicidad de seguimiento'}
                                         </div>
-                                        <div className="text-[10px] text-amber-600">Toca para personalizar fechas y frecuencia</div>
+                                        <div className="text-[10px] text-amber-600">Toca para configurar fechas y periodicidad</div>
                                       </div>
                                     </div>
                                     <Settings className="w-4 h-4 text-amber-500 flex-shrink-0" />

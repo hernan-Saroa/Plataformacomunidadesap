@@ -30,7 +30,7 @@ import { toast } from 'sonner@2.0.3';
 
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
-import { HeaderModulOCIG } from './HeaderModulOCIG';
+import { HeaderModulOCIG } from './HeaderModuloCIG';
 
 // Catálogo
 import { 
