@@ -71,6 +71,7 @@ interface ArchivoAdjunto {
   tamano: number;
   fechaSubida: string;
   url: string;
+  fullUrl: string;
 }
 
 export interface NoticiaCompleta {
@@ -112,7 +113,6 @@ interface ModalDetallesNoticiaProps {
   onEditar: (noticia: NoticiaCompleta) => void;
   onConvertir: (noticia: NoticiaCompleta) => void;
   onDownload?: (url: string, filename: string) => Promise<void>;
-  onView?: (url: string) => void;
 }
 
 type TabNoticia = 'general' | 'personas' | 'hechos' | 'adjuntos';
@@ -121,8 +121,9 @@ type TabNoticia = 'general' | 'personas' | 'hechos' | 'adjuntos';
 // COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════
 
-export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, onDownload, onView }: ModalDetallesNoticiaProps) {
+export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, onDownload }: ModalDetallesNoticiaProps) {
   const [tabActiva, setTabActiva] = useState<TabNoticia>('general');
+  const [fileToView, setFileToView] = useState<ArchivoAdjunto | null>(null);
   
   // ✅ Validación defensiva: asegurar que noticia existe y tiene la estructura esperada
   const n = noticia || {
@@ -205,20 +206,121 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  return createPortal(
-    <motion.div
-      key="noticia-detalles-wc-overlay"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 flex items-center justify-center"
-      style={{
-        backgroundColor: 'rgba(0,0,0,0.60)',
-        padding: '4vh 4vw',
-        zIndex: 9998
-      }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
+  // Modal para ver archivos
+  const renderFileViewer = () => {
+    if (!fileToView) return null;
+
+    const { nombre, tipo } = fileToView;
+
+    return createPortal(
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 flex items-center justify-center"
+        style={{
+          backgroundColor: 'rgba(0,0,0,0.80)',
+          padding: '2vh 2vw',
+          zIndex: 10000
+        }}
+        onClick={(e) => e.target === e.currentTarget && setFileToView(null)}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          onClick={(e) => e.stopPropagation()}
+          className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+          style={{ width: '90vw', height: '90vh', maxWidth: 1000, maxHeight: '95vh' }}
+        >
+          <div className="px-4 py-3 flex items-center justify-between border-b border-gray-200">
+            <div className="flex items-center gap-2 min-w-0">
+              <FileText className="w-5 h-5 text-gray-600" />
+              <span className="text-sm font-bold text-gray-900 truncate">{nombre}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {onDownload && (
+                <button
+                  onClick={() => {
+                    setFileToView(null);
+                    onDownload(fileToView.url, nombre);
+                  }}
+                  className="px-3 py-1.5 text-xs font-bold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
+                >
+                  Descargar
+                </button>
+              )}
+              <button
+                onClick={() => setFileToView(null)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-hidden p-4">
+            {tipo.includes('pdf') ? (
+              <embed
+                src={fileToView.fullUrl}
+                type="application/pdf"
+                width="100%"
+                height="100%"
+                style={{ border: 'none' }}
+              />
+            ) : tipo.includes('image') ? (
+              <img
+                src={fileToView.fullUrl}
+                alt={nombre}
+                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+              />
+            ) : tipo.includes('video') ? (
+              <video
+                src={fileToView.fullUrl}
+                controls
+                style={{ maxWidth: '100%', maxHeight: '100%' }}
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <FileText className="w-16 h-16 text-gray-300 mb-4" />
+                <p className="text-lg font-bold text-gray-600 mb-2">No se puede previsualizar este tipo de archivo</p>
+                <p className="text-sm text-gray-500 mb-4">Formato no soportado: {tipo}</p>
+                {onDownload && (
+                <button
+                  onClick={() => {
+                    setFileToView(null);
+                    onDownload(fileToView.url, nombre);
+                  }}
+                  className="px-3 py-1.5 text-xs font-bold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
+                >
+                  Descargar
+                </button>
+                )}
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </motion.div>,
+      document.body
+    );
+  };
+
+  return (
+    <>
+      {renderFileViewer()}
+      {createPortal(
+        <motion.div
+          key="noticia-detalles-wc-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 flex items-center justify-center"
+          style={{
+            backgroundColor: 'rgba(0,0,0,0.60)',
+            padding: '4vh 4vw',
+            zIndex: 9998
+          }}
+          onClick={(e) => e.target === e.currentTarget && onClose()}
+        >
       <motion.div
         initial={{ opacity: 0, scale: 0.97, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -313,7 +415,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
             />
           )}
           {tabActiva === 'hechos' && <TabHechos n={n} />}
-          {tabActiva === 'adjuntos' && <TabAdjuntos n={n} formatFileSize={formatFileSize} onDownload={onDownload} onView={onView} />}
+          {tabActiva === 'adjuntos' && <TabAdjuntos n={n} formatFileSize={formatFileSize} onDownload={onDownload} onView={setFileToView} />}
         </div>
 
         {/* ── Footer ── */}
@@ -350,9 +452,11 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
             </button>
           </div>
         </div>
-      </motion.div>
-    </motion.div>,
-    document.body
+        </motion.div>
+      </motion.div>,
+      document.body
+    )}
+    </>
   );
 }
 
@@ -810,7 +914,7 @@ function TabHechos({ n }: { n: NoticiaCompleta }) {
 // TAB: ADJUNTOS
 // ═══════════════════════════════════════════════════════════════
 
-function TabAdjuntos({ n, formatFileSize, onDownload, onView }: { n: NoticiaCompleta; formatFileSize: (b: number) => string; onDownload?: (url: string, filename: string) => Promise<void>; onView?: (url: string) => void }) {
+function TabAdjuntos({ n, formatFileSize, onDownload, onView }: { n: NoticiaCompleta; formatFileSize: (b: number) => string; onDownload?: (url: string, filename: string) => Promise<void>; onView?: (archivo: ArchivoAdjunto) => void }) {
   const adjuntos = n.archivosAdjuntos || [];
 
   const getIconByType = (tipo: string) => {
@@ -859,9 +963,9 @@ function TabAdjuntos({ n, formatFileSize, onDownload, onView }: { n: NoticiaComp
                 </div>
               </div>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                {onView && archivo.tipo.includes('image') && (
+                {onView && (
                   <button
-                    onClick={() => onView(archivo.url)}
+                    onClick={() => setFileToView(archivo)}
                     className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
                     title="Ver"
                   >

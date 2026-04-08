@@ -861,33 +861,33 @@ class DisciplinaryService {
         return `${window.location.origin}/control-disciplinario/api/v1/files/${urlRelativa}`;
     }
 
-    /**
-     * Obtener URL completa para archivos adjuntos
-     * SIMPLIFICADO: Los archivos se guardan en ./uploads/{timestamp}_{nombre_original}
-     * Siempre devuelve una ruta relativa para que downloadFileFromUrl funcione correctamente
-     */
-    getFileUrl(urlRelativa: string): string {
-        if (!urlRelativa) return '';
+  /**
+   * Obtener URL completa para archivos adjuntos
+   * Los archivos se guardan en ./uploads/{timestamp}_{nombre_original}
+   * Siempre devuelve una ruta relativa para que downloadFileFromUrl funcione correctamente
+   */
+  getFileUrl(urlRelativa: string): string {
+    if (!urlRelativa) return '';
 
-        // Si ya es una URL completa, devolverla tal cual (para backward compatibility)
-        if (/^https?:\/\//i.test(urlRelativa)) return urlRelativa;
+    // Si ya es una URL completa, devolverla tal cual (para backward compatibility)
+    if (/^https?:\/\//i.test(urlRelativa)) return urlRelativa;
 
-        // Extraer solo el nombre del archivo (última parte del path)
-        let filename = urlRelativa;
-        if (urlRelativa.includes('/')) {
-            filename = urlRelativa.split('/').pop() || urlRelativa;
-        }
-        // Limpiar prefijo /files/ si existe
-        if (filename.startsWith('/files/')) {
-            filename = filename.substring(7);
-        } else if (filename.startsWith('files/')) {
-            filename = filename.substring(6);
-        }
-
-        // Devolver solo la ruta relativa (sin el host)
-        // Esto permite que downloadFileFromUrl construya la URL correctamente
-        return `/files/${filename}`;
+    // Extraer solo el nombre del archivo (última parte del path)
+    let filename = urlRelativa;
+    if (urlRelativa.includes('/')) {
+      filename = urlRelativa.split('/').pop() || urlRelativa;
     }
+    // Limpiar prefijo /files/ si existe
+    if (filename.startsWith('/files/')) {
+      filename = filename.substring(7);
+    } else if (filename.startsWith('files/')) {
+      filename = filename.substring(6);
+    }
+
+    // Devolver la ruta para servir el archivo estáticamente
+    // El backend debe tener express.static('/files', 'uploads')
+    return `/files/${filename}`;
+  }
 
     // --- AUTOS ---
 

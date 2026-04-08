@@ -903,10 +903,11 @@ export function GestionNoticias() {
           adjuntos: news.adjuntos || [],
           archivosAdjuntos: (news.adjuntos || []).map((path: string) => ({
             nombre: path.split('/').pop() || path,
-            tipo: path.toLowerCase().includes('pdf') ? 'application/pdf' : path.toLowerCase().includes('jpg') || path.toLowerCase().includes('png') ? 'image' : 'application/octet-stream',
+            tipo: path.toLowerCase().includes('pdf') ? 'application/pdf' : path.toLowerCase().includes('jpg') || path.toLowerCase().includes('png') ? 'image' : path.toLowerCase().includes('mp4') || path.toLowerCase().includes('avi') ? 'video' : 'application/octet-stream',
             tamano: 0,
             fechaSubida: new Date().toISOString(),
             url: path,
+            fullUrl: disciplinaryService.getFileUrl(path),
           })),
           estado: getFrontendStatus(rawStatus),
           estadoLabel: getFrontendStatusLabels(rawStatus),
@@ -1876,9 +1877,6 @@ export function GestionNoticias() {
             }}
             onDownload={async (url, filename) => {
               await disciplinaryService.downloadFileFromUrl(disciplinaryService.getFileUrl(url), filename);
-            }}
-            onView={(url) => {
-              window.open(disciplinaryService.getFileUrl(url), '_blank');
             }}
           />
         )}
