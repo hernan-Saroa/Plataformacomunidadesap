@@ -63,7 +63,7 @@ export class ConfiguracionesProfesionalesOCIGService {
    * Obtener configuración por ID de tercero (persona)
    */
   async findByIdTercero(
-    idTercero: number,
+    idTercero: string,
   ): Promise<ConfiguracionProfesionalOCIGResponseDto | null> {
     const config = await this.configRepository.findOne({
       where: { idTercero },
@@ -177,7 +177,7 @@ export class ConfiguracionesProfesionalesOCIGService {
    * Actualizar configuración por ID de tercero
    */
   async updateByIdTercero(
-    idTercero: number,
+    idTercero: string,
     updateDto: UpdateConfiguracionProfesionalOCIGDto,
     userId?: string,
   ): Promise<ConfiguracionProfesionalOCIGResponseDto> {
@@ -216,7 +216,7 @@ export class ConfiguracionesProfesionalesOCIGService {
   /**
    * Eliminar configuración por ID de tercero
    */
-  async removeByIdTercero(idTercero: number, userId?: string): Promise<void> {
+  async removeByIdTercero(idTercero: string, userId?: string): Promise<void> {
     const config = await this.configRepository.findOne({
       where: { idTercero },
     });
@@ -252,7 +252,7 @@ export class ConfiguracionesProfesionalesOCIGService {
   async buscarPersonasCandidatas(busqueda?: string): Promise<
     Array<{
       id: string;
-      idTercero: number;
+      idTercero: string;
       nombre: string;
       email: string;
       identificacion: string;
@@ -260,49 +260,48 @@ export class ConfiguracionesProfesionalesOCIGService {
     }>
   > {
     try {
-      // Obtener IDs de personas que ya están configuradas como profesionales OCIG
+      // Obtener UUIDs de personas que ya están configuradas como profesionales OCIG
       const configurados = await this.configRepository.find({
         select: ['idTercero'],
       });
-      const idsConfigurados = configurados.map((c) => c.idTercero);
+      const idsConfigurados: string[] = configurados.map((c) => c.idTercero);
 
       console.log(
         '[buscarPersonasCandidatas] IDs ya configurados:',
         idsConfigurados,
       );
 
-      // Construir query: solo personas con rol de tipo INTERNO activo
+      // Query: todos los usuarios del sistema, excluyendo los ya configurados.
+      // Usa id_person (UUID) — la PK real de auth.personas.
       let query = `
-        SELECT DISTINCT ON (p.id_tercero)
-          p.id_tercero,
+        SELECT
+          p.id_person,
           p.nom_largo,
           p.dir_email,
           p.num_identificacion,
-          r.code AS rol_code
+          (
+            SELECT r.code FROM auth.user_roles ur
+            INNER JOIN auth.role r ON r.id = ur.id_rol
+            WHERE ur.id_user = u.id_user AND ur.is_active = true
+            ORDER BY r.created_at DESC NULLS LAST
+            LIMIT 1
+          ) AS rol_code
         FROM auth.personas p
-        INNER JOIN auth."user" u ON u.id_tercero = p.id_tercero AND u.is_active = true
-        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user AND ur.is_active = true
-        INNER JOIN auth.role r ON r.id = ur.id_rol AND r.is_active = true
-        WHERE (
-          r.type = 'INTERNO'
-          OR r.code ILIKE '%OCI%'
-          OR r.code ILIKE '%AUDITOR%'
-          OR r.code ILIKE '%CONTROL%'
-          OR r.code ILIKE '%PROFESIONAL%'
-        )
+        INNER JOIN auth."user" u ON u.id_person = p.id_person
+        WHERE p.nom_largo IS NOT NULL
       `;
 
-      const params: (number | string)[] = [];
+      const params: string[] = [];
       let paramIndex = 1;
 
-      // Excluir personas ya configuradas
-      if (idsConfigurados.length > 0) {
-        const placeholders = idsConfigurados
-          .map((_, i) => `$${paramIndex + i}::bigint`)
-          .join(', ');
-        query += ` AND p.id_tercero NOT IN (${placeholders})`;
-        params.push(...idsConfigurados);
-        paramIndex += idsConfigurados.length;
+      // Excluir personas ya configuradas (UUIDs válidos solamente)
+      const uuidsConfigurados = idsConfigurados.filter((id) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id),
+      );
+      if (uuidsConfigurados.length > 0) {
+        query += ` AND p.id_person != ALL($${paramIndex}::uuid[])`;
+        params.push(uuidsConfigurados as any);
+        paramIndex++;
       }
 
       // Filtrar por búsqueda si se proporciona
@@ -312,14 +311,14 @@ export class ConfiguracionesProfesionalesOCIGService {
         paramIndex++;
       }
 
-      // Ordenar y limitar resultados (DISTINCT ON requiere p.id_tercero primero)
-      query += ` ORDER BY p.id_tercero, p.nom_largo ASC LIMIT 50`;
+      // Ordenar por nombre
+      query += ` ORDER BY p.nom_largo ASC LIMIT 500`;
 
       console.log('[buscarPersonasCandidatas] Query:', query);
       console.log('[buscarPersonasCandidatas] Params:', params);
 
       const personas: Array<{
-        id_tercero: string | number;
+        id_person: string;
         nom_largo: string | null;
         dir_email: string | null;
         num_identificacion: string | null;
@@ -331,10 +330,10 @@ export class ConfiguracionesProfesionalesOCIGService {
         personas.length,
       );
 
-      // Mapear resultados
+      // id e idTercero usan id_person (UUID) como identificador
       return personas.map((p) => ({
-        id: String(p.id_tercero),
-        idTercero: Number(p.id_tercero),
+        id: p.id_person,
+        idTercero: p.id_person,
         nombre: p.nom_largo || 'Sin Nombre',
         email: p.dir_email || '',
         identificacion: p.num_identificacion || '',
@@ -361,44 +360,39 @@ export class ConfiguracionesProfesionalesOCIGService {
 
     console.log('[enrichWithPersonaData] idsTerceros:', idsTerceros);
 
-    // Usar IN con placeholders dinámicos y cast a bigint para compatibilidad
-    const placeholders = idsTerceros
-      .map((_, i) => `$${i + 1}::bigint`)
-      .join(', ');
-    const query = `SELECT 
-        id_tercero,
-        nom_largo,
-        dir_email,
-        num_identificacion
-       FROM auth.personas 
-       WHERE id_tercero IN (${placeholders})`;
+    // Separar UUIDs válidos (nuevos) de IDs legacy (viejos enteros guardados como string)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuids = idsTerceros.filter((id) => uuidRegex.test(id));
 
-    console.log('[enrichWithPersonaData] Query:', query);
-    console.log('[enrichWithPersonaData] Params:', idsTerceros);
-
-    const personas: Array<{
-      id_tercero: string | number;
-      nom_largo: string | null;
-      dir_email: string | null;
-      num_identificacion: string | null;
-    }> = await this.configRepository.query(query, idsTerceros);
-
-    console.log('[enrichWithPersonaData] Personas encontradas:', personas);
-
-    // Convertir id_tercero a número porque PostgreSQL bigint viene como string
     const personasMap = new Map<
-      number,
+      string,
       { nombre: string; email: string; identificacion: string }
-    >(
-      personas.map((p) => [
-        Number(p.id_tercero),
-        {
-          nombre: p.nom_largo || 'Usuario Sin Nombre',
-          email: p.dir_email || '',
-          identificacion: p.num_identificacion || '',
-        },
-      ]),
-    );
+    >();
+
+    if (uuids.length > 0) {
+      try {
+        const rows: Array<{
+          id_person: string;
+          nom_largo: string | null;
+          dir_email: string | null;
+          num_identificacion: string | null;
+        }> = await this.configRepository.query(
+          `SELECT id_person, nom_largo, dir_email, num_identificacion
+           FROM auth.personas
+           WHERE id_person = ANY($1::uuid[])`,
+          [uuids],
+        );
+        for (const row of rows) {
+          personasMap.set(row.id_person, {
+            nombre: row.nom_largo || 'Sin Nombre',
+            email: row.dir_email || '',
+            identificacion: row.num_identificacion || '',
+          });
+        }
+      } catch (err) {
+        console.error('[enrichWithPersonaData] Error al consultar personas:', err);
+      }
+    }
 
     return configs.map((config) => {
       const personaData = personasMap.get(config.idTercero) || {

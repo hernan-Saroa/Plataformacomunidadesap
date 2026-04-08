@@ -183,7 +183,7 @@ interface Noticia {
     apoderado?: { nombre: string; cedula: string; correo: string; celular: string };
   }[];
   hechosSeparados?: { id: string; descripcion: string; fecha?: string }[];
-  archivosAdjuntos?: { nombre: string; tipo: string; tamano: number; fechaSubida: string }[];
+  archivosAdjuntos?: { nombre: string; tipo: string; tamano: number; fechaSubida: string; url: string }[];
   radicador?: string;
   fechaRegistro?: string;
 }
@@ -920,7 +920,15 @@ function VistaLista({
         : (item as Proceso).denunciado.nombre?.toLowerCase().includes(searchTerm.toLowerCase())));
 
     const matchEtapa = filtroEtapa === 'todos' ||
-      (item.tipo === 'noticia' && filtroEtapa === 'Recepción') ||
+      (item.tipo === 'noticia' && (
+        // Para noticias, verificar si el filtro corresponde a la primera etapa configurada
+        (etapasConfig && etapasConfig.length > 0
+          ? (() => {
+              const primeraEtapa = etapasConfig.sort((a, b) => (a.orden || 0) - (b.orden || 0))[0];
+              return (primeraEtapa?.etapa || primeraEtapa?.nombre) === filtroEtapa;
+            })()
+          : filtroEtapa === 'Recepción')
+      )) ||
       (item.tipo === 'proceso' && (item as Proceso).etapaActual === filtroEtapa);
 
     return matchSearch && matchEtapa;
@@ -953,18 +961,38 @@ function VistaLista({
           </div>
           <select
             className={`${isMobile ? 'px-3 py-2 text-sm' : 'px-4 py-2.5'} rounded-lg border-2 focus:outline-none font-semibold`}
-            style={{ borderColor: '#E5E7EB', color: '#4B5563' }}
+            style={{ borderColor: '#E5E7EB', color: '#000000', backgroundColor: '#FFFFFF' }}
             value={filtroEtapa}
             onChange={(e) => setFiltroEtapa(e.target.value)}
           >
             <option value="todos">Todas las etapas</option>
-            <option value="Recepción">Recepción (Noticias) - 3 días</option>
-            <option value="Valoración">Valoración - 10 días</option>
-            <option value="Indagación">Indagación - 40 días</option>
-            <option value="Investigación">Investigación - 60 días</option>
-            <option value="Juzgamiento">Juzgamiento - 50 días</option>
-            <option value="Fallo">Fallo - 10 días</option>
-            <option value="Archivo">Archivo - Completado</option>
+            {(() => {
+              if (etapasConfig && etapasConfig.length > 0) {
+                return etapasConfig
+                  .sort((a, b) => (a.orden || 0) - (b.orden || 0))
+                  .map((etapa) => {
+                    const nombreEtapa = etapa.etapa || etapa.nombre || 'Sin nombre';
+                    return (
+                      <option key={etapa.id || `etapa-${Math.random()}`} value={nombreEtapa}>
+                        {nombreEtapa}
+                      </option>
+                    );
+                  });
+              } else {
+                // Fallback options
+                return (
+                  <>
+                    <option value="Recepción">Recepción (Noticias) - 3 días</option>
+                    <option value="Valoración">Valoración - 10 días</option>
+                    <option value="Indagación">Indagación - 40 días</option>
+                    <option value="Investigación">Investigación - 60 días</option>
+                    <option value="Juzgamiento">Juzgamiento - 50 días</option>
+                    <option value="Fallo">Fallo - 10 días</option>
+                    <option value="Archivo">Archivo - Completado</option>
+                  </>
+                );
+              }
+            })()}
           </select>
         </div>
       </Card>
@@ -1574,8 +1602,10 @@ function ColumnaKanban({
 
   // ✅ NUEVO: Obtener la etapa inicial (orden 1) desde la configuración
   const etapaInicial = etapasConfig.length > 0
-    ? etapasConfig
-        .sort((a, b) => (a.orden || 0) - (b.orden || 0))[0]?.etapa || 'RECEPCION'
+    ? (() => {
+        const primeraEtapa = etapasConfig.sort((a, b) => (a.orden || 0) - (b.orden || 0))[0];
+        return primeraEtapa?.etapa || primeraEtapa?.nombre || 'RECEPCION';
+      })()
     : 'RECEPCION';
 
   // Normalizar para comparación (sin tilde, minúsculas)
@@ -2593,6 +2623,9 @@ export function DashboardKanbanOperativo({
   const kanbanTopScrollRef = useRef<HTMLDivElement>(null);
   const kanbanContentWidthRef = useRef<HTMLDivElement>(null);
 
+  // ✅ FILTRO POR TIPO: todos, noticia, proceso
+  const [filtroTipo, setFiltroTipo] = useState<'todos' | 'noticia' | 'proceso'>('todos');
+
   // ✅ Sincronizar scroll horizontal entre barra superior y contenedor Kanban
   useEffect(() => {
     const top = kanbanTopScrollRef.current;
@@ -2892,13 +2925,13 @@ export function DashboardKanbanOperativo({
 
     if (etapaRaw) {
       // Buscar coincidencia en etapas del backend
-      const match = currentStages.find(s => s.etapa === etapaRaw || s.etapa.toUpperCase() === etapaRaw.toUpperCase());
+      const match = currentStages.find(s => s.etapa === etapaRaw || s.nombre === etapaRaw || s.etapa?.toUpperCase() === etapaRaw.toUpperCase() || s.nombre?.toUpperCase() === etapaRaw.toUpperCase());
       if (match) {
-        etapaNormalizada = match.etapa;
+        etapaNormalizada = match.etapa || match.nombre || etapaRaw;
       } else {
         // Fallback a mapeo legacy
         etapaNormalizada = stageLabelMap[etapaRaw] || etapaRaw;
-        // Fallback final: Title Case
+        // Fallback final: Title Case (solo si es uppercase)
         if (etapaNormalizada === etapaNormalizada.toUpperCase() && etapaNormalizada.length > 3) {
           etapaNormalizada = etapaNormalizada.charAt(0).toUpperCase() + etapaNormalizada.slice(1).toLowerCase();
         }
@@ -2907,7 +2940,8 @@ export function DashboardKanbanOperativo({
       // ✅ NUEVO: Si no hay etapa, usar la primera etapa de la configuración (menor orden)
       if (currentStages.length > 0) {
         const etapasOrdenadas = [...currentStages].sort((a, b) => (a.orden || 0) - (b.orden || 0));
-        etapaNormalizada = etapasOrdenadas[0]?.etapa || 'Recepcion';
+        const primeraEtapa = etapasOrdenadas[0];
+        etapaNormalizada = primeraEtapa?.etapa || primeraEtapa?.nombre || 'Recepcion';
       } else {
         etapaNormalizada = 'Recepcion';
       }
@@ -2944,7 +2978,15 @@ export function DashboardKanbanOperativo({
       fechaRemision: (noticia as any).fechaRemision || (noticia as any).fechaRemisionPorCompetencia || undefined,
       fundamentoLegalRemision: (noticia as any).fundamentoLegalRemision || (noticia as any).fundamentoLegal || undefined,
       justificacionRemision: (noticia as any).justificacionRemision || (noticia as any).observacionesRemision || undefined,
-      conductaSeleccionada: (noticia as any).conductas?.[0] || (noticia as any).conductaSeleccionada || ''
+      conductaSeleccionada: (noticia as any).conductas?.[0] || (noticia as any).conductaSeleccionada || '',
+      archivosAdjuntos: ((noticia as any).adjuntos || []).map((path: string) => ({
+        nombre: path.split('/').pop() || path,
+        tipo: path.toLowerCase().includes('pdf') ? 'application/pdf' : path.toLowerCase().includes('jpg') || path.toLowerCase().includes('png') ? 'image' : path.toLowerCase().includes('mp4') || path.toLowerCase().includes('avi') ? 'video' : 'application/octet-stream',
+        tamano: 0,
+        fechaSubida: new Date().toISOString(),
+        url: path,
+        fullUrl: disciplinaryService.getFileUrl(path),
+      }))
     };
   };
 
@@ -2992,9 +3034,9 @@ export function DashboardKanbanOperativo({
       etapa = 'Recepción';
     } else {
       // Normalizar etapa: buscar coincidencia exacta o insensible en las etapas del backend
-      const match = currentStages.find(s => s.etapa === etapa || s.etapa.toUpperCase() === etapa.toUpperCase());
+      const match = currentStages.find(s => s.etapa === etapa || s.nombre === etapa || s.etapa?.toUpperCase() === etapa.toUpperCase() || s.nombre?.toUpperCase() === etapa.toUpperCase());
       if (match) {
-        etapa = match.etapa;
+        etapa = match.etapa || match.nombre || etapa;
       } else {
         // Fallback a mapeo legacy
         etapa = stageLabelMap[etapa] || etapa;
@@ -3367,7 +3409,7 @@ export function DashboardKanbanOperativo({
       console.log('[DashboardKanban] Enviando datos al backend:', JSON.stringify(newsData, null, 2));
 
       // Llamar al backend para crear la noticia
-      const noticiaCreada = await disciplinaryService.radicarNoticia(newsData);
+      const noticiaCreada = await disciplinaryService.radicarNoticia(newsData, data.archivosAdjuntos || []);
       
       console.log('[DashboardKanban] Noticia creada en backend:', noticiaCreada);
 
@@ -4693,7 +4735,12 @@ export function DashboardKanbanOperativo({
       return false; // No mostrar noticias cuando hay filtro de profesional
     })
     : items
-  ).filter(item => itemMatchesSearch(item, normalizedGlobalQuery));
+  ).filter(item => {
+    // Filtro por tipo
+    if (filtroTipo !== 'todos' && item.tipo !== filtroTipo) return false;
+    // Filtro por búsqueda
+    return itemMatchesSearch(item, normalizedGlobalQuery);
+  });
 
   // ✅ También filtrar archivados por búsqueda global
   const itemsArchivadosFiltrados = itemsArchivados.filter(item =>
@@ -4872,8 +4919,28 @@ export function DashboardKanbanOperativo({
               )}
             </div>
 
-            {/* Controles — Design Standard: ViewToggle + CTA */}
+            {/* Controles — Design Standard: Filtro Tipo + ViewToggle + CTA */}
             <div className="flex items-center gap-3 flex-shrink-0">
+              {/* Filtro por tipo */}
+              <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-gray-100">
+                {([
+                  { value: 'todos', label: 'Todos' },
+                  { value: 'noticia', label: 'Noticias' },
+                  { value: 'proceso', label: 'Procesos' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setFiltroTipo(opt.value)}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${filtroTipo === opt.value
+                      ? 'bg-white shadow-sm text-gray-900'
+                      : 'text-gray-500 hover:bg-gray-200'
+                      }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
               <KanbanViewToggle
                 options={[
                   ...(isMobile ? [] : [{ value: 'kanban', icon: <Columns3 style={{ width: 16, height: 16 }} />, label: 'Kanban' }]),
@@ -5945,6 +6012,9 @@ export function DashboardKanbanOperativo({
             onClose={() => setModalActivo(null)}
             onEditar={(noticia) => handleEditarNoticia(noticia as Noticia)}
             onConvertir={(noticia) => handleConvertirNoticia(noticia as Noticia)}
+            onDownload={async (url, filename) => {
+              await disciplinaryService.downloadFileFromUrl(disciplinaryService.getFileUrl(url), filename);
+            }}
           />
         )}
 
@@ -6086,6 +6156,9 @@ export function DashboardKanbanOperativo({
             onClose={() => { setModalActivo(null); setItemSeleccionado(null); }}
             onEditar={(n) => handleEditarNoticia(n as any)}
             onConvertir={(n) => handleConvertirNoticia(n as any)}
+            onDownload={async (url, filename) => {
+              await disciplinaryService.downloadFileFromUrl(disciplinaryService.getFileUrl(url), filename);
+            }}
           />
         )}
 

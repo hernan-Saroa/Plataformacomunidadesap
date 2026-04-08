@@ -28,6 +28,20 @@ import { authService } from '../../../services/api/authService';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { Permissions } from '../../../enums/permissions';
 
+// Componente de carga mientras se verifica autenticación
+function AuthLoadingSpinner() {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="text-center">
+        <div className="w-16 h-16 border-4 rounded-full animate-spin mx-auto mb-4"
+          style={{ borderColor: '#E5E7EB', borderTopColor: '#003DA5' }}
+        />
+        <p className="text-sm font-semibold text-gray-600">Verificando sesión...</p>
+      </div>
+    </div>
+  );
+}
+
 export interface ResultadoRevision {
   borradorId: string;
   procesoId: string;
@@ -100,12 +114,33 @@ export function ControlDisciplinarioFull() {
   console.log('  → README.md');
   console.log('  → VERIFICACION_MODULO.md');
   console.log('  → GUIA_RAPIDA.md');
-  
+
+  // Estado para verificar autenticación
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
   type Section = 'dashboard' | 'aprobacion' | 'expediente' | 'terminos' | 'profesionales' | 'config';
   const [currentSection, setCurrentSection] = useState<Section>('dashboard');
   const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
   const [borradores, setBorradores] = useState<BorradorPendiente[]>(BORRADORES_INICIALES);
   const [revisionLog, setRevisionLog] = useState<ResultadoRevision[]>([]);
+
+  // ✅ NUEVO: Estado para solicitudes de reasignación
+  const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([]);
+
+  // Verificar autenticación al montar el componente
+  useEffect(() => {
+    const checkAuth = () => {
+      const authenticated = authService.isAuthenticated();
+      setIsAuthenticated(authenticated);
+
+      if (!authenticated) {
+        console.warn('Usuario no autenticado en módulo disciplinario - redirigiendo a login');
+        window.location.href = '/login';
+      }
+    };
+
+    checkAuth();
+  }, []);
 
   // Cargar autos reales con estado REVISION_JEFE desde el backend
   useEffect(() => {
@@ -149,62 +184,68 @@ export function ControlDisciplinarioFull() {
     };
     cargarAutosEnRevision();
   }, []);
-  
-  // ✅ NUEVO: Estado para solicitudes de reasignación
-  const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([]);
 
-  // Cargar solicitudes de reasignación reales desde el backend
-  useEffect(() => {
-    const cargarSolicitudesReasignacion = async () => {
+  // Función para cargar solicitudes de reasignación
+  const cargarSolicitudesReasignacion = useCallback(async () => {
+    try {
+      console.log('Cargando solicitudes de reasignación (todas)...');
+      let solicitudes;
       try {
-        console.log('Cargando solicitudes de reasignación (todas)...');
-        let solicitudes;
-        try {
-          solicitudes = await disciplinaryService.getAllReassignmentRequests();
-          console.log('Solicitudes obtenidas (todas):', solicitudes.length);
-        } catch (error) {
-          console.log('Error cargando todas las solicitudes, intentando con pendientes...', error);
-          solicitudes = await disciplinaryService.getPendingReassignmentRequests();
-          console.log('Solicitudes obtenidas (pendientes):', solicitudes.length);
-        }
-
-        const solicitudesMapeadas = solicitudes.map((solicitud: any) => ({
-          id: solicitud.id,
-          procesoNumero: solicitud.process?.radicadoProceso || solicitud.processId,
-          procesoId: solicitud.processId,
-          etapaActual: solicitud.process?.etapaActual || 'Sin etapa',
-          profesionalActual: {
-            nombre: solicitud.currentProfessional?.nombreCompleto || 'Profesional Actual',
-            id: solicitud.currentProfessionalId,
-          },
-          profesionalNuevo: {
-            nombre: solicitud.newProfessional?.nombreCompleto || 'Profesional Nuevo',
-            id: solicitud.newProfessionalId,
-            cargo: solicitud.newProfessional?.cargo || 'Sin cargo',
-            especialidad: solicitud.newProfessional?.especialidad || 'Sin especialidad',
-            cargaActual: solicitud.newProfessional?.procesosAsignados?.toString() || '-',
-          },
-          solicitadoPor: solicitud.requestedBy,
-          fechaSolicitud: solicitud.createdAt,
-          justificacion: solicitud.justification,
-          prioridad: solicitud.priority === 'URGENTE' ? 'urgente' as const : 'normal' as const,
-          denunciado: solicitud.process?.news?.disciplinable?.nombre || 'Sin información',
-          estado: solicitud.status === 'PENDIENTE' ? 'pendiente' as const :
-                 solicitud.status === 'APROBADA' ? 'aprobada' as const :
-                 'rechazada' as const,
-          fechaResolucion: solicitud.resolvedAt,
-          observacionesJefe: solicitud.jefeObservations,
-          motivoRechazo: solicitud.rejectionReason,
-        }));
-        console.log('Solicitudes cargadas exitosamente:', solicitudesMapeadas.length);
-        setSolicitudesReasignacion(solicitudesMapeadas);
+        solicitudes = await disciplinaryService.getAllReassignmentRequests();
+        console.log('Solicitudes obtenidas (todas):', solicitudes.length);
       } catch (error) {
-        console.error('Error cargando solicitudes de reasignación:', error);
-        // Mantener array vacío si hay error
+        console.log('Error cargando todas las solicitudes, intentando con pendientes...', error);
+        solicitudes = await disciplinaryService.getPendingReassignmentRequests();
+        console.log('Solicitudes obtenidas (pendientes):', solicitudes.length);
       }
-    };
-    cargarSolicitudesReasignacion();
+
+      const solicitudesMapeadas = solicitudes.map((solicitud: any) => ({
+        id: solicitud.id,
+        procesoNumero: solicitud.process?.radicadoProceso || solicitud.processId,
+        procesoId: solicitud.processId,
+        etapaActual: solicitud.process?.etapaActual || 'Sin etapa',
+        profesionalActual: {
+          nombre: solicitud.currentProfessional?.nombreCompleto || 'Profesional Actual',
+          id: solicitud.currentProfessionalId,
+        },
+        profesionalNuevo: {
+          nombre: solicitud.newProfessional?.nombreCompleto || 'Profesional Nuevo',
+          id: solicitud.newProfessionalId,
+          cargo: solicitud.newProfessional?.cargo || 'Sin cargo',
+          especialidad: solicitud.newProfessional?.especialidad || 'Sin especialidad',
+          cargaActual: solicitud.newProfessional?.procesosAsignados?.toString() || '-',
+        },
+        solicitadoPor: solicitud.requestedBy,
+        fechaSolicitud: solicitud.createdAt,
+        justificacion: solicitud.justification,
+        prioridad: solicitud.priority === 'URGENTE' ? 'urgente' as const : 'normal' as const,
+        denunciado: solicitud.process?.news?.disciplinable?.nombre || 'Sin información',
+        estado: solicitud.status === 'PENDIENTE' ? 'pendiente' as const :
+               solicitud.status === 'APROBADA' ? 'aprobada' as const :
+               'rechazada' as const,
+        fechaResolucion: solicitud.resolvedAt,
+        observacionesJefe: solicitud.jefeObservations,
+        motivoRechazo: solicitud.rejectionReason,
+      }));
+      console.log('Solicitudes cargadas exitosamente:', solicitudesMapeadas.length);
+      setSolicitudesReasignacion(solicitudesMapeadas);
+    } catch (error) {
+      console.error('Error cargando solicitudes de reasignación:', error);
+      // Mantener array vacío si hay error
+    }
   }, []);
+
+  // Cargar solicitudes de reasignación al montar el componente
+  useEffect(() => {
+    cargarSolicitudesReasignacion();
+  }, [cargarSolicitudesReasignacion]);
+
+  // Recargar solicitudes de reasignación al ingresar a la sección de aprobación
+  useEffect(() => {
+    if (currentSection === 'aprobacion') {
+      cargarSolicitudesReasignacion();
+    }
+  }, [currentSection]);
 
   const hasPermissionBySection: Record<Section, boolean> = {
     dashboard: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_MANAGE),
@@ -225,32 +266,6 @@ export function ControlDisciplinarioFull() {
       setCurrentSection(getFirstAllowedSection());
     }
   }, [currentSection]);
-
-  const menuItems: MenuItem[] = [
-    { id: 'dashboard', label: 'Procesos', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5', visible: hasPermissionBySection.dashboard },
-    {
-      id: 'aprobacion',
-      label: 'Revisión y Aprobación',
-      icon: <CheckCircle className="w-5 h-5" />,
-      color: '#10B981',
-      visible: hasPermissionBySection.aprobacion,
-      badge: borradores.filter(b => b.estado === 'pendiente_revision' || b.estado === 'en_revision').length || undefined
-    },
-    { id: 'expediente', label: 'Expediente Electrónico', icon: <Archive className="w-5 h-5" />, color: '#8B5CF6', visible: hasPermissionBySection.expediente },
-    { id: 'terminos', label: 'Términos y Alertas', icon: <Clock className="w-5 h-5" />, color: '#F59E0B', visible: hasPermissionBySection.terminos },
-    { id: 'profesionales', label: 'Profesionales', icon: <Users className="w-5 h-5" />, color: '#003DA5', visible: hasPermissionBySection.profesionales },
-    { id: 'config', label: 'Configuración', icon: <Settings className="w-5 h-5" />, color: '#6B7280', visible: hasPermissionBySection.config }
-  ];
-
-  const getTitleForSection = () => {
-    const item = menuItems.find(m => m.id === currentSection);
-    return item?.label || 'Control Interno Disciplinario';
-  };
-
-  const handleVerProcesosProfesional = (profesional: any) => {
-    setFiltroProfesional(profesional.id);
-    setCurrentSection(hasPermissionBySection.dashboard ? 'dashboard' : getFirstAllowedSection());
-  };
 
   const handleLimpiarFiltroProfesional = () => {
     setFiltroProfesional(null);
@@ -481,6 +496,44 @@ export function ControlDisciplinarioFull() {
       });
     }
   }, []);
+
+  const handleVerProcesosProfesional = (profesional: any) => {
+    setFiltroProfesional(profesional.id);
+    setCurrentSection(hasPermissionBySection.dashboard ? 'dashboard' : getFirstAllowedSection());
+  };
+
+  // Mostrar spinner mientras se verifica la autenticación
+  if (isAuthenticated === null) {
+    return <AuthLoadingSpinner />;
+  }
+
+  // Si no está autenticado, no renderizar nada (ya se redirigió)
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  const menuItems: MenuItem[] = [
+    { id: 'dashboard', label: 'Procesos', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5', visible: hasPermissionBySection.dashboard },
+    {
+      id: 'aprobacion',
+      label: 'Revisión y Aprobación',
+      icon: <CheckCircle className="w-5 h-5" />,
+      color: '#10B981',
+      visible: hasPermissionBySection.aprobacion,
+      badge: borradores.filter(b => b.estado === 'pendiente_revision' || b.estado === 'en_revision').length || undefined
+    },
+    { id: 'expediente', label: 'Expediente Electrónico', icon: <Archive className="w-5 h-5" />, color: '#8B5CF6', visible: hasPermissionBySection.expediente },
+    { id: 'terminos', label: 'Términos y Alertas', icon: <Clock className="w-5 h-5" />, color: '#F59E0B', visible: hasPermissionBySection.terminos },
+    { id: 'profesionales', label: 'Profesionales', icon: <Users className="w-5 h-5" />, color: '#003DA5', visible: hasPermissionBySection.profesionales },
+    { id: 'config', label: 'Configuración', icon: <Settings className="w-5 h-5" />, color: '#6B7280', visible: hasPermissionBySection.config }
+  ];
+
+  const getTitleForSection = () => {
+    const item = menuItems.find(m => m.id === currentSection);
+    return item?.label || 'Control Interno Disciplinario';
+  };
+
+
 
   return (
     <ModuleLayout
