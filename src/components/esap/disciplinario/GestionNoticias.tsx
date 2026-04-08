@@ -111,6 +111,13 @@ interface NoticiaDisciplinaria {
   hechos?: string;
   dependenciaDenunciado?: string;
   adjuntos?: string[];
+  archivosAdjuntos?: Array<{
+    nombre: string;
+    tipo: string;
+    tamano: number;
+    fechaSubida: string;
+    url: string;
+  }>;
   profesionalAsignado?: string;
   procesoAsociado?: string;
   // Campos de remision por competencia
@@ -894,6 +901,13 @@ export function GestionNoticias() {
             identificacion: d.cedula || d.identificacion || ''
           })),
           adjuntos: news.adjuntos || [],
+          archivosAdjuntos: (news.adjuntos || []).map((path: string) => ({
+            nombre: path.split('/').pop() || path,
+            tipo: path.toLowerCase().includes('pdf') ? 'application/pdf' : path.toLowerCase().includes('jpg') || path.toLowerCase().includes('png') ? 'image' : 'application/octet-stream',
+            tamano: 0,
+            fechaSubida: new Date().toISOString(),
+            url: path,
+          })),
           estado: getFrontendStatus(rawStatus),
           estadoLabel: getFrontendStatusLabels(rawStatus),
           // Campos de remision por competencia
@@ -1859,6 +1873,12 @@ export function GestionNoticias() {
             onClose={() => {
               setShowDetallesModal(false);
               setNoticiaSeleccionada(null);
+            }}
+            onDownload={async (url, filename) => {
+              await disciplinaryService.downloadFileFromUrl(disciplinaryService.getFileUrl(url), filename);
+            }}
+            onView={(url) => {
+              window.open(disciplinaryService.getFileUrl(url), '_blank');
             }}
           />
         )}

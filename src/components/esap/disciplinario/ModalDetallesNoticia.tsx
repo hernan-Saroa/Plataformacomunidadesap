@@ -70,6 +70,7 @@ interface ArchivoAdjunto {
   tipo: string;
   tamano: number;
   fechaSubida: string;
+  url: string;
 }
 
 export interface NoticiaCompleta {
@@ -110,6 +111,8 @@ interface ModalDetallesNoticiaProps {
   onClose: () => void;
   onEditar: (noticia: NoticiaCompleta) => void;
   onConvertir: (noticia: NoticiaCompleta) => void;
+  onDownload?: (url: string, filename: string) => Promise<void>;
+  onView?: (url: string) => void;
 }
 
 type TabNoticia = 'general' | 'personas' | 'hechos' | 'adjuntos';
@@ -118,7 +121,7 @@ type TabNoticia = 'general' | 'personas' | 'hechos' | 'adjuntos';
 // COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════
 
-export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir }: ModalDetallesNoticiaProps) {
+export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, onDownload, onView }: ModalDetallesNoticiaProps) {
   const [tabActiva, setTabActiva] = useState<TabNoticia>('general');
   
   // ✅ Validación defensiva: asegurar que noticia existe y tiene la estructura esperada
@@ -310,7 +313,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir }
             />
           )}
           {tabActiva === 'hechos' && <TabHechos n={n} />}
-          {tabActiva === 'adjuntos' && <TabAdjuntos n={n} formatFileSize={formatFileSize} />}
+          {tabActiva === 'adjuntos' && <TabAdjuntos n={n} formatFileSize={formatFileSize} onDownload={onDownload} onView={onView} />}
         </div>
 
         {/* ── Footer ── */}
@@ -807,7 +810,7 @@ function TabHechos({ n }: { n: NoticiaCompleta }) {
 // TAB: ADJUNTOS
 // ═══════════════════════════════════════════════════════════════
 
-function TabAdjuntos({ n, formatFileSize }: { n: NoticiaCompleta; formatFileSize: (b: number) => string }) {
+function TabAdjuntos({ n, formatFileSize, onDownload, onView }: { n: NoticiaCompleta; formatFileSize: (b: number) => string; onDownload?: (url: string, filename: string) => Promise<void>; onView?: (url: string) => void }) {
   const adjuntos = n.archivosAdjuntos || [];
 
   const getIconByType = (tipo: string) => {
@@ -855,9 +858,26 @@ function TabAdjuntos({ n, formatFileSize }: { n: NoticiaCompleta; formatFileSize
                   </span>
                 </div>
               </div>
-              <button className="p-2 rounded-lg hover:bg-gray-200 transition-colors opacity-0 group-hover:opacity-100">
-                <Download className="w-4 h-4 text-gray-500" />
-              </button>
+              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {onView && archivo.tipo.includes('image') && (
+                  <button
+                    onClick={() => onView(archivo.url)}
+                    className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+                    title="Ver"
+                  >
+                    <Eye className="w-4 h-4 text-gray-500" />
+                  </button>
+                )}
+                {onDownload && (
+                  <button
+                    onClick={() => onDownload(archivo.url, archivo.nombre)}
+                    className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+                    title="Descargar"
+                  >
+                    <Download className="w-4 h-4 text-gray-500" />
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}

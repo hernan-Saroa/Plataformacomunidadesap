@@ -5945,6 +5945,12 @@ export function DashboardKanbanOperativo({
             onClose={() => setModalActivo(null)}
             onEditar={(noticia) => handleEditarNoticia(noticia as Noticia)}
             onConvertir={(noticia) => handleConvertirNoticia(noticia as Noticia)}
+            onDownload={async (url, filename) => {
+              await disciplinaryService.downloadFileFromUrl(disciplinaryService.getFileUrl(url), filename);
+            }}
+            onView={(url) => {
+              window.open(disciplinaryService.getFileUrl(url), '_blank');
+            }}
           />
         )}
 
@@ -6086,6 +6092,12 @@ export function DashboardKanbanOperativo({
             onClose={() => { setModalActivo(null); setItemSeleccionado(null); }}
             onEditar={(n) => handleEditarNoticia(n as any)}
             onConvertir={(n) => handleConvertirNoticia(n as any)}
+            onDownload={async (url, filename) => {
+              await disciplinaryService.downloadFileFromUrl(disciplinaryService.getFileUrl(url), filename);
+            }}
+            onView={(url) => {
+              window.open(disciplinaryService.getFileUrl(url), '_blank');
+            }}
           />
         )}
 
