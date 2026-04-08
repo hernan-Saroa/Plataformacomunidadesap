@@ -1227,7 +1227,18 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   // ═══════════════════════════════════════════════════════════════════════
   // AÑO ACTIVO (puede cambiar al seleccionar otro plan)
   // ═══════════════════════════════════════════════════════════════════════
-  const [añoActual, setAñoActual] = useState(new Date().getFullYear());
+  const [añoActual, setAñoActual] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem('esap:plan_anual_activo');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.vigencia && typeof parsed.vigencia === 'number') {
+          return parsed.vigencia;
+        }
+      }
+    } catch {}
+    return new Date().getFullYear();
+  });
   
   // ═══════════════════════════════════════════════════════════════════════
   // CARGA DESDE BACKEND - Plan Anual y Auditores
