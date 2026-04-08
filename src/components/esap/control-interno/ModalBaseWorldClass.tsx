@@ -3,7 +3,7 @@
  * MODAL BASE WORLD CLASS - ESAP
  * ============================================
  * 
- * Componente base para TODOS los modales del sistema OCIG.
+ * Componente base para TODOS los modales del sistema OCI.
  * Garantiza posicionamiento consistente: CENTRADO VERTICAL Y HORIZONTAL.
  * 
  * POSICIONAMIENTO DEFINITIVO:

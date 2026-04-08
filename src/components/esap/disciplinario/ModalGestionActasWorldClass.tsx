@@ -325,6 +325,7 @@ export function ModalGestionActasWorldClass({
           title="Visor de Acta"
           subtitle={visorDocumento.documento.nomenclatura}
           size="xl"
+          zIndex={10000}
           footer={
             <ModalButtonGroup>
               <ModalButtonCancel onClick={() => setVisorDocumento({ show: false, documento: null })}>

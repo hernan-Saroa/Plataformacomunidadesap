@@ -21,7 +21,7 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import {
   Layers, Search, AlertTriangle, CheckCircle2, AlertCircle,
-  Plus, Edit2, Trash2, X, ChevronDown, ChevronUp, FileText, Eye, Target, Info
+  Plus, Edit2, Trash2, X, ChevronDown, ChevronUp, FileText, Eye, Target, Info, RefreshCw
 } from 'lucide-react';
 import { ResponsiveTable, MobileCard, MobileCardRow, type Column } from '../../ui/responsive-table';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -93,6 +93,8 @@ interface TabUniversoAuditableResponsiveProps {
   onEliminarProceso: (id: string) => void;
   // ✅ Nueva prop para guardar evaluaciones DAFP directamente al backend
   onGuardarEvaluacion?: (id: string, datos: any) => Promise<boolean>;
+  // ✅ Nueva prop para recargar datos
+  onRefresh?: () => void;
   // ✅ PERMISOS - Control de visibilidad de acciones
   puedeCrear?: boolean;
   puedeEditar?: boolean;
@@ -130,6 +132,7 @@ export function TabUniversoAuditableResponsive({
   onEditarProceso,
   onEliminarProceso,
   onGuardarEvaluacion,
+  onRefresh,
   puedeCrear = true,
   puedeEditar = true,
   puedeEliminar = true
@@ -137,6 +140,21 @@ export function TabUniversoAuditableResponsive({
   
   const { isMobile, isTablet } = useResponsive();
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(!isMobile);
+  const [refreshing, setRefreshing] = useState(false);
+  
+  // Handler para refresh manual
+  const handleRefresh = async () => {
+    if (!refreshing) {
+      setRefreshing(true);
+      try {
+        if (onRefresh) {
+          await onRefresh();
+        }
+      } finally {
+        setTimeout(() => setRefreshing(false), 500);
+      }
+    }
+  };
   
   // Estado para evaluación DAFP
   const [modalDafpAbierto, setModalDafpAbierto] = useState(false);
@@ -240,19 +258,36 @@ export function TabUniversoAuditableResponsive({
       const ponderacionCalculada = calcularPonderacionRiesgo(extremos, altos, moderados, bajos, total);
       
       return {
+        // Riesgos inherentes
         riesgosExtremos: extremos,
         riesgosAltos: altos,
         riesgosModerados: moderados,
         riesgosBajos: bajos,
         totalRiesgos: total,
+        // Requerimientos especiales
         requerimientoComite: proceso._evaluacionRiesgo.requerimientoComite ?? false,
         requerimientoEntesReg: proceso._evaluacionRiesgo.requerimientoEntesReg ?? false,
+        // Auditoría anterior
         fechaUltimaAuditoria: proceso._evaluacionRiesgo.fechaUltimaAuditoria || proceso.ultimaAuditoria || '',
         resultadoUltimaAuditoria: proceso._evaluacionRiesgo.resultadoUltimaAuditoria || proceso.resultadoUltimaAuditoria || 'SIN_AUDITORIA',
-        ponderacionRiesgo: ponderacionCalculada, // Recalculado desde los datos guardados
-        decisionFinal: '', // No se guarda en backend
-        motivoDecision: '',
-        prioridadRegla: 0,
+        // Score legacy
+        ponderacionRiesgo: ponderacionCalculada,
+        criticidad: proceso._evaluacionRiesgo.criticidad ?? 0,
+        exposicion: proceso._evaluacionRiesgo.exposicion ?? 0,
+        mitigantes: proceso._evaluacionRiesgo.mitigantes ?? 0,
+        scoreRiesgo: proceso._evaluacionRiesgo.scoreRiesgo ?? 0,
+        // Criterios DAFP (migración 179)
+        tiempoUltimaAuditoria: proceso._evaluacionRiesgo.tiempoUltimaAuditoria ?? 0,
+        temasAltaDireccion: proceso._evaluacionRiesgo.temasAltaDireccion ?? 0,
+        objetivosEstrategicos: proceso._evaluacionRiesgo.objetivosEstrategicos ?? 0,
+        hallazgosAnteriores: proceso._evaluacionRiesgo.hallazgosAnteriores ?? 0,
+        ponderacionFinalDafp: proceso._evaluacionRiesgo.ponderacionFinalDafp ?? 0,
+        nivelCriticidadDafp: proceso._evaluacionRiesgo.nivelCriticidadDafp ?? '',
+        cicloRotacionDafp: proceso._evaluacionRiesgo.cicloRotacionDafp ?? '',
+        // Decisión
+        decisionFinal: proceso._evaluacionRiesgo.decisionFinal ?? '',
+        motivoDecision: proceso._evaluacionRiesgo.motivoDecision ?? '',
+        prioridadRegla: proceso._evaluacionRiesgo.prioridadRegla ?? 0,
       };
     })() : undefined;
     
@@ -330,6 +365,7 @@ export function TabUniversoAuditableResponsive({
       align: 'center',
       width: '120px',
       render: (_, proceso) => {
+        console.log('[Tabla] Renderizando proceso:', proceso.nombre, 'nivelRiesgo:', proceso.nivelRiesgo, 'scoreRiesgo:', proceso.scoreRiesgo, 'frecuencia:', proceso.frecuenciaSugerida, 'evaluacionRiesgo:', proceso._evaluacionRiesgo);
         const color = getColorRiesgo(proceso.nivelRiesgo);
         return (
           <span
@@ -369,6 +405,73 @@ export function TabUniversoAuditableResponsive({
       align: 'center',
       width: '120px',
       render: (value) => <span className="text-sm text-gray-700">{value}</span>
+    },
+    // Columnas DAFP
+    {
+      key: 'tiempo',
+      label: 'Tiempo',
+      align: 'center',
+      width: '80px',
+      render: (_, proceso) => (
+        <span className="text-xs font-medium text-gray-700">
+          {proceso._evaluacionRiesgo?.tiempoUltimaAuditoria || '-'}
+        </span>
+      )
+    },
+    {
+      key: 'ad',
+      label: 'Alta Dir.',
+      align: 'center',
+      width: '80px',
+      render: (_, proceso) => (
+        <span className="text-xs font-medium text-gray-700">
+          {proceso._evaluacionRiesgo?.temasAltaDireccion || '-'}
+        </span>
+      )
+    },
+    {
+      key: 'obj',
+      label: 'Obj.',
+      align: 'center',
+      width: '70px',
+      render: (_, proceso) => (
+        <span className="text-xs font-medium text-gray-700">
+          {proceso._evaluacionRiesgo?.objetivosEstrategicos || '-'}
+        </span>
+      )
+    },
+    {
+      key: 'hall',
+      label: 'Hall.',
+      align: 'center',
+      width: '70px',
+      render: (_, proceso) => (
+        <span className="text-xs font-medium text-gray-700">
+          {proceso._evaluacionRiesgo?.hallazgosAnteriores || '-'}
+        </span>
+      )
+    },
+    {
+      key: 'ponderacion',
+      label: 'Pond.',
+      align: 'center',
+      width: '80px',
+      render: (_, proceso) => (
+        <span className="text-sm font-bold text-blue-600">
+          {proceso._evaluacionRiesgo?.ponderacionFinalDafp ? Number(proceso._evaluacionRiesgo.ponderacionFinalDafp).toFixed(2) : '-'}
+        </span>
+      )
+    },
+    {
+      key: 'ciclo',
+      label: 'Ciclo',
+      align: 'center',
+      width: '100px',
+      render: (_, proceso) => (
+        <span className="text-xs text-gray-600">
+          {proceso._evaluacionRiesgo?.cicloRotacionDafp || '-'}
+        </span>
+      )
     },
     {
       key: 'horasEstimadas',
@@ -751,6 +854,18 @@ export function TabUniversoAuditableResponsive({
               <p className="text-sm text-gray-600 mt-1">
                 Procesos del universo auditable institucional según el MECI
               </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {onRefresh && (
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 flex items-center gap-2 transition-all disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  <span className="hidden md:inline">Actualizar</span>
+                </button>
+              )}
             </div>
             {puedeCrear && (
             <button

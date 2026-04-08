@@ -35,7 +35,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
-import { HeaderModuloCIG } from './HeaderModuloCIG';
+import { HeaderModulOCIG } from './HeaderModuloCIG';
 import { ModalDetallePlanMejoramiento } from './ModalDetallePlanMejoramiento';
 
 // Integración
@@ -660,7 +660,7 @@ export function PlanesMejoramientoModuleRediseno() {
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="min-h-screen bg-gray-50">
-        <HeaderModuloCIG
+        <HeaderModulOCIG
           titulo="Planes de Mejoramiento"
           subtitulo="Control Interno de Gestión"
         />
@@ -674,6 +674,7 @@ export function PlanesMejoramientoModuleRediseno() {
           onCompletarPlan={handleCompletarPlan}
           planIdParaAbrir={planIdParaAbrir}
           onPlanAbiertoParaVer={limpiarVerPlan}
+          fetchPlanes={fetchPlanes}
         />
 
         {/* Modal Crear Plan desde Auditoría */}
@@ -712,9 +713,11 @@ interface SeguimientoViewProps {
   onCompletarPlan?: (plan: PlanMejoramiento) => void;
   planIdParaAbrir?: string | null;
   onPlanAbiertoParaVer?: () => void;
+  /** Recarga planes desde API (Kanban/lista tras cerrar modal o actualizar acciones) */
+  fetchPlanes?: () => void | Promise<void>;
 }
 
-function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDisponibles, onCompletarPlan, planIdParaAbrir, onPlanAbiertoParaVer }: SeguimientoViewProps) {
+function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDisponibles, onCompletarPlan, planIdParaAbrir, onPlanAbiertoParaVer, fetchPlanes }: SeguimientoViewProps) {
   const [vistaTablero, setVistaTablero] = useState<'kanban' | 'lista'>('lista');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoPlan | 'TODOS'>('TODOS');
@@ -947,7 +950,11 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
       {planSeleccionado && (
         <ModalDetallePlanMejoramiento
           planId={planSeleccionado.id}
-          onClose={() => setPlanSeleccionado(null)}
+          onClose={() => {
+            setPlanSeleccionado(null);
+            void fetchPlanes?.();
+          }}
+          onPlanActualizado={() => void fetchPlanes?.()}
         />
       )}
     </div>
@@ -1348,7 +1355,21 @@ interface TarjetaKanbanProps {
   onAbrirPlan: (plan: PlanMejoramiento) => void;
 }
 
+function safePct(n: number | undefined): number {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.min(100, Math.max(0, x));
+}
+
+function safeDias(n: number | undefined): number {
+  const x = Number(n);
+  return Number.isFinite(x) ? x : 0;
+}
+
 function TarjetaKanban({ plan, onAbrirPlan }: TarjetaKanbanProps) {
+  const pct = safePct(plan.porcentajeAvance);
+  const dias = safeDias(plan.diasRestantes);
+
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'PLAN',
     item: { planId: plan.id, plan },
@@ -1403,17 +1424,17 @@ function TarjetaKanban({ plan, onAbrirPlan }: TarjetaKanbanProps) {
         <div className="space-y-2 mb-3">
           <div className="flex items-center justify-between text-xs">
             <span className="text-gray-600">Progreso</span>
-            <span className="font-semibold text-gray-900">{plan.porcentajeAvance}%</span>
+            <span className="font-semibold text-gray-900">{pct}%</span>
           </div>
           <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
             <div 
               className={`h-full rounded-full transition-all ${
-                plan.porcentajeAvance === 100 ? 'bg-emerald-500' :
-                plan.porcentajeAvance >= 70 ? 'bg-blue-500' :
-                plan.porcentajeAvance >= 40 ? 'bg-orange-500' :
+                pct === 100 ? 'bg-emerald-500' :
+                pct >= 70 ? 'bg-blue-500' :
+                pct >= 40 ? 'bg-orange-500' :
                 'bg-red-500'
               }`}
-              style={{ width: `${plan.porcentajeAvance}%` }}
+              style={{ width: `${pct}%` }}
             />
           </div>
         </div>
@@ -1435,8 +1456,8 @@ function TarjetaKanban({ plan, onAbrirPlan }: TarjetaKanbanProps) {
             </div>
             <div className="flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-              <span className={plan.diasRestantes < 0 ? 'text-red-600 font-semibold' : ''}>
-                {plan.diasRestantes < 0 ? `${Math.abs(plan.diasRestantes)}d vencido` : `${plan.diasRestantes}d`}
+              <span className={dias < 0 ? 'text-red-600 font-semibold' : ''}>
+                {dias < 0 ? `${Math.abs(dias)}d vencido` : `${dias}d`}
               </span>
             </div>
           </div>
@@ -1502,7 +1523,10 @@ function VistaLista({ planes, onAbrirPlan, onCompletarPlan }: VistaListaProps) {
 
   return (
     <div className="space-y-4">
-      {planes.map((plan) => (
+      {planes.map((plan) => {
+        const pctLista = safePct(plan.porcentajeAvance);
+        const diasLista = safeDias(plan.diasRestantes);
+        return (
         <motion.div
           key={plan.id}
           initial={{ opacity: 0, y: 20 }}
@@ -1562,9 +1586,9 @@ function VistaLista({ planes, onAbrirPlan, onCompletarPlan }: VistaListaProps) {
                       </span>
                       <span className="flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5" />
-                        {plan.diasRestantes < 0 
-                          ? <span className="text-red-600 font-semibold">{Math.abs(plan.diasRestantes)}d vencido</span>
-                          : `${plan.diasRestantes}d restantes`
+                        {diasLista < 0 
+                          ? <span className="text-red-600 font-semibold">{Math.abs(diasLista)}d vencido</span>
+                          : `${diasLista}d restantes`
                         }
                       </span>
                     </div>
@@ -1578,18 +1602,18 @@ function VistaLista({ planes, onAbrirPlan, onCompletarPlan }: VistaListaProps) {
                         <circle
                           cx="40" cy="40" r="32"
                           stroke={
-                            plan.porcentajeAvance === 100 ? '#10b981' :
-                            plan.porcentajeAvance >= 70 ? '#3b82f6' :
-                            plan.porcentajeAvance >= 40 ? '#f59e0b' : '#ef4444'
+                            pctLista === 100 ? '#10b981' :
+                            pctLista >= 70 ? '#3b82f6' :
+                            pctLista >= 40 ? '#f59e0b' : '#ef4444'
                           }
                           strokeWidth="6" fill="none"
                           strokeDasharray={`${2 * Math.PI * 32}`}
-                          strokeDashoffset={`${2 * Math.PI * 32 * (1 - plan.porcentajeAvance / 100)}`}
+                          strokeDashoffset={`${2 * Math.PI * 32 * (1 - pctLista / 100)}`}
                           strokeLinecap="round"
                         />
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-base font-semibold text-gray-900">{plan.porcentajeAvance}%</span>
+                        <span className="text-base font-semibold text-gray-900">{pctLista}%</span>
                       </div>
                     </div>
                   </div>
@@ -1639,16 +1663,16 @@ function VistaLista({ planes, onAbrirPlan, onCompletarPlan }: VistaListaProps) {
                 <div className="mb-4">
                   <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
                     <span>Progreso de Ejecución</span>
-                    <span>{plan.porcentajeAvance}%</span>
+                    <span>{pctLista}%</span>
                   </div>
                   <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                     <div 
                       className={`h-full rounded-full ${
-                        plan.porcentajeAvance === 100 ? 'bg-emerald-500' :
-                        plan.porcentajeAvance >= 70 ? 'bg-blue-500' :
-                        plan.porcentajeAvance >= 40 ? 'bg-orange-500' : 'bg-red-500'
+                        pctLista === 100 ? 'bg-emerald-500' :
+                        pctLista >= 70 ? 'bg-blue-500' :
+                        pctLista >= 40 ? 'bg-orange-500' : 'bg-red-500'
                       }`}
-                      style={{ width: `${plan.porcentajeAvance}%` }}
+                      style={{ width: `${pctLista}%` }}
                     />
                   </div>
                 </div>
@@ -1690,7 +1714,8 @@ function VistaLista({ planes, onAbrirPlan, onCompletarPlan }: VistaListaProps) {
             </div>
           </div>
         </motion.div>
-      ))}
+        );
+      })}
     </div>
   );
 }

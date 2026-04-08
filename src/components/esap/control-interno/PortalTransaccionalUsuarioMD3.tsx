@@ -198,7 +198,7 @@ const ESTADISTICAS: EstadisticaCard[] = [
 const SERVICIOS_MOCK: ServicioPortal[] = [
   {
     id: '1',
-    codigo: 'OCIG-001',
+    codigo: 'OCI-001',
     titulo: 'Control Interno de Gestión',
     descripcion: 'Gestiona investigaciones, auditorías y seguimiento de procesos disciplinarios',
     categoria: 'Control Interno',

@@ -88,5 +88,55 @@ export class CreateActividadDto {
   @IsOptional()
   @IsString()
   auditorId?: string;
+
+  // ═══════════════════════════════════════════════════════════════
+  // ENTRADAS DE SEGUIMIENTO
+  // ═══════════════════════════════════════════════════════════════
+
+  @IsOptional()
+  entradas_seguimiento?: Array<{
+    id: string;
+    puntoControlId: string;
+    fechaRegistro: string;
+    registradoPor: string;
+    usuarioId?: string;
+    texto?: string;
+    archivos?: Array<{
+      nombre: string;
+      url: string;
+      tipo: string;
+      tamanio: number;
+    }>;
+    tipo: 'seguimiento' | 'hallazgo' | 'cierre';
+  }>;
+
+  // ═══════════════════════════════════════════════════════════════
+  // PUNTOS DE CONTROL Y FRECUENCIA
+  // ═══════════════════════════════════════════════════════════════
+
+  @IsOptional()
+  puntos_control?: Array<{
+    id: string;
+    orden: number;
+    nombre: string;
+    descripcion?: string;
+    fechaProgramada: string;
+    fechaReal: string | null;
+    responsable: string;
+    estado: 'pendiente' | 'en-progreso' | 'completado' | 'omitido';
+    observaciones?: string;
+    evidencias?: any[];
+  }>;
+
+  @IsOptional()
+  @IsString()
+  frecuencia_puntos_control?: string;
+
+  @IsOptional()
+  responsables?: Array<{ id: string; nombre: string; cargo: string; email: string }>;
+
+  @IsOptional()
+  @IsString()
+  fecha_corte?: string;
 }
 

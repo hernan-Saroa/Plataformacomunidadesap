@@ -208,8 +208,12 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir }
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[200] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{
+        backgroundColor: 'rgba(0,0,0,0.60)',
+        padding: '4vh 4vw',
+        zIndex: 9998
+      }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div

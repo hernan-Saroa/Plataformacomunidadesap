@@ -9,19 +9,27 @@ import {
   Request,
   Ip,
   Req,
+  Res,
 } from '@nestjs/common';
 import { CompartirExpedienteService } from '../services/compartir-expediente.service';
 import { CrearCompartidoDto, AccederCompartidoDto } from '../dtos/compartir-expediente.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Public } from '../auth/public.decorator';
-import type { Request as ExpressRequest } from 'express';
+import { EstadoCompartido } from '../entities/expediente-compartido.entity';
+import type { Request as ExpressRequest, Response } from 'express';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { ProcessService } from '../services/process.service';
+import { StorageService } from '../services/storage.service';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Controller('compartir-expediente')
 export class CompartirExpedienteController {
   constructor(
     private readonly compartirService: CompartirExpedienteService,
+    private readonly processService: ProcessService,
+    private readonly storageService: StorageService,
     private httpService: HttpService,
   ) {}
 
@@ -202,5 +210,91 @@ export class CompartirExpedienteController {
   ) {
     const frontendBaseUrl = this.getFrontendBaseUrl(req);
     return this.compartirService.obtenerExpedientePublico(token, frontendBaseUrl);
+  }
+
+  /**
+   * Descargar documento público de expediente compartido (sin autenticación)
+   * Verifica que el token de compartido sea válido y permite descarga si está habilitada
+   */
+  @Public()
+  @Get('documento/:token/:documentId/download')
+  async descargarDocumentoPublico(
+    @Param('token') token: string,
+    @Param('documentId') documentId: string,
+    @Query('view') view: string,
+    @Res() res: Response,
+  ) {
+    try {
+      // Verificar que el token de compartido sea válido
+      const compartido = await this.compartirService.obtenerPorToken(token);
+
+      if (!compartido) {
+        return res.status(404).json({ error: 'Enlace no encontrado' });
+      }
+
+      if (compartido.estado !== EstadoCompartido.ACTIVO) {
+        return res.status(403).json({ error: 'Este enlace ya no está activo' });
+      }
+
+      if (compartido.fechaExpiracion && new Date() > compartido.fechaExpiracion) {
+        return res.status(403).json({ error: 'Este enlace ha expirado' });
+      }
+
+      // Verificar si permite descarga
+      if (!compartido.permiteDescarga) {
+        return res.status(403).json({ error: 'La descarga no está permitida para este enlace' });
+      }
+
+      // Verificar que el documento pertenezca al proceso compartido
+      const documentos = await this.processService.getEvidenceByProcessId(compartido.procesoId);
+      const documento = documentos.find(d => d.id === documentId);
+
+      if (!documento) {
+        return res.status(404).json({ error: 'Documento no encontrado' });
+      }
+
+      // Si es una URL externa, redirigir
+      const isUrlExterna = documento.url && (documento.url.startsWith('http://') || documento.url.startsWith('https://'));
+      if (isUrlExterna) {
+        return res.redirect(documento.url);
+      }
+
+      // Obtener ruta completa del archivo
+      const rutaCompleta = this.storageService.getFullPath(documento.url);
+
+      // Verificar que el archivo existe
+      if (!fs.existsSync(rutaCompleta)) {
+        return res.status(404).json({ error: 'Archivo no encontrado en el servidor' });
+      }
+
+      // Obtener nombre del archivo
+      const nombreArchivo = documento.filename || documento.nombreDocumento || 'documento';
+
+      // Configurar headers según si es vista o descarga
+      if (view === 'true') {
+        // Vista inline
+        const mimeType = documento.fileType || 'application/octet-stream';
+        const encodedFilename = encodeURIComponent(nombreArchivo);
+        const filenameStar = `filename*=UTF-8''${encodedFilename}`;
+
+        res.setHeader('Content-Type', `${mimeType}; charset=utf-8`);
+        res.setHeader('Content-Disposition', `inline; filename="${nombreArchivo}"; ${filenameStar}`);
+      } else {
+        // Descarga
+        const encodedFilename = encodeURIComponent(nombreArchivo);
+        const filenameStar = `filename*=UTF-8''${encodedFilename}`;
+
+        res.setHeader('Content-Type', 'application/octet-stream; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"; ${filenameStar}`);
+      }
+
+      // Enviar archivo
+      const fileStream = fs.createReadStream(rutaCompleta);
+      fileStream.pipe(res);
+
+    } catch (error) {
+      console.error('Error al descargar documento público:', error);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
   }
 }

@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useResponsive } from './hooks/useResponsive';
 import { Send, AlertTriangle, FileText, Building2, Info, ExternalLink, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -72,6 +73,9 @@ export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClos
   const [enviando, setEnviando] = useState(false);
   const [tiposRemision, setTiposRemision] = useState<TipoRemision[]>([]);
   const [loadingTipos, setLoadingTipos] = useState(true);
+
+  // Hook responsive
+  const { isMobile } = useResponsive();
 
   // Cargar tipos de remisión desde el backend
   useEffect(() => {

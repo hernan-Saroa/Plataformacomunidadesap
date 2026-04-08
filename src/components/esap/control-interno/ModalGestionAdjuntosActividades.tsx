@@ -36,9 +36,21 @@ interface ConfiguracionEvidencias {
   longitudMinimaObservacion?: number;
 }
 
+// Observación individual (entrada del feed)
+interface ObsLocal {
+  id: string;
+  texto: string;
+  fechaRegistro: string;
+  autor: string;
+}
+
 // Flexibilidad para aceptar diferentes tipos de observaciones
 interface ObservacionCumplimientoObj {
   texto?: string;
+  fechaRegistro?: string;
+  autor?: string;
+  registradoPor?: string;
+  id?: string;
   [key: string]: any;
 }
 
@@ -46,9 +58,7 @@ interface Actividad {
   id: number | string;
   nombre: string;
   adjuntos?: ArchivoAdjunto[];
-  // Acepta string o array de objetos con texto
   observacionesCumplimiento?: string | ObservacionCumplimientoObj[];
-  // Campo del backend (singular)
   observaciones?: string;
   configuracionEvidencias?: ConfiguracionEvidencias;
 }
@@ -57,36 +67,55 @@ interface ModalGestionAdjuntosProps {
   actividad: Actividad;
   onCerrar: () => void;
   onActualizar: (adjuntos: ArchivoAdjunto[], observaciones: string) => void;
+  /** Cuando se abre desde un corte: basta con al menos 1 observación nueva O 1 adjunto */
+  modoEntradaCorte?: boolean;
 }
 
-export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: ModalGestionAdjuntosProps) {
+export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEntradaCorte = false }: ModalGestionAdjuntosProps) {
   const [adjuntos, setAdjuntos] = useState<ArchivoAdjunto[]>(actividad.adjuntos || []);
-  
-  // ✅ CORRECCIÓN: Extraer observaciones existentes del backend o frontend
-  const obtenerObservacionesIniciales = (): string => {
-    // 1. Intentar desde campo del backend (singular)
+
+  // Parsear observaciones existentes en formato feed
+  const obtenerObsIniciales = (): ObsLocal[] => {
+    const hoy = new Date().toISOString().split('T')[0];
+
+    // 1. Campo del backend (observaciones como string — puede ser JSON)
     if (actividad.observaciones && typeof actividad.observaciones === 'string') {
-      return actividad.observaciones;
+      try {
+        const parsed = JSON.parse(actividad.observaciones);
+        if (Array.isArray(parsed)) return parsed as ObsLocal[];
+      } catch {}
+      // Es texto plano → convertir en una sola entrada
+      return [{ id: 'init-1', texto: actividad.observaciones.trim(), fechaRegistro: hoy, autor: 'Registro previo' }];
     }
-    
-    // 2. Intentar desde campo del frontend (puede ser string o array)
+
+    // 2. observacionesCumplimiento del frontend
     if (actividad.observacionesCumplimiento) {
       if (typeof actividad.observacionesCumplimiento === 'string') {
-        return actividad.observacionesCumplimiento;
+        try {
+          const parsed = JSON.parse(actividad.observacionesCumplimiento);
+          if (Array.isArray(parsed)) return parsed as ObsLocal[];
+        } catch {}
+        return actividad.observacionesCumplimiento.trim()
+          ? [{ id: 'init-2', texto: actividad.observacionesCumplimiento.trim(), fechaRegistro: hoy, autor: 'Registro previo' }]
+          : [];
       }
-      // Si es array, extraer el texto de los objetos
       if (Array.isArray(actividad.observacionesCumplimiento)) {
-        return actividad.observacionesCumplimiento
-          .map(obs => obs.texto || '')
-          .filter(texto => texto.trim().length > 0)
-          .join('\n');
+        return (actividad.observacionesCumplimiento as ObservacionCumplimientoObj[])
+          .filter(o => (o.texto || '').trim().length > 0)
+          .map((o, i) => ({
+            id: o.id || `init-${i}`,
+            texto: (o.texto || '').trim(),
+            fechaRegistro: o.fechaRegistro || hoy,
+            autor: o.registradoPor || o.autor || 'Usuario',
+          }));
       }
     }
-    
-    return '';
+
+    return [];
   };
-  
-  const [observaciones, setObservaciones] = useState<string>(obtenerObservacionesIniciales());
+
+  const [obsList, setObsList] = useState<ObsLocal[]>(obtenerObsIniciales());
+  const [nuevaObsTexto, setNuevaObsTexto] = useState('');
   const [cargando, setCargando] = useState(false);
   let fileInputRef: HTMLInputElement | null = null;
 
@@ -113,6 +142,15 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
   // Validar requisitos
   const validarRequisitos = (): { valido: boolean; errores: string[] } => {
     const errores: string[] = [];
+
+    // En modo entrada de corte: basta con tener al menos 1 observación nueva O 1 adjunto
+    if (modoEntradaCorte) {
+      const nuevasObs = obsList.filter(o => o.id.startsWith('obs-'));
+      if (nuevasObs.length === 0 && adjuntos.length === 0) {
+        errores.push('Agrega al menos una observación o un archivo para registrar la entrada');
+      }
+      return { valido: errores.length === 0, errores };
+    }
     
     if (config.adjuntosRequeridos === 'OBLIGATORIO') {
       const minimo = config.minimoAdjuntos || 1;
@@ -122,9 +160,8 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
     }
     
     if (config.observacionRequerida === 'OBLIGATORIO') {
-      const longitudMinima = config.longitudMinimaObservacion || 10;
-      if (!observaciones.trim() || observaciones.trim().length < longitudMinima) {
-        errores.push(`La observación es obligatoria (mínimo ${longitudMinima} caracteres)`);
+      if (obsList.length === 0) {
+        errores.push('Se requiere al menos una observación');
       }
     }
     
@@ -137,8 +174,7 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
   // Calcular estado de cada requisito
   const adjuntosCumplen = config.adjuntosRequeridos !== 'OBLIGATORIO' || 
     adjuntos.length >= (config.minimoAdjuntos || 1);
-  const observacionesCumplen = config.observacionRequerida !== 'OBLIGATORIO' || 
-    observaciones.trim().length >= (config.longitudMinimaObservacion || 10);
+  const observacionesCumplen = config.observacionRequerida !== 'OBLIGATORIO' || obsList.length > 0;
 
   const formatearTamaño = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -185,7 +221,7 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
       return;
     }
     
-    onActualizar(adjuntos, observaciones);
+    onActualizar(adjuntos, JSON.stringify(obsList));
     onCerrar();
   };
 
@@ -235,8 +271,20 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
 
         {/* Content */}
         <div className="overflow-y-auto max-h-[60vh] p-6">
-          {/* Indicador de requisitos */}
-          <div className="mb-4 p-4 bg-gray-50 border-2 border-gray-200 rounded-xl">
+          {/* Banner modo entrada de corte */}
+          {modoEntradaCorte && (
+            <div className="mb-4 p-3 bg-orange-50 border-2 border-orange-200 rounded-xl flex items-start gap-3">
+              <span className="text-xl">📝</span>
+              <div>
+                <p className="font-bold text-orange-800 text-sm">Registrar entrada de corte</p>
+                <p className="text-xs text-orange-700 mt-0.5">
+                  Puedes adjuntar un archivo, escribir una observación, o ambas cosas. Al menos una es requerida.
+                </p>
+              </div>
+            </div>
+          )}
+          {/* Indicador de requisitos (se oculta en modo corte para simplificar) */}
+          {!modoEntradaCorte && <div className="mb-4 p-4 bg-gray-50 border-2 border-gray-200 rounded-xl">
             <p className="font-bold text-gray-900 mb-3 flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-blue-600" />
               Configuración de evidencias
@@ -304,7 +352,7 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
                       : 'text-blue-700'
                   }`}>
                     {config.observacionRequerida === 'OBLIGATORIO' 
-                      ? `🔴 OBLIGATORIO (${observaciones.trim().length}/${config.longitudMinimaObservacion || 10} caracteres)`
+                      ? `🔴 OBLIGATORIO (${obsList.length} entrada${obsList.length !== 1 ? 's' : ''})`
                       : '🟢 OPCIONAL'}
                   </p>
                 </div>
@@ -320,10 +368,10 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
                 </p>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Zona de carga - Solo si adjuntos están habilitados */}
-          {(mostrarAdjuntos || mostrarAmbas) && (
+          {(mostrarAdjuntos || mostrarAmbas || modoEntradaCorte) && (
             <>
               <div className="mb-6">
                 <input
@@ -427,35 +475,79 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
             </>
           )}
 
-          {/* Observaciones de Cumplimiento - Solo si observaciones están habilitadas */}
-          {(mostrarObservaciones || mostrarAmbas) && (
+          {/* Observaciones de Cumplimiento - Feed de múltiples entradas */}
+          {(mostrarObservaciones || mostrarAmbas || modoEntradaCorte) && (
             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-5">
-              <label className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <span className="text-lg">📝</span>
-                Observaciones sobre el cumplimiento
-                {config.observacionRequerida === 'OBLIGATORIO' && (
-                  <span className="text-xs text-amber-600 font-normal">* Obligatoria</span>
-                )}
-                {config.observacionRequerida === 'OBLIGATORIO' && observaciones.trim().length >= (config.longitudMinimaObservacion || 10) && (
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                )}
-              </label>
-              <textarea
-                value={observaciones}
-                onChange={(e) => setObservaciones(e.target.value)}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Describe las acciones realizadas, resultados obtenidos, dificultades encontradas o cualquier observación relevante sobre el cumplimiento de esta actividad..."
-                rows={5}
-              />
-              <div className="flex justify-between items-center mt-2">
-                <p className="text-xs text-gray-600">
-                  Estas observaciones complementan los archivos adjuntos y proporcionan contexto sobre el cumplimiento de la actividad.
-                </p>
-                {config.observacionRequerida === 'OBLIGATORIO' && (
-                  <p className={`text-xs font-semibold ${observaciones.trim().length >= (config.longitudMinimaObservacion || 10) ? 'text-green-600' : 'text-amber-600'}`}>
-                    {observaciones.trim().length}/{config.longitudMinimaObservacion || 10} caracteres
-                  </p>
-                )}
+              <div className="flex items-center justify-between mb-3">
+                <label className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                  <span className="text-lg">📝</span>
+                  Observaciones
+                  {config.observacionRequerida === 'OBLIGATORIO' && (
+                    <span className="text-xs text-amber-600 font-normal">* Obligatoria</span>
+                  )}
+                  {observacionesCumplen && config.observacionRequerida === 'OBLIGATORIO' && (
+                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                  )}
+                </label>
+                <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-1 rounded-full">
+                  {obsList.length} entrada{obsList.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+
+              {/* Lista de observaciones existentes */}
+              {obsList.length > 0 && (
+                <div className="space-y-2 mb-4 max-h-52 overflow-y-auto">
+                  {obsList.map(obs => (
+                    <div key={obs.id} className="bg-white rounded-lg border border-blue-200 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <p className="text-xs text-blue-600 font-medium mb-1">
+                            {obs.fechaRegistro} · {obs.autor}
+                          </p>
+                          <p className="text-sm text-gray-800 leading-relaxed">{obs.texto}</p>
+                        </div>
+                        <button
+                          onClick={() => setObsList(prev => prev.filter(o => o.id !== obs.id))}
+                          className="p-1 hover:bg-red-100 rounded transition-colors shrink-0"
+                          title="Eliminar observación"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Formulario: nueva observación */}
+              <div className="space-y-2">
+                <textarea
+                  value={nuevaObsTexto}
+                  onChange={e => setNuevaObsTexto(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Escribe una observación y presiona Agregar..."
+                  rows={3}
+                />
+                <button
+                  onClick={() => {
+                    if (!nuevaObsTexto.trim()) {
+                      toast.error('Escribe una observación primero');
+                      return;
+                    }
+                    const nueva: ObsLocal = {
+                      id: `obs-${Date.now()}`,
+                      texto: nuevaObsTexto.trim(),
+                      fechaRegistro: new Date().toISOString().split('T')[0],
+                      autor: 'Usuario',
+                    };
+                    setObsList(prev => [...prev, nueva]);
+                    setNuevaObsTexto('');
+                    toast.success('Observación agregada');
+                  }}
+                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                >
+                  + Agregar observación
+                </button>
               </div>
             </div>
           )}
@@ -464,7 +556,7 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
         {/* Footer */}
         <div className="p-6 border-t bg-gray-50 flex items-center justify-between">
           <div className="text-sm text-gray-600">
-            {(mostrarAdjuntos || mostrarAmbas) && adjuntos.length > 0 && (
+            {(mostrarAdjuntos || mostrarAmbas || modoEntradaCorte) && adjuntos.length > 0 && (
               <span className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-green-600" />
                 <strong>{adjuntos.length} archivo(s)</strong> listo(s) para guardar
@@ -486,11 +578,11 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
                   ? 'hover:opacity-90' 
                   : 'opacity-50 cursor-not-allowed'
               }`}
-              style={{ background: cumpleRequisitos ? '#003DA5' : '#9CA3AF' }}
-              title={!cumpleRequisitos ? 'Completa los requisitos obligatorios para guardar' : ''}
+              style={{ background: cumpleRequisitos ? (modoEntradaCorte ? '#D97706' : '#003DA5') : '#9CA3AF' }}
+              title={!cumpleRequisitos ? 'Agrega una observación o un archivo para registrar' : ''}
             >
               <Check className="w-4 h-4 inline mr-2" />
-              Guardar
+              {modoEntradaCorte ? 'Registrar entrada' : 'Guardar'}
             </button>
           </div>
         </div>

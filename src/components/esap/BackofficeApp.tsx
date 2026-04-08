@@ -6,6 +6,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { SidebarPremium } from './SidebarPremium';
 import { TopBar } from './TopBar';
+import { useResponsive } from './disciplinario/hooks/useResponsive';
 
 // ✅ SIEMPRE IMPORTADOS (Core components)
 import { ProfileModal } from './ProfileModal';
@@ -153,6 +154,15 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   const [density, setDensity] = useState<'compact' | 'comfortable'>('comfortable');
   const [certificatesPendingCount, setCertificatesPendingCount] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
+
+  const { isMobile, isTablet } = useResponsive();
+
+  // Auto-colapsar sidebar en pantallas pequeñas (mobile y tablet)
+  useEffect(() => {
+    if ((isMobile || isTablet) && !sidebarCollapsed) {
+      setSidebarCollapsed(true);
+    }
+  }, [isMobile, isTablet, sidebarCollapsed]);
 
   const mapSidebarToModule = (sidebarModule: string): ModuleView => {
     const mappings: Record<string, ModuleView> = {
@@ -419,16 +429,17 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     <NotificationsProvider>
       <TourProvider>
         {/* ✅ GRID LAYOUT - Mobile First */}
-        <div className="min-h-screen bg-gray-50 grid grid-cols-1 md:grid-cols-[auto_1fr]">
+        <div className="min-h-screen bg-gray-50 grid grid-cols-[auto_1fr]">
           {/* Sidebar - Ocultar para usuario de procesos (auditado) */}
           {userData?.module !== 'procesos' && (
             <>
               {/* Spacer for Fixed Sidebar to prevent content overlap */}
               <div
-                className={`hidden md:block shrink-0 transition-[width] duration-300 ${sidebarCollapsed
+                className={`shrink-0 transition-[width] duration-300 ${sidebarCollapsed
                     ? 'w-[80px]'
                     : 'w-[280px] md:w-[260px] lg:w-[220px] xl:w-[240px] 2xl:w-[260px]'
                   }`}
+                style={{ display: userData?.module === 'procesos' ? 'none' : 'block' }}
               />
               <SidebarPremium
                 isOpen={sidebarOpen}
@@ -464,17 +475,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           )}
 
           {/* ✅ MAIN CONTENT - Flexbox Column */}
-          <div className="flex flex-col h-screen bg-gray-50 overflow-hidden" style={{marginLeft: sidebarCollapsed ? '70px' : '0'}}>
+          <div className="flex flex-col h-screen bg-gray-50 overflow-hidden" style={{marginLeft: sidebarCollapsed ? '80px' : '0'}}>
             {/* Top Bar - Ocultar para usuario de procesos (auditado) */}
             {userData?.module !== 'procesos' && (
               <TopBar
                 onToggleSidebar={() => {
-                  // En mobile abre el sidebar, en desktop colapsa/expande
-                  if (typeof window !== 'undefined' && window.innerWidth < 768) {
-                    setSidebarOpen(!sidebarOpen);
-                  } else {
-                    setSidebarCollapsed(!sidebarCollapsed);
-                  }
+                  // Siempre colapsar/expandir el sidebar
+                  setSidebarCollapsed(!sidebarCollapsed);
                 }}
                 density={density}
                 onDensityChange={setDensity}

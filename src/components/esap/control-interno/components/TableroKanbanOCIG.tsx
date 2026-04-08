@@ -1,10 +1,10 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * TABLERO KANBAN OCIG - PANTALLA PRINCIPAL
+ * TABLERO KANBAN OCI - PANTALLA PRINCIPAL
  * ═════════════════════════════════════════════════════════════════════════
  * 
  * Vista principal de gestión de auditorías con drag & drop
- * Basado en especificaciones de PROMPT_FIGMA_OCIG_COMPLETO.md
+ * Basado en especificaciones de PROMPT_FIGMA_OCI_COMPLETO.md
  * 
  * Columnas: Backlog → Planeación → Ejecución → Comunicación → Cerrado
  * 
@@ -15,8 +15,8 @@ import React, { useState, useMemo } from 'react';
 import { Search, Plus, Filter, LayoutGrid, List, Download, FileText } from 'lucide-react';
 import { KanbanColumn } from './KanbanColumn';
 import { type AuditoriaCardData } from './AuditoriaCard';
-import { type EstadoKanban } from '../utils/esapThemeOCIG';
-import { ESAP_CLASSES } from '../utils/esapThemeOCIG';
+import { type EstadoKanban } from '../utils/esapThemeOCI';
+import { ESAP_CLASSES } from '../utils/esapThemeOCI';
 import { toast } from 'sonner';
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -105,7 +105,7 @@ const AUDITORIAS_EJEMPLO: AuditoriaCardData[] = [
 // COMPONENTE PRINCIPAL
 // ═════════════════════════════════════════════════════════════════════════
 
-export function TableroKanbanOCIG() {
+export function TableroKanbanOCI() {
   const [auditorias, setAuditorias] = useState<AuditoriaCardData[]>(AUDITORIAS_EJEMPLO);
   const [busqueda, setBusqueda] = useState('');
   const [filtroTipo, setFiltroTipo] = useState<string>('todos');
@@ -363,4 +363,4 @@ export function TableroKanbanOCIG() {
 // EXPORTS
 // ═════════════════════════════════════════════════════════════════════════
 
-export default TableroKanbanOCIG;
+export default TableroKanbanOCI;

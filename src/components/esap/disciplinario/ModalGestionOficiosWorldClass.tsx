@@ -270,6 +270,7 @@ export function ModalGestionOficiosWorldClass({
           title="Visor de Oficio"
           subtitle={visorDocumento.documento.nomenclatura}
           size="xl"
+          zIndex={10000}
           footer={
             <ModalButtonGroup>
               <ModalButtonCancel onClick={() => setVisorDocumento({ show: false, documento: null })}>

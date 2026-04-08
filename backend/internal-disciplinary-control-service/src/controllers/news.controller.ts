@@ -26,6 +26,7 @@ import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto'
 import { ReturnNewsDto } from '../dtos/return-news.dto';
 import { UpdateNewsKanbanDto } from '../dtos/update-news-kanban.dto';
 import { DisciplinaryNews } from '../entities/disciplinary-news.entity';
+import { DisciplinaryNewsProcess } from '../entities/disciplinary-news-process.entity';
 import * as path from 'path';
 
 interface FileData {
@@ -274,6 +275,21 @@ export class NewsController {
     return await this.newsService.archive(id, body.reason);
   }
 
+  @Patch(':id/restore')
+  @ApiOperation({
+    summary: 'Restaurar Noticia',
+    description: 'Restaura una noticia archivada al flujo activo (estado RADICADA)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Noticia restaurada',
+    type: DisciplinaryNews,
+  })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async restore(@Param('id') id: string): Promise<DisciplinaryNews> {
+    return await this.newsService.restore(id);
+  }
+
   /**
    * Asociar noticia a un proceso existente
    */
@@ -285,17 +301,93 @@ export class NewsController {
   @ApiResponse({
     status: 200,
     description: 'Noticia asociada exitosamente',
-    type: DisciplinaryNews,
   })
   @ApiResponse({ status: 404, description: 'Noticia o proceso no encontrado' })
   async associateProcess(
     @Param('id') id: string,
     @Body() body: { procesoDestinoId: string; justificacion: string },
-  ): Promise<DisciplinaryNews> {
+  ): Promise<{ message: string; association?: any }> {
     return await this.newsService.associateNewsToProcess(
       id,
       body.procesoDestinoId,
       body.justificacion,
     );
+  }
+
+  /**
+   * Asociar noticia a otra noticia existente
+   */
+  @Patch(':id/associate-news')
+  @ApiOperation({
+    summary: 'Asociar Noticia a Noticia',
+    description: 'Asocia una noticia disciplinaria a otra noticia existente',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Noticia asociada exitosamente',
+    type: DisciplinaryNews,
+  })
+  @ApiResponse({ status: 404, description: 'Noticia origen o destino no encontrada' })
+  async associateNews(
+    @Param('id') id: string,
+    @Body() body: { noticiaDestinoId: string; justificacion: string },
+  ): Promise<DisciplinaryNews> {
+    return await this.newsService.associateNewsToNews(
+      id,
+      body.noticiaDestinoId,
+      body.justificacion,
+    );
+  }
+
+  /**
+   * Obtener noticias asociadas a un proceso
+   */
+  @Get('associated-to-process/:processId')
+  @ApiOperation({
+    summary: 'Obtener Noticias Asociadas a Proceso',
+    description: 'Retorna las noticias asociadas a un proceso específico',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de noticias asociadas',
+    type: [DisciplinaryNews],
+  })
+  async getAssociatedToProcess(@Param('processId') processId: string): Promise<DisciplinaryNews[]> {
+    return await this.newsService.findAssociatedToProcess(processId);
+  }
+
+  /**
+   * Obtener asociaciones de noticias para un proceso
+   */
+  @Get('associations/:processId')
+  @ApiOperation({
+    summary: 'Obtener Asociaciones de Noticia-Proceso',
+    description: 'Retorna las asociaciones entre noticias y un proceso específico',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de asociaciones',
+    type: [DisciplinaryNewsProcess],
+  })
+  async getNewsAssociations(@Param('processId') processId: string): Promise<DisciplinaryNewsProcess[]> {
+    return await this.newsService.findNewsAssociationsForProcess(processId);
+  }
+
+  /**
+   * Desasociar noticia de un proceso
+   */
+  @Delete(':newsId/disassociate/:processId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Desasociar Noticia de Proceso',
+    description: 'Elimina la asociación entre una noticia y un proceso',
+  })
+  @ApiResponse({ status: 204, description: 'Noticia desasociada exitosamente' })
+  @ApiResponse({ status: 404, description: 'Asociación no encontrada' })
+  async disassociateNews(
+    @Param('newsId') newsId: string,
+    @Param('processId') processId: string,
+  ): Promise<void> {
+    await this.newsService.disassociateNewsFromProcess(newsId, processId);
   }
 }

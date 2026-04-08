@@ -13,12 +13,23 @@ import { GraduationCertificate } from './graduation-certificate.entity';
 import { CertificateValidation } from './certificate-validation.entity';
 import { CertificateDownload } from './certificate-download.entity';
 import { Signer } from './signer.entity';
+import { TemplateConfig } from './template-config.entity';
+import { TemplateConfigChange } from './template-config-change.entity';
 import { GraduateFile } from './graduate-file.entity';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { LandingCertificateRequestDto } from './dto/landing-certificate-request.dto';
 import { ApproveRequestDto } from './dto/approve-request.dto';
 import { UpdateGraduateDto } from './dto/update-graduate.dto';
 import { UpdateCertificateDto } from './dto/update-certificate.dto';
+import { UpdateTemplateTextsDto } from './dto/update-template-texts.dto';
+import {
+  buildGraduationCertificateTemplateSnapshot,
+  DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS,
+  normalizeGraduationCertificateTemplateTexts,
+  parseGraduationCertificateTemplateSnapshot,
+  parseGraduationCertificateTemplateTexts,
+  serializeGraduationCertificateTemplateTexts,
+} from './certificate-template-texts';
 import * as nodemailer from 'nodemailer';
 import * as geoip from 'geoip-lite';
 import * as fs from 'fs';
@@ -71,6 +82,10 @@ export class GraduationCertificatesService {
     private downloadRepository: Repository<CertificateDownload>,
     @InjectRepository(Signer)
     private signerRepository: Repository<Signer>,
+    @InjectRepository(TemplateConfig)
+    private templateConfigRepository: Repository<TemplateConfig>,
+    @InjectRepository(TemplateConfigChange)
+    private templateConfigChangeRepository: Repository<TemplateConfigChange>,
     @InjectRepository(GraduateFile)
     private graduateFileRepository: Repository<GraduateFile>,
     private pdfGeneratorService: PdfGeneratorService,
@@ -652,6 +667,12 @@ export class GraduationCertificatesService {
       requestExtras.diplomaNumber || (await this.generateDiplomaNumber());
     const registroFolioLibro = this.buildRegistroFolioLibro(graduate);
     const actaNumber = registroFolioLibro || requestExtras.actaNumber || 'N/A';
+    const activeTemplateConfig =
+      await this.getOrCreateCertificateTemplateConfig();
+    const templateSnapshot = this.buildCertificateTemplateSnapshot(
+      activeTemplateConfig,
+      frontendBaseUrl,
+    );
 
     // Crear certificado
     const certificate = this.certificateRepository.create({
@@ -676,6 +697,7 @@ export class GraduationCertificatesService {
       signerName: signer.fullName,
       signerPosition: signer.position,
       signatureUrl: signer.signatureUrl,
+      templateSnapshot,
       status: 'VALID',
       issueDate: new Date(),
       createdBy: 'SYSTEM',
@@ -757,11 +779,10 @@ export class GraduationCertificatesService {
       certificate.pdfFilename ||
       (certificate.pdfUrl ? path.basename(certificate.pdfUrl) : undefined);
 
-    if (pdfFilename && !shouldRegenerate && !frontendBaseUrl) {
-      // Leer PDF del sistema de archivos si ya existe
-      const pdfFilePath = this.resolveExistingPdfPath(pdfFilename);
-      if (pdfFilePath) {
-        return fs.readFileSync(pdfFilePath);
+    if (pdfFilename && !shouldRegenerate) {
+      const storedPdf = this.getStoredCertificatePdf(certificate);
+      if (storedPdf) {
+        return storedPdf.content;
       }
 
       this.logger.warn(
@@ -1487,24 +1508,60 @@ export class GraduationCertificatesService {
     certificate: GraduationCertificate,
     frontendBaseUrl?: string,
   ) {
-    if (frontendBaseUrl) {
-      const buffer = await this.pdfGeneratorService.generateCertificatePDF(
-        certificate,
-        frontendBaseUrl,
+    const storedPdf = this.getStoredCertificatePdf(certificate);
+    if (storedPdf) {
+      return storedPdf;
+    }
+
+    const buffer = await this.pdfGeneratorService.generateCertificatePDF(
+      certificate,
+      frontendBaseUrl,
+    );
+
+    const filename =
+      certificate.pdfFilename || `${certificate.certificateNumber}.pdf`;
+
+    try {
+      const storagePath =
+        process.env.STORAGE_PATH || './uploads/graduation-certificates';
+
+      if (!fs.existsSync(storagePath)) {
+        fs.mkdirSync(storagePath, { recursive: true });
+      }
+
+      const pdfFilePath = path.join(storagePath, filename);
+      fs.writeFileSync(pdfFilePath, buffer);
+
+      if (certificate.pdfFilename !== filename || !certificate.pdfUrl) {
+        certificate.pdfFilename = filename;
+        certificate.pdfUrl = `/uploads/graduation-certificates/${filename}`;
+        await this.certificateRepository.save(certificate);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `No se pudo guardar el PDF regenerado en disco: ${err}`,
       );
+    }
 
-      // Guardar el PDF regenerado con la URL correcta en disco para futuras descargas
-      try {
-        const storagePath =
-          process.env.STORAGE_PATH || './uploads/graduation-certificates';
+    return {
+      filename,
+      content: buffer,
+    };
 
-        // Crear directorio si no existe (por si acaso)
-        if (!fs.existsSync(storagePath)) {
-          fs.mkdirSync(storagePath, { recursive: true });
-        }
+    /*
 
-        const pdfFilename = `${certificate.certificateNumber}.pdf`;
-        const pdfFilePath = path.join(storagePath, pdfFilename);
+    const filename =
+      certificate.pdfFilename || `${certificate.certificateNumber}.pdf`;
+
+    try {
+      const storagePath =
+        process.env.STORAGE_PATH || './uploads/graduation-certificates';
+
+      if (!fs.existsSync(storagePath)) {
+        fs.mkdirSync(storagePath, { recursive: true });
+      }
+
+      const pdfFilePath = path.join(storagePath, filename);
 
         fs.writeFileSync(pdfFilePath, buffer);
 
@@ -1531,10 +1588,8 @@ export class GraduationCertificatesService {
     }
 
     if (certificate.pdfFilename) {
-      const storagePath =
-        process.env.STORAGE_PATH || './uploads/graduation-certificates';
-      const pdfFilePath = path.join(storagePath, certificate.pdfFilename);
-      if (fs.existsSync(pdfFilePath)) {
+      const pdfFilePath = this.resolveExistingPdfPath(certificate.pdfFilename);
+      if (pdfFilePath) {
         return {
           filename: certificate.pdfFilename,
           content: fs.readFileSync(pdfFilePath),
@@ -1548,6 +1603,7 @@ export class GraduationCertificatesService {
       filename: `${certificate.certificateNumber}.pdf`,
       content: buffer,
     };
+    */
   }
 
   private async sendCertificateEmail(
@@ -1568,11 +1624,10 @@ export class GraduationCertificatesService {
     const baseUrl = this.resolveNotificationsBaseUrl();
     const url = `${baseUrl}/api/v1/emails/send-with-attachment`;
 
-    const validationUrl = `${
-      frontendBaseUrl ||
-      process.env.FRONTEND_URL ||
-      'https://certificados.esap.edu.co'
-    }/verificar-certificado/${certificate.verificationCode}`;
+    const validationUrl = `${this.resolveCertificateValidationBaseUrl(
+      certificate,
+      frontendBaseUrl,
+    )}/verificar-certificado/${certificate.verificationCode}`;
 
     const trimmedReviewNotes = (reviewNotes || '').trim();
     const reviewNotesText = trimmedReviewNotes
@@ -1828,6 +1883,109 @@ export class GraduationCertificatesService {
     }
 
     this.logger.log(`Notificacion enviada al graduado ${graduateEmail}`);
+  }
+
+  private resolveTemplateUpdatedBy(updatedBy?: string): string {
+    const actor = String(updatedBy || '').trim();
+    return actor || 'Sistema';
+  }
+
+  private resolveCertificatePublicBaseUrl(frontendBaseUrl?: string): string {
+    const raw =
+      String(frontendBaseUrl || '').trim() ||
+      String(process.env.FRONTEND_URL || '').trim() ||
+      'https://certificados.esap.edu.co';
+
+    return raw.replace(/\/$/, '');
+  }
+
+  private resolveCertificateValidationBaseUrl(
+    certificate: GraduationCertificate,
+    frontendBaseUrl?: string,
+  ): string {
+    const snapshot = parseGraduationCertificateTemplateSnapshot(
+      certificate.templateSnapshot,
+    );
+
+    return (
+      snapshot?.validationBaseUrl ||
+      this.resolveCertificatePublicBaseUrl(frontendBaseUrl)
+    );
+  }
+
+  private buildCertificateTemplateSnapshot(
+    config: TemplateConfig,
+    frontendBaseUrl?: string,
+  ) {
+    return buildGraduationCertificateTemplateSnapshot({
+      id: config.id,
+      version: config.version,
+      updatedAt: config.updatedAt,
+      validationBaseUrl:
+        this.resolveCertificatePublicBaseUrl(frontendBaseUrl),
+      typographyFont: config.typographyFont,
+      signerId: config.signerId,
+      institutionLogoUrl: config.institutionLogoUrl,
+      institutionLogoFilename: config.institutionLogoFilename,
+      signerNameOverride: config.signerNameOverride,
+      signatureUrlOverride: config.signatureUrlOverride,
+      signatureFilenameOverride: config.signatureFilenameOverride,
+      signerTitleOverride: config.signerTitleOverride,
+      certificateContentHtml: config.certificateContentHtml,
+    });
+  }
+
+  private async getOrCreateCertificateTemplateConfig(): Promise<TemplateConfig> {
+    const existing = await this.templateConfigRepository.findOne({
+      where: { isActive: true },
+      order: { updatedAt: 'DESC', id: 'DESC' },
+    });
+
+    if (existing) {
+      let changed = false;
+
+      if (!parseGraduationCertificateTemplateTexts(existing.certificateContentHtml)) {
+        existing.certificateContentHtml =
+          serializeGraduationCertificateTemplateTexts(
+            DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS,
+          );
+        changed = true;
+      }
+
+      if (!existing.signerTitleOverride?.trim()) {
+        existing.signerTitleOverride =
+          DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS.signerTitle;
+        changed = true;
+      }
+
+      if (changed) {
+        existing.updatedBy = existing.updatedBy || 'Sistema';
+        await this.templateConfigRepository.save(existing);
+      }
+
+      return existing;
+    }
+
+    const signer = await this.signerRepository.findOne({
+      where: { isPrimary: true, isActive: true },
+    });
+
+    const created = this.templateConfigRepository.create({
+      signerId: signer?.id,
+      typographyFont: 'Arial Narrow, Arial, sans-serif',
+      signerTitleOverride:
+        DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS.signerTitle,
+      certificateContentHtml: serializeGraduationCertificateTemplateTexts(
+        DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS,
+      ),
+      version: '1.0.0',
+      status: 'published',
+      createdBy: 'Sistema',
+      updatedBy: 'Sistema',
+      isActive: true,
+    });
+
+    return this.templateConfigRepository.save(created);
   }
 
   private buildRegistroFolioLibro(graduate?: Graduate): string | null {
@@ -2308,6 +2466,125 @@ export class GraduationCertificatesService {
     return saved;
   }
 
+  async obtenerConfiguracionPlantillaCertificado() {
+    const config = await this.getOrCreateCertificateTemplateConfig();
+    const parsedTexts =
+      parseGraduationCertificateTemplateTexts(config.certificateContentHtml) ||
+      DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS;
+
+    return {
+      id: config.id,
+      version: config.version,
+      status: config.status,
+      updatedAt: config.updatedAt,
+      updatedBy: config.updatedBy,
+      texts: normalizeGraduationCertificateTemplateTexts({
+        ...parsedTexts,
+        signerTitle:
+          config.signerTitleOverride || parsedTexts.signerTitle,
+      }),
+    };
+  }
+
+  async actualizarTextosPlantillaCertificado(payload: UpdateTemplateTextsDto) {
+    const config = await this.getOrCreateCertificateTemplateConfig();
+    const currentTexts =
+      parseGraduationCertificateTemplateTexts(config.certificateContentHtml) ||
+      DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS;
+    const nextTexts = normalizeGraduationCertificateTemplateTexts({
+      ...currentTexts,
+      ...payload,
+    });
+    const actor = this.resolveTemplateUpdatedBy(payload.updatedBy);
+
+    const previousSerialized = serializeGraduationCertificateTemplateTexts(
+      normalizeGraduationCertificateTemplateTexts({
+        ...currentTexts,
+        signerTitle:
+          config.signerTitleOverride || currentTexts.signerTitle,
+      }),
+    );
+    const nextSerialized = serializeGraduationCertificateTemplateTexts(nextTexts);
+
+    config.certificateContentHtml = nextSerialized;
+    config.signerTitleOverride = nextTexts.signerTitle;
+    config.status = 'published';
+    config.isActive = true;
+    config.updatedBy = actor;
+
+    if (config.version) {
+      const [majorRaw = '1', minorRaw = '0', patchRaw = '0'] = String(
+        config.version,
+      ).split('.');
+      const major = Number.parseInt(majorRaw, 10) || 1;
+      const minor = Number.parseInt(minorRaw, 10) || 0;
+      const patch = Number.parseInt(patchRaw, 10) || 0;
+      config.version = `${major}.${minor}.${patch + 1}`;
+    } else {
+      config.version = '1.0.1';
+    }
+
+    await this.templateConfigRepository.save(config);
+
+    await this.templateConfigChangeRepository.save(
+      this.templateConfigChangeRepository.create({
+        templateConfigId: config.id,
+        changeType: 'UPDATED_TEXTS',
+        fieldChanged: 'certificate_template_texts',
+        oldValue: previousSerialized,
+        newValue: nextSerialized,
+        changedBy: actor,
+        observations:
+          'Actualizacion de textos de la plantilla de verificacion de titulos',
+      }),
+    );
+
+    return this.obtenerConfiguracionPlantillaCertificado();
+  }
+
+  async restablecerTextosPlantillaCertificado(updatedBy?: string) {
+    const config = await this.getOrCreateCertificateTemplateConfig();
+    const actor = this.resolveTemplateUpdatedBy(updatedBy);
+    const currentTexts =
+      parseGraduationCertificateTemplateTexts(config.certificateContentHtml) ||
+      DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS;
+    const previousSerialized = serializeGraduationCertificateTemplateTexts(
+      normalizeGraduationCertificateTemplateTexts({
+        ...currentTexts,
+        signerTitle:
+          config.signerTitleOverride || currentTexts.signerTitle,
+      }),
+    );
+    const nextSerialized = serializeGraduationCertificateTemplateTexts(
+      DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS,
+    );
+
+    config.certificateContentHtml = nextSerialized;
+    config.signerTitleOverride =
+      DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS.signerTitle;
+    config.status = 'published';
+    config.isActive = true;
+    config.updatedBy = actor;
+    config.version = config.version || '1.0.0';
+
+    await this.templateConfigRepository.save(config);
+
+    await this.templateConfigChangeRepository.save(
+      this.templateConfigChangeRepository.create({
+        templateConfigId: config.id,
+        changeType: 'RESET_TEXTS',
+        fieldChanged: 'certificate_template_texts',
+        oldValue: previousSerialized,
+        newValue: nextSerialized,
+        changedBy: actor,
+        observations:
+          'Restablecimiento de textos predeterminados de la plantilla de verificacion de titulos',
+      }),
+    );
+
+    return this.obtenerConfiguracionPlantillaCertificado();
+  }
+
   /**
    * ADMIN: Listar todas las solicitudes
    */
@@ -2587,7 +2864,7 @@ export class GraduationCertificatesService {
 
     await this.requestRepository.save(request);
 
-    const certificate = await this.generateCertificate(request);
+    const certificate = await this.generateCertificate(request, frontendBaseUrl);
 
     const deliveryEmail = request.requesterEmail || payload?.email;
     if (deliveryEmail && !request.requesterEmail) {
@@ -3131,5 +3408,27 @@ export class GraduationCertificatesService {
     }
 
     return null;
+  }
+
+  private getStoredCertificatePdf(
+    certificate: GraduationCertificate,
+  ): { filename: string; content: Buffer } | null {
+    const pdfFilename =
+      certificate.pdfFilename ||
+      (certificate.pdfUrl ? path.basename(certificate.pdfUrl) : undefined);
+
+    if (!pdfFilename) {
+      return null;
+    }
+
+    const pdfFilePath = this.resolveExistingPdfPath(pdfFilename);
+    if (!pdfFilePath) {
+      return null;
+    }
+
+    return {
+      filename: pdfFilename,
+      content: fs.readFileSync(pdfFilePath),
+    };
   }
 }

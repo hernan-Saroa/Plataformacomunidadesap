@@ -7,7 +7,7 @@
 export { ControlInternoFull } from './ControlInternoFull';
 
 // ⭐ COMPONENTES DE UI
-export { HeaderModuloCIG } from './HeaderModuloCIG';
+export { HeaderModulOCIG } from './HeaderModuloCIG';
 
 // ⭐ MÓDULOS PRINCIPALES
 export { PlanificacionModuleRediseno } from './PlanificacionModuleRediseno';
@@ -18,7 +18,7 @@ export { ConfiguracionesModulePremium } from './ConfiguracionesModulePremium';
 // ⭐ PLAN ANUAL
 export { PlanAnualAuditoriaDefinitivo } from './PlanAnualAuditoriaDefinitivo';
 export { PlanAnualRol4Integrado } from './PlanAnualRol4Integrado';
-export { ProgramaAnualCIG } from './ProgramaAnualCIG';
+export { ProgramaAnualOCIG } from './ProgramaAnualOCIG';
 
 // ⭐ UNIVERSO AUDITABLE
 export { UniversoAuditableUnificado } from './UniversoAuditableUnificado';

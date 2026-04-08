@@ -10,11 +10,13 @@ import {
 import { AuditService } from './audit.service';
 import { CreateAuditLogDto } from './dto/create-audit-log.dto';
 import { QueryAuditLogsDto } from './dto/query-audit-logs.dto';
+import { Public } from '../auth/public.decorator';
 
 @Controller('logs')
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
+  @Public()
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createLog(@Body() createAuditLogDto: CreateAuditLogDto) {

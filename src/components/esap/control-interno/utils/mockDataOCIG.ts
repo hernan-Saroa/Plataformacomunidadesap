@@ -1,6 +1,6 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * DATOS MOCK CENTRALIZADOS - OCIG
+ * DATOS MOCK CENTRALIZADOS - OCI
  * ═════════════════════════════════════════════════════════════════════════
  * 
  * ⚠️ DATOS SIMPLIFICADOS - Mínimo necesario para desarrollo

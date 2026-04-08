@@ -36,7 +36,7 @@ import { TemplatesController } from './templates.controller';
     ]),
     HallazgosModule,
     NotificacionesModule,
-    ConfiguracionesModule, // Para obtener profesionales OCIG
+    ConfiguracionesModule, // Para obtener profesionales OCI
     PlanesMejoramientoModule, // Para validar acciones en aprobar informe cierre
     AuthModule, // Para tener acceso a JwtService
   ],

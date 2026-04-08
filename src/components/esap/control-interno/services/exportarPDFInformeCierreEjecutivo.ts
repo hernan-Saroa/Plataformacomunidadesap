@@ -79,6 +79,63 @@ function formatearFecha(d: any): string {
   return s;
 }
 
+function primerValor(...values: any[]): any {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    if (typeof value === 'string' && value.trim() === '') continue;
+    return value;
+  }
+  return undefined;
+}
+
+function texto(valor: any, fallback = '—'): string {
+  const v = primerValor(valor);
+  return v === undefined ? fallback : String(v);
+}
+
+function numeroSeguro(...values: any[]): number {
+  const v = primerValor(...values);
+  if (v === undefined) return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function contarHallazgosPorGravedad(hallazgos: HallazgoPDF[], gravedad: 'CRITICO' | 'GRAVE' | 'MENOR'): number {
+  return hallazgos.filter((h) => {
+    const g = String(h.gravedad || '').toUpperCase();
+    if (gravedad === 'CRITICO') return g === 'CRITICO';
+    if (gravedad === 'GRAVE') return g === 'GRAVE';
+    return g === 'MODERADO' || g === 'LEVE' || g === 'MENOR';
+  }).length;
+}
+
+function esIdTecnico(valor: any): boolean {
+  if (valor === null || valor === undefined) return true;
+  const v = String(valor).trim();
+  if (!v) return true;
+  return (
+    /^aud-\d+$/i.test(v) ||
+    /^usr-\d+$/i.test(v) ||
+    /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(v) ||
+    /^\d+$/.test(v) ||
+    /^id[-_]?\d+$/i.test(v)
+  );
+}
+
+function textoHumano(valor: any, fallback = '—'): string {
+  const v = primerValor(valor);
+  if (v === undefined) return fallback;
+  return esIdTecnico(v) ? fallback : String(v);
+}
+
+function calcularDuracionDias(fechaInicio: any, fechaFin: any): number | undefined {
+  if (!fechaInicio || !fechaFin) return undefined;
+  const inicio = new Date(fechaInicio);
+  const fin = new Date(fechaFin);
+  if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime())) return undefined;
+  return Math.max(0, Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
 /**
  * Genera y descarga el PDF del Informe de Cierre
  */
@@ -106,7 +163,14 @@ export async function exportarPDFInformeCierre(datos: DatosInformeCierre): Promi
   // Resumen ejecutivo
   const resumen = datos.resumen;
   const planCodigo = resumen?.planVinculado || resumen?.planCodigo || datos.planes[0]?.codigo || datos.planes[0]?.id || '—';
-  const fechasStr = [resumen?.fechaInicio || '', resumen?.fechaFin || ''].map(formatearFecha).filter(Boolean).join(' – ') || '—';
+  const aud = datos.auditoria;
+  const audAny = aud as any;
+  const fechaInicio = primerValor(resumen?.fechaInicio, aud.cronograma?.fechaInicio, audAny.fechaInicio);
+  const fechaFin = primerValor(resumen?.fechaFin, aud.cronograma?.fechaFin, audAny.fechaFin);
+  const fechasStr = [fechaInicio, fechaFin]
+    .map((d) => (d ? formatearFecha(d) : ''))
+    .filter(Boolean)
+    .join(' – ') || '—';
   const todasLasAcciones: { planCodigo: string; accion: AccionPlanPDF }[] = [];
   for (const plan of datos.planes) {
     for (const accion of plan.acciones || []) {
@@ -114,6 +178,40 @@ export async function exportarPDFInformeCierre(datos: DatosInformeCierre): Promi
     }
   }
   const cumplidas = todasLasAcciones.filter(({ accion }) => String(accion.estadoVerificacionOci || '').toLowerCase() === 'cumplida').length;
+  const hallazgosCriticos = numeroSeguro(aud.estadisticas?.hallazgosCriticos, audAny.hallazgosCriticos, contarHallazgosPorGravedad(datos.hallazgos, 'CRITICO'));
+  const hallazgosMayores = numeroSeguro(aud.estadisticas?.hallazgosMayores, audAny.hallazgosMayores, contarHallazgosPorGravedad(datos.hallazgos, 'GRAVE'));
+  const hallazgosMenores = numeroSeguro(aud.estadisticas?.hallazgosMenores, audAny.hallazgosMenores, contarHallazgosPorGravedad(datos.hallazgos, 'MENOR'));
+  const documentosCargados = numeroSeguro(aud.estadisticas?.documentosCargados, audAny.documentosCargados, audAny.totalDocumentos);
+  const notificacionesEnviadas = numeroSeguro(aud.estadisticas?.notificacionesEnviadas, audAny.notificacionesEnviadas);
+  const auditorLiderNombre = primerValor(
+    aud.auditorLider,
+    audAny.auditorLider?.nombre,
+    audAny.auditorLiderNombre,
+    audAny.responsable,
+  );
+  const auditorLiderEmail = primerValor(
+    aud.auditorLiderEmail,
+    audAny.auditorLider?.email,
+    audAny.emailAuditorLider,
+  );
+  const tipoAuditoria = primerValor(aud.tipo, audAny.tipoAuditoria, resumen?.tipo);
+  const estadoAuditoria = primerValor(aud.estado, audAny.estadoKanban, audAny.fase, resumen?.estado);
+  const areaAuditable = primerValor(aud.areaAuditable, audAny.areaResponsable, audAny.areaObjetivo, audAny.areaAuditada);
+  const procesoNombre = primerValor(aud.procesoNombre, audAny.proceso, audAny.procesoAuditado);
+  const nivelRiesgo = primerValor(aud.nivelRiesgo, audAny.riesgoKanban, audAny.nivelRiesgoKanban, audAny.riesgo, audAny.calificacionRiesgo);
+  const territorial = primerValor(aud.territorial, audAny.territorial, audAny.sede, audAny.lugarEjecucion);
+  const duracionDias = primerValor(
+    aud.cronograma?.duracionDias,
+    audAny.duracionDias,
+    audAny.cronogramaDias,
+    calcularDuracionDias(fechaInicio, fechaFin),
+  );
+  const progresoGeneral = primerValor(
+    typeof aud.progreso?.general === 'number' ? `${aud.progreso.general}%` : undefined,
+    typeof audAny.progresoGeneral === 'number' ? `${audAny.progresoGeneral}%` : undefined,
+    typeof audAny.progreso === 'number' ? `${audAny.progreso}%` : undefined,
+    '0%',
+  );
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
@@ -122,26 +220,25 @@ export async function exportarPDFInformeCierre(datos: DatosInformeCierre): Promi
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  const aud = datos.auditoria;
   const rows = [
     ['Código', aud.codigo],
     ['Nombre', aud.nombre],
-    ['Tipo', aud.tipo || '—'],
-    ['Estado', aud.estado || '—'],
-    ['Área auditada', aud.areaAuditable || '—'],
-    ['Proceso', aud.procesoNombre || '—'],
-    ['Nivel de riesgo', aud.nivelRiesgo || '—'],
-    ['Territorial / Sede', aud.territorial || '—'],
-    ['Auditor Líder', aud.auditorLider || '—'],
-    ['Email Auditor Líder', aud.auditorLiderEmail || '—'],
-    ['Responsable del área', aud.responsableArea?.nombre || '—'],
-    ['Cargo responsable', aud.responsableArea?.cargo || '—'],
-    ['Email responsable', aud.responsableArea?.email || '—'],
+    ['Tipo', texto(tipoAuditoria)],
+    ['Estado', texto(estadoAuditoria)],
+    ['Área auditada', texto(areaAuditable)],
+    ['Proceso', texto(procesoNombre)],
+    ['Nivel de riesgo', texto(nivelRiesgo)],
+    ['Territorial / Sede', texto(territorial)],
+    ['Auditor Líder', textoHumano(auditorLiderNombre)],
+    ['Email Auditor Líder', texto(auditorLiderEmail)],
+    ['Responsable del área', textoHumano(primerValor(aud.responsableArea?.nombre, audAny.responsableAreaNombre, audAny.responsableUnidad, audAny.responsable))],
+    ['Cargo responsable', texto(primerValor(aud.responsableArea?.cargo, audAny.responsableAreaCargo, audAny.cargo))],
+    ['Email responsable', texto(primerValor(aud.responsableArea?.email, audAny.responsableAreaEmail, audAny.responsableEmail))],
     ['Período', fechasStr],
-    ['Duración (días)', aud.cronograma?.duracionDias != null ? String(aud.cronograma.duracionDias) : '—'],
-    ['Progreso general', aud.progreso?.general != null ? `${aud.progreso.general}%` : '—'],
-    ['Documentos cargados', String(aud.estadisticas?.documentosCargados ?? '—')],
-    ['Notificaciones enviadas', String(aud.estadisticas?.notificacionesEnviadas ?? '—')],
+    ['Duración (días)', texto(duracionDias)],
+    ['Progreso general', texto(progresoGeneral)],
+    ['Documentos cargados', String(documentosCargados)],
+    ['Notificaciones enviadas', String(notificacionesEnviadas)],
   ];
   rows.forEach(([label, value]) => {
     doc.setFont('helvetica', 'bold');
@@ -227,9 +324,9 @@ export async function exportarPDFInformeCierre(datos: DatosInformeCierre): Promi
     ['Total acciones del plan', String(todasLasAcciones.length)],
     ['Acciones cumplidas', String(cumplidas)],
     ['Hallazgos totales', String(datos.hallazgos.length)],
-    ['Hallazgos críticos', String(aud.estadisticas?.hallazgosCriticos ?? '—')],
-    ['Hallazgos mayores', String(aud.estadisticas?.hallazgosMayores ?? '—')],
-    ['Hallazgos menores', String(aud.estadisticas?.hallazgosMenores ?? '—')],
+    ['Hallazgos críticos', String(hallazgosCriticos)],
+    ['Hallazgos mayores', String(hallazgosMayores)],
+    ['Hallazgos menores', String(hallazgosMenores)],
   ];
   rowsCierre.forEach(([label, value]) => {
     doc.setFont('helvetica', 'bold');
@@ -406,7 +503,14 @@ export async function exportarPDFInformeEjecutivo(datos: DatosInformeCierre): Pr
 
   const resumen = datos.resumen;
   const planCodigo = resumen?.planVinculado || resumen?.planCodigo || datos.planes[0]?.codigo || datos.planes[0]?.id || '—';
-  const fechasStr = [resumen?.fechaInicio || '', resumen?.fechaFin || ''].map(formatearFecha).filter(Boolean).join(' – ') || '—';
+  const aud = datos.auditoria;
+  const audAny = aud as any;
+  const fechaInicio = primerValor(resumen?.fechaInicio, aud.cronograma?.fechaInicio, audAny.fechaInicio);
+  const fechaFin = primerValor(resumen?.fechaFin, aud.cronograma?.fechaFin, audAny.fechaFin);
+  const fechasStr = [fechaInicio, fechaFin]
+    .map((d) => (d ? formatearFecha(d) : ''))
+    .filter(Boolean)
+    .join(' – ') || '—';
   const todasLasAcciones: AccionPlanPDF[] = [];
   for (const plan of datos.planes) {
     for (const accion of plan.acciones || []) {
@@ -415,8 +519,23 @@ export async function exportarPDFInformeEjecutivo(datos: DatosInformeCierre): Pr
   }
   const cumplidas = todasLasAcciones.filter(a => String(a.estadoVerificacionOci || '').toLowerCase() === 'cumplida').length;
   const ratificados = datos.hallazgos.filter(h => /ratificado|modificado/i.test(String(h.decisionAuditor || h.estado || ''))).length;
-
-  const aud = datos.auditoria;
+  const hallazgosCriticos = numeroSeguro(aud.estadisticas?.hallazgosCriticos, audAny.hallazgosCriticos, contarHallazgosPorGravedad(datos.hallazgos, 'CRITICO'));
+  const hallazgosMayores = numeroSeguro(aud.estadisticas?.hallazgosMayores, audAny.hallazgosMayores, contarHallazgosPorGravedad(datos.hallazgos, 'GRAVE'));
+  const hallazgosMenores = numeroSeguro(aud.estadisticas?.hallazgosMenores, audAny.hallazgosMenores, contarHallazgosPorGravedad(datos.hallazgos, 'MENOR'));
+  const tipoAuditoria = primerValor(aud.tipo, audAny.tipoAuditoria, resumen?.tipo);
+  const estadoAuditoria = primerValor(aud.estado, audAny.estadoKanban, audAny.fase, resumen?.estado);
+  const areaAuditable = primerValor(aud.areaAuditable, audAny.areaResponsable, audAny.areaObjetivo, audAny.areaAuditada);
+  const procesoNombre = primerValor(aud.procesoNombre, audAny.proceso, audAny.procesoAuditado);
+  const nivelRiesgo = primerValor(aud.nivelRiesgo, audAny.riesgoKanban, audAny.nivelRiesgoKanban, audAny.riesgo, audAny.calificacionRiesgo);
+  const territorial = primerValor(aud.territorial, audAny.territorial, audAny.sede, audAny.lugarEjecucion);
+  const auditorLiderNombre = primerValor(aud.auditorLider, audAny.auditorLider?.nombre, audAny.auditorLiderNombre, audAny.responsable);
+  const responsableAreaNombre = primerValor(aud.responsableArea?.nombre, audAny.responsableAreaNombre, audAny.responsableUnidad, audAny.responsable);
+  const progresoGeneral = primerValor(
+    typeof aud.progreso?.general === 'number' ? `${aud.progreso.general}%` : undefined,
+    typeof audAny.progresoGeneral === 'number' ? `${audAny.progresoGeneral}%` : undefined,
+    typeof audAny.progreso === 'number' ? `${audAny.progreso}%` : undefined,
+    '0%',
+  );
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
@@ -428,17 +547,17 @@ export async function exportarPDFInformeEjecutivo(datos: DatosInformeCierre): Pr
   const rows = [
     ['Código', aud.codigo],
     ['Nombre', aud.nombre],
-    ['Tipo', aud.tipo || '—'],
-    ['Estado', aud.estado || '—'],
-    ['Área auditada', aud.areaAuditable || '—'],
-    ['Proceso', aud.procesoNombre || '—'],
-    ['Nivel de riesgo', aud.nivelRiesgo || '—'],
-    ['Territorial', aud.territorial || '—'],
-    ['Auditor Líder', aud.auditorLider || '—'],
-    ['Responsable del área', aud.responsableArea?.nombre || '—'],
+    ['Tipo', texto(tipoAuditoria)],
+    ['Estado', texto(estadoAuditoria)],
+    ['Área auditada', texto(areaAuditable)],
+    ['Proceso', texto(procesoNombre)],
+    ['Nivel de riesgo', texto(nivelRiesgo)],
+    ['Territorial', texto(territorial)],
+    ['Auditor Líder', textoHumano(auditorLiderNombre)],
+    ['Responsable del área', textoHumano(responsableAreaNombre)],
     ['Período', fechasStr],
     ['Plan vinculado', planCodigo],
-    ['Progreso', aud.progreso?.general != null ? `${aud.progreso.general}%` : '—'],
+    ['Progreso', texto(progresoGeneral)],
   ];
   rows.forEach(([label, value]) => {
     doc.setFont('helvetica', 'bold');
@@ -480,9 +599,9 @@ export async function exportarPDFInformeEjecutivo(datos: DatosInformeCierre): Pr
   const rowsRes = [
     ['Hallazgos totales', String(datos.hallazgos.length)],
     ['Hallazgos ratificados', String(ratificados)],
-    ['Hallazgos críticos', String(aud.estadisticas?.hallazgosCriticos ?? '—')],
-    ['Hallazgos mayores', String(aud.estadisticas?.hallazgosMayores ?? '—')],
-    ['Hallazgos menores', String(aud.estadisticas?.hallazgosMenores ?? '—')],
+    ['Hallazgos críticos', String(hallazgosCriticos)],
+    ['Hallazgos mayores', String(hallazgosMayores)],
+    ['Hallazgos menores', String(hallazgosMenores)],
     ['Acciones cumplidas', `${cumplidas} de ${todasLasAcciones.length}`],
   ];
   rowsRes.forEach(([label, value]) => {
