@@ -117,6 +117,48 @@ export class CreateEvaluacionProcesoDto {
   scoreRiesgo?: number;
 
   // ═══════════════════════════════════════════════════════════════════════
+  // CRITERIOS DE PRIORIZACIÓN DAFP (RE-E-GE-034) — migración 179
+  // ═══════════════════════════════════════════════════════════════════════
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  tiempoUltimaAuditoria?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  temasAltaDireccion?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  objetivosEstrategicos?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  hallazgosAnteriores?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  ponderacionFinalDafp?: number;
+
+  @IsOptional()
+  @IsString()
+  nivelCriticidadDafp?: string;
+
+  @IsOptional()
+  @IsString()
+  cicloRotacionDafp?: string;
+
+  // ═══════════════════════════════════════════════════════════════════════
   // CÁLCULOS DAFP
   // ═══════════════════════════════════════════════════════════════════════
 
@@ -280,6 +322,45 @@ export class UpdateEvaluacionProcesoDto {
   @Min(1)
   @Max(5)
   prioridadRegla?: number;
+
+  // Criterios DAFP — migración 179
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  tiempoUltimaAuditoria?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  temasAltaDireccion?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  objetivosEstrategicos?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  hallazgosAnteriores?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  ponderacionFinalDafp?: number;
+
+  @IsOptional()
+  @IsString()
+  nivelCriticidadDafp?: string;
+
+  @IsOptional()
+  @IsString()
+  cicloRotacionDafp?: string;
 
   @IsOptional()
   @IsBoolean()

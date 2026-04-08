@@ -116,7 +116,10 @@ export function ModalAsociarNoticiaANoticia({
     }
   };
 
-  if (!noticia) return null;
+  // Validación más robusta: verificar que la noticia tenga los campos requeridos
+  if (!noticia || noticia.tipo !== 'noticia' || !noticia.id || !noticia.numero) {
+    return null;
+  }
 
   const noticiaDestinoData = noticiaDestinoSeleccionada
     ? noticiasDisponibles.find(item => item.id === noticiaDestinoSeleccionada)

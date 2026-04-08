@@ -168,7 +168,10 @@ export function ModalAsociarNoticiaProceso({
   // RENDER
   // ════════════════════════════════════════════════════════════════
 
-  if (!noticia) return null;
+  // Validación más robusta: verificar que la noticia tenga los campos requeridos
+  if (!noticia || noticia.tipo !== 'noticia' || !noticia.id || !noticia.numero) {
+    return null;
+  }
 
   const procesoSeleccionadoData = procesoSeleccionado
     ? procesosDisponibles.find(p => p.id === procesoSeleccionado)
