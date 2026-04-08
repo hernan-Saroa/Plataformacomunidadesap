@@ -183,7 +183,7 @@ interface Noticia {
     apoderado?: { nombre: string; cedula: string; correo: string; celular: string };
   }[];
   hechosSeparados?: { id: string; descripcion: string; fecha?: string }[];
-  archivosAdjuntos?: { nombre: string; tipo: string; tamano: number; fechaSubida: string }[];
+  archivosAdjuntos?: { nombre: string; tipo: string; tamano: number; fechaSubida: string; url: string }[];
   radicador?: string;
   fechaRegistro?: string;
 }
@@ -2944,7 +2944,14 @@ export function DashboardKanbanOperativo({
       fechaRemision: (noticia as any).fechaRemision || (noticia as any).fechaRemisionPorCompetencia || undefined,
       fundamentoLegalRemision: (noticia as any).fundamentoLegalRemision || (noticia as any).fundamentoLegal || undefined,
       justificacionRemision: (noticia as any).justificacionRemision || (noticia as any).observacionesRemision || undefined,
-      conductaSeleccionada: (noticia as any).conductas?.[0] || (noticia as any).conductaSeleccionada || ''
+      conductaSeleccionada: (noticia as any).conductas?.[0] || (noticia as any).conductaSeleccionada || '',
+      archivosAdjuntos: ((noticia as any).adjuntos || []).map((path: string) => ({
+        nombre: path.split('/').pop() || path,
+        tipo: path.toLowerCase().includes('pdf') ? 'application/pdf' : path.toLowerCase().includes('jpg') || path.toLowerCase().includes('png') ? 'image' : 'application/octet-stream',
+        tamano: 0,
+        fechaSubida: new Date().toISOString(),
+        url: path,
+      }))
     };
   };
 
