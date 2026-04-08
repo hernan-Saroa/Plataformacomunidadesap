@@ -28,6 +28,20 @@ import { authService } from '../../../services/api/authService';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { Permissions } from '../../../enums/permissions';
 
+// Componente de carga mientras se verifica autenticación
+function AuthLoadingSpinner() {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="text-center">
+        <div className="w-16 h-16 border-4 rounded-full animate-spin mx-auto mb-4"
+          style={{ borderColor: '#E5E7EB', borderTopColor: '#003DA5' }}
+        />
+        <p className="text-sm font-semibold text-gray-600">Verificando sesión...</p>
+      </div>
+    </div>
+  );
+}
+
 export interface ResultadoRevision {
   borradorId: string;
   procesoId: string;
@@ -100,7 +114,35 @@ export function ControlDisciplinarioFull() {
   console.log('  → README.md');
   console.log('  → VERIFICACION_MODULO.md');
   console.log('  → GUIA_RAPIDA.md');
-  
+
+  // Estado para verificar autenticación
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  // Verificar autenticación al montar el componente
+  useEffect(() => {
+    const checkAuth = () => {
+      const authenticated = authService.isAuthenticated();
+      setIsAuthenticated(authenticated);
+
+      if (!authenticated) {
+        console.warn('Usuario no autenticado en módulo disciplinario - redirigiendo a login');
+        window.location.href = '/login';
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+  // Mostrar spinner mientras se verifica la autenticación
+  if (isAuthenticated === null) {
+    return <AuthLoadingSpinner />;
+  }
+
+  // Si no está autenticado, no renderizar nada (ya se redirigió)
+  if (!isAuthenticated) {
+    return null;
+  }
+
   type Section = 'dashboard' | 'aprobacion' | 'expediente' | 'terminos' | 'profesionales' | 'config';
   const [currentSection, setCurrentSection] = useState<Section>('dashboard');
   const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
