@@ -7,21 +7,21 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Settings, Bell, Sliders, Columns, Users, Layers } from 'lucide-react';
-import { HeaderModuloCIG } from './HeaderModuloCIG';
+import { HeaderModulOCIG } from './HeaderModuloCIG';
 import { NotificacionesModule } from './NotificacionesModule';
 import { ConfiguracionAuditoriasModule } from './ConfiguracionAuditoriasModule';
 import { ConfiguracionKanbanModule } from './ConfiguracionKanbanModule';
 import { ConfiguracionProfesionalesModule } from './ConfiguracionProfesionalesModule';
 import { ConfiguracionProcesosModule } from './ConfiguracionProcesosModule';
 
-type TabActiva = 'NOTIFICACIONES' | 'CONFIG_AUDITORIAS' | 'CONFIG_KANBAN' | 'PROFESIONALES_OCIG' | 'PROCESOS';
+type TabActiva = 'NOTIFICACIONES' | 'CONFIG_AUDITORIAS' | 'CONFIG_KANBAN' | 'PROFESIONALES_OCI' | 'PROCESOS';
 
 export function ConfiguracionesModulePremium() {
   const [tabActiva, setTabActiva] = useState<TabActiva>('NOTIFICACIONES');
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <HeaderModuloCIG titulo="Configuraciones" subtitulo="Control Interno de Gestión" />
+      <HeaderModulOCIG titulo="Configuraciones" subtitulo="Control Interno de Gestión" />
 
       <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
         <div className="w-full px-8">
@@ -29,7 +29,7 @@ export function ConfiguracionesModulePremium() {
             <TabButton active={tabActiva === 'NOTIFICACIONES'} onClick={() => setTabActiva('NOTIFICACIONES')} icon={<Bell className="w-4 h-4" />} label="Notificaciones" />
             <TabButton active={tabActiva === 'CONFIG_AUDITORIAS'} onClick={() => setTabActiva('CONFIG_AUDITORIAS')} icon={<Sliders className="w-4 h-4" />} label="Config. Auditorías" />
             <TabButton active={tabActiva === 'CONFIG_KANBAN'} onClick={() => setTabActiva('CONFIG_KANBAN')} icon={<Columns className="w-4 h-4" />} label="Config. Kanban" />
-            <TabButton active={tabActiva === 'PROFESIONALES_OCIG'} onClick={() => setTabActiva('PROFESIONALES_OCIG')} icon={<Users className="w-4 h-4" />} label="Profesionales OCIG" />
+            <TabButton active={tabActiva === 'PROFESIONALES_OCI'} onClick={() => setTabActiva('PROFESIONALES_OCI')} icon={<Users className="w-4 h-4" />} label="Profesionales OCI" />
             <TabButton active={tabActiva === 'PROCESOS'} onClick={() => setTabActiva('PROCESOS')} icon={<Layers className="w-4 h-4" />} label="Procesos" />
           </div>
         </div>
@@ -40,7 +40,7 @@ export function ConfiguracionesModulePremium() {
           {tabActiva === 'NOTIFICACIONES' && <NotificacionesModule />}
           {tabActiva === 'CONFIG_AUDITORIAS' && <ConfiguracionAuditoriasModule />}
           {tabActiva === 'CONFIG_KANBAN' && <ConfiguracionKanbanModule />}
-          {tabActiva === 'PROFESIONALES_OCIG' && <ConfiguracionProfesionalesModule />}
+          {tabActiva === 'PROFESIONALES_OCI' && <ConfiguracionProfesionalesModule />}
           {tabActiva === 'PROCESOS' && <ConfiguracionProcesosModule />}
         </motion.div>
       </AnimatePresence>

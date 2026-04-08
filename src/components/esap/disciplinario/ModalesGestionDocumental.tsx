@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { createPortal } from 'react-dom';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl } from '../../../config/environment';
@@ -721,7 +722,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[100000] p-4"
       onClick={onClose}
     >
       <motion.div
@@ -2013,12 +2014,12 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
 
   const prioridades = ['Alta', 'Media', 'Baja'];
 
-  return (
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[100000] p-4"
       onClick={(e) => { if (e.target === e.currentTarget) handleCerrarModal(); }}
     >
       <motion.div
@@ -2146,6 +2147,8 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                         const token = localStorage.getItem('esap_access_token');
                         const headers: HeadersInit = {};
                         if (token) headers['Authorization'] = `Bearer ${token}`;
+                        // Abrir ventana sincrónicamente para evitar bloqueo de popups
+                        const win = window.open('about:blank', '_blank');
                         fetch(viewUrl, { method: 'GET', headers, credentials: 'include' })
                           .then(res => {
                             if (!res.ok) throw new Error('No autorizado');
@@ -2153,10 +2156,15 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                           })
                           .then(blob => {
                             const objectUrl = URL.createObjectURL(blob);
-                            const win = window.open(objectUrl, '_blank');
-                            if (win) setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+                            if (win) {
+                              win.location.href = objectUrl;
+                              setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+                            }
                           })
-                          .catch(() => toast.error('No se pudo abrir el archivo'));
+                          .catch(() => {
+                            if (win) win.close();
+                            toast.error('No se pudo abrir el archivo');
+                          });
                       }}
                       title="Ver documento"
                       style={{ borderColor: '#003DA5', color: '#003DA5' }}
@@ -2311,7 +2319,8 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
         </AlertDialogContent>
       </AlertDialog>
 
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }
 
@@ -2509,7 +2518,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[100000] p-4"
       onClick={onClose}
     >
       <motion.div
@@ -3086,7 +3095,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[100000] p-4"
       onClick={onClose}
     >
       <motion.div
@@ -3579,7 +3588,7 @@ export function ModalHistorialAuditoria({ proceso, onClose }: ModalHistorialProp
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[100000] p-4"
       onClick={onClose}
     >
       <motion.div

@@ -4,8 +4,10 @@
  * Usado por: Revisión y Aprobación + Dashboard Kanban Operativo
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { buildApiUrl, API_MODE } from '../../../config/environment';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Eye, CheckCircle, XCircle, Edit2,
@@ -374,6 +376,43 @@ export function ModalRevisionAuto({
   const [activeTab, setActiveTab] = useState<'documento' | 'historial'>('documento');
   const [archivoAuto, setArchivoAuto] = useState<File | null>(null);
   const [tipoVista, setTipoVista] = useState<'texto' | 'archivo'>('texto');
+  const [documentoBackendUrl, setDocumentoBackendUrl] = useState<string | null>(null);
+  const [cargandoDoc, setCargandoDoc] = useState(false);
+
+  useEffect(() => {
+    if (!borrador.autoId) return;
+    let blobUrl: string | null = null;
+    const cargarDocumento = async () => {
+      try {
+        setCargandoDoc(true);
+        const auto = await disciplinaryService.getAutoById(borrador.autoId!);
+        if (auto.documentUrl) {
+          const restPath = auto.documentUrl;
+          const fileUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
+          const token = localStorage.getItem('esap_access_token');
+          const response = await fetch(fileUrl, {
+            method: 'GET',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+          });
+          if (response.ok) {
+            const blob = await response.blob();
+            blobUrl = window.URL.createObjectURL(blob);
+            setDocumentoBackendUrl(blobUrl);
+          }
+        } else if (auto.contenido) {
+          setContenidoEditado(auto.contenido);
+        }
+      } catch {
+        // si falla, conservar el contenido existente
+      } finally {
+        setCargandoDoc(false);
+      }
+    };
+    cargarDocumento();
+    return () => {
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [borrador.autoId]);
 
   const handleGuardarEdicion = () => {
     toast.success('Cambios Guardados', {
@@ -404,8 +443,12 @@ export function ModalRevisionAuto({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[200] flex items-center justify-center"
-        style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+        className="fixed inset-0 flex items-center justify-center"
+        style={{
+          backgroundColor: 'rgba(0,0,0,0.60)',
+          padding: '4vh 4vw',
+          zIndex: 9998
+        }}
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >
         <motion.div
@@ -676,6 +719,22 @@ export function ModalRevisionAuto({
                           Descartar
                         </button>
                       </div>
+                    </div>
+                  ) : cargandoDoc ? (
+                    <div className="flex items-center justify-center p-10 rounded-xl border-2" style={{ borderColor: '#E5E7EB', background: '#F8FAFC' }}>
+                      <div className="text-center">
+                        <div className="w-8 h-8 border-4 border-[#003DA5] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                        <p className="text-sm" style={{ color: '#6B7280' }}>Cargando documento...</p>
+                      </div>
+                    </div>
+                  ) : documentoBackendUrl ? (
+                    <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
+                      <iframe
+                        src={documentoBackendUrl}
+                        className="w-full"
+                        style={{ height: '65vh', minHeight: '400px', border: 'none' }}
+                        title="Visor PDF"
+                      />
                     </div>
                   ) : tipoVista === 'archivo' && archivoAuto ? (
                     <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>

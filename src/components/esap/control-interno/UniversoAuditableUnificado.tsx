@@ -1,13 +1,13 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * PROGRAMA DE AUDITORÍA - OCIG ESAP
+ * PROGRAMA DE AUDITORÍA - OCI ESAP
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Módulo único y completo que integra:
  * - Universo Auditable (DÓNDE se puede auditar)
  * - Programa Anual de Auditorías (CUÁNDO auditar)
- * - Profesionales OCIG (QUIÉN audita)
- * - Integración con Auditorías OCIG (ejecución)
+ * - Profesionales OCI (QUIÉN audita)
+ * - Integración con Auditorías OCI (ejecución)
  * - Integración con Planes de Mejoramiento (hallazgos)
  * 
  * Base normativa:
@@ -40,12 +40,14 @@ import { TooltipGuia } from './TooltipGuia';
 import { useUniversoAuditableData, type ProcesoAuditableUI } from './hooks/useUniversoAuditableData';
 import { useProgramaAnualData, calcularEstadisticas, type AuditoriaProgramadaUI, type AuditoriaCreateData } from './hooks/useProgramaAnualData';
 import type { Estadisticas, EstadoAuditoria, TipoAuditoria } from './hooks/useProgramaAnualData';
+// ✅ HOOK DE EVALUACIONES DAFP (nueva funcionalidad)
+import { useEvaluacionesProcesoData, type EvaluacionProcesoUI } from './hooks/useEvaluacionesProcesoData';
 // ✅ SERVICIO DE EXPORTACIÓN PDF
 import { exportarUniversoAuditablePDF, exportarUniversoAuditableExcel } from './services/exportarUniversoAuditablePDF';
 // ✅ UTILIDAD DE CONVERSIÓN (separada para reutilización)
 import { convertirProcesoAFormularioDafp as convertirProcesoAFormulario } from './utils/procesoAuditableConverters';
-// ✅ HOOK DE CONFIGURACIÓN DE PROFESIONALES OCIG (backend)
-import { useConfiguracionProfesionales, type ProfesionalOCIG } from './services/useConfiguracionProfesionales';
+// ✅ HOOK DE CONFIGURACIÓN DE PROFESIONALES OCI (backend)
+import { useConfiguracionProfesionales, type ProfesionalOCI } from './services/useConfiguracionProfesionales';
 // ✅ HOOK DE PERMISOS FLEXIBLE
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 
@@ -92,6 +94,16 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     refetch: refetchProcesos,
   } = useUniversoAuditableData();
 
+  // ✅ HOOK DE EVALUACIONES DAFP - Para crear nuevas evaluaciones por proceso
+  const {
+    evaluaciones,
+    loading: loadingEvaluaciones,
+    agregarEvaluacion,
+    editarEvaluacion,
+    eliminarEvaluacion,
+    refetch: refetchEvaluaciones,
+  } = useEvaluacionesProcesoData({ vigencia });
+
   const {
     auditorias: auditoriasProgramadas,
     estadisticas,
@@ -102,9 +114,9 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     refetch: refetchAuditorias,
   } = useProgramaAnualData({ vigencia, procesos });
 
-  // ✅ HOOK DE PROFESIONALES OCIG (para badge del tab)
+  // ✅ HOOK DE PROFESIONALES OCI (para badge del tab)
   const {
-    profesionalesOCIG,
+    profesionalesOCI,
     loading: loadingProfesionales,
   } = useConfiguracionProfesionales();
 
@@ -114,25 +126,133 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
   const puedeEditarProceso = puedeRealizar('planificacion', 'edit');
   const puedeEliminarProceso = puedeRealizar('planificacion', 'delete');
 
-  const loading = loadingProcesos || loadingAuditorias;
+  const loading = loadingProcesos || loadingAuditorias || loadingEvaluaciones;
   const error = errorProcesos || errorAuditorias;
   const isOnline = isOnlineProcesos && isOnlineAuditorias;
 
   const [mostrarFormularioProceso, setMostrarFormularioProceso] = useState(false);
   const [procesoSeleccionado, setProcesoSeleccionado] = useState<ProcesoAuditable | null>(null);
+  const [evaluacionSeleccionada, setEvaluacionSeleccionada] = useState<EvaluacionProcesoUI | null>(null);
+
+  // ✅ MAPA de procesos por ID para lookup rápido
+  const procesosMap = useMemo(() => {
+    const map = new Map<string, ProcesoAuditable>();
+    procesos.forEach(p => map.set(p.id, p));
+    return map;
+  }, [procesos]);
+
+  // ✅ Convertir evaluaciones a formato ProcesoAuditableUI que la tabla espera
+  // Cada evaluación se muestra como una fila con datos del proceso + datos DAFP
+  const evaluacionesComoFilas = useMemo((): ProcesoAuditable[] => {
+    console.log('[evaluacionesComoFilas] Evaluaciones recebias:', JSON.stringify(evaluaciones, (key, val) => key === 'createdAt' || key === 'updatedAt' ? undefined : val, 2));
+    return evaluaciones.map(ev => {
+      const proceso = procesosMap.get(ev.procesoId);
+      // Mapear ponderación DAFP a nivel de riesgo UI -优先 usar nuevo campo nivelCriticidadDafp
+      const mapPonderacion: Record<string, NivelRiesgo> = {
+        'EXTREMO': 'Crítico', 'ALTO': 'Alto', 'MODERADO': 'Medio', 'BAJO': 'Bajo', 'MUY BAJO': 'Bajo',
+      };
+      // Usar nivelCriticidadDafp (migración 179) o ponderacionRiesgo legacy
+      const nivelRiesgoMap: Record<string, NivelRiesgo> = {
+        'Extremo': 'Crítico', 'Alto': 'Alto', 'Moderado': 'Medio', 'Bajo': 'Bajo',
+      };
+      const nivelRiesgo = nivelRiesgoMap[ev.nivelCriticidadDafp || ''] || mapPonderacion[ev.ponderacionRiesgo || ''] || 'Medio';
+      // Calcular score en escala 0-100 desde ponderación DAFP
+      const scoreCalculado = ev.ponderacionFinalDafp ? +(ev.ponderacionFinalDafp * 20).toFixed(0) : (ev.scoreRiesgo || 0);
+      // Usar cicloRotacionDafp (migración 179) o planRotacion legacy
+      const frecuencia = ev.cicloRotacionDafp || ev.planRotacion || 'Anual';
+      
+      return {
+        id: ev.id, // ID de la evaluación (no del proceso)
+        nombre: proceso?.nombre || ev.procesoNombre || 'Proceso desconocido',
+        tipo: proceso?.tipo || 'Apoyo' as any,
+        descripcion: `Vigencia ${ev.vigencia} — Corte ${ev.fechaCorte}`,
+        responsable: ev.dependenciaResponsable || proceso?.responsable || '',
+        nivelRiesgo,
+        puntajeRiesgo: scoreCalculado,
+        calificacionDafp: ev.prioridadRegla || 0,
+        categoria: ev.decisionFinal || '',
+        auditable: ev.decisionFinal === 'INCLUIR PLAN ANUAL',
+        ultimaAuditoria: ev.fechaUltimaAuditoria,
+        resultadoUltimaAuditoria: ev.resultadoUltimaAuditoria,
+        frecuenciaAuditoria: frecuencia as any,
+        activo: ev.activo,
+        codigo: proceso?.codigo || ev.procesoCodigo || '',
+        macroproceso: proceso?.macroproceso || '',
+        tipoProceso: proceso?.tipo || 'Apoyo' as any,
+        dependenciaResponsable: ev.dependenciaResponsable || '',
+        scoreRiesgo: scoreCalculado,
+        frecuenciaSugerida: frecuencia,
+        horasEstimadas: 0,
+        _backendId: ev.procesoId, // Guardamos ref al proceso maestro
+        _evaluacionRiesgo: {
+          // Riesgos inherentes
+          riesgosExtremos: ev.riesgosExtremos,
+          riesgosAltos: ev.riesgosAltos,
+          riesgosModerados: ev.riesgosModerados,
+          riesgosBajos: ev.riesgosBajos,
+          totalRiesgos: ev.totalRiesgos,
+          // Requerimientos especiales
+          requerimientoComite: ev.requerimientoComite,
+          requerimientoEntesReg: ev.requerimientoEntesReg,
+          // Auditoría anterior
+          fechaUltimaAuditoria: ev.fechaUltimaAuditoria,
+          resultadoUltimaAuditoria: ev.resultadoUltimaAuditoria,
+          // Score legacy
+          ponderacionRiesgo: ev.ponderacionRiesgo,
+          criticidad: ev.criticidad,
+          exposicion: ev.exposicion,
+          mitigantes: ev.mitigantes,
+          scoreRiesgo: ev.scoreRiesgo,
+          // Criterios DAFP (migración 179)
+          tiempoUltimaAuditoria: ev.tiempoUltimaAuditoria,
+          temasAltaDireccion: ev.temasAltaDireccion,
+          objetivosEstrategicos: ev.objetivosEstrategicos,
+          hallazgosAnteriores: ev.hallazgosAnteriores,
+          ponderacionFinalDafp: ev.ponderacionFinalDafp,
+          nivelCriticidadDafp: ev.nivelCriticidadDafp,
+          cicloRotacionDafp: ev.cicloRotacionDafp,
+          // Decisión
+          decisionFinal: ev.decisionFinal,
+          motivoDecision: ev.motivoDecision,
+          prioridadRegla: ev.prioridadRegla,
+          // Metadatos
+          vigencia: ev.vigencia,
+          fechaCorte: ev.fechaCorte,
+        } as any,
+      } as ProcesoAuditable;
+    });
+  }, [evaluaciones, procesosMap]);
+
+  // ✅ Estadísticas calculadas desde evaluaciones
+  const estadisticasEvaluaciones = useMemo(() => {
+    const total = evaluacionesComoFilas.length;
+    const criticos = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Crítico').length;
+    const altos = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Alto').length;
+    const medios = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Medio').length;
+    const bajos = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Bajo').length;
+    return {
+      ...estadisticas,
+      totalProcesos: total,
+      procesosAuditables: evaluacionesComoFilas.filter(e => e.auditable).length,
+      procesosCriticos: criticos,
+      procesosAltos: altos,
+      procesosMedios: medios,
+      procesosBajos: bajos,
+    };
+  }, [evaluacionesComoFilas, estadisticas]);
   
-  // Filtrar procesos
-  const procesosFiltrados = useMemo(() => {
-    return procesos.filter(proceso => {
-      const cumpleFiltroRiesgo = filtroNivelRiesgo === 'TODOS' || proceso.nivelRiesgo === filtroNivelRiesgo;
-      const cumpleFiltroTipo = filtroTipoProceso === 'TODOS' || proceso.tipo === filtroTipoProceso;
+  // Filtrar evaluaciones (misma lógica que antes pero sobre evaluaciones)
+  const evaluacionesFiltradas = useMemo(() => {
+    return evaluacionesComoFilas.filter(fila => {
+      const cumpleFiltroRiesgo = filtroNivelRiesgo === 'TODOS' || fila.nivelRiesgo === filtroNivelRiesgo;
+      const cumpleFiltroTipo = filtroTipoProceso === 'TODOS' || fila.tipo === filtroTipoProceso;
       const cumpleBusqueda = busqueda === '' || 
-        proceso.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-        proceso.responsable.toLowerCase().includes(busqueda.toLowerCase());
+        fila.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+        fila.dependenciaResponsable.toLowerCase().includes(busqueda.toLowerCase());
       
       return cumpleFiltroRiesgo && cumpleFiltroTipo && cumpleBusqueda;
     });
-  }, [procesos, filtroNivelRiesgo, filtroTipoProceso, busqueda]);
+  }, [evaluacionesComoFilas, filtroNivelRiesgo, filtroTipoProceso, busqueda]);
   
   // ✅ HANDLERS con integración backend
   const handleAgregarProceso = async (nuevoProceso: ProcesoAuditableData) => {
@@ -145,6 +265,159 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
   
   const handleEliminarProceso = async (id: string) => {
     await eliminarProceso(id);
+  };
+
+  // ✅ HANDLER para crear/editar EVALUACIONES DAFP (nuevos registros por proceso)
+  const handleAgregarEvaluacion = async (datos: ProcesoAuditableData, procesoId?: string) => {
+    if (!procesoId) {
+      toast.error('Debe seleccionar un proceso del catálogo');
+      return;
+    }
+    
+    const riesgoExt = datos.riesgosExtremos || 0;
+    const riesgoAlt = datos.riesgosAltos || 0;
+    const riesgoMod = datos.riesgosModerados || 0;
+    const riesgoBaj = datos.riesgosBajos || 0;
+    const totalRiesgos = riesgoExt + riesgoAlt + riesgoMod + riesgoBaj;
+    
+    // Calcular ponderación DAFP si tenemos todos los criterios
+    const riCuan = riesgoExt >= 1 ? 5 : riesgoAlt >= 1 ? 4 : riesgoMod >= 1 ? 3 : riesgoBaj >= 1 ? 2 : 0;
+    const tiempo = datos.tiempoUltimaAuditoria || 0;
+    const ad = datos.temasAltaDireccion || 0;
+    const obj = datos.objetivosEstrategicos || 0;
+    const hall = datos.hallazgosAnteriores || 0;
+    
+    let ponderacionFinalDafp = 0;
+    let nivelCriticidadDafp = '';
+    let cicloRotacionDafp = '';
+    
+    if (totalRiesgos > 0 && tiempo > 0 && ad > 0 && obj > 0 && hall > 0) {
+      ponderacionFinalDafp = +(riCuan * 0.4 + tiempo * 0.1 + ad * 0.1 + obj * 0.1 + hall * 0.3).toFixed(2);
+      if (ponderacionFinalDafp >= 4.0) nivelCriticidadDafp = 'Extremo';
+      else if (ponderacionFinalDafp >= 3.5) nivelCriticidadDafp = 'Alto';
+      else if (ponderacionFinalDafp >= 3.0) nivelCriticidadDafp = 'Moderado';
+      else nivelCriticidadDafp = 'Bajo';
+      
+      if (nivelCriticidadDafp === 'Extremo') cicloRotacionDafp = 'Cada año';
+      else if (nivelCriticidadDafp === 'Alto' || nivelCriticidadDafp === 'Moderado') cicloRotacionDafp = 'Cada 2 años';
+      else cicloRotacionDafp = 'Cada 3 años';
+    }
+
+    console.log('[handleAgregarEvaluacion] Guardando evaluación con datos:', {
+      procesoId,
+      riesgos: { riesgosExtremos: riesgoExt, riesgosAltos: riesgoAlt, riesgosModerados: riesgoMod, riesgosBajos: riesgoBaj, totalRiesgos },
+      criterios: { tiempoUltimaAuditoria: tiempo, temasAltaDireccion: ad, objetivosEstrategicos: obj, hallazgosAnteriores: hall },
+      resultado: { ponderacionFinalDafp, nivelCriticidadDafp, cicloRotacionDafp }
+    });
+
+    const evaluacionData: Partial<EvaluacionProcesoUI> = {
+      procesoId,
+      vigencia: Number(datos.vigencia) || new Date().getFullYear(),
+      fechaCorte: datos.fechaCorte || new Date().toISOString().split('T')[0],
+      dependenciaResponsable: datos.dependenciaResponsable || proceso?.nombre || 'Sin dependencia',
+      riesgosExtremos: Number(riesgoExt),
+      riesgosAltos: Number(riesgoAlt),
+      riesgosModerados: Number(riesgoMod),
+      riesgosBajos: Number(riesgoBaj),
+      totalRiesgos: Number(totalRiesgos),
+      requerimientoComite: Boolean(datos.requerimientoComite),
+      requerimientoEntesReg: Boolean(datos.requerimientoEntesReg),
+      fechaUltimaAuditoria: datos.fechaUltimaAuditoria || null,
+      resultadoUltimaAuditoria: datos.resultadoUltimaAuditoria || 'SIN_AUDITORIA',
+      criticidad: Number(datos.criticidad) || 0,
+      exposicion: Number(datos.exposicion) || 0,
+      mitigantes: Number(datos.mitigantes) || 0,
+      scoreRiesgo: Number(datos.scoreRiesgoCEM) || 0,
+      ponderacionRiesgo: datos.ponderacionRiesgo || 'BAJO',
+      // Criterios de priorización DAFP (migración 179) - FORZAR VALORES DESDE EL FORMULARIO
+      tiempoUltimaAuditoria: Number(datos.tiempoUltimaAuditoria) || Number(tiempo),
+      temasAltaDireccion: Number(datos.temasAltaDireccion) || Number(ad),
+      objetivosEstrategicos: Number(datos.objetivosEstrategicos) || Number(obj),
+      hallazgosAnteriores: Number(datos.hallazgosAnteriores) || Number(hall),
+      ponderacionFinalDafp: Number(ponderacionFinalDafp),
+      nivelCriticidadDafp: nivelCriticidadDafp,
+      cicloRotacionDafp: cicloRotacionDafp || 'Anual',
+      decisionFinal: datos.decisionFinal || 'AUDITORÍA POSTERIOR',
+      motivoDecision: datos.motivoDecision || '',
+      prioridadRegla: Number(datos.prioridadRegla) || 5,
+    };
+    
+    console.log('[handleAgregarEvaluacion] Evaluacion lista para guardar:', evaluacionData);
+
+    const result = await agregarEvaluacion(evaluacionData);
+    console.log('[handleAgregarEvaluacion] Resultado:', result);
+    if (result) {
+      console.log('[handleAgregarEvaluacion] Ejecutando refetchEvaluaciones...');
+      await refetchEvaluaciones();
+      console.log('[handleAgregarEvaluacion] Refetch completado');
+      toast.success('Evaluación creada exitosamente');
+    }
+  };
+
+  const handleEditarEvaluacion = async (datos: ProcesoAuditableData, evaluacionId: string) => {
+    const riesgoExt = datos.riesgosExtremos || 0;
+    const riesgoAlt = datos.riesgosAltos || 0;
+    const riesgoMod = datos.riesgosModerados || 0;
+    const riesgoBaj = datos.riesgosBajos || 0;
+    const totalRiesgosCalc = riesgoExt + riesgoAlt + riesgoMod + riesgoBaj;
+    
+    // Calcular ponderación DAFP si tenemos todos los criterios
+    const riCuan = riesgoExt >= 1 ? 5 : riesgoAlt >= 1 ? 4 : riesgoMod >= 1 ? 3 : riesgoBaj >= 1 ? 2 : 0;
+    const tiempo = datos.tiempoUltimaAuditoria || 0;
+    const ad = datos.temasAltaDireccion || 0;
+    const obj = datos.objetivosEstrategicos || 0;
+    const hall = datos.hallazgosAnteriores || 0;
+    
+    let ponderacionFinalDafp = 0;
+    let nivelCriticidadDafp = '';
+    let cicloRotacionDafp = '';
+    
+    if (totalRiesgosCalc > 0 && tiempo > 0 && ad > 0 && obj > 0 && hall > 0) {
+      ponderacionFinalDafp = +(riCuan * 0.4 + tiempo * 0.1 + ad * 0.1 + obj * 0.1 + hall * 0.3).toFixed(2);
+      if (ponderacionFinalDafp >= 4.0) nivelCriticidadDafp = 'Extremo';
+      else if (ponderacionFinalDafp >= 3.5) nivelCriticidadDafp = 'Alto';
+      else if (ponderacionFinalDafp >= 3.0) nivelCriticidadDafp = 'Moderado';
+      else nivelCriticidadDafp = 'Bajo';
+      
+      if (nivelCriticidadDafp === 'Extremo') cicloRotacionDafp = 'Cada año';
+      else if (nivelCriticidadDafp === 'Alto' || nivelCriticidadDafp === 'Moderado') cicloRotacionDafp = 'Cada 2 años';
+      else cicloRotacionDafp = 'Cada 3 años';
+    }
+
+    const evaluacionData: Partial<EvaluacionProcesoUI> = {
+      vigencia: datos.vigencia || new Date().getFullYear(),
+      fechaCorte: datos.fechaCorte,
+      dependenciaResponsable: datos.dependenciaResponsable || '',
+      riesgosExtremos: riesgoExt,
+      riesgosAltos: riesgoAlt,
+      riesgosModerados: riesgoMod,
+      riesgosBajos: riesgoBaj,
+      totalRiesgos: totalRiesgosCalc,
+      requerimientoComite: datos.requerimientoComite || false,
+      requerimientoEntesReg: datos.requerimientoEntesReg || false,
+      fechaUltimaAuditoria: datos.fechaUltimaAuditoria || undefined,
+      resultadoUltimaAuditoria: datos.resultadoUltimaAuditoria,
+      criticidad: datos.criticidad || 0,
+      exposicion: datos.exposicion || 0,
+      mitigantes: datos.mitigantes || 0,
+      scoreRiesgo: datos.scoreRiesgoCEM || 0,
+      ponderacionRiesgo: datos.ponderacionRiesgo as any,
+      // Criterios de priorización DAFP (migración 179)
+      tiempoUltimaAuditoria: tiempo,
+      temasAltaDireccion: ad,
+      objetivosEstrategicos: obj,
+      hallazgosAnteriores: hall,
+      ponderacionFinalDafp: ponderacionFinalDafp,
+      nivelCriticidadDafp: nivelCriticidadDafp,
+      cicloRotacionDafp: cicloRotacionDafp,
+      decisionFinal: datos.decisionFinal,
+      motivoDecision: datos.motivoDecision,
+      prioridadRegla: datos.prioridadRegla,
+    };
+
+    await editarEvaluacion(evaluacionId, evaluacionData);
+    await refetchEvaluaciones();
+    toast.success('Evaluación actualizada');
   };
 
   return (
@@ -323,7 +596,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
               <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
                 tabActiva === 'profesionales' ? 'bg-white/20' : 'bg-gray-200'
               }`}>
-                {loadingProfesionales ? '...' : profesionalesOCIG.length}
+                {loadingProfesionales ? '...' : profesionalesOCI.length}
               </span>
             </button>
           </div>
@@ -348,8 +621,8 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
             {tabActiva === 'universo' && (
               <TabUniversoAuditable
                 key="universo"
-                procesos={procesosFiltrados}
-                estadisticas={estadisticas}
+                procesos={evaluacionesFiltradas}
+                estadisticas={estadisticasEvaluaciones}
                 filtroRiesgo={filtroNivelRiesgo}
                 filtroTipo={filtroTipoProceso}
                 busqueda={busqueda}
@@ -358,14 +631,26 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
                 onBusquedaChange={setBusqueda}
                 onAgregarProceso={() => {
                   setProcesoSeleccionado(null);
+                  setEvaluacionSeleccionada(null);
                   setMostrarFormularioProceso(true);
                 }}
-                onEditarProceso={(proceso) => {
-                  setProcesoSeleccionado(proceso);
+                onEditarProceso={(filaEvaluacion) => {
+                  // Buscar el proceso maestro para pre-llenar el formulario
+                  const procesoMaestro = procesosMap.get(filaEvaluacion._backendId || '');
+                  if (procesoMaestro) setProcesoSeleccionado(procesoMaestro);
+                  // Guardar referencia a la evaluación que se edita
+                  const evOriginal = evaluaciones.find(e => e.id === filaEvaluacion.id);
+                  if (evOriginal) setEvaluacionSeleccionada(evOriginal);
                   setMostrarFormularioProceso(true);
                 }}
-                onEliminarProceso={handleEliminarProceso}
-                onGuardarEvaluacion={editarProceso}
+                onEliminarProceso={async (evaluacionId) => {
+                  await eliminarEvaluacion(evaluacionId);
+                }}
+                onGuardarEvaluacion={async (evaluacionId, datos) => {
+                  await editarEvaluacion(evaluacionId, datos);
+                  return true;
+                }}
+                onRefresh={refetchEvaluaciones}
                 puedeCrear={!modoSeguimiento && puedeCrearProceso}
                 puedeEditar={!modoSeguimiento && puedeEditarProceso}
                 puedeEliminar={!modoSeguimiento && puedeEliminarProceso}
@@ -451,23 +736,40 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       {/* Formulario para gestionar procesos del Universo Auditable */}
       {mostrarFormularioProceso && (
         <FormularioProcesoAuditable
+          key={evaluacionSeleccionada ? evaluacionSeleccionada.id : `nueva-${procesoSeleccionado?.id ?? 'p'}`}
           open={mostrarFormularioProceso}
           onClose={() => {
             setMostrarFormularioProceso(false);
             setProcesoSeleccionado(null);
+            setEvaluacionSeleccionada(null);
           }}
-          onSubmit={(proceso, procesoId) => {
-            if (procesoId || procesoSeleccionado) {
-              handleEditarProceso(proceso, procesoId || procesoSeleccionado!.id);
+          onSubmit={(proceso, procesoIdSeleccionado) => {
+            // ✅ FIX: Universo Auditable crea EVALUACIONES, no procesos
+            // El proceso maestro viene del catálogo (Configuración → Procesos)
+            // Aquí se crean evaluaciones DAFP del proceso seleccionado
+            if (evaluacionSeleccionada) {
+              // Modo EDIT: actualizar evaluación existente
+              handleEditarEvaluacion(proceso, evaluacionSeleccionada.id);
             } else {
-              handleAgregarProceso(proceso);
+              // Modo CREATE: crear nueva evaluación para el proceso seleccionado
+              handleAgregarEvaluacion(proceso, procesoIdSeleccionado || procesoSeleccionado?.id);
             }
             setMostrarFormularioProceso(false);
             setProcesoSeleccionado(null);
+            setEvaluacionSeleccionada(null);
           }}
-          procesoInicial={convertirProcesoAFormulario(procesoSeleccionado)}
-          mode={procesoSeleccionado ? 'edit' : 'create'}
-          procesosCatalog={procesos.map(p => ({ id: p.id, nombre: p.nombre, codigo: p.codigo }))}
+          procesoInicial={convertirProcesoAFormulario(procesoSeleccionado, evaluacionSeleccionada)}
+          mode={evaluacionSeleccionada ? 'edit' : 'create'}
+          procesosCatalog={procesos.map(p => ({
+                  id: p.id,
+                  nombre: p.nombre,
+                  codigo: p.codigo,
+                  macroproceso: p.macroproceso || p._macroproceso,
+                  dependencia: p.dependenciaResponsable || p._dependencia,
+                  tipo: p._macroproceso === 'Territorial' || p.macroproceso === 'Territorial'
+                    ? 'Territorial'
+                    : (p.tipo || 'Apoyo'),
+                }))}
         />
       )}
     </div>
@@ -492,6 +794,8 @@ interface TabUniversoAuditableProps {
   onEliminarProceso: (id: string) => void;
   // ✅ Nueva prop para guardar evaluaciones DAFP directamente al backend
   onGuardarEvaluacion?: (id: string, datos: any) => Promise<boolean>;
+  // ✅ Nueva prop para recargar datos
+  onRefresh?: () => void;
   // ✅ PERMISOS - Control de visibilidad de acciones
   puedeCrear?: boolean;
   puedeEditar?: boolean;
@@ -511,6 +815,7 @@ function TabUniversoAuditable({
   onEditarProceso,
   onEliminarProceso,
   onGuardarEvaluacion,
+  onRefresh,
   puedeCrear = true,
   puedeEditar = true,
   puedeEliminar = true
@@ -530,6 +835,7 @@ function TabUniversoAuditable({
       onEditarProceso={onEditarProceso as any}
       onEliminarProceso={onEliminarProceso}
       onGuardarEvaluacion={onGuardarEvaluacion}
+      onRefresh={onRefresh}
       puedeCrear={puedeCrear}
       puedeEditar={puedeEditar}
       puedeEliminar={puedeEliminar}
@@ -574,16 +880,24 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-xl border-2 border-blue-200 p-6">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-blue-700">Total Programadas</span>
+            <span className="text-sm font-semibold text-blue-700">Total de auditorías</span>
             <CalendarIcon className="w-5 h-5 text-blue-600" />
           </div>
           <p className="text-3xl font-black text-blue-700">{estadisticas.totalProgramadas}</p>
-          <div className="mt-2 flex items-center gap-2 text-xs">
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-green-500"></div>
-              <span className="text-gray-600">{estadisticas.completadas} completadas</span>
-            </div>
-          </div>
+          <p className="mt-2 text-xs text-gray-600 leading-relaxed">
+            Mismo universo que el tablero Kanban:{' '}
+            <span className="font-semibold text-gray-800">
+              {estadisticas.enPlanAnual + estadisticas.enPlaneacion} planeación
+            </span>
+            {' · '}
+            <span className="font-semibold text-gray-800">{estadisticas.enEjecucion} ejecución</span>
+            {' · '}
+            <span className="font-semibold text-gray-800">{estadisticas.enComunicacion} comunicación</span>
+            {' · '}
+            <span className="font-semibold text-gray-800">{estadisticas.enSeguimiento} seguimiento</span>
+            {' · '}
+            <span className="font-semibold text-gray-800">{estadisticas.completadas} finalizadas</span>
+          </p>
         </div>
 
         <div className="bg-white rounded-xl border-2 border-yellow-200 p-6">
@@ -761,10 +1075,10 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
 
                     {/* Etiquetas de vinculación */}
                     <div className="flex items-center gap-2">
-                      {auditoria.auditoriaOCIGId && (
+                      {auditoria.auditoriaOCIId && (
                         <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold flex items-center gap-1">
                           <Link2 className="w-3 h-3" />
-                          Vinculada OCIG
+                          Vinculada OCI
                         </span>
                       )}
                       {auditoria.hallazgosCount > 0 && (
@@ -792,7 +1106,7 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// TAB 3: PROFESIONALES (conectado con backend de configuración OCIG)
+// TAB 3: PROFESIONALES (conectado con backend de configuración OCI)
 // ════════════════════════════════════════════════════════════════════════════
 
 interface TabProfesionalesProps {
@@ -801,26 +1115,91 @@ interface TabProfesionalesProps {
 }
 
 function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
-  // ✅ HOOK DE BACKEND - Carga profesionales configurados en OCIG
+  // ✅ HOOK DE BACKEND - Carga profesionales configurados en OCI
   const {
-    profesionalesOCIG,
+    profesionalesOCI,
     estadisticasGlobales,
     loading: loadingProfesionales,
     error: errorProfesionales,
     cargarDatos: refetchProfesionales
   } = useConfiguracionProfesionales();
 
+  // ✅ Calcular carga REAL de cada profesional a partir de las auditorías asignadas
+  const profesionalesConCarga = useMemo(() => {
+    // Helper para extraer nombre de un elemento del equipo (puede ser string u objeto)
+    const extraerNombre = (e: unknown): string => {
+      if (typeof e === 'string') return e.toLowerCase().trim();
+      if (e && typeof e === 'object' && 'nombre' in e) return String((e as any).nombre).toLowerCase().trim();
+      return '';
+    };
+    const extraerId = (e: unknown): string => {
+      if (typeof e === 'string') return e;
+      if (e && typeof e === 'object' && 'id' in e) return String((e as any).id);
+      return '';
+    };
+
+    return profesionalesOCI.map(p => {
+      const nombre = p.usuario.nombre.toLowerCase().trim();
+      const configId = p.configuracion.id || '';
+      const idTercero = String(p.configuracion.idTercero);
+
+      // Auditorías donde este profesional es líder (match por nombre, id config, o idTercero)
+      const comoLider = auditorias.filter(a => {
+        const lider = (a.auditorLider || '').toLowerCase().trim();
+        return lider === nombre || a.auditorLider === configId || a.auditorLider === idTercero;
+      });
+
+      // Auditorías donde este profesional está en el equipo
+      const comoEquipo = auditorias.filter(a => {
+        if (comoLider.some(l => l.id === a.id)) return false; // No contar doble
+        return a.equipo.some(e => {
+          const miembroNombre = extraerNombre(e);
+          const miembroId = extraerId(e);
+          return miembroNombre === nombre || miembroId === configId || miembroId === idTercero;
+        });
+      });
+
+      const auditoriasTotales = comoLider.length + comoEquipo.length;
+      const horasLider = comoLider.reduce((sum, a) => sum + (a.horasEstimadas || 0), 0);
+      const horasEquipo = comoEquipo.reduce((sum, a) => sum + (a.horasEstimadas || 0), 0);
+      const horasAsignadas = horasLider + horasEquipo;
+
+      // Porcentaje de carga: auditorías asignadas vs capacidad máxima
+      const capacidad = p.configuracion.capacidadMaximaAuditorias || 4;
+      const porcentajePorAuditorias = Math.round((auditoriasTotales / capacidad) * 100);
+
+      // También considerar horas: horasAsignadas vs horasMensualesDisponibles
+      const horasDisponibles = p.configuracion.horasMensualesDisponibles || 150;
+      const porcentajePorHoras = horasDisponibles > 0 ? Math.round((horasAsignadas / horasDisponibles) * 100) : 0;
+
+      // Usar el mayor de los dos porcentajes como indicador de carga
+      const porcentajeCarga = Math.max(porcentajePorAuditorias, porcentajePorHoras);
+
+      return {
+        ...p,
+        estadisticas: {
+          auditoriasTotales,
+          auditoriasComoLider: comoLider.length,
+          auditoriasComoEquipo: comoEquipo.length,
+          cargaPonderada: porcentajeCarga,
+          porcentajeCarga,
+          horasAsignadas,
+        },
+      };
+    });
+  }, [profesionalesOCI, auditorias]);
+
   // Calcular semáforo de carga para cada profesional
   const profesionalesConSemaforo = useMemo(() => {
-    return profesionalesOCIG.map(p => {
+    return profesionalesConCarga.map(p => {
       const porcentaje = p.estadisticas.porcentajeCarga;
       const semaforo = porcentaje > 90 ? 'rojo' : porcentaje >= 70 ? 'amarillo' : 'verde';
       return { ...p, semaforo, porcentaje };
     }).sort((a, b) => b.porcentaje - a.porcentaje);
-  }, [profesionalesOCIG]);
+  }, [profesionalesConCarga]);
 
-  const totalProfesionales = estadisticasGlobales.totalProfesionales;
-  const conCargaAlta = estadisticasGlobales.sobrecargados;
+  const totalProfesionales = profesionalesConCarga.length;
+  const conCargaAlta = profesionalesConSemaforo.filter(p => p.semaforo === 'rojo').length;
   const conCargaMedia = profesionalesConSemaforo.filter(p => p.semaforo === 'amarillo').length;
 
   return (
@@ -889,10 +1268,10 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
       {!loadingProfesionales && (
         <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
           <h2 className="text-xl font-black text-gray-900 mb-4">
-            Equipo OCIG Configurado
+            Equipo OCI Configurado
           </h2>
           <p className="text-sm text-gray-600 mb-6">
-            Profesionales configurados en el módulo OCIG con su rol, especialidades y capacidad.
+            Profesionales configurados en el módulo OCI con su rol, especialidades y capacidad.
           </p>
 
           <div className="space-y-4">
@@ -914,7 +1293,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
                     <div>
                       <p className="font-bold text-gray-900 text-base">{p.usuario.nombre}</p>
                       <p className="text-sm text-blue-700 font-semibold mt-0.5">
-                        {p.configuracion.rolOCIG}
+                        {p.configuracion.rolOCI}
                       </p>
                       <div className="flex flex-wrap gap-1 mt-2">
                         {p.configuracion.especialidades.slice(0, 3).map((esp, i) => (
@@ -978,8 +1357,8 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
             {profesionalesConSemaforo.length === 0 && !loadingProfesionales && (
               <div className="text-center py-10">
                 <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500 font-semibold">No hay profesionales configurados en OCIG</p>
-                <p className="text-sm text-gray-400 mt-1">Configure profesionales en el módulo de Configuración OCIG</p>
+                <p className="text-gray-500 font-semibold">No hay profesionales configurados en OCI</p>
+                <p className="text-sm text-gray-400 mt-1">Configure profesionales en el módulo de Configuración OCI</p>
               </div>
             )}
           </div>
@@ -988,7 +1367,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
 
       <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
         <p className="text-sm text-blue-800">
-          La configuración detallada de perfiles y capacidades puede gestionarse en <strong>Configuraciones → Profesionales OCIG</strong>.
+          La configuración detallada de perfiles y capacidades puede gestionarse en <strong>Configuraciones → Profesionales OCI</strong>.
         </p>
       </div>
     </motion.div>

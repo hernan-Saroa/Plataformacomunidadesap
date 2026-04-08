@@ -1,12 +1,12 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * CONFIGURACIÓN DE PROFESIONALES OCIG - ESAP
+ * CONFIGURACIÓN DE PROFESIONALES OCI - ESAP
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Módulo para asignar y configurar profesionales del equipo OCIG.
+ * Módulo para asignar y configurar profesionales del equipo OCI.
  * 
  * ✅ NO CREA PROFESIONALES (eso se hace en Administración - Perfiles)
- * ✅ Asigna profesionales existentes al equipo OCIG
+ * ✅ Asigna profesionales existentes al equipo OCI
  * ✅ Configura roles/especialidades dentro del Control Interno
  * ✅ Define capacidad de trabajo (auditorías simultáneas, horas disponibles)
  * ✅ Muestra carga actual por auditorías asignadas
@@ -48,17 +48,17 @@ import { toast } from 'sonner@2.0.3';
 import { 
   useConfiguracionProfesionales,
   type UsuarioSistema,
-  type ConfiguracionOCIG,
-  type ProfesionalOCIG,
+  type ConfiguracionOCI,
+  type ProfesionalOCI,
   ESPECIALIDADES_DISPONIBLES,
-  ROLES_OCIG
+  ROLES_OCI
 } from './services/useConfiguracionProfesionales';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS (importados desde el hook)
 // ════════════════════════════════════════════════════════════════════════════
 
-// Los tipos UsuarioSistema, ConfiguracionOCIG y ProfesionalOCIG se importan
+// Los tipos UsuarioSistema, ConfiguracionOCI y ProfesionalOCI se importan
 // desde useConfiguracionProfesionales
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -71,8 +71,8 @@ export function ConfiguracionProfesionalesModule() {
     loading,
     saving,
     error,
-    profesionalesOCIG,
-    usuariosDisponiblesParaOCIG,
+    profesionalesOCI,
+    usuariosDisponiblesParaOCI,
     estadisticasGlobales,
     cargarDatos,
     agregarProfesional,
@@ -82,7 +82,7 @@ export function ConfiguracionProfesionalesModule() {
 
   // Estado local del UI
   const [mostrarModalAgregar, setMostrarModalAgregar] = useState(false);
-  const [profesionalEditando, setProfesionalEditando] = useState<ProfesionalOCIG | null>(null);
+  const [profesionalEditando, setProfesionalEditando] = useState<ProfesionalOCI | null>(null);
   const [busqueda, setBusqueda] = useState('');
   const [filtroRol, setFiltroRol] = useState<string>('TODOS');
 
@@ -91,27 +91,27 @@ export function ConfiguracionProfesionalesModule() {
   // ════════════════════════════════════════════════════════════════════════════
 
   const profesionalesFiltrados = useMemo(() => {
-    return profesionalesOCIG.filter(p => {
+    return profesionalesOCI.filter(p => {
       const cumpleBusqueda = busqueda === '' || 
         p.usuario.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
         p.usuario.email.toLowerCase().includes(busqueda.toLowerCase());
       
-      const cumpleFiltroRol = filtroRol === 'TODOS' || p.configuracion.rolOCIG === filtroRol;
+      const cumpleFiltroRol = filtroRol === 'TODOS' || p.configuracion.rolOCI === filtroRol;
       
       return cumpleBusqueda && cumpleFiltroRol;
     });
-  }, [profesionalesOCIG, busqueda, filtroRol]);
+  }, [profesionalesOCI, busqueda, filtroRol]);
 
   // ════════════════════════════════════════════════════════════════════════════
   // HANDLERS
   // ════════════════════════════════════════════════════════════════════════════
 
-  const handleAgregarProfesional = async (config: ConfiguracionOCIG) => {
+  const handleAgregarProfesional = async (config: ConfiguracionOCI) => {
     await agregarProfesional(config);
     setMostrarModalAgregar(false);
   };
 
-  const handleActualizarProfesional = async (usuarioId: string, cambios: Partial<ConfiguracionOCIG>) => {
+  const handleActualizarProfesional = async (usuarioId: string, cambios: Partial<ConfiguracionOCI>) => {
     await actualizarProfesional(usuarioId, cambios);
     setProfesionalEditando(null);
   };
@@ -149,7 +149,7 @@ export function ConfiguracionProfesionalesModule() {
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl sm:text-3xl font-black text-gray-900">
-                  Profesionales OCIG
+                  Profesionales OCI
                 </h1>
                 {/* Badge de conexión */}
                 <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">
@@ -200,7 +200,7 @@ export function ConfiguracionProfesionalesModule() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="TODOS">Todos los roles</SelectItem>
-              {ROLES_OCIG.map(rol => (
+              {ROLES_OCI.map(rol => (
                 <SelectItem key={rol} value={rol}>{rol}</SelectItem>
               ))}
             </SelectContent>
@@ -218,7 +218,7 @@ export function ConfiguracionProfesionalesModule() {
             <Users className="w-4 h-4 text-blue-600" />
           </div>
           <p className="text-2xl font-black text-blue-700">{estadisticasGlobales.totalProfesionales}</p>
-          <p className="text-xs text-blue-600">activos en OCIG</p>
+          <p className="text-xs text-blue-600">activos en OCI</p>
         </div>
 
         <div className="bg-white rounded-xl border-2 border-green-200 p-4">
@@ -292,7 +292,7 @@ export function ConfiguracionProfesionalesModule() {
             <p className="text-sm text-gray-400 mt-2">
               {busqueda || filtroRol !== 'TODOS'
                 ? 'Intenta ajustar los filtros de búsqueda'
-                : 'Agrega profesionales al equipo OCIG'}
+                : 'Agrega profesionales al equipo OCI'}
             </p>
           </div>
         )}
@@ -308,7 +308,7 @@ export function ConfiguracionProfesionalesModule() {
             <strong className="block mb-2">Información Importante:</strong>
             <ul className="list-disc list-inside space-y-1">
               <li>Los profesionales se crean en <strong>Administración → Perfiles de Usuario</strong></li>
-              <li>Aquí solo se asignan al equipo OCIG y se configura su capacidad de trabajo</li>
+              <li>Aquí solo se asignan al equipo OCI y se configura su capacidad de trabajo</li>
               <li><strong>Capacidad Máxima:</strong> Número de auditorías que puede manejar simultáneamente</li>
               <li><strong>Carga Ponderada:</strong> Líder = 100%, Equipo = 30% del peso</li>
               <li>La información se sincroniza con el módulo de <strong>Programa de Auditoría → Profesionales</strong></li>
@@ -322,7 +322,7 @@ export function ConfiguracionProfesionalesModule() {
       {/* ═══════════════════════════════════════════════════════════════ */}
       {mostrarModalAgregar && (
         <ModalAgregarProfesional
-          usuariosDisponibles={usuariosDisponiblesParaOCIG}
+          usuariosDisponibles={usuariosDisponiblesParaOCI}
           onAgregar={handleAgregarProfesional}
           onCerrar={() => setMostrarModalAgregar(false)}
         />
@@ -336,11 +336,11 @@ export function ConfiguracionProfesionalesModule() {
 // ════════════════════════════════════════════════════════════════════════════
 
 interface TarjetaProfesionalProps {
-  profesional: ProfesionalOCIG;
+  profesional: ProfesionalOCI;
   editando: boolean;
   onEditar: () => void;
   onCancelar: () => void;
-  onGuardar: (cambios: Partial<ConfiguracionOCIG>) => void;
+  onGuardar: (cambios: Partial<ConfiguracionOCI>) => void;
   onEliminar: () => void;
 }
 
@@ -380,15 +380,15 @@ function TarjetaProfesional({
         </div>
 
         <div className="space-y-4">
-          {/* Rol OCIG */}
+          {/* Rol OCI */}
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2">Rol en OCIG</label>
-            <Select value={form.rolOCIG} onValueChange={(value) => setForm({ ...form, rolOCIG: value as any })}>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Rol en OCI</label>
+            <Select value={form.rolOCI} onValueChange={(value) => setForm({ ...form, rolOCI: value as any })}>
               <SelectTrigger className="w-full font-semibold">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {ROLES_OCIG.map(rol => (
+                {ROLES_OCI.map(rol => (
                   <SelectItem key={rol} value={rol}>{rol}</SelectItem>
                 ))}
               </SelectContent>
@@ -477,7 +477,7 @@ function TarjetaProfesional({
               <p className="text-sm text-gray-600 mb-2">{profesional.usuario.email}</p>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold">
-                  {profesional.configuracion.rolOCIG}
+                  {profesional.configuracion.rolOCI}
                 </span>
                 {profesional.configuracion.puedeSerLider && (
                   <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-xs font-bold">
@@ -502,7 +502,7 @@ function TarjetaProfesional({
               <button
                 onClick={onEliminar}
                 className="p-2 hover:bg-red-100 rounded-lg transition-colors group"
-                title="Remover de OCIG"
+                title="Remover de OCI"
               >
                 <Trash2 className="w-4 h-4 text-gray-400 group-hover:text-red-600" />
               </button>
@@ -590,12 +590,28 @@ function TarjetaProfesional({
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// MODAL: AGREGAR PROFESIONAL AL EQUIPO OCIG
+// HELPER: MAPEAR ROL DEL SISTEMA A ROL OCI
+// ════════════════════════════════════════════════════════════════════════════
+
+function mapRolCodeARolOCI(rolCode?: string): ConfiguracionOCI['rolOCI'] {
+  const mapa: Record<string, ConfiguracionOCI['rolOCI']> = {
+    'JEFE_OCI':              'Jefe OCI',
+    'JEFE_CONTROL_INTERNO':  'Jefe OCI',
+    'AUDITOR_LIDER':         'Auditor Sénior',
+    'CONTROL_INTERNO':       'Auditor',
+    'PROFESIONAL_AUDITOR':   'Auditor',
+    'AUXILIAR_AUDITORIA':    'Apoyo Técnico',
+  };
+  return mapa[(rolCode ?? '').toUpperCase()] ?? 'Auditor';
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: AGREGAR PROFESIONAL AL EQUIPO OCI
 // ════════════════════════════════════════════════════════════════════════════
 
 interface ModalAgregarProfesionalProps {
   usuariosDisponibles: UsuarioSistema[];
-  onAgregar: (config: ConfiguracionOCIG) => void;
+  onAgregar: (config: ConfiguracionOCI) => void;
   onCerrar: () => void;
 }
 
@@ -603,7 +619,6 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<string>('');
   const [openCombobox, setOpenCombobox] = useState(false);
   const [openEspecialidades, setOpenEspecialidades] = useState(false);
-  const [rolOCIG, setRolOCIG] = useState<ConfiguracionOCIG['rolOCIG']>('Auditor');
   const [especialidades, setEspecialidades] = useState<string[]>([]);
   const [capacidad, setCapacidad] = useState(4);
   const [horas, setHoras] = useState(150);
@@ -630,10 +645,10 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
       return;
     }
 
-    const nuevaConfig: ConfiguracionOCIG = {
+    const nuevaConfig: ConfiguracionOCI = {
       usuarioId: usuarioSeleccionado,
       idTercero: usuario.idTercero,
-      rolOCIG,
+      rolOCI: mapRolCodeARolOCI(usuario.rolCode),
       especialidades,
       capacidadMaximaAuditorias: capacidad,
       horasMensualesDisponibles: horas,
@@ -680,7 +695,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
           <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-xl sticky top-0 z-10">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-black">Asignar Profesional a OCIG</h2>
+                <h2 className="text-2xl font-black">Asignar Profesional a OCI</h2>
                 <p className="text-sm text-blue-100 mt-1">
                   Configura el rol y capacidad del profesional en el equipo
                 </p>
@@ -744,6 +759,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                             <div className="flex flex-col min-w-0 flex-1">
                               <span className="font-semibold truncate">{usuario.nombre}</span>
                               <span className="text-xs text-gray-500 truncate">{usuario.email}</span>
+                              <span className="text-xs text-blue-600 font-semibold mt-0.5">{mapRolCodeARolOCI(usuario.rolCode)}</span>
                             </div>
                           </CommandItem>
                         ))}
@@ -754,27 +770,27 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
               </Popover>
               {usuariosDisponibles.length === 0 && (
                 <p className="text-sm text-yellow-600 mt-2">
-                  ⚠️ No hay usuarios disponibles. Todos los profesionales activos ya están asignados a OCIG.
+                  ⚠️ No hay usuarios disponibles. Todos los profesionales activos ya están asignados a OCI.
                 </p>
               )}
             </div>
 
-            {/* Rol OCIG */}
-            <div>
-              <label className="block text-sm font-bold text-gray-900 mb-2">
-                Rol en OCIG <span className="text-red-600">*</span>
-              </label>
-              <Select value={rolOCIG} onValueChange={(value) => setRolOCIG(value as any)}>
-                <SelectTrigger className="w-full font-semibold">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLES_OCIG.map(rol => (
-                    <SelectItem key={rol} value={rol}>{rol}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Rol en OCI - leído del sistema */}
+            {usuarioSeleccionado && (() => {
+              const u = usuariosDisponibles.find(x => x.id === usuarioSeleccionado);
+              const rolMapeado = mapRolCodeARolOCI(u?.rolCode);
+              return (
+                <div>
+                  <label className="block text-sm font-bold text-gray-900 mb-2">
+                    Rol en OCI
+                  </label>
+                  <div className="flex items-center justify-between px-4 py-3 bg-blue-50 border-2 border-blue-200 rounded-lg">
+                    <span className="font-bold text-blue-800">{rolMapeado}</span>
+                    <span className="text-xs text-blue-500">Tomado del sistema</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Especialidades */}
             <div>
@@ -908,7 +924,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
               className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <UserCheck className="w-5 h-5" />
-              Asignar a OCIG
+              Asignar a OCI
             </button>
           </div>
         </form>

@@ -111,6 +111,30 @@ export interface EvidenciaDocumento {
   auditoriaId?: string;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// EVENTOS TIMELINE - HISTORIAL
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type TipoEventoTimeline = 
+  | 'CREACION' 
+  | 'ACTUALIZACION' 
+  | 'APROBACION' 
+  | 'COMPLETADA' 
+  | 'EVIDENCIA' 
+  | 'COMENTARIO'
+  | 'PROGRESO'
+  | 'ESTADO'
+  | 'HALLAZGO_COMPLETADO';
+
+export interface EventoTimeline {
+  id: string;
+  tipo: TipoEventoTimeline;
+  descripcion: string;
+  usuarioNombre?: string;
+  fecha: string;
+  metadata?: Record<string, any>;
+}
+
 export interface PlanMejoramientoDetalle {
   id: string;
   codigo: string;
@@ -124,6 +148,7 @@ export interface PlanMejoramientoDetalle {
   hallazgos: HallazgoDetalle[];
   acciones: AccionCorrectiva[];
   seguimientos: SeguimientoTrimestral[];
+  timeline: EventoTimeline[];
   auditoria: string;
   auditoriaId?: string;
   observaciones?: string;
@@ -260,18 +285,33 @@ function transformarPlanDetalle(planBackend: any): PlanMejoramientoDetalle {
   
   console.log('📋 [transformarPlanDetalle] Hallazgos encontrados:', hallazgosBackend.length, hallazgosBackend);
   
+  // Acciones (primero) para poder calcular hallazgos con estados normalizados
+  const accionesBackend = planBackend.acciones || [];
+  const acciones: AccionCorrectiva[] = accionesBackend.map((a: any) => ({
+    id: a.id,
+    hallazgoId: a.hallazgoId || a.hallazgo_id || '',
+    descripcion: a.descripcion || a.titulo || 'Sin descripción',
+    responsable: a.responsable || 'Sin asignar',
+    fechaInicio: a.fechaInicio || a.fecha_inicio || a.createdAt?.split('T')[0] || '',
+    fechaVencimiento: a.fechaVencimiento || a.fecha_vencimiento || a.fechaLimite || '',
+    estado: mapearEstadoAccion(a.estado),
+    progreso: Number(a.progreso ?? a.porcentajeAvance ?? 0) || 0,
+    evidencias: a.evidencias?.length || a.evidenciasCount || 0,
+    observaciones: a.observaciones || a.comentarios || ''
+  }));
+
+  /** Progreso del hallazgo = % de acciones completadas (misma regla que filtros en Vista Acciones) */
   const hallazgos: HallazgoDetalle[] = hallazgosBackend.map((h: any) => {
-    const accionesDelHallazgo = (planBackend.acciones || []).filter(
-      (a: any) => a.hallazgoId === h.id || a.hallazgo_id === h.id
-    );
+    const hid = h.id;
+    const accionesDelHallazgo = acciones.filter((a) => a.hallazgoId === hid);
     const completadas = accionesDelHallazgo.filter(
-      (a: any) => a.estado === 'completada' || a.estado === 'COMPLETADA' || a.estado === 'implementada'
+      (a) => a.estado === 'COMPLETADA' || (a.progreso ?? 0) >= 100
     ).length;
     const total = accionesDelHallazgo.length;
-    
+
     return {
-      id: h.id,
-      codigo: h.codigo || `H-${h.id?.substring(0, 4) || '001'}`,
+      id: hid,
+      codigo: h.codigo || `H-${String(hid).substring(0, 4) || '001'}`,
       descripcion: h.descripcion || h.titulo || 'Sin descripción',
       criticidad: mapearCriticidad(h.gravedad || h.criticidad || h.categoria || 'MEDIA'),
       proceso: h.proceso || h.area || 'Sin proceso',
@@ -282,23 +322,10 @@ function transformarPlanDetalle(planBackend: any): PlanMejoramientoDetalle {
     };
   });
 
-  // Acciones
-  const accionesBackend = planBackend.acciones || [];
-  const acciones: AccionCorrectiva[] = accionesBackend.map((a: any) => ({
-    id: a.id,
-    hallazgoId: a.hallazgoId || a.hallazgo_id || '',
-    descripcion: a.descripcion || a.titulo || 'Sin descripción',
-    responsable: a.responsable || 'Sin asignar',
-    fechaInicio: a.fechaInicio || a.fecha_inicio || a.createdAt?.split('T')[0] || '',
-    fechaVencimiento: a.fechaVencimiento || a.fecha_vencimiento || a.fechaLimite || '',
-    estado: mapearEstadoAccion(a.estado),
-    progreso: a.progreso || a.porcentajeAvance || 0,
-    evidencias: a.evidencias?.length || a.evidenciasCount || 0,
-    observaciones: a.observaciones || a.comentarios || ''
-  }));
-
-  // Calcular progreso global
-  const accionesCompletadas = acciones.filter(a => a.estado === 'COMPLETADA').length;
+  // Calcular progreso global (completada por estado o por %)
+  const accionesCompletadas = acciones.filter(
+    (a) => a.estado === 'COMPLETADA' || (a.progreso ?? 0) >= 100
+  ).length;
   const progresoGlobal = acciones.length > 0 
     ? Math.round((accionesCompletadas / acciones.length) * 100) 
     : 0;
@@ -355,6 +382,7 @@ function transformarPlanDetalle(planBackend: any): PlanMejoramientoDetalle {
     hallazgos,
     acciones,
     seguimientos,
+    timeline: [], // Se cargará por separado
     auditoria: nombreAuditoria,
     auditoriaId: planBackend.auditoriaId || planBackend.auditoria_id || (typeof auditoriaObj === 'object' ? auditoriaObj?.id : undefined),
     observaciones: planBackend.observaciones || planBackend.descripcion || ''
@@ -414,6 +442,31 @@ export function usePlanMejoramientoDetalle(planId: string) {
         
         const planTransformado = transformarPlanDetalle(responseConHallazgos);
         console.log('🔄 [usePlanMejoramientoDetalle] Plan transformado:', planTransformado);
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Cargar eventos del timeline (historial de cambios)
+        // ═══════════════════════════════════════════════════════════════════
+        try {
+          console.log('📜 [usePlanMejoramientoDetalle] Cargando eventos del timeline...');
+          const eventosBackend = await controlInternoService.getEventosTimelinePlan(planId);
+          console.log('📜 [usePlanMejoramientoDetalle] Eventos cargados:', eventosBackend?.length || 0);
+          
+          if (Array.isArray(eventosBackend) && eventosBackend.length > 0) {
+            const eventosFormateados: EventoTimeline[] = eventosBackend.map((e: any) => ({
+              id: e.id,
+              tipo: e.tipo as TipoEventoTimeline,
+              descripcion: e.descripcion,
+              usuarioNombre: e.usuarioNombre || e.usuario_nombre || 'Sistema',
+              fecha: e.fecha || e.createdAt,
+              metadata: e.metadata
+            }));
+            planTransformado.timeline = eventosFormateados;
+          }
+        } catch (timelineError) {
+          console.warn('[usePlanMejoramientoDetalle] No se pudieron cargar eventos del timeline:', timelineError);
+          // No fallar la carga del plan si no se pueden cargar los eventos
+        }
+
         setPlan(planTransformado);
       } else {
         setError('Plan no encontrado');
@@ -582,49 +635,55 @@ export function usePlanMejoramientoDetalle(planId: string) {
       
       await controlInternoService.actualizarAccionPlanMejoramiento(plan.id, accionId, datosBackend);
       
-      // Actualizar estado local
+      // Actualizar estado local (completada también si progreso ≥ 100)
+      const accionCompleta = (a: { estado: string; progreso: number }) =>
+        a.estado === 'COMPLETADA' || (a.progreso ?? 0) >= 100;
+
       setPlan(prev => {
         if (!prev) return null;
-        
-        const accionesActualizadas = prev.acciones.map(a => 
-          a.id === accionId 
-            ? { 
-                ...a, 
-                ...(data.descripcion && { descripcion: data.descripcion }),
-                ...(data.responsable && { responsable: data.responsable }),
-                ...(data.fechaInicio && { fechaInicio: data.fechaInicio }),
-                ...(data.fechaVencimiento && { fechaVencimiento: data.fechaVencimiento }),
-                ...(data.estado && { estado: mapearEstadoAccion(data.estado) }),
-                ...(data.progreso !== undefined && { progreso: data.progreso }),
-                ...(data.observaciones !== undefined && { observaciones: data.observaciones }),
-              }
-            : a
-        );
-        
-        // Recalcular progreso de hallazgos
+
+        const accionesActualizadas = prev.acciones.map(a => {
+          if (a.id !== accionId) return a;
+          let next: typeof a = {
+            ...a,
+            ...(data.descripcion && { descripcion: data.descripcion }),
+            ...(data.responsable && { responsable: data.responsable }),
+            ...(data.fechaInicio && { fechaInicio: data.fechaInicio }),
+            ...(data.fechaVencimiento && { fechaVencimiento: data.fechaVencimiento }),
+            ...(data.estado && { estado: mapearEstadoAccion(data.estado) }),
+            ...(data.progreso !== undefined && { progreso: data.progreso }),
+            ...(data.observaciones !== undefined && { observaciones: data.observaciones }),
+          };
+          if ((next.progreso ?? 0) >= 100) {
+            next = { ...next, estado: 'COMPLETADA', progreso: 100 };
+          }
+          return next;
+        });
+
         const hallazgosActualizados = prev.hallazgos.map(h => {
-          const accionesDelHallazgo = accionesActualizadas.filter(a => a.hallazgoId === h.id);
-          const completadas = accionesDelHallazgo.filter(a => a.estado === 'COMPLETADA').length;
+          const accionesDelHallazgo = accionesActualizadas.filter(x => x.hallazgoId === h.id);
+          const completadas = accionesDelHallazgo.filter(accionCompleta).length;
           return {
             ...h,
             accionesCompletadas: completadas,
-            progreso: accionesDelHallazgo.length > 0 
-              ? Math.round((completadas / accionesDelHallazgo.length) * 100) 
-              : 0
+            progreso:
+              accionesDelHallazgo.length > 0
+                ? Math.round((completadas / accionesDelHallazgo.length) * 100)
+                : 0,
           };
         });
-        
-        // Recalcular progreso global
-        const totalCompletadas = accionesActualizadas.filter(a => a.estado === 'COMPLETADA').length;
-        const progresoGlobal = accionesActualizadas.length > 0 
-          ? Math.round((totalCompletadas / accionesActualizadas.length) * 100) 
-          : 0;
-        
+
+        const totalCompletadas = accionesActualizadas.filter(accionCompleta).length;
+        const progresoGlobal =
+          accionesActualizadas.length > 0
+            ? Math.round((totalCompletadas / accionesActualizadas.length) * 100)
+            : 0;
+
         return {
           ...prev,
           acciones: accionesActualizadas,
           hallazgos: hallazgosActualizados,
-          progresoGlobal
+          progresoGlobal,
         };
       });
       

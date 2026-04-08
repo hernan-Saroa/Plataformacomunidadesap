@@ -16,6 +16,7 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { createPortal } from 'react-dom';
 import {
   X, Mail, FileText, Download, Upload, CheckCircle, AlertCircle, AlertTriangle,
   Calendar, User, Send, Search, Clock, Paperclip, Eye, Shield,
@@ -499,12 +500,12 @@ export function WizardOficiosWorldClass({
   });
 
   // ==================== RENDER ====================
-  return (
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 flex items-center justify-center z-[150] p-4 sm:p-6 bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 flex items-center justify-center z-[100000] p-4 sm:p-6 bg-black/50 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
@@ -601,7 +602,7 @@ export function WizardOficiosWorldClass({
                 )}
               </button>
               
-              <button
+              {/* <button
                 onClick={() => setVistaActual('lista')}
                 className={`relative px-5 py-3 rounded-t-2xl font-bold text-sm transition-all duration-300 ${
                   vistaActual === 'lista'
@@ -629,7 +630,7 @@ export function WizardOficiosWorldClass({
                     transition={{ type: 'spring', duration: 0.5 }}
                   />
                 )}
-              </button>
+              </button> */}
             </div>
           </div>
         </div>
@@ -1565,6 +1566,7 @@ export function WizardOficiosWorldClass({
           </div>
         )}
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }

@@ -1,6 +1,6 @@
 /**
  * ============================================
- * INFORMES DE LEY OFICIALES - OCIG
+ * INFORMES DE LEY OFICIALES - OCI
  * ============================================
  * 
  * Cronograma completo de informes obligatorios

@@ -25,8 +25,8 @@ export class EquipoAuditor {
   @JoinColumn({ name: 'auditoria_id' })
   auditoria: Auditoria;
 
-  @Column({ name: 'persona_id', type: 'bigint', nullable: false })
-  personaId: number; // FK a auth.personas
+  @Column({ name: 'persona_id', type: 'uuid', nullable: false })
+  personaId: string; // FK a auth.personas(id_person)
 
   @Column({ type: 'varchar', length: 100, default: 'Auditor' })
   rol: string; // Auditor, Auditor Senior, Inspector, etc.

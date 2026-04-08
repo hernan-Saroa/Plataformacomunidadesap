@@ -134,7 +134,7 @@ export function AuditModulePremium() {
       timestamp: '2025-11-17 16:20:15',
       user: 'Sandra Montero',
       userId: 'PER-OCI-002',
-      action: 'Creación de Área Auditable',
+      action: 'Creación de Proceso Auditable',
       module: 'Control Interno - Universo Auditorías',
       severity: 'medium',
       status: 'success',
@@ -143,11 +143,35 @@ export function AuditModulePremium() {
       browser: 'Edge 119.0',
       location: 'Bogotá, Colombia',
       duration: '1.8s',
-      details: 'Se agregó nueva área "Gestión de Tecnología" al universo de auditorías',
+      details: 'Se agregó proceso "Gestión de Tecnología" al universo auditable — Evaluación DAFP RE-E-GE-034',
       changes: [
-        { field: 'Nombre', before: 'N/A', after: 'Gestión de Tecnología' },
-        { field: 'Nivel de Riesgo', before: 'N/A', after: 'Alto' },
-        { field: 'Frecuencia Auditoría', before: 'N/A', after: 'Anual' }
+        // INFORMACIÓN BÁSICA
+        { field: 'Proceso / Proyecto / Procedimiento', before: 'N/A', after: 'Gestión de Tecnología' },
+        { field: 'Macroproceso', before: 'N/A', after: 'Gestión Estratégica' },
+        { field: 'Dependencia Responsable', before: 'N/A', after: 'Oficina de Tecnología e Información' },
+        { field: 'Vigencia', before: 'N/A', after: '2026' },
+        { field: 'Fecha de Corte', before: 'N/A', after: '31/03/2026' },
+        // RIESGO INHERENTE
+        { field: 'Riesgos Extremos', before: 'N/A', after: '2' },
+        { field: 'Riesgos Altos', before: 'N/A', after: '3' },
+        { field: 'Riesgos Moderados', before: 'N/A', after: '1' },
+        { field: 'Riesgos Bajos', before: 'N/A', after: '0' },
+        { field: 'Total Riesgos', before: 'N/A', after: '6' },
+        { field: 'RI Ponderación Cualitativa', before: 'N/A', after: 'Alto' },
+        { field: 'RI Ponderación Cuantitativa', before: 'N/A', after: '4' },
+        // CRITERIOS DE PRIORIZACIÓN
+        { field: 'Tiempo desde última auditoría (Criterio)', before: 'N/A', after: 'Más de 4 años' },
+        { field: 'Temas de interés de la Alta Dirección (Criterio)', before: 'N/A', after: 'Sí, es tema de interés' },
+        { field: 'Cantidad de objetivos estratégicos asociados (Criterio)', before: 'N/A', after: 'Entre 3 y 5 objetivos' },
+        { field: 'Resultados auditorías anteriores internas y externas (Criterio)', before: 'N/A', after: 'Con hallazgos no subsanados' },
+        // RESULTADOS DAFP
+        { field: 'Ponderación Final DAFP', before: 'N/A', after: '4.2' },
+        { field: 'Nivel de Criticidad', before: 'N/A', after: 'Alto' },
+        { field: 'Ciclo de Rotación', before: 'N/A', after: 'Cada año' },
+        { field: 'Priorización Año 1', before: 'N/A', after: 'Incluido' },
+        { field: 'Priorización Año 2', before: 'N/A', after: 'Incluido' },
+        { field: 'Priorización Año 3', before: 'N/A', after: 'No incluido' },
+        { field: 'Priorización Año 4', before: 'N/A', after: 'No incluido' },
       ]
     },
     {
@@ -155,7 +179,7 @@ export function AuditModulePremium() {
       timestamp: '2025-11-17 16:15:42',
       user: 'Sandra Montero',
       userId: 'PER-OCI-002',
-      action: 'Actualización de evaluación de riesgo',
+      action: 'Actualización de evaluación DAFP — Proceso Auditable',
       module: 'Control Interno - Universo Auditorías',
       severity: 'medium',
       status: 'success',
@@ -164,11 +188,35 @@ export function AuditModulePremium() {
       browser: 'Edge 119.0',
       location: 'Bogotá, Colombia',
       duration: '2.3s',
-      details: 'Evaluación de riesgo actualizada para "Oficina Jurídica" - Incremento de nivel',
+      details: 'Evaluación DAFP actualizada para "Oficina Jurídica" — Incremento de nivel de riesgo por nuevos litigios',
       changes: [
-        { field: 'Nivel de Riesgo', before: 'Medio', after: 'Alto' },
-        { field: 'Justificación', before: 'N/A', after: 'Incremento de litigios' },
-        { field: 'Prioridad Auditoría', before: 'Normal', after: 'Alta' }
+        // INFORMACIÓN BÁSICA
+        { field: 'Proceso / Proyecto / Procedimiento', before: 'Gestión Jurídica', after: 'Gestión Jurídica' },
+        { field: 'Macroproceso', before: 'Gestión Legal', after: 'Gestión Legal' },
+        { field: 'Dependencia Responsable', before: 'Oficina Jurídica', after: 'Oficina Jurídica' },
+        { field: 'Vigencia', before: '2025', after: '2026' },
+        { field: 'Fecha de Corte', before: '31/12/2025', after: '31/03/2026' },
+        // RIESGO INHERENTE
+        { field: 'Riesgos Extremos', before: '0', after: '1' },
+        { field: 'Riesgos Altos', before: '2', after: '4' },
+        { field: 'Riesgos Moderados', before: '3', after: '2' },
+        { field: 'Riesgos Bajos', before: '2', after: '1' },
+        { field: 'Total Riesgos', before: '7', after: '8' },
+        { field: 'RI Ponderación Cualitativa', before: 'Moderado', after: 'Alto' },
+        { field: 'RI Ponderación Cuantitativa', before: '3', after: '4' },
+        // CRITERIOS DE PRIORIZACIÓN
+        { field: 'Tiempo desde última auditoría (Criterio)', before: 'Entre 2 y 3 años', after: 'Más de 4 años' },
+        { field: 'Temas de interés de la Alta Dirección (Criterio)', before: 'No es tema de interés', after: 'Sí, es tema prioritario' },
+        { field: 'Cantidad de objetivos estratégicos asociados (Criterio)', before: '1 o 2 objetivos', after: 'Entre 3 y 5 objetivos' },
+        { field: 'Resultados auditorías anteriores internas y externas (Criterio)', before: 'Sin hallazgos relevantes', after: 'Con hallazgos no subsanados' },
+        // RESULTADOS DAFP
+        { field: 'Ponderación Final DAFP', before: '2.8', after: '4.1' },
+        { field: 'Nivel de Criticidad', before: 'Medio', after: 'Alto' },
+        { field: 'Ciclo de Rotación', before: 'Cada 2 años', after: 'Cada año' },
+        { field: 'Priorización Año 1', before: 'No incluido', after: 'Incluido' },
+        { field: 'Priorización Año 2', before: 'Incluido', after: 'Incluido' },
+        { field: 'Priorización Año 3', before: 'Incluido', after: 'No incluido' },
+        { field: 'Priorización Año 4', before: 'No incluido', after: 'No incluido' },
       ]
     },
     
@@ -1147,7 +1195,7 @@ export function AuditModulePremium() {
       }
 
       return true;
-    });
+    }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [events, searchQuery, filters]);
 
   const handleEventClick = (event: AuditEvent) => {

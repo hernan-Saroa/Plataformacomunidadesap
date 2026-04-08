@@ -1,9 +1,9 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * TABS OCIG - COMPONENTE REUTILIZABLE
+ * TABS OCI - COMPONENTE REUTILIZABLE
  * ═════════════════════════════════════════════════════════════════════════
  * 
- * Sistema de tabs para módulos OCIG
+ * Sistema de tabs para módulos OCI
  * Estilo según especificaciones de diseño ESAP
  * 
  * @version 1.0
@@ -25,7 +25,7 @@ export interface Tab {
   disabled?: boolean;
 }
 
-interface TabsOCIGProps {
+interface TabsOCIProps {
   tabs: Tab[];
   activeTab: string;
   onTabChange: (tabId: string) => void;
@@ -36,12 +36,12 @@ interface TabsOCIGProps {
 // COMPONENTE PRINCIPAL
 // ═════════════════════════════════════════════════════════════════════════
 
-export function TabsOCIG({
+export function TabsOCI({
   tabs,
   activeTab,
   onTabChange,
   className = '',
-}: TabsOCIGProps) {
+}: TabsOCIProps) {
   
   const activeTabData = tabs.find((tab) => tab.id === activeTab);
 
@@ -109,4 +109,4 @@ export function TabsOCIG({
 // EXPORTS
 // ═════════════════════════════════════════════════════════════════════════
 
-export default TabsOCIG;
+export default TabsOCI;

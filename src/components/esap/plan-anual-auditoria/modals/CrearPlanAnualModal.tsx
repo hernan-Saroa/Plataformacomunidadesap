@@ -46,7 +46,7 @@ export function CrearPlanAnualModal({ isOpen, onClose, onCrear }: CrearPlanAnual
         <div className="bg-gradient-to-r from-[#003DA5] to-[#2962FF] px-8 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold text-white">Crear Plan Anual OCIG</h2>
+              <h2 className="text-2xl font-bold text-white">Crear Plan Anual OCI</h2>
               <p className="text-white/80 text-base mt-1">Decreto 648/2017 - 5 Roles y 22 Actividades</p>
             </div>
             <button
@@ -161,7 +161,7 @@ export function CrearPlanAnualModal({ isOpen, onClose, onCrear }: CrearPlanAnual
                   <ul className="text-sm text-gray-700 space-y-1">
                     <li>• El plan se creará en estado <strong>Borrador</strong></li>
                     <li>• Podrás editar todas las actividades antes de enviarlo a aprobación</li>
-                    <li>• El Jefe de OCIG debe <strong>aprobar</strong> el plan antes de su ejecución</li>
+                    <li>• El Jefe de OCI debe <strong>aprobar</strong> el plan antes de su ejecución</li>
                     <li>• Una vez aprobado, los cambios requerirán una nueva versión</li>
                   </ul>
                 </div>

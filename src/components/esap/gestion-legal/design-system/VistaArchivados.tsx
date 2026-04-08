@@ -367,7 +367,7 @@ export function VistaArchivados({
                       </Button>
                     )}
 
-                    {puedeEliminarPermanente && item.estado === 'ELIMINADO' && (
+                    {puedeEliminarPermanente && (
                       <Button
                         variant="outline"
                         size="sm"

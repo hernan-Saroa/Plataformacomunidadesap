@@ -425,6 +425,18 @@ export class CertificatesService {
     return null;
   }
 
+  private isPrimaryAdministrativeAct(positionCategory?: string | null): boolean {
+    const normalized = this.normalizeTemplateText(positionCategory || '');
+    if (!normalized) {
+      return false;
+    }
+
+    return (
+      normalized.includes('cra administrativa') ||
+      normalized.includes('carrera administrativa')
+    );
+  }
+
   private selectPreferredRequestForCertificate(requests: CertificateRequest[]): CertificateRequest | null {
     if (!requests.length) {
       return null;
@@ -440,6 +452,16 @@ export class CertificatesService {
     const activeWithoutEncargo = activeRequests.filter(
       (request) => this.normalizeEncargoType(request.observations) !== 'E',
     );
+
+    // Desempate controlado: si existen varios activos sin encargo,
+    // priorizar el registro principal de carrera administrativa.
+    const primaryAdministrativeActiveWithoutEncargo = activeWithoutEncargo.filter(
+      (request) => this.isPrimaryAdministrativeAct(request.position_category),
+    );
+
+    if (primaryAdministrativeActiveWithoutEncargo.length) {
+      return primaryAdministrativeActiveWithoutEncargo[0];
+    }
 
     if (activeWithoutEncargo.length) {
       return activeWithoutEncargo[0];
