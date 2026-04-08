@@ -1,0 +1,941 @@
+/**
+ * ModalRedactarOficio - Formulario completo para redactar oficios judiciales
+ * ✅ Diseño corporativo ESAP 2025 Premium
+ * ✅ Plantillas predefinidas
+ * ✅ Editor de contenido
+ * ✅ Validación completa
+ * ✅ Funcionalidad de guardado real
+ */
+
+import { useState, useRef } from 'react';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../ui/dialog';
+import { Badge } from '../../../ui/badge';
+import { Button } from '../../../ui/button';
+import { Card } from '../../../ui/card';
+import { Input } from '../../../ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
+import {
+  Mail, Send, X, AlertCircle, Save, FileText,
+  User, Building2, Hash, Calendar, Paperclip, FileUp,
+  Eye, CheckCircle, Sparkles
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { ModalHeaderClean } from './ModalHeaderClean';
+import { legalService } from '../../../../services/api/legal.service';
+
+interface ModalRedactarOficioProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onGuardar: (nuevoOficio: any) => void;
+  expedienteId: string;
+}
+
+interface ConfiguracionPlantilla {
+  nombreEntidad: string;
+  subtituloEntidad: string;
+  dependencia: string;
+  direccion: string;
+  telefono: string;
+  email: string;
+  website: string;
+  colorPrimario: string;
+  colorSecundario: string;
+  tamañoFuente: string;
+  estiloFuente: string;
+  includirLogo: boolean;
+  includirBordeSuperior: boolean;
+  textoPiePagina: string;
+}
+
+const CONFIGURACION_DEFAULT: ConfiguracionPlantilla = {
+  nombreEntidad: 'ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA',
+  subtituloEntidad: 'ESAP - República de Colombia',
+  dependencia: 'Oficina Jurídica',
+  direccion: 'Calle 44 No. 53-37, Bogotá D.C., Colombia',
+  telefono: '(601) 220-2790',
+  email: 'juridica@esap.edu.co',
+  website: 'www.esap.edu.co',
+  colorPrimario: '#003DA5',
+  colorSecundario: '#F57C00',
+  tamañoFuente: '14px',
+  estiloFuente: 'Arial, sans-serif',
+  includirLogo: true,
+  includirBordeSuperior: true,
+  textoPiePagina: 'Este es un documento oficial generado por el Sistema de Gestión Legal ESAP'
+};
+
+// Plantillas de oficios predefinidas
+const PLANTILLAS_OFICIOS = {
+  solicitudProrroga: {
+    nombre: 'Solicitud de Prórroga',
+    asunto: 'Solicitud de Prórroga para Contestación de Demanda',
+    contenido: `Respetado(a) Doctor(a),
+
+De manera atenta me dirijo a su Despacho con el propósito de solicitar comedidamente se nos conceda una prórroga de [NÚMERO DE DÍAS] días calendario adicionales para presentar la contestación a la demanda en el proceso de referencia.
+
+Esta solicitud se fundamenta en las siguientes razones:
+
+1. El volumen de documentación que debe ser revisada y analizada es considerable.
+2. Se requiere consultar archivos históricos de la entidad ubicados en diferentes sedes.
+3. Es necesario obtener conceptos técnicos de otras dependencias de la ESAP.
+
+La prórroga solicitada nos permitirá preparar una contestación completa y debidamente fundamentada, garantizando así el debido proceso y el derecho de defensa de la entidad.
+
+Agradecemos su comprensión y quedamos atentos a la decisión que su Despacho adopte al respecto.
+
+Cordialmente,`
+  },
+  remisionDocumentos: {
+    nombre: 'Remisión de Documentos',
+    asunto: 'Remisión de Documentos Solicitados',
+    contenido: `Respetado(a) Doctor(a),
+
+En atención al auto/oficio [NÚMERO] de fecha [FECHA], mediante el cual ese honorable Despacho requirió la remisión de documentos relacionados con el proceso de la referencia, comedidamente me permito allegar la siguiente documentación:
+
+1. [DOCUMENTO 1]
+2. [DOCUMENTO 2]
+3. [DOCUMENTO 3]
+4. [DOCUMENTO 4]
+
+Los documentos relacionados se remiten en [NÚMERO] folios debidamente foliados y autenticados por el representante legal de la entidad.
+
+Quedamos atentos a cualquier requerimiento adicional y nos permitimos manifestar nuestra disposición para atender cualquier solicitud de su Despacho.
+
+Cordialmente,`
+  },
+  contestacionDemanda: {
+    nombre: 'Contestación de Demanda',
+    asunto: 'Contestación de la Demanda',
+    contenido: `Respetado(a) Doctor(a),
+
+En cumplimiento del traslado efectuado mediante auto de fecha [FECHA], procedemos a contestar oportunamente la demanda presentada por [DEMANDANTE], manifestando lo siguiente:
+
+HECHOS:
+
+En relación con los hechos narrados por la parte demandante, manifestamos:
+
+[PRONUNCIAMIENTO SOBRE LOS HECHOS]
+
+PRETENSIONES:
+
+Respecto a las pretensiones formuladas, nos oponemos a todas y cada una de ellas por las siguientes razones:
+
+[OPOSICIÓN A LAS PRETENSIONES]
+
+EXCEPCIONES:
+
+Proponemos las siguientes excepciones de mérito:
+
+1. [EXCEPCIÓN 1]
+2. [EXCEPCIÓN 2]
+3. [EXCEPCIÓN 3]
+
+PRUEBAS:
+
+Solicitamos se decreten y practiquen las siguientes pruebas:
+
+1. [PRUEBA 1]
+2. [PRUEBA 2]
+3. [PRUEBA 3]
+
+Por lo expuesto, solicitamos se declare probada la excepción propuesta y se nieguen las pretensiones de la demanda.
+
+Cordialmente,`
+  },
+  solicitudPruebas: {
+    nombre: 'Solicitud de Pruebas',
+    asunto: 'Solicitud de Decreto y Práctica de Pruebas',
+    contenido: `Respetado(a) Doctor(a),
+
+En ejercicio del derecho probatorio que nos asiste, comedidamente solicitamos a su Despacho se sirva decretar y ordenar la práctica de las siguientes pruebas:
+
+DOCUMENTALES:
+
+1. [DOCUMENTO 1]
+2. [DOCUMENTO 2]
+
+TESTIMONIALES:
+
+1. [TESTIGO 1 - DATOS COMPLETOS]
+2. [TESTIGO 2 - DATOS COMPLETOS]
+
+PERICIALES:
+
+[DESCRIPCIÓN DE LA PRUEBA PERICIAL SOLICITADA]
+
+INSPECCIÓN JUDICIAL:
+
+[DESCRIPCIÓN DEL LUGAR Y OBJETO DE LA INSPECCIÓN]
+
+Estas pruebas son conducentes, pertinentes y necesarias para demostrar los hechos en que se fundamenta nuestra defensa.
+
+Cordialmente,`
+  },
+  oficioBlanco: {
+    nombre: 'Oficio en Blanco',
+    asunto: '',
+    contenido: `Respetado(a) Doctor(a),
+
+[ESCRIBA AQUÍ EL CONTENIDO DE SU OFICIO]
+
+Cordialmente,`
+  }
+};
+
+export function ModalRedactarOficio({ isOpen, onClose, onGuardar, expedienteId }: ModalRedactarOficioProps) {
+  // Estados del formulario
+  const [plantillaSeleccionada, setPlantillaSeleccionada] = useState<keyof typeof PLANTILLAS_OFICIOS | null>(null);
+  const [numero, setNumero] = useState('');
+  const [asunto, setAsunto] = useState('');
+  const [destinatario, setDestinatario] = useState('Juzgado 1° Administrativo de Bogotá');
+  const [contenido, setContenido] = useState('');
+  const [firma, setFirma] = useState('Oficina Jurídica ESAP');
+  const [destinatarioEmail, setDestinatarioEmail] = useState('');
+  const [archivos, setArchivos] = useState<File[]>([]);
+  const [errores, setErrores] = useState<Record<string, string>>({});
+  const [guardando, setGuardando] = useState(false);
+  const [vistaPrevia, setVistaPrevia] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Aplicar plantilla seleccionada
+   */
+  const aplicarPlantilla = (plantilla: keyof typeof PLANTILLAS_OFICIOS) => {
+    const template = PLANTILLAS_OFICIOS[plantilla];
+    setPlantillaSeleccionada(plantilla);
+    setAsunto(template.asunto);
+    setContenido(template.contenido);
+
+    toast.success('📝 Plantilla aplicada', {
+      description: template.nombre,
+      duration: 2000
+    });
+  };
+
+  /**
+   * Validar formulario
+   */
+  const validarFormulario = (): boolean => {
+    const nuevosErrores: Record<string, string> = {};
+
+    if (!numero.trim()) nuevosErrores.numero = 'Ingresa el número del oficio';
+    if (!asunto.trim()) nuevosErrores.asunto = 'Ingresa el asunto del oficio';
+    if (asunto.trim().length < 10) nuevosErrores.asunto = 'El asunto debe tener al menos 10 caracteres';
+    if (!destinatario.trim()) nuevosErrores.destinatario = 'Ingresa el destinatario';
+    if (!destinatarioEmail.trim()) {
+      nuevosErrores.destinatarioEmail = 'Ingresa el correo del destinatario';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(destinatarioEmail)) {
+      nuevosErrores.destinatarioEmail = 'Ingresa un correo electrónico válido';
+    }
+    if (!contenido.trim()) nuevosErrores.contenido = 'Ingresa el contenido del oficio';
+    if (contenido.trim().length < 50) nuevosErrores.contenido = 'El contenido debe tener al menos 50 caracteres';
+
+    setErrores(nuevosErrores);
+    return Object.keys(nuevosErrores).length === 0;
+  };
+
+  /**
+   * Manejar selección de archivos
+   */
+  const handleArchivosSeleccionados = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+
+    if (files.length === 0) return;
+
+    // Validar cantidad total
+    if (archivos.length + files.length > 5) {
+      toast.error('❌ Máximo 5 archivos', {
+        description: 'Solo puedes adjuntar hasta 5 archivos por oficio'
+      });
+      return;
+    }
+
+    // Validar tamaño de cada archivo (máximo 10MB)
+    const archivosGrandes = files.filter(f => f.size > 10 * 1024 * 1024);
+    if (archivosGrandes.length > 0) {
+      toast.error('❌ Archivos muy grandes', {
+        description: 'El tamaño máximo por archivo es 10 MB'
+      });
+      return;
+    }
+
+    setArchivos([...archivos, ...files]);
+    toast.success('✅ Archivos adjuntados', {
+      description: `${files.length} archivo(s) agregado(s)`
+    });
+  };
+
+  /**
+   * Quitar archivo adjunto
+   */
+  const handleQuitarArchivo = (index: number) => {
+    const nuevosArchivos = archivos.filter((_, i) => i !== index);
+    setArchivos(nuevosArchivos);
+    toast.info('📎 Archivo removido');
+  };
+
+  /**
+   * Guardar oficio
+   */
+  const handleGuardar = async (enviar: boolean = false) => {
+    if (!validarFormulario()) {
+      toast.error('❌ Formulario incompleto', {
+        description: 'Por favor corrige los errores marcados'
+      });
+      return;
+    }
+
+    setGuardando(true);
+
+    toast.loading(enviar ? '📤 Enviando oficio...' : '💾 Guardando borrador...', {
+      id: 'guardar-oficio'
+    });
+
+    try {
+      // Generar HTML de la plantilla para enviar por correo
+      const contenidoHtml = generarHtmlPlantilla();
+
+      // Preparar FormData para enviar archivos adjuntos
+      const formData = new FormData();
+      formData.append('numero', numero.toUpperCase());
+      formData.append('expedienteId', expedienteId);
+      formData.append('modulo', 'juzgamiento-disciplinario'); // O el módulo actual
+      formData.append('asunto', asunto);
+      formData.append('destinatario', destinatario);
+      formData.append('destinatarioEmail', destinatarioEmail);
+      formData.append('contenido', contenido);
+      formData.append('contenidoHtml', contenidoHtml);
+      formData.append('firma', firma);
+      formData.append('plantilla', plantillaSeleccionada || 'oficioBlanco');
+      formData.append('enviar', String(enviar));
+
+      // Adjuntar archivos
+      archivos.forEach((archivo) => {
+        formData.append('archivos', archivo);
+      });
+
+      // Llamar al backend
+      const nuevoOficio = await legalService.createOficio(formData);
+
+      toast.success(enviar ? '✅ Oficio enviado' : '✅ Borrador guardado', {
+        id: 'guardar-oficio',
+        description: `${numero.toUpperCase()} ${enviar ? 'enviado exitosamente' : 'guardado como borrador'}`,
+        duration: 4000
+      });
+
+      // Notificar al componente padre
+      onGuardar(nuevoOficio);
+
+      // Limpiar formulario y cerrar
+      limpiarFormulario();
+      setGuardando(false);
+      onClose();
+    } catch (error) {
+      console.error('Error guardando oficio:', error);
+      toast.error('❌ Error al guardar oficio', {
+        id: 'guardar-oficio',
+        description: 'No se pudo procesar el oficio. Intenta nuevamente.'
+      });
+      setGuardando(false);
+    }
+  };
+
+  /**
+   * Generar HTML de la plantilla para envío por correo
+   */
+  const generarHtmlPlantilla = (): string => {
+    const fechaFormateada = new Date().toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    // Template compactado para evitar espacios en blanco excesivos en el email
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;font-size:14px;color:#333;max-width:800px;margin:0 auto;padding:0}.header{text-align:center;padding:20px;border-bottom:4px solid #003DA5;background:linear-gradient(to bottom,#fff,#f0f4ff)}.logo{font-size:24px;font-weight:bold;color:#003DA5;margin:0}.subtitle{color:#666;margin:5px 0}.content{padding:30px}.metadata{display:flex;justify-content:space-between;margin-bottom:20px;border-bottom:1px solid #ccc;padding-bottom:15px}.metadata p{margin:5px 0}.label{font-weight:bold;color:#003DA5;text-transform:uppercase;font-size:12px}.value{font-weight:bold}.body-text{white-space:pre-wrap;line-height:1.8}.signature{margin-top:40px;padding-top:20px;border-top:1px solid #ccc}.footer{text-align:center;padding:15px;background:#003DA5;color:white;font-size:12px}</style></head><body><div class="header"><div class="logo">ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA</div><div class="subtitle">ESAP - República de Colombia</div><div class="subtitle" style="color:#F57C00">Oficina Jurídica</div><div style="font-size:11px;color:#888;margin-top:10px">Calle 44 No. 53-37, Bogotá D.C. • Tel: (601) 220-2790 • juridica@esap.edu.co</div></div><div class="content"><div class="metadata"><div><p><span class="label">Oficio No:</span> <span class="value">${numero.toUpperCase()}</span></p><p><span class="label">Expediente:</span> <span class="value">${expedienteId}</span></p></div><div><p><span class="label">Fecha:</span> <span class="value">${fechaFormateada}</span></p></div></div><p><span class="label">Para:</span><br/><span class="value">${destinatario}</span></p><p><span class="label">Asunto:</span><br/><span class="value">${asunto}</span></p><hr style="border:none;border-top:1px solid #eee;margin:20px 0"/><div class="body-text">${contenido.replace(/\n/g, '<br/>')}</div><div class="signature"><p>Cordialmente,</p><br/><br/><p style="border-top:1px solid #333;padding-top:10px;display:inline-block"><strong>${firma}</strong><br/><span style="font-size:12px;color:#666">Escuela Superior de Administración Pública - ESAP</span></p></div></div><div class="footer">Este es un documento oficial generado por el Sistema Integrado de Gestión Legal (SIGL) de ESAP<br/>Documento digital con validez legal • Generado el ${new Date().toLocaleString('es-CO')}</div></body></html>`;
+  };
+
+  /**
+   * Limpiar formulario
+   */
+  const limpiarFormulario = () => {
+    setPlantillaSeleccionada(null);
+    setNumero('');
+    setAsunto('');
+    setDestinatario('Juzgado 1° Administrativo de Bogotá');
+    setContenido('');
+    setFirma('Oficina Jurídica ESAP');
+    setDestinatarioEmail('');
+    setArchivos([]);
+    setErrores({});
+    setVistaPrevia(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  /**
+   * Cancelar y cerrar
+   */
+  const handleCancelar = () => {
+    if (numero || asunto || contenido || archivos.length > 0) {
+      if (confirm('¿Estás seguro de cancelar? Se perderán los datos ingresados.')) {
+        limpiarFormulario();
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  };
+
+  /**
+   * Generar número de oficio automático
+   * Formato: OF-ESAP-AAAA-XXX
+   * Ejemplo: OF-ESAP-2025-001
+   */
+  const generarNumeroAutomatico = () => {
+    toast.loading('⏳ Generando número de oficio...', {
+      id: 'generar-numero',
+      duration: 1000
+    });
+
+    setTimeout(() => {
+      const fecha = new Date();
+      const año = fecha.getFullYear();
+
+      // Generar consecutivo basado en timestamp para evitar duplicados
+      // En producción, este número vendría del backend
+      const timestamp = fecha.getTime();
+      const consecutivo = String(timestamp % 1000).padStart(3, '0');
+
+      // Formato oficial ESAP
+      const numeroGenerado = `OF-ESAP-${año}-${consecutivo}`;
+
+      setNumero(numeroGenerado);
+
+      // Limpiar error si existe
+      if (errores.numero) {
+        setErrores({ ...errores, numero: '' });
+      }
+
+      toast.success('✅ Número de oficio generado', {
+        id: 'generar-numero',
+        description: `${numeroGenerado} asignado correctamente`,
+        duration: 3000
+      });
+
+      // Log para analytics
+      console.log('📊 Número de oficio generado:', {
+        expediente: expedienteId,
+        numeroOficio: numeroGenerado,
+        timestamp: fecha.toISOString()
+      });
+    }, 1000);
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-4xl max-h-[70vh] overflow-hidden flex flex-col p-0 gap-0">
+        <DialogTitle className="sr-only">Redactar Oficio Judicial</DialogTitle>
+        <DialogDescription className="sr-only">
+          Formulario para redactar y enviar oficios judiciales oficiales
+        </DialogDescription>
+
+        {/* ==================== HEADER LIMPIO Y USABLE ==================== */}
+        <ModalHeaderClean
+          titulo="Redactar Oficio Judicial"
+          subtitulo={`Crea comunicaciones oficiales para el expediente ${expedienteId}`}
+          icono={Mail}
+          colorIcono="blue"
+          badges={
+            <>
+              <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
+                <FileText className="w-3 h-3 mr-1" />
+                Formulario Oficial
+              </Badge>
+            </>
+          }
+          onClose={handleCancelar}
+        />
+
+        {/* ==================== TABS: REDACTAR vs VISTA PREVIA ==================== */}
+        <Tabs defaultValue="redactar" className="flex-1 flex flex-col overflow-hidden">
+          <div className="px-6 pt-4 bg-gray-50 border-b">
+            <TabsList className="w-full grid grid-cols-2">
+              <TabsTrigger value="redactar" onClick={() => setVistaPrevia(false)}>
+                <FileText className="w-4 h-4 mr-2" />
+                Redactar
+              </TabsTrigger>
+              <TabsTrigger value="vista-previa" onClick={() => setVistaPrevia(true)}>
+                <Eye className="w-4 h-4 mr-2" />
+                Vista Previa
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          {/* ==================== TAB: REDACTAR ==================== */}
+          <TabsContent value="redactar" className="flex-1 overflow-y-auto px-6 py-4 m-0">
+            <div className="space-y-5">
+
+              {/* Plantillas rápidas */}
+              <Card className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="text-sm font-black text-purple-900 mb-2">
+                      ⚡ Plantillas Rápidas
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(PLANTILLAS_OFICIOS).map(([key, plantilla]) => (
+                        <Button
+                          key={key}
+                          size="sm"
+                          variant="outline"
+                          onClick={() => aplicarPlantilla(key as keyof typeof PLANTILLAS_OFICIOS)}
+                          className={`text-xs font-bold ${plantillaSeleccionada === key
+                            ? 'bg-purple-600 text-white border-purple-600'
+                            : 'bg-white hover:bg-purple-100'
+                            }`}
+                        >
+                          {plantilla.nombre}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Información del expediente */}
+              <Card className="p-4 bg-blue-50 border-blue-200">
+                <div className="flex items-center gap-2 text-sm">
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  <span className="font-bold text-gray-700">Expediente:</span>
+                  <span className="text-gray-900">{expedienteId}</span>
+                </div>
+              </Card>
+
+              {/* Número del Oficio */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  <Hash className="w-4 h-4 inline mr-1" />
+                  Número del Oficio *
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="OF-ESAP-2024-001"
+                    value={numero}
+                    onChange={(e) => {
+                      setNumero(e.target.value);
+                      setErrores({ ...errores, numero: '' });
+                    }}
+                    className={`text-sm font-semibold flex-1 ${errores.numero ? 'border-red-500' : ''}`}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={generarNumeroAutomatico}
+                    className="font-bold whitespace-nowrap"
+                  >
+                    🎲 Generar
+                  </Button>
+                </div>
+                {errores.numero && (
+                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {errores.numero}
+                  </p>
+                )}
+              </div>
+
+              {/* Destinatario */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  <Building2 className="w-4 h-4 inline mr-1" />
+                  Destinatario *
+                </label>
+                <Input
+                  placeholder="Juzgado 1° Administrativo de Bogotá"
+                  value={destinatario}
+                  onChange={(e) => {
+                    setDestinatario(e.target.value);
+                    setErrores({ ...errores, destinatario: '' });
+                  }}
+                  className={`text-sm ${errores.destinatario ? 'border-red-500' : ''}`}
+                />
+                {errores.destinatario && (
+                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {errores.destinatario}
+                  </p>
+                )}
+              </div>
+
+              {/* Email del Destinatario */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  <Mail className="w-4 h-4 inline mr-1" />
+                  Correo del Destinatario *
+                </label>
+                <Input
+                  type="email"
+                  placeholder="correo@ejemplo.gov.co"
+                  value={destinatarioEmail}
+                  onChange={(e) => {
+                    setDestinatarioEmail(e.target.value);
+                    setErrores({ ...errores, destinatarioEmail: '' });
+                  }}
+                  className={`text-sm ${errores.destinatarioEmail ? 'border-red-500' : ''}`}
+                />
+                <p className="text-xs text-gray-500 mt-1">El oficio será enviado a este correo electrónico</p>
+                {errores.destinatarioEmail && (
+                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {errores.destinatarioEmail}
+                  </p>
+                )}
+              </div>
+
+              {/* Asunto */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  <FileText className="w-4 h-4 inline mr-1" />
+                  Asunto del Oficio *
+                </label>
+                <Input
+                  placeholder="Ej: Solicitud de Prórroga para Contestación de Demanda"
+                  value={asunto}
+                  onChange={(e) => {
+                    setAsunto(e.target.value);
+                    setErrores({ ...errores, asunto: '' });
+                  }}
+                  className={`text-sm ${errores.asunto ? 'border-red-500' : ''}`}
+                />
+                {errores.asunto && (
+                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {errores.asunto}
+                  </p>
+                )}
+              </div>
+
+              {/* Contenido del Oficio */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  <Mail className="w-4 h-4 inline mr-1" />
+                  Contenido del Oficio *
+                </label>
+                <textarea
+                  placeholder="Redacta aquí el contenido del oficio judicial..."
+                  value={contenido}
+                  onChange={(e) => {
+                    setContenido(e.target.value);
+                    setErrores({ ...errores, contenido: '' });
+                  }}
+                  rows={12}
+                  className={`w-full px-4 py-3 text-sm border rounded-lg resize-none font-mono ${errores.contenido ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                  style={{ lineHeight: '1.8' }}
+                />
+                <div className="flex items-center justify-between mt-1">
+                  {errores.contenido ? (
+                    <p className="text-xs text-red-600 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {errores.contenido}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-500">Mínimo 50 caracteres</p>
+                  )}
+                  <span className={`text-xs ${contenido.length < 50 ? 'text-red-600' : 'text-gray-500'}`}>
+                    {contenido.length} caracteres
+                  </span>
+                </div>
+              </div>
+
+              {/* Firma */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  <User className="w-4 h-4 inline mr-1" />
+                  Firma
+                </label>
+                <Input
+                  placeholder="Oficina Jurídica ESAP"
+                  value={firma}
+                  onChange={(e) => setFirma(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+
+              {/* Adjuntar Archivos */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  <Paperclip className="w-4 h-4 inline mr-1" />
+                  Archivos Adjuntos (Opcional)
+                </label>
+
+                {archivos.length === 0 ? (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all"
+                  >
+                    <FileUp className="w-10 h-10 mx-auto mb-3 text-gray-400" />
+                    <p className="text-sm font-bold text-gray-700 mb-1">
+                      Haz clic para adjuntar documentos
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Máximo 5 archivos • 10 MB por archivo
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {archivos.map((archivo, index) => (
+                      <Card key={index} className="p-3 bg-green-50 border-green-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 rounded bg-blue-100">
+                              <FileText className="w-4 h-4 text-blue-600" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-gray-900">{archivo.name}</p>
+                              <p className="text-xs text-gray-600">
+                                {(archivo.size / (1024 * 1024)).toFixed(2)} MB
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleQuitarArchivo(index)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-100"
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </Card>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={archivos.length >= 5}
+                      className="w-full font-bold"
+                    >
+                      <Paperclip className="w-4 h-4 mr-2" />
+                      Adjuntar más archivos ({archivos.length}/5)
+                    </Button>
+                  </div>
+                )}
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.doc,.docx,.xlsx,.xls,.jpg,.jpeg,.png"
+                  onChange={handleArchivosSeleccionados}
+                  className="hidden"
+                />
+              </div>
+
+              {/* Información de ayuda */}
+              <Card className="p-4 bg-amber-50 border-amber-200">
+                <div className="flex gap-3">
+                  <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-bold text-amber-900 mb-1">
+                      💡 Consejos para redactar
+                    </p>
+                    <ul className="text-xs text-amber-800 space-y-1">
+                      <li>• Usa un lenguaje formal y respetuoso</li>
+                      <li>• Sé claro y preciso en tus solicitudes</li>
+                      <li>• Revisa ortografía y redacción antes de enviar</li>
+                      <li>• Adjunta todos los documentos de soporte necesarios</li>
+                    </ul>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* ==================== TAB: VISTA PREVIA ==================== */}
+          <TabsContent value="vista-previa" className="flex-1 overflow-y-auto px-6 py-4 m-0 bg-gray-100">
+            <Card className="max-w-4xl mx-auto bg-white shadow-2xl border-4 border-gray-200">
+              {/* Encabezado oficial */}
+              <div className="relative p-8 border-b-8 border-[#003DA5] bg-gradient-to-b from-white via-blue-50 to-white">
+                {/* Logo ESAP (simulado) */}
+                <div className="absolute top-4 left-6 w-16 h-16 bg-[#003DA5] rounded-full flex items-center justify-center text-white font-black text-xl">
+                  ESAP
+                </div>
+
+                <div className="text-center pt-4">
+                  <h1 className="text-3xl font-black text-[#003DA5] mb-2 tracking-tight">
+                    ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA
+                  </h1>
+                  <p className="text-base text-gray-700 font-bold mb-1">ESAP - República de Colombia</p>
+                  <p className="text-sm text-gray-600 font-semibold">Oficina Jurídica</p>
+                  <div className="mt-3 pt-3 border-t-2 border-[#F57C00] max-w-md mx-auto">
+                    <p className="text-xs text-gray-500">
+                      Calle 44 No. 53-37, Bogotá D.C. • Tel: (601) 220-2790 • juridica@esap.edu.co
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contenido del oficio */}
+              <div className="p-10 space-y-6 bg-white" style={{ minHeight: '500px' }}>
+                {/* Metadatos del oficio */}
+                <div className="grid grid-cols-2 gap-6 pb-6 border-b-2 border-gray-300">
+                  <div className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-black text-[#003DA5] uppercase">Oficio No:</span>
+                      <span className={`text-base font-black ${numero ? 'text-gray-900' : 'text-orange-500 italic'}`}>
+                        {numero || '[NÚMERO PENDIENTE]'}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-black text-[#003DA5] uppercase">Expediente:</span>
+                      <span className="text-base font-bold text-gray-900">{expedienteId}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-black text-[#003DA5] uppercase">Fecha:</span>
+                      <span className="text-base font-bold text-gray-900">
+                        {new Date().toLocaleDateString('es-CO', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Destinatario */}
+                <div className="space-y-1">
+                  <p className="text-sm font-black text-[#003DA5] uppercase">Para:</p>
+                  <p className={`text-base font-bold ${destinatario ? 'text-gray-900' : 'text-orange-500 italic'}`}>
+                    {destinatario || '[DESTINATARIO PENDIENTE]'}
+                  </p>
+                </div>
+
+                {/* Asunto */}
+                <div className="space-y-1">
+                  <p className="text-sm font-black text-[#003DA5] uppercase">Asunto:</p>
+                  <p className={`text-base font-bold ${asunto ? 'text-gray-900' : 'text-orange-500 italic'}`}>
+                    {asunto || '[ASUNTO PENDIENTE]'}
+                  </p>
+                </div>
+
+                {/* Contenido */}
+                <div className="pt-4 border-t border-gray-200">
+                  {contenido ? (
+                    <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap font-serif">
+                      {contenido}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-orange-500 italic bg-orange-50 p-6 rounded-lg border-2 border-dashed border-orange-300">
+                      <p className="text-center">
+                        [CONTENIDO PENDIENTE]
+                        <br />
+                        <span className="text-xs">Escribe el contenido en la pestaña "Redactar" para verlo aquí</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Firma */}
+                {firma && (
+                  <div className="pt-8 mt-8 border-t-2 border-gray-300">
+                    <p className="text-sm text-gray-700 mb-3">Cordialmente,</p>
+                    <div className="mt-6 pt-12 border-t border-gray-400 max-w-xs">
+                      <p className="text-sm font-black text-gray-900">{firma}</p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Escuela Superior de Administración Pública - ESAP
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Adjuntos */}
+                {archivos.length > 0 && (
+                  <div className="pt-4 border-t border-gray-200">
+                    <p className="text-sm font-black text-[#003DA5] mb-2">ANEXOS:</p>
+                    <ul className="space-y-1">
+                      {archivos.map((archivo, index) => (
+                        <li key={index} className="text-sm text-gray-700">
+                          {index + 1}. {archivo.name} ({(archivo.size / (1024 * 1024)).toFixed(2)} MB)
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Pie de página oficial */}
+              <div className="p-6 bg-gradient-to-r from-[#003DA5] to-[#0051C9] border-t-4 border-[#F57C00]">
+                <p className="text-xs text-center text-white font-semibold">
+                  Este es un documento oficial generado por el Sistema Integrado de Gestión Legal (SIGL) de ESAP
+                  <br />
+                  Documento digital con validez legal • Generado el {new Date().toLocaleDateString('es-CO')} a las {new Date().toLocaleTimeString('es-CO')}
+                </p>
+              </div>
+            </Card>
+
+            {/* Indicador de sincronización en tiempo real */}
+            <div className="mt-4 text-center">
+              <Card className="inline-block p-3 bg-green-50 border-green-300">
+                <p className="text-xs text-green-700 font-bold flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4" />
+                  ✅ Vista previa sincronizada en tiempo real
+                  <span className="text-gray-500">• Los cambios se reflejan automáticamente</span>
+                </p>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        {/* ==================== FOOTER CON BOTONES STICKY ==================== */}
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between gap-3">
+          <Button
+            variant="outline"
+            onClick={handleCancelar}
+            disabled={guardando}
+            className="font-bold"
+          >
+            <X className="w-4 h-4 mr-1" />
+            Cancelar
+          </Button>
+
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => handleGuardar(false)}
+              disabled={guardando}
+              variant="outline"
+              className="font-bold"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              Guardar Borrador
+            </Button>
+            <Button
+              onClick={() => handleGuardar(true)}
+              disabled={guardando}
+              style={{ background: '#1976D2', color: '#FFFFFF' }}
+              className="font-bold"
+            >
+              {guardando ? (
+                <>
+                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Enviando...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Enviar Oficio
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

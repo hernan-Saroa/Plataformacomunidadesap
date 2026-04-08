@@ -1,0 +1,23 @@
+{
+  "name": "@esap-mfe/control-disciplinario",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@esap-mfe/shared-types": "*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.10.1",
+    "@esap-mfe/shared-ui": "*"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react-swc": "^3.10.2",
+    "vite": "^6.3.5",
+    "@originjs/vite-plugin-federation": "^1.5.0"
+  }
+}
