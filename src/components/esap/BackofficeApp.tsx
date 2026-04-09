@@ -428,19 +428,11 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   return (
     <NotificationsProvider>
       <TourProvider>
-        {/* ✅ GRID LAYOUT - Mobile First */}
-        <div className="min-h-screen bg-gray-50 grid grid-cols-[auto_1fr]">
+        {/* ✅ LAYOUT - Sidebar fijo + contenido con margen dinámico */}
+        <div className="min-h-screen bg-gray-50">
           {/* Sidebar - Ocultar para usuario de procesos (auditado) */}
           {userData?.module !== 'procesos' && (
             <>
-              {/* Spacer for Fixed Sidebar to prevent content overlap */}
-              <div
-                className={`shrink-0 transition-[width] duration-300 ${sidebarCollapsed
-                    ? 'w-[80px]'
-                    : 'w-[280px] md:w-[260px] lg:w-[220px] xl:w-[240px] 2xl:w-[260px]'
-                  }`}
-                style={{ display: userData?.module === 'procesos' ? 'none' : 'block' }}
-              />
               <SidebarPremium
                 isOpen={sidebarOpen}
                 onClose={() => setSidebarOpen(false)}
@@ -474,8 +466,14 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
             </>
           )}
 
-          {/* ✅ MAIN CONTENT - Flexbox Column */}
-          <div className="flex flex-col h-screen bg-gray-50 overflow-hidden" style={{marginLeft: sidebarCollapsed ? '80px' : '0'}}>
+          {/* ✅ MAIN CONTENT - Flexbox Column, margen izquierdo sincronizado con el sidebar fijo */}
+          <div
+            className="flex flex-col h-screen bg-gray-50 overflow-hidden"
+            style={{
+              marginLeft: userData?.module === 'procesos' ? 0 : (sidebarCollapsed ? 80 : 280),
+              transition: 'margin-left 300ms ease-in-out',
+            }}
+          >
             {/* Top Bar - Ocultar para usuario de procesos (auditado) */}
             {userData?.module !== 'procesos' && (
               <TopBar
