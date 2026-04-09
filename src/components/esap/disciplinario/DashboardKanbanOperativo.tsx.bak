@@ -40,6 +40,28 @@ import { SistemaComentarios } from './SistemaComentarios';
 import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProcess as ApiProceso } from '../../../services/api/disciplinary.service';
 import { useConfiguration } from '../../../hooks/useConfiguration';
 
+const mapStageToUi = (stage?: string | number) => {
+  if (typeof stage === 'number') {
+    switch (stage) {
+      case 1: return 'Recepción';
+      case 2: return 'Valoración';
+      case 3: return 'Indagación';
+      case 4: return 'Investigación';
+      case 5: return 'Juzgamiento';
+      case 6: return 'Fallo';
+      default: return 'Recepción';
+    }
+  }
+  const value = (stage || '').toUpperCase();
+  if (value.includes('RECEP')) return 'Recepción';
+  if (value.includes('VALOR') || value.includes('EVALU')) return 'Valoración';
+  if (value.includes('INDAG')) return 'Indagación';
+  if (value.includes('INVEST')) return 'Investigación';
+  if (value.includes('JUZG')) return 'Juzgamiento';
+  if (value.includes('FALLO')) return 'Fallo';
+  return 'Recepción';
+};
+
 // ==================== TIPOS ====================
 interface Persona {
   nombre: string;
@@ -2223,7 +2245,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       prioridad: (noticia as any).prioridad || 'media',
       diasPendientes: (noticia as any).diasPendientes ?? dias,
       tipo: 'noticia',
-      etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion'
+      etapaActual: mapStageToUi((noticia as any).kanbanStage) || 'Recepcion'
     };
   };
 
@@ -2270,7 +2292,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
       conductas: raw.conductas || raw.conductasSeleccionadas || [],
       prioridad: raw.prioridad || 'media',
       diasPendientes: raw.diasPendientes || 0,
-      etapaActual: raw.kanbanStage || raw.etapaActual || 'Recepcion',
+      etapaActual: mapStageToUi(raw.kanbanStage) || 'Recepcion',
       estado: raw.estado || 'pendiente',
       adjuntos: raw.adjuntos || []
     };
@@ -2712,7 +2734,7 @@ export function DashboardKanbanOperativo({ onNavigateToExpediente }: { onNavigat
         conductas: apiNoticia.conductas || payload.conductas,
         adjuntos: apiNoticia.adjuntos || payload.adjuntos,
         estado: apiNoticia.estado || 'RADICADA',
-        etapaActual: (apiNoticia as any).kanbanStage || 'Recepcion',
+        etapaActual: mapStageToUi((apiNoticia as any).kanbanStage) || 'Recepcion',
         tipo: 'noticia'
       });
 

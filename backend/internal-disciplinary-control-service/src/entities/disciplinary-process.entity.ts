@@ -66,8 +66,8 @@ export class DisciplinaryProcess {
   })
   etapaActual: ProcessStage;
 
-  @Column({ type: 'varchar', length: 50, nullable: true })
-  kanbanStage: string;
+  @Column({ type: 'uuid', nullable: true })
+  kanbanStage: string | null;
 
   @Column({ type: 'text', nullable: true })
   kanbanNotice: string | null;

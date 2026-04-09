@@ -39,10 +39,14 @@ interface Profesional {
   territorial: string;
 }
 
+interface PersonaSimple {
+  nombre: string;
+}
+
 interface Proceso {
   id: string;
   numeroProceso: string;
-  profesionalAsignado?: string; // nombre del profesional actual
+  profesionalAsignado?: PersonaSimple | string | null | undefined; // puede ser objeto con nombre, string o null
   etapaActual: string;
 }
 
@@ -102,9 +106,38 @@ export function ModalReasignarProfesional({
     fetchProfesionales();
   }, []);
 
-  // Filtrar solo profesionales activos
+  // Obtener el nombre del profesional actual asignado
+  const getNombreProfesionalActual = () => {
+    if (!proceso.profesionalAsignado) return null;
+    if (typeof proceso.profesionalAsignado === 'string') {
+      return proceso.profesionalAsignado;
+    }
+    return proceso.profesionalAsignado.nombre;
+  };
+
+  // Normalizar nombre para comparación (quitar acentos, espacios extra, etc.)
+  const normalizarNombre = (nombre: string) => {
+    return nombre
+      .toLowerCase()
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // quitar acentos
+      .replace(/\s+/g, ' '); // espacios múltiples a uno
+  };
+
+
+
+  // Filtrar solo profesionales activos y excluir el actual asignado
   const profesionalesDisponibles = profesionales
     .filter(p => p.estado === 'activo')
+    .filter(p => {
+      const nombreActual = getNombreProfesionalActual();
+      if (!nombreActual) return true; // si no hay profesional actual, incluir todos
+      const nombreActualNormalizado = normalizarNombre(nombreActual);
+      const nombreProfesionalNormalizado = normalizarNombre(p.nombre);
+      const coincide = nombreActualNormalizado === nombreProfesionalNormalizado;
+      return !coincide;
+    })
     .filter(p =>
       p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
       p.especialidad.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -196,7 +229,7 @@ export function ModalReasignarProfesional({
                       </p>
                       <div className="w-1 h-1 rounded-full bg-orange-300" />
                       <p className="text-sm text-orange-100 font-medium">
-                        Profesional actual: {proceso.profesionalAsignado?.nombre || 'Sin asignar'}
+                        Profesional actual: {getNombreProfesionalActual() || 'Sin asignar'}
                       </p>
                     </div>
                   </div>
@@ -317,67 +350,42 @@ export function ModalReasignarProfesional({
                         </div>
 
                         {/* Estadísticas */}
-                        <div className="flex flex-col items-end gap-2">
+                        <div className="w-full space-y-3">
                           {/* Carga de trabajo */}
-                          <div className="text-right">
-                            <div className="text-xs font-medium text-gray-500 mb-1">Carga Actual</div>
+                          <div>
+                            <div className="text-xs font-medium text-gray-500 mb-2">Nivel de ocupación</div>
                             <div className="flex items-center gap-2">
-                              <div className="text-right">
-                                <div className="text-lg font-black" style={{ color: colorCarga }}>
-                                  {profesional.procesosAsignados}/{profesional.capacidadMaxima}
-                                </div>
-                                <div className="text-xs font-medium text-gray-500">
-                                  {porcentajeCarga}%
-                                </div>
+                              <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transition-all"
+                                  style={{
+                                    width: `${Math.min(100, porcentajeCarga)}%`,
+                                    background: colorCarga
+                                  }}
+                                />
                               </div>
-                              <div className="w-16 h-16 relative">
-                                <svg className="w-16 h-16 transform -rotate-90">
-                                  <circle
-                                    cx="32"
-                                    cy="32"
-                                    r="28"
-                                    stroke="#E5E7EB"
-                                    strokeWidth="6"
-                                    fill="none"
-                                  />
-                                  <circle
-                                    cx="32"
-                                    cy="32"
-                                    r="28"
-                                    stroke={colorCarga}
-                                    strokeWidth="6"
-                                    fill="none"
-                                    strokeDasharray={`${(porcentajeCarga / 100) * 176} 176`}
-                                    strokeLinecap="round"
-                                  />
-                                </svg>
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                  {porcentajeCarga < 60 ? (
-                                    <CheckCircle className="w-5 h-5 text-green-500" />
-                                  ) : porcentajeCarga < 85 ? (
-                                    <AlertCircle className="w-5 h-5 text-yellow-500" />
-                                  ) : (
-                                    <AlertTriangle className="w-5 h-5 text-red-500" />
-                                  )}
-                                </div>
-                              </div>
+                              <span className="text-xs font-bold whitespace-nowrap" style={{ color: colorCarga }}>
+                                {profesional.procesosAsignados}/{profesional.capacidadMaxima}
+                                {profesional.capacidadMaxima - profesional.procesosAsignados > 0 && (
+                                  <span className="text-gray-400 font-normal ml-1">
+                                    ({profesional.capacidadMaxima - profesional.procesosAsignados} libres)
+                                  </span>
+                                )}
+                              </span>
                             </div>
                           </div>
 
-                          {/* Semáforo de procesos */}
-                          <div className="flex items-center gap-1 text-xs">
-                            <div className="flex items-center gap-1 px-2 py-1 bg-green-100 rounded-md">
-                              <CheckCircle className="w-3 h-3 text-green-600" />
-                              <span className="font-medium text-green-700">{profesional.procesosAlDia}</span>
-                            </div>
-                            <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 rounded-md">
-                              <Clock className="w-3 h-3 text-yellow-600" />
-                              <span className="font-medium text-yellow-700">{profesional.procesosEnRiesgo}</span>
-                            </div>
-                            <div className="flex items-center gap-1 px-2 py-1 bg-red-100 rounded-md">
-                              <AlertTriangle className="w-3 h-3 text-red-600" />
-                              <span className="font-medium text-red-700">{profesional.procesosVencidos}</span>
-                            </div>
+                          {/* Desglose de procesos */}
+                          <div className="flex items-center gap-1.5 text-[10px] font-semibold">
+                            <span className="text-emerald-600 flex items-center gap-0.5">
+                              <CheckCircle className="w-3 h-3" />{profesional.procesosAlDia}
+                            </span>
+                            <span className="text-amber-500 flex items-center gap-0.5">
+                              <AlertTriangle className="w-3 h-3" />{profesional.procesosEnRiesgo}
+                            </span>
+                            <span className="text-red-500 flex items-center gap-0.5">
+                              <AlertCircle className="w-3 h-3" />{profesional.procesosVencidos}
+                            </span>
                           </div>
 
                           {estaEnCapacidadMaxima && (
