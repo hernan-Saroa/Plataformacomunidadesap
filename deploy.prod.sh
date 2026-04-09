@@ -42,6 +42,45 @@ else
     exit 1
 fi
 
+COMPOSE_FILE_ENV="docker-compose.prod.yml"
+COMPOSE_FILE_MFE="docker-compose.frontend-mfe.yml"
+SERVER_URL_ENV="http://172.16.202.169"
+ENV_FILE=".env.prod"
+ENV_NETWORK_KEY="superapp-net-prod"
+ENV_CONTAINER_SUFFIX="-prod"
+
+compose_env() {
+    docker compose -f "$COMPOSE_FILE_ENV" --env-file "$ENV_FILE" "$@"
+}
+
+compose_env_mfe() {
+    FRONTEND_NETWORK_KEY="$ENV_NETWORK_KEY" \
+    FRONTEND_CONTAINER_SUFFIX="$ENV_CONTAINER_SUFFIX" \
+    FRONTEND_VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_ENV/services}" \
+    FRONTEND_VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV:9000}" \
+    docker compose -f "$COMPOSE_FILE_ENV" -f "$COMPOSE_FILE_MFE" --env-file "$ENV_FILE" "$@"
+}
+
+resolve_mfe_service() {
+    case "$1" in
+        gateway|frontend) echo "frontend" ;;
+        shell|frontend-shell) echo "frontend-shell" ;;
+        estructura-org|mfe-estructura-org|frontend-mfe-estructura-org) echo "frontend-mfe-estructura-org" ;;
+        gestion-profesoral|mfe-gestion-profesoral|frontend-mfe-gestion-profesoral) echo "frontend-mfe-gestion-profesoral" ;;
+        programas-academicos|mfe-programas-academicos|frontend-mfe-programas-academicos) echo "frontend-mfe-programas-academicos" ;;
+        gestion-personas|mfe-gestion-personas|frontend-mfe-gestion-personas) echo "frontend-mfe-gestion-personas" ;;
+        auditoria|mfe-auditoria|frontend-mfe-auditoria) echo "frontend-mfe-auditoria" ;;
+        reportes|mfe-reportes|frontend-mfe-reportes) echo "frontend-mfe-reportes" ;;
+        registro-academico|mfe-registro-academico|frontend-mfe-registro-academico) echo "frontend-mfe-registro-academico" ;;
+        certificados-laborales|mfe-certificados-laborales|frontend-mfe-certificados-laborales) echo "frontend-mfe-certificados-laborales" ;;
+        firma-electronica|mfe-firma-electronica|frontend-mfe-firma-electronica) echo "frontend-mfe-firma-electronica" ;;
+        control-interno|mfe-control-interno|frontend-mfe-control-interno) echo "frontend-mfe-control-interno" ;;
+        control-disciplinario|mfe-control-disciplinario|frontend-mfe-control-disciplinario) echo "frontend-mfe-control-disciplinario" ;;
+        gestion-legal|mfe-gestion-legal|frontend-mfe-gestion-legal) echo "frontend-mfe-gestion-legal" ;;
+        *) return 1 ;;
+    esac
+}
+
 # Función para mostrar uso
 usage() {
     echo "Uso: $0 [comando]"
@@ -54,6 +93,13 @@ usage() {
     echo "  rebuild-frontend - Reconstruir y reiniciar solo frontend"
     echo "  rebuild-service <servicio> - Reconstruir y reiniciar solo un servicio"
     echo "  rebuild-select - Seleccionar interactivamente un servicio para rebuild"
+    echo "  up-mfe    - Iniciar frontend desacoplado: gateway + shell + MFEs"
+    echo "  down-mfe  - Detener frontend desacoplado"
+    echo "  restart-mfe - Reiniciar frontend desacoplado"
+    echo "  status-mfe - Ver estado de gateway, shell y MFEs"
+    echo "  logs-mfe [servicio] - Ver logs del stack MFE o de un MFE puntual"
+    echo "  rebuild-mfe <nombre> - Reconstruir y reiniciar gateway, shell o un MFE"
+    echo "  rebuild-mfe-select - Seleccionar interactivamente un servicio frontend MFE"
     echo "  logs      - Ver logs de todos los servicios"
     echo "  status    - Ver estado de los servicios"
     echo "  clean     - Limpiar contenedores e imágenes no usados (NO borra volúmenes)"
@@ -67,7 +113,7 @@ usage() {
 # Comando: up
 cmd_up() {
     echo -e "${GREEN}Iniciando servicios PROD...${NC}"
-    docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+    compose_env up -d
     echo -e "${GREEN}Servicios PROD iniciados exitosamente${NC}"
 
     # Esperar a que la base de datos esté lista
@@ -88,14 +134,14 @@ cmd_up() {
 # Comando: down
 cmd_down() {
     echo -e "${YELLOW}Deteniendo servicios PROD...${NC}"
-    docker compose -f docker-compose.prod.yml down
+    compose_env down
     echo -e "${GREEN}Servicios PROD detenidos${NC}"
 }
 
 # Comando: restart
 cmd_restart() {
     echo -e "${YELLOW}Reiniciando servicios PROD...${NC}"
-    docker compose -f docker-compose.prod.yml --env-file .env.prod restart
+    compose_env restart
     echo -e "${GREEN}Servicios PROD reiniciados${NC}"
 }
 
@@ -109,10 +155,10 @@ cmd_rebuild() {
     find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
 
     # Construir imágenes con los contenedores actuales activos.
-    docker compose -f docker-compose.prod.yml --env-file .env.prod build
+    compose_env build
 
     # Publicar nueva versión una vez terminado el build.
-    docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+    compose_env up -d
     # Ejecutar migraciones automáticamente
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
@@ -122,8 +168,8 @@ cmd_rebuild() {
 # Comando: rebuild-frontend (rápido)
 cmd_rebuild_frontend() {
     echo -e "${YELLOW}Reconstruyendo solo frontend PROD...${NC}"
-    docker compose -f docker-compose.prod.yml --env-file .env.prod build frontend
-    docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --no-deps frontend
+    compose_env build frontend
+    compose_env up -d --no-deps frontend
     echo -e "${GREEN}Frontend PROD reconstruido y reiniciado${NC}"
 }
 
@@ -137,18 +183,18 @@ cmd_rebuild_service() {
     fi
 
     echo -e "${YELLOW}Reconstruyendo servicio PROD: ${service}${NC}"
-    docker compose -f docker-compose.prod.yml --env-file .env.prod build "$service"
-    docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --no-deps "$service"
+    compose_env build "$service"
+    compose_env up -d --no-deps "$service"
     echo -e "${GREEN}Servicio PROD ${service} reconstruido y reiniciado${NC}"
 }
 
 # Comando: rebuild-select (selección interactiva de servicio)
 cmd_rebuild_select() {
     echo -e "${YELLOW}Cargando servicios PROD disponibles...${NC}"
-    mapfile -t services < <(docker compose -f docker-compose.prod.yml --env-file .env.prod config --services)
+    mapfile -t services < <(compose_env config --services)
 
     if [ ${#services[@]} -eq 0 ]; then
-        echo -e "${RED}No se encontraron servicios en docker-compose.prod.yml${NC}"
+        echo -e "${RED}No se encontraron servicios en ${COMPOSE_FILE_ENV}${NC}"
         exit 1
     fi
 
@@ -166,15 +212,102 @@ cmd_rebuild_select() {
     done
 }
 
+cmd_up_mfe() {
+    if [ ! -f "$COMPOSE_FILE_MFE" ]; then
+        echo -e "${RED}Error: Archivo ${COMPOSE_FILE_MFE} no encontrado${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}Iniciando frontend desacoplado PROD...${NC}"
+    compose_env_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    echo -e "${GREEN}Frontend MFE PROD iniciado exitosamente${NC}"
+}
+
+cmd_down_mfe() {
+    echo -e "${YELLOW}Deteniendo frontend desacoplado PROD...${NC}"
+    compose_env_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    echo -e "${GREEN}Frontend MFE PROD detenido${NC}"
+}
+
+cmd_restart_mfe() {
+    echo -e "${YELLOW}Reiniciando frontend desacoplado PROD...${NC}"
+    compose_env_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    echo -e "${GREEN}Frontend MFE PROD reiniciado${NC}"
+}
+
+cmd_status_mfe() {
+    echo -e "${GREEN}Estado del frontend desacoplado PROD:${NC}"
+    compose_env_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+}
+
+cmd_logs_mfe() {
+    local input_service="$1"
+    if [ -n "$input_service" ]; then
+        local resolved_service
+        if ! resolved_service=$(resolve_mfe_service "$input_service"); then
+            echo -e "${RED}Servicio MFE no reconocido: ${input_service}${NC}"
+            exit 1
+        fi
+        compose_env_mfe logs -f "$resolved_service"
+        return
+    fi
+    compose_env_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+}
+
+cmd_rebuild_mfe() {
+    local input_service="$1"
+    local resolved_service
+    if [ -z "$input_service" ]; then
+        echo -e "${RED}Error: Debes indicar el microfrontend, shell o gateway${NC}"
+        exit 1
+    fi
+    if ! resolved_service=$(resolve_mfe_service "$input_service"); then
+        echo -e "${RED}Servicio MFE no reconocido: ${input_service}${NC}"
+        exit 1
+    fi
+    echo -e "${YELLOW}Reconstruyendo servicio frontend MFE PROD: ${resolved_service}${NC}"
+    compose_env_mfe build "$resolved_service"
+    compose_env_mfe up -d --no-deps "$resolved_service"
+    echo -e "${GREEN}Servicio ${resolved_service} reconstruido y reiniciado${NC}"
+}
+
+cmd_rebuild_mfe_select() {
+    local services=(
+        "frontend"
+        "frontend-shell"
+        "frontend-mfe-estructura-org"
+        "frontend-mfe-gestion-profesoral"
+        "frontend-mfe-programas-academicos"
+        "frontend-mfe-gestion-personas"
+        "frontend-mfe-auditoria"
+        "frontend-mfe-reportes"
+        "frontend-mfe-registro-academico"
+        "frontend-mfe-certificados-laborales"
+        "frontend-mfe-firma-electronica"
+        "frontend-mfe-control-interno"
+        "frontend-mfe-control-disciplinario"
+        "frontend-mfe-gestion-legal"
+    )
+    echo -e "${GREEN}Selecciona un servicio frontend MFE PROD para rebuild:${NC}"
+    PS3="Ingresa el número (o Ctrl+C para cancelar): "
+    select selected in "${services[@]}"; do
+        if [ -n "$selected" ]; then
+            cmd_rebuild_mfe "$selected"
+            break
+        else
+            echo -e "${RED}Opción inválida. Intenta de nuevo.${NC}"
+        fi
+    done
+}
+
 # Comando: logs
 cmd_logs() {
-    docker compose -f docker-compose.prod.yml logs -f
+    compose_env logs -f
 }
 
 # Comando: status
 cmd_status() {
     echo -e "${GREEN}Estado de los servicios PROD:${NC}"
-    docker compose -f docker-compose.prod.yml ps
+    compose_env ps
 }
 
 # Comando: clean
@@ -309,13 +442,13 @@ cmd_db_reset() {
     cmd_db_backup
 
     echo -e "${YELLOW}Deteniendo servicios...${NC}"
-    docker compose -f docker-compose.prod.yml down
+    compose_env down
 
     echo -e "${YELLOW}Eliminando volumen de base de datos...${NC}"
     docker volume rm esap-pgdata-prod 2>/dev/null || docker volume rm codigosuperappesap_pgdata-prod 2>/dev/null || true
 
     echo -e "${YELLOW}Reiniciando servicios (la DB se recreará)...${NC}"
-    docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+    compose_env up -d
 
     echo -e "${GREEN}Base de datos PROD reiniciada con datos iniciales${NC}"
 }
@@ -342,6 +475,27 @@ case "$1" in
         ;;
     rebuild-select)
         cmd_rebuild_select
+        ;;
+    up-mfe)
+        cmd_up_mfe
+        ;;
+    down-mfe)
+        cmd_down_mfe
+        ;;
+    restart-mfe)
+        cmd_restart_mfe
+        ;;
+    status-mfe)
+        cmd_status_mfe
+        ;;
+    logs-mfe)
+        cmd_logs_mfe "$2"
+        ;;
+    rebuild-mfe)
+        cmd_rebuild_mfe "$2"
+        ;;
+    rebuild-mfe-select)
+        cmd_rebuild_mfe_select
         ;;
     logs)
         cmd_logs

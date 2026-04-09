@@ -3037,7 +3037,7 @@ export function DashboardKanbanOperativo({
         tipoIdentificacion: 'CC',
         numeroIdentificacion: (proceso.news?.denunciante as any)?.cedula || 'N/A'
       },
-      denunciante: {
+      denunciado: {
         nombre: (proceso.news?.disciplinable as any)?.nombre || 'Sin disciplinable',
         tipoIdentificacion: 'CC',
         numeroIdentificacion: (proceso.news?.disciplinable as any)?.cedula || 'N/A'

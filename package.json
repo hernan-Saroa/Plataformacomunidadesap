@@ -90,6 +90,8 @@
     "scripts": {
         "dev": "npm run dev -w @esap-mfe/shell",
         "dev:all": "node scripts/dev-all.mjs",
-        "build": "npm run build -w @esap-mfe/shell"
+        "build": "node scripts/build-frontends.mjs",
+        "build:app": "node scripts/build-frontend-app.mjs",
+        "build:shell": "npm run build -w @esap-mfe/shell"
     }
 }

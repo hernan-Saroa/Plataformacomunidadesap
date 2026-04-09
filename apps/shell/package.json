@@ -76,6 +76,7 @@
         "xlsx": "*"
     },
     "devDependencies": {
+        "@originjs/vite-plugin-federation": "^1.5.0",
         "@types/canvas-confetti": "^1.9.0",
         "@types/node": "^20.10.0",
         "@types/react": "^19.2.7",

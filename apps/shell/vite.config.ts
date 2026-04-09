@@ -2,26 +2,14 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import federation from '@originjs/vite-plugin-federation';
 import path from 'path';
+import { getBuildOutDir, getRemoteDefinitions, shellApp } from '../../scripts/mfe.config.mjs';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
     react(),
     federation({
-      name: 'shell',
-      remotes: {
-        estructura_org: 'http://localhost:3101/assets/remoteEntry.js',
-        gestion_profesoral: 'http://localhost:3102/assets/remoteEntry.js',
-        programas_academicos: 'http://localhost:3103/assets/remoteEntry.js',
-        gestion_personas: 'http://localhost:3104/assets/remoteEntry.js',
-        auditoria: 'http://localhost:3105/assets/remoteEntry.js',
-        reportes: 'http://localhost:3106/assets/remoteEntry.js',
-        registro_academico: 'http://localhost:3107/assets/remoteEntry.js',
-        certificados_laborales: 'http://localhost:3108/assets/remoteEntry.js',
-        firma_electronica: 'http://localhost:3109/assets/remoteEntry.js',
-        control_interno: 'http://localhost:3110/assets/remoteEntry.js',
-        control_disciplinario: 'http://localhost:3111/assets/remoteEntry.js',
-        gestion_legal: 'http://localhost:3112/assets/remoteEntry.js',
-      },
+      name: shellApp.federationName,
+      remotes: getRemoteDefinitions(command === 'serve' ? 'serve' : 'build'),
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),
   ],
@@ -72,10 +60,11 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
-    outDir: 'build',
+    outDir: getBuildOutDir(shellApp.appDir),
+    emptyOutDir: false,
   },
   server: {
     port: 3000,
     open: true,
   },
-});
+}));

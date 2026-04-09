@@ -2,27 +2,24 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { remoteApps, repoRoot, shellApp } from './mfe.config.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, '..');
 const viteCli = path.join(repoRoot, 'node_modules', 'vite', 'bin', 'vite.js');
 const nodeBinDir = path.dirname(process.execPath);
-
 const apps = [
-  { name: 'shell', cwd: path.join(repoRoot, 'apps', 'shell'), kind: 'host' },
-  { name: 'estructura-org', cwd: path.join(repoRoot, 'apps', 'mfe-estructura-org'), kind: 'remote', port: 3101 },
-  { name: 'gestion-profesoral', cwd: path.join(repoRoot, 'apps', 'mfe-gestion-profesoral'), kind: 'remote', port: 3102 },
-  { name: 'programas-academicos', cwd: path.join(repoRoot, 'apps', 'mfe-programas-academicos'), kind: 'remote', port: 3103 },
-  { name: 'gestion-personas', cwd: path.join(repoRoot, 'apps', 'mfe-gestion-personas'), kind: 'remote', port: 3104 },
-  { name: 'auditoria', cwd: path.join(repoRoot, 'apps', 'mfe-auditoria'), kind: 'remote', port: 3105 },
-  { name: 'reportes', cwd: path.join(repoRoot, 'apps', 'mfe-reportes'), kind: 'remote', port: 3106 },
-  { name: 'registro-academico', cwd: path.join(repoRoot, 'apps', 'mfe-registro-academico'), kind: 'remote', port: 3107 },
-  { name: 'certificados-laborales', cwd: path.join(repoRoot, 'apps', 'mfe-certificados-laborales'), kind: 'remote', port: 3108 },
-  { name: 'firma-electronica', cwd: path.join(repoRoot, 'apps', 'mfe-firma-electronica'), kind: 'remote', port: 3109 },
-  { name: 'control-interno', cwd: path.join(repoRoot, 'apps', 'mfe-control-interno'), kind: 'remote', port: 3110 },
-  { name: 'control-disciplinario', cwd: path.join(repoRoot, 'apps', 'mfe-control-disciplinario'), kind: 'remote', port: 3111 },
-  { name: 'gestion-legal', cwd: path.join(repoRoot, 'apps', 'mfe-gestion-legal'), kind: 'remote', port: 3112 },
+  {
+    name: shellApp.appDir,
+    cwd: path.join(repoRoot, 'apps', shellApp.appDir),
+    kind: 'host',
+  },
+  ...remoteApps.map((app) => ({
+    name: app.appDir,
+    cwd: path.join(repoRoot, 'apps', app.appDir),
+    kind: 'remote',
+    port: app.devPort,
+  })),
 ];
 
 const children = new Set();

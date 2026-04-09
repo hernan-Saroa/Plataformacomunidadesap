@@ -2,8 +2,12 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import federation from '@originjs/vite-plugin-federation';
 import path from 'path';
+import { getBuildBase, getBuildOutDir } from '../../scripts/mfe.config.mjs';
+
+const appDir = 'mfe-firma-electronica';
 
 export default defineConfig({
+  base: getBuildBase(appDir),
   plugins: [
     react(),
     federation({
@@ -30,5 +34,7 @@ export default defineConfig({
     target: 'esnext',
     minify: false,
     cssCodeSplit: false,
+    emptyOutDir: false,
+    outDir: getBuildOutDir(appDir),
   },
 });
