@@ -93,9 +93,9 @@ function runManagedProcess(appName, role, cwd, args) {
 }
 
 const hostApp = apps.find((app) => app.kind === 'host');
-const remoteApps = apps.filter((app) => app.kind === 'remote');
+const remoteAppProcesses = apps.filter((app) => app.kind === 'remote');
 
-for (const app of remoteApps) {
+for (const app of remoteAppProcesses) {
   console.log(`[dev:all] Build inicial de ${app.name}...`);
 
   const result = spawnSync(process.execPath, [viteCli, 'build'], {
