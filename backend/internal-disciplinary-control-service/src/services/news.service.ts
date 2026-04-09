@@ -9,6 +9,7 @@ import { Repository, Not } from 'typeorm';
 import { DisciplinaryNews, NewsStatus, NewsOrigin } from '../entities/disciplinary-news.entity';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { DisciplinaryNewsProcess } from '../entities/disciplinary-news-process.entity';
+import { StageConfiguration } from '../entities/stage-configuration.entity';
 import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto';
 import { ReturnNewsDto } from '../dtos/return-news.dto';
 import { SequenceService } from './sequence.service';
@@ -28,6 +29,8 @@ export class NewsService {
     private processRepository: Repository<DisciplinaryProcess>,
     @InjectRepository(DisciplinaryNewsProcess)
     private newsProcessRepository: Repository<DisciplinaryNewsProcess>,
+    @InjectRepository(StageConfiguration)
+    private stageConfigurationRepository: Repository<StageConfiguration>,
     private sequenceService: SequenceService,
     private storageService: StorageService,
   ) { }
@@ -72,6 +75,17 @@ export class NewsService {
         fechaCaducidad.setFullYear(fechaCaducidad.getFullYear() + 5);
       }
 
+      // Get initial stage order from configuration
+      const initialStage = await this.stageConfigurationRepository.findOne({
+        where: { orden: 1, activo: true },
+      });
+      if (!initialStage) {
+        throw new HttpException(
+          'Initial stage configuration for RECEPCION not found',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
       // Crear y guardar noticia
       const noticia = this.newsRepository.create({
         radicado,
@@ -79,7 +93,7 @@ export class NewsService {
         adjuntos,
         fechaCaducidad,
         estado: NewsStatus.RADICADA,
-        kanbanStage: 'RECEPCION',
+        kanbanStage: initialStage.id,
         historialAuditoria: initialHistory,
       });
 
@@ -376,13 +390,22 @@ export class NewsService {
   /**
    * Actualiza la etapa Kanban de una noticia
    */
-  async updateKanbanStage(id: string, kanbanStage?: string): Promise<DisciplinaryNews> {
-    const noticia = await this.findById(id);
-    if (kanbanStage) {
-      noticia.kanbanStage = kanbanStage;
-    }
-    return await this.newsRepository.save(noticia);
-  }
+   async updateKanbanStage(id: string, kanbanStage?: number): Promise<DisciplinaryNews> {
+     const noticia = await this.findById(id);
+     if (kanbanStage !== undefined) {
+       const stageConfig = await this.stageConfigurationRepository.findOne({
+         where: { orden: kanbanStage, activo: true },
+       });
+       if (!stageConfig) {
+         throw new HttpException(
+           `Stage configuration with orden ${kanbanStage} not found`,
+           HttpStatus.BAD_REQUEST,
+         );
+       }
+        noticia.kanbanStage = stageConfig.id;
+     }
+     return await this.newsRepository.save(noticia);
+   }
 
   /**
    * Actualiza el historial de auditoría de una noticia
@@ -555,7 +578,7 @@ export class NewsService {
 
     // Actualizar estado y campos de remisión
     noticia.estado = NewsStatus.REMITIDA;
-    noticia.kanbanStage = 'REMITIDA';
+    noticia.kanbanStage = null;
     noticia.numeroRC = data.numeroRC;
     noticia.entidadRemision = data.entidadRemision;
     noticia.correoEntidadRemision = data.correoEntidadRemision;

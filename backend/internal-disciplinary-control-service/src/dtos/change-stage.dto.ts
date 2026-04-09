@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsNumber } from 'class-validator';
 import { ProcessStage } from '../entities/disciplinary-process.entity';
 
 export class ChangeStageDto {
@@ -6,8 +6,8 @@ export class ChangeStageDto {
     stage: ProcessStage;
 
     @IsOptional()
-    @IsString()
-    kanbanStage?: string;
+    @IsNumber()
+    kanbanStage?: number;
 
     @IsOptional()
     @IsString()

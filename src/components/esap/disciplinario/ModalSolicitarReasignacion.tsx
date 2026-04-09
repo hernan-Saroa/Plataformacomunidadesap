@@ -289,14 +289,19 @@ export function ModalSolicitarReasignacion({ proceso, profesionales = [], onClos
                       <MapPin className="w-3 h-3" />{p.territorial.replace('Territorial ', '').replace('Dirección ', 'Dir. ')}
                     </span>
                   </div>
-                  <WCBarraCarga
-                    asignados={p.procesosAsignados}
-                    capacidad={p.capacidadMaxima}
-                    semaforo={sem}
-                    alDia={p.procesosAlDia}
-                    enRiesgo={p.procesosEnRiesgo}
-                    vencidos={p.procesosVencidos}
-                  />
+                  <div className="flex items-center justify-between">
+                    <WCBarraCarga
+                      asignados={p.procesosAsignados}
+                      capacidad={p.capacidadMaxima}
+                      semaforo={sem}
+                      alDia={p.procesosAlDia}
+                      enRiesgo={p.procesosEnRiesgo}
+                      vencidos={p.procesosVencidos}
+                    />
+                    <span className="text-xs font-bold ml-2" style={{ color: cfg.color }}>
+                      {Math.round((p.procesosAsignados / p.capacidadMaxima) * 100)}%
+                    </span>
+                  </div>
                 </div>
                 {sel && (
                   <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center" style={{ background: WC_TOKENS.primary }}>
