@@ -58,6 +58,8 @@ import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProces
 import { entidadesRemisionService, EntidadRemision } from '../../../services/api/entidadesRemisionService';
 // ✅ IMPORTAR SERVICIOS DE SUPABASE PARA PERSISTENCIA LOCAL (solo uso interno, datos principales vienen del backend)
 import { noticiasService } from '../../../services/api/esapDataService';
+import { Permissions } from '../../../enums/permissions';
+import { authService } from '../../../services/api/authService';
 import {
   KanbanButtonPrimary,
   KanbanButtonSecondary,
@@ -415,7 +417,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
 
           {/* ✅ NUEVO: Remisión por Competencia - Aviso visual clicable */}
           {tieneRemision && onVerDetallesRemision && (
-            <div 
+            <div
               className="bg-purple-50 border border-purple-200 rounded-lg px-2.5 py-1.5 cursor-pointer hover:bg-purple-100 transition-colors"
               onClick={(e) => { e.stopPropagation(); onVerDetallesRemision(noticia); }}
               title="Ver detalles de remisión"
@@ -735,7 +737,7 @@ function TarjetaProceso({
 
           {/* Métricas — fila compacta inline - CLICKEABLE */}
           {proceso.procesoAsociadoId && (
-            <div 
+            <div
               className="mt-2 pt-2 border-t border-blue-200 bg-blue-50 p-2 rounded-md cursor-pointer hover:bg-blue-100 transition-colors"
               onClick={(e) => { e.stopPropagation(); onVerDetallesAsociacion?.(proceso); }}
               title="Ver detalles de la asociación"
@@ -1527,40 +1529,40 @@ function ColumnaKanban({
       if (etapasConfig.length > 0) {
         // Obtener el orden de la etapa actual (donde está el item)
         let itemOrden: number = 0;
-        
+
         if (item.tipo === 'noticia') {
           // Las noticias siempre están en Recepción (orden 1 o 0)
           // Solo pueden pasar a la siguiente etapa (orden + 1)
-          const etapaRecepcion = etapasConfig.find(e => 
-            e.etapa?.toLowerCase().includes('recep') || 
+          const etapaRecepcion = etapasConfig.find(e =>
+            e.etapa?.toLowerCase().includes('recep') ||
             e.etapa?.toLowerCase().includes('recib')
           );
           itemOrden = etapaRecepcion?.orden ?? 0;
         } else {
           // Para procesos, buscar la etapa actual del proceso
-          const etapaActualProceso = etapasConfig.find(e => 
-            e.etapa === item.etapaActual || 
+          const etapaActualProceso = etapasConfig.find(e =>
+            e.etapa === item.etapaActual ||
             e.etapa.toLowerCase() === item.etapaActual?.toLowerCase()
           );
           itemOrden = etapaActualProceso?.orden ?? 0;
         }
-        
+
         // Obtener el orden de la etapa de destino
-        const etapaDestino = etapasConfig.find(e => 
-          e.etapa === etapa || 
+        const etapaDestino = etapasConfig.find(e =>
+          e.etapa === etapa ||
           e.etapa.toLowerCase() === etapa.toLowerCase()
         );
         const etapaDestinoOrden = etapaDestino?.orden ?? itemOrden + 1;
-        
+
         // Solo permitir drop si es la siguiente etapa en el orden
         return etapaDestinoOrden === itemOrden + 1;
       }
-      
+
       // Fallback: lógica original si no hay configuración
       // ✅ Usar comparación normalizada para soportar etapas con/sin tildes
       const etapaNormalizadaDrop = normalizeText(etapa);
       const etapaInicialNormalizadaDrop = normalizeText(etapaInicial);
-      
+
       if (item.tipo === 'noticia') {
         return etapaNormalizadaDrop === etapaInicialNormalizadaDrop || etapa === 'Valoración' || normalizeText(etapa) === normalizeText('Valoración');
       }
@@ -1597,9 +1599,9 @@ function ColumnaKanban({
   // ✅ NUEVO: Obtener la etapa inicial (orden 1) desde la configuración
   const etapaInicial = etapasConfig.length > 0
     ? (() => {
-        const primeraEtapa = etapasConfig.sort((a, b) => (a.orden || 0) - (b.orden || 0))[0];
-        return primeraEtapa?.etapa || primeraEtapa?.nombre || 'RECEPCION';
-      })()
+      const primeraEtapa = etapasConfig.sort((a, b) => (a.orden || 0) - (b.orden || 0))[0];
+      return primeraEtapa?.etapa || primeraEtapa?.nombre || 'RECEPCION';
+    })()
     : 'RECEPCION';
 
   // Normalizar para comparación (sin tilde, minúsculas)
@@ -2251,17 +2253,17 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
 
   const etapasOrdenadas = etapasConfig && etapasConfig.length > 0
     ? [...etapasConfig]
-        .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
-        .map((etapa) => {
-          const raw = etapa.etapa || etapa.nombre || etapa.label || '';
-          const nombre = formatStageLabel(raw);
-          const palette = stageColorMap[nombre] || { color: '#374151', bg: '#F9FAFB' };
-          return {
-            nombre,
-            color: etapa.color || palette.color,
-            bg: etapa.bg || palette.bg
-          };
-        })
+      .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+      .map((etapa) => {
+        const raw = etapa.etapa || etapa.nombre || etapa.label || '';
+        const nombre = formatStageLabel(raw);
+        const palette = stageColorMap[nombre] || { color: '#374151', bg: '#F9FAFB' };
+        return {
+          nombre,
+          color: etapa.color || palette.color,
+          bg: etapa.bg || palette.bg
+        };
+      })
     : ETAPAS_LISTA;
 
   const etapaActualNormalizada = normalizeStage(formatStageLabel(etapaActual));
@@ -2789,12 +2791,16 @@ export function DashboardKanbanOperativo({
     setEtapasLoading(true);
     try {
       const etapas = await disciplinaryService.getStageConfiguration();
+      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_MANAGE)
       console.log('[DashboardKanban] Etapas cargadas desde backend:', etapas);
       // Si no tienen orden, asignar orden por defecto basado en índice
       const etapasOrdenadas = (getDataArray<any>(etapas) || []).map((etapa, idx) => ({
         ...etapa,
         orden: etapa.orden ?? (idx + 1)
       }));
+      if (!hasPermissionNoticia) {
+        etapasOrdenadas.shift()
+      }
       setEtapasConfig(etapasOrdenadas);
     } catch (error: any) {
       console.error('Error al cargar etapas:', error);
@@ -2811,13 +2817,16 @@ export function DashboardKanbanOperativo({
     setDataError(null);
     try {
       console.log('[DashboardKanban] Cargando datos desde backend...');
-
+      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_MANAGE)
+      console.log('hasPermissionNoticia', hasPermissionNoticia)
       // Cargar noticias y procesos en paralelo (filtrados por profesional si hay filtro activo)
       const [noticiasRaw, procesosRaw] = await Promise.all([
-        filtroProfesionalId 
-          ? disciplinaryService.getMisNoticias(filtroProfesionalId)
-          : disciplinaryService.getAllNoticias(),
-        filtroProfesionalId 
+        hasPermissionNoticia ?
+          filtroProfesionalId
+            ? disciplinaryService.getMisNoticias(filtroProfesionalId)
+            : disciplinaryService.getAllNoticias()
+          : [],
+        filtroProfesionalId
           ? disciplinaryService.getMisProcesos(filtroProfesionalId)
           : disciplinaryService.getAllProcesos()
       ]);
@@ -3253,32 +3262,32 @@ export function DashboardKanbanOperativo({
       // Obtener el orden de la etapa actual del item
       let itemOrden: number = 0;
       let etapaActualItem: string = 'Recepción';
-      
+
       if (item.tipo === 'noticia') {
         // Las noticias siempre están en Recepción
-        const etapaRecepcion = etapasConfig.find(e => 
-          e.etapa?.toLowerCase().includes('recep') || 
+        const etapaRecepcion = etapasConfig.find(e =>
+          e.etapa?.toLowerCase().includes('recep') ||
           e.etapa?.toLowerCase().includes('recib')
         );
         itemOrden = etapaRecepcion?.orden ?? 0;
         etapaActualItem = etapaRecepcion?.etapa || 'Recepción';
       } else {
         // Para procesos, buscar la etapa actual
-        const etapaActualProceso = etapasConfig.find(e => 
-          e.etapa === item.etapaActual || 
+        const etapaActualProceso = etapasConfig.find(e =>
+          e.etapa === item.etapaActual ||
           e.etapa.toLowerCase() === item.etapaActual?.toLowerCase()
         );
         itemOrden = etapaActualProceso?.orden ?? 0;
         etapaActualItem = etapaActualProceso?.etapa || item.etapaActual;
       }
-      
+
       // Obtener el orden de la etapa de destino
-      const etapaDestino = etapasConfig.find(e => 
-        e.etapa === nuevaEtapa || 
+      const etapaDestino = etapasConfig.find(e =>
+        e.etapa === nuevaEtapa ||
         e.etapa.toLowerCase() === nuevaEtapa.toLowerCase()
       );
       const etapaDestinoOrden = etapaDestino?.orden ?? itemOrden + 1;
-      
+
       // Validar que solo permita mover a la siguiente etapa en el orden
       if (etapaDestinoOrden !== itemOrden + 1) {
         toast.error('No puede saltar etapas', {
@@ -3287,7 +3296,7 @@ export function DashboardKanbanOperativo({
         return;
       }
     }
-    
+
     if (item.tipo === 'noticia') {
       if (nuevaEtapa === 'Valoración') {
         // ✅ Arrastrar noticia de Recepción a Valoración → activa wizard de conversión a proceso
@@ -3315,11 +3324,11 @@ export function DashboardKanbanOperativo({
         // ✅ NUEVO: Persistir cambio de etapa en la base de datos
         const toastId = toast.loading('Cambiando etapa del proceso...');
         try {
-            const backendStage = backendStageForLabel(nuevaEtapa);
-            const stageOrder = getStageOrderForLabel(nuevaEtapa);
+          const backendStage = backendStageForLabel(nuevaEtapa);
+          const stageOrder = getStageOrderForLabel(nuevaEtapa);
 
-            // Llamar al backend para cambiar la etapa
-            await disciplinaryService.cambiarEtapa(item.id, backendStage, stageOrder);
+          // Llamar al backend para cambiar la etapa
+          await disciplinaryService.cambiarEtapa(item.id, backendStage, stageOrder);
           toast.success('Etapa actualizada', {
             id: toastId,
             description: `${item.numeroProceso} → ${nuevaEtapa}`
@@ -3372,7 +3381,7 @@ export function DashboardKanbanOperativo({
         etapaInicial = etapasOrdenadas[0].etapa;
       }
     }
-    
+
     // Extraer primer denunciado y denunciante para campos principales
     const primerDenunciado = data.denunciados?.[0] || data.denunciado;
     const primerDenunciante = data.denunciantes?.[0];
@@ -3404,12 +3413,12 @@ export function DashboardKanbanOperativo({
       'Por Determinar': 'POR_DETERMINAR',
       'Por determinar': 'POR_DETERMINAR'
     };
-    
+
     const origenNormalizado = origenMap[data.origen] || 'POR_DETERMINAR';
 
     // ✅ NUEVO: Intentar guardar en el backend
     const toastId = toast.loading('Creando noticia en el sistema...');
-    
+
     try {
       // Preparar datos para el backend
       const newsData = {
@@ -3449,18 +3458,18 @@ export function DashboardKanbanOperativo({
 
       // Llamar al backend para crear la noticia
       const noticiaCreada = await disciplinaryService.radicarNoticia(newsData, data.archivosAdjuntos || []);
-      
+
       console.log('[DashboardKanban] Noticia creada en backend:', noticiaCreada);
 
       // Transformar la respuesta del backend al formato interno
       const nuevaNoticia = toNoticiaFromApi(noticiaCreada);
-      
+
       // Asegurar que use la etapa inicial correcta
       nuevaNoticia.etapaActual = etapaInicial;
 
       // Agregar al estado
       setItems(prev => [...prev, nuevaNoticia]);
-      
+
       toast.success('Noticia Creada', {
         id: toastId,
         description: `${nuevaNoticia.numero} en ${etapaInicial}`
@@ -3468,10 +3477,10 @@ export function DashboardKanbanOperativo({
       setModalActivo(null);
     } catch (error: any) {
       console.error('[DashboardKanban] Error al crear noticia en backend:', error);
-      
+
       // ✅ Fallback: crear localmente si el backend falla
       console.log('[DashboardKanban] Creando noticia localmente como fallback...');
-      
+
       const nuevaNoticiaLocal: Noticia = {
         id: `n${Date.now()}`,
         numero: `NOT-2026-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
@@ -3500,12 +3509,12 @@ export function DashboardKanbanOperativo({
       };
 
       setItems(prev => [...prev, nuevaNoticiaLocal]);
-      
+
       // Persistir en Supabase como fallback secundario
       noticiasService.create(nuevaNoticiaLocal).catch(err => {
         console.error('[DashboardKanban] Error al guardar noticia en Supabase:', err);
       });
-      
+
       toast.warning('Noticia creada localmente', {
         id: toastId,
         description: 'No se pudo guardar en el servidor. La noticia se guardó localmente.'
@@ -3821,7 +3830,7 @@ export function DashboardKanbanOperativo({
   }) => {
     // ✅ NUEVO: Llamar al backend API para remitir por competencia
     const toastId = toast.loading('Remitiendo noticia por competencia...');
-    
+
     try {
       await disciplinaryService.remitirPorCompetencia({
         newsId: itemSeleccionado.id,
@@ -3831,7 +3840,7 @@ export function DashboardKanbanOperativo({
         justificacion: `${datos.numeroRC} — Tipo: ${datos.tipoRemision}. Fundamento: ${datos.fundamentoLegal || 'N/A'}. ${datos.justificacion}`,
         usuarioRemision: 'Sistema'
       });
-      
+
       toast.success('Remitida por Competencia', {
         id: toastId,
         description: datos.entidadCorreo
@@ -3945,15 +3954,15 @@ export function DashboardKanbanOperativo({
 
     // ✅ NUEVO: Determinar la siguiente etapa basándose en el orden de etapasConfig
     let siguienteEtapa = 'Valoración'; // Valor por defecto
-    
+
     if (etapasConfig.length > 0) {
       // Obtener la etapa actual del proceso
-      const etapaActual = etapasConfig.find(e => 
-        e.etapa === itemSeleccionado.etapaActual || 
+      const etapaActual = etapasConfig.find(e =>
+        e.etapa === itemSeleccionado.etapaActual ||
         e.etapa.toLowerCase() === itemSeleccionado.etapaActual?.toLowerCase()
       );
       const ordenActual = etapaActual?.orden ?? 0;
-      
+
       // Buscar la siguiente etapa (orden + 1)
       const siguiente = etapasConfig.find(e => e.orden === ordenActual + 1);
       if (siguiente) {
@@ -3979,14 +3988,14 @@ export function DashboardKanbanOperativo({
     try {
       // Llamar al backend para cambiar la etapa y asignar el profesional
       await disciplinaryService.cambiarEtapa(itemSeleccionado.id, backendStage, stageOrder);
-      
+
       // También actualizar el proceso con el profesional asignado usando updateProcess
       await disciplinaryService.updateProcess(itemSeleccionado.id, {
         etapaActual: backendStage,
         kanbanStage: stageOrder,
         abogadoId: profesionalId
       });
-      
+
       toast.success('Profesional Asignado y Etapa Actualizada', {
         id: toastId,
         description: `${itemSeleccionado.numeroProceso} → ${profesionalNombre} (${siguienteEtapa})`
@@ -4655,7 +4664,7 @@ export function DashboardKanbanOperativo({
     const toastId = toast.loading('Cambiando etapa del proceso...');
     try {
       await disciplinaryService.cambiarEtapa(proceso.id, backendStage, stageOrder);
-      
+
       toast.success('Etapa actualizada', {
         id: toastId,
         description: `${proceso.numeroProceso} → ${nuevaEtapa}`
@@ -6121,10 +6130,10 @@ export function DashboardKanbanOperativo({
         {/* NUEVO: MODAL DETALLES ASOCIACION - Ver detalles de asociacion entre procesos */}
         {modalActivo === 'ver-detalles-asociacion' && itemSeleccionado && itemSeleccionado.tipo === 'proceso' && (() => {
           const procesoOrigen = itemSeleccionado as Proceso;
-          const procesoDestino = items.find(item => 
+          const procesoDestino = items.find(item =>
             item.tipo === 'proceso' && item.id === procesoOrigen.procesoAsociadoId
           ) as Proceso | undefined;
-          
+
           return (
             <ModalDetallesAsociacion
               isOpen={modalActivo === 'ver-detalles-asociacion'}
@@ -6198,11 +6207,11 @@ export function DashboardKanbanOperativo({
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                     <p className="text-xs font-bold text-gray-500 uppercase mb-1">Fecha de Remisión</p>
                     <p className="text-base font-semibold text-gray-900">
-                      {itemSeleccionado.fechaRemision 
+                      {itemSeleccionado.fechaRemision
                         ? new Date(itemSeleccionado.fechaRemision).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
-                        : ((itemSeleccionado as any).fechaRemision 
-                            ? new Date((itemSeleccionado as any).fechaRemision).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
-                            : '—')}
+                        : ((itemSeleccionado as any).fechaRemision
+                          ? new Date((itemSeleccionado as any).fechaRemision).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
+                          : '—')}
                     </p>
                   </div>
 
