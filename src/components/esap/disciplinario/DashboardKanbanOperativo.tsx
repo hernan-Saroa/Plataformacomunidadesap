@@ -962,6 +962,7 @@ function VistaLista({
             {(() => {
               if (etapasConfig && etapasConfig.length > 0) {
                 return etapasConfig
+                  .filter(etapa => etapa.activo !== false)
                   .sort((a, b) => (a.orden || 0) - (b.orden || 0))
                   .map((etapa) => {
                     const nombreEtapa = etapa.etapa || etapa.nombre || 'Sin nombre';
@@ -2827,12 +2828,16 @@ export function DashboardKanbanOperativo({
       console.log('[DashboardKanban] Noticias recibidas:', noticiasData.length);
       console.log('[DashboardKanban] Procesos recibidos:', procesosData.length);
 
+      // Filtrar solo items activos
+      const noticiasFiltradas = noticiasData.filter(n => (n as any).activo !== false);
+      const procesosFiltrados = procesosData.filter(p => (p as any).activo !== false);
+
       // Separar noticias archivadas de las activas. Excluir ASIGNADA porque ya tienen proceso asociado
-      const noticiasActivas = noticiasData.filter(n => {
+      const noticiasActivas = noticiasFiltradas.filter(n => {
         const estado = (n as any).estado;
         return estado !== 'ARCHIVADA' && estado !== 'ASIGNADA';
       });
-      const noticiasArchivadas = noticiasData.filter(n => (n as any).estado === 'ARCHIVADA');
+      const noticiasArchivadas = noticiasFiltradas.filter(n => (n as any).estado === 'ARCHIVADA');
 
       // Transformar noticias al formato interno
       const noticiasTransformadas = noticiasActivas.map(n => toNoticiaFromApi(n, etapasConfig));
@@ -2843,7 +2848,7 @@ export function DashboardKanbanOperativo({
       }));
 
       // Transformar procesos al formato interno
-      const procesosTransformados = procesosData.map(p => toProcesoFromApi(p, etapasConfig));
+      const procesosTransformados = procesosFiltrados.map(p => toProcesoFromApi(p, etapasConfig));
 
       // Combinar noticias y procesos activos
       const todosLosItems: Item[] = [
@@ -3144,6 +3149,7 @@ export function DashboardKanbanOperativo({
   // Si no hay config, usar valores por defecto
   const etapas = etapasConfig.length > 0
     ? etapasConfig
+      .filter(etapa => etapa.activo !== false)
       .sort((a, b) => (a.orden || 0) - (b.orden || 0))
       .map((etapa) => ({
         nombre: etapa.etapa,
