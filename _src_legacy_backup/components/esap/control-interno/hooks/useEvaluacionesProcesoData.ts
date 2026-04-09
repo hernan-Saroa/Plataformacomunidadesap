@@ -54,7 +54,15 @@ export interface EvaluacionProcesoUI {
   exposicion: number;
   mitigantes: number;
   scoreRiesgo: number;
-  // DAFP
+  // Criterios de priorización DAFP (migración 179)
+  tiempoUltimaAuditoria: number;
+  temasAltaDireccion: number;
+  objetivosEstrategicos: number;
+  hallazgosAnteriores: number;
+  ponderacionFinalDafp: number;
+  nivelCriticidadDafp?: string;
+  cicloRotacionDafp?: string;
+  // DAFP legacy
   ponderacionRiesgo?: PonderacionRiesgo;
   diasTranscurridos?: number;
   planRotacion?: string;
@@ -96,6 +104,13 @@ function mapBackendToUI(backend: EvaluacionProceso): EvaluacionProcesoUI {
     exposicion: backend.exposicion ?? 0,
     mitigantes: backend.mitigantes ?? 0,
     scoreRiesgo: backend.scoreRiesgo ?? 0,
+    tiempoUltimaAuditoria: backend.tiempoUltimaAuditoria ?? 0,
+    temasAltaDireccion: backend.temasAltaDireccion ?? 0,
+    objetivosEstrategicos: backend.objetivosEstrategicos ?? 0,
+    hallazgosAnteriores: backend.hallazgosAnteriores ?? 0,
+    ponderacionFinalDafp: backend.ponderacionFinalDafp ?? 0,
+    nivelCriticidadDafp: backend.nivelCriticidadDafp,
+    cicloRotacionDafp: backend.cicloRotacionDafp,
     ponderacionRiesgo: backend.ponderacionRiesgo as PonderacionRiesgo,
     diasTranscurridos: backend.diasTranscurridos,
     planRotacion: backend.planRotacion,
@@ -112,6 +127,7 @@ function mapBackendToUI(backend: EvaluacionProceso): EvaluacionProcesoUI {
 
 function mapUIToBackend(ui: Partial<EvaluacionProcesoUI>): Partial<CreateEvaluacionProcesoDTO> {
   const base: Partial<CreateEvaluacionProcesoDTO> = {
+    procesoId: ui.procesoId || '',
     vigencia: ui.vigencia ?? new Date().getFullYear(),
     fechaCorte: ui.fechaCorte || new Date().toISOString().split('T')[0],
     dependenciaResponsable: ui.dependenciaResponsable || '',
@@ -119,6 +135,7 @@ function mapUIToBackend(ui: Partial<EvaluacionProcesoUI>): Partial<CreateEvaluac
     riesgosAltos: ui.riesgosAltos ?? 0,
     riesgosModerados: ui.riesgosModerados ?? 0,
     riesgosBajos: ui.riesgosBajos ?? 0,
+    totalRiesgos: ui.totalRiesgos ?? ((ui.riesgosExtremos ?? 0) + (ui.riesgosAltos ?? 0) + (ui.riesgosModerados ?? 0) + (ui.riesgosBajos ?? 0)),
     requerimientoComite: ui.requerimientoComite ?? false,
     requerimientoEntesReg: ui.requerimientoEntesReg ?? false,
     fechaUltimaAuditoria: ui.fechaUltimaAuditoria,
@@ -126,10 +143,19 @@ function mapUIToBackend(ui: Partial<EvaluacionProcesoUI>): Partial<CreateEvaluac
     criticidad: ui.criticidad ?? 0,
     exposicion: ui.exposicion ?? 0,
     mitigantes: ui.mitigantes ?? 0,
+    tiempoUltimaAuditoria: ui.tiempoUltimaAuditoria ?? 0,
+    temasAltaDireccion: ui.temasAltaDireccion ?? 0,
+    objetivosEstrategicos: ui.objetivosEstrategicos ?? 0,
+    hallazgosAnteriores: ui.hallazgosAnteriores ?? 0,
+    ponderacionFinalDafp: ui.ponderacionFinalDafp ?? 0,
+    nivelCriticidadDafp: ui.nivelCriticidadDafp,
+    cicloRotacionDafp: ui.cicloRotacionDafp,
     decisionFinal: ui.decisionFinal,
     motivoDecision: ui.motivoDecision,
+    prioridadRegla: ui.prioridadRegla,
   };
-  if (ui.procesoId && ui.procesoId.length > 0) {
+  // Incluir procesoId si existe y tiene formato válido
+  if (ui.procesoId) {
     base.procesoId = ui.procesoId;
   }
   return base;
@@ -183,18 +209,23 @@ export function useEvaluacionesProcesoData(
     setError(null);
     
     try {
-      let data: EvaluacionProceso[];
-      
-      if (procesoId) {
-        data = await controlInternoService.getEvaluacionesByProceso(procesoId);
-      } else {
-        data = await controlInternoService.getEvaluaciones(vigencia);
-      }
-      
-      if (!mountedRef.current) return;
-      
-      const mapped = data.map(mapBackendToUI);
-      setEvaluaciones(mapped);
+      console.log('[useEvaluacionesProcesoData] Fetching with vigencia:', vigencia, 'procesoId:', procesoId);
+        
+        let data: EvaluacionProceso[];
+        
+        if (procesoId) {
+          data = await controlInternoService.getEvaluacionesByProceso(procesoId);
+        } else {
+          data = await controlInternoService.getEvaluaciones();
+        }
+        
+        console.log('[useEvaluacionesProcesoData] API returned:', data.length, 'evaluaciones');
+        
+        if (!mountedRef.current) return;
+        
+        const mapped = data.map(mapBackendToUI);
+        console.log('[useEvaluacionesProcesoData] Evaluaciones cargadas:', mapped.length);
+        setEvaluaciones(mapped);
       
     } catch (err) {
       if (!mountedRef.current) return;
@@ -224,14 +255,28 @@ export function useEvaluacionesProcesoData(
       const dto = mapUIToBackend(data);
       if (!dto.procesoId) {
         if (showToasts) toast.error('Falta el proceso asociado a la evaluación');
+        console.error('[useEvaluacionesProcesoData] ERROR: procesoId es undefined o vacío');
         return null;
       }
-      console.log('[useEvaluacionesProcesoData] Creando evaluación:', dto);
+      // Validar que los datos críticos estén presentes
+      console.log('[useEvaluacionesProcesoData] ===== DATOS ENVIADOS AL BACKEND =====');
+      console.log('procesoId:', dto.procesoId);
+      console.log('riesgosExtremos:', dto.riesgosExtremos, 'riesgosAltos:', dto.riesgosAltos, 'riesgosModerados:', dto.riesgosModerados, 'riesgosBajos:', dto.riesgosBajos, 'totalRiesgos:', dto.totalRiesgos);
+      console.log('tiempoUltimaAuditoria:', dto.tiempoUltimaAuditoria, 'temasAltaDireccion:', dto.temasAltaDireccion, 'objetivosEstrategicos:', dto.objetivosEstrategicos, 'hallazgosAnteriores:', dto.hallazgosAnteriores);
+      console.log('ponderacionFinalDafp:', dto.ponderacionFinalDafp, 'nivelCriticidadDafp:', dto.nivelCriticidadDafp, 'cicloRotacionDafp:', dto.cicloRotacionDafp);
+      console.log('========================================================');
       
       const created = await controlInternoService.createEvaluacion(dto as CreateEvaluacionProcesoDTO);
+      console.log('[useEvaluacionesProcesoData] Respuesta del backend:', JSON.stringify(created, null, 2));
       const mapped = mapBackendToUI(created);
+      console.log('[useEvaluacionesProcesoData] Mapeado a UI:', JSON.stringify(mapped, null, 2));
       
-      setEvaluaciones(prev => [...prev, mapped]);
+      // Forzar actualización del estado
+      setEvaluaciones(prev => {
+        const nuevo = [...prev, mapped];
+        console.log('[useEvaluacionesProcesoData] Estado actualizado, total:', nuevo.length);
+        return nuevo;
+      });
       
       if (showToasts) {
         toast.success('Evaluación creada exitosamente');

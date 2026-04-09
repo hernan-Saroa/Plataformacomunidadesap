@@ -608,8 +608,9 @@ export class ApiClient {
       const refreshToken = localStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
 
       if (!refreshToken) {
-        // No hacer logout automático - solo retornar null
-        console.warn('No refresh token available');
+        // Hacer logout automático cuando no hay refresh token
+        console.warn('No refresh token available - logging out');
+        this.handleLogout();
         return null;
       }
 
@@ -622,8 +623,9 @@ export class ApiClient {
       });
 
       if (!response.ok) {
-        // No hacer logout automático - solo retornar null
-        console.warn('Token refresh failed with status:', response.status);
+        // Hacer logout automático cuando el refresh falla
+        console.warn('Token refresh failed with status:', response.status, '- logging out');
+        this.handleLogout();
         return null;
       }
 
@@ -633,7 +635,8 @@ export class ApiClient {
       const newToken = data?.data?.accessToken || data?.accessToken;
 
       if (!newToken) {
-        console.warn('Refresh response without accessToken');
+        console.warn('Refresh response without accessToken - logging out');
+        this.handleLogout();
         return null;
       }
 
@@ -647,7 +650,8 @@ export class ApiClient {
 
       return newToken;
     } catch (error) {
-      console.warn('Token refresh error:', error);
+      console.warn('Token refresh error:', error, '- logging out');
+      this.handleLogout();
       return null;
     } finally {
       this.isRefreshing = false;

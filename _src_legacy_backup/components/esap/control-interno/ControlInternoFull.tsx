@@ -111,7 +111,7 @@ function ControlInternoContent({
     'plan-operativo': 'plan-anual',
     'universo-auditable': 'planificacion',
     'dashboard': 'auditorias',
-    'listas-chequeo': 'auditorias', // Usa mismo permiso que auditorías
+    'listas-chequeo': 'listas-chequeo',
     'planes-mejoramiento': 'planes-mejoramiento',
     'expedientes': 'expedientes',
     'config-auditorias': 'configuraciones',
@@ -138,10 +138,10 @@ function ControlInternoContent({
         color: "#003DA5", // Azul ESAP
       },
       
-      // ━━━━━━━━━━━ 3. AUDITORÍAS OCIG ━━━━━━━━━━━
+      // ━━━━━━━━━━━ 3. AUDITORÍAS OCI ━━━━━━━━━━━
       {
         id: "dashboard",
-        label: "Auditorías OCIG",
+        label: "Auditorías OCI",
         subtitle: "Centro de comando integrado",
         icon: <LayoutDashboard className="w-5 h-5" />,
         color: "#10B981", // Verde - Principal

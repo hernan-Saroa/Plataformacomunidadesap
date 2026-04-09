@@ -20,7 +20,7 @@
  * - Registro de auditoría de cambios (compliance)
  * 
  * INTEGRACIÓN:
- * - Programa Anual CIG (RF003) - Auditorías programadas
+ * - Programa Anual OCI (RF003) - Auditorías programadas
  * - Gestión Organizacional - Áreas auditables
  * - Gestión de Personas - Auditores y responsables
  * 

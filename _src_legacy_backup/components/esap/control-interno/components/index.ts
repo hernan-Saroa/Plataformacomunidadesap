@@ -1,10 +1,10 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * COMPONENTES OCIG - EXPORTS
+ * COMPONENTES OCI - EXPORTS
  * ═════════════════════════════════════════════════════════════════════════
  * 
- * Exportación centralizada de componentes del módulo OCIG
- * Basado en especificaciones de PROMPT_FIGMA_OCIG_COMPLETO.md
+ * Exportación centralizada de componentes del módulo OCI
+ * Basado en especificaciones de PROMPT_FIGMA_OCI_COMPLETO.md
  */
 
 // Componentes auxiliares

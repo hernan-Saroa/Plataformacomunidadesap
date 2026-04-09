@@ -26,7 +26,7 @@
 import { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Check } from 'lucide-react';
+import { X, Check, AlertTriangle, AlertCircle } from 'lucide-react';
 
 // ─── Design Tokens Oficiales ────────────────────────────────────────────────
 
@@ -147,8 +147,12 @@ export function WorldClassModal({
 }: WorldClassModalProps) {
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{
+        backgroundColor: 'rgba(0,0,0,0.60)',
+        padding: '4vh 4vw',
+        zIndex: 9998
+      }}
       onClick={(e) => e.target === e.currentTarget && onCerrar()}
     >
       <motion.div
@@ -176,8 +180,12 @@ export function WorldClassWizard({
 }: WorldClassWizardProps) {
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{
+        backgroundColor: 'rgba(0,0,0,0.60)',
+        padding: '4vh 4vw',
+        zIndex: 9998
+      }}
       onClick={(e) => e.target === e.currentTarget && onCerrar()}
     >
       <motion.div
@@ -334,22 +342,48 @@ export function WCBadgeSemaforo({ estado }: { estado: 'verde' | 'amarillo' | 'ro
   );
 }
 
-/** Barra de carga */
-export function WCBarraCarga({ asignados, capacidad, semaforo }: {
-  asignados: number; capacidad: number; semaforo: 'verde' | 'amarillo' | 'rojo' | 'gris';
+/** Barra de carga con desglose */
+export function WCBarraCarga({
+  asignados,
+  capacidad,
+  semaforo,
+  alDia = 0,
+  enRiesgo = 0,
+  vencidos = 0
+}: {
+  asignados: number;
+  capacidad: number;
+  semaforo: 'verde' | 'amarillo' | 'rojo' | 'gris';
+  alDia?: number;
+  enRiesgo?: number;
+  vencidos?: number;
 }) {
   const pct   = Math.min(100, Math.round((asignados / capacidad) * 100));
   const s     = WC_TOKENS[semaforo];
   const cupos = Math.max(0, capacidad - asignados);
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: s.dot }} />
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: s.dot }} />
+        </div>
+        <span className="text-[10px] font-bold whitespace-nowrap" style={{ color: s.color }}>
+          {asignados}/{capacidad}
+          {cupos > 0 && <span className="text-gray-400 font-normal ml-1">({cupos} libres)</span>}
+        </span>
       </div>
-      <span className="text-[10px] font-bold whitespace-nowrap" style={{ color: s.color }}>
-        {asignados}/{capacidad}
-        {cupos > 0 && <span className="text-gray-400 font-normal ml-1">({cupos} libres)</span>}
-      </span>
+      {/* Desglose de procesos */}
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold">
+        <span className="text-emerald-600 flex items-center gap-0.5">
+          <Check className="w-3 h-3" />{alDia}
+        </span>
+        <span className="text-amber-500 flex items-center gap-0.5">
+          <AlertTriangle className="w-3 h-3" />{enRiesgo}
+        </span>
+        <span className="text-red-500 flex items-center gap-0.5">
+          <AlertCircle className="w-3 h-3" />{vencidos}
+        </span>
+      </div>
     </div>
   );
 }

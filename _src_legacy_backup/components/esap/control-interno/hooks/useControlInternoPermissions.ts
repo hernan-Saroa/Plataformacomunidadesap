@@ -21,6 +21,7 @@ type ModuloControlInterno =
   | 'informes-ley'
   | 'expedientes'
   | 'auditorias'
+  | 'listas-chequeo'
   | 'roles-permisos'
   | 'config-auditorias'
   | 'configuraciones';
@@ -105,6 +106,14 @@ const MAPA_PERMISOS: Record<string, string> = {
   'configuraciones:edit': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
   'config-auditorias:view': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
   'config-auditorias:edit': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
+  
+  // Biblioteca / Listas de Chequeo
+  'listas-chequeo:view': Permissions.CONTROL_INTERNO_LISTAS_CHEQUEO_VIEW,
+  'listas-chequeo:create': Permissions.CONTROL_INTERNO_LISTAS_CHEQUEO_CREATE,
+  'listas-chequeo:edit': Permissions.CONTROL_INTERNO_LISTAS_CHEQUEO_EDIT,
+  'listas-chequeo:delete': Permissions.CONTROL_INTERNO_LISTAS_CHEQUEO_DELETE,
+  'listas-chequeo:apply': Permissions.CONTROL_INTERNO_LISTAS_CHEQUEO_APPLY,
+  'listas-chequeo:export': Permissions.CONTROL_INTERNO_LISTAS_CHEQUEO_EXPORT,
   
   // Dashboard (permiso general)
   'dashboard:view': Permissions.CONTROL_INTERNO_PLANEACION_MANAGE,

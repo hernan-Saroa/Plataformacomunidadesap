@@ -50,7 +50,7 @@ export interface AuditoriaProgramadaUI {
   avance: number;
   horasEstimadas: number;
   horasReales: number;
-  auditoriaOCIGId?: string;
+  auditoriaOCIId?: string;
   planMejoramientoId?: string;
   hallazgosCount: number;
   territorial: string; // 🆕 Territorial para cronograma
@@ -89,7 +89,7 @@ export interface Estadisticas {
   horasTotales: number;
   horasEjecutadas: number;
   // Vinculación
-  vinculadasOCIG: number;
+  vinculadasOCI: number;
   conHallazgos: number;
   conPlanesMejoramiento: number;
 }
@@ -293,7 +293,7 @@ function mapAuditoriaBackendToUI(
     avance: auditoria.avance || 0,
     horasEstimadas: (auditoria.duracionDias || 0) * 8,
     horasReales: auditoria.horasReales || 0,
-    auditoriaOCIGId: auditoria.auditoriaOCIGId || undefined,
+    auditoriaOCIId: auditoria.auditoriaOCIId || undefined,
     planMejoramientoId: auditoria.planMejoramientoId || undefined,
     hallazgosCount: auditoria.hallazgosCount || 0,
     territorial: auditoria.territorial || procesoUI._territorial || 'Sede Central',
@@ -380,7 +380,7 @@ export function calcularEstadisticas(
     horasTotales: auditorias.reduce((sum, a) => sum + a.horasEstimadas, 0),
     horasEjecutadas: auditorias.reduce((sum, a) => sum + a.horasReales, 0),
     
-    vinculadasOCIG: auditorias.filter(a => a.auditoriaOCIGId).length,
+    vinculadasOCI: auditorias.filter(a => a.auditoriaOCIId).length,
     conHallazgos: auditorias.filter(a => a.hallazgosCount > 0).length,
     conPlanesMejoramiento: auditorias.filter(a => a.planMejoramientoId).length,
   };
@@ -538,7 +538,7 @@ export function useProgramaAnualData(
             avance: a.avance,
             horasEstimadas: a.horasEstimadas,
             horasReales: a.horasReales || 0,
-            auditoriaOCIGId: a.auditoriaOCIGId,
+            auditoriaOCIId: a.auditoriaOCIId,
             planMejoramientoId: a.planMejoramientoId,
             hallazgosCount: a.hallazgosCount || 0,
             territorial: a.territorial,

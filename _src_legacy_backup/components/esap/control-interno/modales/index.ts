@@ -1,6 +1,6 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * MODALES OCIG - EXPORTS CENTRALIZADOS
+ * MODALES OCI - EXPORTS CENTRALIZADOS
  * ═════════════════════════════════════════════════════════════════════════
  * 
  * Exportación consolidada de todos los modales

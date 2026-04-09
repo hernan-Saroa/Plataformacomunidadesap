@@ -3,8 +3,9 @@
  * Este archivo contiene las 4 secciones principales del dashboard
  */
 
-import { motion } from 'motion/react';
-import { BookOpen, Users, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { BookOpen, Users, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Target, Plus, X, Calendar } from 'lucide-react';
 
 // Tipos importados
 type PlanAnual = any; // Simplificado para este archivo
@@ -115,6 +116,26 @@ export function SeccionResumen({ plan, totalActividades, actividadesAsignadas, a
 
 // SECCIÓN 2: ASIGNAR RESPONSABLES
 export function SeccionAsignar({ plan, onAsignarResponsable, AUDITORES }: any) {
+  const [actividadExpandida, setActividadExpandida] = useState<string | null>(null);
+  const [asignandoEnActividad, setAsignandoEnActividad] = useState<string | null>(null);
+
+  const estadoColor: Record<string, string> = {
+    'pendiente': 'bg-gray-100 text-gray-600',
+    'en-revision': 'bg-blue-100 text-blue-700',
+    'completado': 'bg-green-100 text-green-700',
+    'atrasado': 'bg-red-100 text-red-700',
+  };
+  const estadoLabel: Record<string, string> = {
+    'pendiente': '⏳ Pendiente',
+    'en-revision': '🔍 En revisión',
+    'completado': '✅ Completado',
+    'atrasado': '⚠️ Atrasado',
+  };
+  const frecuenciaLabel: Record<string, string> = {
+    'trimestral': 'Trimestral', 'mensual': 'Mensual', 'semestral': 'Semestral',
+    'anual': 'Anual', 'semanal': 'Semanal', 'personalizada': 'Personalizada',
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -122,6 +143,7 @@ export function SeccionAsignar({ plan, onAsignarResponsable, AUDITORES }: any) {
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
+      {/* Resumen de auditores */}
       <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
         <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
           <Users className="w-5 h-5 text-blue-600" />
@@ -130,31 +152,35 @@ export function SeccionAsignar({ plan, onAsignarResponsable, AUDITORES }: any) {
         <div className="grid grid-cols-5 gap-3">
           {AUDITORES.map((auditor: any) => {
             const asignadas = plan.roles.reduce((sum: number, rol: any) =>
-              sum + rol.actividades.filter((a: any) => a.responsable?.id === auditor.id).length, 0
+              sum + rol.actividades.filter((a: any) =>
+                (a.responsables || []).some((r: any) => r.id === auditor.id) ||
+                a.responsable?.id === auditor.id
+              ).length, 0
             );
             return (
-              <div key={auditor.id} className="border-2 border-gray-200 rounded-lg p-3">
+              <div key={auditor.id} className="border-2 border-gray-200 rounded-lg p-3 text-center">
                 <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm mb-2 mx-auto">
-                  {auditor.nombre.split(' ').map((n: string) => n[0]).join('')}
+                  {auditor.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
                 </div>
-                <p className="font-semibold text-gray-900 text-center text-sm mb-1">{auditor.nombre}</p>
-                <p className="text-xs text-gray-600 text-center mb-2">{auditor.cargo}</p>
-                <div className="text-center">
-                  <span className="text-xs font-bold text-blue-600">{asignadas}</span>
-                  <span className="text-xs text-gray-500"> asignadas</span>
-                </div>
+                <p className="font-semibold text-gray-900 text-sm leading-tight mb-0.5">{auditor.nombre}</p>
+                <p className="text-xs text-gray-500 mb-2">{auditor.cargo}</p>
+                <span className="text-xs font-bold text-blue-600">{asignadas}</span>
+                <span className="text-xs text-gray-500"> asignadas</span>
               </div>
             );
           })}
         </div>
       </div>
 
-      {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol: any) => {
-        const sinAsignar = rol.actividades.filter((a: any) => a.responsable === null);
-        
+      {/* Actividades por rol */}
+      {[...plan.roles].sort((a: any, b: any) => a.numero - b.numero).map((rol: any) => {
+        const sinAsignar = rol.actividades.filter((a: any) =>
+          !(a.responsables?.length) && !a.responsable
+        );
+
         return (
           <div key={rol.numero} className="bg-white rounded-xl border-2 border-gray-200 p-6">
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-3 mb-5">
               <div
                 className="w-10 h-10 rounded-lg flex items-center justify-center text-xl border-2"
                 style={{ backgroundColor: `${rol.color}20`, borderColor: rol.color }}
@@ -164,60 +190,205 @@ export function SeccionAsignar({ plan, onAsignarResponsable, AUDITORES }: any) {
               <div className="flex-1">
                 <h3 className="font-bold text-gray-900">Rol {rol.numero}: {rol.nombre}</h3>
                 <p className="text-sm text-gray-600">
-                  {rol.actividades.length} actividades • {sinAsignar.length} sin asignar
+                  {rol.actividades.length} actividades
+                  {sinAsignar.length > 0 && (
+                    <span className="ml-2 text-orange-600 font-medium">• {sinAsignar.length} sin responsable</span>
+                  )}
                 </p>
               </div>
             </div>
 
             <div className="space-y-3">
-              {rol.actividades.map((actividad: any) => (
-                <div
-                  key={actividad.id}
-                  className={`border-2 rounded-lg p-4 ${
-                    actividad.responsable
-                      ? 'border-green-200 bg-green-50'
-                      : 'border-orange-200 bg-orange-50'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xs font-bold text-gray-500">#{actividad.id}</span>
-                        <h4 className="font-semibold text-gray-900">{actividad.nombre}</h4>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-2">{actividad.descripcion}</p>
-                      <div className="flex items-center gap-4 text-xs text-gray-500">
-                        <span>📅 {actividad.fechaInicio} / {actividad.fechaFin}</span>
-                        <span>• Control: {actividad.control}</span>
+              {rol.actividades.map((actividad: any) => {
+                const resps: any[] = actividad.responsables?.length
+                  ? actividad.responsables
+                  : (actividad.responsable ? [actividad.responsable] : []);
+                const tieneResponsables = resps.length > 0;
+                const expandida = actividadExpandida === actividad.id;
+                const asignando = asignandoEnActividad === actividad.id;
+                const puntosControl: any[] = actividad.puntosControl || [];
+
+                return (
+                  <div
+                    key={actividad.id}
+                    className={`border-2 rounded-xl overflow-hidden transition-all ${
+                      tieneResponsables ? 'border-green-200' : 'border-orange-200'
+                    }`}
+                  >
+                    {/* Cabecera de la actividad */}
+                    <div className={`p-4 ${tieneResponsables ? 'bg-green-50' : 'bg-orange-50'}`}>
+                      <div className="flex items-start gap-4">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-gray-900 mb-1 leading-snug">{actividad.nombre}</h4>
+                          {actividad.descripcion && (
+                            <p className="text-sm text-gray-600 mb-2 line-clamp-2">{actividad.descripcion}</p>
+                          )}
+
+                          {/* Fechas y frecuencia */}
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 mb-3">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {actividad.fechaInicio} → {actividad.fechaFin}
+                            </span>
+                            {actividad.fechaCorte && (
+                              <span className="flex items-center gap-1 text-amber-700 font-medium">
+                                🏁 Corte: {actividad.fechaCorte}
+                              </span>
+                            )}
+                            {actividad.frecuenciaPuntosControl && (
+                              <span className="bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+                                🔄 {frecuenciaLabel[actividad.frecuenciaPuntosControl] || actividad.frecuenciaPuntosControl}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Responsables chips */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            {resps.map((r: any, idx: number) => (
+                              <div
+                                key={r.id || idx}
+                                className="flex items-center gap-1.5 bg-white border-2 border-green-300 rounded-full px-3 py-1"
+                              >
+                                <div className="w-5 h-5 rounded-full bg-green-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                  {r.nombre?.split(' ').map((n: string) => n[0]).join('').slice(0, 2) || '?'}
+                                </div>
+                                <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{r.nombre}</span>
+                                {r.cargo && <span className="text-xs text-gray-500 hidden sm:inline">· {r.cargo}</span>}
+                              </div>
+                            ))}
+
+                            {/* Botón asignar / select */}
+                            {!asignando ? (
+                              <button
+                                onClick={() => setAsignandoEnActividad(actividad.id)}
+                                className="flex items-center gap-1.5 border-2 border-dashed border-gray-400 rounded-full px-3 py-1 text-xs text-gray-500 hover:border-blue-500 hover:text-blue-600 hover:bg-white transition-all"
+                              >
+                                <Plus className="w-3 h-3" />
+                                {tieneResponsables ? 'Agregar responsable' : 'Asignar responsable'}
+                              </button>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <select
+                                  onChange={(e) => {
+                                    const auditor = AUDITORES.find((a: any) => a.id === e.target.value);
+                                    if (auditor) {
+                                      onAsignarResponsable(actividad.id, auditor);
+                                      setAsignandoEnActividad(null);
+                                    }
+                                  }}
+                                  className="px-2 py-1 border-2 border-blue-400 rounded-lg text-sm bg-white focus:outline-none focus:border-blue-600"
+                                  defaultValue=""
+                                  autoFocus
+                                >
+                                  <option value="" disabled>Seleccionar...</option>
+                                  {AUDITORES.map((a: any) => (
+                                    <option key={a.id} value={a.id}>{a.nombre}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => setAsignandoEnActividad(null)}
+                                  className="p-1 rounded-full hover:bg-gray-200 transition-colors"
+                                >
+                                  <X className="w-4 h-4 text-gray-500" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Botón puntos de control (si existen) */}
+                        {puntosControl.length > 0 && (
+                          <button
+                            onClick={() => setActividadExpandida(expandida ? null : actividad.id)}
+                            className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-sm font-medium transition-all ${
+                              expandida
+                                ? 'bg-blue-600 border-blue-600 text-white'
+                                : 'bg-white border-blue-200 text-blue-700 hover:bg-blue-50 hover:border-blue-400'
+                            }`}
+                          >
+                            <Target className="w-4 h-4" />
+                            <span>{puntosControl.length} puntos</span>
+                            {expandida
+                              ? <ChevronUp className="w-3 h-3" />
+                              : <ChevronDown className="w-3 h-3" />
+                            }
+                          </button>
+                        )}
                       </div>
                     </div>
 
-                    <div className="w-64 flex-shrink-0">
-                      {actividad.responsable ? (
-                        <div className="p-3 bg-white border-2 border-green-300 rounded-lg">
-                          <p className="text-xs text-green-600 font-semibold mb-1">Asignado a:</p>
-                          <p className="font-semibold text-gray-900">{actividad.responsable.nombre}</p>
-                          <p className="text-xs text-gray-600">{actividad.responsable.cargo}</p>
-                        </div>
-                      ) : (
-                        <select
-                          onChange={(e) => {
-                            const auditor = AUDITORES.find((a: any) => a.id === e.target.value);
-                            if (auditor) onAsignarResponsable(actividad.id, auditor);
-                          }}
-                          className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500"
-                          defaultValue=""
+                    {/* Panel expandido: puntos de control */}
+                    <AnimatePresence>
+                      {expandida && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="overflow-hidden"
                         >
-                          <option value="" disabled>Asignar a...</option>
-                          {AUDITORES.map((a: any) => (
-                            <option key={a.id} value={a.id}>{a.nombre}</option>
-                          ))}
-                        </select>
+                          <div className="border-t-2 border-blue-100 bg-blue-50 p-4">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Target className="w-4 h-4 text-blue-700" />
+                              <h5 className="font-semibold text-blue-900">
+                                Puntos de control ({puntosControl.length})
+                              </h5>
+                              {actividad.frecuenciaPuntosControl && (
+                                <span className="text-xs bg-blue-100 text-blue-700 border border-blue-300 px-2 py-0.5 rounded-full">
+                                  {frecuenciaLabel[actividad.frecuenciaPuntosControl] || actividad.frecuenciaPuntosControl}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              {puntosControl.map((pc: any, idx: number) => (
+                                <div
+                                  key={pc.id || idx}
+                                  className={`bg-white rounded-lg p-3 border-2 ${
+                                    pc.estado === 'completado' ? 'border-green-300' :
+                                    pc.estado === 'atrasado' ? 'border-red-300' :
+                                    pc.estado === 'en-revision' ? 'border-blue-300' :
+                                    'border-gray-200'
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                                    <span className="text-xs font-bold text-gray-700 leading-snug">
+                                      {pc.nombre || `Punto ${idx + 1}`}
+                                    </span>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap flex-shrink-0 ${estadoColor[pc.estado] || 'bg-gray-100 text-gray-600'}`}>
+                                      {estadoLabel[pc.estado] || pc.estado || 'Pendiente'}
+                                    </span>
+                                  </div>
+                                  {pc.fechaProgramada && (
+                                    <div className="flex items-center gap-1 text-xs text-gray-500 mb-1">
+                                      <Calendar className="w-3 h-3" />
+                                      <span>{pc.fechaProgramada}</span>
+                                      {pc.fechaReal && <span className="text-green-600 font-medium ml-1">→ {pc.fechaReal}</span>}
+                                    </div>
+                                  )}
+                                  {pc.responsable && (
+                                    <p className="text-xs text-gray-500">👤 {pc.responsable}</p>
+                                  )}
+                                  {pc.observaciones && (
+                                    <p className="text-xs text-gray-600 mt-1.5 line-clamp-2 italic">"{pc.observaciones}"</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+
+                            {actividad.seguimiento && (
+                              <div className="mt-3 pt-3 border-t border-blue-200">
+                                <p className="text-xs font-semibold text-blue-800 mb-1">📋 Seguimiento:</p>
+                                <p className="text-sm text-gray-700">{actividad.seguimiento}</p>
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
                       )}
-                    </div>
+                    </AnimatePresence>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         );

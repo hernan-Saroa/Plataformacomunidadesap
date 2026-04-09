@@ -6,7 +6,18 @@ const toUiPersona = (raw: any) => ({
   numeroIdentificacion: raw?.cedula || raw?.documento || 'N/A',
 });
 
-const mapStageToUi = (stage?: string) => {
+export const mapStageToUi = (stage?: string | number) => {
+  if (typeof stage === 'number') {
+    switch (stage) {
+      case 1: return 'Recepción';
+      case 2: return 'Valoración';
+      case 3: return 'Indagación';
+      case 4: return 'Investigación';
+      case 5: return 'Juzgamiento';
+      case 6: return 'Fallo';
+      default: return 'Recepción';
+    }
+  }
   const value = (stage || '').toUpperCase();
   if (value.includes('RECEP')) return 'Recepción';
   if (value.includes('VALOR') || value.includes('EVALU')) return 'Valoración';

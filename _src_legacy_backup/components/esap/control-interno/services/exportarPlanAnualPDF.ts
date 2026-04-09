@@ -139,7 +139,7 @@ export async function exportarPlanAnualAPDF(data: PlanAnualPDFData): Promise<voi
   doc.setTextColor(...COLORES_ESAP.blanco);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text('Jefe de OCIG', pageWidth / 2, yPos + 8, { align: 'center' });
+  doc.text('Jefe de OCI', pageWidth / 2, yPos + 8, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.text(data.jefeOCI.nombre, pageWidth / 2, yPos + 14, { align: 'center' });
   doc.text(data.jefeOCI.cargo, pageWidth / 2, yPos + 20, { align: 'center' });
@@ -204,7 +204,7 @@ Este plan estructura las actividades de auditoría interna para la vigencia ${da
       ['Fecha de Creación', new Date(data.fechaCreacion).toLocaleDateString('es-CO')],
       ['Fecha de Aprobación', data.fechaAprobacion ? new Date(data.fechaAprobacion).toLocaleDateString('es-CO') : 'Pendiente'],
       ['Acta CICC', data.actaCICC || 'Pendiente'],
-      ['Jefe de OCIG', data.jefeOCI.nombre],
+      ['Jefe de OCI', data.jefeOCI.nombre],
       ['Cargo', data.jefeOCI.cargo],
       ['Email', data.jefeOCI.email]
     ],
@@ -311,7 +311,7 @@ Este plan estructura las actividades de auditoría interna para la vigencia ${da
 
   yPos += 30;
 
-  // Firma del Jefe de OCIG
+  // Firma del Jefe de OCI
   doc.setDrawColor(...COLORES_ESAP.grisOscuro);
   doc.line(margen + 20, yPos, pageWidth - margen - 20, yPos);
   yPos += 5;
@@ -344,7 +344,7 @@ Este plan estructura las actividades de auditoría interna para la vigencia ${da
   doc.setTextColor(...COLORES_ESAP.blanco);
   doc.setFontSize(9);
   doc.text('Escuela Superior de Administración Pública - ESAP', pageWidth / 2, yPos + 10, { align: 'center' });
-  doc.text('Oficina de Control Interno - OCIG', pageWidth / 2, yPos + 15, { align: 'center' });
+  doc.text('Oficina de Control Interno - OCI', pageWidth / 2, yPos + 15, { align: 'center' });
   doc.setFontSize(8);
   doc.text(`Documento generado el ${new Date().toLocaleDateString('es-CO')} a las ${new Date().toLocaleTimeString('es-CO')}`, pageWidth / 2, yPos + 22, { align: 'center' });
 
@@ -379,5 +379,5 @@ function agregarHeaderPagina(doc: jsPDF, titulo: string, pageWidth: number, marg
 
   // Logo pequeño
   doc.setFontSize(8);
-  doc.text('ESAP - OCIG', pageWidth - margen, margen - 3, { align: 'right' });
+  doc.text('ESAP - OCI', pageWidth - margen, margen - 3, { align: 'right' });
 }

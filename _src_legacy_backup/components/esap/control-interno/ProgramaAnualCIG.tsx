@@ -1,6 +1,6 @@
 /**
  * ============================================
- * RF003: PROGRAMA ANUAL CIG - PROGRAMACIÓN DE AUDITORÍAS
+ * RF003: PROGRAMA ANUAL OCI - PROGRAMACIÓN DE AUDITORÍAS
  * ============================================
  * 
  * Sistema de Programación y Calendarización de Auditorías Anuales
@@ -238,7 +238,7 @@ const AUDITORIAS_PROGRAMADAS_MOCK: AuditoriaPrograma[] = [
 
 // ============ COMPONENTE PRINCIPAL ============
 
-export function ProgramaAnualCIG() {
+export function ProgramaAnualOCIG() {
   const [añoActual] = useState(new Date().getFullYear());
   const [vistaActiva, setVistaActiva] = useState<'calendario' | 'lista' | 'auditores'>('calendario');
   const [filtroTipo, setFiltroTipo] = useState<'Todos' | 'Sede' | 'Territorial'>('Todos');
@@ -261,7 +261,7 @@ export function ProgramaAnualCIG() {
       setCargandoAuditorias(true);
       try {
         const response = await controlInternoService.getAuditorias();
-        console.log('[ProgramaAnualCIG] Auditorías del backend:', response);
+        console.log('[ProgramaAnualOCIG] Auditorías del backend:', response);
         
         if (Array.isArray(response) && response.length > 0) {
           // Mapear auditorías del backend al formato del componente
@@ -297,10 +297,10 @@ export function ProgramaAnualCIG() {
           });
           
           setAuditoriasProgramadas(auditoriasFormateadas);
-          console.log('[ProgramaAnualCIG] Auditorías formateadas:', auditoriasFormateadas.length);
+          console.log('[ProgramaAnualOCIG] Auditorías formateadas:', auditoriasFormateadas.length);
         }
       } catch (error) {
-        console.error('[ProgramaAnualCIG] Error al cargar auditorías:', error);
+        console.error('[ProgramaAnualOCIG] Error al cargar auditorías:', error);
         // Mantener datos mock como fallback
       } finally {
         setCargandoAuditorias(false);
@@ -388,7 +388,7 @@ export function ProgramaAnualCIG() {
       toast.info(
         'Las auditorías ya están disponibles en el Kanban',
         {
-          description: 'Navega a "Auditorías OCIG" para verlas en la columna "Planeación"',
+          description: 'Navega a "Auditorías OCI" para verlas en la columna "Planeación"',
           duration: 7000
         }
       );
