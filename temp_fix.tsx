@@ -2202,7 +2202,7 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     prioridad: (noticia as any).prioridad || 'media',
     diasPendientes: (noticia as any).diasPendientes ?? dias,
     tipo: 'noticia',
-    etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion',
+    etapaActual: mapStageToUi((noticia as any).kanbanStage) || 'Recepcion',
     // ✅ Incluir proceso asociado desde el backend
     procesoAsociado: (noticia as any).procesoAsociadoId ? {
       id: (noticia as any).procesoAsociadoId,
@@ -2255,7 +2255,7 @@ export const normalizeNoticia = (raw: any): Noticia => {
     conductas: raw.conductas || raw.conductasSeleccionadas || [],
     prioridad: raw.prioridad || 'media',
     diasPendientes: raw.diasPendientes || 0,
-    etapaActual: raw.kanbanStage || raw.etapaActual || 'Recepcion',
+    etapaActual: mapStageToUi(raw.kanbanStage) || 'Recepcion',
     estado: raw.estado || 'pendiente',
     adjuntos: raw.adjuntos || []
   };
@@ -2263,7 +2263,7 @@ export const normalizeNoticia = (raw: any): Noticia => {
 
 export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
   const stageLabelMap: Record<string, string> = { EVALUACION: 'Valoración', INDAGACION_PREVIA: 'Indagación', INVESTIGACION: 'Investigación', JUZGAMIENTO: 'Juzgamiento' };
-  let etapa = proceso.kanbanStage || proceso.etapaActual;
+    let etapa = mapStageToUi(proceso.kanbanStage) || proceso.etapaActual;
 
   // ✅ Si no hay etapa definida, usar la etapa con orden 1 de la configuración
   if (!etapa && currentStages.length > 0) {
@@ -2582,7 +2582,7 @@ export function DashboardKanbanOperativo({
     const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
 
     // ✅ OBTENER ETAPA: usar kanbanStage del backend, o buscar en stages, o usar primera etapa config
-    let etapaRaw = (noticia as any).kanbanStage || (noticia as any).etapaActual;
+    let etapaRaw = mapStageToUi((noticia as any).kanbanStage) || (noticia as any).etapaActual;
     let etapaNormalizada: string;
 
     if (etapaRaw) {
@@ -2672,14 +2672,14 @@ export function DashboardKanbanOperativo({
       conductas: raw.conductas || raw.conductasSeleccionadas || [],
       prioridad: raw.prioridad || 'media',
       diasPendientes: raw.diasPendientes || 0,
-      etapaActual: raw.kanbanStage || raw.etapaActual || 'Recepción',
+      etapaActual: mapStageToUi(raw.kanbanStage) || 'Recepción',
       estado: raw.estado || 'pendiente'
     };
   };
 
   // Transformar proceso desde API al formato interno
   const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
-    let etapa = proceso.kanbanStage || proceso.etapaActual;
+  let etapa = mapStageToUi(proceso.kanbanStage) || proceso.etapaActual;
 
     // ✅ Si no hay etapa definida, usar la etapa con orden 1 de la configuración
     if (!etapa && currentStages.length > 0) {

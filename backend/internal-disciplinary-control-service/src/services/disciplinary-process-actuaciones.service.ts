@@ -14,6 +14,18 @@ export class DisciplinaryProcessActuacionesService {
     private readonly processRepository: Repository<DisciplinaryProcess>,
   ) {}
 
+  private readonly stageOrderMap: Record<string, string> = {
+    RECEPCION: 'RECEPCION',
+    VALORACION: 'VALORACION',
+    INDAGACION_PREVIA: 'INDAGACION_PREVIA',
+    INVESTIGACION: 'INVESTIGACION',
+    EVALUACION: 'VALORACION', // Map to VALORACION
+    JUZGAMIENTO: 'JUZGAMIENTO',
+    INDAGACION: 'INDAGACION',
+    FALLO: 'FALLO',
+    SEGUNDA_INSTANCIA: 'SEGUNDA_INSTANCIA',
+  };
+
   async listByProcess(processId: string): Promise<DisciplinaryProcessActuacion[]> {
     await this.ensureProcessExists(processId);
 
@@ -35,7 +47,7 @@ export class DisciplinaryProcessActuacionesService {
     const actuacion = this.actuacionesRepository.create({
       processId,
       tipo: dto.tipo.trim().toLowerCase(),
-      etapa: dto.etapa?.trim() || process.kanbanStage || process.etapaActual,
+      etapa: dto.etapa?.trim() || process.etapaActual,
       descripcion: dto.descripcion.trim(),
       responsableNombre: dto.responsableNombre.trim(),
       fechaActuacion: new Date(dto.fechaActuacion),

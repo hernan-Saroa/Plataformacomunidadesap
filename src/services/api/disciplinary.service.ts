@@ -165,7 +165,7 @@ export interface DisciplinaryProcess {
      id: string;
      radicadoProceso: string;
      etapaActual: 'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO' | 'FALLO' | 'SEGUNDA_INSTANCIA' | 'INDAGACION';
-     kanbanStage?: string;
+    kanbanStage?: number;
      kanbanNotice?: string;
      estado: 'ACTIVO' | 'SUSPENDIDO' | 'ARCHIVADO' | 'PRESCRITO';
      abogadoAsignadoId: string;
@@ -542,7 +542,7 @@ class DisciplinaryService {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones });
     }
 
-    async updateNewsKanban(id: string, kanbanStage: string): Promise<DisciplinaryNews> {
+    async updateNewsKanban(id: string, kanbanStage: number): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/kanban`, { kanbanStage });
     }
 
@@ -662,7 +662,7 @@ class DisciplinaryService {
         return apiClient.post<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/assign`, data);
     }
 
-    async cambiarEtapa(id: string, nuevaEtapa: string, kanbanStage?: string, kanbanNotice?: string): Promise<DisciplinaryProcess> {
+    async cambiarEtapa(id: string, nuevaEtapa: string, kanbanStage?: number, kanbanNotice?: string): Promise<DisciplinaryProcess> {
         return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/stage`, {
             stage: nuevaEtapa,
             kanbanStage,

@@ -272,6 +272,17 @@ export class ProcessService {
       const { fechaVencimiento } =
         await this.terminosService.calculateVencimientoEtapa(etapaInicial);
 
+      // Get initial kanban stage order from configuration
+      const initialKanbanStage = await this.stageConfigurationRepository.findOne({
+        where: { orden: 2, activo: true },
+      });
+      if (!initialKanbanStage) {
+        throw new HttpException(
+          'Initial kanban stage configuration for VALORACION not found',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
       // Crear proceso con la relación del abogado
       const proceso = this.processRepository.create({
         radicadoProceso,
@@ -279,7 +290,7 @@ export class ProcessService {
         abogadoAsignado: abogado, // Establecer la relación directamente
         abogadoAsignadoId: abogado.id,
         etapaActual: etapaInicial,
-        kanbanStage: 'Valoración', // El proceso inicia siempre en la columna Valoración del Kanban
+        kanbanStage: initialKanbanStage.id, // El proceso inicia siempre en la columna Valoración del Kanban
         estado: ProcessStatus.ACTIVO,
         fechaPrescripcion,
         fechaVencimientoEtapa: fechaVencimiento,
@@ -291,7 +302,7 @@ export class ProcessService {
         abogadoNombre: abogado.nombreCompleto,
         abogadoCargo: abogado.cargo,
         etapaActual: etapaInicial,
-        kanbanStage: 'Valoración'
+        kanbanStage: initialKanbanStage.id
       });
 
       const procesoConcreado = await this.processRepository.save(proceso);
@@ -641,18 +652,17 @@ export class ProcessService {
     try {
       const proceso = await this.findById(id, false);
 
-      if (kanbanStage !== undefined) {
-        const stageConfig = await this.stageConfigurationRepository.findOne({
-          where: { orden: kanbanStage, activo: true },
-        });
-        if (stageConfig) {
+       if (kanbanStage !== undefined) {
+         const stageConfig = await this.stageConfigurationRepository.findOne({
+           where: { orden: kanbanStage, activo: true },
+         });
+         if (!stageConfig) {
+           throw new HttpException(
+             `Stage configuration with orden ${kanbanStage} not found`,
+             HttpStatus.BAD_REQUEST,
+           );
+         }
           proceso.kanbanStage = stageConfig.id;
-        } else {
-          throw new HttpException(
-            `Stage configuration with orden ${kanbanStage} not found`,
-            HttpStatus.BAD_REQUEST,
-          );
-        }
       }
 
       if (kanbanNotice !== undefined) {
