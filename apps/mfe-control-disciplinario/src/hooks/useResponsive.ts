@@ -1,4 +1,10 @@
-export { useResponsive, useIsMobile, useOrientation } from '../components/hooks/useResponsive';
+import {
+  useResponsive,
+  useIsMobile,
+  useOrientation,
+} from '../components/hooks/useResponsive';
+
+export { useResponsive, useIsMobile, useOrientation };
 
 export type Breakpoint = 'mobile' | 'tablet' | 'desktop' | '4k';
 
