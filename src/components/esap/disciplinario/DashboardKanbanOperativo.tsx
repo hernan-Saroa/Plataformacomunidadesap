@@ -1821,10 +1821,10 @@ function ColumnaKanban({
 
         {/* Lista de Items — scroll vertical independiente (patrón Trello) */}
         <div
-          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto flex-1`}
+          className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto flex-1 kanban-column-scroll`}
           style={{
             scrollbarWidth: 'thin',
-            scrollbarColor: '#CBD5E0 transparent',
+            scrollbarColor: '#2962FF #F1F5F9',
           }}
         >
           {/* Renderizar Noticias primero — más reciente arriba */}
@@ -2615,6 +2615,35 @@ export function DashboardKanbanOperativo({
   const [showBusquedaGlobal, setShowBusquedaGlobal] = useState(false);
   const busquedaInputRef = useRef<HTMLInputElement>(null);
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
+
+  // ✅ CSS PARA SCROLL VERTICAL AZUL
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      .kanban-column-scroll::-webkit-scrollbar {
+        width: 8px;
+      }
+      .kanban-column-scroll::-webkit-scrollbar-track {
+        background: #F1F5F9;
+        border-radius: 4px;
+      }
+      .kanban-column-scroll::-webkit-scrollbar-thumb {
+        background: #2962FF;
+        border-radius: 4px;
+      }
+      .kanban-column-scroll::-webkit-scrollbar-thumb:hover {
+        background: #003DA5;
+      }
+      .kanban-column-scroll::-webkit-scrollbar-thumb:active {
+        background: #002266;
+      }
+    `;
+    document.head.appendChild(style);
+
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
 
 
 
@@ -4970,6 +4999,37 @@ export function DashboardKanbanOperativo({
         {/* Estadísticas - Responsive: 2 cols en estrecho, 4 cols en ancho */}
 
 
+        {/* CSS para kanban-scroll-container */}
+        <style>{`
+          .kanban-scroll-container {
+            /* Scroll horizontal personalizado para contenedor de columnas kanban */
+          }
+
+          .kanban-scroll-container::-webkit-scrollbar {
+            height: 8px;
+          }
+
+          .kanban-scroll-container::-webkit-scrollbar-track {
+            background: #F1F5F9;
+            border-radius: 4px;
+          }
+
+          .kanban-scroll-container::-webkit-scrollbar-thumb {
+            background: #CBD5E1;
+            border-radius: 4px;
+          }
+
+          .kanban-scroll-container::-webkit-scrollbar-thumb:hover {
+            background: #94A3B8;
+          }
+
+          .kanban-scroll-container::-webkit-scrollbar-thumb:active {
+            background: #64748B;
+          }
+
+
+        `}</style>
+
         {/* Vista Kanban, Lista o Archivados según selección */}
         {loading && (
           <div className="flex items-center justify-center py-20">
@@ -5036,8 +5096,9 @@ export function DashboardKanbanOperativo({
               {/* Contenedor Kanban: scroll horizontal con barra azul visible en la parte inferior */}
               <div
                 ref={kanbanScrollRef}
-                className="h-full pb-2 kanban-scroll-container"
+                className="pb-2 kanban-scroll-container"
                 style={{
+                  height: '80vh', // Fixed height for internal scroll per drawer like control-interno
                   overflowX: 'auto',
                   overflowY: 'hidden',
                   WebkitOverflowScrolling: 'touch',
