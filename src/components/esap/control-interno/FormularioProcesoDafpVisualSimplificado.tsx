@@ -197,17 +197,28 @@ const HALL_OPTIONS = [
   { value: 5, label: '7 o más hallazgos' },
 ];
 
-function getVigenciaFromStorage(): number {
+function getPlanActivoFromStorage() {
   try {
     const raw = localStorage.getItem('esap:plan_anual_activo');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed?.vigencia && typeof parsed.vigencia === 'number') return parsed.vigencia;
-    }
+    if (raw) return JSON.parse(raw);
   } catch {
     // ignore
   }
+  return null;
+}
+
+function getVigenciaFromStorage(): number {
+  const plan = getPlanActivoFromStorage();
+  if (plan?.vigencia && typeof plan.vigencia === 'number') return plan.vigencia;
   return new Date().getFullYear();
+}
+
+function getFechaCorteFromStorage(): string {
+  const plan = getPlanActivoFromStorage();
+  if (plan?.fechaCorte && typeof plan.fechaCorte === 'string') return plan.fechaCorte;
+  // Fallback: último día del año de vigencia o año actual
+  const vigencia = plan?.vigencia ?? new Date().getFullYear();
+  return `${vigencia}-12-31`;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -228,7 +239,7 @@ export function FormularioProcesoDafpVisual({
   const defaultData = (): FormularioDafpData => ({
     nombre: '',
     vigencia: getVigenciaFromStorage(),
-    fechaCorte: new Date().toISOString().split('T')[0],
+    fechaCorte: getFechaCorteFromStorage(),
     riesgosExtremos: 0,
     riesgosAltos: 0,
     riesgosModerados: 0,

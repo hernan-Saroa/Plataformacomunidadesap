@@ -18,7 +18,7 @@ import {
   Maximize2, Minimize2, TrendingUp, AlertCircle, Phone, Mail,
   MapPin, Info, ExternalLink, RefreshCw, Paperclip, UserCheck,
   List, Columns3, Menu, Edit2, FileSignature, History,
-  ChevronsDown, ChevronsUp, ChevronUp, Zap, Link2, UserCog, MessageCircle,
+  ChevronsDown, ChevronsUp, ChevronUp, ChevronLeft, ChevronRight, Zap, Link2, UserCog, MessageCircle,
   ClipboardList, FileEdit, Loader2
 } from 'lucide-react';
 import { Card } from '../../ui/card';
@@ -2615,40 +2615,50 @@ export function DashboardKanbanOperativo({
   const [showBusquedaGlobal, setShowBusquedaGlobal] = useState(false);
   const busquedaInputRef = useRef<HTMLInputElement>(null);
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
-  const kanbanTopScrollRef = useRef<HTMLDivElement>(null);
-  const kanbanContentWidthRef = useRef<HTMLDivElement>(null);
+  const kanbanTopBarRef = useRef<HTMLDivElement>(null);
+
+  // Sincronizar barra superior con scroll principal (sin deps: corre en cada render, ResizeObserver evita loops)
+  useEffect(() => {
+    const main = kanbanScrollRef.current;
+    const bar = kanbanTopBarRef.current;
+    if (!main || !bar) return;
+    const inner = bar.firstElementChild as HTMLDivElement | null;
+    const syncWidth = () => { if (inner) inner.style.width = `${main.scrollWidth}px`; };
+    syncWidth();
+    const ro = new ResizeObserver(syncWidth);
+    ro.observe(main);
+    // Flag para evitar loop circular de sincronizacion
+    let syncing = false;
+    const syncBarFromMain = () => {
+      if (syncing) return;
+      syncing = true;
+      bar.scrollLeft = main.scrollLeft;
+      syncing = false;
+    };
+    const syncMainFromBar = () => {
+      if (syncing) return;
+      syncing = true;
+      main.scrollLeft = bar.scrollLeft;
+      syncing = false;
+    };
+    main.addEventListener('scroll', syncBarFromMain);
+    bar.addEventListener('scroll', syncMainFromBar);
+    return () => {
+      main.removeEventListener('scroll', syncBarFromMain);
+      bar.removeEventListener('scroll', syncMainFromBar);
+      ro.disconnect();
+    };
+  });  // sin deps: corre en cada render, ResizeObserver evita loops
 
   // ✅ FILTRO POR TIPO: todos, noticia, proceso
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'noticia' | 'proceso'>('todos');
 
-  // ✅ Sincronizar scroll horizontal entre barra superior y contenedor Kanban
-  useEffect(() => {
-    const top = kanbanTopScrollRef.current;
-    const main = kanbanScrollRef.current;
-    const content = kanbanContentWidthRef.current;
-    if (!top || !main || !content) return;
-
-    // El div interno del top scrollbar es el primer hijo
-    const topInner = top.firstElementChild as HTMLDivElement | null;
-
-    // Sync width: observamos el contenido real (width: max-content)
-    const syncWidth = () => {
-      if (topInner) topInner.style.width = `${content.offsetWidth}px`;
-    };
-    syncWidth();
-    const ro = new ResizeObserver(syncWidth);
-    ro.observe(content);
-
-    const syncFromTop = () => { main.scrollLeft = top.scrollLeft; };
-    const syncFromMain = () => { top.scrollLeft = main.scrollLeft; };
-    top.addEventListener('scroll', syncFromTop);
-    main.addEventListener('scroll', syncFromMain);
-    return () => {
-      top.removeEventListener('scroll', syncFromTop);
-      main.removeEventListener('scroll', syncFromMain);
-      ro.disconnect();
-    };
-  }); // sin deps: corre en cada render, ResizeObserver evita loops
+  const navegarKanban = (direccion: 'prev' | 'next') => {
+    const container = kanbanScrollRef.current;
+    if (!container) return;
+    const scrollAmount = container.clientWidth * 0.75;
+    container.scrollBy({ left: direccion === 'next' ? scrollAmount : -scrollAmount, behavior: 'smooth' });
+  };
 
   // ✅ Archivados: inician vacíos, se llenan al archivar noticias/procesos (persistido en Supabase vía update de estado)
   const [itemsArchivados, setItemsArchivados] = useState<Array<Item & { fechaArchivo: string; motivoArchivo: string }>>([]);
@@ -4989,102 +4999,116 @@ export function DashboardKanbanOperativo({
           </div>
         )}
 
-        {/* ═══ Barra de scroll superior sticky — fuera del overflow-hidden para que sticky funcione ═══ */}
         {tipoVista === 'kanban' && itemsFiltrados.length > 0 && (
-          <div
-            ref={kanbanTopScrollRef}
-            style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 20,
-              overflowX: 'auto',
-              overflowY: 'hidden',
-              height: '14px',
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#94A3B8 #CBD5E1',
-              background: '#F1F5F9',
-              borderRadius: '4px',
-            }}
-          >
-            <div style={{ height: '1px' }} />
-          </div>
-        )}
-
-        {tipoVista === 'kanban' && itemsFiltrados.length > 0 && (
-          <div className="flex-1 overflow-hidden">
-            {/* ═══ Contenedor Kanban estilo Trello: scroll horizontal + columnas fijas ═══ */}
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* Barra de scroll superior sincronizada */}
             <div
-              ref={kanbanScrollRef}
-              className="h-full pb-2"
+              ref={kanbanTopBarRef}
               style={{
                 overflowX: 'auto',
                 overflowY: 'hidden',
-                WebkitOverflowScrolling: 'touch',
-                scrollbarWidth: 'none',
+                height: '14px',
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#2962FF #E5E7EB',
+                background: '#F1F5F9',
+                borderRadius: '4px',
+                marginBottom: '4px',
+                flexShrink: 0,
               }}
             >
-              {/* Flex container — columnas de ancho FIJO, nunca se comprimen (patrón Trello) */}
+              <div style={{ height: '1px' }} />
+            </div>
+            {/* Wrapper relativo para el area kanban */}
+            <div className="relative flex-1 min-h-0">
+              {/* Botones sticky: siempre centrados en la parte visible de la pantalla */}
+              <div style={{ position: 'sticky', top: '50vh', transform: 'translateY(-50%)', height: 0, zIndex: 30, pointerEvents: 'none' }}>
+                <button
+                  onClick={() => navegarKanban('prev')}
+                  className="absolute left-2 flex items-center justify-center w-9 h-9 rounded-full shadow-lg hover:shadow-xl"
+                  style={{ background: 'linear-gradient(135deg, #2962FF, #003DA5)', color: '#FFFFFF', pointerEvents: 'auto', transform: 'translateY(-50%)' }}
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => navegarKanban('next')}
+                  className="absolute right-2 flex items-center justify-center w-9 h-9 rounded-full shadow-lg hover:shadow-xl"
+                  style={{ background: 'linear-gradient(135deg, #2962FF, #003DA5)', color: '#FFFFFF', pointerEvents: 'auto', transform: 'translateY(-50%)' }}
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+              {/* Contenedor Kanban: scroll horizontal, scrollbar nativo oculto */}
               <div
-                ref={kanbanContentWidthRef}
-                className="flex gap-4 h-full items-stretch"
+                ref={kanbanScrollRef}
+                className="h-full pb-2"
                 style={{
-                  width: 'max-content',
-                  paddingLeft: '1rem',
-                  paddingRight: '1rem',
-                  paddingBottom: '0.5rem',
+                  overflowX: 'auto',
+                  overflowY: 'hidden',
+                  WebkitOverflowScrolling: 'touch',
+                  scrollbarWidth: 'none',
                 }}
               >
-                {etapas.map((etapa) => {
-                  const isColapsada = columnasColapsadas.has(etapa.nombre);
-                  return (
-                    <div
-                      key={etapa.nombre}
-                      className="flex-shrink-0 h-full"
-                      style={{
-                        width: isColapsada && !isMobile ? '64px' : isMobile ? 'calc(100vw - 32px)' : isTablet ? '280px' : '320px',
-                        transition: 'width 0.3s ease-in-out',
-                      }}
-                    >
-                      <ColumnaKanban
-                        etapa={etapa.nombre}
-                        items={itemsFiltrados}
-                        color={etapa.color}
-                        icono={etapa.icono}
-                        diasEstimados={etapa.diasEstimados}
-                        onDrop={handleDropItem}
-                        onConvertirNoticia={handleConvertirNoticia}
-                        onDevolverNoticia={handleDevolverNoticia}
-                        onDevolverCompetencia={handleDevolverCompetencia}
-                        onArchivarNoticia={handleArchivarNoticia}
-                        onVerDetallesNoticia={handleVerDetallesNoticia}
-                        onVerDetallesRemision={handleVerDetallesRemision} // ✅ NUEVO: Ver detalles de remisión
-                        onAsociarNoticiaProceso={handleAsociarNoticiaProceso}
-                        onVerProcesoAsociado={handleVerProcesoAsociado}
-                        onVerNoticiaAsociada={handleVerNoticiaAsociada}
-                        onEditarNoticia={handleEditarNoticia}
-                        onVerDetalles={handleVerDetalles}
-                        onAprobarBorrador={handleAprobarBorrador}
-                        onVerExpediente={handleVerExpediente}
-                        onGestionAutos={handleGestionAutos}
-                        onGestionEvidencias={handleGestionEvidencias}
-                        onGestionOficios={handleGestionOficios}
-                        onGestionActas={handleGestionActas}
-                        onComentarios={handleComentarios}
-                        onSolicitarReasignacion={handleSolicitarReasignacion}
-                        onAsociarProcesoProceso={handleAsociarProcesoProceso} // ✅ NUEVO: Asociar proceso a proceso
-                        onEditarProceso={handleEditarProceso} // ✅ NUEVO: Editar proceso
-                        onVerDetallesAsociacion={handleVerDetallesAsociacion} // ✅ NUEVO: Ver detalles de asociación
-                        vistaCompacta={vistaCompacta}
-                        isMobile={isMobile}
-                        colapsada={columnasColapsadas.has(etapa.nombre)}
-                        onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
-                        etapasConfig={etapasConfig}
-                        tarjetasColapsadas={tarjetasColapsadas}
-                        onToggleColapsoTarjeta={toggleTarjetaColapsada}
-                      />
-                    </div>
-                  );
-                })}
+                <div
+                  className="flex gap-4 h-full items-stretch"
+                  style={{
+                    width: 'max-content',
+                    paddingLeft: '2.5rem',
+                    paddingRight: '2.5rem',
+                    paddingBottom: '0.5rem',
+                  }}
+                >
+                  {etapas.map((etapa) => {
+                    const isColapsada = columnasColapsadas.has(etapa.nombre);
+                    return (
+                      <div
+                        key={etapa.nombre}
+                        className="flex-shrink-0 h-full"
+                        style={{
+                          width: isColapsada && !isMobile ? '64px' : isMobile ? 'calc(100vw - 32px)' : isTablet ? '280px' : '320px',
+                          transition: 'width 0.3s ease-in-out',
+                        }}
+                      >
+                        <ColumnaKanban
+                          etapa={etapa.nombre}
+                          items={itemsFiltrados}
+                          color={etapa.color}
+                          icono={etapa.icono}
+                          diasEstimados={etapa.diasEstimados}
+                          onDrop={handleDropItem}
+                          onConvertirNoticia={handleConvertirNoticia}
+                          onDevolverNoticia={handleDevolverNoticia}
+                          onDevolverCompetencia={handleDevolverCompetencia}
+                          onArchivarNoticia={handleArchivarNoticia}
+                          onVerDetallesNoticia={handleVerDetallesNoticia}
+                          onVerDetallesRemision={handleVerDetallesRemision} // ✅ NUEVO: Ver detalles de remisión
+                          onAsociarNoticiaProceso={handleAsociarNoticiaProceso}
+                          onVerProcesoAsociado={handleVerProcesoAsociado}
+                          onVerNoticiaAsociada={handleVerNoticiaAsociada}
+                          onEditarNoticia={handleEditarNoticia}
+                          onVerDetalles={handleVerDetalles}
+                          onAprobarBorrador={handleAprobarBorrador}
+                          onVerExpediente={handleVerExpediente}
+                          onGestionAutos={handleGestionAutos}
+                          onGestionEvidencias={handleGestionEvidencias}
+                          onGestionOficios={handleGestionOficios}
+                          onGestionActas={handleGestionActas}
+                          onComentarios={handleComentarios}
+                          onSolicitarReasignacion={handleSolicitarReasignacion}
+                          onAsociarProcesoProceso={handleAsociarProcesoProceso} // ✅ NUEVO: Asociar proceso a proceso
+                          onEditarProceso={handleEditarProceso} // ✅ NUEVO: Editar proceso
+                          onVerDetallesAsociacion={handleVerDetallesAsociacion} // ✅ NUEVO: Ver detalles de asociación
+                          vistaCompacta={vistaCompacta}
+                          isMobile={isMobile}
+                          colapsada={columnasColapsadas.has(etapa.nombre)}
+                          onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
+                          etapasConfig={etapasConfig}
+                          tarjetasColapsadas={tarjetasColapsadas}
+                          onToggleColapsoTarjeta={toggleTarjetaColapsada}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
