@@ -23,7 +23,7 @@ import {
   X, FileText, User, AlertTriangle, ClipboardList, Calendar,
   MapPin, Building2, Paperclip, FileEdit, PlusCircle,
   CheckCircle, Phone, Mail, Briefcase,
-  Scale, Clock, FileWarning, Download, Eye, Users, Gavel
+  Scale, Clock, FileWarning, Download, Eye, Users, Gavel, Loader2
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════
@@ -123,7 +123,8 @@ type TabNoticia = 'general' | 'personas' | 'hechos' | 'adjuntos';
 
 export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, onDownload }: ModalDetallesNoticiaProps) {
   const [tabActiva, setTabActiva] = useState<TabNoticia>('general');
-  const [fileToView, setFileToView] = useState<ArchivoAdjunto | null>(null);
+  const [viewingFile, setViewingFile] = useState<ArchivoAdjunto | null>(null);
+  const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
   
   // ✅ Validación defensiva: asegurar que noticia existe y tiene la estructura esperada
   const n = noticia || {
@@ -208,9 +209,55 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
 
   // Modal para ver archivos
   const renderFileViewer = () => {
-    if (!fileToView) return null;
+    if (!viewingFile) return null;
 
-    const { nombre, tipo } = fileToView;
+    const { nombre, tipo } = viewingFile;
+
+    if (!fileBlobUrl) {
+      return createPortal(
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 flex items-center justify-center"
+          style={{
+            backgroundColor: 'rgba(0,0,0,0.80)',
+            padding: '2vh 2vw',
+            zIndex: 10000
+          }}
+          onClick={(e) => e.target === e.currentTarget && closeFileViewer()}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            style={{ width: '90vw', height: '90vh', maxWidth: 1000, maxHeight: '95vh' }}
+          >
+            <div className="px-4 py-3 flex items-center justify-between border-b border-gray-200">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="w-5 h-5 text-gray-600" />
+                <span className="text-sm font-bold text-gray-900 truncate">{nombre}</span>
+              </div>
+              <button
+                onClick={closeFileViewer}
+                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden p-4 flex items-center justify-center">
+              <div className="text-center">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-gray-600" />
+                <p className="text-sm text-gray-600">Cargando archivo...</p>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>,
+        document.body
+      );
+    }
 
     return createPortal(
       <motion.div
@@ -242,8 +289,8 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
               {onDownload && (
                 <button
                   onClick={() => {
-                    setFileToView(null);
-                    onDownload(fileToView.url, nombre);
+                    closeFileViewer();
+                    onDownload(viewingFile.url, nombre);
                   }}
                   className="px-3 py-1.5 text-xs font-bold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
                 >
@@ -251,7 +298,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
                 </button>
               )}
               <button
-                onClick={() => setFileToView(null)}
+                onClick={closeFileViewer}
                 className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <X className="w-4 h-4 text-gray-500" />
@@ -261,7 +308,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
           <div className="flex-1 overflow-hidden p-4">
             {tipo.includes('pdf') ? (
               <embed
-                src={fileToView.fullUrl}
+                src={fileBlobUrl}
                 type="application/pdf"
                 width="100%"
                 height="100%"
@@ -269,13 +316,13 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
               />
             ) : tipo.includes('image') ? (
               <img
-                src={fileToView.fullUrl}
+                src={fileBlobUrl}
                 alt={nombre}
                 style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
               />
             ) : tipo.includes('video') ? (
               <video
-                src={fileToView.fullUrl}
+                src={fileBlobUrl}
                 controls
                 style={{ maxWidth: '100%', maxHeight: '100%' }}
               />
@@ -287,8 +334,8 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
                 {onDownload && (
                 <button
                   onClick={() => {
-                    setFileToView(null);
-                    onDownload(fileToView.url, nombre);
+                    closeFileViewer();
+                    onDownload(viewingFile.url, nombre);
                   }}
                   className="px-3 py-1.5 text-xs font-bold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
                 >
@@ -302,6 +349,33 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
       </motion.div>,
       document.body
     );
+  };
+
+  const closeFileViewer = () => {
+    if (fileBlobUrl) {
+      URL.revokeObjectURL(fileBlobUrl);
+    }
+    setViewingFile(null);
+    setFileBlobUrl(null);
+  };
+
+  const handleViewFile = async (archivo: ArchivoAdjunto) => {
+    setViewingFile(archivo);
+    setFileBlobUrl(null);
+    try {
+      const token = localStorage.getItem('esap_access_token');
+      const requestUrl = archivo.url.includes('?') ? `${archivo.url}&view=true` : `${archivo.url}?view=true`;
+      const response = await fetch(requestUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error('Failed to load file');
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      setFileBlobUrl(blobUrl);
+    } catch (error) {
+      console.error('Error loading file:', error);
+      closeFileViewer();
+    }
   };
 
   return (
@@ -415,7 +489,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
             />
           )}
           {tabActiva === 'hechos' && <TabHechos n={n} />}
-          {tabActiva === 'adjuntos' && <TabAdjuntos n={n} formatFileSize={formatFileSize} onDownload={onDownload} onView={setFileToView} />}
+           {tabActiva === 'adjuntos' && <TabAdjuntos n={n} formatFileSize={formatFileSize} onDownload={onDownload} onView={handleViewFile} />}
         </div>
 
         {/* ── Footer ── */}
@@ -962,26 +1036,26 @@ function TabAdjuntos({ n, formatFileSize, onDownload, onView }: { n: NoticiaComp
                   </span>
                 </div>
               </div>
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                {onView && (
-                  <button
-                    onClick={() => setFileToView(archivo)}
-                    className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
-                    title="Ver"
-                  >
-                    <Eye className="w-4 h-4 text-gray-500" />
-                  </button>
-                )}
-                {onDownload && (
-                  <button
-                    onClick={() => onDownload(archivo.url, archivo.nombre)}
-                    className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
-                    title="Descargar"
-                  >
-                    <Download className="w-4 h-4 text-gray-500" />
-                  </button>
-                )}
-              </div>
+               <div className="flex gap-1" style={{ opacity: 1 }}>
+                 {/* {onView && (
+                   <button
+                     onClick={() => onView(archivo)}
+                     className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+                     title="Ver"
+                   >
+                     <Eye className="w-4 h-4 text-gray-500" />
+                   </button>
+                 )} */}
+                 {onDownload && (
+                   <button
+                     onClick={() => onDownload(archivo.url, archivo.nombre)}
+                     className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+                     title="Descargar"
+                   >
+                     <Download className="w-4 h-4 text-gray-500" />
+                   </button>
+                 )}
+               </div>
             </div>
           );
         })}
