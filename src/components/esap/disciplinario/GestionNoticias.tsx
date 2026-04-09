@@ -42,6 +42,7 @@ import { Card } from '../../ui/card';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
+import { mapStageToUi } from '../../../services/api/esapDataService';
 import autoTable from 'jspdf-autotable';
 import { CreateNoticiaModal } from '../CreateNoticiaModal';
 import { FlujoNoticiasDisciplinarias } from './FlujoNoticiasDisciplinarias';
@@ -915,7 +916,7 @@ export function GestionNoticias() {
           numeroRC: (news as any).numeroRC || undefined,
           entidadRemision: (news as any).entidadRemision || undefined,
           fechaRemision: (news as any).fechaRemision || undefined,
-          etapa: news.kanbanStage || 'Recepcion',
+          etapa: mapStageToUi(news.kanbanStage) || 'Recepcion',
           diasTranscurridos: getDiasTranscurridos(news.fechaRecepcion),
           radicador: (Array.isArray(news.historialAuditoria) ? news.historialAuditoria.find((h: any) => h.tipo === 'creacion')?.usuario : null) || 'Sistema',
           fechaRegistro: news.fechaRecepcion,

@@ -18,7 +18,7 @@ import {
   Maximize2, Minimize2, TrendingUp, AlertCircle, Phone, Mail,
   MapPin, Info, ExternalLink, RefreshCw, Paperclip, UserCheck,
   List, Columns3, Menu, Edit2, FileSignature, History,
-  ChevronsDown, ChevronsUp, ChevronUp, Zap, Link2, UserCog, MessageCircle,
+  ChevronsDown, ChevronsUp, ChevronUp, ChevronLeft, ChevronRight, Zap, Link2, UserCog, MessageCircle,
   ClipboardList, FileEdit, Loader2
 } from 'lucide-react';
 import { Card } from '../../ui/card';
@@ -142,6 +142,7 @@ interface Noticia {
   prioridad: 'alta' | 'media' | 'baja';
   diasPendientes: number;
   tipo: 'noticia';
+  kanbanStage?: string;
   procesoAsociado?: {
     id: string;
     numeroProceso: string;
@@ -208,6 +209,7 @@ interface Proceso {
   ultimaActuacion: string;
   fechaCreacion: string;
   tipo: 'proceso';
+  kanbanStage?: string;
   hechos?: string;
   cargo?: string;
   dependencia?: string;
@@ -919,17 +921,8 @@ function VistaLista({
         ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
         : (item as Proceso).denunciado.nombre?.toLowerCase().includes(searchTerm.toLowerCase())));
 
-    const matchEtapa = filtroEtapa === 'todos' ||
-      (item.tipo === 'noticia' && (
-        // Para noticias, verificar si el filtro corresponde a la primera etapa configurada
-        (etapasConfig && etapasConfig.length > 0
-          ? (() => {
-              const primeraEtapa = etapasConfig.sort((a, b) => (a.orden || 0) - (b.orden || 0))[0];
-              return (primeraEtapa?.etapa || primeraEtapa?.nombre) === filtroEtapa;
-            })()
-          : filtroEtapa === 'Recepción')
-      )) ||
-      (item.tipo === 'proceso' && (item as Proceso).etapaActual === filtroEtapa);
+    // Filtrar por etapa comparando ID de etapa parametrizada contra kanbanStage del item
+    const matchEtapa = filtroEtapa === 'todos' || item.kanbanStage === filtroEtapa;
 
     return matchSearch && matchEtapa;
   });
@@ -973,22 +966,22 @@ function VistaLista({
                   .map((etapa) => {
                     const nombreEtapa = etapa.etapa || etapa.nombre || 'Sin nombre';
                     return (
-                      <option key={etapa.id || `etapa-${Math.random()}`} value={nombreEtapa}>
+                      <option key={etapa.id || `etapa-${Math.random()}`} value={etapa.id}>
                         {nombreEtapa}
                       </option>
                     );
                   });
               } else {
-                // Fallback options
+                // Fallback options con IDs fijos para mantener consistencia
                 return (
                   <>
-                    <option value="Recepción">Recepción (Noticias) - 3 días</option>
-                    <option value="Valoración">Valoración - 10 días</option>
-                    <option value="Indagación">Indagación - 40 días</option>
-                    <option value="Investigación">Investigación - 60 días</option>
-                    <option value="Juzgamiento">Juzgamiento - 50 días</option>
-                    <option value="Fallo">Fallo - 10 días</option>
-                    <option value="Archivo">Archivo - Completado</option>
+                    <option value="recepcion">Recepción (Noticias) - 3 días</option>
+                    <option value="valoracion">Valoración - 10 días</option>
+                    <option value="indagacion">Indagación - 40 días</option>
+                    <option value="investigacion">Investigación - 60 días</option>
+                    <option value="juzgamiento">Juzgamiento - 50 días</option>
+                    <option value="fallo">Fallo - 10 días</option>
+                    <option value="archivo">Archivo - Completado</option>
                   </>
                 );
               }
@@ -2433,6 +2426,7 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     prioridad: (noticia as any).prioridad || 'media',
     diasPendientes: (noticia as any).diasPendientes ?? dias,
     tipo: 'noticia',
+    kanbanStage: (noticia as any).kanbanStage,
     etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion',
     procesoAsociado: (noticia as any).procesoAsociadoId ? {
       id: (noticia as any).procesoAsociadoId,
@@ -2555,6 +2549,7 @@ export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = [])
     ultimaActuacion: proceso.ultimaActuacion || 'Sin actuaciones registradas',
     fechaCreacion: fechaCreacion.toISOString().split('T')[0],
     tipo: 'proceso',
+    kanbanStage: proceso.kanbanStage,
     hechos: proceso.news?.hechos,
     kanbanNotice: proceso.kanbanNotice || null,
     procesoAsociadoId: proceso.procesoAsociadoId,
@@ -2620,40 +2615,50 @@ export function DashboardKanbanOperativo({
   const [showBusquedaGlobal, setShowBusquedaGlobal] = useState(false);
   const busquedaInputRef = useRef<HTMLInputElement>(null);
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
-  const kanbanTopScrollRef = useRef<HTMLDivElement>(null);
-  const kanbanContentWidthRef = useRef<HTMLDivElement>(null);
+  const kanbanTopBarRef = useRef<HTMLDivElement>(null);
+
+  // Sincronizar barra superior con scroll principal (sin deps: corre en cada render, ResizeObserver evita loops)
+  useEffect(() => {
+    const main = kanbanScrollRef.current;
+    const bar = kanbanTopBarRef.current;
+    if (!main || !bar) return;
+    const inner = bar.firstElementChild as HTMLDivElement | null;
+    const syncWidth = () => { if (inner) inner.style.width = `${main.scrollWidth}px`; };
+    syncWidth();
+    const ro = new ResizeObserver(syncWidth);
+    ro.observe(main);
+    // Flag para evitar loop circular de sincronizacion
+    let syncing = false;
+    const syncBarFromMain = () => {
+      if (syncing) return;
+      syncing = true;
+      bar.scrollLeft = main.scrollLeft;
+      syncing = false;
+    };
+    const syncMainFromBar = () => {
+      if (syncing) return;
+      syncing = true;
+      main.scrollLeft = bar.scrollLeft;
+      syncing = false;
+    };
+    main.addEventListener('scroll', syncBarFromMain);
+    bar.addEventListener('scroll', syncMainFromBar);
+    return () => {
+      main.removeEventListener('scroll', syncBarFromMain);
+      bar.removeEventListener('scroll', syncMainFromBar);
+      ro.disconnect();
+    };
+  });  // sin deps: corre en cada render, ResizeObserver evita loops
 
   // ✅ FILTRO POR TIPO: todos, noticia, proceso
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'noticia' | 'proceso'>('todos');
 
-  // ✅ Sincronizar scroll horizontal entre barra superior y contenedor Kanban
-  useEffect(() => {
-    const top = kanbanTopScrollRef.current;
-    const main = kanbanScrollRef.current;
-    const content = kanbanContentWidthRef.current;
-    if (!top || !main || !content) return;
-
-    // El div interno del top scrollbar es el primer hijo
-    const topInner = top.firstElementChild as HTMLDivElement | null;
-
-    // Sync width: observamos el contenido real (width: max-content)
-    const syncWidth = () => {
-      if (topInner) topInner.style.width = `${content.offsetWidth}px`;
-    };
-    syncWidth();
-    const ro = new ResizeObserver(syncWidth);
-    ro.observe(content);
-
-    const syncFromTop = () => { main.scrollLeft = top.scrollLeft; };
-    const syncFromMain = () => { top.scrollLeft = main.scrollLeft; };
-    top.addEventListener('scroll', syncFromTop);
-    main.addEventListener('scroll', syncFromMain);
-    return () => {
-      top.removeEventListener('scroll', syncFromTop);
-      main.removeEventListener('scroll', syncFromMain);
-      ro.disconnect();
-    };
-  }); // sin deps: corre en cada render, ResizeObserver evita loops
+  const navegarKanban = (direccion: 'prev' | 'next') => {
+    const container = kanbanScrollRef.current;
+    if (!container) return;
+    const scrollAmount = container.clientWidth * 0.75;
+    container.scrollBy({ left: direccion === 'next' ? scrollAmount : -scrollAmount, behavior: 'smooth' });
+  };
 
   // ✅ Archivados: inician vacíos, se llenan al archivar noticias/procesos (persistido en Supabase vía update de estado)
   const [itemsArchivados, setItemsArchivados] = useState<Array<Item & { fechaArchivo: string; motivoArchivo: string }>>([]);
@@ -2924,8 +2929,8 @@ export function DashboardKanbanOperativo({
     let etapaNormalizada: string;
 
     if (etapaRaw) {
-      // Buscar coincidencia en etapas del backend
-      const match = currentStages.find(s => s.etapa === etapaRaw || s.nombre === etapaRaw || s.etapa?.toUpperCase() === etapaRaw.toUpperCase() || s.nombre?.toUpperCase() === etapaRaw.toUpperCase());
+      // Buscar coincidencia en etapas del backend por id o por nombre
+      const match = currentStages.find(s => s.id === etapaRaw || s.etapa === etapaRaw || s.nombre === etapaRaw || s.etapa?.toUpperCase() === etapaRaw.toUpperCase() || s.nombre?.toUpperCase() === etapaRaw.toUpperCase());
       if (match) {
         etapaNormalizada = match.etapa || match.nombre || etapaRaw;
       } else {
@@ -3033,8 +3038,8 @@ export function DashboardKanbanOperativo({
     if (!etapa) {
       etapa = 'Recepción';
     } else {
-      // Normalizar etapa: buscar coincidencia exacta o insensible en las etapas del backend
-      const match = currentStages.find(s => s.etapa === etapa || s.nombre === etapa || s.etapa?.toUpperCase() === etapa.toUpperCase() || s.nombre?.toUpperCase() === etapa.toUpperCase());
+      // Normalizar etapa: buscar coincidencia por id o por nombre en las etapas del backend
+      const match = currentStages.find(s => s.id === etapa || s.etapa === etapa || s.nombre === etapa || s.etapa?.toUpperCase() === etapa.toUpperCase() || s.nombre?.toUpperCase() === etapa.toUpperCase());
       if (match) {
         etapa = match.etapa || match.nombre || etapa;
       } else {
@@ -3208,6 +3213,35 @@ export function DashboardKanbanOperativo({
     return fallbackMap[normalizedLabel] || normalizedLabel.replace(/\s+/g, '_').toUpperCase();
   };
 
+  const getStageOrderForLabel = (label: string) => {
+    const normalizedLabel = normalizeStageKey(label);
+
+    const mappedStage = etapasConfig.find(stageConfig => {
+      const raw = stageConfig.etapa || stageConfig.nombre || stageConfig.label || '';
+      const normalizedRaw = normalizeStageKey(raw);
+      return normalizedRaw === normalizedLabel || normalizedRaw.includes(normalizedLabel) || normalizedLabel.includes(normalizedRaw);
+    });
+    if (mappedStage?.orden !== undefined) {
+      return mappedStage.orden;
+    }
+
+    // Fallback orders based on typical sequence
+    const fallbackOrders: Record<string, number> = {
+      'recepcion': 1,
+      'valoracion': 2,
+      'indagacion': 3,
+      'indagacion previa': 3,
+      'investigacion': 4,
+      'evaluacion': 5,
+      'juzgamiento': 6,
+      'fallo': 7,
+      'segunda instancia': 8,
+      'archivo': 9
+    };
+
+    return fallbackOrders[normalizedLabel] || 1;
+  };
+
   // ==================== HANDLERS ====================
   const handleDropItem = async (item: Item, nuevaEtapa: string) => {
     // ✅ NUEVO: Validar orden de etapas desde backend config
@@ -3278,9 +3312,10 @@ export function DashboardKanbanOperativo({
         const toastId = toast.loading('Cambiando etapa del proceso...');
         try {
             const backendStage = backendStageForLabel(nuevaEtapa);
+            const stageOrder = getStageOrderForLabel(nuevaEtapa);
 
             // Llamar al backend para cambiar la etapa
-            await disciplinaryService.cambiarEtapa(item.id, backendStage, nuevaEtapa);
+            await disciplinaryService.cambiarEtapa(item.id, backendStage, stageOrder);
           toast.success('Etapa actualizada', {
             id: toastId,
             description: `${item.numeroProceso} → ${nuevaEtapa}`
@@ -3933,17 +3968,18 @@ export function DashboardKanbanOperativo({
       'Archivo': 'ARCHIVO'
     };
     const backendStage = stageMap[siguienteEtapa] || siguienteEtapa.toUpperCase();
+    const stageOrder = getStageOrderForLabel(siguienteEtapa);
 
     // ✅ NUEVO: Persistir cambio de etapa y asignación de profesional en la base de datos
     const toastId = toast.loading('Asignando profesional y cambiando etapa...');
     try {
       // Llamar al backend para cambiar la etapa y asignar el profesional
-      await disciplinaryService.cambiarEtapa(itemSeleccionado.id, backendStage, siguienteEtapa);
+      await disciplinaryService.cambiarEtapa(itemSeleccionado.id, backendStage, stageOrder);
       
       // También actualizar el proceso con el profesional asignado usando updateProcess
       await disciplinaryService.updateProcess(itemSeleccionado.id, {
         etapaActual: backendStage,
-        kanbanStage: siguienteEtapa,
+        kanbanStage: stageOrder,
         abogadoId: profesionalId
       });
       
@@ -4609,11 +4645,12 @@ export function DashboardKanbanOperativo({
     const usuario = 'Usuario Actual';
 
     const backendStage = backendStageForLabel(nuevaEtapa);
+    const stageOrder = getStageOrderForLabel(nuevaEtapa);
 
     // Persistir cambio de etapa en la base de datos
     const toastId = toast.loading('Cambiando etapa del proceso...');
     try {
-      await disciplinaryService.cambiarEtapa(proceso.id, backendStage, nuevaEtapa);
+      await disciplinaryService.cambiarEtapa(proceso.id, backendStage, stageOrder);
       
       toast.success('Etapa actualizada', {
         id: toastId,
@@ -5006,102 +5043,116 @@ export function DashboardKanbanOperativo({
           </div>
         )}
 
-        {/* ═══ Barra de scroll superior sticky — fuera del overflow-hidden para que sticky funcione ═══ */}
         {tipoVista === 'kanban' && itemsFiltrados.length > 0 && (
-          <div
-            ref={kanbanTopScrollRef}
-            style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 20,
-              overflowX: 'auto',
-              overflowY: 'hidden',
-              height: '14px',
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#94A3B8 #CBD5E1',
-              background: '#F1F5F9',
-              borderRadius: '4px',
-            }}
-          >
-            <div style={{ height: '1px' }} />
-          </div>
-        )}
-
-        {tipoVista === 'kanban' && itemsFiltrados.length > 0 && (
-          <div className="flex-1 overflow-hidden">
-            {/* ═══ Contenedor Kanban estilo Trello: scroll horizontal + columnas fijas ═══ */}
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* Barra de scroll superior sincronizada */}
             <div
-              ref={kanbanScrollRef}
-              className="h-full pb-2"
+              ref={kanbanTopBarRef}
               style={{
                 overflowX: 'auto',
                 overflowY: 'hidden',
-                WebkitOverflowScrolling: 'touch',
-                scrollbarWidth: 'none',
+                height: '14px',
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#2962FF #E5E7EB',
+                background: '#F1F5F9',
+                borderRadius: '4px',
+                marginBottom: '4px',
+                flexShrink: 0,
               }}
             >
-              {/* Flex container — columnas de ancho FIJO, nunca se comprimen (patrón Trello) */}
+              <div style={{ height: '1px' }} />
+            </div>
+            {/* Wrapper relativo para el area kanban */}
+            <div className="relative flex-1 min-h-0">
+              {/* Botones sticky: siempre centrados en la parte visible de la pantalla */}
+              <div style={{ position: 'sticky', top: '50vh', transform: 'translateY(-50%)', height: 0, zIndex: 30, pointerEvents: 'none' }}>
+                <button
+                  onClick={() => navegarKanban('prev')}
+                  className="absolute left-2 flex items-center justify-center w-9 h-9 rounded-full shadow-lg hover:shadow-xl"
+                  style={{ background: 'linear-gradient(135deg, #2962FF, #003DA5)', color: '#FFFFFF', pointerEvents: 'auto', transform: 'translateY(-50%)' }}
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => navegarKanban('next')}
+                  className="absolute right-2 flex items-center justify-center w-9 h-9 rounded-full shadow-lg hover:shadow-xl"
+                  style={{ background: 'linear-gradient(135deg, #2962FF, #003DA5)', color: '#FFFFFF', pointerEvents: 'auto', transform: 'translateY(-50%)' }}
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+              {/* Contenedor Kanban: scroll horizontal, scrollbar nativo oculto */}
               <div
-                ref={kanbanContentWidthRef}
-                className="flex gap-4 h-full items-stretch"
+                ref={kanbanScrollRef}
+                className="h-full pb-2"
                 style={{
-                  width: 'max-content',
-                  paddingLeft: '1rem',
-                  paddingRight: '1rem',
-                  paddingBottom: '0.5rem',
+                  overflowX: 'auto',
+                  overflowY: 'hidden',
+                  WebkitOverflowScrolling: 'touch',
+                  scrollbarWidth: 'none',
                 }}
               >
-                {etapas.map((etapa) => {
-                  const isColapsada = columnasColapsadas.has(etapa.nombre);
-                  return (
-                    <div
-                      key={etapa.nombre}
-                      className="flex-shrink-0 h-full"
-                      style={{
-                        width: isColapsada && !isMobile ? '64px' : isMobile ? 'calc(100vw - 32px)' : isTablet ? '280px' : '320px',
-                        transition: 'width 0.3s ease-in-out',
-                      }}
-                    >
-                      <ColumnaKanban
-                        etapa={etapa.nombre}
-                        items={itemsFiltrados}
-                        color={etapa.color}
-                        icono={etapa.icono}
-                        diasEstimados={etapa.diasEstimados}
-                        onDrop={handleDropItem}
-                        onConvertirNoticia={handleConvertirNoticia}
-                        onDevolverNoticia={handleDevolverNoticia}
-                        onDevolverCompetencia={handleDevolverCompetencia}
-                        onArchivarNoticia={handleArchivarNoticia}
-                        onVerDetallesNoticia={handleVerDetallesNoticia}
-                        onVerDetallesRemision={handleVerDetallesRemision} // ✅ NUEVO: Ver detalles de remisión
-                        onAsociarNoticiaProceso={handleAsociarNoticiaProceso}
-                        onVerProcesoAsociado={handleVerProcesoAsociado}
-                        onVerNoticiaAsociada={handleVerNoticiaAsociada}
-                        onEditarNoticia={handleEditarNoticia}
-                        onVerDetalles={handleVerDetalles}
-                        onAprobarBorrador={handleAprobarBorrador}
-                        onVerExpediente={handleVerExpediente}
-                        onGestionAutos={handleGestionAutos}
-                        onGestionEvidencias={handleGestionEvidencias}
-                        onGestionOficios={handleGestionOficios}
-                        onGestionActas={handleGestionActas}
-                        onComentarios={handleComentarios}
-                        onSolicitarReasignacion={handleSolicitarReasignacion}
-                        onAsociarProcesoProceso={handleAsociarProcesoProceso} // ✅ NUEVO: Asociar proceso a proceso
-                        onEditarProceso={handleEditarProceso} // ✅ NUEVO: Editar proceso
-                        onVerDetallesAsociacion={handleVerDetallesAsociacion} // ✅ NUEVO: Ver detalles de asociación
-                        vistaCompacta={vistaCompacta}
-                        isMobile={isMobile}
-                        colapsada={columnasColapsadas.has(etapa.nombre)}
-                        onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
-                        etapasConfig={etapasConfig}
-                        tarjetasColapsadas={tarjetasColapsadas}
-                        onToggleColapsoTarjeta={toggleTarjetaColapsada}
-                      />
-                    </div>
-                  );
-                })}
+                <div
+                  className="flex gap-4 h-full items-stretch"
+                  style={{
+                    width: 'max-content',
+                    paddingLeft: '2.5rem',
+                    paddingRight: '2.5rem',
+                    paddingBottom: '0.5rem',
+                  }}
+                >
+                  {etapas.map((etapa) => {
+                    const isColapsada = columnasColapsadas.has(etapa.nombre);
+                    return (
+                      <div
+                        key={etapa.nombre}
+                        className="flex-shrink-0 h-full"
+                        style={{
+                          width: isColapsada && !isMobile ? '64px' : isMobile ? 'calc(100vw - 32px)' : isTablet ? '280px' : '320px',
+                          transition: 'width 0.3s ease-in-out',
+                        }}
+                      >
+                        <ColumnaKanban
+                          etapa={etapa.nombre}
+                          items={itemsFiltrados}
+                          color={etapa.color}
+                          icono={etapa.icono}
+                          diasEstimados={etapa.diasEstimados}
+                          onDrop={handleDropItem}
+                          onConvertirNoticia={handleConvertirNoticia}
+                          onDevolverNoticia={handleDevolverNoticia}
+                          onDevolverCompetencia={handleDevolverCompetencia}
+                          onArchivarNoticia={handleArchivarNoticia}
+                          onVerDetallesNoticia={handleVerDetallesNoticia}
+                          onVerDetallesRemision={handleVerDetallesRemision} // ✅ NUEVO: Ver detalles de remisión
+                          onAsociarNoticiaProceso={handleAsociarNoticiaProceso}
+                          onVerProcesoAsociado={handleVerProcesoAsociado}
+                          onVerNoticiaAsociada={handleVerNoticiaAsociada}
+                          onEditarNoticia={handleEditarNoticia}
+                          onVerDetalles={handleVerDetalles}
+                          onAprobarBorrador={handleAprobarBorrador}
+                          onVerExpediente={handleVerExpediente}
+                          onGestionAutos={handleGestionAutos}
+                          onGestionEvidencias={handleGestionEvidencias}
+                          onGestionOficios={handleGestionOficios}
+                          onGestionActas={handleGestionActas}
+                          onComentarios={handleComentarios}
+                          onSolicitarReasignacion={handleSolicitarReasignacion}
+                          onAsociarProcesoProceso={handleAsociarProcesoProceso} // ✅ NUEVO: Asociar proceso a proceso
+                          onEditarProceso={handleEditarProceso} // ✅ NUEVO: Editar proceso
+                          onVerDetallesAsociacion={handleVerDetallesAsociacion} // ✅ NUEVO: Ver detalles de asociación
+                          vistaCompacta={vistaCompacta}
+                          isMobile={isMobile}
+                          colapsada={columnasColapsadas.has(etapa.nombre)}
+                          onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
+                          etapasConfig={etapasConfig}
+                          tarjetasColapsadas={tarjetasColapsadas}
+                          onToggleColapsoTarjeta={toggleTarjetaColapsada}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
