@@ -1,17 +1,17 @@
 /**
- * Hook para Configuración de Profesionales OCIG
+ * Hook para Configuración de Profesionales OCI
  * 
  * Conecta con el backend:
  * - GET /auditorias/personas/disponibles: Usuarios con roles de Control Interno
- * - GET/POST/PUT/DELETE /configuraciones/profesionales-ocig: Configuraciones OCIG
+ * - GET/POST/PUT/DELETE /configuraciones/profesionales-OCI: Configuraciones OCI
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import { 
   auditoriasApi, 
-  configuracionesProfesionalesOCIGApi,
-  type ConfiguracionProfesionalOCIG as ConfigBackend 
+  configuracionesProfesionalesOCIApi,
+  type ConfiguracionProfesionalOCI as ConfigBackend 
 } from './api';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -20,22 +20,24 @@ import {
 
 // Usuario del sistema obtenido del backend
 export interface UsuarioSistema {
-  id: string;           // id_tercero como string
-  idTercero: number;    // id_tercero como número (para el backend)
+  id: string;           // id_person UUID
+  idTercero: string;    // id_person UUID (para el backend)
   nombre: string;
   identificacion: string;
   email: string;
   cargo?: string;
   area?: string;
   activo: boolean;
+  rolCode?: string;     // código de rol del sistema (ej: 'JEFE_OCI', 'AUDITOR')
 }
 
-// Configuración OCIG del profesional
-export interface ConfiguracionOCIG {
+// Configuración OCI del profesional
+export interface ConfiguracionOCI {
   id?: string;          // UUID de la configuración (si existe en BD)
-  usuarioId: string;    // id_tercero como string (para compatibilidad)
-  idTercero: number;    // id_tercero como número (para el backend)
-  rolOCIG: 'Jefe OCIG' | 'Auditor Sénior' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
+  usuarioId: string;    // id_person UUID
+  idTercero: string;    // id_person UUID (para el backend)
+  rolOCI: 'Jefe OCI' | 'Auditor Sénior' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
+  rolOCIG?: 'Jefe OCI' | 'Auditor Sénior' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
   especialidades: string[];
   capacidadMaximaAuditorias: number;
   horasMensualesDisponibles: number;
@@ -49,10 +51,10 @@ export interface ConfiguracionOCIG {
   identificacion?: string;
 }
 
-// Profesional OCIG completo
-export interface ProfesionalOCIG {
+// Profesional OCI completo
+export interface ProfesionalOCI {
   usuario: UsuarioSistema;
-  configuracion: ConfiguracionOCIG;
+  configuracion: ConfiguracionOCI;
   estadisticas: {
     auditoriasTotales: number;
     auditoriasComoLider: number;
@@ -62,6 +64,9 @@ export interface ProfesionalOCIG {
     horasAsignadas: number;
   };
 }
+
+export type ConfiguracionOCIG = ConfiguracionOCI;
+export type ProfesionalOCIG = ProfesionalOCI;
 
 // ════════════════════════════════════════════════════════════════════════════
 // CONSTANTES
@@ -82,13 +87,15 @@ export const ESPECIALIDADES_DISPONIBLES = [
   'Gestión Presupuestal'
 ];
 
-export const ROLES_OCIG = [
-  'Jefe OCIG',
+export const ROLES_OCI = [
+  'Jefe OCI',
   'Auditor Sénior',
   'Auditor',
   'Auditor Júnior',
   'Apoyo Técnico'
 ] as const;
+
+export const ROLES_OCIG = ROLES_OCI;
 
 // ════════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -112,22 +119,25 @@ interface PersonaDisponible {
 function convertirPersonaAUsuarioSistema(persona: PersonaDisponible): UsuarioSistema {
   return {
     id: persona.id,
-    idTercero: persona.idPersona,
+    idTercero: String(persona.idPersona),
     nombre: persona.nombre,
     identificacion: persona.numeroIdentificacion,
     email: persona.email,
     cargo: persona.cargo,
     area: undefined,
-    activo: true
+    activo: true,
+    rolCode: persona.rolCode
   };
 }
 
-function convertirConfigBackendALocal(config: ConfigBackend): ConfiguracionOCIG {
+function convertirConfigBackendALocal(config: ConfigBackend): ConfiguracionOCI {
+  const rolOCI = (config.rolOcig ?? config.rolOCI) as ConfiguracionOCI['rolOCI'];
   return {
     id: config.id,
     usuarioId: String(config.idTercero),
-    idTercero: config.idTercero,
-    rolOCIG: config.rolOcig as ConfiguracionOCIG['rolOCIG'],
+    idTercero: String(config.idTercero),
+    rolOCI,
+    rolOCIG: rolOCI,
     especialidades: config.especialidades,
     capacidadMaximaAuditorias: config.capacidadMaximaAuditorias,
     horasMensualesDisponibles: config.horasMensualesDisponibles,
@@ -149,7 +159,7 @@ function convertirConfigBackendALocal(config: ConfigBackend): ConfiguracionOCIG 
 export function useConfiguracionProfesionales() {
   // Estado
   const [usuariosControlInterno, setUsuariosControlInterno] = useState<UsuarioSistema[]>([]);
-  const [configuracionesOCIG, setConfiguracionesOCIG] = useState<ConfiguracionOCIG[]>([]);
+  const [configuracionesOCI, setConfiguracionesOCI] = useState<ConfiguracionOCI[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -163,8 +173,8 @@ export function useConfiguracionProfesionales() {
     setError(null);
     
     try {
-      // 1. Cargar usuarios candidatos de auth.personas (personas que AÚN NO están configuradas como OCIG)
-      const responseUsuarios = await configuracionesProfesionalesOCIGApi.buscarCandidatos();
+      // 1. Cargar usuarios candidatos de auth.personas (personas que AÚN NO están configuradas como OCI)
+      const responseUsuarios = await configuracionesProfesionalesOCIApi.buscarCandidatos();
       const personas = responseUsuarios.data || [];
       const usuarios = personas.map((p: any) => ({
         id: p.id,
@@ -174,18 +184,19 @@ export function useConfiguracionProfesionales() {
         email: p.email,
         cargo: '',
         area: undefined,
-        activo: true
+        activo: true,
+        rolCode: p.rolCode
       }));
       setUsuariosControlInterno(usuarios);
       
-      // 2. Cargar configuraciones OCIG desde el backend
-      const responseConfigs = await configuracionesProfesionalesOCIGApi.getAll(true);
+      // 2. Cargar configuraciones OCI desde el backend
+      const responseConfigs = await configuracionesProfesionalesOCIApi.getAll(true);
       const configuraciones = (responseConfigs.data || []).map(convertirConfigBackendALocal);
-      setConfiguracionesOCIG(configuraciones);
+      setConfiguracionesOCI(configuraciones);
       
       console.log('✅ Profesionales cargados:', {
         usuariosCandidatos: usuarios.length,
-        configuracionesOCIG: configuraciones.length
+        configuracionesOCI: configuraciones.length
       });
     } catch (err) {
       const mensaje = err instanceof Error ? err.message : 'Error al cargar profesionales';
@@ -201,20 +212,20 @@ export function useConfiguracionProfesionales() {
   }, [cargarDatos]);
 
   // ══════════════════════════════════════════════════════════════════════════
-  // PROFESIONALES OCIG CON ESTADÍSTICAS
+  // PROFESIONALES OCI CON ESTADÍSTICAS
   // ══════════════════════════════════════════════════════════════════════════
 
-  const profesionalesOCIG: ProfesionalOCIG[] = useMemo(() => {
-    console.log('=== DEBUG profesionalesOCIG ===');
-    console.log('configuracionesOCIG:', configuracionesOCIG.map(c => ({ id: c.id, idTercero: c.idTercero, nombre: c.nombre, activo: c.activo })));
+  const profesionalesOCI: ProfesionalOCI[] = useMemo(() => {
+    console.log('=== DEBUG profesionalesOCI ===');
+    console.log('configuracionesOCI:', configuracionesOCI.map(c => ({ id: c.id, idTercero: c.idTercero, nombre: c.nombre, activo: c.activo })));
     console.log('usuariosControlInterno:', usuariosControlInterno.map(u => ({ id: u.id, idTercero: u.idTercero, nombre: u.nombre })));
     
-    return configuracionesOCIG
+    return configuracionesOCI
       .filter(config => config.activo)
       .map(config => {
         // Buscar usuario en la lista del backend - comparar como números para evitar problemas de tipos
         let usuario = usuariosControlInterno.find(
-          u => Number(u.id) === Number(config.idTercero) || Number(u.idTercero) === Number(config.idTercero)
+          u => u.id === String(config.idTercero) || u.idTercero === String(config.idTercero)
         );
         
         // Si no se encuentra en usuarios disponibles, crear usuario temporal desde los datos enriquecidos de la configuración
@@ -226,8 +237,8 @@ export function useConfiguracionProfesionales() {
             nombre: config.nombre,
             identificacion: config.identificacion || '',
             email: config.email || '',
-            cargo: config.rolOCIG,
-            area: 'OCIG',
+            cargo: config.rolOCI as string,
+            area: 'OCI',
             activo: true
           };
         } else if (usuario) {
@@ -251,25 +262,25 @@ export function useConfiguracionProfesionales() {
           }
         };
       })
-      .filter((p): p is ProfesionalOCIG => p !== null);
-  }, [configuracionesOCIG, usuariosControlInterno]);
+      .filter((p): p is ProfesionalOCI => p !== null);
+  }, [configuracionesOCI, usuariosControlInterno]);
 
-  // Usuarios disponibles para agregar (tienen rol de Control Interno pero no están en OCIG)
-  const usuariosDisponiblesParaOCIG = useMemo(() => {
-    const idsTercerosConfigurados = new Set(configuracionesOCIG.map(c => c.idTercero));
+  // Usuarios disponibles para agregar (tienen rol de Control Interno pero no están en OCI)
+  const usuariosDisponiblesParaOCI = useMemo(() => {
+    const idsTercerosConfigurados = new Set(configuracionesOCI.map(c => c.idTercero));
     return usuariosControlInterno.filter(u => !idsTercerosConfigurados.has(u.idTercero) && u.activo);
-  }, [usuariosControlInterno, configuracionesOCIG]);
+  }, [usuariosControlInterno, configuracionesOCI]);
 
   // ══════════════════════════════════════════════════════════════════════════
-  // CRUD CONFIGURACIONES OCIG
+  // CRUD CONFIGURACIONES OCI
   // ══════════════════════════════════════════════════════════════════════════
 
-  const agregarProfesional = useCallback(async (config: ConfiguracionOCIG) => {
+  const agregarProfesional = useCallback(async (config: ConfiguracionOCI) => {
     setSaving(true);
     try {
-      const response = await configuracionesProfesionalesOCIGApi.create({
+      const response = await configuracionesProfesionalesOCIApi.create({
         idTercero: config.idTercero,
-        rolOcig: config.rolOCIG,
+        rolOcig: config.rolOCIG ?? config.rolOCI,
         especialidades: config.especialidades,
         capacidadMaximaAuditorias: config.capacidadMaximaAuditorias,
         horasMensualesDisponibles: config.horasMensualesDisponibles,
@@ -279,8 +290,8 @@ export function useConfiguracionProfesionales() {
 
       if (response.data) {
         const nuevaConfig = convertirConfigBackendALocal(response.data);
-        setConfiguracionesOCIG(prev => [...prev, nuevaConfig]);
-        toast.success('✅ Profesional agregado al equipo OCIG');
+        setConfiguracionesOCI(prev => [...prev, nuevaConfig]);
+        toast.success('✅ Profesional agregado al equipo OCI');
       }
     } catch (err) {
       const mensaje = err instanceof Error ? err.message : 'Error al agregar profesional';
@@ -291,16 +302,16 @@ export function useConfiguracionProfesionales() {
     }
   }, []);
 
-  const actualizarProfesional = useCallback(async (usuarioId: string, cambios: Partial<ConfiguracionOCIG>) => {
+  const actualizarProfesional = useCallback(async (usuarioId: string, cambios: Partial<ConfiguracionOCI>) => {
     setSaving(true);
     try {
-      const configActual = configuracionesOCIG.find(c => c.usuarioId === usuarioId);
+      const configActual = configuracionesOCI.find(c => c.usuarioId === usuarioId);
       if (!configActual?.id) {
         throw new Error('Configuración no encontrada');
       }
 
-      const response = await configuracionesProfesionalesOCIGApi.update(configActual.id, {
-        rolOcig: cambios.rolOCIG,
+      const response = await configuracionesProfesionalesOCIApi.update(configActual.id, {
+        rolOcig: cambios.rolOCIG ?? cambios.rolOCI,
         especialidades: cambios.especialidades,
         capacidadMaximaAuditorias: cambios.capacidadMaximaAuditorias,
         horasMensualesDisponibles: cambios.horasMensualesDisponibles,
@@ -311,7 +322,7 @@ export function useConfiguracionProfesionales() {
 
       if (response.data) {
         const configActualizada = convertirConfigBackendALocal(response.data);
-        setConfiguracionesOCIG(prev => 
+        setConfiguracionesOCI(prev => 
           prev.map(c => c.usuarioId === usuarioId ? configActualizada : c)
         );
         toast.success('✅ Configuración actualizada exitosamente');
@@ -323,20 +334,20 @@ export function useConfiguracionProfesionales() {
     } finally {
       setSaving(false);
     }
-  }, [configuracionesOCIG]);
+  }, [configuracionesOCI]);
 
   const eliminarProfesional = useCallback(async (usuarioId: string) => {
     setSaving(true);
     try {
-      const configActual = configuracionesOCIG.find(c => c.usuarioId === usuarioId);
+      const configActual = configuracionesOCI.find(c => c.usuarioId === usuarioId);
       if (!configActual?.id) {
         throw new Error('Configuración no encontrada');
       }
 
-      await configuracionesProfesionalesOCIGApi.delete(configActual.id);
+      await configuracionesProfesionalesOCIApi.delete(configActual.id);
       
-      setConfiguracionesOCIG(prev => prev.filter(c => c.usuarioId !== usuarioId));
-      toast.success('🗑️ Profesional removido del equipo OCIG');
+      setConfiguracionesOCI(prev => prev.filter(c => c.usuarioId !== usuarioId));
+      toast.success('🗑️ Profesional removido del equipo OCI');
     } catch (err) {
       const mensaje = err instanceof Error ? err.message : 'Error al eliminar profesional';
       toast.error(`❌ ${mensaje}`);
@@ -344,7 +355,7 @@ export function useConfiguracionProfesionales() {
     } finally {
       setSaving(false);
     }
-  }, [configuracionesOCIG]);
+  }, [configuracionesOCI]);
 
   // ══════════════════════════════════════════════════════════════════════════
   // BÚSQUEDA DE USUARIOS
@@ -356,7 +367,7 @@ export function useConfiguracionProfesionales() {
     }
     
     const termino = searchTerm.toLowerCase();
-    const idsTercerosEquipo = configuracionesOCIG.map(c => c.idTercero);
+    const idsTercerosEquipo = configuracionesOCI.map(c => c.idTercero);
     
     return usuariosControlInterno.filter(u => 
       !idsTercerosEquipo.includes(u.idTercero) &&
@@ -364,30 +375,30 @@ export function useConfiguracionProfesionales() {
        u.identificacion.includes(termino) ||
        u.email.toLowerCase().includes(termino))
     );
-  }, [configuracionesOCIG, usuariosControlInterno]);
+  }, [configuracionesOCI, usuariosControlInterno]);
 
   // ══════════════════════════════════════════════════════════════════════════
   // ESTADÍSTICAS GLOBALES
   // ══════════════════════════════════════════════════════════════════════════
 
   const estadisticasGlobales = useMemo(() => {
-    const totalProfesionales = profesionalesOCIG.length;
-    const capacidadTotal = profesionalesOCIG.reduce(
+    const totalProfesionales = profesionalesOCI.length;
+    const capacidadTotal = profesionalesOCI.reduce(
       (sum, p) => sum + p.configuracion.capacidadMaximaAuditorias, 0
     );
-    const horasTotales = profesionalesOCIG.reduce(
+    const horasTotales = profesionalesOCI.reduce(
       (sum, p) => sum + p.configuracion.horasMensualesDisponibles, 0
     );
-    const auditoriasTotales = profesionalesOCIG.reduce(
+    const auditoriasTotales = profesionalesOCI.reduce(
       (sum, p) => sum + p.estadisticas.auditoriasTotales, 0
     );
     const cargaPromedio = totalProfesionales > 0
       ? Math.round(
-          profesionalesOCIG.reduce((sum, p) => sum + p.estadisticas.porcentajeCarga, 0) / 
+          profesionalesOCI.reduce((sum, p) => sum + p.estadisticas.porcentajeCarga, 0) / 
           totalProfesionales
         )
       : 0;
-    const sobrecargados = profesionalesOCIG.filter(
+    const sobrecargados = profesionalesOCI.filter(
       p => p.estadisticas.porcentajeCarga > 90
     ).length;
 
@@ -399,7 +410,7 @@ export function useConfiguracionProfesionales() {
       cargaPromedio,
       sobrecargados
     };
-  }, [profesionalesOCIG]);
+  }, [profesionalesOCI]);
 
   // ══════════════════════════════════════════════════════════════════════════
   // RETURN
@@ -413,9 +424,12 @@ export function useConfiguracionProfesionales() {
     
     // Datos
     usuariosControlInterno,
-    configuracionesOCIG,
-    profesionalesOCIG,
-    usuariosDisponiblesParaOCIG,
+    configuracionesOCI,
+    profesionalesOCI,
+    usuariosDisponiblesParaOCI,
+    configuracionesOCIG: configuracionesOCI,
+    profesionalesOCIG: profesionalesOCI,
+    usuariosDisponiblesParaOCIG: usuariosDisponiblesParaOCI,
     estadisticasGlobales,
     
     // Acciones
@@ -427,6 +441,7 @@ export function useConfiguracionProfesionales() {
     
     // Constantes
     ESPECIALIDADES_DISPONIBLES,
+    ROLES_OCI,
     ROLES_OCIG
   };
 }

@@ -27,7 +27,7 @@ import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
-import { HeaderModuloCIG } from '../control-interno/HeaderModuloCIG';
+import { HeaderModulOCIG } from '../control-interno/HeaderModulOCIG';
 
 // ============ TIPOS ============
 
@@ -309,7 +309,7 @@ export function ModelosSoporteDisciplinario() {
     <div className="min-h-screen bg-gray-50">
       {/* Header Unificado con Título */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <HeaderModuloCIG
+        <HeaderModulOCIG
           titulo="Modelos de Soporte"
           subtitulo="Informes de Ley, Gestión Documental y Notificaciones"
         />

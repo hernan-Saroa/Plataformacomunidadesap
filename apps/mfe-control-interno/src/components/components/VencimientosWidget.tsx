@@ -1,6 +1,6 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * WIDGET DE VENCIMIENTOS - DASHBOARD OCIG
+ * WIDGET DE VENCIMIENTOS - DASHBOARD OCI
  * ═════════════════════════════════════════════════════════════════════════
  * 
  * Lista de próximos vencimientos con semáforos
@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { Calendar, AlertCircle, Clock } from 'lucide-react';
-import { calcularDiasRestantes, getSemaforoPorDias } from '../utils/esapThemeOCIG';
+import { calcularDiasRestantes, getSemaforoPorDias } from '../utils/esapThemeOCI';
 
 // ═════════════════════════════════════════════════════════════════════════
 // TIPOS

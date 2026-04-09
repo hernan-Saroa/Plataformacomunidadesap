@@ -3,7 +3,7 @@
  * FORMULARIO UNIFICADO DE AUDITORÍA - VERSIÓN CORPORATIVA ESAP
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * FORMULARIO MANDATORIO ÚNICO para todo Control Interno de Gestión OCIG
+ * FORMULARIO MANDATORIO ÚNICO para todo Control Interno de Gestión OCI
  * 
  * CARACTERÍSTICAS:
  * - Formulario completo con TODAS las secciones de auditoría
@@ -40,7 +40,7 @@ import { Badge } from '../../ui/badge';
 import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
 import { toast } from 'sonner';
-import { configuracionesProfesionalesOCIGApi } from './services/api';
+import { configuracionesProfesionalesOCIApi } from './services/api';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -330,15 +330,15 @@ export function FormularioAuditoriaUnificado({
 
   const TOTAL_PASOS = 9;
   
-  // Cargar profesionales OCIG configurados del backend
+  // Cargar profesionales OCI configurados del backend
   useEffect(() => {
     const cargarAuditores = async () => {
       if (!open) return;
       
       setCargandoAuditores(true);
       try {
-        // Usar profesionales configurados en OCIG en lugar de personas disponibles genéricas
-        const response = await configuracionesProfesionalesOCIGApi.getAll();
+        // Usar profesionales configurados en OCI en lugar de personas disponibles genéricas
+        const response = await configuracionesProfesionalesOCIApi.getAll();
         
         if (response.success && response.data && response.data.length > 0) {
           const auditores = response.data
@@ -346,14 +346,14 @@ export function FormularioAuditoriaUnificado({
             .map((config: any) => ({
               id: String(config.idTercero),
               nombre: config.nombre || `Profesional ${config.idTercero}`,
-              cargo: config.rolOcig || 'Auditor'
+              cargo: config.rolOCI || 'Auditor'
             }));
           setAuditoresDisponibles(auditores);
         } else {
-          console.warn('[FormularioAuditoria] No hay profesionales OCIG configurados, usando fallback');
+          console.warn('[FormularioAuditoria] No hay profesionales OCI configurados, usando fallback');
         }
       } catch (error) {
-        console.error('[FormularioAuditoria] Error al cargar profesionales OCIG:', error);
+        console.error('[FormularioAuditoria] Error al cargar profesionales OCI:', error);
         // Mantener los datos fallback
       } finally {
         setCargandoAuditores(false);
@@ -733,7 +733,7 @@ export function FormularioAuditoriaUnificado({
                   <div className="flex items-center gap-3 mb-2">
                     <Shield className="w-6 h-6" style={{ color: '#003DA5' }} />
                     <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
-                      {mode === 'create' ? 'Nueva Auditoría OCIG' : 'Editar Auditoría OCIG'}
+                      {mode === 'create' ? 'Nueva Auditoría OCI' : 'Editar Auditoría OCI'}
                     </h2>
                   </div>
                   <p className="text-sm text-gray-600">
@@ -2159,7 +2159,7 @@ function Paso9VinculacionPlan({ formData, onChange }: PasoProps) {
         <ClipboardCheck className="w-12 h-12 mx-auto mb-3" style={{ color: '#003DA5' }} />
         <h3 className="text-xl font-black text-gray-900">Vinculación con Plan Anual</h3>
         <p className="text-sm text-gray-600 mt-1">
-          Relacione esta auditoría con la planificación anual OCIG
+          Relacione esta auditoría con la planificación anual OCI
         </p>
       </div>
 
@@ -2175,7 +2175,7 @@ function Paso9VinculacionPlan({ formData, onChange }: PasoProps) {
                 className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
               />
               <span className="font-bold text-gray-900">
-                Esta auditoría forma parte del Plan Anual OCIG
+                Esta auditoría forma parte del Plan Anual OCI
               </span>
             </label>
           </div>
@@ -2212,7 +2212,7 @@ function Paso9VinculacionPlan({ formData, onChange }: PasoProps) {
               <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <p className="text-sm text-blue-700">
                   <strong>Decreto 648/2017:</strong> Esta auditoría se vinculará automáticamente
-                  al Plan Anual OCIG bajo el rol seleccionado
+                  al Plan Anual OCI bajo el rol seleccionado
                 </p>
               </div>
             </div>
@@ -2222,7 +2222,7 @@ function Paso9VinculacionPlan({ formData, onChange }: PasoProps) {
             <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
               <p className="text-sm text-gray-600">
                 Esta auditoría será una <strong>auditoría especial no programada</strong> y no formará
-                parte del Plan Anual OCIG
+                parte del Plan Anual OCI
               </p>
             </div>
           )}

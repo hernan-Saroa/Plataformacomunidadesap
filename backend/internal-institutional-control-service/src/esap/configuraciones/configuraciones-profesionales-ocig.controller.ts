@@ -10,7 +10,6 @@ import {
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
-  ParseIntPipe,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -74,7 +73,7 @@ export class ConfiguracionesProfesionalesOCIGController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.CONFIG_MANAGE)
   async findByIdTercero(
-    @Param('idTercero', ParseIntPipe) idTercero: number,
+    @Param('idTercero') idTercero: string,
   ): Promise<ConfiguracionProfesionalOCIGResponseDto | null> {
     return this.service.findByIdTercero(idTercero);
   }
@@ -103,7 +102,7 @@ export class ConfiguracionesProfesionalesOCIGController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.CONFIG_MANAGE)
   async updateByIdTercero(
-    @Param('idTercero', ParseIntPipe) idTercero: number,
+    @Param('idTercero') idTercero: string,
     @Body() updateDto: UpdateConfiguracionProfesionalOCIGDto,
   ): Promise<ConfiguracionProfesionalOCIGResponseDto> {
     return this.service.updateByIdTercero(idTercero, updateDto);
@@ -122,7 +121,7 @@ export class ConfiguracionesProfesionalesOCIGController {
   @Permissions(CIP.CONFIG_MANAGE)
   @HttpCode(HttpStatus.NO_CONTENT)
   async removeByIdTercero(
-    @Param('idTercero', ParseIntPipe) idTercero: number,
+    @Param('idTercero') idTercero: string,
   ): Promise<void> {
     return this.service.removeByIdTercero(idTercero);
   }

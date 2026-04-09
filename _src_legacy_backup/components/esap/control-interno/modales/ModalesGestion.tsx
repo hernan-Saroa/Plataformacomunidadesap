@@ -3,7 +3,7 @@
  * MODALES GESTIÓN - WORLD CLASS VERSION
  * ═════════════════════════════════════════════════════════════════════════
  * 
- * Modales premium para gestión operativa de auditorías OCIG:
+ * Modales premium para gestión operativa de auditorías OCI:
  * - ModalAsignarAuditor (Asignar responsables con perfiles)
  * - ModalAprobarAuditoria (Flujo de aprobación mejorado)
  * - ModalCambiarEstado (Cambio de fase Kanban visual)
@@ -24,7 +24,7 @@
 import React, { useState, useRef } from 'react';
 import { X, Check, Users, MessageSquare, FileText, Send, AlertCircle, Workflow, Info, Upload } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import { type EstadoKanban } from '../utils/esapThemeOCIG';
+import { type EstadoKanban } from '../utils/esapThemeOCI';
 import { ModalBaseWorldClass } from '../ModalBaseWorldClass';
 import { motion } from 'motion/react';
 

@@ -24,8 +24,8 @@ export class ConfiguracionProfesionalOCIG {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'id_tercero', type: 'int', nullable: false })
-  idTercero: number;
+  @Column({ name: 'id_tercero', type: 'varchar', length: 36, nullable: false })
+  idTercero: string;
 
   @Column({
     name: 'rol_ocig',

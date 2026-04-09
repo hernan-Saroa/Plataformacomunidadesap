@@ -223,6 +223,9 @@ export function ResponsiveModal({
     ${isOpen ? 'opacity-100' : 'opacity-0'}
   `;
 
+  // Estilos inline para z-index
+  const overlayStyle = { zIndex };
+
   // Clases del contenedor según variante y breakpoint
   const containerClasses = getContainerClasses(effectiveVariant, size, breakpoint, isOpen);
 
@@ -233,7 +236,7 @@ export function ResponsiveModal({
   const modalContent = (
     <div
       className={overlayClasses}
-      style={{ zIndex }}
+      style={overlayStyle}
       onClick={handleBackdropClick}
       role="presentation"
     >

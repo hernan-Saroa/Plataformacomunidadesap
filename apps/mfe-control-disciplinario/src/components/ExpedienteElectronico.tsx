@@ -30,6 +30,47 @@ import { EditorDocumentos } from './EditorDocumentos';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
 
+const normalizeControlDisciplinarioPath = (rawUrl: string): string => {
+  let path = rawUrl.trim();
+
+  if (/^https?:\/\//i.test(path)) {
+    try {
+      const url = new URL(path);
+      const normalizedPathname = url.pathname.replace(/\/{2,}/g, '/');
+      const managedPath =
+        normalizedPathname.startsWith('/control-disciplinario/') ||
+        normalizedPathname.startsWith('/api/v1/') ||
+        normalizedPathname.startsWith('/disciplinary-processes/') ||
+        normalizedPathname.startsWith('/files/') ||
+        normalizedPathname.startsWith('/uploads/');
+
+      if (!managedPath) {
+        return rawUrl;
+      }
+
+      path = `${normalizedPathname}${url.search}${url.hash}`;
+    } catch {
+      return rawUrl;
+    }
+  }
+
+  path = path.replace(/\/{2,}/g, '/');
+
+  if (path.startsWith('/control-disciplinario/')) {
+    path = path.replace(/^\/control-disciplinario/, '');
+  }
+
+  path = path.replace(/\/{2,}/g, '/');
+
+  if (API_MODE === 'direct' && /^\/api\/v1(\/|$)/.test(path)) {
+    path = path.replace(/^\/api\/v1/, '');
+  }
+
+  path = path.replace(/\/{2,}/g, '/');
+
+  return path.startsWith('/') ? path : `/${path}`;
+};
+
 // Modal de Selección de Tipo de Documento
 interface ModalSeleccionProps {
   onClose: () => void;
@@ -523,8 +564,9 @@ function ModalVisorDocumento({
         if (documento.downloadUrl) {
           // El backend retorna: /control-disciplinario/api/v1/... o /files/...
           // Necesitamos extraer la ruta relativa sin el prefijo del servicio para buildApiUrl
-          let path = documento.downloadUrl;
+          const path = normalizeControlDisciplinarioPath(documento.downloadUrl);
           
+          /* Legacy normalization kept for reference.
           if (documento.downloadUrl.startsWith('/control-disciplinario/')) {
             // Extraer la ruta después de /control-disciplinario conservando el slash inicial
             // /control-disciplinario/api/v1/... -> /api/v1/...
@@ -534,9 +576,12 @@ function ModalVisorDocumento({
             // /files/filename -> /files/filename
             path = documento.downloadUrl;
           }
+          */
           
           // Construir la URL usando solo la ruta relativa
-          downloadUrl = buildApiUrl('control-disciplinario', path);
+          downloadUrl = /^https?:\/\//i.test(path)
+            ? path
+            : buildApiUrl('control-disciplinario', path);
         } else {
           // Construcción legacy para evidencias
           const endpoint = API_MODE === 'direct'
@@ -602,6 +647,11 @@ function ModalVisorDocumento({
           tipoDetectado = 'ppt';
         } else if (nombreArchivo.endsWith('.xls') || nombreArchivo.endsWith('.xlsx')) {
           tipoDetectado = 'xls';
+        } else if (documento.tipo === 'auto') {
+          // Detectar desde el contenido real del blob (PDF o HTML generado)
+          const arrayBuffer = await blob.slice(0, 4).arrayBuffer();
+          const header = String.fromCharCode(...new Uint8Array(arrayBuffer));
+          tipoDetectado = header === '%PDF' ? 'pdf' : 'html';
         }
 
         setTipoArchivo(tipoDetectado);
@@ -1288,8 +1338,8 @@ function ModalVisorDocumento({
                 if (tipo === 'video') {
                   // Para videos, reproducir en el visor
                   setViendoPDF(!viendoPDF);
-                } else if (tipo === 'pdf') {
-                  // Para PDF, mostrar en el visor
+                } else if (tipo === 'pdf' || documento.tipo === 'auto') {
+                  // Para PDF y autos, mostrar en el visor
                   setViendoPDF(!viendoPDF);
                 } else {
                   // Para otros tipos (Word, Excel), descargar directamente o mostrar mensaje
@@ -2121,23 +2171,32 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
         return;
       }
 
-      toast.loading('Descargando documento...', { id: 'download-doc' });
+      const fileName = (doc as any).archivoNombre || doc.nombre;
 
       toast.loading('Descargando documento...', { id: 'download-doc' });
+
+      if (doc.urlExterna && !doc.downloadUrl) {
+        window.open(doc.urlExterna, '_blank', 'noopener,noreferrer');
+        toast.success('Enlace abierto', {
+          id: 'download-doc',
+          description: fileName
+        });
+        return;
+      }
 
       if (doc.downloadUrl) {
-        await disciplinaryService.downloadFileFromUrl(doc.downloadUrl, doc.nombre);
+        await disciplinaryService.downloadFileFromUrl(doc.downloadUrl, fileName);
       } else {
         await disciplinaryService.downloadDocument(
           procesoSeleccionado.id,
           doc.id,
-          doc.nombre
+          fileName
         );
       }
 
       toast.success('Descarga completada', {
         id: 'download-doc',
-        description: doc.nombre
+        description: fileName
       });
     } catch (error: any) {
       toast.error('Error al descargar', {

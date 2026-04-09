@@ -1,6 +1,6 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * KPI CARD - DASHBOARD OCIG
+ * KPI CARD - DASHBOARD OCI
  * ═════════════════════════════════════════════════════════════════════════
  * 
  * Tarjeta de KPI para el dashboard ejecutivo
@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, HelpCircle } from 'lucide-react';
-import { ESAP_COLORS, ESAP_CLASSES } from '../utils/esapThemeOCIG';
+import { ESAP_COLORS, ESAP_CLASSES } from '../utils/esapThemeOCI';
 
 // ═════════════════════════════════════════════════════════════════════════
 // TIPOS

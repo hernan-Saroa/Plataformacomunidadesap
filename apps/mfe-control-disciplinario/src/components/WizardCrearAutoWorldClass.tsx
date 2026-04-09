@@ -16,6 +16,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { createPortal } from 'react-dom';
 import {
   X, ChevronRight, ChevronLeft, Check, Scale, FileText, Download,
   Upload, AlertCircle, CheckCircle, Info, File, Calendar, User,
@@ -480,12 +481,12 @@ export function WizardCrearAutoWorldClass({
   });
 
   // ==================== RENDER ====================
-  return (
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 flex items-center justify-center z-[150] p-4 sm:p-6 bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 flex items-center justify-center z-[100000] p-4 sm:p-6 bg-black/50 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
@@ -1509,7 +1510,7 @@ export function WizardCrearAutoWorldClass({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 flex items-start justify-center pt-10 sm:pt-16 z-[160] p-4"
+            className="fixed inset-0 bg-black/80 flex items-start justify-center pt-10 sm:pt-16 z-[100001] p-4"
             onClick={() => setVisorDocumento({ show: false, documento: null })}
           >
             <motion.div
@@ -1604,6 +1605,7 @@ export function WizardCrearAutoWorldClass({
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }

@@ -3,7 +3,7 @@
  * HEADER UNIFICADO - CONTROL INTERNO DE GESTIÓN
  * ============================================
  * 
- * Componente reutilizable para encabezados del módulo CIG
+ * Componente reutilizable para encabezados del módulo OCI
  * Diseño mandatorio basado en Dashboard Kanban Operativo
  * 
  * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
@@ -17,13 +17,13 @@ interface HeaderModuloCIGProps {
   accionesPersonalizadas?: React.ReactNode;
 }
 
-export function HeaderModuloCIG({ 
+export function HeaderModuloCIG({
   titulo, 
   subtitulo, 
   accionesPersonalizadas 
 }: HeaderModuloCIGProps) {
   return (
-    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
+    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-2 sm:mb-4">
       <div className="flex-1">
         <h2 
           className="font-black leading-tight text-xl sm:text-2xl"
@@ -45,3 +45,6 @@ export function HeaderModuloCIG({
     </div>
   );
 }
+
+// Compatibilidad con imports previos escritos con el typo original.
+export const HeaderModulOCIG = HeaderModuloCIG;

@@ -5,13 +5,13 @@
  * 
  * Integración completa del Rol 4 del Plan Anual de Auditoría con:
  * - Universo Auditable (selección de áreas a auditar)
- * - Módulo de Auditorías OCIG (ejecución y seguimiento)
+ * - Módulo de Auditorías OCI (ejecución y seguimiento)
  * - Módulo de Planes de Mejoramiento (gestión de hallazgos)
  * 
  * FLUJO INTEGRADO:
  * 1. Seleccionar áreas del Universo Auditable por nivel de riesgo
  * 2. Crear programa anual de auditorías con cronograma
- * 3. Vincular cada auditoría programada con auditorías del módulo OCIG
+ * 3. Vincular cada auditoría programada con auditorías del módulo OCI
  * 4. Seguimiento en tiempo real del avance de auditorías
  * 5. Conexión automática con Planes de Mejoramiento de hallazgos
  * 

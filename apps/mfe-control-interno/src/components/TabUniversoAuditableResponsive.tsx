@@ -21,7 +21,7 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import {
   Layers, Search, AlertTriangle, CheckCircle2, AlertCircle,
-  Plus, Edit2, Trash2, X, ChevronDown, ChevronUp, FileText, Eye, Target, Info
+  Plus, Edit2, Trash2, X, ChevronDown, ChevronUp, FileText, Eye, Target, Info, RefreshCw
 } from 'lucide-react';
 import { ResponsiveTable, MobileCard, MobileCardRow, type Column } from '../../ui/responsive-table';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -50,7 +50,6 @@ interface ProcesoAuditable {
   frecuenciaSugerida: string;
   horasEstimadas: number;
   auditable: boolean;
-  // ✅ Datos de evaluación del backend para cargar en el modal DAFP
   _evaluacionRiesgo?: {
     riesgosExtremos?: number;
     riesgosAltos?: number;
@@ -65,6 +64,16 @@ interface ProcesoAuditable {
     decisionFinal?: string;
     motivoDecision?: string;
     prioridadRegla?: number;
+    // Criterios DAFP
+    tiempoUltimaAuditoria?: number;
+    temasAltaDireccion?: number;
+    objetivosEstrategicos?: number;
+    hallazgosAnteriores?: number;
+    ponderacionFinalDafp?: number;
+    nivelCriticidadDafp?: string;
+    cicloRotacionDafp?: string;
+    vigencia?: number;
+    fechaCorte?: string;
   };
   ultimaAuditoria?: string;
   resultadoUltimaAuditoria?: string;
@@ -93,6 +102,8 @@ interface TabUniversoAuditableResponsiveProps {
   onEliminarProceso: (id: string) => void;
   // ✅ Nueva prop para guardar evaluaciones DAFP directamente al backend
   onGuardarEvaluacion?: (id: string, datos: any) => Promise<boolean>;
+  // ✅ Nueva prop para recargar datos
+  onRefresh?: () => void;
   // ✅ PERMISOS - Control de visibilidad de acciones
   puedeCrear?: boolean;
   puedeEditar?: boolean;
@@ -130,6 +141,7 @@ export function TabUniversoAuditableResponsive({
   onEditarProceso,
   onEliminarProceso,
   onGuardarEvaluacion,
+  onRefresh,
   puedeCrear = true,
   puedeEditar = true,
   puedeEliminar = true
@@ -137,6 +149,21 @@ export function TabUniversoAuditableResponsive({
   
   const { isMobile, isTablet } = useResponsive();
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(!isMobile);
+  const [refreshing, setRefreshing] = useState(false);
+  
+  // Handler para refresh manual
+  const handleRefresh = async () => {
+    if (!refreshing) {
+      setRefreshing(true);
+      try {
+        if (onRefresh) {
+          await onRefresh();
+        }
+      } finally {
+        setTimeout(() => setRefreshing(false), 500);
+      }
+    }
+  };
   
   // Estado para evaluación DAFP
   const [modalDafpAbierto, setModalDafpAbierto] = useState(false);
@@ -240,19 +267,36 @@ export function TabUniversoAuditableResponsive({
       const ponderacionCalculada = calcularPonderacionRiesgo(extremos, altos, moderados, bajos, total);
       
       return {
+        // Riesgos inherentes
         riesgosExtremos: extremos,
         riesgosAltos: altos,
         riesgosModerados: moderados,
         riesgosBajos: bajos,
         totalRiesgos: total,
+        // Requerimientos especiales
         requerimientoComite: proceso._evaluacionRiesgo.requerimientoComite ?? false,
         requerimientoEntesReg: proceso._evaluacionRiesgo.requerimientoEntesReg ?? false,
+        // Auditoría anterior
         fechaUltimaAuditoria: proceso._evaluacionRiesgo.fechaUltimaAuditoria || proceso.ultimaAuditoria || '',
         resultadoUltimaAuditoria: proceso._evaluacionRiesgo.resultadoUltimaAuditoria || proceso.resultadoUltimaAuditoria || 'SIN_AUDITORIA',
-        ponderacionRiesgo: ponderacionCalculada, // Recalculado desde los datos guardados
-        decisionFinal: '', // No se guarda en backend
-        motivoDecision: '',
-        prioridadRegla: 0,
+        // Score legacy
+        ponderacionRiesgo: ponderacionCalculada,
+        criticidad: proceso._evaluacionRiesgo.criticidad ?? 0,
+        exposicion: proceso._evaluacionRiesgo.exposicion ?? 0,
+        mitigantes: proceso._evaluacionRiesgo.mitigantes ?? 0,
+        scoreRiesgo: proceso._evaluacionRiesgo.scoreRiesgo ?? 0,
+        // Criterios DAFP (migración 179)
+        tiempoUltimaAuditoria: proceso._evaluacionRiesgo.tiempoUltimaAuditoria ?? 0,
+        temasAltaDireccion: proceso._evaluacionRiesgo.temasAltaDireccion ?? 0,
+        objetivosEstrategicos: proceso._evaluacionRiesgo.objetivosEstrategicos ?? 0,
+        hallazgosAnteriores: proceso._evaluacionRiesgo.hallazgosAnteriores ?? 0,
+        ponderacionFinalDafp: proceso._evaluacionRiesgo.ponderacionFinalDafp ?? 0,
+        nivelCriticidadDafp: proceso._evaluacionRiesgo.nivelCriticidadDafp ?? '',
+        cicloRotacionDafp: proceso._evaluacionRiesgo.cicloRotacionDafp ?? '',
+        // Decisión
+        decisionFinal: proceso._evaluacionRiesgo.decisionFinal ?? '',
+        motivoDecision: proceso._evaluacionRiesgo.motivoDecision ?? '',
+        prioridadRegla: proceso._evaluacionRiesgo.prioridadRegla ?? 0,
       };
     })() : undefined;
     
@@ -290,190 +334,233 @@ export function TabUniversoAuditableResponsive({
   // DEFINICIÓN DE COLUMNAS
   // ══════════════════════════════════════════════════════════════════════════
 
+  // Calcula años de priorización según ciclo de rotación DAFP
+  // Priorización DAFP RE-E-GE-034: años activos dentro del cuatrienio
+  const calcPriorizacionAnos = (ciclo?: string) => {
+    if (!ciclo) return [];
+    if (ciclo === 'Cada año')    return [1, 2, 3, 4]; // Extremo: todos
+    if (ciclo === 'Cada 2 años') return [2, 4];       // Alto: años pares
+    if (ciclo === 'Cada 3 años') return [3];           // Moderado: tercer año
+    if (ciclo === 'Cada 4 años') return [4];           // Bajo: cuarto año
+    return [];
+  };
+
+  const CRITICIDAD_COLORS: Record<string, { bg: string; text: string }> = {
+    'Extremo':  { bg: '#FEE2E2', text: '#991B1B' },
+    'Alto':     { bg: '#FFEDD5', text: '#9A3412' },
+    'Moderado': { bg: '#FEF9C3', text: '#854D0E' },
+    'Bajo':     { bg: '#DBEAFE', text: '#1E40AF' },
+  };
+
   const columns: Column<ProcesoAuditable>[] = [
+    // 1. Código
     {
       key: 'codigo',
       label: 'Código',
-      width: '120px',
+      width: '110px',
       render: (value) => (
-        <span className="font-mono text-sm font-bold text-gray-900">{value}</span>
+        <span className="font-mono text-xs font-bold text-gray-800">{value}</span>
       )
     },
+    // 2. Proceso + macroproceso
     {
       key: 'nombre',
       label: 'Proceso',
-      render: (_, proceso) => (
+      render: (_, p) => (
         <div>
-          <p className="font-semibold text-gray-900">{proceso.nombre}</p>
-          <p className="text-xs text-gray-500 mt-1">{proceso.macroproceso}</p>
+          <p className="font-semibold text-gray-900 text-sm leading-tight">{p.nombre}</p>
+          {p.macroproceso && (
+            <p className="text-xs text-gray-400 mt-0.5">{p.macroproceso}</p>
+          )}
         </div>
       )
     },
+    // 3. Tipo
     {
       key: 'tipoProceso',
       label: 'Tipo',
-      width: '140px',
-      render: (value) => (
-        <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
-          {value}
-        </span>
-      )
-    },
-    // {
-    //   key: 'dependenciaResponsable',
-    //   label: 'Dependencia',
-    //   render: (value) => <span className="text-sm text-gray-700">{value}</span>
-    // },
-    {
-      key: 'nivelRiesgo',
-      label: 'Riesgo',
-      align: 'center',
-      width: '120px',
-      render: (_, proceso) => {
-        const color = getColorRiesgo(proceso.nivelRiesgo);
+      width: '110px',
+      render: (value) => {
+        const tipoColors: Record<string, string> = {
+          'Misional': 'bg-blue-100 text-blue-700',
+          'Estratégico': 'bg-purple-100 text-purple-700',
+          'Apoyo': 'bg-gray-100 text-gray-700',
+          'Evaluación': 'bg-orange-100 text-orange-700',
+        };
         return (
-          <span
-            className="px-3 py-1 rounded-full text-xs font-bold inline-block"
-            style={{
-              backgroundColor: color.bg,
-              color: color.text,
-              border: `2px solid ${color.border}`
-            }}
-          >
-            {proceso.nivelRiesgo}
+          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${tipoColors[value as string] || 'bg-gray-100 text-gray-600'}`}>
+            {value}
           </span>
         );
       }
     },
+    // 4. Riesgo Inherente — nivel consolidado cualitativo (RI cuantitativo)
     {
-      key: 'scoreRiesgo',
-      label: 'Score',
+      key: 'riesgoInherente',
+      label: 'Riesgo inherente',
       align: 'center',
       width: '120px',
-      headerContent: (
-        <div className="flex items-center gap-1.5">
-          <span>Score</span>
-          <Info className="w-4 h-4 text-blue-500 flex-shrink-0" />
-        </div>
-      ),
-      render: (value) => (
-        <div className="inline-flex items-center gap-1">
-          <span className="font-bold text-gray-900">{value}</span>
-          <span className="text-xs text-gray-500">/100</span>
-        </div>
-      )
+      render: (_, p) => {
+        const ev = p._evaluacionRiesgo;
+        const e = ev?.riesgosExtremos ?? 0;
+        const a = ev?.riesgosAltos ?? 0;
+        const m = ev?.riesgosModerados ?? 0;
+        const b = ev?.riesgosBajos ?? 0;
+        const total = e + a + m + b;
+        if (!total) return <span className="text-xs text-gray-300">—</span>;
+
+        // Nivel consolidado: el más alto presente
+        let nivel: string;
+        let style: { bg: string; text: string };
+        if (e >= 1)      { nivel = 'Extremo';  style = { bg: '#FEE2E2', text: '#991B1B' }; }
+        else if (a >= 1) { nivel = 'Alto';     style = { bg: '#FFEDD5', text: '#9A3412' }; }
+        else if (m >= 1) { nivel = 'Moderado'; style = { bg: '#FEF9C3', text: '#854D0E' }; }
+        else             { nivel = 'Bajo';     style = { bg: '#DBEAFE', text: '#1E40AF' }; }
+
+        return (
+          <span
+            className="px-2.5 py-1 rounded-full text-xs font-bold"
+            style={{ backgroundColor: style.bg, color: style.text }}
+          >
+            {nivel}
+          </span>
+        );
+      }
     },
+    // 5. Ponderación DAFP
     {
-      key: 'frecuenciaSugerida',
-      label: 'Frecuencia',
+      key: 'ponderacionDafp',
+      label: 'Ponderación DAFP',
       align: 'center',
-      width: '120px',
-      render: (value) => <span className="text-sm text-gray-700">{value}</span>
+      width: '130px',
+      render: (_, p) => {
+        const pond = p._evaluacionRiesgo?.ponderacionFinalDafp;
+        if (!pond) return <span className="text-xs text-gray-300">—</span>;
+        return (
+          <div className="text-center">
+            <span className="text-base font-bold text-[#003DA5]">{Number(pond).toFixed(2)}</span>
+            <span className="text-xs text-gray-400"> / 5.0</span>
+          </div>
+        );
+      }
     },
+    // 6. Criticidad
+    {
+      key: 'criticidad',
+      label: 'Criticidad',
+      align: 'center',
+      width: '110px',
+      render: (_, p) => {
+        const nivel = p._evaluacionRiesgo?.nivelCriticidadDafp;
+        if (!nivel) return <span className="text-xs text-gray-300">—</span>;
+        const c = CRITICIDAD_COLORS[nivel] || { bg: '#E5E7EB', text: '#374151' };
+        return (
+          <span
+            className="px-2 py-0.5 rounded-full text-xs font-bold"
+            style={{ backgroundColor: c.bg, color: c.text }}
+          >
+            {nivel}
+          </span>
+        );
+      }
+    },
+    // 7. Ciclo de rotación
+    {
+      key: 'ciclo',
+      label: 'Ciclo',
+      align: 'center',
+      width: '110px',
+      render: (_, p) => {
+        const ciclo = p._evaluacionRiesgo?.cicloRotacionDafp;
+        if (!ciclo) return <span className="text-xs text-gray-300">—</span>;
+        return <span className="text-xs font-medium text-gray-700">{ciclo}</span>;
+      }
+    },
+    // 8. Horas estimadas
     {
       key: 'horasEstimadas',
       label: 'Horas Est.',
       align: 'center',
-      width: '100px',
-      render: (value) => <span className="font-bold text-gray-900">{value}h</span>
+      width: '90px',
+      render: (value) => (
+        <span className="text-sm font-bold text-gray-700">{value}h</span>
+      )
     },
+    // 9. Auditable
     {
       key: 'auditable',
       label: 'Auditable',
       align: 'center',
-      width: '100px',
+      width: '90px',
       render: (value) =>
         value ? (
           <CheckCircle2 className="w-5 h-5 text-green-600 mx-auto" />
         ) : (
-          <X className="w-5 h-5 text-gray-400 mx-auto" />
+          <X className="w-5 h-5 text-gray-300 mx-auto" />
         )
     },
+    // 10. Priorización años
     {
-      key: 'evaluacionDafp',
-      label: 'Evaluación DAFP',
+      key: 'priorizacionAnos',
+      label: 'Priorización años',
       align: 'center',
-      width: '160px',
-      render: (_, proceso) => {
-        // Convertir ProcesoAuditable a ProcesoAuditableType
-        const procesoCompleto = convertirProceso(proceso);
-        
-        if (procesoCompleto.evaluacionDafp) {
-          const ponderacion = procesoCompleto.evaluacionDafp.ponderacionRiesgo;
-          const etiqueta = ponderacion ? ETIQUETAS_RIESGO[ponderacion] : null;
-          
-          return (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleVerDafp(proceso);
-              }}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg hover:shadow-md transition-all"
-              style={{
-                background: etiqueta?.bgGradient || '#9CA3AF',
-                color: '#FFFFFF'
-              }}
-              title="Ver resultados de evaluación DAFP"
-            >
-              <Eye className="w-4 h-4" />
-              <span className="text-xs font-bold">
-                {etiqueta?.label || 'Ver'}
-              </span>
-            </button>
-          );
-        }
-        
+      width: '150px',
+      render: (_, p) => {
+        const ciclo = p._evaluacionRiesgo?.cicloRotacionDafp;
+        const anosActivos = calcPriorizacionAnos(ciclo);
+        if (!ciclo) return <span className="text-xs text-gray-300">—</span>;
         return (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleEvaluarDafp(proceso);
-            }}
-            className="inline-flex items-center gap-2 px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-lg border-2 border-yellow-300 hover:bg-yellow-200 transition-colors"
-            title="Realizar evaluación DAFP completa"
-          >
-            <Target className="w-4 h-4" />
-            <span className="text-xs font-semibold">Evaluar</span>
-          </button>
+          <div className="flex gap-1 justify-center">
+            {[1, 2, 3, 4].map(ano => (
+              <span
+                key={ano}
+                className={`w-7 h-7 rounded-md text-xs font-bold flex items-center justify-center border transition-all ${
+                  anosActivos.includes(ano)
+                    ? 'bg-[#003DA5] text-white border-[#003DA5]'
+                    : 'bg-gray-50 text-gray-300 border-gray-200'
+                }`}
+              >
+                {ano}
+              </span>
+            ))}
+          </div>
         );
       }
     },
+    // 11. Acciones
     {
       key: 'id',
       label: 'Acciones',
       align: 'center',
-      width: '120px',
+      width: '100px',
       render: (_, proceso) => (
-        <div className="flex items-center justify-center gap-2">
+        <div className="flex items-center justify-center gap-1">
           {puedeEditar && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onEditarProceso(proceso);
-            }}
-            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            title="Editar proceso"
-          >
-            <Edit2 className="w-4 h-4" />
-          </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onEditarProceso(proceso); }}
+              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              title={proceso._evaluacionRiesgo?.ponderacionFinalDafp ? 'Editar evaluación DAFP' : 'Agregar evaluación DAFP'}
+            >
+              <Edit2 className="w-4 h-4" />
+            </button>
           )}
-          {puedeEliminar && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (confirm(`¿Está seguro de eliminar el proceso "${proceso.nombre}"?`)) {
-                onEliminarProceso(proceso.id);
-              }
-            }}
-            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            title="Eliminar proceso"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {puedeEliminar && proceso._evaluacionRiesgo?.ponderacionFinalDafp && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (confirm(`¿Eliminar la evaluación de "${proceso.nombre}"?`)) {
+                  onEliminarProceso(proceso.id);
+                }
+              }}
+              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+              title="Eliminar evaluación"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
           )}
         </div>
       )
-    }
+    },
   ];
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -751,6 +838,18 @@ export function TabUniversoAuditableResponsive({
               <p className="text-sm text-gray-600 mt-1">
                 Procesos del universo auditable institucional según el MECI
               </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {onRefresh && (
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 flex items-center gap-2 transition-all disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  <span className="hidden md:inline">Actualizar</span>
+                </button>
+              )}
             </div>
             {puedeCrear && (
             <button

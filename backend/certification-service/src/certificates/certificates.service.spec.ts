@@ -9,6 +9,58 @@ describe('CertificatesService', () => {
     service = Object.create(CertificatesService.prototype) as CertificatesService;
   });
 
+  it('prioriza carrera administrativa sobre provisional cuando ambos registros estan activos y sin encargo', () => {
+    const provisionalRequest = {
+      id: 'provisional',
+      position_category: 'Provisional',
+      observations: 'N',
+      status: 'A',
+      hiring_date: new Date('2001-07-30'),
+      request_date: null,
+    } as CertificateRequest;
+    const primaryRequest = {
+      id: 'principal',
+      position_category: 'Cra. Administrativa',
+      observations: 'N',
+      status: 'A',
+      hiring_date: new Date('2001-07-30'),
+      request_date: null,
+    } as CertificateRequest;
+
+    const selected = service['selectPreferredRequestForCertificate']([
+      provisionalRequest,
+      primaryRequest,
+    ]);
+
+    expect(selected?.id).toBe('principal');
+  });
+
+  it('mantiene el orden original cuando no existe un registro de carrera administrativa para desempatar', () => {
+    const firstRequest = {
+      id: 'provisional-1',
+      position_category: 'Provisional',
+      observations: 'N',
+      status: 'A',
+      hiring_date: new Date('2001-07-30'),
+      request_date: null,
+    } as CertificateRequest;
+    const secondRequest = {
+      id: 'provisional-2',
+      position_category: 'Libre Nombramiento',
+      observations: 'N',
+      status: 'A',
+      hiring_date: new Date('2001-07-30'),
+      request_date: null,
+    } as CertificateRequest;
+
+    const selected = service['selectPreferredRequestForCertificate']([
+      firstRequest,
+      secondRequest,
+    ]);
+
+    expect(selected?.id).toBe('provisional-1');
+  });
+
   it('prioriza el cod_cargo compatible que conserva el cero a la izquierda', () => {
     const selectedRequest = {
       id: 'selected',

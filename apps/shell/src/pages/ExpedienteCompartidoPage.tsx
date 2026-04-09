@@ -177,15 +177,13 @@ export function ExpedienteCompartidoPage() {
     setErrorPDF(null);
 
     try {
-      if (!expedienteData?.proceso.id || !doc.id) {
+      if (!token || !doc.id) {
         throw new Error('Información del documento incompleta');
       }
 
-      const endpoint = API_MODE === 'direct'
-        ? `/disciplinary-processes/${expedienteData.proceso.id}/documents/${doc.id}/download`
-        : `/api/v1/disciplinary-processes/${expedienteData.proceso.id}/documents/${doc.id}/download`;
-      
-      const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
+      // Usar el endpoint público para descarga de documentos compartidos
+      const docPath = `/compartir-expediente/documento/${token}/${doc.id}/download?view=true`;
+      const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? docPath : `/api/v1${docPath}`);
 
       const response = await fetch(downloadUrl, {
         method: 'GET',
@@ -212,22 +210,25 @@ export function ExpedienteCompartidoPage() {
   // Descargar documento
   const handleDescargarDocumento = async (doc: Documento) => {
     try {
-      if (!expedienteData?.proceso.id || !doc.id) {
+      if (!token || !doc.id) {
         toast.error('Información del documento incompleta');
         return;
       }
 
       toast.loading('Descargando documento...', { id: 'download' });
 
-      if (doc.downloadUrl) {
-        await disciplinaryService.downloadFileFromUrl(doc.downloadUrl, doc.nombre);
-      } else {
-        await disciplinaryService.downloadDocument(
-          expedienteData.proceso.id,
-          doc.id,
-          doc.nombre
-        );
-      }
+      // Usar el endpoint público para descarga de documentos compartidos
+      const docPath2 = `/compartir-expediente/documento/${token}/${doc.id}/download`;
+      const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? docPath2 : `/api/v1${docPath2}`);
+
+      // Crear un enlace temporal para descargar
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = doc.nombre || 'documento';
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
       toast.success('Descarga completada', {
         id: 'download',
@@ -609,8 +610,8 @@ export function ExpedienteCompartidoPage() {
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
           onClick={() => setShowModalVisor(false)}
         >
-          <div 
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col"
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl overflow-hidden flex flex-col" style={{ height: '92vh' }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -634,7 +635,7 @@ export function ExpedienteCompartidoPage() {
             </div>
 
             {/* Visor */}
-            <div className="flex-1 min-h-0 overflow-hidden" style={{ height: '500px' }}>
+            <div className="flex-1 min-h-0 overflow-hidden">
               {cargandoPDF && (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">

@@ -22,7 +22,7 @@ import {
   Search, CheckCircle2, XCircle, AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import { HeaderModuloCIG } from './HeaderModuloCIG';
+import { HeaderModulOCIG } from './HeaderModuloCIG';
 import { TooltipGuia } from './TooltipGuia';
 import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';
 
@@ -201,7 +201,7 @@ export function RolesYPermisosModulePremium() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <HeaderModuloCIG
+      <HeaderModulOCIG
         titulo="Asignación de Roles y Permisos"
         subtitulo="Control Interno de Gestión"
       />

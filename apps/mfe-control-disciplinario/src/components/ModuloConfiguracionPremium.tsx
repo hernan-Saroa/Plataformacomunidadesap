@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+import { useResponsive } from './hooks/useResponsive';
 import { motion, AnimatePresence } from 'motion/react';
 import { LayoutGrid, Users, FileText, Mail, Bell, ClipboardList, Clock, ArrowRightLeft } from 'lucide-react';
 
@@ -24,6 +25,7 @@ type TabActiva = 'ESTADOS_KANBAN' | 'CARGOS' | 'PLANTILLAS_AUTOS' | 'PLANTILLAS_
 
 export function ModuloConfiguracionPremium() {
   const [tabActiva, setTabActiva] = useState<TabActiva>('PLANTILLAS_AUTOS'); // Por defecto en Plantillas
+  const { isMobile } = useResponsive();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -44,8 +46,8 @@ export function ModuloConfiguracionPremium() {
 
       {/* Tabs de navegación con diseño limpio */}
       <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
-        <div className="w-full px-8">
-          <div className="flex gap-1">
+        <div className={`w-full ${isMobile ? 'px-4' : 'px-8'}`}>
+          <div className={`flex gap-1 ${isMobile ? 'overflow-x-auto scrollbar-hide' : 'overflow-x-auto'}`}>
             <TabButton
               active={tabActiva === 'ESTADOS_KANBAN'}
               onClick={() => setTabActiva('ESTADOS_KANBAN')}
@@ -133,7 +135,7 @@ function TabButton({ active, onClick, icon, label }: any) {
   return (
     <button
       onClick={onClick}
-      className={`relative px-6 py-4 flex items-center gap-2 text-sm font-medium border-b-2 transition-all ${active
+      className={`relative px-4 py-3 flex items-center gap-2 text-sm font-medium border-b-2 transition-all flex-shrink-0 ${active
           ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50/50'
           : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
         }`}

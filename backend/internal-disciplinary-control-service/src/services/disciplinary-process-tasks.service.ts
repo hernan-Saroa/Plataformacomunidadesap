@@ -17,6 +17,8 @@ export class DisciplinaryProcessTasksService {
     private readonly processRepository: Repository<DisciplinaryProcess>,
   ) {}
 
+  // Not needed anymore
+
   async listByProcess(processId: string): Promise<DisciplinaryProcessTask[]> {
     await this.ensureProcessExists(processId);
 
@@ -41,7 +43,7 @@ export class DisciplinaryProcessTasksService {
       titulo: dto.titulo.trim(),
       descripcion: dto.descripcion?.trim() || null,
       prioridad: dto.prioridad.trim().toLowerCase(),
-      etapa: dto.etapa?.trim() || process.kanbanStage || process.etapaActual,
+      etapa: dto.etapa?.trim() || process.etapaActual,
       responsableNombre: dto.responsableNombre?.trim() || null,
       fechaVencimiento: dto.fechaVencimiento,
       completada: false,

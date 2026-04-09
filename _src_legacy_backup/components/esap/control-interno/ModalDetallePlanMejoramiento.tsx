@@ -33,8 +33,8 @@
                                           // ✅ HOOK DE BACKEND
                                           import { usePlanMejoramientoDetalle } from './services/usePlanMejoramientoDetalle';
 
-                                          // ✅ API para profesionales OCIG
-                                          import { configuracionesProfesionalesOCIGApi } from './services/api';
+                                          // ✅ API para profesionales OCI
+                                          import { configuracionesProfesionalesOCIApi } from './services/api';
 
                                           // ✅ API para cargar evidencias
                                           import { controlInternoService } from '../../../services/api/controlInternoService';
@@ -2940,12 +2940,12 @@
                                               observaciones: accion.observaciones || ''
                                             });
 
-                                            // Cargar profesionales OCIG al montar
+                                            // Cargar profesionales OCI al montar
                                             useEffect(() => {
                                               const cargarProfesionales = async () => {
                                                 setCargandoProfesionales(true);
                                                 try {
-                                                  const response = await configuracionesProfesionalesOCIGApi.getAll();
+                                                  const response = await configuracionesProfesionalesOCIApi.getAll();
                                                   
                                                   if (response.success && response.data && response.data.length > 0) {
                                                     const profs = response.data
@@ -2953,7 +2953,7 @@
                                                       .map((config: any) => ({
                                                         id: String(config.idTercero),
                                                         nombre: config.nombre || `Profesional ${config.idTercero}`,
-                                                        cargo: config.rolOcig || 'Profesional'
+                                                        cargo: config.rolOCI || 'Profesional'
                                                       }));
                                                     setProfesionales(profs);
                                                   }
@@ -3199,13 +3199,13 @@
                                               observaciones: ''
                                             });
 
-                                            // Cargar profesionales OCIG al montar
+                                            // Cargar profesionales OCI al montar
                                             useEffect(() => {
                                               const cargarProfesionales = async () => {
                                                 setCargandoProfesionales(true);
                                                 try {
-                                                  const response = await configuracionesProfesionalesOCIGApi.getAll();
-                                                  console.log('[ModalCrearAccion] Profesionales OCIG response:', response);
+                                                  const response = await configuracionesProfesionalesOCIApi.getAll();
+                                                  console.log('[ModalCrearAccion] Profesionales OCI response:', response);
                                                   
                                                   if (response.success && response.data && response.data.length > 0) {
                                                     const profs = response.data
@@ -3213,12 +3213,12 @@
                                                       .map((config: any) => ({
                                                         id: String(config.idTercero),
                                                         nombre: config.nombre || `Profesional ${config.idTercero}`,
-                                                        cargo: config.rolOcig || 'Profesional'
+                                                        cargo: config.rolOCI || 'Profesional'
                                                       }));
                                                     setProfesionales(profs);
                                                     console.log('[ModalCrearAccion] Profesionales cargados:', profs.length);
                                                   } else {
-                                                    console.warn('[ModalCrearAccion] No hay profesionales OCIG configurados');
+                                                    console.warn('[ModalCrearAccion] No hay profesionales OCI configurados');
                                                     toast.warning('No hay profesionales configurados');
                                                   }
                                                 } catch (error) {

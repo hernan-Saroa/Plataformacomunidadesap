@@ -5,7 +5,7 @@ export class CreateReassignmentRequestDto {
   @IsUUID()
   processId: string;
 
-  @IsUUID()
+  @IsString()
   newProfessionalId: string;
 
   @IsString()

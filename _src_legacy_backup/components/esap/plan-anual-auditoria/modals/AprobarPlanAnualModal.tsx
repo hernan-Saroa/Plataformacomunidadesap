@@ -48,8 +48,8 @@ export function AprobarPlanAnualModal({ isOpen, onClose, onAprobar, planInfo }: 
           <div className="px-8 py-6 space-y-4">
             <p className="text-base text-gray-700">
               {mostrarConfirmacion === 'Aprobado' 
-                ? '¿Está seguro de aprobar el Plan Anual OCIG? Esta acción permitirá su ejecución inmediata.'
-                : '¿Está seguro de rechazar el Plan Anual OCIG? El plan volverá a estado Borrador para correcciones.'
+                ? '¿Está seguro de aprobar el Plan Anual OCI? Esta acción permitirá su ejecución inmediata.'
+                : '¿Está seguro de rechazar el Plan Anual OCI? El plan volverá a estado Borrador para correcciones.'
               }
             </p>
 
@@ -101,8 +101,8 @@ export function AprobarPlanAnualModal({ isOpen, onClose, onAprobar, planInfo }: 
         <div className="bg-gradient-to-r from-[#003DA5] to-[#2962FF] px-8 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold text-white">Aprobar Plan Anual OCIG</h2>
-              <p className="text-white/80 text-base mt-1">Revisión y decisión del Jefe de OCIG</p>
+              <h2 className="text-2xl font-bold text-white">Aprobar Plan Anual OCI</h2>
+              <p className="text-white/80 text-base mt-1">Revisión y decisión del Jefe de OCI</p>
             </div>
             <button
               onClick={onClose}
@@ -186,7 +186,7 @@ export function AprobarPlanAnualModal({ isOpen, onClose, onAprobar, planInfo }: 
               <div className="flex gap-3">
                 <span className="text-2xl">📋</span>
                 <div className="flex-1">
-                  <h4 className="font-bold text-[#F57C00] text-base mb-1">Responsabilidad del Jefe OCIG</h4>
+                  <h4 className="font-bold text-[#F57C00] text-base mb-1">Responsabilidad del Jefe OCI</h4>
                   <ul className="text-sm text-gray-700 space-y-1">
                     <li>• <strong>Aprobar:</strong> El plan queda vigente y en ejecución inmediata</li>
                     <li>• <strong>Rechazar:</strong> El plan vuelve a Borrador para correcciones</li>

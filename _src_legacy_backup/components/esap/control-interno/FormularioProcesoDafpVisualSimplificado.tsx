@@ -1,73 +1,39 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * FORMULARIO PROCESO AUDITABLE - CUESTIONARIO DAFP VISUAL
+ * FORMULARIO PROCESO AUDITABLE — EVALUACIÓN DAFP RE-E-GE-034
  * ═══════════════════════════════════════════════════════════════════════════
- * 
- * ✅ IMPLEMENTACIÓN EXACTA según CUESTIONARIO_FLUJO_DAFP_VISUAL.md
- * 
- * ENCABEZADO:
- * - Proceso/Proyecto/Procedimiento
- * - Vigencia
- * - Fecha de Corte
- * 
- * SECCIÓN 1: Número de Riesgos Inherentes (D, E, F, G, H)
- * SECCIÓN 2: Requerimientos Especiales (J, K)
- * SECCIÓN 3: Información de Auditoría Anterior (L, N)
- * 
- * CÁLCULO AUTOMÁTICO EN TIEMPO REAL
- * 
+ *
+ * Metodología:
+ *   Ponderación = RI×0.4 + Tiempo×0.1 + Alta Dirección×0.1 + Obj×0.1 + Hallazgos×0.3
+ *
+ * SECCIÓN 1: Información Básica (proceso, macroproceso, dependencia, vigencia, corte)
+ * SECCIÓN 2: Riesgo Inherente — contadores +/−
+ * SECCIÓN 3: Criterios de Priorización (4 criterios con calificación automática)
+ * SECCIÓN 4: Resultados DAFP (ponderación, criticidad, ciclo, priorización años 1–4)
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import {
-  X, Save, Layers, AlertTriangle, Calendar, TrendingUp,
-  CheckCircle2, Clock, Info, Activity, BarChart3, AlertCircle
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  CalendarCheck,
+  Info,
+  Layers,
+  Save,
+  Target,
+  X
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner@2.0.3';
 import {
+  type DecisionFinal,
+  type DecisionRotacion,
   type NivelRiesgo,
   type ResultadoAuditoria,
-  type DecisionRotacion,
-  type DecisionFinal,
   calcularPonderacionRiesgo,
-  calcularDiasTranscurridos,
-  obtenerPlanRotacion,
-  calcularDecisionRotacion,
-  calcularDecisionFinal,
-  getColorRiesgo,
-  getEmojiRiesgo
 } from './dafp-utils';
-
-// ════════════════════════════════════════════════════════════════════════════
-// CATÁLOGO DE DEPENDENCIAS ESAP (alineado con Gestión Legal y Planificación)
-// ════════════════════════════════════════════════════════════════════════════
-
-const DEPENDENCIAS_ESAP = [
-  { value: '', label: '-- Seleccione dependencia --' },
-  { value: 'Rectoría Nacional', label: 'Rectoría Nacional' },
-  { value: 'Secretaría General', label: 'Secretaría General' },
-  { value: 'Dirección Administrativa y Financiera', label: 'Dirección Administrativa y Financiera' },
-  { value: 'Dirección de Docencia', label: 'Dirección de Docencia' },
-  { value: 'Dirección Académica', label: 'Dirección Académica' },
-  { value: 'Dirección de Investigación', label: 'Dirección de Investigación' },
-  { value: 'Dirección de Extensión', label: 'Dirección de Extensión' },
-  { value: 'Dirección de Tecnología', label: 'Dirección de Tecnología' },
-  { value: 'Oficina Jurídica', label: 'Oficina Jurídica' },
-  { value: 'Control Interno', label: 'Control Interno' },
-  { value: 'Oficina de Planeación', label: 'Oficina de Planeación' },
-  { value: 'Talento Humano', label: 'Talento Humano' },
-  { value: 'Dirección de RRHH', label: 'Dirección de RRHH' },
-  { value: 'Comunicaciones', label: 'Comunicaciones' },
-  { value: 'Oficina Comunicaciones', label: 'Oficina Comunicaciones' },
-  { value: 'Archivo General', label: 'Archivo General' },
-  { value: 'Gestión Administrativa', label: 'Gestión Administrativa' },
-  { value: 'Oficina Control Disciplinario', label: 'Oficina Control Disciplinario' },
-  { value: 'Atención al Usuario', label: 'Atención al Usuario' },
-  { value: 'Coordinación Ambiental', label: 'Coordinación Ambiental' },
-  { value: 'Oficina de Relaciones Internacionales', label: 'Oficina de Relaciones Internacionales' },
-];
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -75,43 +41,48 @@ const DEPENDENCIAS_ESAP = [
 
 export interface FormularioDafpData {
   // ENCABEZADO
-  nombre: string;                        // Proceso/Proyecto/Procedimiento
-  vigencia: number;                      // Año
-  fechaCorte: string;                    // Fecha de corte
+  nombre: string;
+  vigencia: number;
+  fechaCorte: string;
 
   // SECCIÓN 1: Número de Riesgos Inherentes
-  riesgosExtremos: number;               // D
-  riesgosAltos: number;                  // E
-  riesgosModerados: number;              // F
-  riesgosBajos: number;                  // G
-  totalRiesgos: number;                  // H (auto-calculado)
+  riesgosExtremos: number;
+  riesgosAltos: number;
+  riesgosModerados: number;
+  riesgosBajos: number;
+  totalRiesgos: number;
 
-  // SECCIÓN 2: Requerimientos Especiales
-  requerimientoComite: boolean;          // J
-  requerimientoEntesReg: boolean;        // K
+  // SECCIÓN 2: Criterios de Priorización DAFP
+  tiempoUltimaAuditoria: number;   // 1–5
+  temasAltaDireccion: number;      // 2–5
+  objetivosEstrategicos: number;   // 2–5
+  hallazgosAnteriores: number;     // 1–5
 
-  // SECCIÓN 3: Información de Auditoría Anterior
-  fechaUltimaAuditoria: string | null;   // L
-  resultadoUltimaAuditoria: ResultadoAuditoria;  // N
+  // Resultados calculados DAFP
+  ponderacionFinalDafp: number;
+  nivelCriticidadDafp: string;
+  cicloRotacionDafp: string;
 
-  // CÁLCULOS AUTOMÁTICOS
-  ponderacionRiesgo: NivelRiesgo;        // I12
-  diasTranscurridos: number | null;      // M12
-  planRotacion: string;                  // O12
-  diasRotacion: number;                  // P12
-  decisionRotacion: DecisionRotacion;    // Q12
-  decisionFinal: DecisionFinal;          // R12
+  // ══ Campos heredados para compatibilidad con el backend / otras vistas ══
+  requerimientoComite: boolean;
+  requerimientoEntesReg: boolean;
+  fechaUltimaAuditoria: string | null;
+  resultadoUltimaAuditoria: ResultadoAuditoria;
+  ponderacionRiesgo: NivelRiesgo;
+  diasTranscurridos: number | null;
+  planRotacion: string;
+  diasRotacion: number;
+  decisionRotacion: DecisionRotacion;
+  decisionFinal: DecisionFinal;
   motivoDecision: string;
-  prioridadRegla: number;                // 1-5
-
-  // ═══ SCORE DE RIESGO C+E-M (modelo simplificado 0-15 pts)
-  criticidad?: number;        // C: 0-5, impacto si el proceso falla
-  exposicion?: number;        // E: 0-5, probabilidad de materialización
-  mitigantes?: number;        // M: 0-5, controles que reducen riesgo
-  scoreRiesgoCEM?: number;    // Score = C + E - M (rango 0-15)
+  prioridadRegla: number;
+  criticidad?: number;
+  exposicion?: number;
+  mitigantes?: number;
+  scoreRiesgoCEM?: number;
   nivelRiesgoCEM?: 'Bajo' | 'Moderado' | 'Alto' | 'Crítico';
 
-  // Metadatos (opcionales para compatibilidad)
+  // Metadatos
   id?: string;
   codigo?: string;
   macroproceso?: string;
@@ -130,6 +101,10 @@ export interface ProcesoParaSelect {
   id: string;
   nombre: string;
   codigo: string;
+  macroproceso?: string;
+  dependencia?: string;
+  tipo?: string;
+  esEspecial?: boolean; // ★ — se audita todos los años del cuatrienio
 }
 
 interface FormularioProcesoDafpProps {
@@ -138,8 +113,153 @@ interface FormularioProcesoDafpProps {
   onSubmit: (proceso: FormularioDafpData, procesoId?: string) => void;
   procesoInicial?: FormularioDafpData | null;
   mode: 'create' | 'edit';
-  /** Procesos activos del catálogo (para dropdown obligatorio) */
   procesosCatalog?: ProcesoParaSelect[];
+  vigenciaPlan?: number; // Año del plan anual activo
+  fechaCortePlan?: string; // Fecha de corte del plan anual activo
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════════════════════════════
+
+/** RI cuantitativo: primer nivel con ≥1 riesgo */
+function calcRiCuan(e: number, a: number, m: number, b: number): number {
+  if (e >= 1) return 5;
+  if (a >= 1) return 4;
+  if (m >= 1) return 3;
+  if (b >= 1) return 2;
+  return 0;
+}
+
+/** RI cualitativo */
+function calcRiCual(e: number, a: number, m: number, b: number): string {
+  if (e >= 1) return 'Extremo';
+  if (a >= 1) return 'Alto';
+  if (m >= 1) return 'Moderado';
+  if (b >= 1) return 'Bajo';
+  return '—';
+}
+
+/** Fórmula DAFP ponderada */
+function calcPonderacion(riCuan: number, tiempo: number, ad: number, obj: number, hall: number): number {
+  return +(riCuan * 0.4 + tiempo * 0.1 + ad * 0.1 + obj * 0.1 + hall * 0.3).toFixed(2);
+}
+
+/**
+ * Nivel de criticidad según ponderación DAFP RE-E-GE-034
+ * Escala: min 1.6 — max 5.0
+ *   Extremo  ≥ 4.0   → auditoría anual
+ *   Alto     ≥ 3.0   → cada 2 años
+ *   Moderado ≥ 2.0   → cada 3 años
+ *   Bajo     < 2.0   → cada 4 años
+ */
+function calcNivel(pond: number): string {
+  if (pond >= 4.0) return 'Extremo';
+  if (pond >= 3.0) return 'Alto';
+  if (pond >= 2.0) return 'Moderado';
+  return 'Bajo';
+}
+
+function calcCiclo(nivel: string): string {
+  if (nivel === 'Extremo')  return 'Cada año';
+  if (nivel === 'Alto')     return 'Cada 2 años';
+  if (nivel === 'Moderado') return 'Cada 3 años';
+  return 'Cada 4 años';
+}
+
+/**
+ * Priorización años 1–4 según ciclo de rotación DAFP (Guía RE-E-GE-034):
+ *   Extremo  / Cada año    → 1, 2, 3, 4  (auditoría todos los años)
+ *   Alto     / Cada 2 años → 2, 4        (años pares)
+ *   Moderado / Cada 3 años → 3           (tercer año del cuatrienio)
+ *   Bajo     / Cada 4 años → 4           (último año del cuatrienio)
+ */
+function calcAnos(ciclo: string): [boolean, boolean, boolean, boolean] {
+  if (ciclo === 'Cada año')    return [true,  true,  true,  true];
+  if (ciclo === 'Cada 2 años') return [false, true,  false, true];
+  if (ciclo === 'Cada 3 años') return [false, false, true,  false];
+  if (ciclo === 'Cada 4 años') return [false, false, false, true];
+  return [false, false, false, false];
+}
+
+function nivelColorClasses(nivel: string) {
+  switch (nivel) {
+    case 'Extremo': return { box: 'bg-red-50 border-red-300', badge: 'bg-red-100 text-red-800', score: 'text-red-700' };
+    case 'Alto':    return { box: 'bg-orange-50 border-orange-300', badge: 'bg-orange-100 text-orange-800', score: 'text-orange-700' };
+    case 'Moderado':return { box: 'bg-yellow-50 border-yellow-300', badge: 'bg-yellow-100 text-yellow-800', score: 'text-yellow-700' };
+    default:        return { box: 'bg-green-50 border-green-300', badge: 'bg-green-100 text-green-800', score: 'text-green-700' };
+  }
+}
+
+const TIEMPO_OPTIONS = [
+  { value: 1, label: '<= 1 año' },
+  { value: 2, label: '> 1 año <= 2 años' },
+  { value: 3, label: '> 2 años <= 3 años' },
+  { value: 4, label: '> 3 años <= 4 años' },
+  { value: 5, label: '> 4 años / Nunca auditado' },
+];
+
+const AD_OPTIONS = [
+  { value: 2, label: 'Interés bajo' },
+  { value: 3, label: 'Interés medio' },
+  { value: 4, label: 'Interés alto' },
+  { value: 5, label: 'Interés muy relevante' },
+];
+
+const OBJ_OPTIONS = [
+  { value: 2, label: '1 objetivo estratégico' },
+  { value: 3, label: '2 objetivos estratégicos' },
+  { value: 4, label: '3 objetivos estratégicos' },
+  { value: 5, label: '4 o más objetivos estratégicos' },
+];
+
+const HALL_OPTIONS = [
+  { value: 1, label: 'Sin hallazgos' },
+  { value: 2, label: '1 a 2 hallazgos' },
+  { value: 3, label: '3 a 4 hallazgos' },
+  { value: 4, label: '5 a 6 hallazgos' },
+  { value: 5, label: '7 o más hallazgos' },
+];
+
+/**
+ * Procesos especiales que siempre aparecen en los 4 años del cuatrienio.
+ * Para agregar un nuevo proceso especial, incluir su nombre (parcial) aquí.
+ * En el dropdown se marcan automáticamente con |ESP en el value.
+ */
+const PROCESOS_ESP = [
+  'gestión financiera',
+  'formación',
+  'gestión administrativa',
+  'gestión de contratación',
+  'gestión jurídica',
+];
+
+const esProcesoEsp = (nombre: string) =>
+  PROCESOS_ESP.some(esp => nombre.toLowerCase().includes(esp));
+
+// Helpers para leer plan anual activo desde localStorage (fallback cuando no
+// se reciben las props vigenciaPlan / fechaCortePlan desde el padre)
+function getPlanActivoFromStorage() {
+  try {
+    const raw = localStorage.getItem('esap:plan_anual_activo');
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function getVigenciaFromStorage(): number {
+  const plan = getPlanActivoFromStorage();
+  if (plan?.vigencia && typeof plan.vigencia === 'number') return plan.vigencia;
+  return new Date().getFullYear();
+}
+
+function getFechaCorteFromStorage(): string {
+  const plan = getPlanActivoFromStorage();
+  if (plan?.fechaCorte && typeof plan.fechaCorte === 'string') return plan.fechaCorte;
+  const vigencia = plan?.vigencia ?? new Date().getFullYear();
+  return `${vigencia}-12-31`;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -153,116 +273,98 @@ export function FormularioProcesoDafpVisual({
   procesoInicial,
   mode,
   procesosCatalog = [],
+  vigenciaPlan,
+  fechaCortePlan,
 }: FormularioProcesoDafpProps) {
-  
+
   const [procesoIdSeleccionado, setProcesoIdSeleccionado] = useState<string>(procesoInicial?.id || '');
-  const [formData, setFormData] = useState<FormularioDafpData>({
-    nombre: procesoInicial?.nombre || '',
-    vigencia: procesoInicial?.vigencia || new Date().getFullYear(),
-    fechaCorte: procesoInicial?.fechaCorte || new Date().toISOString().split('T')[0],
+  const [esEspecial, setEsEspecial]   = useState(false);
+  const [opcionCiclo, setOpcionCiclo] = useState<'dafp' | 'todos'>('dafp');
 
-    riesgosExtremos: procesoInicial?.riesgosExtremos || 0,
-    riesgosAltos: procesoInicial?.riesgosAltos || 0,
-    riesgosModerados: procesoInicial?.riesgosModerados || 0,
-    riesgosBajos: procesoInicial?.riesgosBajos || 0,
-    totalRiesgos: procesoInicial?.totalRiesgos || 0,
+  // Vigencia y corte: preferir las props del padre; si no existen, leer de localStorage
+  const anoPlan  = vigenciaPlan  ?? getVigenciaFromStorage();
+  const cortePlan = fechaCortePlan ?? getFechaCorteFromStorage();
 
-    requerimientoComite: procesoInicial?.requerimientoComite || false,
-    requerimientoEntesReg: procesoInicial?.requerimientoEntesReg || false,
-
-    fechaUltimaAuditoria: procesoInicial?.fechaUltimaAuditoria || null,
-    resultadoUltimaAuditoria: procesoInicial?.resultadoUltimaAuditoria || 'Sin auditoría previa',
-
-    ponderacionRiesgo: procesoInicial?.ponderacionRiesgo || 'MUY BAJO',
-    diasTranscurridos: procesoInicial?.diasTranscurridos || null,
-    planRotacion: procesoInicial?.planRotacion || '1 año',
-    diasRotacion: procesoInicial?.diasRotacion || 360,
-    decisionRotacion: procesoInicial?.decisionRotacion || 'Incluir',
-    decisionFinal: procesoInicial?.decisionFinal || 'AUDITORÍA POSTERIOR',
-    motivoDecision: procesoInicial?.motivoDecision || '',
-    prioridadRegla: procesoInicial?.prioridadRegla || 5,
-
-    // Campos de compatibilidad
-    codigo: procesoInicial?.codigo || '',
-    macroproceso: procesoInicial?.macroproceso || '',
-    tipoProceso: procesoInicial?.tipoProceso || 'Apoyo',
-    dependenciaResponsable: procesoInicial?.dependenciaResponsable || '',
-    horasEstimadas: procesoInicial?.horasEstimadas || 60,
-    auditable: procesoInicial?.auditable !== undefined ? procesoInicial.auditable : true,
-    criticidad: procesoInicial?.criticidad ?? 0,
-    exposicion: procesoInicial?.exposicion ?? 0,
-    mitigantes: procesoInicial?.mitigantes ?? 0,
-    scoreRiesgoCEM: procesoInicial?.scoreRiesgoCEM,
-    nivelRiesgoCEM: procesoInicial?.nivelRiesgoCEM
+  const defaultData = (): FormularioDafpData => ({
+    nombre: '',
+    vigencia: anoPlan,
+    fechaCorte: cortePlan,
+    riesgosExtremos: 0,
+    riesgosAltos: 0,
+    riesgosModerados: 0,
+    riesgosBajos: 0,
+    totalRiesgos: 0,
+    tiempoUltimaAuditoria: 0,
+    temasAltaDireccion: 0,
+    objetivosEstrategicos: 0,
+    hallazgosAnteriores: 0,
+    ponderacionFinalDafp: 0,
+    nivelCriticidadDafp: '',
+    cicloRotacionDafp: '',
+    // compatibilidad
+    requerimientoComite: false,
+    requerimientoEntesReg: false,
+    fechaUltimaAuditoria: null,
+    resultadoUltimaAuditoria: 'Sin auditoría previa',
+    ponderacionRiesgo: 'MUY BAJO',
+    diasTranscurridos: null,
+    planRotacion: '1 año',
+    diasRotacion: 360,
+    decisionRotacion: 'Incluir',
+    decisionFinal: 'AUDITORÍA POSTERIOR',
+    motivoDecision: '',
+    prioridadRegla: 5,
+    codigo: '',
+    macroproceso: '',
+    tipoProceso: 'Apoyo',
+    dependenciaResponsable: '',
+    horasEstimadas: 60,
+    auditable: true,
   });
 
-  // ═══ CÁLCULO SCORE C+E-M (en tiempo real) ═══
-  useEffect(() => {
-    const c = formData.criticidad ?? 0;
-    const e = formData.exposicion ?? 0;
-    const m = formData.mitigantes ?? 0;
-    const score = Math.max(0, Math.min(15, c + e - m));
-    let nivel: 'Bajo' | 'Moderado' | 'Alto' | 'Crítico' = 'Bajo';
-    if (score >= 10) nivel = 'Crítico';
-    else if (score >= 7) nivel = 'Alto';
-    else if (score >= 4) nivel = 'Moderado';
-    setFormData(prev => ({
-      ...prev,
-      scoreRiesgoCEM: score,
-      nivelRiesgoCEM: nivel,
-      scoreRiesgo: score
-    }));
-  }, [formData.criticidad, formData.exposicion, formData.mitigantes]);
+  const fromInicial = (p: FormularioDafpData): FormularioDafpData => ({
+    ...defaultData(),
+    nombre: p.nombre || '',
+    vigencia: p.vigencia ?? new Date().getFullYear(),
+    fechaCorte: p.fechaCorte || new Date().toISOString().split('T')[0],
+    riesgosExtremos: p.riesgosExtremos ?? 0,
+    riesgosAltos: p.riesgosAltos ?? 0,
+    riesgosModerados: p.riesgosModerados ?? 0,
+    riesgosBajos: p.riesgosBajos ?? 0,
+    totalRiesgos: p.totalRiesgos ?? 0,
+    tiempoUltimaAuditoria: p.tiempoUltimaAuditoria ?? 0,
+    temasAltaDireccion: p.temasAltaDireccion ?? 0,
+    objetivosEstrategicos: p.objetivosEstrategicos ?? 0,
+    hallazgosAnteriores: p.hallazgosAnteriores ?? 0,
+    ponderacionFinalDafp: p.ponderacionFinalDafp ?? 0,
+    nivelCriticidadDafp: p.nivelCriticidadDafp ?? '',
+    cicloRotacionDafp: p.cicloRotacionDafp ?? '',
+    codigo: p.codigo || '',
+    macroproceso: p.macroproceso || '',
+    tipoProceso: p.tipoProceso || 'Apoyo',
+    dependenciaResponsable: p.dependenciaResponsable || '',
+    horasEstimadas: p.horasEstimadas ?? 60,
+    auditable: p.auditable !== undefined ? p.auditable : true,
+    // compat
+    requerimientoComite: p.requerimientoComite ?? false,
+    requerimientoEntesReg: p.requerimientoEntesReg ?? false,
+    fechaUltimaAuditoria: p.fechaUltimaAuditoria ?? null,
+    resultadoUltimaAuditoria: p.resultadoUltimaAuditoria || 'Sin auditoría previa',
+    ponderacionRiesgo: p.ponderacionRiesgo || 'MUY BAJO',
+    diasTranscurridos: p.diasTranscurridos ?? null,
+    planRotacion: p.planRotacion || '1 año',
+    diasRotacion: p.diasRotacion ?? 360,
+    decisionRotacion: p.decisionRotacion || 'Incluir',
+    decisionFinal: p.decisionFinal || 'AUDITORÍA POSTERIOR',
+    motivoDecision: p.motivoDecision || '',
+    prioridadRegla: p.prioridadRegla ?? 5,
+  });
 
-  // ═══ CÁLCULOS AUTOMÁTICOS EN TIEMPO REAL ═══
-  useEffect(() => {
-    const total = formData.riesgosExtremos + formData.riesgosAltos + formData.riesgosModerados + formData.riesgosBajos;
-    const ponderacion = calcularPonderacionRiesgo(
-      formData.riesgosExtremos,
-      formData.riesgosAltos,
-      formData.riesgosModerados,
-      formData.riesgosBajos,
-      total
-    );
-    const dias = calcularDiasTranscurridos(formData.fechaUltimaAuditoria, formData.fechaCorte);
-    const { plan, dias: diasRot } = obtenerPlanRotacion(ponderacion, formData.resultadoUltimaAuditoria);
-    const decisionRot = calcularDecisionRotacion(dias, diasRot);
-    const { decision, motivo, prioridad } = calcularDecisionFinal(
-      formData.requerimientoComite,
-      ponderacion,
-      formData.requerimientoEntesReg,
-      decisionRot
-    );
+  const [formData, setFormData] = useState<FormularioDafpData>(
+    procesoInicial ? fromInicial(procesoInicial) : defaultData()
+  );
 
-    setFormData(prev => ({
-      ...prev,
-      totalRiesgos: total,
-      ponderacionRiesgo: ponderacion,
-      diasTranscurridos: dias,
-      planRotacion: plan,
-      diasRotacion: diasRot,
-      decisionRotacion: decisionRot,
-      decisionFinal: decision,
-      motivoDecision: motivo,
-      prioridadRegla: prioridad
-    }));
-  }, [
-    formData.riesgosExtremos,
-    formData.riesgosAltos,
-    formData.riesgosModerados,
-    formData.riesgosBajos,
-    formData.requerimientoComite,
-    formData.requerimientoEntesReg,
-    formData.fechaUltimaAuditoria,
-    formData.resultadoUltimaAuditoria,
-    formData.fechaCorte
-  ]);
-
-  useEffect(() => {
-    if (procesoInicial?.id) setProcesoIdSeleccionado(procesoInicial.id);
-  }, [procesoInicial?.id]);
-
-  // Sincronizar formData solo al abrir el modal o al cambiar de proceso (por id)
+  // ══ Sincronizar al abrir / cambiar proceso ══
   const prevOpenRef = useRef(false);
   const prevProcesoIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -270,51 +372,92 @@ export function FormularioProcesoDafpVisual({
     const procesoChanged = open && procesoInicial?.id && procesoInicial.id !== prevProcesoIdRef.current;
     prevOpenRef.current = open;
     if (procesoInicial?.id) prevProcesoIdRef.current = procesoInicial.id;
-
     if (!open || !procesoInicial) return;
     if (!justOpened && !procesoChanged) return;
-
-    const p = procesoInicial;
-    setFormData({
-      nombre: p.nombre || '',
-      vigencia: p.vigencia ?? new Date().getFullYear(),
-      fechaCorte: p.fechaCorte || new Date().toISOString().split('T')[0],
-      riesgosExtremos: p.riesgosExtremos ?? 0,
-      riesgosAltos: p.riesgosAltos ?? 0,
-      riesgosModerados: p.riesgosModerados ?? 0,
-      riesgosBajos: p.riesgosBajos ?? 0,
-      totalRiesgos: p.totalRiesgos ?? 0,
-      requerimientoComite: p.requerimientoComite ?? false,
-      requerimientoEntesReg: p.requerimientoEntesReg ?? false,
-      fechaUltimaAuditoria: p.fechaUltimaAuditoria ?? null,
-      resultadoUltimaAuditoria: p.resultadoUltimaAuditoria || 'Sin auditoría previa',
-      ponderacionRiesgo: p.ponderacionRiesgo || 'MUY BAJO',
-      diasTranscurridos: p.diasTranscurridos ?? null,
-      planRotacion: p.planRotacion || '1 año',
-      diasRotacion: p.diasRotacion ?? 360,
-      decisionRotacion: p.decisionRotacion || 'Incluir',
-      decisionFinal: p.decisionFinal || 'AUDITORÍA POSTERIOR',
-      motivoDecision: p.motivoDecision || '',
-      prioridadRegla: p.prioridadRegla ?? 5,
-      codigo: p.codigo || '',
-      macroproceso: p.macroproceso || '',
-      tipoProceso: p.tipoProceso || 'Apoyo',
-      dependenciaResponsable: p.dependenciaResponsable || '',
-      horasEstimadas: p.horasEstimadas ?? 60,
-      auditable: p.auditable !== undefined ? p.auditable : true,
-      criticidad: p.criticidad ?? 0,
-      exposicion: p.exposicion ?? 0,
-      mitigantes: p.mitigantes ?? 0,
-      scoreRiesgoCEM: p.scoreRiesgoCEM,
-      nivelRiesgoCEM: p.nivelRiesgoCEM
-    });
+    setFormData(fromInicial(procesoInicial));
+    if (procesoInicial.id) setProcesoIdSeleccionado(procesoInicial.id);
   }, [open, procesoInicial?.id, procesoInicial]);
 
+  // ══ Cálculo DAFP en tiempo real ══
+  useEffect(() => {
+    const { riesgosExtremos: e, riesgosAltos: a, riesgosModerados: m, riesgosBajos: b } = formData;
+    const total = e + a + m + b;
+    const riCuan = calcRiCuan(e, a, m, b);
+    const tiempo = formData.tiempoUltimaAuditoria;
+    const ad = formData.temasAltaDireccion;
+    const obj = formData.objetivosEstrategicos;
+    const hall = formData.hallazgosAnteriores;
+
+    const allFilled = total > 0 && tiempo > 0 && ad > 0 && obj > 0 && hall > 0;
+    if (!allFilled) {
+      setFormData(prev => ({
+        ...prev,
+        totalRiesgos: total,
+        ponderacionFinalDafp: 0,
+        nivelCriticidadDafp: '',
+        cicloRotacionDafp: '',
+      }));
+      return;
+    }
+
+    const pond = calcPonderacion(riCuan, tiempo, ad, obj, hall);
+    const nivel = calcNivel(pond);
+    const ciclo = calcCiclo(nivel);
+
+    // También actualizar campos legacy para compatibilidad con el resto del sistema
+    const ponderacionRiesgo = calcularPonderacionRiesgo(e, a, m, total);
+
+    setFormData(prev => ({
+      ...prev,
+      totalRiesgos: total,
+      ponderacionFinalDafp: pond,
+      nivelCriticidadDafp: nivel,
+      cicloRotacionDafp: ciclo,
+      ponderacionRiesgo,
+      decisionFinal: pond >= 3.0 ? 'INCLUIR PLAN ANUAL' : 'AUDITORÍA POSTERIOR',
+      motivoDecision: `${nivel} — ${ciclo}. Aprobado por el Comité Institucional de Coordinación de Control Interno.`,
+      prioridadRegla: pond >= 4.0 ? 1 : pond >= 3.5 ? 2 : pond >= 3.0 ? 3 : 4,
+    }));
+  }, [
+    formData.riesgosExtremos, formData.riesgosAltos, formData.riesgosModerados, formData.riesgosBajos,
+    formData.tiempoUltimaAuditoria, formData.temasAltaDireccion,
+    formData.objetivosEstrategicos, formData.hallazgosAnteriores,
+  ]);
+
+  const handleChange = (field: keyof FormularioDafpData, value: any) =>
+    setFormData(prev => ({ ...prev, [field]: value }));
+
+  const adjRiesgo = (campo: keyof FormularioDafpData, delta: number) =>
+    setFormData(prev => ({ ...prev, [campo]: Math.max(0, (prev[campo] as number) + delta) }));
+
+  // ══ Derivados para el render ══
+  const riCuan = calcRiCuan(
+    formData.riesgosExtremos, formData.riesgosAltos,
+    formData.riesgosModerados, formData.riesgosBajos
+  );
+  const riCual = calcRiCual(
+    formData.riesgosExtremos, formData.riesgosAltos,
+    formData.riesgosModerados, formData.riesgosBajos
+  );
+  const allFilled =
+    formData.totalRiesgos > 0 &&
+    formData.tiempoUltimaAuditoria > 0 &&
+    formData.temasAltaDireccion > 0 &&
+    formData.objetivosEstrategicos > 0 &&
+    formData.hallazgosAnteriores > 0;
+
+  const nivel = formData.nivelCriticidadDafp;
+  const ciclo = formData.cicloRotacionDafp;
+  const pond = Number(formData.ponderacionFinalDafp) || 0;
+  const [a1, a2, a3, a4] = opcionCiclo === 'todos'
+    ? [true, true, true, true]
+    : allFilled ? calcAnos(ciclo) : [false, false, false, false];
+  const colores = allFilled ? nivelColorClasses(nivel) : { box: 'bg-gray-50 border-gray-200', badge: 'bg-gray-100 text-gray-500', score: 'text-gray-400' };
+
+  // ══ Submit ══
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // ✅ Validación: debe seleccionar del catálogo
-    if (procesosCatalog.length > 0 && !procesoIdSeleccionado) {
+    if (procesosCatalog.length > 0 && !procesoIdSeleccionado && !procesoInicial) {
       toast.error('Debe seleccionar un proceso del catálogo');
       return;
     }
@@ -322,721 +465,488 @@ export function FormularioProcesoDafpVisual({
       toast.error('El nombre del proceso es obligatorio');
       return;
     }
-    if (!formData.dependenciaResponsable?.trim()) {
-      toast.error('La dependencia responsable es obligatoria para la trazabilidad');
+    if (mode === 'edit' && !allFilled) {
+      toast.error('Complete todos los criterios para guardar la evaluación');
       return;
     }
-
-    // Solo validar riesgos en modo EDICIÓN (evaluación)
-    // En modo CREACIÓN, los riesgos son opcionales
-    if (mode === 'edit' && formData.totalRiesgos === 0) {
-      toast.error('Debe ingresar al menos un riesgo para evaluar');
-      return;
-    }
-    
-    // Mensaje diferente según si tiene evaluación o no
-    if (formData.totalRiesgos > 0) {
-      toast.success('✅ Proceso evaluado exitosamente', {
-        description: `Decisión: ${formData.decisionFinal}`,
-        duration: 5000
+    if (allFilled) {
+      toast.success('Proceso evaluado exitosamente', {
+        description: `Criticidad: ${nivel} | ${ciclo} | Ponderación: ${pond.toFixed(2)}`,
+        duration: 5000,
       });
     } else {
-      toast.success('✅ Proceso creado exitosamente', {
+      toast.success('Proceso creado exitosamente', {
         description: 'Puede evaluarlo después con el botón "Evaluar"',
-        duration: 5000
+        duration: 5000,
       });
     }
+    // Proceso especial con "Auditar todos los años": forzar ciclo anual
+    const dataFinal = (esEspecial && opcionCiclo === 'todos')
+      ? {
+          ...formData,
+          cicloRotacionDafp:  'Cada año',
+          nivelCriticidadDafp: formData.nivelCriticidadDafp || 'Extremo',
+        }
+      : formData;
 
-    onSubmit(formData, procesoIdSeleccionado || undefined);
+    onSubmit(dataFinal, procesoIdSeleccionado || undefined);
   };
-
-  const handleChange = (field: keyof FormularioDafpData, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  // Calcular porcentajes para detalle del cálculo
-  const detalleCalculo = useMemo(() => {
-    const total = formData.totalRiesgos;
-    if (total === 0) return null;
-
-    const porcExtremos = (formData.riesgosExtremos / total) * 100;
-    const porcExtremosAltos = ((formData.riesgosExtremos + formData.riesgosAltos) / total) * 100;
-    const porcExtremosAltosMod = ((formData.riesgosExtremos + formData.riesgosAltos + formData.riesgosModerados) / total) * 100;
-    const porcTodos = 100;
-
-    return {
-      extremos: porcExtremos.toFixed(2),
-      extremosAltos: porcExtremosAltos.toFixed(2),
-      extremosAltosMod: porcExtremosAltosMod.toFixed(2),
-      todos: porcTodos.toFixed(2),
-      reglaAplicada: porcExtremos >= 20 ? 1 : porcExtremosAltos >= 30 ? 2 : porcExtremosAltosMod >= 40 ? 3 : porcTodos >= 50 ? 4 : 5
-    };
-  }, [formData.riesgosExtremos, formData.riesgosAltos, formData.riesgosModerados, formData.riesgosBajos, formData.totalRiesgos]);
 
   if (!open) return null;
 
-  const colorRiesgo = getColorRiesgo(formData.ponderacionRiesgo);
-  const emojiRiesgo = getEmojiRiesgo(formData.ponderacionRiesgo);
-
+  // ════════════════════════════════════════════════════════════════════════════
+  // RENDER
+  // ════════════════════════════════════════════════════════════════════════════
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] overflow-y-auto">
+        <div className="flex min-h-full items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          transition={{ duration: 0.2, ease: "easeOut" }}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col"
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col"
+          style={{ maxHeight: '90vh' }}
         >
-          {/* ═══════════════════════════════════════════════════════════════ */}
-          {/* HEADER PREMIUM COMPACTO */}
-          {/* ═══════════════════════════════════════════════════════════════ */}
-          <div className="bg-gradient-to-r from-[#003DA5] to-[#2962FF] px-6 py-4 rounded-t-2xl flex items-center justify-between flex-shrink-0 border-b-4 border-[#F57C00]">
+          {/* ═══ HEADER — sticky top ═══ */}
+          <div className="bg-gradient-to-r from-[#003DA5] to-[#2962FF] px-5 py-4 rounded-t-2xl flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm">
-                <Layers className="w-5 h-5 text-white" />
+              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                <Layers className="w-4 h-4 text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-black text-white leading-tight">
-                  {mode === 'create' ? 'Agregar Proceso' : 'Editar Proceso'}
+                <h2 className="text-sm font-semibold text-white leading-tight">
+                  {mode === 'create' ? 'Agregar Proceso' : 'Editar Proceso'} — Universo de Auditoría
                 </h2>
-                <p className="text-xs text-white/80 font-medium">
-                  Evaluación DAFP • Cálculo Automático
+                <p className="text-[11px] text-white/75">
+                  Evaluación DAFP · RE-E-GE-034 · Cálculo Automático
                 </p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-white/20 rounded-lg transition-all"
-              type="button"
-            >
-              <X className="w-5 h-5 text-white" />
+            <button onClick={onClose} className="p-1.5 hover:bg-white/20 rounded-lg transition-all" type="button">
+              <X className="w-4 h-4 text-white" />
             </button>
           </div>
 
-          {/* ═══════════════════════════════════════════════════════════════ */}
-          {/* CONTENIDO SCROLLEABLE */}
-          {/* ═══════════════════════════════════════════════════════════════ */}
-          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-            <div className="p-6 space-y-5">
-              
-              {/* ═══ ENCABEZADO ═══ */}
-              <div className="bg-gradient-to-br from-gray-50 to-blue-50/50 border-2 border-gray-200 rounded-xl p-5">
-                <h3 className="text-sm font-black mb-4 flex items-center gap-2 text-[#003DA5]">
-                  <Info className="w-4 h-4" />
-                  INFORMACIÓN BÁSICA
-                </h3>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Proceso/Proyecto/Procedimiento <span className="text-red-500">*</span>
-                    </label>
-                    {procesoInicial ? (
-                      // Modo EDIT: mostrar nombre de solo lectura
-                      <input
-                        type="text"
-                        value={formData.nombre}
-                        readOnly
-                        className="w-full px-3 py-2.5 text-sm border-2 border-gray-200 rounded-lg bg-gray-50"
-                      />
-                    ) : procesosCatalog.length > 0 ? (
-                      // Modo CREATE: solo select del catálogo
-                      <select
-                        value={procesoIdSeleccionado}
-                        onChange={(e) => {
-                          const id = e.target.value;
-                          setProcesoIdSeleccionado(id);
-                          const proc = procesosCatalog.find(p => p.id === id);
-                          if (proc) {
-                            setFormData(prev => ({ ...prev, nombre: proc.nombre, codigo: proc.codigo }));
-                          }
-                        }}
-                        className="w-full px-3 py-2.5 text-sm border-2 border-gray-300 rounded-lg focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/20 outline-none transition-all bg-white"
-                        required
-                      >
-                        <option value="">-- Seleccione un proceso del catálogo --</option>
-                        {procesosCatalog.map((p) => (
-                          <option key={p.id} value={p.id}>{p.nombre}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      // Sin catálogo: mensaje informativo
-                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                        <AlertTriangle className="w-4 h-4 inline mr-2" />
-                        Cree procesos en Configuración → Procesos primero.
-                      </div>
-                    )}
-                  </div>
-                  {/* Campo Dependencia responsable - select con catálogo ESAP */}
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Dependencia responsable <span className="text-red-500">*</span>
-                    </label>
+          {/* ═══ BODY ═══ */}
+          <form id="dafp-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto min-h-0">
+            <div className="p-5 space-y-4">
+
+              {/* ─── SECCIÓN 1: Información Básica ─── */}
+              <div className="border border-gray-200 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Info className="w-3.5 h-3.5 text-[#003DA5]" />
+                  <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Información básica</span>
+                </div>
+
+                {/* Proceso */}
+                <div className="mb-3">
+                  <label className="block text-[11px] text-gray-600 mb-1">
+                    Proceso / Proyecto / Procedimiento <span className="text-red-500">*</span>
+                  </label>
+                  {procesoInicial ? (
+                    <input
+                      type="text"
+                      value={formData.nombre}
+                      readOnly
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
+                    />
+                  ) : procesosCatalog.length > 0 ? (
                     <select
-                      value={formData.dependenciaResponsable || ''}
-                      onChange={(e) => handleChange('dependenciaResponsable', e.target.value)}
-                      className="w-full px-3 py-2.5 text-sm border-2 border-gray-300 rounded-lg focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/20 outline-none transition-all bg-white"
+                      value={esEspecial ? `${procesoIdSeleccionado}|ESP` : procesoIdSeleccionado}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const esp = raw.endsWith('|ESP');
+                        const id  = esp ? raw.slice(0, -'|ESP'.length) : raw;
+                        setProcesoIdSeleccionado(id);
+                        setEsEspecial(esp);
+                        setOpcionCiclo(esp ? 'todos' : 'dafp');
+                        const proc = procesosCatalog.find(p => p.id === id);
+                        if (proc) {
+                          setFormData(prev => ({
+                            ...prev,
+                            nombre: proc.nombre,
+                            codigo: proc.codigo,
+                            macroproceso: proc.macroproceso || prev.macroproceso,
+                            dependenciaResponsable: proc.dependencia || prev.dependenciaResponsable,
+                          }));
+                        }
+                      }}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/10 outline-none bg-white"
                       required
                     >
-                      {DEPENDENCIAS_ESAP.map((d) => (
-                        <option key={d.value || 'vacio'} value={d.value}>{d.label}</option>
-                      ))}
-                      {/* Si hay un valor guardado que no está en el catálogo (edición), mostrarlo */}
-                      {formData.dependenciaResponsable &&
-                        !DEPENDENCIAS_ESAP.some((d) => d.value === formData.dependenciaResponsable) && (
-                          <option value={formData.dependenciaResponsable}>
-                            {formData.dependenciaResponsable} (guardado)
-                          </option>
-                        )}
+                      <option value="">-- Seleccione un proceso --</option>
+                      {Array.from(new Set(procesosCatalog.map(p => p.tipo || 'Sin tipo'))).map(tipo => {
+                        const grupo = procesosCatalog.filter(p => (p.tipo || 'Sin tipo') === tipo);
+                        if (grupo.length === 0) return null;
+                        return (
+                          <optgroup key={tipo} label={tipo.toUpperCase()}>
+                            {grupo.map(p => {
+                              const esp = p.esEspecial ?? esProcesoEsp(p.nombre);
+                              return (
+                                <option key={p.id} value={esp ? `${p.id}|ESP` : p.id}>
+                                  {esp ? `${p.nombre} ★` : p.nombre}
+                                </option>
+                              );
+                            })}
+                          </optgroup>
+                        );
+                      })}
                     </select>
+                  ) : (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                      Cree procesos en Configuración → Procesos primero.
+                    </div>
+                  )}
+                </div>
+
+                {/* Macroproceso + Dependencia (auto o editable) */}
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block text-[11px] text-gray-600 mb-1">
+                      Macroproceso
+                      <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">AUTO</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.macroproceso || ''}
+                      onChange={(e) => handleChange('macroproceso', e.target.value)}
+                      placeholder="Ej: Gestión Financiera"
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:border-[#2962FF] outline-none bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-gray-600 mb-1">
+                      Dependencia responsable
+                      <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">AUTO</span>
+                    </label>
+                    {(() => {
+                      const deps = (formData.dependenciaResponsable || '')
+                        .split(';').map(d => d.trim()).filter(Boolean);
+                      if (deps.length <= 1) {
+                        return (
+                          <input
+                            type="text"
+                            value={formData.dependenciaResponsable || ''}
+                            readOnly
+                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
+                          />
+                        );
+                      }
+                      return (
+                        <select
+                          value={formData.dependenciaResponsable?.split(';')[0]?.trim() || deps[0]}
+                          onChange={(e) => handleChange('dependenciaResponsable', e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/10 outline-none bg-white"
+                        >
+                          {deps.map((d, i) => (
+                            <option key={i} value={d}>{d}</option>
+                          ))}
+                        </select>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Vigencia + Fecha de corte — tomadas del Plan Anual */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-gray-600 mb-1">
+                      Vigencia
+                      <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">PLAN ANUAL</span>
+                    </label>
+                    <div className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 font-semibold text-center">
+                      {formData.vigencia}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-gray-600 mb-1">
+                      Fecha de Corte
+                      <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">PLAN ANUAL</span>
+                    </label>
+                    <div className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700">
+                      {formData.fechaCorte
+                        ? new Date(formData.fechaCorte + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+                        : '—'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ─── BLOQUE ESP: Opción de Ciclo (solo procesos especiales) ─── */}
+              {esEspecial && (
+                <div className="border-2 border-[#003DA5] bg-blue-50 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CalendarCheck className="w-3.5 h-3.5 text-[#003DA5]" />
+                    <span className="text-[11px] font-semibold text-[#003DA5] uppercase tracking-wide">
+                      Opción de ciclo de auditoría — Seleccione una
+                    </span>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                        Vigencia <span className="text-red-500">*</span>
-                      </label>
+                    {/* Opción DAFP */}
+                    <label className={`cursor-pointer rounded-xl p-3 border-2 flex items-start gap-2 transition-all ${opcionCiclo === 'dafp' ? 'border-[#003DA5] bg-white shadow-sm' : 'border-blue-200 bg-white/60'}`}>
                       <input
-                        type="number"
-                        value={formData.vigencia}
-                        onChange={(e) => handleChange('vigencia', parseInt(e.target.value))}
-                        className="w-full px-3 py-2.5 text-sm border-2 border-gray-300 rounded-lg focus:border-[#2962FF] outline-none text-center font-bold transition-all"
-                        required
+                        type="radio"
+                        name="opcionCiclo"
+                        className="mt-0.5 accent-[#003DA5]"
+                        checked={opcionCiclo === 'dafp'}
+                        onChange={() => setOpcionCiclo('dafp')}
                       />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                        Fecha de Corte <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="date"
-                        value={formData.fechaCorte}
-                        onChange={(e) => handleChange('fechaCorte', e.target.value)}
-                        className="w-full px-3 py-2.5 text-sm border-2 border-gray-300 rounded-lg focus:border-[#2962FF] outline-none transition-all"
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* ═══ SCORE DE RIESGO — CÁLCULO AUTOMÁTICO (C + E − M) ═══ */}
-              <div className="bg-gradient-to-br from-gray-50 to-blue-50/30 border-2 border-gray-200 rounded-xl p-5 shadow-sm">
-                <h3 className="text-sm font-black mb-2 flex items-center gap-2 text-[#003DA5]">
-                  <TrendingUp className="w-4 h-4" />
-                  SCORE DE RIESGO — CÁLCULO AUTOMÁTICO
-                </h3>
-                <p className="text-xs text-gray-600 mb-4">
-                  Modelo simplificado: <strong>Score = Criticidad + Exposición − Mitigantes</strong> · Rango 0–15 pts
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  {/* Criticidad (C) */}
-                  <div className="bg-white rounded-xl p-4 border-2 border-gray-200 shadow-sm hover:border-[#2962FF]/40 transition-colors">
-                    <div className="flex justify-between items-center mb-2">
-                      <label className="text-xs font-bold text-gray-700">Criticidad (C)</label>
-                      <span className="text-lg font-black text-[#003DA5]">{formData.criticidad ?? 0}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="5"
-                      value={formData.criticidad ?? 0}
-                      onChange={(e) => handleChange('criticidad', parseInt(e.target.value))}
-                      className="w-full h-2.5 bg-gray-200 rounded-lg cursor-pointer accent-[#2962FF]"
-                    />
-                    <div className="flex justify-between text-[10px] text-gray-500 mt-1">
-                      <span>0 Baja</span><span>3 Media</span><span>5 Alta</span>
-                    </div>
-                    <p className="text-[10px] text-gray-600 mt-1">Impacto potencial del proceso si falla o presenta irregularidades.</p>
-                  </div>
-
-                  {/* Exposición (E) */}
-                  <div className="bg-white rounded-xl p-4 border-2 border-gray-200 shadow-sm hover:border-[#2962FF]/40 transition-colors">
-                    <div className="flex justify-between items-center mb-2">
-                      <label className="text-xs font-bold text-gray-700">Exposición (E)</label>
-                      <span className="text-lg font-black text-[#003DA5]">{formData.exposicion ?? 0}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="5"
-                      value={formData.exposicion ?? 0}
-                      onChange={(e) => handleChange('exposicion', parseInt(e.target.value))}
-                      className="w-full h-2.5 bg-gray-200 rounded-lg cursor-pointer accent-[#2962FF]"
-                    />
-                    <div className="flex justify-between text-[10px] text-gray-500 mt-1">
-                      <span>0 Baja</span><span>3 Media</span><span>5 Alta</span>
-                    </div>
-                    <p className="text-[10px] text-gray-600 mt-1">Frecuencia o probabilidad de que el riesgo se materialice en el proceso.</p>
-                  </div>
-
-                  {/* Mitigantes (M) */}
-                  <div className="bg-white rounded-xl p-4 border-2 border-gray-200 shadow-sm hover:border-[#2962FF]/40 transition-colors">
-                    <div className="flex justify-between items-center mb-2">
-                      <label className="text-xs font-bold text-gray-700">Mitigantes (M)</label>
-                      <span className="text-lg font-black text-[#003DA5]">{formData.mitigantes ?? 0}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="5"
-                      value={formData.mitigantes ?? 0}
-                      onChange={(e) => handleChange('mitigantes', parseInt(e.target.value))}
-                      className="w-full h-2.5 bg-gray-200 rounded-lg cursor-pointer accent-[#2962FF]"
-                    />
-                    <div className="flex justify-between text-[10px] text-gray-500 mt-1">
-                      <span>0 Ninguno</span><span>3 Parcial</span><span>5 Fuerte</span>
-                    </div>
-                    <p className="text-[10px] text-gray-600 mt-1">Controles existentes que reducen la probabilidad o impacto del riesgo.</p>
-                  </div>
-                </div>
-
-                {/* Resultado Score C+E-M */}
-                <div className="bg-white rounded-xl p-4 border-2 border-gray-200 shadow-sm">
-                  <div className="flex items-center justify-between flex-wrap gap-3">
-                    <div>
-                      <span className="text-xs font-bold text-gray-600 block">Score Total</span>
-                      <span className="text-2xl font-black text-[#003DA5]">
-                        {formData.scoreRiesgoCEM ?? 0} / 15
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-[120px] max-w-[200px]">
-                      <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${
-                            (formData.scoreRiesgoCEM ?? 0) >= 10 ? 'bg-red-500' :
-                            (formData.scoreRiesgoCEM ?? 0) >= 7 ? 'bg-[#F57C00]' :
-                            (formData.scoreRiesgoCEM ?? 0) >= 4 ? 'bg-amber-500' : 'bg-emerald-500'
-                          }`}
-                          style={{ width: `${Math.min(100, ((formData.scoreRiesgoCEM ?? 0) / 15) * 100)}%` }}
-                        />
+                      <div>
+                        <div className="text-xs font-semibold text-gray-800">Según ponderación DAFP</div>
+                        <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">
+                          El ciclo se calcula automáticamente con base en la ponderación obtenida.
+                        </div>
+                        <div className="text-[10px] text-gray-400 mt-1.5 italic">Se calcula al llenar criterios</div>
                       </div>
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-sm font-bold border ${
-                      formData.nivelRiesgoCEM === 'Crítico' ? 'bg-red-50 text-red-700 border-red-200' :
-                      formData.nivelRiesgoCEM === 'Alto' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                      formData.nivelRiesgoCEM === 'Moderado' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                      'bg-green-50 text-green-700 border-green-200'
-                    }`}>
-                      {formData.nivelRiesgoCEM ?? 'Bajo'}
-                    </span>
+                    </label>
+                    {/* Opción Todos los años */}
+                    <label className={`cursor-pointer rounded-xl p-3 border-2 flex items-start gap-2 transition-all ${opcionCiclo === 'todos' ? 'border-[#003DA5] bg-white shadow-sm' : 'border-blue-200 bg-white/60'}`}>
+                      <input
+                        type="radio"
+                        name="opcionCiclo"
+                        className="mt-0.5 accent-[#003DA5]"
+                        checked={opcionCiclo === 'todos'}
+                        onChange={() => setOpcionCiclo('todos')}
+                      />
+                      <div>
+                        <div className="text-xs font-semibold text-gray-800">Auditar todos los años</div>
+                        <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">
+                          Este proceso se audita cada año sin excepción, independiente de la ponderación.
+                        </div>
+                        <div className="flex gap-1 mt-1.5">
+                          {['Año 1', 'Año 2', 'Año 3', 'Año 4'].map(a => (
+                            <span key={a} className="text-[9px] bg-[#003DA5] text-white px-1.5 py-0.5 rounded font-semibold">{a}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </label>
                   </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    {formData.nivelRiesgoCEM === 'Crítico' || formData.nivelRiesgoCEM === 'Alto'
-                      ? 'Inclusión prioritaria en el plan anual.'
-                      : formData.nivelRiesgoCEM === 'Moderado'
-                      ? 'Considerar para inclusión prioritaria en el plan.'
-                      : 'Prioridad estándar.'}
-                  </p>
                 </div>
-              </div>
+              )}
 
-              {/* ═══ SECCIÓN 1: RIESGOS INHERENTES ═══ */}
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50/50 border-2 border-blue-200 rounded-xl p-5">
-                <h3 className="text-sm font-black mb-3 flex items-center gap-2 text-[#003DA5]">
-                  <Activity className="w-4 h-4" />
-                  RIESGOS INHERENTES
-                </h3>
-                <p className="text-xs text-gray-600 mb-4">
-                  Número de riesgos por nivel de impacto y probabilidad:
-                </p>
-                
+              {/* ─── SECCIÓN 2: Riesgo Inherente ─── */}
+              <div className="border border-gray-200 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Activity className="w-3.5 h-3.5 text-[#003DA5]" />
+                  <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                    Riesgo inherente — Digite la cantidad de riesgos por nivel
+                  </span>
+                </div>
+
+                {/* Contadores */}
                 <div className="grid grid-cols-4 gap-3 mb-3">
-                  <div className="text-center">
-                    <div className="text-2xl mb-1.5">🔴</div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      EXTREMO
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.riesgosExtremos}
-                      onChange={(e) => handleChange('riesgosExtremos', parseInt(e.target.value) || 0)}
-                      className="w-full px-2 py-2 text-base font-black border-2 border-red-300 rounded-lg focus:border-red-500 outline-none text-center transition-all"
-                    />
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl mb-1.5">🟠</div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      ALTO
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.riesgosAltos}
-                      onChange={(e) => handleChange('riesgosAltos', parseInt(e.target.value) || 0)}
-                      className="w-full px-2 py-2 text-base font-black border-2 border-orange-300 rounded-lg focus:border-orange-500 outline-none text-center transition-all"
-                    />
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl mb-1.5">🟡</div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      MODERADO
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.riesgosModerados}
-                      onChange={(e) => handleChange('riesgosModerados', parseInt(e.target.value) || 0)}
-                      className="w-full px-2 py-2 text-base font-black border-2 border-yellow-300 rounded-lg focus:border-yellow-500 outline-none text-center transition-all"
-                    />
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl mb-1.5">🟢</div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      BAJO
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.riesgosBajos}
-                      onChange={(e) => handleChange('riesgosBajos', parseInt(e.target.value) || 0)}
-                      className="w-full px-2 py-2 text-base font-black border-2 border-green-300 rounded-lg focus:border-green-500 outline-none text-center transition-all"
-                    />
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-lg p-3 border-2 border-blue-300">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-gray-700">TOTAL:</span>
-                    <span className="text-2xl font-black text-[#003DA5]">
-                      {formData.totalRiesgos}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* ═══ SECCIÓN 2: REQUERIMIENTOS ESPECIALES ═══ */}
-              <div className="bg-gradient-to-br from-orange-50 to-red-50/50 border-2 border-orange-200 rounded-xl p-5">
-                <h3 className="text-sm font-black mb-3 flex items-center gap-2 text-[#003DA5]">
-                  <AlertTriangle className="w-4 h-4" />
-                  REQUERIMIENTOS ESPECIALES
-                </h3>
-                <div className="bg-orange-100 border-2 border-orange-400 rounded-lg p-3 mb-4">
-                  <p className="text-sm font-bold text-orange-800 flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4" />
-                    ⚠️ Si alguno es "SÍ", el proceso se incluye AUTOMÁTICAMENTE en el Plan Anual
-                  </p>
-                </div>
-                <div className="space-y-3">
-                  <div className="bg-white rounded-lg p-4 border-2 border-orange-300">
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm font-bold text-gray-700">
-                        ¿Requerimiento del Comité de Auditoría o la Dirección? (J)
-                      </label>
-                      <div className="flex gap-4">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="requerimientoComite"
-                            checked={formData.requerimientoComite === true}
-                            onChange={() => handleChange('requerimientoComite', true)}
-                            className="w-5 h-5"
-                          />
-                          <span className="text-base font-bold">Sí</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="requerimientoComite"
-                            checked={formData.requerimientoComite === false}
-                            onChange={() => handleChange('requerimientoComite', false)}
-                            className="w-5 h-5"
-                          />
-                          <span className="text-base font-bold">No</span>
-                        </label>
+                  {[
+                    { campo: 'riesgosExtremos' as const, label: 'EXTREMO', dot: 'bg-red-500', card: 'border-red-200 bg-red-50' },
+                    { campo: 'riesgosAltos' as const,    label: 'ALTO',    dot: 'bg-orange-400', card: 'border-orange-200 bg-orange-50' },
+                    { campo: 'riesgosModerados' as const,label: 'MODERADO',dot: 'bg-yellow-400', card: 'border-yellow-200 bg-yellow-50' },
+                    { campo: 'riesgosBajos' as const,    label: 'BAJO',    dot: 'bg-green-500',  card: 'border-green-200 bg-green-50' },
+                  ].map(({ campo, label, dot, card }) => (
+                    <div key={campo} className={`rounded-xl p-3 text-center border ${card}`}>
+                      <div className={`w-3 h-3 rounded-full ${dot} mx-auto mb-1.5`} />
+                      <div className="text-[9px] font-semibold text-gray-500 tracking-wide mb-2">{label}</div>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => adjRiesgo(campo, -1)}
+                          className="w-5 h-5 rounded border border-gray-300 bg-white hover:bg-gray-100 flex items-center justify-center text-sm leading-none text-gray-600"
+                        >−</button>
+                        <span className="text-base font-bold min-w-[18px] text-center">{formData[campo]}</span>
+                        <button
+                          type="button"
+                          onClick={() => adjRiesgo(campo, 1)}
+                          className="w-5 h-5 rounded border border-gray-300 bg-white hover:bg-gray-100 flex items-center justify-center text-sm leading-none text-gray-600"
+                        >+</button>
                       </div>
                     </div>
-                  </div>
-                  <div className="bg-white rounded-lg p-4 border-2 border-orange-300">
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm font-bold text-gray-700">
-                        ¿Requerimiento de Entes Reguladores? (K)
-                      </label>
-                      <div className="flex gap-4">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="requerimientoEntesReg"
-                            checked={formData.requerimientoEntesReg === true}
-                            onChange={() => handleChange('requerimientoEntesReg', true)}
-                            className="w-5 h-5"
-                          />
-                          <span className="text-base font-bold">Sí</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="requerimientoEntesReg"
-                            checked={formData.requerimientoEntesReg === false}
-                            onChange={() => handleChange('requerimientoEntesReg', false)}
-                            className="w-5 h-5"
-                          />
-                          <span className="text-base font-bold">No</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              </div>
 
-              {/* ═══ SECCIÓN 3: INFORMACIÓN DE AUDITORÍA ANTERIOR ═══ */}
-              <div className="bg-gradient-to-br from-purple-50 to-pink-50/50 border-2 border-purple-200 rounded-xl p-5">
-                <h3 className="text-sm font-black mb-3 flex items-center gap-2 text-[#003DA5]">
-                  <Calendar className="w-4 h-4" />
-                  INFORMACIÓN DE AUDITORÍA ANTERIOR
-                </h3>
-                <div className="space-y-4">
+                {/* Total + RI auto */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 flex justify-between items-center mb-3 text-sm font-medium">
+                  <span className="text-gray-600">Total riesgos:</span>
+                  <span className="font-bold text-[#003DA5]">{formData.totalRiesgos}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Fecha de Última Auditoría (L)
+                    <label className="block text-[11px] text-gray-600 mb-1">
+                      RI Ponderación Cualitativa
+                      <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">AUTO</span>
                     </label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="date"
-                        value={formData.fechaUltimaAuditoria || ''}
-                        onChange={(e) => {
-                          const valor = e.target.value || null;
-                          handleChange('fechaUltimaAuditoria', valor);
-                          if (!valor) {
-                            handleChange('resultadoUltimaAuditoria', 'Sin auditoría previa');
-                          }
-                        }}
-                        max={formData.fechaCorte}
-                        className="flex-1 px-3 py-2.5 text-sm border-2 border-gray-300 rounded-lg focus:border-[#003DA5] outline-none transition-all"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleChange('fechaUltimaAuditoria', null);
-                          handleChange('resultadoUltimaAuditoria', 'Sin auditoría previa');
-                        }}
-                        className="px-3 py-2.5 bg-gray-200 hover:bg-gray-300 rounded-lg text-xs font-bold transition-colors whitespace-nowrap"
-                      >
-                        Sin auditoría previa
-                      </button>
+                    <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 flex justify-between items-center min-h-[34px]">
+                      <span className="text-[11px] text-gray-500">Nivel consolidado</span>
+                      <span className="text-sm font-bold text-gray-800">{formData.totalRiesgos > 0 ? riCual : '—'}</span>
                     </div>
                   </div>
-
-                  {/* Resultado de la Última Auditoría (N) - siempre visible */}
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Resultado de la Última Auditoría (N) <span className="text-red-500">*</span>
+                    <label className="block text-[11px] text-gray-600 mb-1">
+                      RI Ponderación Cuantitativa
+                      <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">AUTO</span>
                     </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <label className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
-                        formData.resultadoUltimaAuditoria === 'Sin auditoría previa'
-                          ? 'bg-purple-100 border-purple-500'
-                          : 'bg-white border-purple-300 hover:bg-purple-50'
-                      }`}>
-                        <input
-                          type="radio"
-                          name="resultadoUltimaAuditoria"
-                          checked={formData.resultadoUltimaAuditoria === 'Sin auditoría previa'}
-                          onChange={() => {
-                            handleChange('resultadoUltimaAuditoria', 'Sin auditoría previa');
-                            handleChange('fechaUltimaAuditoria', null);
-                          }}
-                          className="w-4 h-4"
-                        />
-                        <span className="text-sm font-bold">Sin auditoría previa</span>
-                      </label>
-                      <label className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
-                        formData.resultadoUltimaAuditoria === 'Adecuado'
-                          ? 'bg-green-50 border-green-500'
-                          : 'bg-white border-purple-300 hover:bg-purple-50'
-                      }`}>
-                        <input
-                          type="radio"
-                          name="resultadoUltimaAuditoria"
-                          checked={formData.resultadoUltimaAuditoria === 'Adecuado'}
-                          onChange={() => handleChange('resultadoUltimaAuditoria', 'Adecuado')}
-                          className="w-4 h-4"
-                        />
-                        <span className="text-sm font-bold">✅ Adecuado</span>
-                      </label>
-                      <label className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
-                        formData.resultadoUltimaAuditoria === 'Inadecuado'
-                          ? 'bg-red-50 border-red-500'
-                          : 'bg-white border-purple-300 hover:bg-purple-50'
-                      }`}>
-                        <input
-                          type="radio"
-                          name="resultadoUltimaAuditoria"
-                          checked={formData.resultadoUltimaAuditoria === 'Inadecuado'}
-                          onChange={() => handleChange('resultadoUltimaAuditoria', 'Inadecuado')}
-                          className="w-4 h-4"
-                        />
-                        <span className="text-sm font-bold">❌ Inadecuado</span>
-                      </label>
+                    <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 flex justify-between items-center min-h-[34px]">
+                      <span className="text-[11px] text-gray-500">Calificación 1–5</span>
+                      <span className="text-sm font-bold text-gray-800">{formData.totalRiesgos > 0 ? riCuan : '—'}</span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* ═══════════════════════════════════════════════════════════════ */}
-              {/* PANEL DE RESULTADOS DAFP — siempre visible con Score C+E-M */}
-              {/* ═══════════════════════════════════════════════════════════════ */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-gradient-to-br from-green-50 to-emerald-50/50 border-2 border-green-300 rounded-xl p-5"
-              >
-                <h3 className="text-sm font-black mb-4 flex items-center gap-2 text-[#003DA5]">
-                  <BarChart3 className="w-4 h-4" />
-                  RESULTADOS DEL CÁLCULO DAFP
-                </h3>
-
-                {/* Score C+E-M siempre visible */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                  <div className="bg-white rounded-lg p-3 border-2 border-gray-200 shadow-sm col-span-2">
-                    <div className="text-xs font-bold text-gray-600 mb-1">Score Riesgo (C+E−M)</div>
-                    <div className="text-lg font-black text-[#003DA5] flex items-center gap-2">
-                      {formData.scoreRiesgoCEM ?? 0} / 15
-                      <span className={`px-2 py-0.5 rounded border text-xs font-bold ${
-                        formData.nivelRiesgoCEM === 'Crítico' ? 'bg-red-50 text-red-700 border-red-200' :
-                        formData.nivelRiesgoCEM === 'Alto' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                        formData.nivelRiesgoCEM === 'Moderado' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                        'bg-green-50 text-green-700 border-green-200'
-                      }`}>
-                        {formData.nivelRiesgoCEM ?? 'Bajo'}
-                      </span>
-                    </div>
-                  </div>
+              {/* ─── SECCIÓN 3: Criterios de Priorización ─── */}
+              <div className="border border-gray-200 rounded-xl p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Target className="w-3.5 h-3.5 text-[#003DA5]" />
+                  <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                    Criterios de priorización — Seleccione cada campo
+                  </span>
                 </div>
 
-                {/* Métricas DAFP (riesgos inherentes) — cuando hay riesgos */}
-                {formData.totalRiesgos > 0 ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-                    {/* Ponderación de Riesgo */}
-                    <div className="bg-white rounded-lg p-3 border-2 border-green-300">
-                      <div className="text-xs font-bold text-gray-600 mb-1">Ponderación Riesgo</div>
-                      <div 
-                        className="text-lg font-black flex items-center gap-1"
-                        style={{ color: colorRiesgo }}
+                {[
+                  {
+                    campo: 'tiempoUltimaAuditoria' as const,
+                    label: 'Tiempo desde última auditoría (Criterio)',
+                    options: TIEMPO_OPTIONS,
+                    calId: 'calTiempo',
+                  },
+                  {
+                    campo: 'temasAltaDireccion' as const,
+                    label: 'Temas de interés de la Alta Dirección (Criterio)',
+                    options: AD_OPTIONS,
+                    calId: 'calAD',
+                  },
+                  {
+                    campo: 'objetivosEstrategicos' as const,
+                    label: 'Cantidad de objetivos estratégicos asociados (Criterio)',
+                    options: OBJ_OPTIONS,
+                    calId: 'calObj',
+                  },
+                  {
+                    campo: 'hallazgosAnteriores' as const,
+                    label: 'Resultados auditorías anteriores internas y externas (Criterio)',
+                    options: HALL_OPTIONS,
+                    calId: 'calHall',
+                  },
+                ].map(({ campo, label, options }) => (
+                  <div key={campo} className="grid grid-cols-2 gap-3 mb-3 last:mb-0">
+                    <div>
+                      <label className="block text-[10px] text-gray-600 mb-1">{label} <span className="text-red-500">*</span></label>
+                      <select
+                        value={formData[campo] || ''}
+                        onChange={(e) => handleChange(campo, parseInt(e.target.value) || 0)}
+                        className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/10 outline-none bg-white"
                       >
-                        {emojiRiesgo} {formData.ponderacionRiesgo}
-                      </div>
+                        <option value="">-- Seleccione --</option>
+                        {options.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
                     </div>
-
-                    {/* Días Transcurridos */}
-                    <div className="bg-white rounded-lg p-3 border-2 border-green-300">
-                      <div className="text-xs font-bold text-gray-600 mb-1">Días Transcurridos</div>
-                      <div className="text-lg font-black text-[#003DA5]">
-                        {formData.diasTranscurridos !== null ? formData.diasTranscurridos : 'N/A'}
-                      </div>
-                    </div>
-
-                    {/* Plan de Rotación */}
-                    <div className="bg-white rounded-lg p-3 border-2 border-green-300">
-                      <div className="text-xs font-bold text-gray-600 mb-1">Plan Rotación</div>
-                      <div className="text-lg font-black text-[#003DA5]">
-                        {formData.planRotacion}
-                      </div>
-                    </div>
-
-                    {/* Decisión Rotación */}
-                    <div className="bg-white rounded-lg p-3 border-2 border-green-300">
-                      <div className="text-xs font-bold text-gray-600 mb-1">Decisión Rotación</div>
-                      <div className={`text-sm font-black ${
-                        formData.decisionRotacion === 'Incluir' ? 'text-green-600' : 'text-orange-600'
-                      }`}>
-                        {formData.decisionRotacion === 'Incluir' ? '✅' : '⏱️'} {formData.decisionRotacion}
-                      </div>
-                    </div>
-
-                    {/* Prioridad */}
-                    <div className="bg-white rounded-lg p-3 border-2 border-green-300">
-                      <div className="text-xs font-bold text-gray-600 mb-1">Prioridad</div>
-                      <div className="text-lg font-black text-[#003DA5]">
-                        Regla {formData.prioridadRegla}
-                      </div>
-                    </div>
-
-                    {/* Decisión Final */}
-                    <div className="bg-white rounded-lg p-3 border-2 border-green-300 col-span-1">
-                      <div className="text-xs font-bold text-gray-600 mb-1">Decisión Final</div>
-                      <div className={`text-xs font-black ${
-                        formData.decisionFinal === 'AUDITORÍA INMEDIATA' ? 'text-red-600' :
-                        formData.decisionFinal === 'AUDITORÍA POSTERIOR' ? 'text-orange-600' :
-                        'text-gray-600'
-                      }`}>
-                        {formData.decisionFinal}
+                    <div>
+                      <label className="block text-[10px] text-gray-600 mb-1">
+                        Calificación <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-medium">AUTO</span>
+                      </label>
+                      <div className="px-2 py-1.5 border border-gray-200 rounded-lg bg-gray-50 flex justify-between items-center min-h-[30px]">
+                        <span className="text-[10px] text-gray-500">1–5</span>
+                        <span className="text-sm font-bold text-gray-800">{formData[campo] || '—'}</span>
                       </div>
                     </div>
                   </div>
-                ) : (
-                  <div className="bg-amber-50 border-2 border-amber-200 rounded-lg p-4 mb-4">
-                    <p className="text-sm text-amber-800 font-medium">
-                      Ingrese riesgos inherentes (Extremo, Alto, Moderado, Bajo) para calcular la ponderación DAFP, plan de rotación y decisión de inclusión.
-                    </p>
-                  </div>
-                )}
+                ))}
+              </div>
 
-                {/* Motivo de la Decisión */}
-                {formData.motivoDecision && (
-                    <div className="bg-blue-100 border-2 border-blue-300 rounded-lg p-3">
-                      <div className="flex items-start gap-2">
-                        <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <div className="text-xs font-bold text-blue-800 mb-1">Motivo de la Decisión:</div>
-                          <div className="text-xs text-blue-700 leading-relaxed">
-                            {formData.motivoDecision}
-                          </div>
-                        </div>
+              {/* ─── SECCIÓN 4: Resultados DAFP ─── */}
+              <div className="border border-gray-200 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <BarChart3 className="w-3.5 h-3.5 text-[#003DA5]" />
+                  <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Resultados del cálculo DAFP</span>
+                  <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">TODO AUTOMÁTICO</span>
+                </div>
+
+                {/* Métricas en una fila */}
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  {[
+                    { label: 'Ponderación final', desc: '0.0 – 5.0', val: allFilled ? pond.toFixed(2) : '—' },
+                    { label: 'Nivel de criticidad', desc: 'Semáforo', val: allFilled ? nivel : '—' },
+                    { label: 'Ciclo de rotación', desc: 'Cada N años', val: allFilled ? ciclo : '—' },
+                  ].map(({ label, desc, val }) => (
+                    <div key={label}>
+                      <label className="block text-[11px] text-gray-600 mb-1">{label}
+                        <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-medium">AUTO</span>
+                      </label>
+                      <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 flex justify-between items-center min-h-[34px]">
+                        <span className="text-[11px] text-gray-400">{desc}</span>
+                        <span className="text-sm font-bold text-gray-800">{val}</span>
                       </div>
                     </div>
-                )}
+                  ))}
+                </div>
 
-                {/* Detalle del Cálculo (Opcional - Colapsable) */}
-                {detalleCalculo && (
-                    <details className="mt-3">
-                      <summary className="text-xs font-bold text-gray-600 cursor-pointer hover:text-[#003DA5] transition-colors">
-                        Ver detalle del cálculo de ponderación
-                      </summary>
-                      <div className="mt-2 bg-white rounded-lg p-3 border border-gray-300 text-xs space-y-1">
-                        <div className="flex justify-between">
-                          <span>Extremos ({formData.riesgosExtremos}/{formData.totalRiesgos}):</span>
-                          <span className="font-bold">{detalleCalculo.extremos}%</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Extremos + Altos ({formData.riesgosExtremos + formData.riesgosAltos}/{formData.totalRiesgos}):</span>
-                          <span className="font-bold">{detalleCalculo.extremosAltos}%</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>E + A + Moderados ({formData.riesgosExtremos + formData.riesgosAltos + formData.riesgosModerados}/{formData.totalRiesgos}):</span>
-                          <span className="font-bold">{detalleCalculo.extremosAltosMod}%</span>
-                        </div>
-                        <div className="pt-2 border-t border-gray-200 flex justify-between text-[#003DA5]">
-                          <span className="font-bold">Regla Aplicada:</span>
-                          <span className="font-black">#{detalleCalculo.reglaAplicada}</span>
+                {/* Result box */}
+                <div className={`rounded-lg px-3 py-2 border mb-3 ${colores.box}`}>
+                  {allFilled ? (
+                    <>
+                      <div className="flex items-baseline gap-2 mb-1">
+                        <span className={`text-xl font-bold ${colores.score}`}>{pond.toFixed(2)} / 5.0</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${colores.badge}`}>{nivel}</span>
+                      </div>
+                      <p className="text-[10px] text-gray-500">
+                        RI({riCuan})×0.4 + T({formData.tiempoUltimaAuditoria})×0.1 + AD({formData.temasAltaDireccion})×0.1 + Obj({formData.objetivosEstrategicos})×0.1 + H({formData.hallazgosAnteriores})×0.3 = {pond.toFixed(2)}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-xs text-gray-400">Complete todos los criterios para obtener el cálculo.</p>
+                  )}
+                </div>
+
+                {/* Priorización años 1–4 */}
+                <div>
+                  <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                    Priorización de Auditorías Basadas en Riesgos
+                    <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">AUTO</span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-3">
+                    {[
+                      { ano: 'Año 1', incluido: a1 },
+                      { ano: 'Año 2', incluido: a2 },
+                      { ano: 'Año 3', incluido: a3 },
+                      { ano: 'Año 4', incluido: a4 },
+                    ].map(({ ano, incluido }) => (
+                      <div key={ano} className={`rounded-lg p-2 text-center border transition-all ${incluido ? 'border-[#003DA5] bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
+                        <div className={`text-[10px] font-semibold mb-0.5 ${incluido ? 'text-[#003DA5]' : 'text-gray-400'}`}>{ano}</div>
+                        <div className={`text-[10px] leading-tight ${incluido ? 'text-[#003DA5] font-medium' : 'text-gray-300'}`}>
+                          {incluido && allFilled ? formData.macroproceso || formData.nombre || 'Este proceso' : '—'}
                         </div>
                       </div>
-                    </details>
-                )}
-              </motion.div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
             </div>
 
-            {/* Footer con botones */}
-            <div className="sticky bottom-0 bg-gradient-to-t from-white via-white to-transparent px-8 py-5 border-t-2 border-gray-200 flex items-center justify-between gap-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-xl font-bold transition-all flex items-center gap-2"
-              >
-                <X className="w-5 h-5" />
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                className="px-8 py-3 bg-gradient-to-r from-[#003DA5] to-[#0055CC] text-white rounded-xl font-bold hover:shadow-xl transition-all flex items-center gap-2"
-              >
-                <Save className="w-5 h-5" />
-                {mode === 'create' ? 'Guardar Proceso' : 'Actualizar Proceso'}
-              </button>
-            </div>
           </form>
+
+          {/* ═══ FOOTER — sticky bottom ═══ */}
+          <div className="flex-shrink-0 bg-white border-t border-gray-200 px-4 py-3 flex items-center justify-end gap-3 rounded-b-2xl sticky bottom-0 z-10">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 flex items-center gap-2 transition-all"
+            >
+              <X className="w-4 h-4" /> Cancelar
+            </button>
+            <button
+              type="submit"
+              form="dafp-form"
+              className="px-5 py-2 bg-[#003DA5] hover:bg-[#002d7d] text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-all"
+            >
+              <Save className="w-4 h-4" />
+              {mode === 'create' ? 'Guardar Proceso' : 'Actualizar Proceso'}
+            </button>
+          </div>
         </motion.div>
+        </div>
       </div>
     </AnimatePresence>
   );

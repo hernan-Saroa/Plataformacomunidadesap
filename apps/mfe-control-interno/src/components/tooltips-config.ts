@@ -14,7 +14,7 @@ export interface TooltipConfig {
 
 export const TOOLTIPS_CONTROL_INTERNO: Record<string, TooltipConfig> = {
   'auditorias-kanban': {
-    titulo: 'Auditorías OCIG - Tablero Kanban',
+    titulo: 'Auditorías OCI - Tablero Kanban',
     descripcion: 'Gestiona el ciclo completo de auditorías por estado',
     pasos: ['Arrastra tarjetas entre columnas para cambiar estado', 'Haz clic en tarjeta para ver expediente completo'],
     tips: ['Semáforo: Verde (En tiempo), Amarillo (Próximo), Rojo (Vencida)']

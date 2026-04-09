@@ -23,5 +23,9 @@ export class CreateAuditLogDto {
   responseBodySize?: number;
   errorMessage?: string;
   errorStack?: string;
+  entityName?: string;
+  entityId?: string;
+  previousData?: any;
+  newData?: any;
 }
 

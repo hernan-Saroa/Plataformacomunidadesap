@@ -1,10 +1,10 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- * DETALLE DE AUDITORÍA - OCIG
+ * DETALLE DE AUDITORÍA - OCI
  * ═════════════════════════════════════════════════════════════════════════
  * 
  * Vista completa de una auditoría con tabs por sección
- * Basado en especificaciones de PROMPT_FIGMA_OCIG_COMPLETO.md
+ * Basado en especificaciones de PROMPT_FIGMA_OCI_COMPLETO.md
  * 
  * Tabs:
  * - General: Información básica
@@ -33,10 +33,10 @@ import {
   Upload,
   Plus,
 } from 'lucide-react';
-import { TabsOCIG, type Tab } from './TabsOCIG';
+import { TabsOCI, type Tab } from './TabsOCI';
 import { GestionEquipo, type MiembroEquipo } from './GestionEquipo';
 import { TimelineActividades, type ActividadTimeline } from './TimelineActividades';
-import { ESAP_CLASSES, type EstadoKanban } from '../utils/esapThemeOCIG';
+import { ESAP_CLASSES, type EstadoKanban } from '../utils/esapThemeOCI';
 import { toast } from 'sonner@2.0.3';
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -64,7 +64,7 @@ export interface DetalleAuditoriaData {
   informes?: number;
 }
 
-interface DetalleAuditoriaOCIGProps {
+interface DetalleAuditoriaOCIProps {
   auditoria: DetalleAuditoriaData;
   onVolver: () => void;
   onActualizar?: (data: Partial<DetalleAuditoriaData>) => void;
@@ -114,12 +114,12 @@ const ACTIVIDADES_EJEMPLO: ActividadTimeline[] = [
 // COMPONENTE PRINCIPAL
 // ═════════════════════════════════════════════════════════════════════════
 
-export function DetalleAuditoriaOCIG({
+export function DetalleAuditoriaOCI({
   auditoria,
   onVolver,
   onActualizar,
   className = '',
-}: DetalleAuditoriaOCIGProps) {
+}: DetalleAuditoriaOCIProps) {
   
   const [tabActivo, setTabActivo] = useState('general');
   const [modoEdicion, setModoEdicion] = useState(false);
@@ -293,7 +293,7 @@ export function DetalleAuditoriaOCIG({
       </div>
 
       {/* TABS */}
-      <TabsOCIG
+      <TabsOCI
         tabs={tabs}
         activeTab={tabActivo}
         onTabChange={setTabActivo}
@@ -538,4 +538,4 @@ function TabInformes() {
 // EXPORTS
 // ═════════════════════════════════════════════════════════════════════════
 
-export default DetalleAuditoriaOCIG;
+export default DetalleAuditoriaOCI;

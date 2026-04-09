@@ -113,7 +113,15 @@ export interface EvaluacionProceso {
   exposicion: number;
   mitigantes: number;
   scoreRiesgo: number;
-  // Cálculos DAFP
+  // Criterios de priorización DAFP (migración 179)
+  tiempoUltimaAuditoria?: number;
+  temasAltaDireccion?: number;
+  objetivosEstrategicos?: number;
+  hallazgosAnteriores?: number;
+  ponderacionFinalDafp?: number;
+  nivelCriticidadDafp?: string;
+  cicloRotacionDafp?: string;
+  // Cálculos DAFP legacy
   ponderacionRiesgo?: string;
   diasTranscurridos?: number;
   planRotacion?: string;
@@ -146,8 +154,17 @@ export interface CreateEvaluacionProcesoDTO {
   criticidad?: number;
   exposicion?: number;
   mitigantes?: number;
+  // Criterios de priorización DAFP (migración 179)
+  tiempoUltimaAuditoria?: number;
+  temasAltaDireccion?: number;
+  objetivosEstrategicos?: number;
+  hallazgosAnteriores?: number;
+  ponderacionFinalDafp?: number;
+  nivelCriticidadDafp?: string;
+  cicloRotacionDafp?: string;
   decisionFinal?: string;
   motivoDecision?: string;
+  prioridadRegla?: number;
 }
 
 export interface AuditoriaProgramada {
@@ -567,49 +584,49 @@ class ControlInternoService {
    */
   async getEvaluaciones(vigencia?: number): Promise<EvaluacionProceso[]> {
     const q = vigencia ? `?vigencia=${vigencia}` : '';
-    return client.get<EvaluacionProceso[]>(`/universo-auditorias/evaluaciones${q}`);
+    return client.get<EvaluacionProceso[]>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones${q}`);
   }
 
   /**
    * Obtiene una evaluación por ID
    */
   async getEvaluacionById(id: string): Promise<EvaluacionProceso> {
-    return client.get<EvaluacionProceso>(`/universo-auditorias/evaluaciones/${id}`);
+    return client.get<EvaluacionProceso>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/${id}`);
   }
 
   /**
    * Obtiene evaluaciones por proceso
    */
   async getEvaluacionesByProceso(procesoId: string): Promise<EvaluacionProceso[]> {
-    return client.get<EvaluacionProceso[]>(`/universo-auditorias/evaluaciones/proceso/${procesoId}`);
+    return client.get<EvaluacionProceso[]>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/proceso/${procesoId}`);
   }
 
   /**
    * Obtiene estadísticas de evaluaciones por vigencia
    */
   async getEstadisticasEvaluaciones(vigencia: number): Promise<any> {
-    return client.get(`/universo-auditorias/evaluaciones/estadisticas/${vigencia}`);
+    return client.get(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/estadisticas/${vigencia}`);
   }
 
   /**
    * Crea una nueva evaluación de proceso
    */
   async createEvaluacion(data: CreateEvaluacionProcesoDTO): Promise<EvaluacionProceso> {
-    return client.post<EvaluacionProceso>('/universo-auditorias/evaluaciones', data);
+    return client.post<EvaluacionProceso>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones`, data);
   }
 
   /**
    * Actualiza una evaluación de proceso
    */
   async updateEvaluacion(id: string, data: Partial<CreateEvaluacionProcesoDTO>): Promise<EvaluacionProceso> {
-    return client.put<EvaluacionProceso>(`/universo-auditorias/evaluaciones/${id}`, data);
+    return client.put<EvaluacionProceso>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/${id}`, data);
   }
 
   /**
    * Elimina una evaluación de proceso
    */
   async deleteEvaluacion(id: string): Promise<void> {
-    return client.delete(`/universo-auditorias/evaluaciones/${id}`);
+    return client.delete(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/${id}`);
   }
 
   // ==========================================================================

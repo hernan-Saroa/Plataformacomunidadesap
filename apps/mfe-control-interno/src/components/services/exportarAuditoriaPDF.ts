@@ -237,7 +237,7 @@ function crearEncabezadoFormulario(doc: jsPDF, auditoria: AuditoriaPDFData, logo
   
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text('Oficina de Control Interno de Gestión - OCIG', tituloCentro, margen + 19, { align: 'center' });
+  doc.text('Oficina de Control Interno de Gestión - OCI', tituloCentro, margen + 19, { align: 'center' });
   
   doc.setFontSize(10);
   doc.setTextColor(0, 61, 165);
@@ -451,7 +451,7 @@ export async function exportarAuditoriaPDF(
       ['Planificación de la auditoría', auditorLiderNombre, formatearFecha(auditoria.fechaInicio), 'Sede ESAP'],
       ['Reunión de apertura', auditorLiderNombre, formatearFecha(auditoria.fechaInicio), 'Área auditada'],
       ['Ejecución de la auditoría', 'Equipo auditor', 'Durante el período', 'Área auditada'],
-      ['Elaboración del informe', auditorLiderNombre, formatearFecha(auditoria.fechaFin), 'OCIG'],
+      ['Elaboración del informe', auditorLiderNombre, formatearFecha(auditoria.fechaFin), 'OCI'],
       ['Reunión de cierre', auditorLiderNombre, formatearFecha(auditoria.fechaFin), 'Área auditada'],
     ];
 
@@ -497,7 +497,7 @@ export async function exportarAuditoriaPDF(
       doc.setFontSize(8);
       doc.setTextColor(...COLORES_ESAP.gris);
       doc.setFont('helvetica', 'normal');
-      doc.text('Oficina de Control Interno de Gestión - OCIG', margin, pageHeight - 10);
+      doc.text('Oficina de Control Interno de Gestión - OCI', margin, pageHeight - 10);
       
       // Número de página
       doc.text(`Página ${i} de ${totalPages}`, pageWidth - margin, pageHeight - 10, { align: 'right' });

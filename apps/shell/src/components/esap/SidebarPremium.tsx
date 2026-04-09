@@ -177,10 +177,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
 
   const handleModuleClick = (module: ModuleType) => {
     onModuleChange?.(module);
-    // Close sidebar on mobile after selecting a module
-    if (window.innerWidth < 768) {
-      onClose?.();
-    }
+    // No need to close sidebar since it's always visible
   };
 
   const toggleMenuExpansion = (menuId: string) => {
@@ -681,25 +678,12 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
 
   return (
     <>
-      {/* Overlay para mobile */}
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[99] md:hidden"
-          />
-        )}
-      </AnimatePresence>
+
 
       {/* Sidebar */}
       <aside
         id="sidebar-navigation"
-        className={`fixed left-0 top-0 h-screen z-[100] transition-all duration-300 flex flex-col ${ 
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        } md:translate-x-0 ${ 
+        className={`fixed left-0 top-0 h-screen z-[100] transition-all duration-300 flex flex-col translate-x-0 ${
           effectiveCollapsed ? 'w-[80px]' : 'w-[280px] md:w-[260px] lg:w-[220px] xl:w-[240px] 2xl:w-[260px]'
         }`}
         style={{
@@ -759,7 +743,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
           {/* Botón Toggle Premium */}
           <motion.button
             onClick={onToggleCollapse}
-            className="hidden md:flex absolute -right-3 w-7 h-7 bg-white rounded-full items-center justify-center shadow-xl border-2 border-[#1e5da8] z-10 overflow-hidden"
+            className="flex absolute -right-3 w-7 h-7 bg-white rounded-full items-center justify-center shadow-xl border-2 border-[#1e5da8] z-10 overflow-hidden"
             style={{ top: '50%', transform: 'translateY(-50%)', color: '#1e5da8' }}
             whileHover={{ 
               scale: 1.15,

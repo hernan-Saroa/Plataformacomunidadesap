@@ -9,6 +9,7 @@ import { Repository, Not } from 'typeorm';
 import { DisciplinaryNews, NewsStatus, NewsOrigin } from '../entities/disciplinary-news.entity';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { DisciplinaryNewsProcess } from '../entities/disciplinary-news-process.entity';
+import { StageConfiguration } from '../entities/stage-configuration.entity';
 import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto';
 import { ReturnNewsDto } from '../dtos/return-news.dto';
 import { SequenceService } from './sequence.service';
@@ -28,6 +29,8 @@ export class NewsService {
     private processRepository: Repository<DisciplinaryProcess>,
     @InjectRepository(DisciplinaryNewsProcess)
     private newsProcessRepository: Repository<DisciplinaryNewsProcess>,
+    @InjectRepository(StageConfiguration)
+    private stageConfigurationRepository: Repository<StageConfiguration>,
     private sequenceService: SequenceService,
     private storageService: StorageService,
   ) { }
@@ -47,10 +50,14 @@ export class NewsService {
       const adjuntos: string[] = Array.isArray(createNewsDto.adjuntos)
         ? [...createNewsDto.adjuntos]
         : [];
+      console.log(`[DEBUG] NewsService.create - Radicado: ${radicado}, Adjuntos iniciales: ${adjuntos.length}, Files recibidos: ${files?.length || 0}`);
       if (files && files.length > 0) {
+        console.log(`[DEBUG] Procesando ${files.length} archivos...`);
         const stored = await this.storageService.saveMultipleFiles(radicado, files);
+        console.log(`[DEBUG] Archivos guardados: ${stored.length} - ${stored.join(', ')}`);
         adjuntos.push(...stored);
       }
+      console.log(`[DEBUG] Adjuntos finales: ${adjuntos.length} - ${adjuntos.join(', ')}`);
 
       // Crear historial inicial
       const initialHistory = [{
@@ -68,6 +75,17 @@ export class NewsService {
         fechaCaducidad.setFullYear(fechaCaducidad.getFullYear() + 5);
       }
 
+      // Get initial stage order from configuration
+      const initialStage = await this.stageConfigurationRepository.findOne({
+        where: { orden: 1, activo: true },
+      });
+      if (!initialStage) {
+        throw new HttpException(
+          'Initial stage configuration for RECEPCION not found',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
       // Crear y guardar noticia
       const noticia = this.newsRepository.create({
         radicado,
@@ -75,7 +93,7 @@ export class NewsService {
         adjuntos,
         fechaCaducidad,
         estado: NewsStatus.RADICADA,
-        kanbanStage: 'RECEPCION',
+        kanbanStage: initialStage.id,
         historialAuditoria: initialHistory,
       });
 
@@ -372,13 +390,22 @@ export class NewsService {
   /**
    * Actualiza la etapa Kanban de una noticia
    */
-  async updateKanbanStage(id: string, kanbanStage?: string): Promise<DisciplinaryNews> {
-    const noticia = await this.findById(id);
-    if (kanbanStage) {
-      noticia.kanbanStage = kanbanStage;
-    }
-    return await this.newsRepository.save(noticia);
-  }
+   async updateKanbanStage(id: string, kanbanStage?: number): Promise<DisciplinaryNews> {
+     const noticia = await this.findById(id);
+     if (kanbanStage !== undefined) {
+       const stageConfig = await this.stageConfigurationRepository.findOne({
+         where: { orden: kanbanStage, activo: true },
+       });
+       if (!stageConfig) {
+         throw new HttpException(
+           `Stage configuration with orden ${kanbanStage} not found`,
+           HttpStatus.BAD_REQUEST,
+         );
+       }
+        noticia.kanbanStage = stageConfig.id;
+     }
+     return await this.newsRepository.save(noticia);
+   }
 
   /**
    * Actualiza el historial de auditoría de una noticia
@@ -433,45 +460,49 @@ export class NewsService {
       newsId,
       processId: procesoDestinoId,
       justificacion,
+      fechaAsociacion: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
-
-    // Cambiar el estado de la noticia a ASOCIADA
-    noticia.estado = NewsStatus.ASOCIADA;
-
-    // Registrar en auditoría de la noticia
-    const historyEntry = {
-      id: Date.now().toString(),
-      tipo: 'asociacion',
-      usuario: 'Sistema',
-      fecha: new Date().toISOString(),
-      observaciones: `Noticia asociada al proceso ${proceso.radicadoProceso}. Justificación: ${justificacion}`,
-    };
-    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
-
+  
     console.log('✅ Asociando noticia a proceso:', {
       newsId,
       procesoDestinoId,
       radicadoProceso: proceso.radicadoProceso,
     });
-
-    // Guardar la noticia con el nuevo estado
-    await this.newsRepository.save(noticia);
-
-    // Intentar guardar la asociación
+  
+    // Intentar guardar la asociación PRIMERO
     try {
       const association = this.newsProcessRepository.create(associationData);
       const savedAssociation = await this.newsProcessRepository.save(association);
+  
+      // Solo si la asociación se guarda exitosamente, cambiar el estado de la noticia
+      noticia.estado = NewsStatus.ASOCIADA;
+  
+      // Registrar en auditoría de la noticia
+      const historyEntry = {
+        id: Date.now().toString(),
+        tipo: 'asociacion',
+        usuario: 'Sistema',
+        fecha: new Date().toISOString(),
+        observaciones: `Noticia asociada al proceso ${proceso.radicadoProceso}. Justificación: ${justificacion}`,
+      };
+      noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+  
+      // Guardar la noticia con el nuevo estado
+      await this.newsRepository.save(noticia);
+  
       return {
         message: 'Asociación creada exitosamente',
         association: savedAssociation
       };
     } catch (error) {
       console.error('Error guardando asociación:', error);
-      // Retornar éxito parcial - la noticia cambió de estado
-      return {
-        message: 'Noticia asociada (estado actualizado), pero error en registro de asociación',
-        association: associationData
-      };
+      // Si falla la asociación, NO cambiar el estado de la noticia
+      throw new HttpException(
+        `Error al crear la asociación: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -547,7 +578,7 @@ export class NewsService {
 
     // Actualizar estado y campos de remisión
     noticia.estado = NewsStatus.REMITIDA;
-    noticia.kanbanStage = 'REMITIDA';
+    noticia.kanbanStage = null;
     noticia.numeroRC = data.numeroRC;
     noticia.entidadRemision = data.entidadRemision;
     noticia.correoEntidadRemision = data.correoEntidadRemision;

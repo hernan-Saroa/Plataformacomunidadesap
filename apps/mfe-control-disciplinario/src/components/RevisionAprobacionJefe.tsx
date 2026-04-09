@@ -141,8 +141,9 @@ export function RevisionAprobacionJefe({
     // Filtro por estado solo para reasignaciones
     let matchesEstado = true;
     if (filtroTipo === 'reasignaciones') {
-      matchesEstado = filtroEstado === 'todos' || 
+      matchesEstado = filtroEstado === 'todos' ||
         (filtroEstado === 'pendiente_revision' && s.estado === 'pendiente') ||
+        (filtroEstado === 'en_revision' && s.estado === 'pendiente') ||
         (filtroEstado === 'aprobado' && s.estado === 'aprobada') ||
         (filtroEstado === 'devuelto' && s.estado === 'rechazada');
     }
@@ -191,13 +192,23 @@ export function RevisionAprobacionJefe({
     }
   };
 
-  const FILTROS = [
+  const FILTROS_AUTOS = [
     { id: 'todos' as const, label: 'Todos', count: borradores.length },
     { id: 'pendiente_revision' as const, label: 'Pendientes', count: pendientes },
     { id: 'en_revision' as const, label: 'En Revisión', count: enRevision },
     { id: 'aprobado' as const, label: 'Aprobados', count: aprobados },
     { id: 'devuelto' as const, label: 'Devueltos', count: devueltos },
   ];
+
+  const FILTROS_REASIGNACIONES = [
+    { id: 'todos' as const, label: 'Todos', count: solicitudesReasignacion.length },
+    { id: 'pendiente_revision' as const, label: 'Pendientes', count: reasignacionesPendientes },
+    { id: 'en_revision' as const, label: 'En Revisión', count: reasignacionesPendientes },
+    { id: 'aprobado' as const, label: 'Aprobadas', count: reasignacionesAprobadas },
+    { id: 'devuelto' as const, label: 'Rechazadas', count: reasignacionesRechazadas },
+  ];
+
+  const FILTROS = filtroTipo === 'reasignaciones' ? FILTROS_REASIGNACIONES : FILTROS_AUTOS;
 
   const hayFiltroFechaActivo = fechaDesde !== '' || fechaHasta !== '';
 

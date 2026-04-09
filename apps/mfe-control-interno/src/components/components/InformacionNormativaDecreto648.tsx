@@ -305,7 +305,7 @@ function ModalNormatividadCompleta({ isOpen, onClose }: ModalNormatividadComplet
             </div>
             <div>
               <h2 className="text-2xl font-bold text-white">Decreto 648 de 2017</h2>
-              <p className="text-blue-100 text-sm">Marco normativo del Plan Anual de Auditoría OCIG</p>
+              <p className="text-blue-100 text-sm">Marco normativo del Plan Anual de Auditoría OCI</p>
             </div>
           </div>
           <button

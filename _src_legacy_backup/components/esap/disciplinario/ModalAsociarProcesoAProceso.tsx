@@ -217,7 +217,10 @@ export function ModalAsociarProcesoAProceso({
   // RENDER
   // ════════════════════════════════════════════════════════════════
 
-  if (!procesoOrigen) return null;
+  // Validación más robusta: verificar que el proceso tenga los campos requeridos
+  if (!procesoOrigen || procesoOrigen.tipo !== 'proceso' || !procesoOrigen.id || !procesoOrigen.numeroProceso) {
+    return null;
+  }
 
   const procesoSeleccionadoData = procesoSeleccionado
     ? procesosDisponibles.find(p => p.id === procesoSeleccionado)
@@ -242,8 +245,12 @@ export function ModalAsociarProcesoAProceso({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{
+        backgroundColor: 'rgba(0,0,0,0.60)',
+        padding: '4vh 4vw',
+        zIndex: 9999999
+      }}
       onClick={(e) => !isSubmitting && e.target === e.currentTarget && handleClose()}
     >
       <motion.div
