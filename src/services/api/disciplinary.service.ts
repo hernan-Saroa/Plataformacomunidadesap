@@ -164,7 +164,7 @@ export interface DisciplinaryProcessReassignmentRequest {
 export interface DisciplinaryProcess {
      id: string;
      radicadoProceso: string;
-     etapaActual: 'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO' | 'FALLO' | 'SEGUNDA_INSTANCIA' | 'INDAGACION';
+     etapaActual: 'RECEPCION' |'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO' | 'FALLO' | 'SEGUNDA_INSTANCIA' | 'INDAGACION';
     kanbanStage?: number;
      kanbanNotice?: string;
      estado: 'ACTIVO' | 'SUSPENDIDO' | 'ARCHIVADO' | 'PRESCRITO';

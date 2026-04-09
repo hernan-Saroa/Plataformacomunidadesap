@@ -2615,40 +2615,9 @@ export function DashboardKanbanOperativo({
   const [showBusquedaGlobal, setShowBusquedaGlobal] = useState(false);
   const busquedaInputRef = useRef<HTMLInputElement>(null);
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
-  const kanbanTopBarRef = useRef<HTMLDivElement>(null);
 
-  // Sincronizar barra superior con scroll principal (sin deps: corre en cada render, ResizeObserver evita loops)
-  useEffect(() => {
-    const main = kanbanScrollRef.current;
-    const bar = kanbanTopBarRef.current;
-    if (!main || !bar) return;
-    const inner = bar.firstElementChild as HTMLDivElement | null;
-    const syncWidth = () => { if (inner) inner.style.width = `${main.scrollWidth}px`; };
-    syncWidth();
-    const ro = new ResizeObserver(syncWidth);
-    ro.observe(main);
-    // Flag para evitar loop circular de sincronizacion
-    let syncing = false;
-    const syncBarFromMain = () => {
-      if (syncing) return;
-      syncing = true;
-      bar.scrollLeft = main.scrollLeft;
-      syncing = false;
-    };
-    const syncMainFromBar = () => {
-      if (syncing) return;
-      syncing = true;
-      main.scrollLeft = bar.scrollLeft;
-      syncing = false;
-    };
-    main.addEventListener('scroll', syncBarFromMain);
-    bar.addEventListener('scroll', syncMainFromBar);
-    return () => {
-      main.removeEventListener('scroll', syncBarFromMain);
-      bar.removeEventListener('scroll', syncMainFromBar);
-      ro.disconnect();
-    };
-  });  // sin deps: corre en cada render, ResizeObserver evita loops
+
+
 
   // ✅ FILTRO POR TIPO: todos, noticia, proceso
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'noticia' | 'proceso'>('todos');
@@ -5045,23 +5014,6 @@ export function DashboardKanbanOperativo({
 
         {tipoVista === 'kanban' && itemsFiltrados.length > 0 && (
           <div className="flex-1 flex flex-col min-h-0">
-            {/* Barra de scroll superior sincronizada */}
-            <div
-              ref={kanbanTopBarRef}
-              style={{
-                overflowX: 'auto',
-                overflowY: 'hidden',
-                height: '14px',
-                scrollbarWidth: 'thin',
-                scrollbarColor: '#2962FF #E5E7EB',
-                background: '#F1F5F9',
-                borderRadius: '4px',
-                marginBottom: '4px',
-                flexShrink: 0,
-              }}
-            >
-              <div style={{ height: '1px' }} />
-            </div>
             {/* Wrapper relativo para el area kanban */}
             <div className="relative flex-1 min-h-0">
               {/* Botones sticky: siempre centrados en la parte visible de la pantalla */}
@@ -5081,15 +5033,16 @@ export function DashboardKanbanOperativo({
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
-              {/* Contenedor Kanban: scroll horizontal, scrollbar nativo oculto */}
+              {/* Contenedor Kanban: scroll horizontal con barra azul visible en la parte inferior */}
               <div
                 ref={kanbanScrollRef}
-                className="h-full pb-2"
+                className="h-full pb-2 kanban-scroll-container"
                 style={{
                   overflowX: 'auto',
                   overflowY: 'hidden',
                   WebkitOverflowScrolling: 'touch',
-                  scrollbarWidth: 'none',
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: '#2962FF #E5E7EB',
                 }}
               >
                 <div
@@ -5155,6 +5108,35 @@ export function DashboardKanbanOperativo({
                 </div>
               </div>
             </div>
+
+            {/* Estilos personalizados para el scrollbar horizontal azul */}
+            <style>{`
+              /* Scrollbar horizontal azul para el kanban */
+              .kanban-scroll-container::-webkit-scrollbar {
+                height: 12px;
+                display: block !important;
+              }
+              .kanban-scroll-container::-webkit-scrollbar-track {
+                background: #F3F4F6;
+                border-radius: 8px;
+                margin: 0 8px;
+              }
+              .kanban-scroll-container::-webkit-scrollbar-thumb {
+                background: linear-gradient(to right, #2962FF, #003DA5);
+                border-radius: 8px;
+                border: 2px solid #F3F4F6;
+              }
+              .kanban-scroll-container::-webkit-scrollbar-thumb:hover {
+                background: linear-gradient(to right, #003DA5, #2962FF);
+              }
+
+              /* Optimización responsive */
+              @media (max-width: 640px) {
+                .kanban-scroll-container::-webkit-scrollbar {
+                  height: 10px;
+                }
+              }
+            `}</style>
           </div>
         )}
 
