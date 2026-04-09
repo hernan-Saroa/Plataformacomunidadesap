@@ -142,6 +142,7 @@ interface Noticia {
   prioridad: 'alta' | 'media' | 'baja';
   diasPendientes: number;
   tipo: 'noticia';
+  kanbanStage?: string;
   procesoAsociado?: {
     id: string;
     numeroProceso: string;
@@ -208,6 +209,7 @@ interface Proceso {
   ultimaActuacion: string;
   fechaCreacion: string;
   tipo: 'proceso';
+  kanbanStage?: string;
   hechos?: string;
   cargo?: string;
   dependencia?: string;
@@ -919,17 +921,8 @@ function VistaLista({
         ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
         : (item as Proceso).denunciado.nombre?.toLowerCase().includes(searchTerm.toLowerCase())));
 
-    const matchEtapa = filtroEtapa === 'todos' ||
-      (item.tipo === 'noticia' && (
-        // Para noticias, verificar si el filtro corresponde a la primera etapa configurada
-        (etapasConfig && etapasConfig.length > 0
-          ? (() => {
-              const primeraEtapa = etapasConfig.sort((a, b) => (a.orden || 0) - (b.orden || 0))[0];
-              return (primeraEtapa?.etapa || primeraEtapa?.nombre) === filtroEtapa;
-            })()
-          : filtroEtapa === 'Recepción')
-      )) ||
-      (item.tipo === 'proceso' && (item as Proceso).etapaActual === filtroEtapa);
+    // Filtrar por etapa comparando ID de etapa parametrizada contra kanbanStage del item
+    const matchEtapa = filtroEtapa === 'todos' || item.kanbanStage === filtroEtapa;
 
     return matchSearch && matchEtapa;
   });
@@ -973,22 +966,22 @@ function VistaLista({
                   .map((etapa) => {
                     const nombreEtapa = etapa.etapa || etapa.nombre || 'Sin nombre';
                     return (
-                      <option key={etapa.id || `etapa-${Math.random()}`} value={nombreEtapa}>
+                      <option key={etapa.id || `etapa-${Math.random()}`} value={etapa.id}>
                         {nombreEtapa}
                       </option>
                     );
                   });
               } else {
-                // Fallback options
+                // Fallback options con IDs fijos para mantener consistencia
                 return (
                   <>
-                    <option value="Recepción">Recepción (Noticias) - 3 días</option>
-                    <option value="Valoración">Valoración - 10 días</option>
-                    <option value="Indagación">Indagación - 40 días</option>
-                    <option value="Investigación">Investigación - 60 días</option>
-                    <option value="Juzgamiento">Juzgamiento - 50 días</option>
-                    <option value="Fallo">Fallo - 10 días</option>
-                    <option value="Archivo">Archivo - Completado</option>
+                    <option value="recepcion">Recepción (Noticias) - 3 días</option>
+                    <option value="valoracion">Valoración - 10 días</option>
+                    <option value="indagacion">Indagación - 40 días</option>
+                    <option value="investigacion">Investigación - 60 días</option>
+                    <option value="juzgamiento">Juzgamiento - 50 días</option>
+                    <option value="fallo">Fallo - 10 días</option>
+                    <option value="archivo">Archivo - Completado</option>
                   </>
                 );
               }
@@ -2433,6 +2426,7 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     prioridad: (noticia as any).prioridad || 'media',
     diasPendientes: (noticia as any).diasPendientes ?? dias,
     tipo: 'noticia',
+    kanbanStage: (noticia as any).kanbanStage,
     etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion',
     procesoAsociado: (noticia as any).procesoAsociadoId ? {
       id: (noticia as any).procesoAsociadoId,
@@ -2555,6 +2549,7 @@ export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = [])
     ultimaActuacion: proceso.ultimaActuacion || 'Sin actuaciones registradas',
     fechaCreacion: fechaCreacion.toISOString().split('T')[0],
     tipo: 'proceso',
+    kanbanStage: proceso.kanbanStage,
     hechos: proceso.news?.hechos,
     kanbanNotice: proceso.kanbanNotice || null,
     procesoAsociadoId: proceso.procesoAsociadoId,
@@ -2924,8 +2919,8 @@ export function DashboardKanbanOperativo({
     let etapaNormalizada: string;
 
     if (etapaRaw) {
-      // Buscar coincidencia en etapas del backend
-      const match = currentStages.find(s => s.etapa === etapaRaw || s.nombre === etapaRaw || s.etapa?.toUpperCase() === etapaRaw.toUpperCase() || s.nombre?.toUpperCase() === etapaRaw.toUpperCase());
+      // Buscar coincidencia en etapas del backend por id o por nombre
+      const match = currentStages.find(s => s.id === etapaRaw || s.etapa === etapaRaw || s.nombre === etapaRaw || s.etapa?.toUpperCase() === etapaRaw.toUpperCase() || s.nombre?.toUpperCase() === etapaRaw.toUpperCase());
       if (match) {
         etapaNormalizada = match.etapa || match.nombre || etapaRaw;
       } else {
@@ -3033,8 +3028,8 @@ export function DashboardKanbanOperativo({
     if (!etapa) {
       etapa = 'Recepción';
     } else {
-      // Normalizar etapa: buscar coincidencia exacta o insensible en las etapas del backend
-      const match = currentStages.find(s => s.etapa === etapa || s.nombre === etapa || s.etapa?.toUpperCase() === etapa.toUpperCase() || s.nombre?.toUpperCase() === etapa.toUpperCase());
+      // Normalizar etapa: buscar coincidencia por id o por nombre en las etapas del backend
+      const match = currentStages.find(s => s.id === etapa || s.etapa === etapa || s.nombre === etapa || s.etapa?.toUpperCase() === etapa.toUpperCase() || s.nombre?.toUpperCase() === etapa.toUpperCase());
       if (match) {
         etapa = match.etapa || match.nombre || etapa;
       } else {
@@ -3188,24 +3183,12 @@ export function DashboardKanbanOperativo({
       const normalizedRaw = normalizeStageKey(raw);
       return normalizedRaw === normalizedLabel || normalizedRaw.includes(normalizedLabel) || normalizedLabel.includes(normalizedRaw);
     });
-    if (mappedStage?.etapa) {
-      return mappedStage.etapa.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    if (mappedStage?.id) {
+      return mappedStage.id;
     }
 
-    const fallbackMap: Record<string, string> = {
-      'recepcion': 'RECEPCION',
-      'valoracion': 'VALORACION',
-      'indagacion': 'INDAGACION_PREVIA',
-      'indagacion previa': 'INDAGACION_PREVIA',
-      'investigacion': 'INVESTIGACION',
-      'evaluacion': 'EVALUACION',
-      'juzgamiento': 'JUZGAMIENTO',
-      'fallo': 'FALLO',
-      'segunda instancia': 'SEGUNDA_INSTANCIA',
-      'archivo': 'ARCHIVO'
-    };
-
-    return fallbackMap[normalizedLabel] || normalizedLabel.replace(/\s+/g, '_').toUpperCase();
+    // Fallback: if no config, return the label as is (but ideally config should exist)
+    return label;
   };
 
   // ==================== HANDLERS ====================
