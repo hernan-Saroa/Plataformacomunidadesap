@@ -335,11 +335,13 @@ export function TabUniversoAuditableResponsive({
   // ══════════════════════════════════════════════════════════════════════════
 
   // Calcula años de priorización según ciclo de rotación DAFP
+  // Priorización DAFP RE-E-GE-034: años activos dentro del cuatrienio
   const calcPriorizacionAnos = (ciclo?: string) => {
     if (!ciclo) return [];
-    if (ciclo === 'Cada año')    return [1, 2, 3, 4];
-    if (ciclo === 'Cada 2 años') return [2, 4];
-    if (ciclo === 'Cada 3 años') return [3];
+    if (ciclo === 'Cada año')    return [1, 2, 3, 4]; // Extremo: todos
+    if (ciclo === 'Cada 2 años') return [2, 4];       // Alto: años pares
+    if (ciclo === 'Cada 3 años') return [3];           // Moderado: tercer año
+    if (ciclo === 'Cada 4 años') return [4];           // Bajo: cuarto año
     return [];
   };
 
@@ -392,40 +394,36 @@ export function TabUniversoAuditableResponsive({
         );
       }
     },
-    // 4. Riesgo Inherente (total riesgos)
+    // 4. Riesgo Inherente — nivel consolidado cualitativo (RI cuantitativo)
     {
       key: 'riesgoInherente',
       label: 'Riesgo inherente',
       align: 'center',
-      width: '130px',
+      width: '120px',
       render: (_, p) => {
         const ev = p._evaluacionRiesgo;
-        const total = ev?.totalRiesgos ?? 0;
+        const e = ev?.riesgosExtremos ?? 0;
+        const a = ev?.riesgosAltos ?? 0;
+        const m = ev?.riesgosModerados ?? 0;
+        const b = ev?.riesgosBajos ?? 0;
+        const total = e + a + m + b;
         if (!total) return <span className="text-xs text-gray-300">—</span>;
+
+        // Nivel consolidado: el más alto presente
+        let nivel: string;
+        let style: { bg: string; text: string };
+        if (e >= 1)      { nivel = 'Extremo';  style = { bg: '#FEE2E2', text: '#991B1B' }; }
+        else if (a >= 1) { nivel = 'Alto';     style = { bg: '#FFEDD5', text: '#9A3412' }; }
+        else if (m >= 1) { nivel = 'Moderado'; style = { bg: '#FEF9C3', text: '#854D0E' }; }
+        else             { nivel = 'Bajo';     style = { bg: '#DBEAFE', text: '#1E40AF' }; }
+
         return (
-          <div className="flex items-center justify-center gap-1 flex-wrap">
-            {(ev?.riesgosExtremos ?? 0) > 0 && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">
-                E:{ev?.riesgosExtremos}
-              </span>
-            )}
-            {(ev?.riesgosAltos ?? 0) > 0 && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700">
-                A:{ev?.riesgosAltos}
-              </span>
-            )}
-            {(ev?.riesgosModerados ?? 0) > 0 && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-yellow-100 text-yellow-700">
-                M:{ev?.riesgosModerados}
-              </span>
-            )}
-            {(ev?.riesgosBajos ?? 0) > 0 && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">
-                B:{ev?.riesgosBajos}
-              </span>
-            )}
-            <span className="text-[10px] text-gray-500 ml-1">({total})</span>
-          </div>
+          <span
+            className="px-2.5 py-1 rounded-full text-xs font-bold"
+            style={{ backgroundColor: style.bg, color: style.text }}
+          >
+            {nivel}
+          </span>
         );
       }
     },

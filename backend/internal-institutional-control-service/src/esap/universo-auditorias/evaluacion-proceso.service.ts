@@ -149,6 +149,14 @@ export class EvaluacionProcesoService {
       planRotacion: dto.planRotacion,
       diasRotacion: dto.diasRotacion || 360,
       decisionRotacion: dto.decisionRotacion,
+      // Criterios DAFP RE-E-GE-034
+      tiempoUltimaAuditoria: dto.tiempoUltimaAuditoria || 0,
+      temasAltaDireccion: dto.temasAltaDireccion || 0,
+      objetivosEstrategicos: dto.objetivosEstrategicos || 0,
+      hallazgosAnteriores: dto.hallazgosAnteriores || 0,
+      ponderacionFinalDafp: dto.ponderacionFinalDafp || 0,
+      nivelCriticidadDafp: dto.nivelCriticidadDafp,
+      cicloRotacionDafp: dto.cicloRotacionDafp,
       decisionFinal: dto.decisionFinal,
       motivoDecision: dto.motivoDecision,
       prioridadRegla: dto.prioridadRegla,
@@ -209,6 +217,14 @@ export class EvaluacionProcesoService {
     if (dto.planRotacion !== undefined) evaluacion.planRotacion = dto.planRotacion;
     if (dto.diasRotacion !== undefined) evaluacion.diasRotacion = dto.diasRotacion;
     if (dto.decisionRotacion !== undefined) evaluacion.decisionRotacion = dto.decisionRotacion;
+    // Criterios DAFP RE-E-GE-034
+    if (dto.tiempoUltimaAuditoria !== undefined) evaluacion.tiempoUltimaAuditoria = dto.tiempoUltimaAuditoria;
+    if (dto.temasAltaDireccion !== undefined) evaluacion.temasAltaDireccion = dto.temasAltaDireccion;
+    if (dto.objetivosEstrategicos !== undefined) evaluacion.objetivosEstrategicos = dto.objetivosEstrategicos;
+    if (dto.hallazgosAnteriores !== undefined) evaluacion.hallazgosAnteriores = dto.hallazgosAnteriores;
+    if (dto.ponderacionFinalDafp !== undefined) evaluacion.ponderacionFinalDafp = dto.ponderacionFinalDafp;
+    if (dto.nivelCriticidadDafp !== undefined) evaluacion.nivelCriticidadDafp = dto.nivelCriticidadDafp;
+    if (dto.cicloRotacionDafp !== undefined) evaluacion.cicloRotacionDafp = dto.cicloRotacionDafp;
     if (dto.decisionFinal !== undefined) evaluacion.decisionFinal = dto.decisionFinal;
     if (dto.motivoDecision !== undefined) evaluacion.motivoDecision = dto.motivoDecision;
     if (dto.prioridadRegla !== undefined) evaluacion.prioridadRegla = dto.prioridadRegla;

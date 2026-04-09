@@ -13,18 +13,25 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import {
-  X, Save, Layers, AlertTriangle,
-  Info, Activity, BarChart3, Target
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  CalendarCheck,
+  Info,
+  Layers,
+  Save,
+  Target,
+  X
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner@2.0.3';
 import {
+  type DecisionFinal,
+  type DecisionRotacion,
   type NivelRiesgo,
   type ResultadoAuditoria,
-  type DecisionRotacion,
-  type DecisionFinal,
   calcularPonderacionRiesgo,
 } from './dafp-utils';
 
@@ -96,7 +103,8 @@ export interface ProcesoParaSelect {
   codigo: string;
   macroproceso?: string;
   dependencia?: string;
-  tipo?: string; // 'Misional' | 'Estratégico' | 'Apoyo' | 'Territorial'
+  tipo?: string;
+  esEspecial?: boolean; // ★ — se audita todos los años del cuatrienio
 }
 
 interface FormularioProcesoDafpProps {
@@ -106,6 +114,8 @@ interface FormularioProcesoDafpProps {
   procesoInicial?: FormularioDafpData | null;
   mode: 'create' | 'edit';
   procesosCatalog?: ProcesoParaSelect[];
+  vigenciaPlan?: number; // Año del plan anual activo
+  fechaCortePlan?: string; // Fecha de corte del plan anual activo
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -135,27 +145,41 @@ function calcPonderacion(riCuan: number, tiempo: number, ad: number, obj: number
   return +(riCuan * 0.4 + tiempo * 0.1 + ad * 0.1 + obj * 0.1 + hall * 0.3).toFixed(2);
 }
 
+/**
+ * Nivel de criticidad según ponderación DAFP RE-E-GE-034
+ * Escala: min 1.6 — max 5.0
+ *   Extremo  ≥ 4.0   → auditoría anual
+ *   Alto     ≥ 3.0   → cada 2 años
+ *   Moderado ≥ 2.0   → cada 3 años
+ *   Bajo     < 2.0   → cada 4 años
+ */
 function calcNivel(pond: number): string {
   if (pond >= 4.0) return 'Extremo';
-  if (pond >= 3.5) return 'Alto';
-  if (pond >= 3.0) return 'Moderado';
+  if (pond >= 3.0) return 'Alto';
+  if (pond >= 2.0) return 'Moderado';
   return 'Bajo';
 }
 
 function calcCiclo(nivel: string): string {
-  if (nivel === 'Extremo') return 'Cada año';
-  if (nivel === 'Alto' || nivel === 'Moderado') return 'Cada 2 años';
-  return 'Cada 3 años';
+  if (nivel === 'Extremo')  return 'Cada año';
+  if (nivel === 'Alto')     return 'Cada 2 años';
+  if (nivel === 'Moderado') return 'Cada 3 años';
+  return 'Cada 4 años';
 }
 
-/** Priorización años 1–4 según ciclo (lógica del cuestionario DAFP) */
+/**
+ * Priorización años 1–4 según ciclo de rotación DAFP (Guía RE-E-GE-034):
+ *   Extremo  / Cada año    → 1, 2, 3, 4  (auditoría todos los años)
+ *   Alto     / Cada 2 años → 2, 4        (años pares)
+ *   Moderado / Cada 3 años → 3           (tercer año del cuatrienio)
+ *   Bajo     / Cada 4 años → 4           (último año del cuatrienio)
+ */
 function calcAnos(ciclo: string): [boolean, boolean, boolean, boolean] {
-  return [
-    ciclo === 'Cada año',
-    ciclo === 'Cada año' || ciclo === 'Cada 2 años',
-    ciclo === 'Cada año' || ciclo === 'Cada 3 años',
-    ciclo === 'Cada año' || ciclo === 'Cada 2 años',
-  ];
+  if (ciclo === 'Cada año')    return [true,  true,  true,  true];
+  if (ciclo === 'Cada 2 años') return [false, true,  false, true];
+  if (ciclo === 'Cada 3 años') return [false, false, true,  false];
+  if (ciclo === 'Cada 4 años') return [false, false, false, true];
+  return [false, false, false, false];
 }
 
 function nivelColorClasses(nivel: string) {
@@ -197,6 +221,24 @@ const HALL_OPTIONS = [
   { value: 5, label: '7 o más hallazgos' },
 ];
 
+/**
+ * Procesos especiales que siempre aparecen en los 4 años del cuatrienio.
+ * Para agregar un nuevo proceso especial, incluir su nombre (parcial) aquí.
+ * En el dropdown se marcan automáticamente con |ESP en el value.
+ */
+const PROCESOS_ESP = [
+  'gestión financiera',
+  'formación',
+  'gestión administrativa',
+  'gestión de contratación',
+  'gestión jurídica',
+];
+
+const esProcesoEsp = (nombre: string) =>
+  PROCESOS_ESP.some(esp => nombre.toLowerCase().includes(esp));
+
+// Helpers para leer plan anual activo desde localStorage (fallback cuando no
+// se reciben las props vigenciaPlan / fechaCortePlan desde el padre)
 function getPlanActivoFromStorage() {
   try {
     const raw = localStorage.getItem('esap:plan_anual_activo');
@@ -216,7 +258,6 @@ function getVigenciaFromStorage(): number {
 function getFechaCorteFromStorage(): string {
   const plan = getPlanActivoFromStorage();
   if (plan?.fechaCorte && typeof plan.fechaCorte === 'string') return plan.fechaCorte;
-  // Fallback: último día del año de vigencia o año actual
   const vigencia = plan?.vigencia ?? new Date().getFullYear();
   return `${vigencia}-12-31`;
 }
@@ -232,14 +273,22 @@ export function FormularioProcesoDafpVisual({
   procesoInicial,
   mode,
   procesosCatalog = [],
+  vigenciaPlan,
+  fechaCortePlan,
 }: FormularioProcesoDafpProps) {
 
   const [procesoIdSeleccionado, setProcesoIdSeleccionado] = useState<string>(procesoInicial?.id || '');
+  const [esEspecial, setEsEspecial]   = useState(false);
+  const [opcionCiclo, setOpcionCiclo] = useState<'dafp' | 'todos'>('dafp');
+
+  // Vigencia y corte: preferir las props del padre; si no existen, leer de localStorage
+  const anoPlan  = vigenciaPlan  ?? getVigenciaFromStorage();
+  const cortePlan = fechaCortePlan ?? getFechaCorteFromStorage();
 
   const defaultData = (): FormularioDafpData => ({
     nombre: '',
-    vigencia: getVigenciaFromStorage(),
-    fechaCorte: getFechaCorteFromStorage(),
+    vigencia: anoPlan,
+    fechaCorte: cortePlan,
     riesgosExtremos: 0,
     riesgosAltos: 0,
     riesgosModerados: 0,
@@ -399,8 +448,10 @@ export function FormularioProcesoDafpVisual({
 
   const nivel = formData.nivelCriticidadDafp;
   const ciclo = formData.cicloRotacionDafp;
-  const pond = formData.ponderacionFinalDafp;
-  const [a1, a2, a3, a4] = allFilled ? calcAnos(ciclo) : [false, false, false, false];
+  const pond = Number(formData.ponderacionFinalDafp) || 0;
+  const [a1, a2, a3, a4] = opcionCiclo === 'todos'
+    ? [true, true, true, true]
+    : allFilled ? calcAnos(ciclo) : [false, false, false, false];
   const colores = allFilled ? nivelColorClasses(nivel) : { box: 'bg-gray-50 border-gray-200', badge: 'bg-gray-100 text-gray-500', score: 'text-gray-400' };
 
   // ══ Submit ══
@@ -429,7 +480,16 @@ export function FormularioProcesoDafpVisual({
         duration: 5000,
       });
     }
-    onSubmit(formData, procesoIdSeleccionado || undefined);
+    // Proceso especial con "Auditar todos los años": forzar ciclo anual
+    const dataFinal = (esEspecial && opcionCiclo === 'todos')
+      ? {
+          ...formData,
+          cicloRotacionDafp:  'Cada año',
+          nivelCriticidadDafp: formData.nivelCriticidadDafp || 'Extremo',
+        }
+      : formData;
+
+    onSubmit(dataFinal, procesoIdSeleccionado || undefined);
   };
 
   if (!open) return null;
@@ -439,16 +499,18 @@ export function FormularioProcesoDafpVisual({
   // ════════════════════════════════════════════════════════════════════════════
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] overflow-y-auto">
+        <div className="flex min-h-full items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col"
+          style={{ maxHeight: '90vh' }}
         >
-          {/* ═══ HEADER ═══ */}
-          <div className="bg-gradient-to-r from-[#003DA5] to-[#2962FF] px-5 py-4 rounded-t-2xl flex items-center justify-between flex-shrink-0">
+          {/* ═══ HEADER — sticky top ═══ */}
+          <div className="bg-gradient-to-r from-[#003DA5] to-[#2962FF] px-5 py-4 rounded-t-2xl flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
                 <Layers className="w-4 h-4 text-white" />
@@ -457,7 +519,7 @@ export function FormularioProcesoDafpVisual({
                 <h2 className="text-sm font-semibold text-white leading-tight">
                   {mode === 'create' ? 'Agregar Proceso' : 'Editar Proceso'} — Universo de Auditoría
                 </h2>
-                <p className="text-[11px] text-white">
+                <p className="text-[11px] text-white/75">
                   Evaluación DAFP · RE-E-GE-034 · Cálculo Automático
                 </p>
               </div>
@@ -468,7 +530,7 @@ export function FormularioProcesoDafpVisual({
           </div>
 
           {/* ═══ BODY ═══ */}
-          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
+          <form id="dafp-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto min-h-0">
             <div className="p-5 space-y-4">
 
               {/* ─── SECCIÓN 1: Información Básica ─── */}
@@ -492,10 +554,14 @@ export function FormularioProcesoDafpVisual({
                     />
                   ) : procesosCatalog.length > 0 ? (
                     <select
-                      value={procesoIdSeleccionado}
+                      value={esEspecial ? `${procesoIdSeleccionado}|ESP` : procesoIdSeleccionado}
                       onChange={(e) => {
-                        const id = e.target.value;
+                        const raw = e.target.value;
+                        const esp = raw.endsWith('|ESP');
+                        const id  = esp ? raw.slice(0, -'|ESP'.length) : raw;
                         setProcesoIdSeleccionado(id);
+                        setEsEspecial(esp);
+                        setOpcionCiclo(esp ? 'todos' : 'dafp');
                         const proc = procesosCatalog.find(p => p.id === id);
                         if (proc) {
                           setFormData(prev => ({
@@ -511,22 +577,19 @@ export function FormularioProcesoDafpVisual({
                       required
                     >
                       <option value="">-- Seleccione un proceso --</option>
-                      {(['Misional', 'Estratégico', 'Apoyo', 'Territorial'] as const).map(tipo => {
-                        const grupo = procesosCatalog.filter(p =>
-                          (p.tipo || 'Apoyo') === tipo
-                        );
+                      {Array.from(new Set(procesosCatalog.map(p => p.tipo || 'Sin tipo'))).map(tipo => {
+                        const grupo = procesosCatalog.filter(p => (p.tipo || 'Sin tipo') === tipo);
                         if (grupo.length === 0) return null;
-                        const labels: Record<string, string> = {
-                          'Misional':    'MISIONALES',
-                          'Estratégico': 'ESTRATÉGICOS',
-                          'Apoyo':       'DE APOYO',
-                          'Territorial': 'TERRITORIALES',
-                        };
                         return (
-                          <optgroup key={tipo} label={labels[tipo]}>
-                            {grupo.map(p => (
-                              <option key={p.id} value={p.id}>{p.nombre}</option>
-                            ))}
+                          <optgroup key={tipo} label={tipo.toUpperCase()}>
+                            {grupo.map(p => {
+                              const esp = p.esEspecial ?? esProcesoEsp(p.nombre);
+                              return (
+                                <option key={p.id} value={esp ? `${p.id}|ESP` : p.id}>
+                                  {esp ? `${p.nombre} ★` : p.nombre}
+                                </option>
+                              );
+                            })}
                           </optgroup>
                         );
                       })}
@@ -559,39 +622,110 @@ export function FormularioProcesoDafpVisual({
                       Dependencia responsable
                       <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">AUTO</span>
                     </label>
-                    <input
-                      type="text"
-                      value={formData.dependenciaResponsable || ''}
-                      onChange={(e) => handleChange('dependenciaResponsable', e.target.value)}
-                      placeholder="Ej: Dirección Financiera"
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:border-[#2962FF] outline-none bg-white"
-                    />
+                    {(() => {
+                      const deps = (formData.dependenciaResponsable || '')
+                        .split(';').map(d => d.trim()).filter(Boolean);
+                      if (deps.length <= 1) {
+                        return (
+                          <input
+                            type="text"
+                            value={formData.dependenciaResponsable || ''}
+                            readOnly
+                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
+                          />
+                        );
+                      }
+                      return (
+                        <select
+                          value={formData.dependenciaResponsable?.split(';')[0]?.trim() || deps[0]}
+                          onChange={(e) => handleChange('dependenciaResponsable', e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/10 outline-none bg-white"
+                        >
+                          {deps.map((d, i) => (
+                            <option key={i} value={d}>{d}</option>
+                          ))}
+                        </select>
+                      );
+                    })()}
                   </div>
                 </div>
 
-                {/* Vigencia + Fecha de corte */}
+                {/* Vigencia + Fecha de corte — tomadas del Plan Anual */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] text-gray-600 mb-1">
                       Vigencia
-                      <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">AUTO</span>
+                      <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">PLAN ANUAL</span>
                     </label>
-                    <div className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-center font-semibold text-[#003DA5]">
+                    <div className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 font-semibold text-center">
                       {formData.vigencia}
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[11px] text-gray-600 mb-1">Fecha de Corte <span className="text-red-500">*</span></label>
-                    <input
-                      type="date"
-                      value={formData.fechaCorte}
-                      onChange={(e) => handleChange('fechaCorte', e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-[#2962FF] outline-none"
-                      required
-                    />
+                    <label className="block text-[11px] text-gray-600 mb-1">
+                      Fecha de Corte
+                      <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">PLAN ANUAL</span>
+                    </label>
+                    <div className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700">
+                      {formData.fechaCorte
+                        ? new Date(formData.fechaCorte + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+                        : '—'}
+                    </div>
                   </div>
                 </div>
               </div>
+
+              {/* ─── BLOQUE ESP: Opción de Ciclo (solo procesos especiales) ─── */}
+              {esEspecial && (
+                <div className="border-2 border-[#003DA5] bg-blue-50 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CalendarCheck className="w-3.5 h-3.5 text-[#003DA5]" />
+                    <span className="text-[11px] font-semibold text-[#003DA5] uppercase tracking-wide">
+                      Opción de ciclo de auditoría — Seleccione una
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Opción DAFP */}
+                    <label className={`cursor-pointer rounded-xl p-3 border-2 flex items-start gap-2 transition-all ${opcionCiclo === 'dafp' ? 'border-[#003DA5] bg-white shadow-sm' : 'border-blue-200 bg-white/60'}`}>
+                      <input
+                        type="radio"
+                        name="opcionCiclo"
+                        className="mt-0.5 accent-[#003DA5]"
+                        checked={opcionCiclo === 'dafp'}
+                        onChange={() => setOpcionCiclo('dafp')}
+                      />
+                      <div>
+                        <div className="text-xs font-semibold text-gray-800">Según ponderación DAFP</div>
+                        <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">
+                          El ciclo se calcula automáticamente con base en la ponderación obtenida.
+                        </div>
+                        <div className="text-[10px] text-gray-400 mt-1.5 italic">Se calcula al llenar criterios</div>
+                      </div>
+                    </label>
+                    {/* Opción Todos los años */}
+                    <label className={`cursor-pointer rounded-xl p-3 border-2 flex items-start gap-2 transition-all ${opcionCiclo === 'todos' ? 'border-[#003DA5] bg-white shadow-sm' : 'border-blue-200 bg-white/60'}`}>
+                      <input
+                        type="radio"
+                        name="opcionCiclo"
+                        className="mt-0.5 accent-[#003DA5]"
+                        checked={opcionCiclo === 'todos'}
+                        onChange={() => setOpcionCiclo('todos')}
+                      />
+                      <div>
+                        <div className="text-xs font-semibold text-gray-800">Auditar todos los años</div>
+                        <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">
+                          Este proceso se audita cada año sin excepción, independiente de la ponderación.
+                        </div>
+                        <div className="flex gap-1 mt-1.5">
+                          {['Año 1', 'Año 2', 'Año 3', 'Año 4'].map(a => (
+                            <span key={a} className="text-[9px] bg-[#003DA5] text-white px-1.5 py-0.5 rounded font-semibold">{a}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
 
               {/* ─── SECCIÓN 2: Riesgo Inherente ─── */}
               <div className="border border-gray-200 rounded-xl p-4">
@@ -660,8 +794,8 @@ export function FormularioProcesoDafpVisual({
               </div>
 
               {/* ─── SECCIÓN 3: Criterios de Priorización ─── */}
-              <div className="border border-gray-200 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-3">
+              <div className="border border-gray-200 rounded-xl p-3">
+                <div className="flex items-center gap-2 mb-2">
                   <Target className="w-3.5 h-3.5 text-[#003DA5]" />
                   <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
                     Criterios de priorización — Seleccione cada campo
@@ -696,11 +830,11 @@ export function FormularioProcesoDafpVisual({
                 ].map(({ campo, label, options }) => (
                   <div key={campo} className="grid grid-cols-2 gap-3 mb-3 last:mb-0">
                     <div>
-                      <label className="block text-[11px] text-gray-600 mb-1">{label} <span className="text-red-500">*</span></label>
+                      <label className="block text-[10px] text-gray-600 mb-1">{label} <span className="text-red-500">*</span></label>
                       <select
                         value={formData[campo] || ''}
                         onChange={(e) => handleChange(campo, parseInt(e.target.value) || 0)}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/10 outline-none bg-white"
+                        className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/10 outline-none bg-white"
                       >
                         <option value="">-- Seleccione --</option>
                         {options.map(o => (
@@ -709,12 +843,11 @@ export function FormularioProcesoDafpVisual({
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[11px] text-gray-600 mb-1">
-                        Calificación
-                        <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">AUTO</span>
+                      <label className="block text-[10px] text-gray-600 mb-1">
+                        Calificación <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-medium">AUTO</span>
                       </label>
-                      <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 flex justify-between items-center min-h-[36px]">
-                        <span className="text-[11px] text-gray-500">Puntaje 1–5</span>
+                      <div className="px-2 py-1.5 border border-gray-200 rounded-lg bg-gray-50 flex justify-between items-center min-h-[30px]">
+                        <span className="text-[10px] text-gray-500">1–5</span>
                         <span className="text-sm font-bold text-gray-800">{formData[campo] || '—'}</span>
                       </div>
                     </div>
@@ -726,13 +859,11 @@ export function FormularioProcesoDafpVisual({
               <div className="border border-gray-200 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <BarChart3 className="w-3.5 h-3.5 text-[#003DA5]" />
-                  <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
-                    Resultados del cálculo DAFP
-                  </span>
+                  <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Resultados del cálculo DAFP</span>
                   <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">TODO AUTOMÁTICO</span>
                 </div>
 
-                {/* Métricas */}
+                {/* Métricas en una fila */}
                 <div className="grid grid-cols-3 gap-3 mb-3">
                   {[
                     { label: 'Ponderación final', desc: '0.0 – 5.0', val: allFilled ? pond.toFixed(2) : '—' },
@@ -741,10 +872,10 @@ export function FormularioProcesoDafpVisual({
                   ].map(({ label, desc, val }) => (
                     <div key={label}>
                       <label className="block text-[11px] text-gray-600 mb-1">{label}
-                        <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">AUTO</span>
+                        <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-medium">AUTO</span>
                       </label>
                       <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 flex justify-between items-center min-h-[34px]">
-                        <span className="text-[10px] text-gray-400">{desc}</span>
+                        <span className="text-[11px] text-gray-400">{desc}</span>
                         <span className="text-sm font-bold text-gray-800">{val}</span>
                       </div>
                     </div>
@@ -752,48 +883,38 @@ export function FormularioProcesoDafpVisual({
                 </div>
 
                 {/* Result box */}
-                <div className={`rounded-xl p-4 border mb-4 ${colores.box}`}>
+                <div className={`rounded-lg px-3 py-2 border mb-3 ${colores.box}`}>
                   {allFilled ? (
                     <>
-                      <div className="flex items-baseline gap-3 mb-2">
-                        <span className={`text-2xl font-bold ${colores.score}`}>{pond.toFixed(2)} / 5.0</span>
-                        <span className={`px-3 py-0.5 rounded-full text-xs font-semibold ${colores.badge}`}>{nivel}</span>
+                      <div className="flex items-baseline gap-2 mb-1">
+                        <span className={`text-xl font-bold ${colores.score}`}>{pond.toFixed(2)} / 5.0</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${colores.badge}`}>{nivel}</span>
                       </div>
-                      <p className="text-[11px] text-gray-500 mb-2">
-                        RI({riCuan})×0.4 + Tiempo({formData.tiempoUltimaAuditoria})×0.1 + Alta Dir.({formData.temasAltaDireccion})×0.1 + Obj.({formData.objetivosEstrategicos})×0.1 + Hallazgos({formData.hallazgosAnteriores})×0.3 = {pond.toFixed(2)}
-                      </p>
-                      <p className="text-[11px] text-gray-500 border-t border-gray-200 pt-2 mt-1">
-                        Criticidad {nivel} — {ciclo}. Aprobado por el Comité Institucional de Coordinación de Control Interno.
+                      <p className="text-[10px] text-gray-500">
+                        RI({riCuan})×0.4 + T({formData.tiempoUltimaAuditoria})×0.1 + AD({formData.temasAltaDireccion})×0.1 + Obj({formData.objetivosEstrategicos})×0.1 + H({formData.hallazgosAnteriores})×0.3 = {pond.toFixed(2)}
                       </p>
                     </>
                   ) : (
-                    <p className="text-sm text-gray-400">Complete todos los criterios para obtener el cálculo.</p>
+                    <p className="text-xs text-gray-400">Complete todos los criterios para obtener el cálculo.</p>
                   )}
                 </div>
 
                 {/* Priorización años 1–4 */}
                 <div>
-                  <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
                     Priorización de Auditorías Basadas en Riesgos
                     <span className="ml-1 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">AUTO</span>
                   </div>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-4 gap-3">
                     {[
                       { ano: 'Año 1', incluido: a1 },
                       { ano: 'Año 2', incluido: a2 },
                       { ano: 'Año 3', incluido: a3 },
                       { ano: 'Año 4', incluido: a4 },
                     ].map(({ ano, incluido }) => (
-                      <div
-                        key={ano}
-                        className={`rounded-lg p-2.5 text-center border transition-all ${
-                          incluido
-                            ? 'border-[#003DA5] bg-blue-50'
-                            : 'border-gray-200 bg-gray-50'
-                        }`}
-                      >
-                        <div className={`text-[10px] font-semibold mb-1 ${incluido ? 'text-[#003DA5]' : 'text-gray-500'}`}>{ano}</div>
-                        <div className={`text-[11px] leading-tight ${incluido ? 'text-[#003DA5] font-medium' : 'text-gray-300'}`}>
+                      <div key={ano} className={`rounded-lg p-2 text-center border transition-all ${incluido ? 'border-[#003DA5] bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
+                        <div className={`text-[10px] font-semibold mb-0.5 ${incluido ? 'text-[#003DA5]' : 'text-gray-400'}`}>{ano}</div>
+                        <div className={`text-[10px] leading-tight ${incluido ? 'text-[#003DA5] font-medium' : 'text-gray-300'}`}>
                           {incluido && allFilled ? formData.macroproceso || formData.nombre || 'Este proceso' : '—'}
                         </div>
                       </div>
@@ -804,25 +925,28 @@ export function FormularioProcesoDafpVisual({
 
             </div>
 
-            {/* ═══ FOOTER ═══ */}
-            <div className="sticky bottom-0 bg-white border-t border-gray-200 px-5 py-3 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 flex items-center gap-2 transition-all"
-              >
-                <X className="w-4 h-4" /> Cancelar
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 bg-[#003DA5] hover:bg-[#002d7d] text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-all"
-              >
-                <Save className="w-4 h-4" />
-                {mode === 'create' ? 'Guardar Proceso' : 'Actualizar Proceso'}
-              </button>
-            </div>
           </form>
+
+          {/* ═══ FOOTER — sticky bottom ═══ */}
+          <div className="flex-shrink-0 bg-white border-t border-gray-200 px-4 py-3 flex items-center justify-end gap-3 rounded-b-2xl sticky bottom-0 z-10">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 flex items-center gap-2 transition-all"
+            >
+              <X className="w-4 h-4" /> Cancelar
+            </button>
+            <button
+              type="submit"
+              form="dafp-form"
+              className="px-5 py-2 bg-[#003DA5] hover:bg-[#002d7d] text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-all"
+            >
+              <Save className="w-4 h-4" />
+              {mode === 'create' ? 'Guardar Proceso' : 'Actualizar Proceso'}
+            </button>
+          </div>
         </motion.div>
+        </div>
       </div>
     </AnimatePresence>
   );
