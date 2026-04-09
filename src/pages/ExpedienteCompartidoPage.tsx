@@ -610,8 +610,8 @@ export function ExpedienteCompartidoPage() {
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
           onClick={() => setShowModalVisor(false)}
         >
-          <div 
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col"
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl overflow-hidden flex flex-col" style={{ height: '92vh' }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -635,7 +635,7 @@ export function ExpedienteCompartidoPage() {
             </div>
 
             {/* Visor */}
-            <div className="flex-1 min-h-0 overflow-hidden" style={{ height: '500px' }}>
+            <div className="flex-1 min-h-0 overflow-hidden">
               {cargandoPDF && (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
