@@ -3193,12 +3193,53 @@ export function DashboardKanbanOperativo({
       const normalizedRaw = normalizeStageKey(raw);
       return normalizedRaw === normalizedLabel || normalizedRaw.includes(normalizedLabel) || normalizedLabel.includes(normalizedRaw);
     });
-    if (mappedStage?.id) {
-      return mappedStage.id;
+    if (mappedStage?.etapa) {
+      return mappedStage.etapa.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
     }
 
-    // Fallback: if no config, return the label as is (but ideally config should exist)
-    return label;
+    const fallbackMap: Record<string, string> = {
+      'recepcion': 'RECEPCION',
+      'valoracion': 'VALORACION',
+      'indagacion': 'INDAGACION_PREVIA',
+      'indagacion previa': 'INDAGACION_PREVIA',
+      'investigacion': 'INVESTIGACION',
+      'evaluacion': 'EVALUACION',
+      'juzgamiento': 'JUZGAMIENTO',
+      'fallo': 'FALLO',
+      'segunda instancia': 'SEGUNDA_INSTANCIA',
+      'archivo': 'ARCHIVO'
+    };
+
+    return fallbackMap[normalizedLabel] || normalizedLabel.replace(/\s+/g, '_').toUpperCase();
+  };
+
+  const getStageOrderForLabel = (label: string) => {
+    const normalizedLabel = normalizeStageKey(label);
+
+    const mappedStage = etapasConfig.find(stageConfig => {
+      const raw = stageConfig.etapa || stageConfig.nombre || stageConfig.label || '';
+      const normalizedRaw = normalizeStageKey(raw);
+      return normalizedRaw === normalizedLabel || normalizedRaw.includes(normalizedLabel) || normalizedLabel.includes(normalizedRaw);
+    });
+    if (mappedStage?.orden !== undefined) {
+      return mappedStage.orden;
+    }
+
+    // Fallback orders based on typical sequence
+    const fallbackOrders: Record<string, number> = {
+      'recepcion': 1,
+      'valoracion': 2,
+      'indagacion': 3,
+      'indagacion previa': 3,
+      'investigacion': 4,
+      'evaluacion': 5,
+      'juzgamiento': 6,
+      'fallo': 7,
+      'segunda instancia': 8,
+      'archivo': 9
+    };
+
+    return fallbackOrders[normalizedLabel] || 1;
   };
 
   // ==================== HANDLERS ====================
@@ -3271,9 +3312,10 @@ export function DashboardKanbanOperativo({
         const toastId = toast.loading('Cambiando etapa del proceso...');
         try {
             const backendStage = backendStageForLabel(nuevaEtapa);
+            const stageOrder = getStageOrderForLabel(nuevaEtapa);
 
             // Llamar al backend para cambiar la etapa
-            await disciplinaryService.cambiarEtapa(item.id, backendStage, nuevaEtapa);
+            await disciplinaryService.cambiarEtapa(item.id, backendStage, stageOrder);
           toast.success('Etapa actualizada', {
             id: toastId,
             description: `${item.numeroProceso} → ${nuevaEtapa}`
@@ -3926,17 +3968,18 @@ export function DashboardKanbanOperativo({
       'Archivo': 'ARCHIVO'
     };
     const backendStage = stageMap[siguienteEtapa] || siguienteEtapa.toUpperCase();
+    const stageOrder = getStageOrderForLabel(siguienteEtapa);
 
     // ✅ NUEVO: Persistir cambio de etapa y asignación de profesional en la base de datos
     const toastId = toast.loading('Asignando profesional y cambiando etapa...');
     try {
       // Llamar al backend para cambiar la etapa y asignar el profesional
-      await disciplinaryService.cambiarEtapa(itemSeleccionado.id, backendStage, siguienteEtapa);
+      await disciplinaryService.cambiarEtapa(itemSeleccionado.id, backendStage, stageOrder);
       
       // También actualizar el proceso con el profesional asignado usando updateProcess
       await disciplinaryService.updateProcess(itemSeleccionado.id, {
         etapaActual: backendStage,
-        kanbanStage: siguienteEtapa,
+        kanbanStage: stageOrder,
         abogadoId: profesionalId
       });
       
@@ -4602,11 +4645,12 @@ export function DashboardKanbanOperativo({
     const usuario = 'Usuario Actual';
 
     const backendStage = backendStageForLabel(nuevaEtapa);
+    const stageOrder = getStageOrderForLabel(nuevaEtapa);
 
     // Persistir cambio de etapa en la base de datos
     const toastId = toast.loading('Cambiando etapa del proceso...');
     try {
-      await disciplinaryService.cambiarEtapa(proceso.id, backendStage, nuevaEtapa);
+      await disciplinaryService.cambiarEtapa(proceso.id, backendStage, stageOrder);
       
       toast.success('Etapa actualizada', {
         id: toastId,
