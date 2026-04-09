@@ -24,6 +24,7 @@ import { DisciplinaryProfessional } from '../entities/disciplinary-professional.
 import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-actuacion.entity';
 import { DisciplinaryProcessTask } from '../entities/disciplinary-process-task.entity';
 import { DisciplinaryProcessNote } from '../entities/disciplinary-process-note.entity';
+import { StageConfiguration } from '../entities/stage-configuration.entity';
 
 @Injectable()
 export class ProcessService {
@@ -42,6 +43,8 @@ export class ProcessService {
     private tasksRepository: Repository<DisciplinaryProcessTask>,
     @InjectRepository(DisciplinaryProcessNote)
     private notesRepository: Repository<DisciplinaryProcessNote>,
+    @InjectRepository(StageConfiguration)
+    private stageConfigurationRepository: Repository<StageConfiguration>,
     private sequenceService: SequenceService,
     private terminosService: TerminosCalculatorService,
     private newsService: NewsService,
@@ -632,14 +635,24 @@ export class ProcessService {
   async changeStage(
     id: string,
     stage: ProcessStage,
-    kanbanStage?: string,
+    kanbanStage?: number,
     kanbanNotice?: string
   ): Promise<DisciplinaryProcess> {
     try {
       const proceso = await this.findById(id, false);
 
-      if (kanbanStage) {
-        proceso.kanbanStage = kanbanStage;
+      if (kanbanStage !== undefined) {
+        const stageConfig = await this.stageConfigurationRepository.findOne({
+          where: { orden: kanbanStage, activo: true },
+        });
+        if (stageConfig) {
+          proceso.kanbanStage = stageConfig.id;
+        } else {
+          throw new HttpException(
+            `Stage configuration with orden ${kanbanStage} not found`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
       }
 
       if (kanbanNotice !== undefined) {

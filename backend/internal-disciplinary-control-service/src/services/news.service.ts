@@ -9,6 +9,7 @@ import { Repository, Not } from 'typeorm';
 import { DisciplinaryNews, NewsStatus, NewsOrigin } from '../entities/disciplinary-news.entity';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { DisciplinaryNewsProcess } from '../entities/disciplinary-news-process.entity';
+import { StageConfiguration } from '../entities/stage-configuration.entity';
 import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto';
 import { ReturnNewsDto } from '../dtos/return-news.dto';
 import { SequenceService } from './sequence.service';
@@ -28,6 +29,8 @@ export class NewsService {
     private processRepository: Repository<DisciplinaryProcess>,
     @InjectRepository(DisciplinaryNewsProcess)
     private newsProcessRepository: Repository<DisciplinaryNewsProcess>,
+    @InjectRepository(StageConfiguration)
+    private stageConfigurationRepository: Repository<StageConfiguration>,
     private sequenceService: SequenceService,
     private storageService: StorageService,
   ) { }
@@ -376,10 +379,20 @@ export class NewsService {
   /**
    * Actualiza la etapa Kanban de una noticia
    */
-  async updateKanbanStage(id: string, kanbanStage?: string): Promise<DisciplinaryNews> {
+  async updateKanbanStage(id: string, kanbanStage?: number): Promise<DisciplinaryNews> {
     const noticia = await this.findById(id);
-    if (kanbanStage) {
-      noticia.kanbanStage = kanbanStage;
+    if (kanbanStage !== undefined) {
+      const stageConfig = await this.stageConfigurationRepository.findOne({
+        where: { orden: kanbanStage, activo: true },
+      });
+      if (stageConfig) {
+        noticia.kanbanStage = stageConfig.id;
+      } else {
+        throw new HttpException(
+          `Stage configuration with orden ${kanbanStage} not found`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
     }
     return await this.newsRepository.save(noticia);
   }
