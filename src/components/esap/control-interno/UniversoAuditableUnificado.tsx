@@ -46,6 +46,7 @@ import { useEvaluacionesProcesoData, type EvaluacionProcesoUI } from './hooks/us
 import { exportarUniversoAuditablePDF, exportarUniversoAuditableExcel } from './services/exportarUniversoAuditablePDF';
 // ✅ UTILIDAD DE CONVERSIÓN (separada para reutilización)
 import { convertirProcesoAFormularioDafp as convertirProcesoAFormulario } from './utils/procesoAuditableConverters';
+import { loadTipos, loadEspIds } from './ConfiguracionProcesosModule';
 // ✅ HOOK DE CONFIGURACIÓN DE PROFESIONALES OCI (backend)
 import { useConfiguracionProfesionales, type ProfesionalOCI } from './services/useConfiguracionProfesionales';
 // ✅ HOOK DE PERMISOS FLEXIBLE
@@ -62,6 +63,32 @@ type TipoProceso = 'Estratégico' | 'Misional' | 'Apoyo' | 'Evaluación';
 // Re-usar los tipos de ProcesoAuditable y AuditoriaProgramada desde hooks
 type ProcesoAuditable = ProcesoAuditableUI;
 type AuditoriaProgramada = AuditoriaProgramadaUI;
+
+// ════════════════════════════════════════════════════════════════════════════
+// UTILIDADES
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Horas estimadas por auditoría según nivel DAFP (Guía RE-E-GE-034):
+ *   Extremo  / Cada año    → 80h
+ *   Alto     / Cada 2 años → 60h
+ *   Moderado / Cada 3 años → 40h
+ *   Bajo     / Cada 4 años → 24h
+ */
+function calcHorasEstimadas(nivelCriticidad?: string, ciclo?: string): number {
+  const n = (nivelCriticidad || '').toLowerCase();
+  if (n === 'extremo')  return 80;
+  if (n === 'alto')     return 60;
+  if (n === 'moderado') return 40;
+  if (n === 'bajo')     return 24;
+  // fallback por ciclo
+  const c = (ciclo || '').toLowerCase();
+  if (c.includes('cada año') || c.includes('anual')) return 80;
+  if (c.includes('2')) return 60;
+  if (c.includes('3')) return 40;
+  if (c.includes('4')) return 24;
+  return 24;
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -158,7 +185,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       const frecuencia = ev.cicloRotacionDafp || ev.planRotacion || 'Anual';
       return {
         id: ev.id,
-        nombre: proceso?.nombre || ev.nombreProceso || '',
+        nombre: proceso?.nombre || '',
         tipo: proceso?.tipo || 'Apoyo' as any,
         descripcion: `Vigencia ${ev.vigencia} — Corte ${ev.fechaCorte}`,
         responsable: ev.dependenciaResponsable || proceso?.responsable || '',
@@ -177,7 +204,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
         dependenciaResponsable: ev.dependenciaResponsable || proceso?.dependenciaResponsable || '',
         scoreRiesgo: scoreCalculado,
         frecuenciaSugerida: frecuencia,
-        horasEstimadas: 0,
+        horasEstimadas: calcHorasEstimadas(ev.nivelCriticidadDafp, ev.cicloRotacionDafp),
         _backendId: ev.procesoId,
         _evaluacionRiesgo: {
           riesgosExtremos: ev.riesgosExtremos, riesgosAltos: ev.riesgosAltos,
@@ -268,14 +295,10 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     
     if (totalRiesgos > 0 && tiempo > 0 && ad > 0 && obj > 0 && hall > 0) {
       ponderacionFinalDafp = +(riCuan * 0.4 + tiempo * 0.1 + ad * 0.1 + obj * 0.1 + hall * 0.3).toFixed(2);
-      if (ponderacionFinalDafp >= 4.0) nivelCriticidadDafp = 'Extremo';
-      else if (ponderacionFinalDafp >= 3.5) nivelCriticidadDafp = 'Alto';
-      else if (ponderacionFinalDafp >= 3.0) nivelCriticidadDafp = 'Moderado';
-      else nivelCriticidadDafp = 'Bajo';
-      
-      if (nivelCriticidadDafp === 'Extremo') cicloRotacionDafp = 'Cada año';
-      else if (nivelCriticidadDafp === 'Alto' || nivelCriticidadDafp === 'Moderado') cicloRotacionDafp = 'Cada 2 años';
-      else cicloRotacionDafp = 'Cada 3 años';
+      if (ponderacionFinalDafp >= 4.0)      { nivelCriticidadDafp = 'Extremo';  cicloRotacionDafp = 'Cada año'; }
+      else if (ponderacionFinalDafp >= 3.0) { nivelCriticidadDafp = 'Alto';     cicloRotacionDafp = 'Cada 2 años'; }
+      else if (ponderacionFinalDafp >= 2.0) { nivelCriticidadDafp = 'Moderado'; cicloRotacionDafp = 'Cada 3 años'; }
+      else                                  { nivelCriticidadDafp = 'Bajo';     cicloRotacionDafp = 'Cada 4 años'; }
     }
 
     console.log('[handleAgregarEvaluacion] Guardando evaluación con datos:', {
@@ -289,7 +312,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       procesoId,
       vigencia: Number(datos.vigencia) || new Date().getFullYear(),
       fechaCorte: datos.fechaCorte || new Date().toISOString().split('T')[0],
-      dependenciaResponsable: datos.dependenciaResponsable || proceso?.nombre || 'Sin dependencia',
+      dependenciaResponsable: datos.dependenciaResponsable || 'Sin dependencia',
       riesgosExtremos: Number(riesgoExt),
       riesgosAltos: Number(riesgoAlt),
       riesgosModerados: Number(riesgoMod),
@@ -297,7 +320,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       totalRiesgos: Number(totalRiesgos),
       requerimientoComite: Boolean(datos.requerimientoComite),
       requerimientoEntesReg: Boolean(datos.requerimientoEntesReg),
-      fechaUltimaAuditoria: datos.fechaUltimaAuditoria || null,
+      fechaUltimaAuditoria: datos.fechaUltimaAuditoria ?? undefined,
       resultadoUltimaAuditoria: datos.resultadoUltimaAuditoria || 'SIN_AUDITORIA',
       criticidad: Number(datos.criticidad) || 0,
       exposicion: Number(datos.exposicion) || 0,
@@ -349,14 +372,10 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     
     if (totalRiesgosCalc > 0 && tiempo > 0 && ad > 0 && obj > 0 && hall > 0) {
       ponderacionFinalDafp = +(riCuan * 0.4 + tiempo * 0.1 + ad * 0.1 + obj * 0.1 + hall * 0.3).toFixed(2);
-      if (ponderacionFinalDafp >= 4.0) nivelCriticidadDafp = 'Extremo';
-      else if (ponderacionFinalDafp >= 3.5) nivelCriticidadDafp = 'Alto';
-      else if (ponderacionFinalDafp >= 3.0) nivelCriticidadDafp = 'Moderado';
-      else nivelCriticidadDafp = 'Bajo';
-      
-      if (nivelCriticidadDafp === 'Extremo') cicloRotacionDafp = 'Cada año';
-      else if (nivelCriticidadDafp === 'Alto' || nivelCriticidadDafp === 'Moderado') cicloRotacionDafp = 'Cada 2 años';
-      else cicloRotacionDafp = 'Cada 3 años';
+      if (ponderacionFinalDafp >= 4.0)      { nivelCriticidadDafp = 'Extremo';  cicloRotacionDafp = 'Cada año'; }
+      else if (ponderacionFinalDafp >= 3.0) { nivelCriticidadDafp = 'Alto';     cicloRotacionDafp = 'Cada 2 años'; }
+      else if (ponderacionFinalDafp >= 2.0) { nivelCriticidadDafp = 'Moderado'; cicloRotacionDafp = 'Cada 3 años'; }
+      else                                  { nivelCriticidadDafp = 'Bajo';     cicloRotacionDafp = 'Cada 4 años'; }
     }
 
     const evaluacionData: Partial<EvaluacionProcesoUI> = {
@@ -370,7 +389,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       totalRiesgos: totalRiesgosCalc,
       requerimientoComite: datos.requerimientoComite || false,
       requerimientoEntesReg: datos.requerimientoEntesReg || false,
-      fechaUltimaAuditoria: datos.fechaUltimaAuditoria || undefined,
+      fechaUltimaAuditoria: datos.fechaUltimaAuditoria ?? undefined,
       resultadoUltimaAuditoria: datos.resultadoUltimaAuditoria,
       criticidad: datos.criticidad || 0,
       exposicion: datos.exposicion || 0,
@@ -735,16 +754,23 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
           }}
           procesoInicial={convertirProcesoAFormulario(procesoSeleccionado, evaluacionSeleccionada)}
           mode={evaluacionSeleccionada ? 'edit' : 'create'}
-          procesosCatalog={procesos.map(p => ({
-                  id: p.id,
-                  nombre: p.nombre,
-                  codigo: p.codigo,
-                  macroproceso: p.macroproceso || p._macroproceso,
-                  dependencia: p.dependenciaResponsable || p._dependencia,
-                  tipo: p._macroproceso === 'Territorial' || p.macroproceso === 'Territorial'
-                    ? 'Territorial'
-                    : (p.tipo || 'Apoyo'),
-                }))}
+          procesosCatalog={(() => {
+                  const espIds = loadEspIds();
+                  const tiposList = loadTipos();
+                  const resolverLabel = (value: string) =>
+                    tiposList.find(t => t.value === (value || '').toLowerCase())?.label || value;
+                  return procesos.map(p => ({
+                    id: p.id,
+                    nombre: p.nombre,
+                    codigo: p.codigo,
+                    macroproceso: p.macroproceso || p._macroproceso,
+                    dependencia: p.dependenciaResponsable || p._dependencia,
+                    tipo: resolverLabel(p.tipo || ''),
+                    esEspecial: espIds.has(p.id),
+                  }));
+                })()}
+          vigenciaPlan={vigencia}
+          fechaCortePlan={`${vigencia}-12-31`}
         />
       )}
     </div>

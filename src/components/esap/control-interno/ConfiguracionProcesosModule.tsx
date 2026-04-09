@@ -7,107 +7,76 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Layers, Plus, Edit2, X, Loader2, Search, CheckCircle2, XCircle, RefreshCw
+  Layers, Plus, Edit2, X, Loader2, Search, CheckCircle2, XCircle,
+  RefreshCw, Settings, Tag, Trash2, Save
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { controlInternoService } from '@/services/api/controlInternoService';
 import type { ProcesoAuditable } from '@/services/api/controlInternoService';
 
 // ════════════════════════════════════════════════════════════════════════════
-// CATÁLOGO ESAP — Macroprocesos y Dependencias por Tipo
+// TIPOS DE PROCESO — Todos en localStorage (editables y eliminables)
 // ════════════════════════════════════════════════════════════════════════════
 
-const TIPOS_PROCESO = [
-  { value: 'misional',    label: 'Misional'    },
-  { value: 'estrategico', label: 'Estratégico' },
-  { value: 'apoyo',       label: 'Apoyo'       },
+type TipoItem = { value: string; label: string; color: string };
+
+const TIPOS_DEFAULT: TipoItem[] = [
+  { value: 'estrategico', label: 'Estratégico', color: 'bg-purple-100 text-purple-700' },
+  { value: 'misional',    label: 'Misional',    color: 'bg-blue-100 text-blue-700'     },
+  { value: 'transversal', label: 'Transversal', color: 'bg-green-100 text-green-700'   },
+  { value: 'evaluacion',  label: 'Evaluación',  color: 'bg-orange-100 text-orange-700' },
+  { value: 'territorial', label: 'Territorial', color: 'bg-teal-100 text-teal-700'     },
 ];
 
-const MACROPROCESOS_POR_TIPO: Record<string, string[]> = {
-  misional: [
-    'Formación para la Vida',
-    'Proyección y Extensión',
-    'Investigación e Innovación',
-    'Bien-Estar',
-    'Recursos de Aprendizaje',
-    'Relacionamiento con la Ciudadanía',
-    'Gestión Global',
-    'Territorial',
-  ],
-  estrategico: [
-    'Direccionamiento Estratégico',
-    'Efectividad Institucional',
-    'Evaluación Control y Mejora',
-  ],
-  apoyo: [
-    'Transformación Digital',
-    'Efectividad Institucional',
-    'Comunicación y Posicionamiento',
-    'Gestión Administrativa',
-    'Gestión Financiera',
-    'Gestión Legal',
-    'Adquisición de Bienes y Servicios',
-    'Gestión del Talento Humano',
-  ],
-};
+const ALL_COLORS = [
+  'bg-purple-100 text-purple-700',
+  'bg-blue-100 text-blue-700',
+  'bg-green-100 text-green-700',
+  'bg-orange-100 text-orange-700',
+  'bg-teal-100 text-teal-700',
+  'bg-indigo-100 text-indigo-700',
+  'bg-pink-100 text-pink-700',
+  'bg-cyan-100 text-cyan-700',
+  'bg-amber-100 text-amber-700',
+  'bg-lime-100 text-lime-700',
+];
 
-const DEPENDENCIAS_POR_MACROPROCESO: Record<string, string[]> = {
-  'Formación para la Vida':              ['Subdirección Académica Nacional'],
-  'Proyección y Extensión':             [
-    'Dirección de Capacitación',
-    'Dirección de Procesos de Selección',
-    'Escuela de Alto Gobierno',
-    'Dirección de Fortalecimiento y Apoyo a la Gestión Estatal',
-  ],
-  'Investigación e Innovación':         ['Subdirección Nacional de Investigaciones'],
-  'Bien-Estar':                         ['Dirección de Bienestar Universitario'],
-  'Recursos de Aprendizaje':            ['Dirección de Entornos y Servicios Virtuales'],
-  'Relacionamiento con la Ciudadanía':  ['Dirección de Atención al Ciudadano'],
-  'Gestión Global':                     ['Oficina de Internacionalización'],
-  'Territorial':                        [
-    'Territorial Antioquia',
-    'Territorial Atlántico – Cesar – Magdalena – La Guajira',
-    'Territorial Bolívar – Córdoba – Sucre – San Andrés',
-    'Territorial Boyacá – Casanare',
-    'Territorial Caldas',
-    'Territorial Cauca',
-    'Territorial Chocó',
-    'Territorial Cundinamarca',
-    'Territorial Huila – Caquetá – Putumayo',
-    'Territorial Meta – Guaviare – Guanía – Vaupés – Vichada – Amazonas',
-    'Territorial Nariño – Alto Putumayo',
-    'Territorial Norte de Santander – Arauca',
-    'Territorial Quindío – Risaralda',
-    'Territorial Santander',
-    'Territorial Tolima',
-    'Territorial Valle',
-    'Territorial Vichada',
-    'Territorial Archipiélago San Andrés',
-    'Territorial Guaviare',
-    'Territorial Casanare',
-    'Territorial Amazonas',
-    'Territorial Putumayo',
-  ],
-  'Direccionamiento Estratégico':       ['Dirección Nacional'],
-  'Efectividad Institucional':          [
-    'Oficina de Planeación',
-    'Grupo de Administración Documental – GADGI',
-  ],
-  'Evaluación Control y Mejora':        ['Oficina de Control Interno Disciplinario'],
-  'Transformación Digital':             ['OTIC – Oficina de Tecnologías de la Información'],
-  'Comunicación y Posicionamiento':     ['Equipo de Comunicaciones'],
-  'Gestión Administrativa':             ['Subdirección Nacional de Gestión Corporativa'],
-  'Gestión Financiera':                 ['Dirección Financiera'],
-  'Gestión Legal':                      ['Oficina Jurídica'],
-  'Adquisición de Bienes y Servicios':  ['Dirección de Contratación'],
-  'Gestión del Talento Humano':         ['Dirección de Talento Humano'],
-};
+const TIPOS_STORAGE_KEY = 'esap_tipos_proceso_all';
+
+export function loadTipos(): TipoItem[] {
+  try {
+    const raw = localStorage.getItem(TIPOS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : TIPOS_DEFAULT;
+  } catch { return TIPOS_DEFAULT; }
+}
+
+function saveTipos(tipos: TipoItem[]) {
+  localStorage.setItem(TIPOS_STORAGE_KEY, JSON.stringify(tipos));
+}
 
 // ════════════════════════════════════════════════════════════════════════════
-// ESTADO INICIAL DEL FORMULARIO
+// PROCESOS ESPECIALES (★) — IDs en localStorage
 // ════════════════════════════════════════════════════════════════════════════
 
-const FORM_VACIO = { nombre: '', codigo: '', tipo: 'misional', macroproceso: '', dependencia: '' };
+const ESP_IDS_KEY = 'esap_esp_process_ids';
+
+export function loadEspIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(ESP_IDS_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch { return new Set(); }
+}
+
+function saveEspIds(ids: Set<string>) {
+  localStorage.setItem(ESP_IDS_KEY, JSON.stringify([...ids]));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ESTADO INICIAL
+// ════════════════════════════════════════════════════════════════════════════
+
+const FORM_VACIO = { nombre: '', codigo: '', tipo: 'estrategico', macroproceso: '', dependencia: '', esEspecial: false };
+// dependencias: array de strings separados por "; " al guardarse en el campo dependencia
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE
@@ -122,11 +91,24 @@ export function ConfiguracionProcesosModule() {
   const [guardando, setGuardando] = useState(false);
   const [form, setForm]           = useState(FORM_VACIO);
 
-  // ── Cargar procesos directamente desde el servicio ──
+  // ── Procesos especiales ★ ──
+  const [espIds, setEspIds] = useState<Set<string>>(loadEspIds);
+
+  // ── Dependencias múltiples ──
+  const [dependencias, setDependencias] = useState<string[]>([]);
+  const [depInput, setDepInput]         = useState('');
+
+  // ── Gestión de tipos ──
+  const [tiposList, setTiposList]           = useState<TipoItem[]>(loadTipos);
+  const [gestionarTipos, setGestionarTipos] = useState(false);
+  const [nuevoTipoLabel, setNuevoTipoLabel] = useState('');
+  const [editandoTipo, setEditandoTipo]     = useState<TipoItem | null>(null);
+  const [editandoTipoLabel, setEditandoTipoLabel] = useState('');
+
+  // ── Cargar procesos ──
   const fetchProcesos = useCallback(async () => {
     setLoading(true);
     try {
-      // soloActivos=false → incluye activos e inactivos
       const data = await controlInternoService.getProcesosAuditables(false);
       setProcesos(Array.isArray(data) ? data : []);
     } catch {
@@ -148,38 +130,34 @@ export function ConfiguracionProcesosModule() {
     );
   }, [procesos, busqueda]);
 
-  // ── Opciones dinámicas según tipo/macroproceso seleccionado ──
-  const macroOpciones = MACROPROCESOS_POR_TIPO[form.tipo] || [];
-  const depOpciones   = DEPENDENCIAS_POR_MACROPROCESO[form.macroproceso] || [];
-
-  const setField = (key: string, value: string) => {
-    setForm(prev => {
-      const next = { ...prev, [key]: value };
-      if (key === 'tipo')        { next.macroproceso = ''; next.dependencia = ''; }
-      if (key === 'macroproceso') { next.dependencia = ''; }
-      return next;
-    });
-  };
+  const setField = (key: string, value: string) =>
+    setForm(prev => ({ ...prev, [key]: value }));
 
   const handleOpenCreate = () => {
     setEditando(null);
     setForm(FORM_VACIO);
+    setDependencias([]);
+    setDepInput('');
     setModalOpen(true);
   };
 
   const handleOpenEdit = (p: ProcesoAuditable) => {
     setEditando(p);
-    // Detectar tipo en formato interno (lowercase sin tilde)
     const tipoRaw = (p.tipo || '').toLowerCase();
-    const tipo = tipoRaw.includes('estrateg') ? 'estrategico'
-               : tipoRaw === 'misional'        ? 'misional'
-               : 'apoyo';
+    const tipo = tiposList.find(t =>
+      t.value === tipoRaw || t.label.toLowerCase() === tipoRaw
+    )?.value || tipoRaw || 'estrategico';
+    // Dividir dependencias guardadas (separadas por "; ")
+    const deps = (p.dependencia || '').split(';').map(d => d.trim()).filter(Boolean);
+    setDependencias(deps);
+    setDepInput('');
     setForm({
-      nombre:      p.nombre,
-      codigo:      p.codigo,
+      nombre:       p.nombre,
+      codigo:       p.codigo,
       tipo,
       macroproceso: p.macroproceso || '',
       dependencia:  p.dependencia  || '',
+      esEspecial:   espIds.has(p.id),
     });
     setModalOpen(true);
   };
@@ -189,53 +167,65 @@ export function ConfiguracionProcesosModule() {
       toast.error('Nombre y código son obligatorios');
       return;
     }
-    if (!form.macroproceso) {
-      toast.error('Seleccione un macroproceso');
+    if (!form.macroproceso.trim()) {
+      toast.error('Ingrese el macroproceso');
       return;
     }
-    if (!form.dependencia) {
-      toast.error('Seleccione una dependencia responsable');
+    const allDeps = [...dependencias];
+    if (depInput.trim()) allDeps.push(depInput.trim());
+    if (allDeps.length === 0) {
+      toast.error('Agregue al menos una dependencia responsable');
       return;
     }
+    const dependenciaStr = allDeps.join('; ');
 
     setGuardando(true);
     try {
       const payload: Partial<ProcesoAuditable> = {
-        nombre:      form.nombre,
-        codigo:      form.codigo,
-        tipo:        form.tipo as any,        // 'misional' | 'estrategico' | 'apoyo'
+        nombre:       form.nombre,
+        codigo:       form.codigo,
+        tipo:         form.tipo as any,
         macroproceso: form.macroproceso,
-        dependencia:  form.dependencia,
-        responsable:  form.dependencia,       // responsable = dependencia en ESAP
+        dependencia:  dependenciaStr,
+        responsable:  dependenciaStr,
         descripcion:  form.nombre,
       };
 
+      let savedId: string;
       if (editando) {
         await controlInternoService.updateProceso(editando.id, payload);
+        savedId = editando.id;
         toast.success('Proceso actualizado');
       } else {
-        // evaluacionRiesgo es requerido por el DTO del backend
-        const payloadCreate = {
+        const created = await controlInternoService.createProceso({
           ...payload,
           evaluacionRiesgo: {
-            probabilidad:   1,
-            impacto:        1,
-            nivelControl:   2,
+            probabilidad:    1,
+            impacto:         1,
+            nivelControl:    2,
             riesgoInherente: 1,
-            riesgoResidual: 0.5,
-            nivelRiesgo:    'bajo' as const,
+            riesgoResidual:  0.5,
+            nivelRiesgo:     'bajo' as const,
           },
           frecuenciaAuditoria: 'anual',
-        };
-        await controlInternoService.createProceso(payloadCreate);
+        });
+        savedId = (created as any)?.id || '';
         toast.success('Proceso creado');
+      }
+
+      // Persistir bandera ★ en localStorage
+      if (savedId) {
+        const nuevosEsp = new Set(espIds);
+        if (form.esEspecial) nuevosEsp.add(savedId);
+        else nuevosEsp.delete(savedId);
+        setEspIds(nuevosEsp);
+        saveEspIds(nuevosEsp);
       }
 
       setModalOpen(false);
       fetchProcesos();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error al guardar el proceso';
-      toast.error(msg);
+      toast.error(err instanceof Error ? err.message : 'Error al guardar el proceso');
     } finally {
       setGuardando(false);
     }
@@ -257,6 +247,51 @@ export function ConfiguracionProcesosModule() {
       fetchProcesos();
     } catch { toast.error('Error al activar'); }
   };
+
+  // ── Gestión de tipos ──
+  const handleAgregarTipo = () => {
+    const label = nuevoTipoLabel.trim();
+    if (!label) return;
+    const value = label
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '_');
+    if (tiposList.some(t => t.value === value)) {
+      toast.error('Ya existe un tipo con ese nombre');
+      return;
+    }
+    const color = ALL_COLORS[tiposList.length % ALL_COLORS.length];
+    const nuevos = [...tiposList, { value, label, color }];
+    setTiposList(nuevos);
+    saveTipos(nuevos);
+    setNuevoTipoLabel('');
+    toast.success(`Tipo "${label}" agregado`);
+  };
+
+  const handleGuardarEditTipo = () => {
+    if (!editandoTipo || !editandoTipoLabel.trim()) return;
+    const nuevos = tiposList.map(t =>
+      t.value === editandoTipo.value ? { ...t, label: editandoTipoLabel.trim() } : t
+    );
+    setTiposList(nuevos);
+    saveTipos(nuevos);
+    setEditandoTipo(null);
+    toast.success('Tipo actualizado');
+  };
+
+  const handleEliminarTipo = (value: string) => {
+    if (!confirm('¿Eliminar este tipo? Los procesos que lo usen no serán afectados.')) return;
+    const nuevos = tiposList.filter(t => t.value !== value);
+    setTiposList(nuevos);
+    saveTipos(nuevos);
+  };
+
+  const getTipoInfo = (tipoValue: string): TipoItem =>
+    tiposList.find(t =>
+      t.value === tipoValue ||
+      t.value === (tipoValue || '').toLowerCase() ||
+      t.label.toLowerCase() === (tipoValue || '').toLowerCase()
+    ) || { value: tipoValue, label: tipoValue, color: 'bg-gray-100 text-gray-600' };
 
   if (loading) {
     return (
@@ -282,6 +317,15 @@ export function ConfiguracionProcesosModule() {
             </div>
           </div>
           <div className="flex gap-2">
+            <button
+              onClick={() => setGestionarTipos(v => !v)}
+              className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-colors ${
+                gestionarTipos ? 'bg-blue-50 border-blue-300 text-blue-700' : 'hover:bg-gray-50'
+              }`}
+              title="Gestionar tipos de proceso"
+            >
+              <Settings className="w-4 h-4" /> Tipos
+            </button>
             <button onClick={fetchProcesos} className="p-2 border rounded-lg hover:bg-gray-50" title="Actualizar">
               <RefreshCw className="w-4 h-4" />
             </button>
@@ -304,6 +348,100 @@ export function ConfiguracionProcesosModule() {
           />
         </div>
       </div>
+
+      {/* ─── Panel Gestionar Tipos ─── */}
+      <AnimatePresence>
+        {gestionarTipos && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden mb-5"
+          >
+            <div className="bg-white rounded-xl border-2 border-blue-200 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-blue-600" />
+                  <h3 className="text-sm font-bold text-gray-900">Gestionar Tipos de Proceso</h3>
+                </div>
+                <button
+                  onClick={() => {
+                    if (!confirm('¿Restaurar los tipos predeterminados? Se perderán los tipos personalizados.')) return;
+                    setTiposList(TIPOS_DEFAULT);
+                    saveTipos(TIPOS_DEFAULT);
+                    toast.success('Tipos restaurados');
+                  }}
+                  className="text-xs text-gray-400 hover:text-gray-600 underline"
+                >
+                  Restaurar predeterminados
+                </button>
+              </div>
+
+              {/* Lista de todos los tipos */}
+              <div className="space-y-2 mb-4">
+                {tiposList.map(t => (
+                  <div key={t.value} className="flex items-center gap-2">
+                    {editandoTipo?.value === t.value ? (
+                      <>
+                        <input
+                          value={editandoTipoLabel}
+                          onChange={e => setEditandoTipoLabel(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && handleGuardarEditTipo()}
+                          className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/10"
+                          autoFocus
+                        />
+                        <button onClick={handleGuardarEditTipo} className="p-1.5 bg-blue-600 text-white rounded hover:bg-blue-700" title="Guardar">
+                          <Save className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setEditandoTipo(null)} className="p-1.5 border rounded hover:bg-gray-50" title="Cancelar">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className={`flex-1 px-3 py-1 rounded-full text-xs font-medium ${t.color}`}>
+                          {t.label}
+                        </span>
+                        <button
+                          onClick={() => { setEditandoTipo(t); setEditandoTipoLabel(t.label); }}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                          title="Editar"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleEliminarTipo(t.value)}
+                          className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Agregar tipo nuevo */}
+              <div className="flex gap-2">
+                <input
+                  value={nuevoTipoLabel}
+                  onChange={e => setNuevoTipoLabel(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAgregarTipo()}
+                  placeholder="Nombre del nuevo tipo..."
+                  className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 outline-none"
+                />
+                <button
+                  onClick={handleAgregarTipo}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                >
+                  <Plus className="w-4 h-4" /> Agregar
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ─── Tabla ─── */}
       <div className="bg-white rounded-xl border-2 border-gray-200 overflow-hidden">
@@ -331,51 +469,62 @@ export function ConfiguracionProcesosModule() {
                 </tr>
               </thead>
               <tbody>
-                {procesosFiltrados.map((p) => (
-                  <tr key={p.id} className="border-b hover:bg-gray-50/60 transition-colors">
-                    <td className="px-3 py-2.5 font-mono text-xs text-gray-600">{p.codigo}</td>
-                    <td className="px-3 py-2.5 font-medium text-gray-900">{p.nombre}</td>
-                    <td className="px-3 py-2.5">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                        p.tipo === 'misional'    ? 'bg-blue-100 text-blue-700'    :
-                        p.tipo === 'estrategico' ? 'bg-purple-100 text-purple-700':
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {p.tipo === 'misional'    ? 'Misional'    :
-                         p.tipo === 'estrategico' ? 'Estratégico' :
-                         p.tipo === 'apoyo'        ? 'Apoyo'       : p.tipo}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-gray-600 text-xs">{p.macroproceso || '—'}</td>
-                    <td className="px-3 py-2.5 text-gray-600 text-xs">{p.dependencia || '—'}</td>
-                    <td className="px-3 py-2.5">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
-                        (p as any).activo !== false ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                      }`}>
-                        {(p as any).activo !== false
-                          ? <><CheckCircle2 className="w-3 h-3" /> Activo</>
-                          : <><XCircle className="w-3 h-3" /> Inactivo</>
+                {procesosFiltrados.map((p) => {
+                  const tipoInfo = getTipoInfo(p.tipo || '');
+                  return (
+                    <tr key={p.id} className="border-b hover:bg-gray-50/60 transition-colors">
+                      <td className="px-3 py-2.5 font-mono text-xs text-gray-600">{p.codigo}</td>
+                      <td className="px-3 py-2.5 font-medium text-gray-900">
+                        <span className="flex items-center gap-1.5">
+                          {p.nombre}
+                          {espIds.has(p.id) && (
+                            <span className="text-amber-500 text-sm leading-none" title="Proceso especial — se audita todos los años">★</span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${tipoInfo.color}`}>
+                          {tipoInfo.label}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-600 text-xs">{p.macroproceso || '—'}</td>
+                      <td className="px-3 py-2.5 text-xs">
+                        {p.dependencia
+                          ? p.dependencia.split(';').map(d => d.trim()).filter(Boolean).map((d, i) => (
+                              <span key={i} className="inline-block bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded mr-1 mb-0.5">{d}</span>
+                            ))
+                          : <span className="text-gray-400">—</span>
                         }
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <div className="flex gap-1 justify-center">
-                        <button onClick={() => handleOpenEdit(p)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Editar">
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        {(p as any).activo !== false ? (
-                          <button onClick={() => handleInactivar(p)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded" title="Inactivar">
-                            <XCircle className="w-4 h-4" />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
+                          (p as any).activo !== false ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {(p as any).activo !== false
+                            ? <><CheckCircle2 className="w-3 h-3" /> Activo</>
+                            : <><XCircle className="w-3 h-3" /> Inactivo</>
+                          }
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex gap-1 justify-center">
+                          <button onClick={() => handleOpenEdit(p)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Editar">
+                            <Edit2 className="w-4 h-4" />
                           </button>
-                        ) : (
-                          <button onClick={() => handleActivar(p)} className="p-1.5 text-green-600 hover:bg-green-50 rounded" title="Activar">
-                            <CheckCircle2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {(p as any).activo !== false ? (
+                            <button onClick={() => handleInactivar(p)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded" title="Inactivar">
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <button onClick={() => handleActivar(p)} className="p-1.5 text-green-600 hover:bg-green-50 rounded" title="Activar">
+                              <CheckCircle2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -399,7 +548,7 @@ export function ConfiguracionProcesosModule() {
               onClick={(e) => e.stopPropagation()}
               className="bg-white rounded-xl shadow-xl w-full max-w-md"
             >
-              {/* Header modal */}
+              {/* Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b">
                 <h3 className="text-base font-bold text-gray-900">
                   {editando ? 'Editar proceso' : 'Crear proceso'}
@@ -409,7 +558,7 @@ export function ConfiguracionProcesosModule() {
                 </button>
               </div>
 
-              {/* Body modal */}
+              {/* Body */}
               <div className="px-5 py-4 space-y-4">
 
                 {/* Código */}
@@ -442,45 +591,105 @@ export function ConfiguracionProcesosModule() {
                     onChange={(e) => setField('tipo', e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-blue-500 outline-none bg-white"
                   >
-                    {TIPOS_PROCESO.map(t => (
+                    {tiposList.map(t => (
                       <option key={t.value} value={t.value}>{t.label}</option>
                     ))}
                   </select>
                 </div>
 
-                {/* Macroproceso — encadenado al tipo */}
+                {/* Macroproceso — entrada manual */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Macroproceso <span className="text-red-500">*</span></label>
-                  <select
+                  <input
                     value={form.macroproceso}
                     onChange={(e) => setField('macroproceso', e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-blue-500 outline-none bg-white"
-                  >
-                    <option value="">-- Seleccione --</option>
-                    {macroOpciones.map(m => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 outline-none"
+                    placeholder="Ej: Gestión Financiera"
+                  />
                 </div>
 
-                {/* Dependencia responsable — encadenada al macroproceso */}
+                {/* Dependencia responsable — multi-chip */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Dependencia responsable <span className="text-red-500">*</span></label>
-                  <select
-                    value={form.dependencia}
-                    onChange={(e) => setField('dependencia', e.target.value)}
-                    disabled={!form.macroproceso}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-blue-500 outline-none bg-white disabled:bg-gray-50 disabled:text-gray-400"
-                  >
-                    <option value="">-- Seleccione macroproceso primero --</option>
-                    {depOpciones.map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Dependencia responsable <span className="text-red-500">*</span>
+                  </label>
+
+                  {/* Chips de dependencias ya agregadas */}
+                  {dependencias.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {dependencias.map((dep, i) => (
+                        <span key={i} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">
+                          {dep}
+                          <button
+                            type="button"
+                            onClick={() => setDependencias(prev => prev.filter((_, idx) => idx !== i))}
+                            className="hover:text-red-600 transition-colors ml-0.5"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Input + botón agregar */}
+                  <div className="flex gap-2">
+                    <input
+                      value={depInput}
+                      onChange={(e) => setDepInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = depInput.trim();
+                          if (val && !dependencias.includes(val)) {
+                            setDependencias(prev => [...prev, val]);
+                            setDepInput('');
+                          }
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 outline-none"
+                      placeholder="Ej: Dirección Financiera"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = depInput.trim();
+                        if (val && !dependencias.includes(val)) {
+                          setDependencias(prev => [...prev, val]);
+                          setDepInput('');
+                        }
+                      }}
+                      className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1 text-sm"
+                      title="Agregar dependencia"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1">Presione Enter o el botón + para agregar cada dependencia</p>
                 </div>
+
+                {/* Proceso especial ★ */}
+                <label className={`flex items-center gap-3 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all ${
+                  form.esEspecial ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+                }`}>
+                  <input
+                    type="checkbox"
+                    checked={form.esEspecial}
+                    onChange={(e) => setForm(prev => ({ ...prev, esEspecial: e.target.checked }))}
+                    className="w-4 h-4 accent-amber-500"
+                  />
+                  <div>
+                    <div className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+                      Proceso especial <span className="text-amber-500">★</span>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      Se audita todos los años del cuatrienio independientemente de la ponderación DAFP
+                    </div>
+                  </div>
+                </label>
               </div>
 
-              {/* Footer modal */}
+              {/* Footer */}
               <div className="flex justify-end gap-2 px-5 py-4 border-t">
                 <button
                   onClick={() => setModalOpen(false)}
