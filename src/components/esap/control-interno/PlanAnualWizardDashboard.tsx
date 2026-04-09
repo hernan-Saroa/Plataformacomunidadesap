@@ -2274,7 +2274,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       vigencia: plan.vigencia,
       estado: plan.estado,
       version: plan.version,
-      jefeOCINombre: plan.jefeOCI?.nombre ?? ''
+      jefeOCINombre: plan.jefeOCI?.nombre ?? '',
+      fechaCorte: `${plan.vigencia}-12-31`
     }));
   }, [plan.id]);
 
@@ -2514,7 +2515,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
                       vigencia: planSeleccionado.vigencia,
                       estado: planSeleccionado.estado,
                       version: planSeleccionado.version,
-                      jefeOCINombre: planSeleccionado.jefeOCI?.nombre ?? ''
+                      jefeOCINombre: planSeleccionado.jefeOCI?.nombre ?? '',
+                      fechaCorte: `${planSeleccionado.vigencia}-12-31`
                     }));
                   }
                   onCambiarPlan(e.target.value);

@@ -647,6 +647,11 @@ function ModalVisorDocumento({
           tipoDetectado = 'ppt';
         } else if (nombreArchivo.endsWith('.xls') || nombreArchivo.endsWith('.xlsx')) {
           tipoDetectado = 'xls';
+        } else if (documento.tipo === 'auto') {
+          // Detectar desde el contenido real del blob (PDF o HTML generado)
+          const arrayBuffer = await blob.slice(0, 4).arrayBuffer();
+          const header = String.fromCharCode(...new Uint8Array(arrayBuffer));
+          tipoDetectado = header === '%PDF' ? 'pdf' : 'html';
         }
 
         setTipoArchivo(tipoDetectado);
@@ -1333,8 +1338,8 @@ function ModalVisorDocumento({
                 if (tipo === 'video') {
                   // Para videos, reproducir en el visor
                   setViendoPDF(!viendoPDF);
-                } else if (tipo === 'pdf') {
-                  // Para PDF, mostrar en el visor
+                } else if (tipo === 'pdf' || documento.tipo === 'auto') {
+                  // Para PDF y autos, mostrar en el visor
                   setViendoPDF(!viendoPDF);
                 } else {
                   // Para otros tipos (Word, Excel), descargar directamente o mostrar mensaje

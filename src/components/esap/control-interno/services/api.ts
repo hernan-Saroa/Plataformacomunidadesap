@@ -667,8 +667,9 @@ export const informesLeyApi = {
 
 export interface ConfiguracionProfesionalOCI {
   id: string;
-  idTercero: number;
-  rolOCI: 'Jefe OCI' | 'Auditor Sénior' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
+  idTercero: string;
+  rolOcig: 'Jefe OCIG' | 'Auditor Sénior' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
+  /** @deprecated use rolOcig */ rolOCI?: string;
   especialidades: string[];
   capacidadMaximaAuditorias: number;
   horasMensualesDisponibles: number;
@@ -685,8 +686,8 @@ export interface ConfiguracionProfesionalOCI {
 }
 
 export interface CreateConfiguracionProfesionalOCIDto {
-  idTercero: number;
-  rolOCI: string;
+  idTercero: string;
+  rolOcig: string;
   especialidades: string[];
   capacidadMaximaAuditorias?: number;
   horasMensualesDisponibles?: number;
@@ -695,7 +696,7 @@ export interface CreateConfiguracionProfesionalOCIDto {
 }
 
 export interface UpdateConfiguracionProfesionalOCIDto {
-  rolOCI?: string;
+  rolOcig?: string;
   especialidades?: string[];
   capacidadMaximaAuditorias?: number;
   horasMensualesDisponibles?: number;

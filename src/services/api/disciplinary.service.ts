@@ -164,8 +164,8 @@ export interface DisciplinaryProcessReassignmentRequest {
 export interface DisciplinaryProcess {
      id: string;
      radicadoProceso: string;
-     etapaActual: 'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO' | 'FALLO' | 'SEGUNDA_INSTANCIA' | 'INDAGACION';
-     kanbanStage?: string;
+     etapaActual: 'RECEPCION' |'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO' | 'FALLO' | 'SEGUNDA_INSTANCIA' | 'INDAGACION';
+    kanbanStage?: number;
      kanbanNotice?: string;
      estado: 'ACTIVO' | 'SUSPENDIDO' | 'ARCHIVADO' | 'PRESCRITO';
      abogadoAsignadoId: string;
@@ -486,10 +486,15 @@ class DisciplinaryService {
         }
 
         // Archivos con el campo correcto que espera el backend
+        console.log('[DEBUG] radicarNoticia - files received:', files);
+        console.log('[DEBUG] radicarNoticia - files length:', files?.length || 0);
         if (files && files.length > 0) {
-            files.forEach((file) => {
-                formData.append('files', file); // Backend usa 'files', no 'adjuntos'
-            });
+          files.forEach((file, index) => {
+            console.log(`[DEBUG] Appending file ${index}: ${file.name}, size: ${file.size}`);
+            formData.append('files', file); // Backend usa 'files', no 'adjuntos'
+          });
+        } else {
+          console.log('[DEBUG] No files to append');
         }
 
         return apiClient.upload<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
@@ -537,7 +542,7 @@ class DisciplinaryService {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones });
     }
 
-    async updateNewsKanban(id: string, kanbanStage: string): Promise<DisciplinaryNews> {
+    async updateNewsKanban(id: string, kanbanStage: number): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/kanban`, { kanbanStage });
     }
 
@@ -657,7 +662,7 @@ class DisciplinaryService {
         return apiClient.post<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/assign`, data);
     }
 
-    async cambiarEtapa(id: string, nuevaEtapa: string, kanbanStage?: string, kanbanNotice?: string): Promise<DisciplinaryProcess> {
+    async cambiarEtapa(id: string, nuevaEtapa: string, kanbanStage?: number, kanbanNotice?: string): Promise<DisciplinaryProcess> {
         return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/stage`, {
             stage: nuevaEtapa,
             kanbanStage,
@@ -856,33 +861,33 @@ class DisciplinaryService {
         return `${window.location.origin}/control-disciplinario/api/v1/files/${urlRelativa}`;
     }
 
-    /**
-     * Obtener URL completa para archivos adjuntos
-     * SIMPLIFICADO: Los archivos se guardan en ./uploads/{timestamp}_{nombre_original}
-     * Siempre devuelve una ruta relativa para que downloadFileFromUrl funcione correctamente
-     */
-    getFileUrl(urlRelativa: string): string {
-        if (!urlRelativa) return '';
+  /**
+   * Obtener URL completa para archivos adjuntos
+   * Los archivos se guardan en ./uploads/{timestamp}_{nombre_original}
+   * Siempre devuelve una ruta relativa para que downloadFileFromUrl funcione correctamente
+   */
+  getFileUrl(urlRelativa: string): string {
+    if (!urlRelativa) return '';
 
-        // Si ya es una URL completa, devolverla tal cual (para backward compatibility)
-        if (/^https?:\/\//i.test(urlRelativa)) return urlRelativa;
+    // Si ya es una URL completa, devolverla tal cual (para backward compatibility)
+    if (/^https?:\/\//i.test(urlRelativa)) return urlRelativa;
 
-        // Extraer solo el nombre del archivo (última parte del path)
-        let filename = urlRelativa;
-        if (urlRelativa.includes('/')) {
-            filename = urlRelativa.split('/').pop() || urlRelativa;
-        }
-        // Limpiar prefijo /files/ si existe
-        if (filename.startsWith('/files/')) {
-            filename = filename.substring(7);
-        } else if (filename.startsWith('files/')) {
-            filename = filename.substring(6);
-        }
-
-        // Devolver solo la ruta relativa (sin el host)
-        // Esto permite que downloadFileFromUrl construya la URL correctamente
-        return `/files/${filename}`;
+    // Extraer solo el nombre del archivo (última parte del path)
+    let filename = urlRelativa;
+    if (urlRelativa.includes('/')) {
+      filename = urlRelativa.split('/').pop() || urlRelativa;
     }
+    // Limpiar prefijo /files/ si existe
+    if (filename.startsWith('/files/')) {
+      filename = filename.substring(7);
+    } else if (filename.startsWith('files/')) {
+      filename = filename.substring(6);
+    }
+
+    // Devolver la ruta para servir el archivo estáticamente
+    // El backend debe tener express.static('/files', 'uploads')
+    return `/files/${filename}`;
+  }
 
     // --- AUTOS ---
 

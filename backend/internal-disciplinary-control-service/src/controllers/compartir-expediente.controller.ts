@@ -21,6 +21,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { ProcessService } from '../services/process.service';
 import { StorageService } from '../services/storage.service';
+import { AutoService } from '../services/auto.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -30,6 +31,7 @@ export class CompartirExpedienteController {
     private readonly compartirService: CompartirExpedienteService,
     private readonly processService: ProcessService,
     private readonly storageService: StorageService,
+    private readonly autoService: AutoService,
     private httpService: HttpService,
   ) {}
 
@@ -247,7 +249,18 @@ export class CompartirExpedienteController {
 
       // Verificar que el documento pertenezca al proceso compartido
       const documentos = await this.processService.getEvidenceByProcessId(compartido.procesoId);
-      const documento = documentos.find(d => d.id === documentId);
+      let documento: any = documentos.find(d => d.id === documentId);
+
+      if (!documento) {
+        // Buscar en autos antes de retornar 404
+        try {
+          const auto = await this.autoService.findById(documentId, []);
+          if (auto) {
+            const autoUrl = auto.documentUrl ? auto.documentUrl.replace(/^\/files\//, '') : null;
+            documento = { url: autoUrl, filename: auto.documentName, nombreDocumento: auto.documentName, fileType: auto.documentType };
+          }
+        } catch (_) {}
+      }
 
       if (!documento) {
         return res.status(404).json({ error: 'Documento no encontrado' });

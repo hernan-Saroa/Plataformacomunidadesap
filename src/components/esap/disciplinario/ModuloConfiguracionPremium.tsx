@@ -47,7 +47,7 @@ export function ModuloConfiguracionPremium() {
       {/* Tabs de navegación con diseño limpio */}
       <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
         <div className={`w-full ${isMobile ? 'px-4' : 'px-8'}`}>
-          <div className={`flex gap-1 ${isMobile ? 'overflow-x-auto scrollbar-hide' : ''}`}>
+          <div className={`flex gap-1 ${isMobile ? 'overflow-x-auto scrollbar-hide' : 'overflow-x-auto'}`}>
             <TabButton
               active={tabActiva === 'ESTADOS_KANBAN'}
               onClick={() => setTabActiva('ESTADOS_KANBAN')}

@@ -18,7 +18,7 @@ import {
   Maximize2, Minimize2, TrendingUp, AlertCircle, Phone, Mail,
   MapPin, Info, ExternalLink, RefreshCw, Paperclip, UserCheck,
   List, Columns3, Menu, Edit2, FileSignature, History,
-  ChevronsDown, ChevronsUp, ChevronUp, Zap, Link2, UserCog, MessageCircle,
+  ChevronsDown, ChevronsUp, ChevronUp, ChevronLeft, ChevronRight, Zap, Link2, UserCog, MessageCircle,
   ClipboardList, FileEdit, Loader2
 } from 'lucide-react';
 import { Card } from '../../ui/card';
@@ -142,6 +142,7 @@ interface Noticia {
   prioridad: 'alta' | 'media' | 'baja';
   diasPendientes: number;
   tipo: 'noticia';
+  kanbanStage?: string;
   procesoAsociado?: {
     id: string;
     numeroProceso: string;
@@ -183,7 +184,7 @@ interface Noticia {
     apoderado?: { nombre: string; cedula: string; correo: string; celular: string };
   }[];
   hechosSeparados?: { id: string; descripcion: string; fecha?: string }[];
-  archivosAdjuntos?: { nombre: string; tipo: string; tamano: number; fechaSubida: string }[];
+  archivosAdjuntos?: { nombre: string; tipo: string; tamano: number; fechaSubida: string; url: string }[];
   radicador?: string;
   fechaRegistro?: string;
 }
@@ -208,6 +209,7 @@ interface Proceso {
   ultimaActuacion: string;
   fechaCreacion: string;
   tipo: 'proceso';
+  kanbanStage?: string;
   hechos?: string;
   cargo?: string;
   dependencia?: string;
@@ -919,9 +921,8 @@ function VistaLista({
         ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
         : (item as Proceso).denunciado.nombre?.toLowerCase().includes(searchTerm.toLowerCase())));
 
-    const matchEtapa = filtroEtapa === 'todos' ||
-      (item.tipo === 'noticia' && filtroEtapa === 'Recepción') ||
-      (item.tipo === 'proceso' && (item as Proceso).etapaActual === filtroEtapa);
+    // Filtrar por etapa comparando ID de etapa parametrizada contra kanbanStage del item
+    const matchEtapa = filtroEtapa === 'todos' || item.kanbanStage === filtroEtapa;
 
     return matchSearch && matchEtapa;
   });
@@ -953,18 +954,38 @@ function VistaLista({
           </div>
           <select
             className={`${isMobile ? 'px-3 py-2 text-sm' : 'px-4 py-2.5'} rounded-lg border-2 focus:outline-none font-semibold`}
-            style={{ borderColor: '#E5E7EB', color: '#4B5563' }}
+            style={{ borderColor: '#E5E7EB', color: '#000000', backgroundColor: '#FFFFFF' }}
             value={filtroEtapa}
             onChange={(e) => setFiltroEtapa(e.target.value)}
           >
             <option value="todos">Todas las etapas</option>
-            <option value="Recepción">Recepción (Noticias) - 3 días</option>
-            <option value="Valoración">Valoración - 10 días</option>
-            <option value="Indagación">Indagación - 40 días</option>
-            <option value="Investigación">Investigación - 60 días</option>
-            <option value="Juzgamiento">Juzgamiento - 50 días</option>
-            <option value="Fallo">Fallo - 10 días</option>
-            <option value="Archivo">Archivo - Completado</option>
+            {(() => {
+              if (etapasConfig && etapasConfig.length > 0) {
+                return etapasConfig
+                  .sort((a, b) => (a.orden || 0) - (b.orden || 0))
+                  .map((etapa) => {
+                    const nombreEtapa = etapa.etapa || etapa.nombre || 'Sin nombre';
+                    return (
+                      <option key={etapa.id || `etapa-${Math.random()}`} value={etapa.id}>
+                        {nombreEtapa}
+                      </option>
+                    );
+                  });
+              } else {
+                // Fallback options con IDs fijos para mantener consistencia
+                return (
+                  <>
+                    <option value="recepcion">Recepción (Noticias) - 3 días</option>
+                    <option value="valoracion">Valoración - 10 días</option>
+                    <option value="indagacion">Indagación - 40 días</option>
+                    <option value="investigacion">Investigación - 60 días</option>
+                    <option value="juzgamiento">Juzgamiento - 50 días</option>
+                    <option value="fallo">Fallo - 10 días</option>
+                    <option value="archivo">Archivo - Completado</option>
+                  </>
+                );
+              }
+            })()}
           </select>
         </div>
       </Card>
@@ -1574,8 +1595,10 @@ function ColumnaKanban({
 
   // ✅ NUEVO: Obtener la etapa inicial (orden 1) desde la configuración
   const etapaInicial = etapasConfig.length > 0
-    ? etapasConfig
-        .sort((a, b) => (a.orden || 0) - (b.orden || 0))[0]?.etapa || 'RECEPCION'
+    ? (() => {
+        const primeraEtapa = etapasConfig.sort((a, b) => (a.orden || 0) - (b.orden || 0))[0];
+        return primeraEtapa?.etapa || primeraEtapa?.nombre || 'RECEPCION';
+      })()
     : 'RECEPCION';
 
   // Normalizar para comparación (sin tilde, minúsculas)
@@ -2403,6 +2426,7 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     prioridad: (noticia as any).prioridad || 'media',
     diasPendientes: (noticia as any).diasPendientes ?? dias,
     tipo: 'noticia',
+    kanbanStage: (noticia as any).kanbanStage,
     etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion',
     procesoAsociado: (noticia as any).procesoAsociadoId ? {
       id: (noticia as any).procesoAsociadoId,
@@ -2525,6 +2549,7 @@ export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = [])
     ultimaActuacion: proceso.ultimaActuacion || 'Sin actuaciones registradas',
     fechaCreacion: fechaCreacion.toISOString().split('T')[0],
     tipo: 'proceso',
+    kanbanStage: proceso.kanbanStage,
     hechos: proceso.news?.hechos,
     kanbanNotice: proceso.kanbanNotice || null,
     procesoAsociadoId: proceso.procesoAsociadoId,
@@ -2590,37 +2615,19 @@ export function DashboardKanbanOperativo({
   const [showBusquedaGlobal, setShowBusquedaGlobal] = useState(false);
   const busquedaInputRef = useRef<HTMLInputElement>(null);
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
-  const kanbanTopScrollRef = useRef<HTMLDivElement>(null);
-  const kanbanContentWidthRef = useRef<HTMLDivElement>(null);
 
-  // ✅ Sincronizar scroll horizontal entre barra superior y contenedor Kanban
-  useEffect(() => {
-    const top = kanbanTopScrollRef.current;
-    const main = kanbanScrollRef.current;
-    const content = kanbanContentWidthRef.current;
-    if (!top || !main || !content) return;
 
-    // El div interno del top scrollbar es el primer hijo
-    const topInner = top.firstElementChild as HTMLDivElement | null;
 
-    // Sync width: observamos el contenido real (width: max-content)
-    const syncWidth = () => {
-      if (topInner) topInner.style.width = `${content.offsetWidth}px`;
-    };
-    syncWidth();
-    const ro = new ResizeObserver(syncWidth);
-    ro.observe(content);
 
-    const syncFromTop = () => { main.scrollLeft = top.scrollLeft; };
-    const syncFromMain = () => { top.scrollLeft = main.scrollLeft; };
-    top.addEventListener('scroll', syncFromTop);
-    main.addEventListener('scroll', syncFromMain);
-    return () => {
-      top.removeEventListener('scroll', syncFromTop);
-      main.removeEventListener('scroll', syncFromMain);
-      ro.disconnect();
-    };
-  }); // sin deps: corre en cada render, ResizeObserver evita loops
+  // ✅ FILTRO POR TIPO: todos, noticia, proceso
+  const [filtroTipo, setFiltroTipo] = useState<'todos' | 'noticia' | 'proceso'>('todos');
+
+  const navegarKanban = (direccion: 'prev' | 'next') => {
+    const container = kanbanScrollRef.current;
+    if (!container) return;
+    const scrollAmount = container.clientWidth * 0.75;
+    container.scrollBy({ left: direccion === 'next' ? scrollAmount : -scrollAmount, behavior: 'smooth' });
+  };
 
   // ✅ Archivados: inician vacíos, se llenan al archivar noticias/procesos (persistido en Supabase vía update de estado)
   const [itemsArchivados, setItemsArchivados] = useState<Array<Item & { fechaArchivo: string; motivoArchivo: string }>>([]);
@@ -2891,14 +2898,14 @@ export function DashboardKanbanOperativo({
     let etapaNormalizada: string;
 
     if (etapaRaw) {
-      // Buscar coincidencia en etapas del backend
-      const match = currentStages.find(s => s.etapa === etapaRaw || s.etapa.toUpperCase() === etapaRaw.toUpperCase());
+      // Buscar coincidencia en etapas del backend por id o por nombre
+      const match = currentStages.find(s => s.id === etapaRaw || s.etapa === etapaRaw || s.nombre === etapaRaw || s.etapa?.toUpperCase() === etapaRaw.toUpperCase() || s.nombre?.toUpperCase() === etapaRaw.toUpperCase());
       if (match) {
-        etapaNormalizada = match.etapa;
+        etapaNormalizada = match.etapa || match.nombre || etapaRaw;
       } else {
         // Fallback a mapeo legacy
         etapaNormalizada = stageLabelMap[etapaRaw] || etapaRaw;
-        // Fallback final: Title Case
+        // Fallback final: Title Case (solo si es uppercase)
         if (etapaNormalizada === etapaNormalizada.toUpperCase() && etapaNormalizada.length > 3) {
           etapaNormalizada = etapaNormalizada.charAt(0).toUpperCase() + etapaNormalizada.slice(1).toLowerCase();
         }
@@ -2907,7 +2914,8 @@ export function DashboardKanbanOperativo({
       // ✅ NUEVO: Si no hay etapa, usar la primera etapa de la configuración (menor orden)
       if (currentStages.length > 0) {
         const etapasOrdenadas = [...currentStages].sort((a, b) => (a.orden || 0) - (b.orden || 0));
-        etapaNormalizada = etapasOrdenadas[0]?.etapa || 'Recepcion';
+        const primeraEtapa = etapasOrdenadas[0];
+        etapaNormalizada = primeraEtapa?.etapa || primeraEtapa?.nombre || 'Recepcion';
       } else {
         etapaNormalizada = 'Recepcion';
       }
@@ -2944,7 +2952,15 @@ export function DashboardKanbanOperativo({
       fechaRemision: (noticia as any).fechaRemision || (noticia as any).fechaRemisionPorCompetencia || undefined,
       fundamentoLegalRemision: (noticia as any).fundamentoLegalRemision || (noticia as any).fundamentoLegal || undefined,
       justificacionRemision: (noticia as any).justificacionRemision || (noticia as any).observacionesRemision || undefined,
-      conductaSeleccionada: (noticia as any).conductas?.[0] || (noticia as any).conductaSeleccionada || ''
+      conductaSeleccionada: (noticia as any).conductas?.[0] || (noticia as any).conductaSeleccionada || '',
+      archivosAdjuntos: ((noticia as any).adjuntos || []).map((path: string) => ({
+        nombre: path.split('/').pop() || path,
+        tipo: path.toLowerCase().includes('pdf') ? 'application/pdf' : path.toLowerCase().includes('jpg') || path.toLowerCase().includes('png') ? 'image' : path.toLowerCase().includes('mp4') || path.toLowerCase().includes('avi') ? 'video' : 'application/octet-stream',
+        tamano: 0,
+        fechaSubida: new Date().toISOString(),
+        url: path,
+        fullUrl: disciplinaryService.getFileUrl(path),
+      }))
     };
   };
 
@@ -2991,10 +3007,10 @@ export function DashboardKanbanOperativo({
     if (!etapa) {
       etapa = 'Recepción';
     } else {
-      // Normalizar etapa: buscar coincidencia exacta o insensible en las etapas del backend
-      const match = currentStages.find(s => s.etapa === etapa || s.etapa.toUpperCase() === etapa.toUpperCase());
+      // Normalizar etapa: buscar coincidencia por id o por nombre en las etapas del backend
+      const match = currentStages.find(s => s.id === etapa || s.etapa === etapa || s.nombre === etapa || s.etapa?.toUpperCase() === etapa.toUpperCase() || s.nombre?.toUpperCase() === etapa.toUpperCase());
       if (match) {
-        etapa = match.etapa;
+        etapa = match.etapa || match.nombre || etapa;
       } else {
         // Fallback a mapeo legacy
         etapa = stageLabelMap[etapa] || etapa;
@@ -3166,6 +3182,35 @@ export function DashboardKanbanOperativo({
     return fallbackMap[normalizedLabel] || normalizedLabel.replace(/\s+/g, '_').toUpperCase();
   };
 
+  const getStageOrderForLabel = (label: string) => {
+    const normalizedLabel = normalizeStageKey(label);
+
+    const mappedStage = etapasConfig.find(stageConfig => {
+      const raw = stageConfig.etapa || stageConfig.nombre || stageConfig.label || '';
+      const normalizedRaw = normalizeStageKey(raw);
+      return normalizedRaw === normalizedLabel || normalizedRaw.includes(normalizedLabel) || normalizedLabel.includes(normalizedRaw);
+    });
+    if (mappedStage?.orden !== undefined) {
+      return mappedStage.orden;
+    }
+
+    // Fallback orders based on typical sequence
+    const fallbackOrders: Record<string, number> = {
+      'recepcion': 1,
+      'valoracion': 2,
+      'indagacion': 3,
+      'indagacion previa': 3,
+      'investigacion': 4,
+      'evaluacion': 5,
+      'juzgamiento': 6,
+      'fallo': 7,
+      'segunda instancia': 8,
+      'archivo': 9
+    };
+
+    return fallbackOrders[normalizedLabel] || 1;
+  };
+
   // ==================== HANDLERS ====================
   const handleDropItem = async (item: Item, nuevaEtapa: string) => {
     // ✅ NUEVO: Validar orden de etapas desde backend config
@@ -3236,9 +3281,10 @@ export function DashboardKanbanOperativo({
         const toastId = toast.loading('Cambiando etapa del proceso...');
         try {
             const backendStage = backendStageForLabel(nuevaEtapa);
+            const stageOrder = getStageOrderForLabel(nuevaEtapa);
 
             // Llamar al backend para cambiar la etapa
-            await disciplinaryService.cambiarEtapa(item.id, backendStage, nuevaEtapa);
+            await disciplinaryService.cambiarEtapa(item.id, backendStage, stageOrder);
           toast.success('Etapa actualizada', {
             id: toastId,
             description: `${item.numeroProceso} → ${nuevaEtapa}`
@@ -3367,7 +3413,7 @@ export function DashboardKanbanOperativo({
       console.log('[DashboardKanban] Enviando datos al backend:', JSON.stringify(newsData, null, 2));
 
       // Llamar al backend para crear la noticia
-      const noticiaCreada = await disciplinaryService.radicarNoticia(newsData);
+      const noticiaCreada = await disciplinaryService.radicarNoticia(newsData, data.archivosAdjuntos || []);
       
       console.log('[DashboardKanban] Noticia creada en backend:', noticiaCreada);
 
@@ -3891,17 +3937,18 @@ export function DashboardKanbanOperativo({
       'Archivo': 'ARCHIVO'
     };
     const backendStage = stageMap[siguienteEtapa] || siguienteEtapa.toUpperCase();
+    const stageOrder = getStageOrderForLabel(siguienteEtapa);
 
     // ✅ NUEVO: Persistir cambio de etapa y asignación de profesional en la base de datos
     const toastId = toast.loading('Asignando profesional y cambiando etapa...');
     try {
       // Llamar al backend para cambiar la etapa y asignar el profesional
-      await disciplinaryService.cambiarEtapa(itemSeleccionado.id, backendStage, siguienteEtapa);
+      await disciplinaryService.cambiarEtapa(itemSeleccionado.id, backendStage, stageOrder);
       
       // También actualizar el proceso con el profesional asignado usando updateProcess
       await disciplinaryService.updateProcess(itemSeleccionado.id, {
         etapaActual: backendStage,
-        kanbanStage: siguienteEtapa,
+        kanbanStage: stageOrder,
         abogadoId: profesionalId
       });
       
@@ -4117,11 +4164,21 @@ export function DashboardKanbanOperativo({
 
   // ✅ NUEVO: Handler para asociar noticia a proceso
   const handleAsociarNoticiaProceso = (noticia: Noticia) => {
+    // Limpiar estado previo antes de abrir el modal
+    setModalActivo(null);
+    setItemSeleccionado(null);
+
+    // Establecer el nuevo estado
     setItemSeleccionado(noticia);
     setModalActivo('asociar-noticia-proceso');
   };
 
   const handleAsociarNoticiaNoticia = (noticia: Noticia) => {
+    // Limpiar estado previo antes de abrir el modal
+    setModalActivo(null);
+    setItemSeleccionado(null);
+
+    // Establecer el nuevo estado
     setItemSeleccionado(noticia);
     setModalActivo('asociar-noticia-noticia');
   };
@@ -4310,14 +4367,11 @@ export function DashboardKanbanOperativo({
 
   // ✅ NUEVO: Handler para asociar proceso a proceso (estados post-Recepción)
   const handleAsociarProcesoProceso = (proceso: Proceso) => {
-    // Validar que el proceso no esté en Recepción
-    if (proceso.etapaActual === 'Recepción') {
-      toast.error('No disponible en Recepción', {
-        description: 'La asociación de procesos solo está disponible desde Valoración en adelante'
-      });
-      return;
-    }
+    // Limpiar estado previo antes de abrir el modal
+    setModalActivo(null);
+    setItemSeleccionado(null);
 
+    // Establecer el nuevo estado
     setItemSeleccionado(proceso);
     setModalActivo('asociar-proceso-proceso');
   };
@@ -4560,11 +4614,12 @@ export function DashboardKanbanOperativo({
     const usuario = 'Usuario Actual';
 
     const backendStage = backendStageForLabel(nuevaEtapa);
+    const stageOrder = getStageOrderForLabel(nuevaEtapa);
 
     // Persistir cambio de etapa en la base de datos
     const toastId = toast.loading('Cambiando etapa del proceso...');
     try {
-      await disciplinaryService.cambiarEtapa(proceso.id, backendStage, nuevaEtapa);
+      await disciplinaryService.cambiarEtapa(proceso.id, backendStage, stageOrder);
       
       toast.success('Etapa actualizada', {
         id: toastId,
@@ -4686,7 +4741,12 @@ export function DashboardKanbanOperativo({
       return false; // No mostrar noticias cuando hay filtro de profesional
     })
     : items
-  ).filter(item => itemMatchesSearch(item, normalizedGlobalQuery));
+  ).filter(item => {
+    // Filtro por tipo
+    if (filtroTipo !== 'todos' && item.tipo !== filtroTipo) return false;
+    // Filtro por búsqueda
+    return itemMatchesSearch(item, normalizedGlobalQuery);
+  });
 
   // ✅ También filtrar archivados por búsqueda global
   const itemsArchivadosFiltrados = itemsArchivados.filter(item =>
@@ -4865,8 +4925,28 @@ export function DashboardKanbanOperativo({
               )}
             </div>
 
-            {/* Controles — Design Standard: ViewToggle + CTA */}
+            {/* Controles — Design Standard: Filtro Tipo + ViewToggle + CTA */}
             <div className="flex items-center gap-3 flex-shrink-0">
+              {/* Filtro por tipo */}
+              <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-gray-100">
+                {([
+                  { value: 'todos', label: 'Todos' },
+                  { value: 'noticia', label: 'Noticias' },
+                  { value: 'proceso', label: 'Procesos' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setFiltroTipo(opt.value)}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${filtroTipo === opt.value
+                      ? 'bg-white shadow-sm text-gray-900'
+                      : 'text-gray-500 hover:bg-gray-200'
+                      }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
               <KanbanViewToggle
                 options={[
                   ...(isMobile ? [] : [{ value: 'kanban', icon: <Columns3 style={{ width: 16, height: 16 }} />, label: 'Kanban' }]),
@@ -4932,104 +5012,131 @@ export function DashboardKanbanOperativo({
           </div>
         )}
 
-        {/* ═══ Barra de scroll superior sticky — fuera del overflow-hidden para que sticky funcione ═══ */}
         {tipoVista === 'kanban' && itemsFiltrados.length > 0 && (
-          <div
-            ref={kanbanTopScrollRef}
-            style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 20,
-              overflowX: 'auto',
-              overflowY: 'hidden',
-              height: '14px',
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#94A3B8 #CBD5E1',
-              background: '#F1F5F9',
-              borderRadius: '4px',
-            }}
-          >
-            <div style={{ height: '1px' }} />
-          </div>
-        )}
-
-        {tipoVista === 'kanban' && itemsFiltrados.length > 0 && (
-          <div className="flex-1 overflow-hidden">
-            {/* ═══ Contenedor Kanban estilo Trello: scroll horizontal + columnas fijas ═══ */}
-            <div
-              ref={kanbanScrollRef}
-              className="h-full pb-2"
-              style={{
-                overflowX: 'auto',
-                overflowY: 'hidden',
-                WebkitOverflowScrolling: 'touch',
-                scrollbarWidth: 'none',
-              }}
-            >
-              {/* Flex container — columnas de ancho FIJO, nunca se comprimen (patrón Trello) */}
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* Wrapper relativo para el area kanban */}
+            <div className="relative flex-1 min-h-0">
+              {/* Botones sticky: siempre centrados en la parte visible de la pantalla */}
+              <div style={{ position: 'sticky', top: '50vh', transform: 'translateY(-50%)', height: 0, zIndex: 30, pointerEvents: 'none' }}>
+                <button
+                  onClick={() => navegarKanban('prev')}
+                  className="absolute left-2 flex items-center justify-center w-9 h-9 rounded-full shadow-lg hover:shadow-xl"
+                  style={{ background: 'linear-gradient(135deg, #2962FF, #003DA5)', color: '#FFFFFF', pointerEvents: 'auto', transform: 'translateY(-50%)' }}
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => navegarKanban('next')}
+                  className="absolute right-2 flex items-center justify-center w-9 h-9 rounded-full shadow-lg hover:shadow-xl"
+                  style={{ background: 'linear-gradient(135deg, #2962FF, #003DA5)', color: '#FFFFFF', pointerEvents: 'auto', transform: 'translateY(-50%)' }}
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+              {/* Contenedor Kanban: scroll horizontal con barra azul visible en la parte inferior */}
               <div
-                ref={kanbanContentWidthRef}
-                className="flex gap-4 h-full items-stretch"
+                ref={kanbanScrollRef}
+                className="h-full pb-2 kanban-scroll-container"
                 style={{
-                  width: 'max-content',
-                  paddingLeft: '1rem',
-                  paddingRight: '1rem',
-                  paddingBottom: '0.5rem',
+                  overflowX: 'auto',
+                  overflowY: 'hidden',
+                  WebkitOverflowScrolling: 'touch',
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: '#2962FF #E5E7EB',
                 }}
               >
-                {etapas.map((etapa) => {
-                  const isColapsada = columnasColapsadas.has(etapa.nombre);
-                  return (
-                    <div
-                      key={etapa.nombre}
-                      className="flex-shrink-0 h-full"
-                      style={{
-                        width: isColapsada && !isMobile ? '64px' : isMobile ? 'calc(100vw - 32px)' : isTablet ? '280px' : '320px',
-                        transition: 'width 0.3s ease-in-out',
-                      }}
-                    >
-                      <ColumnaKanban
-                        etapa={etapa.nombre}
-                        items={itemsFiltrados}
-                        color={etapa.color}
-                        icono={etapa.icono}
-                        diasEstimados={etapa.diasEstimados}
-                        onDrop={handleDropItem}
-                        onConvertirNoticia={handleConvertirNoticia}
-                        onDevolverNoticia={handleDevolverNoticia}
-                        onDevolverCompetencia={handleDevolverCompetencia}
-                        onArchivarNoticia={handleArchivarNoticia}
-                        onVerDetallesNoticia={handleVerDetallesNoticia}
-                        onVerDetallesRemision={handleVerDetallesRemision} // ✅ NUEVO: Ver detalles de remisión
-                        onAsociarNoticiaProceso={handleAsociarNoticiaProceso}
-                        onVerProcesoAsociado={handleVerProcesoAsociado}
-                        onVerNoticiaAsociada={handleVerNoticiaAsociada}
-                        onEditarNoticia={handleEditarNoticia}
-                        onVerDetalles={handleVerDetalles}
-                        onAprobarBorrador={handleAprobarBorrador}
-                        onVerExpediente={handleVerExpediente}
-                        onGestionAutos={handleGestionAutos}
-                        onGestionEvidencias={handleGestionEvidencias}
-                        onGestionOficios={handleGestionOficios}
-                        onGestionActas={handleGestionActas}
-                        onComentarios={handleComentarios}
-                        onSolicitarReasignacion={handleSolicitarReasignacion}
-                        onAsociarProcesoProceso={handleAsociarProcesoProceso} // ✅ NUEVO: Asociar proceso a proceso
-                        onEditarProceso={handleEditarProceso} // ✅ NUEVO: Editar proceso
-                        onVerDetallesAsociacion={handleVerDetallesAsociacion} // ✅ NUEVO: Ver detalles de asociación
-                        vistaCompacta={vistaCompacta}
-                        isMobile={isMobile}
-                        colapsada={columnasColapsadas.has(etapa.nombre)}
-                        onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
-                        etapasConfig={etapasConfig}
-                        tarjetasColapsadas={tarjetasColapsadas}
-                        onToggleColapsoTarjeta={toggleTarjetaColapsada}
-                      />
-                    </div>
-                  );
-                })}
+                <div
+                  className="flex gap-4 h-full items-stretch"
+                  style={{
+                    width: 'max-content',
+                    paddingLeft: '2.5rem',
+                    paddingRight: '2.5rem',
+                    paddingBottom: '0.5rem',
+                  }}
+                >
+                  {etapas.map((etapa) => {
+                    const isColapsada = columnasColapsadas.has(etapa.nombre);
+                    return (
+                      <div
+                        key={etapa.nombre}
+                        className="flex-shrink-0 h-full"
+                        style={{
+                          width: isColapsada && !isMobile ? '64px' : isMobile ? 'calc(100vw - 32px)' : isTablet ? '280px' : '320px',
+                          transition: 'width 0.3s ease-in-out',
+                        }}
+                      >
+                        <ColumnaKanban
+                          etapa={etapa.nombre}
+                          items={itemsFiltrados}
+                          color={etapa.color}
+                          icono={etapa.icono}
+                          diasEstimados={etapa.diasEstimados}
+                          onDrop={handleDropItem}
+                          onConvertirNoticia={handleConvertirNoticia}
+                          onDevolverNoticia={handleDevolverNoticia}
+                          onDevolverCompetencia={handleDevolverCompetencia}
+                          onArchivarNoticia={handleArchivarNoticia}
+                          onVerDetallesNoticia={handleVerDetallesNoticia}
+                          onVerDetallesRemision={handleVerDetallesRemision} // ✅ NUEVO: Ver detalles de remisión
+                          onAsociarNoticiaProceso={handleAsociarNoticiaProceso}
+                          onVerProcesoAsociado={handleVerProcesoAsociado}
+                          onVerNoticiaAsociada={handleVerNoticiaAsociada}
+                          onEditarNoticia={handleEditarNoticia}
+                          onVerDetalles={handleVerDetalles}
+                          onAprobarBorrador={handleAprobarBorrador}
+                          onVerExpediente={handleVerExpediente}
+                          onGestionAutos={handleGestionAutos}
+                          onGestionEvidencias={handleGestionEvidencias}
+                          onGestionOficios={handleGestionOficios}
+                          onGestionActas={handleGestionActas}
+                          onComentarios={handleComentarios}
+                          onSolicitarReasignacion={handleSolicitarReasignacion}
+                          onAsociarProcesoProceso={handleAsociarProcesoProceso} // ✅ NUEVO: Asociar proceso a proceso
+                          onEditarProceso={handleEditarProceso} // ✅ NUEVO: Editar proceso
+                          onVerDetallesAsociacion={handleVerDetallesAsociacion} // ✅ NUEVO: Ver detalles de asociación
+                          vistaCompacta={vistaCompacta}
+                          isMobile={isMobile}
+                          colapsada={columnasColapsadas.has(etapa.nombre)}
+                          onToggleColapso={() => toggleColumnaColapsada(etapa.nombre)}
+                          etapasConfig={etapasConfig}
+                          tarjetasColapsadas={tarjetasColapsadas}
+                          onToggleColapsoTarjeta={toggleTarjetaColapsada}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
+
+            {/* Estilos personalizados para el scrollbar horizontal azul */}
+            <style>{`
+              /* Scrollbar horizontal azul para el kanban */
+              .kanban-scroll-container::-webkit-scrollbar {
+                height: 12px;
+                display: block !important;
+              }
+              .kanban-scroll-container::-webkit-scrollbar-track {
+                background: #F3F4F6;
+                border-radius: 8px;
+                margin: 0 8px;
+              }
+              .kanban-scroll-container::-webkit-scrollbar-thumb {
+                background: linear-gradient(to right, #2962FF, #003DA5);
+                border-radius: 8px;
+                border: 2px solid #F3F4F6;
+              }
+              .kanban-scroll-container::-webkit-scrollbar-thumb:hover {
+                background: linear-gradient(to right, #003DA5, #2962FF);
+              }
+
+              /* Optimización responsive */
+              @media (max-width: 640px) {
+                .kanban-scroll-container::-webkit-scrollbar {
+                  height: 10px;
+                }
+              }
+            `}</style>
           </div>
         )}
 
@@ -5774,49 +5881,43 @@ export function DashboardKanbanOperativo({
           )}
 
           {/* ✅ NUEVO: Modal Asociar Noticia a Proceso Existente */}
-          {modalActivo === 'asociar-noticia-proceso' && itemSeleccionado && (
-            <ModalAsociarNoticiaProceso
-              key="modal-asociar-noticia-proceso"
-              isOpen={true}
-              onClose={() => {
-                setModalActivo(null);
-                setItemSeleccionado(null);
-              }}
-              noticia={itemSeleccionado as Noticia}
-              procesosDisponibles={items.filter(i => i.tipo === 'proceso') as Proceso[]}
-              onAsociar={handleConfirmarAsociacion}
-            />
-          )}
+          <ModalAsociarNoticiaProceso
+            key="modal-asociar-noticia-proceso"
+            isOpen={modalActivo === 'asociar-noticia-proceso' && !!itemSeleccionado}
+            onClose={() => {
+              setModalActivo(null);
+              setItemSeleccionado(null);
+            }}
+            noticia={itemSeleccionado?.tipo === 'noticia' ? itemSeleccionado as Noticia : null}
+            procesosDisponibles={items.filter(i => i.tipo === 'proceso') as Proceso[]}
+            onAsociar={handleConfirmarAsociacion}
+          />
 
           {/* ✅ NUEVO: Modal Asociar Noticia a Otra Noticia */}
-          {modalActivo === 'asociar-noticia-noticia' && itemSeleccionado && (
-            <ModalAsociarNoticiaANoticia
-              key="modal-asociar-noticia-noticia"
-              isOpen={true}
-              onClose={() => {
-                setModalActivo(null);
-                setItemSeleccionado(null);
-              }}
-              noticia={itemSeleccionado as Noticia}
-              noticiasDisponibles={(items.filter(i => i.tipo === 'noticia') as Noticia[]).filter(n => n.id !== itemSeleccionado.id && !n.procesoAsociado)}
-              onAsociar={handleConfirmarAsociacionNoticiaANoticia}
-            />
-          )}
+          <ModalAsociarNoticiaANoticia
+            key="modal-asociar-noticia-noticia"
+            isOpen={modalActivo === 'asociar-noticia-noticia' && !!itemSeleccionado}
+            onClose={() => {
+              setModalActivo(null);
+              setItemSeleccionado(null);
+            }}
+            noticia={itemSeleccionado?.tipo === 'noticia' ? itemSeleccionado as Noticia : null}
+            noticiasDisponibles={items.filter(i => i.tipo === 'noticia' && i.id !== itemSeleccionado?.id) as Noticia[]}
+            onAsociar={handleConfirmarAsociacionNoticiaANoticia}
+          />
 
           {/* ✅ NUEVO: Modal Asociar Proceso a Proceso (estados post-Recepción) */}
-          {modalActivo === 'asociar-proceso-proceso' && itemSeleccionado && (
-            <ModalAsociarProcesoAProceso
-              key="modal-asociar-proceso-proceso"
-              isOpen={true}
-              onClose={() => {
-                setModalActivo(null);
-                setItemSeleccionado(null);
-              }}
-              procesoOrigen={itemSeleccionado as Proceso}
-              procesosDisponibles={items.filter(i => i.tipo === 'proceso' && i.id !== itemSeleccionado.id) as Proceso[]}
-              onAsociar={handleConfirmarAsociacionProcesoProceso}
-            />
-          )}
+          <ModalAsociarProcesoAProceso
+            key="modal-asociar-proceso-proceso"
+            isOpen={modalActivo === 'asociar-proceso-proceso' && !!itemSeleccionado}
+            onClose={() => {
+              setModalActivo(null);
+              setItemSeleccionado(null);
+            }}
+            procesoOrigen={itemSeleccionado?.tipo === 'proceso' ? itemSeleccionado as Proceso : null}
+            procesosDisponibles={items.filter(i => i.tipo === 'proceso' && i.id !== itemSeleccionado?.id) as Proceso[]}
+            onAsociar={handleConfirmarAsociacionProcesoProceso}
+          />
 
           {/* ✅ NUEVO: Modal Asignar Profesional en transición Recepción → Valoración */}
           {modalActivo === 'asignar-profesional' && itemSeleccionado && (
@@ -5944,6 +6045,9 @@ export function DashboardKanbanOperativo({
             onClose={() => setModalActivo(null)}
             onEditar={(noticia) => handleEditarNoticia(noticia as Noticia)}
             onConvertir={(noticia) => handleConvertirNoticia(noticia as Noticia)}
+            onDownload={async (url, filename) => {
+              await disciplinaryService.downloadFileFromUrl(disciplinaryService.getFileUrl(url), filename);
+            }}
           />
         )}
 
@@ -6085,6 +6189,9 @@ export function DashboardKanbanOperativo({
             onClose={() => { setModalActivo(null); setItemSeleccionado(null); }}
             onEditar={(n) => handleEditarNoticia(n as any)}
             onConvertir={(n) => handleConvertirNoticia(n as any)}
+            onDownload={async (url, filename) => {
+              await disciplinaryService.downloadFileFromUrl(disciplinaryService.getFileUrl(url), filename);
+            }}
           />
         )}
 

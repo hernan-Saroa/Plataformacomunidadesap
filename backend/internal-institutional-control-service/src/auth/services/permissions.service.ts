@@ -25,8 +25,8 @@ export class PermissionsService {
         `
         SELECT DISTINCT p.code
         FROM auth.permission p
-        INNER JOIN auth.role_permissions rp ON p.id = rp.permission_id
-        INNER JOIN auth.role r ON rp.role_id = r.id
+        INNER JOIN auth.role_permissions rp ON p.id_permission = rp.id_permission
+        INNER JOIN auth.role r ON rp.id_rol = r.id
         WHERE UPPER(r.code) = ANY($1::text[])
           AND rp.is_active = true
           AND p.is_active = true

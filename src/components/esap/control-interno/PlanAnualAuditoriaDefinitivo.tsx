@@ -23,6 +23,7 @@ import { motion, AnimatePresence } from 'motion/react';
 // SERVICIO API - Plan Anual (cargar datos desde backend)
 // ═══════════════════════════════════════════════════════════════════════════
 import { usePlanAnualCompleto, useCreatePlanAnual, actividadesApi, planAnualApi } from './services/plan-anual';
+import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import {
   Shield, Calendar, Users, FileText, Download, ArrowLeft,
   Plus, Check, AlertCircle, CheckCircle2, TrendingUp,
@@ -1223,6 +1224,8 @@ FIN MOCK crearPlanConDatosMock */
 
 export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarModulo?: (seccion: string) => void }) {
   const [vista, setVista] = useState<'inicio' | 'wizard' | 'dashboard' | 'rol4-integrado'>('inicio');
+  const { puedeRealizar, esSuperUsuario } = useControlInternoPermissions();
+  const puedeCrearPlan = puedeRealizar('plan-anual', 'create') || esSuperUsuario;
   
   // ═══════════════════════════════════════════════════════════════════════
   // AÑO ACTIVO (puede cambiar al seleccionar otro plan)
@@ -1695,7 +1698,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           <PantallaInicio
             key="inicio"
             planesAnteriores={planesAnteriores}
-            onCrearNuevo={() => setVista('wizard')}
+            onCrearNuevo={puedeCrearPlan ? () => setVista('wizard') : undefined}
             onAbrirPlan={(plan) => {
               // Si el plan ya está cargado para ese mismo año, ir directo al dashboard
               if (plan.vigencia === añoActual && planActual) {
@@ -1732,7 +1735,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                 setVista('rol4-integrado');
               }
             }}
-            onCrearNuevo={() => setVista('wizard')}
+            onCrearNuevo={puedeCrearPlan ? () => setVista('wizard') : undefined}
             planesAnteriores={planesAnteriores}
             planesDisponibles={planesAnteriores}
             onCambiarPlan={handleCambiarPlan}
@@ -1766,7 +1769,7 @@ function PlanAnualRol4IntegradoWrapper({ vigencia, onVolver }: { vigencia: numbe
 
 interface PantallaInicioProps {
   planesAnteriores: PlanAnual[];
-  onCrearNuevo: () => void;
+  onCrearNuevo?: () => void;
   onAbrirPlan: (plan: PlanAnual) => void;
   onCargarMock?: () => void; // NUEVO: Para cargar datos de prueba
 }
@@ -1809,6 +1812,7 @@ function PantallaInicio({ planesAnteriores, onCrearNuevo, onAbrirPlan, onCargarM
           
           {/* Botones */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            {onCrearNuevo && (
             <button
               onClick={onCrearNuevo}
               className="px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:shadow-2xl text-white rounded-xl font-bold text-lg flex items-center gap-3 transition-all transform hover:scale-105"
@@ -1816,6 +1820,7 @@ function PantallaInicio({ planesAnteriores, onCrearNuevo, onAbrirPlan, onCargarM
               <Plus className="w-6 h-6" />
               Crear Plan Anual
             </button>
+            )}
             
             {/* Botón para cargar datos mock */}
             {onCargarMock && (

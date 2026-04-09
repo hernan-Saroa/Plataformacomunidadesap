@@ -14,6 +14,8 @@ export class DisciplinaryProcessNotesService {
     private readonly processRepository: Repository<DisciplinaryProcess>,
   ) {}
 
+  // Not needed anymore
+
   async listByProcess(processId: string): Promise<DisciplinaryProcessNote[]> {
     await this.ensureProcessExists(processId);
 
@@ -34,7 +36,7 @@ export class DisciplinaryProcessNotesService {
     const note = this.notesRepository.create({
       processId,
       texto: dto.texto.trim(),
-      etapa: dto.etapa?.trim() || process.kanbanStage || process.etapaActual,
+      etapa: dto.etapa?.trim() || process.etapaActual,
     });
 
     return this.notesRepository.save(note);

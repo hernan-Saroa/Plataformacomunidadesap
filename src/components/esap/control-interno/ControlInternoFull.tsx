@@ -111,7 +111,7 @@ function ControlInternoContent({
     'plan-operativo': 'plan-anual',
     'universo-auditable': 'planificacion',
     'dashboard': 'auditorias',
-    'listas-chequeo': 'auditorias', // Usa mismo permiso que auditorías
+    'listas-chequeo': 'listas-chequeo',
     'planes-mejoramiento': 'planes-mejoramiento',
     'expedientes': 'expedientes',
     'config-auditorias': 'configuraciones',
