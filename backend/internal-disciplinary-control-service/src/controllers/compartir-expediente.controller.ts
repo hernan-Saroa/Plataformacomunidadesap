@@ -256,7 +256,8 @@ export class CompartirExpedienteController {
         try {
           const auto = await this.autoService.findById(documentId, []);
           if (auto) {
-            documento = { url: auto.documentUrl, filename: auto.documentName, nombreDocumento: auto.documentName, fileType: auto.documentType };
+            const autoUrl = auto.documentUrl ? auto.documentUrl.replace(/^\/files\//, '') : null;
+            documento = { url: autoUrl, filename: auto.documentName, nombreDocumento: auto.documentName, fileType: auto.documentType };
           }
         } catch (_) {}
       }

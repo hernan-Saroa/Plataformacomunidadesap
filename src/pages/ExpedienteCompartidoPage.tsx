@@ -182,7 +182,8 @@ export function ExpedienteCompartidoPage() {
       }
 
       // Usar el endpoint público para descarga de documentos compartidos
-      const downloadUrl = buildApiUrl('control-disciplinario', `/compartir-expediente/documento/${token}/${doc.id}/download?view=true`);
+      const docPath = `/compartir-expediente/documento/${token}/${doc.id}/download?view=true`;
+      const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? docPath : `/api/v1${docPath}`);
 
       const response = await fetch(downloadUrl, {
         method: 'GET',
@@ -217,7 +218,8 @@ export function ExpedienteCompartidoPage() {
       toast.loading('Descargando documento...', { id: 'download' });
 
       // Usar el endpoint público para descarga de documentos compartidos
-      const downloadUrl = buildApiUrl('control-disciplinario', `/compartir-expediente/documento/${token}/${doc.id}/download`);
+      const docPath2 = `/compartir-expediente/documento/${token}/${doc.id}/download`;
+      const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? docPath2 : `/api/v1${docPath2}`);
 
       // Crear un enlace temporal para descargar
       const link = document.createElement('a');
