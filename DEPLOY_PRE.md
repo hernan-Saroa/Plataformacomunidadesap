@@ -16,6 +16,7 @@ Esta guía documenta el despliegue en PRE usando [deploy.pre.sh](/Users/henrryro
 ./deploy.pre.sh down
 ./deploy.pre.sh restart
 ./deploy.pre.sh rebuild
+./deploy.pre.sh rebuild-all-mfe
 ./deploy.pre.sh rebuild-frontend
 ./deploy.pre.sh rebuild-service auth-service
 ./deploy.pre.sh logs
@@ -43,8 +44,7 @@ Esta guía documenta el despliegue en PRE usando [deploy.pre.sh](/Users/henrryro
 
 ```bash
 git pull
-./deploy.pre.sh up
-./deploy.pre.sh up-mfe
+./deploy.pre.sh rebuild-all-mfe
 ```
 
 Redeploy puntual:
@@ -52,6 +52,12 @@ Redeploy puntual:
 ```bash
 ./deploy.pre.sh rebuild-mfe auditoria
 ```
+
+Resumen práctico:
+
+- `rebuild` publica el stack base de `docker-compose.pre.yml`
+- `rebuild-all-mfe` publica backend + gateway + shell + todos los microfrontends
+- `rebuild-mfe <app>` publica sólo el shell, gateway o el microfrontend indicado
 
 ## URLs útiles
 

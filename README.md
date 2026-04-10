@@ -40,32 +40,28 @@ npm run build:app -- mfe-auditoria
 DEV:
 
 ```bash
-./deploy.dev.sh up
-./deploy.dev.sh up-mfe
+./deploy.dev.sh rebuild-all-mfe
 ./deploy.dev.sh rebuild-mfe auditoria
 ```
 
 PRE:
 
 ```bash
-./deploy.pre.sh up
-./deploy.pre.sh up-mfe
+./deploy.pre.sh rebuild
 ./deploy.pre.sh rebuild-mfe reportes
 ```
 
 QA:
 
 ```bash
-./deploy.qa.sh up
-./deploy.qa.sh up-mfe
+./deploy.qa.sh rebuild
 ./deploy.qa.sh rebuild-mfe shell
 ```
 
 PROD:
 
 ```bash
-./deploy.prod.sh up
-./deploy.prod.sh up-mfe
+./deploy.prod.sh rebuild
 ./deploy.prod.sh rebuild-mfe auditoria
 ```
 
@@ -89,6 +85,7 @@ rebuild-mfe-select
 ## Guías
 
 - [DEPLOY_DEV.md](/Users/henrryrojas/Documents/SAROA/ESAP/Plataformacomunidadesap/DEPLOY_DEV.md)
+- [DEPLOY_LOCAL.md](/Users/henrryrojas/Documents/SAROA/ESAP/Plataformacomunidadesap/DEPLOY_LOCAL.md)
 - [DEPLOY_PRE.md](/Users/henrryrojas/Documents/SAROA/ESAP/Plataformacomunidadesap/DEPLOY_PRE.md)
 - [DEPLOY_QA.md](/Users/henrryrojas/Documents/SAROA/ESAP/Plataformacomunidadesap/DEPLOY_QA.md)
 - [DEPLOY_PROD.md](/Users/henrryrojas/Documents/SAROA/ESAP/Plataformacomunidadesap/DEPLOY_PROD.md)

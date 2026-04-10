@@ -1,0 +1,264 @@
+services:
+  db:
+    image: alpine:3.20
+    container_name: superapp-db-local-placeholder
+    command: ["sh", "-c", "tail -f /dev/null"]
+    healthcheck:
+      test: ["CMD", "sh", "-c", "exit 0"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    networks:
+      - superapp-net
+
+  redis:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: redis
+
+  onlyoffice:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: onlyoffice
+
+  api-gateway:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: api-gateway
+    environment:
+      CORS_ORIGIN: ${LOCAL_CORS_ORIGIN:-http://localhost}
+
+  auth-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: auth-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USER: ${LOCAL_DB_USER:-postgres}
+      DB_PASS: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_NAME: ${LOCAL_DB_NAME:-esap_db}
+    depends_on:
+      redis:
+        condition: service_started
+
+  academic-registration-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: academic-registration-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USER: ${LOCAL_DB_USER:-postgres}
+      DB_PASS: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_NAME: ${LOCAL_DB_NAME:-esap_db}
+    depends_on:
+      redis:
+        condition: service_started
+
+  academic-work-plan-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: academic-work-plan-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USER: ${LOCAL_DB_USER:-postgres}
+      DB_PASS: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_NAME: ${LOCAL_DB_NAME:-esap_db}
+    depends_on:
+      redis:
+        condition: service_started
+
+  certification-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: certification-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USER: ${LOCAL_DB_USER:-postgres}
+      DB_PASS: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_NAME: ${LOCAL_DB_NAME:-esap_db}
+    depends_on:
+      redis:
+        condition: service_started
+
+  internal-disciplinary-control-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: internal-disciplinary-control-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USER: ${LOCAL_DB_USER:-postgres}
+      DB_PASS: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_NAME: ${LOCAL_DB_NAME:-esap_db}
+    depends_on:
+      redis:
+        condition: service_started
+
+  interoperability-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: interoperability-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USER: ${LOCAL_DB_USER:-postgres}
+      DB_PASS: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_NAME: ${LOCAL_DB_NAME:-esap_db}
+    depends_on:
+      redis:
+        condition: service_started
+
+  internal-institutional-control-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: internal-institutional-control-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USER: ${LOCAL_DB_USER:-postgres}
+      DB_PASS: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_NAME: ${LOCAL_DB_NAME:-esap_db}
+    depends_on:
+      redis:
+        condition: service_started
+
+  legal-management-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: legal-management-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USER: ${LOCAL_DB_USER:-postgres}
+      DB_PASS: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_NAME: ${LOCAL_DB_NAME:-esap_db}
+    depends_on:
+      redis:
+        condition: service_started
+
+  notifications-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: notifications-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USER: ${LOCAL_DB_USER:-postgres}
+      DB_PASS: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_NAME: ${LOCAL_DB_NAME:-esap_db}
+    depends_on:
+      redis:
+        condition: service_started
+
+  travel-expenses-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: travel-expenses-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USER: ${LOCAL_DB_USER:-postgres}
+      DB_PASS: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_NAME: ${LOCAL_DB_NAME:-esap_db}
+    depends_on:
+      redis:
+        condition: service_started
+
+  audit-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: audit-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USER: ${LOCAL_DB_USER:-postgres}
+      DB_PASSWORD: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_NAME: ${LOCAL_DB_NAME:-esap_db}
+    depends_on: {}
+
+  frontend:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend
+
+  frontend-shell:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-shell
+
+  frontend-mfe-estructura-org:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-estructura-org
+
+  frontend-mfe-gestion-profesoral:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-gestion-profesoral
+
+  frontend-mfe-programas-academicos:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-programas-academicos
+
+  frontend-mfe-gestion-personas:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-gestion-personas
+
+  frontend-mfe-auditoria:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-auditoria
+
+  frontend-mfe-reportes:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-reportes
+
+  frontend-mfe-registro-academico:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-registro-academico
+
+  frontend-mfe-certificados-laborales:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-certificados-laborales
+
+  frontend-mfe-firma-electronica:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-firma-electronica
+
+  frontend-mfe-control-interno:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-control-interno
+
+  frontend-mfe-control-disciplinario:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-control-disciplinario
+
+  frontend-mfe-gestion-legal:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-gestion-legal
+
+networks:
+  superapp-net:
+    driver: bridge
+    name: superapp-net
+
+volumes:
+  redisdata-dev:
+    name: esap-redisdata-dev
+  onlyoffice-data:
+    name: esap-onlyoffice-data-local
+  onlyoffice-logs:
+    name: esap-onlyoffice-logs-local
