@@ -123,4 +123,5 @@ export class ConfiguracionProfesionalOCIGResponseDto {
   nombre?: string;
   email?: string;
   identificacion?: string;
+  roles?: string[];
 }

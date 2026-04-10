@@ -683,6 +683,7 @@ export interface ConfiguracionProfesionalOCI {
   nombre?: string;
   email?: string;
   identificacion?: string;
+  roles?: string[];
 }
 
 export interface CreateConfiguracionProfesionalOCIDto {

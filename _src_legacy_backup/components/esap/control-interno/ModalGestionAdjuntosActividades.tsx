@@ -4,10 +4,10 @@
  * Respeta la configuración de evidencias para ocultar secciones no requeridas
  */
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
-  X, Paperclip, Upload, Trash2, Eye, FileText, CheckCircle2, Check, AlertCircle
+  X, Paperclip, Upload, Trash2, Eye, FileText, CheckCircle2, Check, AlertCircle, Calendar, Clock
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 
@@ -20,6 +20,7 @@ interface ArchivoAdjunto {
   fechaCarga: string;
   cargadoPor: string;
   url?: string;
+  puntoControlId?: string; // 🔵 Asociar archivo a un corte específico
 }
 
 type RequisitoEvidencia = 'OBLIGATORIO' | 'OPCIONAL' | 'NO_REQUERIDO';
@@ -42,6 +43,7 @@ interface ObsLocal {
   texto: string;
   fechaRegistro: string;
   autor: string;
+  puntoControlId?: string; // Asociar observación a un corte específico
 }
 
 // Flexibilidad para aceptar diferentes tipos de observaciones
@@ -54,6 +56,17 @@ interface ObservacionCumplimientoObj {
   [key: string]: any;
 }
 
+/** Entrada de seguimiento por corte (fuente de verdad) */
+interface EntradaSeguimiento {
+  id: string;
+  puntoControlId: string;
+  fechaRegistro: string;
+  registradoPor: string;
+  texto?: string;
+  archivos?: Array<{ nombre: string; url?: string; tipo?: string; tamanio?: number }>;
+  tipo: 'seguimiento' | 'evidencia';
+}
+
 interface Actividad {
   id: number | string;
   nombre: string;
@@ -61,6 +74,17 @@ interface Actividad {
   observacionesCumplimiento?: string | ObservacionCumplimientoObj[];
   observaciones?: string;
   configuracionEvidencias?: ConfiguracionEvidencias;
+  puntosControl?: InfoPuntoControl[];
+  entradasSeguimiento?: EntradaSeguimiento[];
+}
+
+/** Información del punto de control para mostrar contexto */
+interface InfoPuntoControl {
+  id: string;
+  nombre: string;
+  fechaProgramada: string;
+  fechaSeguimiento: string | null;
+  orden: number;
 }
 
 interface ModalGestionAdjuntosProps {
@@ -69,55 +93,63 @@ interface ModalGestionAdjuntosProps {
   onActualizar: (adjuntos: ArchivoAdjunto[], observaciones: string) => void;
   /** Cuando se abre desde un corte: basta con al menos 1 observación nueva O 1 adjunto */
   modoEntradaCorte?: boolean;
+  /** Información del punto de control actual (si aplica) */
+  puntoControl?: InfoPuntoControl;
+  /** Nombre del usuario que registra (para mostrar en observaciones) */
+  autorNombre?: string;
 }
 
-export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEntradaCorte = false }: ModalGestionAdjuntosProps) {
-  const [adjuntos, setAdjuntos] = useState<ArchivoAdjunto[]>(actividad.adjuntos || []);
+export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEntradaCorte = false, puntoControl, autorNombre = 'Usuario' }: ModalGestionAdjuntosProps) {
+  
+  // Extraer adjuntos de entradasSeguimiento para asociarlos con su puntoControlId
+  const adjuntosDesdeEntradas: ArchivoAdjunto[] = (actividad.entradasSeguimiento || []).flatMap(ent =>
+    (ent.archivos || []).map((arch, i) => ({
+      id: `ent-adj-${ent.id}-${i}`,
+      nombre: arch.nombre,
+      tipo: arch.tipo || 'application/octet-stream',
+      tamaño: arch.tamanio || 0,
+      fechaCarga: ent.fechaRegistro,
+      cargadoPor: ent.registradoPor || autorNombre,
+      url: arch.url,
+      puntoControlId: ent.puntoControlId,
+    }))
+  );
 
-  // Parsear observaciones existentes en formato feed
+  // Merge: adjuntos de entradas (con puntoControlId) tienen prioridad sobre adjuntos directos (sin puntoControlId)
+  const adjuntosIniciales = (() => {
+    const base = adjuntosDesdeEntradas; // Estos YA tienen puntoControlId correcto
+    const existingKeys = new Set(base.map(a => `${a.nombre}|${a.url || ''}`));
+    const extras = (actividad.adjuntos || []).filter(a => !existingKeys.has(`${a.nombre}|${a.url || ''}`));
+    return [...base, ...extras];
+  })();
+
+  const [adjuntos, setAdjuntos] = useState<ArchivoAdjunto[]>(adjuntosIniciales);
+  
+  // 🔵 Sistema de tabs para navegar entre cortes
+  const puntosControl = actividad.puntosControl || [];
+  const [tabActivo, setTabActivo] = useState<string>(puntoControl?.id || 'general');
+
+  // Parsear observaciones: entradasSeguimiento es la ÚNICA fuente de verdad
   const obtenerObsIniciales = (): ObsLocal[] => {
     const hoy = new Date().toISOString().split('T')[0];
 
-    // 1. Campo del backend (observaciones como string — puede ser JSON)
-    if (actividad.observaciones && typeof actividad.observaciones === 'string') {
-      try {
-        const parsed = JSON.parse(actividad.observaciones);
-        if (Array.isArray(parsed)) return parsed as ObsLocal[];
-      } catch {}
-      // Es texto plano → convertir en una sola entrada
-      return [{ id: 'init-1', texto: actividad.observaciones.trim(), fechaRegistro: hoy, autor: 'Registro previo' }];
-    }
-
-    // 2. observacionesCumplimiento del frontend
-    if (actividad.observacionesCumplimiento) {
-      if (typeof actividad.observacionesCumplimiento === 'string') {
-        try {
-          const parsed = JSON.parse(actividad.observacionesCumplimiento);
-          if (Array.isArray(parsed)) return parsed as ObsLocal[];
-        } catch {}
-        return actividad.observacionesCumplimiento.trim()
-          ? [{ id: 'init-2', texto: actividad.observacionesCumplimiento.trim(), fechaRegistro: hoy, autor: 'Registro previo' }]
-          : [];
-      }
-      if (Array.isArray(actividad.observacionesCumplimiento)) {
-        return (actividad.observacionesCumplimiento as ObservacionCumplimientoObj[])
-          .filter(o => (o.texto || '').trim().length > 0)
-          .map((o, i) => ({
-            id: o.id || `init-${i}`,
-            texto: (o.texto || '').trim(),
-            fechaRegistro: o.fechaRegistro || hoy,
-            autor: o.registradoPor || o.autor || 'Usuario',
-          }));
-      }
-    }
-
-    return [];
+    // entradasSeguimiento = fuente de verdad (cada entrada tiene puntoControlId)
+    const entradas = actividad.entradasSeguimiento || [];
+    return entradas
+      .filter(ent => (ent.texto || '').trim().length > 0)
+      .map(ent => ({
+        id: ent.id,
+        texto: (ent.texto || '').trim(),
+        fechaRegistro: ent.fechaRegistro || hoy,
+        autor: ent.registradoPor || autorNombre,
+        puntoControlId: ent.puntoControlId,
+      }));
   };
 
   const [obsList, setObsList] = useState<ObsLocal[]>(obtenerObsIniciales());
   const [nuevaObsTexto, setNuevaObsTexto] = useState('');
   const [cargando, setCargando] = useState(false);
-  let fileInputRef: HTMLInputElement | null = null;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Configuración de evidencias (usa valores por defecto si no está definida)
   // Acepta tanto el formato nuevo (adjuntosRequeridos/observacionRequerida) como el del backend (documentos/observaciones booleans)
@@ -143,10 +175,11 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
   const validarRequisitos = (): { valido: boolean; errores: string[] } => {
     const errores: string[] = [];
 
-    // En modo entrada de corte: basta con tener al menos 1 observación nueva O 1 adjunto
+    // En modo entrada de corte: basta con tener al menos 1 observación (nueva o pendiente en textarea) O 1 adjunto
     if (modoEntradaCorte) {
       const nuevasObs = obsList.filter(o => o.id.startsWith('obs-'));
-      if (nuevasObs.length === 0 && adjuntos.length === 0) {
+      const tieneTextoPendiente = nuevaObsTexto.trim().length > 0;
+      if (nuevasObs.length === 0 && !tieneTextoPendiente && adjuntos.length === 0) {
         errores.push('Agrega al menos una observación o un archivo para registrar la entrada');
       }
       return { valido: errores.length === 0, errores };
@@ -160,7 +193,7 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
     }
     
     if (config.observacionRequerida === 'OBLIGATORIO') {
-      if (obsList.length === 0) {
+      if (obsList.length === 0 && !nuevaObsTexto.trim()) {
         errores.push('Se requiere al menos una observación');
       }
     }
@@ -174,7 +207,7 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
   // Calcular estado de cada requisito
   const adjuntosCumplen = config.adjuntosRequeridos !== 'OBLIGATORIO' || 
     adjuntos.length >= (config.minimoAdjuntos || 1);
-  const observacionesCumplen = config.observacionRequerida !== 'OBLIGATORIO' || obsList.length > 0;
+  const observacionesCumplen = config.observacionRequerida !== 'OBLIGATORIO' || obsList.length > 0 || nuevaObsTexto.trim().length > 0;
 
   const formatearTamaño = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -182,6 +215,12 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  const formatFecha = (fecha: string) => {
+    const d = new Date(fecha + 'T00:00:00');
+    const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    return `${d.getDate()} ${meses[d.getMonth()]} ${d.getFullYear()}`;
   };
 
   const handleAgregarArchivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -198,7 +237,8 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
       tamaño: archivo.size,
       fechaCarga: new Date().toISOString(),
       cargadoPor: 'Usuario Actual',
-      url: URL.createObjectURL(archivo) // En producción, esto vendría del backend
+      url: URL.createObjectURL(archivo), // En producción, esto vendría del backend
+      puntoControlId: tabActivo !== 'general' ? tabActivo : undefined // 🔵 Asociar al tab activo
     }));
 
     setTimeout(() => {
@@ -214,6 +254,30 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
   };
 
   const handleGuardar = () => {
+    // Si hay texto pendiente en el textarea, auto-agregarlo como observación
+    if (nuevaObsTexto.trim()) {
+      const nueva: ObsLocal = {
+        id: `obs-${Date.now()}`,
+        texto: nuevaObsTexto.trim(),
+        fechaRegistro: new Date().toISOString().split('T')[0],
+        autor: autorNombre,
+        puntoControlId: tabActivo !== 'general' ? tabActivo : undefined,
+      };
+      const listaFinal = [...obsList, nueva];
+      setObsList(listaFinal);
+      setNuevaObsTexto('');
+
+      // Validar con la lista actualizada
+      const nuevasObs = listaFinal.filter(o => o.id.startsWith('obs-'));
+      if (modoEntradaCorte && nuevasObs.length === 0 && adjuntos.length === 0) {
+        toast.error('Agrega al menos una observación o un archivo para registrar la entrada');
+        return;
+      }
+      onActualizar(adjuntos, JSON.stringify(listaFinal));
+      onCerrar();
+      return;
+    }
+
     // Validar requisitos antes de guardar
     const { valido, errores } = validarRequisitos();
     if (!valido) {
@@ -237,145 +301,126 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
       onClick={onCerrar}
     >
       <motion.div
-        initial={{ scale: 0.9, y: 20 }}
+        initial={{ scale: 0.95, y: 10 }}
         animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.9, y: 20 }}
+        exit={{ scale: 0.95, y: 10 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden"
+        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden"
       >
-        {/* Header */}
-        <div className="p-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+        {/* ═══ HEADER ═══ */}
+        <div className="px-5 py-4 border-b border-gray-200 bg-white shrink-0">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl" style={{ background: '#DBEAFE' }}>
-                <Paperclip className="w-6 h-6" style={{ color: '#2962FF' }} />
-              </div>
-              <div>
-                <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
-                  Archivos adjuntos
-                </h2>
-                <p className="text-sm text-gray-600 mt-1 max-w-lg truncate">
-                  {actividad.nombre}
-                </p>
-              </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg font-bold text-gray-900 truncate">
+                {modoEntradaCorte ? 'Registrar evidencia' : 'Gestión de evidencias'}
+              </h2>
+              <p className="text-xs text-gray-500 truncate mt-0.5">{actividad.nombre}</p>
             </div>
-            <button onClick={onCerrar} className="p-2 hover:bg-white/50 rounded-lg">
-              <X className="w-6 h-6 text-gray-600" />
+            <button onClick={onCerrar} className="p-1.5 hover:bg-gray-100 rounded-lg ml-3">
+              <X className="w-5 h-5 text-gray-500" />
             </button>
           </div>
-        </div>
 
-        {/* Content */}
-        <div className="overflow-y-auto max-h-[60vh] p-6">
-          {/* Banner modo entrada de corte */}
-          {modoEntradaCorte && (
-            <div className="mb-4 p-3 bg-orange-50 border-2 border-orange-200 rounded-xl flex items-start gap-3">
-              <span className="text-xl">📝</span>
-              <div>
-                <p className="font-bold text-orange-800 text-sm">Registrar entrada de corte</p>
-                <p className="text-xs text-orange-700 mt-0.5">
-                  Puedes adjuntar un archivo, escribir una observación, o ambas cosas. Al menos una es requerida.
-                </p>
+          {/* Contexto del corte - compacto en una línea */}
+          {puntoControl && (
+            <div className="mt-3 flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+              <div className="w-6 h-6 rounded bg-orange-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                {puntoControl.orden}
+              </div>
+              <p className="text-xs font-semibold text-orange-800 flex-1 truncate">{puntoControl.nombre}</p>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[10px] text-orange-700 flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />
+                  {formatFecha(puntoControl.fechaProgramada)}
+                </span>
+                {puntoControl.fechaSeguimiento && (
+                  <span className="text-[10px] text-purple-700 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {formatFecha(puntoControl.fechaSeguimiento)}
+                  </span>
+                )}
               </div>
             </div>
           )}
-          {/* Indicador de requisitos (se oculta en modo corte para simplificar) */}
-          {!modoEntradaCorte && <div className="mb-4 p-4 bg-gray-50 border-2 border-gray-200 rounded-xl">
-            <p className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-blue-600" />
-              Configuración de evidencias
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              {/* Estado de Adjuntos */}
-              {(mostrarAdjuntos || mostrarAmbas) && (
-                <div className={`p-3 rounded-lg border-2 ${
-                  config.adjuntosRequeridos === 'OBLIGATORIO'
-                    ? adjuntosCumplen 
-                      ? 'bg-green-50 border-green-300' 
-                      : 'bg-red-50 border-red-300'
-                    : 'bg-blue-50 border-blue-200'
-                }`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Paperclip className={`w-4 h-4 ${
-                      config.adjuntosRequeridos === 'OBLIGATORIO'
-                        ? adjuntosCumplen ? 'text-green-600' : 'text-red-600'
-                        : 'text-blue-600'
-                    }`} />
-                    <span className="font-semibold text-sm">Adjuntos</span>
-                    {config.adjuntosRequeridos === 'OBLIGATORIO' && (
-                      adjuntosCumplen 
-                        ? <CheckCircle2 className="w-4 h-4 text-green-600" />
-                        : <X className="w-4 h-4 text-red-600" />
-                    )}
-                  </div>
-                  <p className={`text-xs font-bold ${
-                    config.adjuntosRequeridos === 'OBLIGATORIO'
-                      ? adjuntosCumplen ? 'text-green-700' : 'text-red-700'
-                      : 'text-blue-700'
-                  }`}>
-                    {config.adjuntosRequeridos === 'OBLIGATORIO' 
-                      ? `🔴 OBLIGATORIO (${adjuntos.length}/${config.minimoAdjuntos || 1})`
-                      : '🟢 OPCIONAL'}
-                  </p>
-                </div>
-              )}
-              
-              {/* Estado de Observaciones */}
-              {(mostrarObservaciones || mostrarAmbas) && (
-                <div className={`p-3 rounded-lg border-2 ${
-                  config.observacionRequerida === 'OBLIGATORIO'
-                    ? observacionesCumplen 
-                      ? 'bg-green-50 border-green-300' 
-                      : 'bg-red-50 border-red-300'
-                    : 'bg-blue-50 border-blue-200'
-                }`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <FileText className={`w-4 h-4 ${
-                      config.observacionRequerida === 'OBLIGATORIO'
-                        ? observacionesCumplen ? 'text-green-600' : 'text-red-600'
-                        : 'text-blue-600'
-                    }`} />
-                    <span className="font-semibold text-sm">Observaciones</span>
-                    {config.observacionRequerida === 'OBLIGATORIO' && (
-                      observacionesCumplen 
-                        ? <CheckCircle2 className="w-4 h-4 text-green-600" />
-                        : <X className="w-4 h-4 text-red-600" />
-                    )}
-                  </div>
-                  <p className={`text-xs font-bold ${
-                    config.observacionRequerida === 'OBLIGATORIO'
-                      ? observacionesCumplen ? 'text-green-700' : 'text-red-700'
-                      : 'text-blue-700'
-                  }`}>
-                    {config.observacionRequerida === 'OBLIGATORIO' 
-                      ? `🔴 OBLIGATORIO (${obsList.length} entrada${obsList.length !== 1 ? 's' : ''})`
-                      : '🟢 OPCIONAL'}
-                  </p>
-                </div>
-              )}
-            </div>
-            
-            {/* Mensaje si hay requisitos obligatorios no cumplidos */}
-            {!cumpleRequisitos && (
-              <div className="mt-3 p-2 bg-red-100 border border-red-300 rounded-lg">
-                <p className="text-xs text-red-800 font-semibold flex items-center gap-1">
-                  <AlertCircle className="w-4 h-4" />
-                  Debes cumplir los requisitos obligatorios para poder guardar
-                </p>
-              </div>
-            )}
-          </div>}
+        </div>
 
-          {/* Zona de carga - Solo si adjuntos están habilitados */}
+        {/* ═══ CONTENT ═══ */}
+        <div className="flex-1 overflow-y-auto">
+
+          {/* ── TABS DE CORTES (compartidos para archivos y observaciones) ── */}
+          {puntosControl.length > 0 && (
+            <div className="px-5 pt-4 pb-2 border-b border-gray-100 bg-gray-50/50 sticky top-0 z-10">
+              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Filtrar por corte</p>
+              <div className="flex items-center gap-1 overflow-x-auto pb-1">
+                <button
+                  onClick={() => setTabActivo('general')}
+                  className={`px-2.5 py-1.5 rounded text-[11px] font-semibold whitespace-nowrap transition-all border ${
+                    tabActivo === 'general'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                  }`}
+                >
+                  Todos
+                  {(() => {
+                    const total = adjuntos.length + obsList.length;
+                    return total > 0 ? (
+                      <span className={`ml-1 px-1 rounded text-[9px] ${
+                        tabActivo === 'general' ? 'bg-blue-500' : 'bg-gray-200 text-gray-700'
+                      }`}>{total}</span>
+                    ) : null;
+                  })()}
+                </button>
+                {[...puntosControl].sort((a, b) => a.orden - b.orden).map((pc) => {
+                  const countDoc = adjuntos.filter(a => a.puntoControlId === pc.id).length;
+                  const countObs = obsList.filter(o => o.puntoControlId === pc.id).length;
+                  const total = countDoc + countObs;
+                  return (
+                    <button
+                      key={pc.id}
+                      onClick={() => setTabActivo(pc.id)}
+                      className={`px-2.5 py-1.5 rounded text-[11px] font-semibold whitespace-nowrap transition-all border flex items-center gap-1 ${
+                        tabActivo === pc.id
+                          ? 'bg-orange-600 text-white border-orange-600'
+                          : 'bg-white text-gray-600 border-gray-300 hover:border-orange-400'
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded text-[9px] flex items-center justify-center font-bold ${
+                        tabActivo === pc.id ? 'bg-orange-500' : 'bg-orange-100 text-orange-700'
+                      }`}>{pc.orden}</span>
+                      {pc.nombre}
+                      {total > 0 && (
+                        <span className={`px-1 rounded text-[9px] ${
+                          tabActivo === pc.id ? 'bg-orange-500' : 'bg-gray-200 text-gray-700'
+                        }`}>{total}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── SECCIÓN 1: ARCHIVOS ADJUNTOS ── */}
           {(mostrarAdjuntos || mostrarAmbas || modoEntradaCorte) && (
-            <>
-              <div className="mb-6">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <Paperclip className="w-4 h-4 text-blue-600" />
+                  Archivos adjuntos
+                  {config.adjuntosRequeridos === 'OBLIGATORIO' && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                      adjuntosCumplen ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {adjuntosCumplen ? '✓ Cumple' : `Mín. ${config.minimoAdjuntos || 1}`}
+                    </span>
+                  )}
+                </h3>
                 <input
-                  ref={(ref) => { fileInputRef = ref; }}
+                  ref={fileInputRef}
                   type="file"
                   multiple
                   onChange={handleAgregarArchivo}
@@ -383,205 +428,217 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip"
                 />
                 <button
-                  onClick={() => fileInputRef?.click()}
+                  onClick={() => fileInputRef.current?.click()}
                   disabled={cargando}
-                  className="w-full p-8 border-2 border-dashed border-gray-300 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all disabled:opacity-50"
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50"
                 >
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center">
-                      <Upload className="w-8 h-8 text-blue-600" />
-                    </div>
-                    <div className="text-center">
-                      <p className="font-bold text-gray-900 mb-1">
-                        {cargando ? 'Cargando archivos...' : 'Haz clic para seleccionar archivos'}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        PDF, Word, Excel, imágenes, ZIP (máx. 10 MB por archivo)
-                      </p>
-                      {config.adjuntosRequeridos === 'OBLIGATORIO' && (
-                        <p className="text-xs text-amber-600 mt-1 font-semibold">
-                          * Obligatorio: mínimo {config.minimoAdjuntos || 1} archivo(s)
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                  <Upload className="w-3.5 h-3.5" />
+                  {cargando ? 'Subiendo...' : 'Subir archivos'}
                 </button>
               </div>
 
-              {/* Lista de archivos */}
-              {adjuntos.length > 0 ? (
-                <div className="space-y-3 mb-6">
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-blue-600" />
-                    Archivos adjuntos ({adjuntos.length})
-                    {config.adjuntosRequeridos === 'OBLIGATORIO' && adjuntos.length >= (config.minimoAdjuntos || 1) && (
-                      <CheckCircle2 className="w-4 h-4 text-green-600" />
-                    )}
-                  </h3>
-                  {adjuntos.map((archivo) => (
-                    <div
-                      key={archivo.id}
-                      className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-lg hover:border-gray-300 bg-gray-50"
-                    >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-                          <FileText className="w-5 h-5 text-blue-600" />
+              {/* Lista de archivos filtrados por tab */}
+              {(() => {
+                const archivosFiltrados = puntosControl.length > 0
+                  ? (tabActivo === 'general' ? adjuntos : adjuntos.filter(a => a.puntoControlId === tabActivo))
+                  : adjuntos;
+
+                if (archivosFiltrados.length === 0) {
+                  return (
+                    <div className="py-4 text-center border-2 border-dashed border-gray-200 rounded-lg">
+                      <Paperclip className="w-6 h-6 text-gray-300 mx-auto mb-1" />
+                      <p className="text-xs text-gray-500">
+                        {puntosControl.length > 0
+                          ? `Sin archivos en ${tabActivo === 'general' ? 'General' : puntosControl.find(p => p.id === tabActivo)?.nombre || 'este corte'}`
+                          : 'Sin archivos adjuntos'}
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-2">
+                    {archivosFiltrados.map((archivo) => (
+                      <div
+                        key={archivo.id}
+                        className="flex items-center gap-3 p-2.5 border border-gray-200 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                          <FileText className="w-4 h-4 text-blue-600" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-gray-900 truncate">{archivo.nombre}</p>
-                          <p className="text-xs text-gray-600">
-                            {formatearTamaño(archivo.tamaño)} • {new Date(archivo.fechaCarga).toLocaleString('es-CO', {
-                              day: '2-digit',
-                              month: 'short',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </p>
+                          <p className="text-sm font-medium text-gray-900 truncate">{archivo.nombre}</p>
+                          <p className="text-[10px] text-gray-500">{formatearTamaño(archivo.tamaño)}</p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {archivo.url && (
+                            <button
+                              onClick={() => window.open(archivo.url, '_blank')}
+                              className="p-1.5 hover:bg-blue-100 rounded transition-colors"
+                              title="Ver"
+                            >
+                              <Eye className="w-4 h-4 text-blue-600" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleEliminarArchivo(archivo.id)}
+                            className="p-1.5 hover:bg-red-100 rounded transition-colors"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          </button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {archivo.url && (
-                          <button
-                            onClick={() => window.open(archivo.url, '_blank')}
-                            className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
-                            title="Ver archivo"
-                          >
-                            <Eye className="w-5 h-5 text-blue-600" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleEliminarArchivo(archivo.id)}
-                          className="p-2 hover:bg-red-100 rounded-lg transition-colors"
-                          title="Eliminar archivo"
-                        >
-                          <Trash2 className="w-5 h-5 text-red-600" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8 mb-6">
-                  <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                    <Paperclip className="w-8 h-8 text-gray-400" />
+                    ))}
                   </div>
-                  <p className="font-semibold text-gray-900 mb-1">Sin archivos adjuntos</p>
-                  <p className="text-sm text-gray-600">
-                    Adjunta evidencias de cumplimiento de esta actividad
-                  </p>
-                </div>
-              )}
-            </>
+                );
+              })()}
+            </div>
           )}
 
-          {/* Observaciones de Cumplimiento - Feed de múltiples entradas */}
+          {/* ── SECCIÓN 2: OBSERVACIONES (filtradas por tab activo) ── */}
           {(mostrarObservaciones || mostrarAmbas || modoEntradaCorte) && (
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-5">
-              <div className="flex items-center justify-between mb-3">
-                <label className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                  <span className="text-lg">📝</span>
-                  Observaciones
-                  {config.observacionRequerida === 'OBLIGATORIO' && (
-                    <span className="text-xs text-amber-600 font-normal">* Obligatoria</span>
-                  )}
-                  {observacionesCumplen && config.observacionRequerida === 'OBLIGATORIO' && (
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  )}
-                </label>
-                <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-1 rounded-full">
-                  {obsList.length} entrada{obsList.length !== 1 ? 's' : ''}
-                </span>
-              </div>
+            <div className="px-5 py-4">
+              {(() => {
+                const obsFiltradas = puntosControl.length > 0
+                  ? (tabActivo === 'general' ? obsList : obsList.filter(o => o.puntoControlId === tabActivo))
+                  : obsList;
 
-              {/* Lista de observaciones existentes */}
-              {obsList.length > 0 && (
-                <div className="space-y-2 mb-4 max-h-52 overflow-y-auto">
-                  {obsList.map(obs => (
-                    <div key={obs.id} className="bg-white rounded-lg border border-blue-200 p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1">
-                          <p className="text-xs text-blue-600 font-medium mb-1">
-                            {obs.fechaRegistro} · {obs.autor}
-                          </p>
-                          <p className="text-sm text-gray-800 leading-relaxed">{obs.texto}</p>
-                        </div>
-                        <button
-                          onClick={() => setObsList(prev => prev.filter(o => o.id !== obs.id))}
-                          className="p-1 hover:bg-red-100 rounded transition-colors shrink-0"
-                          title="Eliminar observación"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                        </button>
-                      </div>
+                return (
+                  <>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-blue-700" />
+                        Observaciones
+                        {config.observacionRequerida === 'OBLIGATORIO' && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                            observacionesCumplen ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }`}>
+                            {observacionesCumplen ? '✓ Cumple' : 'Obligatoria'}
+                          </span>
+                        )}
+                      </h3>
+                      {obsFiltradas.length > 0 && (
+                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
+                          {obsFiltradas.length} {obsFiltradas.length === 1 ? 'registro' : 'registros'}
+                        </span>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
 
-              {/* Formulario: nueva observación */}
-              <div className="space-y-2">
-                <textarea
-                  value={nuevaObsTexto}
-                  onChange={e => setNuevaObsTexto(e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Escribe una observación y presiona Agregar..."
-                  rows={3}
-                />
-                <button
-                  onClick={() => {
-                    if (!nuevaObsTexto.trim()) {
-                      toast.error('Escribe una observación primero');
-                      return;
-                    }
-                    const nueva: ObsLocal = {
-                      id: `obs-${Date.now()}`,
-                      texto: nuevaObsTexto.trim(),
-                      fechaRegistro: new Date().toISOString().split('T')[0],
-                      autor: 'Usuario',
-                    };
-                    setObsList(prev => [...prev, nueva]);
-                    setNuevaObsTexto('');
-                    toast.success('Observación agregada');
-                  }}
-                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors"
-                >
-                  + Agregar observación
-                </button>
-              </div>
+                    {/* Lista de observaciones filtradas */}
+                    {obsFiltradas.length > 0 && (
+                      <div className="space-y-1.5 mb-3 max-h-36 overflow-y-auto">
+                        {obsFiltradas.map(obs => (
+                          <div key={obs.id} className="flex items-start gap-2 p-2 bg-blue-50/50 border border-blue-100 rounded-lg group">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[10px] text-blue-600">{obs.fechaRegistro} · {obs.autor}</p>
+                              <p className="text-xs text-gray-800 mt-0.5 leading-relaxed">{obs.texto}</p>
+                            </div>
+                            <button
+                              onClick={() => setObsList(prev => prev.filter(o => o.id !== obs.id))}
+                              className="p-1 hover:bg-red-100 rounded shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-3 h-3 text-red-400" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Nueva observación — se asocia al corte activo */}
+                    <div className="flex gap-2 items-end">
+                      <textarea
+                        value={nuevaObsTexto}
+                        onChange={e => setNuevaObsTexto(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && !e.shiftKey && nuevaObsTexto.trim()) {
+                            e.preventDefault();
+                            const nueva: ObsLocal = {
+                              id: `obs-${Date.now()}`,
+                              texto: nuevaObsTexto.trim(),
+                              fechaRegistro: new Date().toISOString().split('T')[0],
+                              autor: autorNombre,
+                              puntoControlId: tabActivo !== 'general' ? tabActivo : undefined,
+                            };
+                            setObsList(prev => [...prev, nueva]);
+                            setNuevaObsTexto('');
+                          }
+                        }}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                        placeholder={puntosControl.length > 0 && tabActivo !== 'general'
+                          ? `Observación para ${puntosControl.find(p => p.id === tabActivo)?.nombre || 'este corte'}...`
+                          : 'Escribe una observación...'
+                        }
+                        rows={2}
+                      />
+                      <button
+                        onClick={() => {
+                          if (!nuevaObsTexto.trim()) return;
+                          const nueva: ObsLocal = {
+                            id: `obs-${Date.now()}`,
+                            texto: nuevaObsTexto.trim(),
+                            fechaRegistro: new Date().toISOString().split('T')[0],
+                            autor: autorNombre,
+                            puntoControlId: tabActivo !== 'general' ? tabActivo : undefined,
+                          };
+                          setObsList(prev => [...prev, nueva]);
+                          setNuevaObsTexto('');
+                        }}
+                        disabled={!nuevaObsTexto.trim()}
+                        className={`px-4 py-2.5 text-xs font-bold rounded-lg transition-colors whitespace-nowrap border-2 ${
+                          nuevaObsTexto.trim()
+                            ? 'text-white border-transparent'
+                            : 'bg-blue-50 text-blue-300 border-blue-200 cursor-not-allowed'
+                        }`}
+                        style={nuevaObsTexto.trim() ? { background: '#003DA5', borderColor: '#003DA5' } : undefined}
+                      >
+                        + Agregar
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1">Enter para agregar rápido · Shift+Enter para salto de línea</p>
+                  </>
+                );
+              })()}
             </div>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="p-6 border-t bg-gray-50 flex items-center justify-between">
-          <div className="text-sm text-gray-600">
-            {(mostrarAdjuntos || mostrarAmbas || modoEntradaCorte) && adjuntos.length > 0 && (
-              <span className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-green-600" />
-                <strong>{adjuntos.length} archivo(s)</strong> listo(s) para guardar
+        {/* ═══ FOOTER ═══ */}
+        <div className="px-5 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3 text-xs text-gray-500">
+            {adjuntos.length > 0 && (
+              <span className="flex items-center gap-1">
+                <Paperclip className="w-3 h-3" />
+                {adjuntos.length} archivo{adjuntos.length !== 1 ? 's' : ''}
+              </span>
+            )}
+            {obsList.filter(o => o.id.startsWith('obs-')).length > 0 && (
+              <span className="flex items-center gap-1">
+                <FileText className="w-3 h-3" />
+                {obsList.filter(o => o.id.startsWith('obs-')).length} nueva{obsList.filter(o => o.id.startsWith('obs-')).length !== 1 ? 's' : ''}
               </span>
             )}
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <button
               onClick={onCerrar}
-              className="px-6 py-2.5 bg-gray-200 hover:bg-gray-300 rounded-lg font-bold transition-colors"
+              className="px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg text-sm font-semibold text-gray-700 transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={handleGuardar}
               disabled={!cumpleRequisitos}
-              className={`px-6 py-2.5 rounded-lg font-bold text-white transition-colors ${
-                cumpleRequisitos 
-                  ? 'hover:opacity-90' 
-                  : 'opacity-50 cursor-not-allowed'
+              className={`px-5 py-2 rounded-lg text-sm font-bold text-white transition-all flex items-center gap-1.5 ${
+                cumpleRequisitos
+                  ? modoEntradaCorte
+                    ? 'bg-orange-600 hover:bg-orange-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                  : 'bg-gray-300 cursor-not-allowed'
               }`}
-              style={{ background: cumpleRequisitos ? (modoEntradaCorte ? '#D97706' : '#003DA5') : '#9CA3AF' }}
-              title={!cumpleRequisitos ? 'Agrega una observación o un archivo para registrar' : ''}
             >
-              <Check className="w-4 h-4 inline mr-2" />
+              <Check className="w-4 h-4" />
               {modoEntradaCorte ? 'Registrar entrada' : 'Guardar'}
             </button>
           </div>

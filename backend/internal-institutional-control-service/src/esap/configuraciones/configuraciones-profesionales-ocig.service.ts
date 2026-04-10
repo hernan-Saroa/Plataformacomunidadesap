@@ -256,7 +256,7 @@ export class ConfiguracionesProfesionalesOCIGService {
       nombre: string;
       email: string;
       identificacion: string;
-      rolCode: string;
+      roles: string[];
     }>
   > {
     try {
@@ -278,14 +278,7 @@ export class ConfiguracionesProfesionalesOCIGService {
           p.id_person,
           p.nom_largo,
           p.dir_email,
-          p.num_identificacion,
-          (
-            SELECT r.code FROM auth.user_roles ur
-            INNER JOIN auth.role r ON r.id = ur.id_rol
-            WHERE ur.id_user = u.id_user AND ur.is_active = true
-            ORDER BY r.created_at DESC NULLS LAST
-            LIMIT 1
-          ) AS rol_code
+          p.num_identificacion
         FROM auth.personas p
         INNER JOIN auth."user" u ON u.id_person = p.id_person
         WHERE p.nom_largo IS NOT NULL
@@ -322,13 +315,33 @@ export class ConfiguracionesProfesionalesOCIGService {
         nom_largo: string | null;
         dir_email: string | null;
         num_identificacion: string | null;
-        rol_code: string | null;
       }> = await this.configRepository.query(query, params);
 
       console.log(
         '[buscarPersonasCandidatas] Personas encontradas:',
         personas.length,
       );
+
+      // Cargar todos los roles de las personas encontradas
+      const personaIds = personas.map((p) => p.id_person);
+      const rolesMap = new Map<string, string[]>();
+
+      if (personaIds.length > 0) {
+        const rolesRows: Array<{ id_person: string; role_name: string }> =
+          await this.configRepository.query(
+            `SELECT u.id_person, r.name AS role_name
+             FROM auth."user" u
+             INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+             INNER JOIN auth.role r ON r.id = ur.id_rol
+             WHERE u.id_person = ANY($1::uuid[]) AND ur.is_active = true`,
+            [personaIds],
+          );
+        for (const row of rolesRows) {
+          const existing = rolesMap.get(row.id_person) || [];
+          existing.push(row.role_name);
+          rolesMap.set(row.id_person, existing);
+        }
+      }
 
       // id e idTercero usan id_person (UUID) como identificador
       return personas.map((p) => ({
@@ -337,7 +350,7 @@ export class ConfiguracionesProfesionalesOCIGService {
         nombre: p.nom_largo || 'Sin Nombre',
         email: p.dir_email || '',
         identificacion: p.num_identificacion || '',
-        rolCode: p.rol_code || '',
+        roles: rolesMap.get(p.id_person) || [],
       }));
     } catch (error) {
       console.error('[buscarPersonasCandidatas] Error:', error);
@@ -366,7 +379,7 @@ export class ConfiguracionesProfesionalesOCIGService {
 
     const personasMap = new Map<
       string,
-      { nombre: string; email: string; identificacion: string }
+      { nombre: string; email: string; identificacion: string; roles: string[] }
     >();
 
     if (uuids.length > 0) {
@@ -382,11 +395,34 @@ export class ConfiguracionesProfesionalesOCIGService {
            WHERE id_person = ANY($1::uuid[])`,
           [uuids],
         );
+
+        // Cargar todos los roles de cada persona
+        const rolesRows: Array<{
+          id_person: string;
+          role_name: string;
+        }> = await this.configRepository.query(
+          `SELECT u.id_person, r.name AS role_name
+           FROM auth."user" u
+           INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+           INNER JOIN auth.role r ON r.id = ur.id_rol
+           WHERE u.id_person = ANY($1::uuid[]) AND ur.is_active = true`,
+          [uuids],
+        );
+
+        // Agrupar roles por persona
+        const rolesMap = new Map<string, string[]>();
+        for (const row of rolesRows) {
+          const existing = rolesMap.get(row.id_person) || [];
+          existing.push(row.role_name);
+          rolesMap.set(row.id_person, existing);
+        }
+
         for (const row of rows) {
           personasMap.set(row.id_person, {
             nombre: row.nom_largo || 'Sin Nombre',
             email: row.dir_email || '',
             identificacion: row.num_identificacion || '',
+            roles: rolesMap.get(row.id_person) || [],
           });
         }
       } catch (err) {
@@ -399,6 +435,7 @@ export class ConfiguracionesProfesionalesOCIGService {
         nombre: 'Usuario Sin Nombre',
         email: '',
         identificacion: '',
+        roles: [],
       };
 
       return {
@@ -417,6 +454,7 @@ export class ConfiguracionesProfesionalesOCIGService {
         nombre: personaData.nombre,
         email: personaData.email,
         identificacion: personaData.identificacion,
+        roles: personaData.roles,
       };
     });
   }
