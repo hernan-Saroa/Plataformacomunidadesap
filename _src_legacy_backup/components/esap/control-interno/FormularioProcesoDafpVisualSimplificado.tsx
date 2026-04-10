@@ -499,7 +499,7 @@ export function FormularioProcesoDafpVisual({
   // ════════════════════════════════════════════════════════════════════════════
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] overflow-y-auto">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] overflow-y-auto">
         <div className="flex min-h-full items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -519,7 +519,7 @@ export function FormularioProcesoDafpVisual({
                 <h2 className="text-sm font-semibold text-white leading-tight">
                   {mode === 'create' ? 'Agregar Proceso' : 'Editar Proceso'} — Universo de Auditoría
                 </h2>
-                <p className="text-[11px] text-white/75">
+                <p className="text-[11px] text-white">
                   Evaluación DAFP · RE-E-GE-034 · Cálculo Automático
                 </p>
               </div>

@@ -10,7 +10,7 @@ import {
   ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
   TrendingUp, FileCheck, AlertCircle, BookOpen, Download, FileText,
   Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, FileSpreadsheet, RefreshCw, Settings,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, Calendar, Clock
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ModalGestionAdjuntos } from './ModalGestionAdjuntosActividades';
@@ -566,24 +566,43 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
   useEffect(() => {
     cargarAuditores();
   }, []);
+
+  // Actualizar fechas de puntos de control cuando cambie la vigencia
+  useEffect(() => {
+    setRolesConfig(prev => prev.map(rol => ({
+      ...rol,
+      actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
+        const año = vigencia;
+        return {
+          ...act,
+          fechaCorte: `${año}-09-30`,
+          puntosControl: [
+            { ...act.puntosControl[0], fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31` },
+            { ...act.puntosControl[1], fechaProgramada: `${año}-06-30`, fechaSeguimiento: `${año}-08-30` },
+            { ...act.puntosControl[2], fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30` },
+          ]
+        };
+      })
+    })));
+  }, [vigencia]);
   const [rolesConfig, setRolesConfig] = useState<RolConfig[]>(() => 
     ROLES_DECRETO_648.map(rol => {
       const actividades = getActividadesPorRol(rol.numero);
       
-      // ⚡ Auto-generar 4 puntos de control trimestrales por actividad
+      // ⚡ Auto-generar 3 puntos de control trimestrales por actividad (Mar, Jun, Sep)
       const actividadesConPuntos = actividades.map((act, idx) => {
         const uniqueId = `rol-${rol.numero}-act-${idx}`; // ⚡ ID único por rol e índice
+        const añoInicial = new Date().getFullYear();
         const puntosDefault: PuntoControl[] = [
-          { id: `pc-${uniqueId}-1`, orden: 1, nombre: 'Trimestral #1', descripcion: `Punto de control para ${act.nombre}`, fechaProgramada: '2026-03-31', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-          { id: `pc-${uniqueId}-2`, orden: 2, nombre: 'Trimestral #2', descripcion: `Punto de control para ${act.nombre}`, fechaProgramada: '2026-06-30', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-          { id: `pc-${uniqueId}-3`, orden: 3, nombre: 'Trimestral #3', descripcion: `Punto de control para ${act.nombre}`, fechaProgramada: '2026-09-30', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-          { id: `pc-${uniqueId}-4`, orden: 4, nombre: 'Trimestral #4', descripcion: `Punto de control para ${act.nombre}`, fechaProgramada: '2026-12-31', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+          { id: `pc-${uniqueId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${añoInicial}-03-31`, fechaSeguimiento: `${añoInicial}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+          { id: `pc-${uniqueId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${añoInicial}-06-30`, fechaSeguimiento: `${añoInicial}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+          { id: `pc-${uniqueId}-3`, orden: 3, nombre: 'Corte 3', descripcion: '', fechaProgramada: `${añoInicial}-09-30`, fechaSeguimiento: `${añoInicial}-11-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
         ];
         return {
           ...act,
           id: uniqueId,
           tipoEvidencia: 'SOLO_CHECK' as const,
-          fechaCorte: '2026-12-31',
+          fechaCorte: `${añoInicial}-09-30`,
           puntosControl: puntosDefault,
           frecuenciaPuntosControl: 'trimestral' as const,
         };
@@ -969,7 +988,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             >
               <option value="">Seleccionar responsable...</option>
               {auditores.map((a: any) => (
-                <option key={a.id} value={a.id}>{a.nombre} - {a.cargo}</option>
+                <option key={a.id} value={a.id}>{a.nombre}</option>
               ))}
             </select>
           )}
@@ -1033,29 +1052,20 @@ function Paso2({
           if (actividadBase) {
             // Auto-asignar primer responsable del rol si existe
             const primerResponsable = rol.responsables?.[0];
-            // Auto-generar 4 puntos de control trimestrales
-            const inicioMs = new Date(fechaInicio + 'T00:00:00').getTime();
-            const corteMs = new Date('2026-12-31T00:00:00').getTime();
-            const intervalo = (corteMs - inicioMs) / 4;
-            const puntosDefault: PuntoControl[] = Array.from({ length: 4 }, (_, i) => ({
-              id: `pc-${actId}-${i + 1}`,
-              orden: i + 1,
-              nombre: `Trimestral #${i + 1}`,
-              descripcion: `Punto de control para ${nombreActividad}`,
-              fechaProgramada: new Date(inicioMs + intervalo * (i + 1)).toISOString().split('T')[0],
-              fechaReal: null,
-              responsable: '',
-              estado: 'pendiente' as const,
-              observaciones: '',
-              evidencias: []
-            }));
+            // Auto-generar 3 puntos de control trimestrales (31 Mar, 30 Jun, 30 Sep)
+            const año = vigencia;
+            const puntosDefault: PuntoControl[] = [
+              { id: `pc-${actId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+              { id: `pc-${actId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${año}-06-30`, fechaSeguimiento: `${año}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+              { id: `pc-${actId}-3`, orden: 3, nombre: 'Corte 3', descripcion: '', fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+            ];
             return {
               ...rol,
               actividadesSeleccionadas: [...rol.actividadesSeleccionadas, {
                 ...actividadBase,
                 id: actId,
                 tipoEvidencia: 'SOLO_CHECK' as const,
-                fechaCorte: '2026-12-31',
+                fechaCorte: `${año}-09-30`,
                 responsables: primerResponsable ? [primerResponsable] : [],
                 puntosControl: puntosDefault,
                 frecuenciaPuntosControl: 'trimestral' as const,
@@ -1505,7 +1515,7 @@ function Paso2({
                               .filter(a => !rol.responsables.some((r: any) => r.id === a.id))
                               .map((auditor) => (
                                 <option key={auditor.id} value={auditor.id}>
-                                  {auditor.nombre} - {auditor.cargo}
+                                  {auditor.nombre}
                                 </option>
                               ))}
                           </select>
@@ -1674,27 +1684,107 @@ function Paso2({
                                       </div>
                                     </div>
 
-                                    {/* ✅ Botón puntos de control — siempre visible, con CTA clara */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, false);
-                                      }}
-                                      className="w-full flex items-center justify-between gap-2 p-3 bg-amber-50 hover:bg-amber-100 border-2 border-amber-400 hover:border-amber-500 rounded-lg transition-all cursor-pointer"
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <CalendarClock className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                                        <div className="text-left">
-                                          <div className="text-xs font-bold text-amber-800">
+                                    {/* ✅ Sección de puntos de control — vista profesional */}
+                                    <div className="border-2 border-blue-200 rounded-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                                      {/* Header con resumen y botón configurar */}
+                                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2.5 flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          <CalendarClock className="w-4 h-4 text-blue-600" />
+                                          <span className="text-xs font-bold text-blue-900">
                                             {actividadData?.puntosControl && actividadData.puntosControl.length > 0
-                                              ? `${actividadData.puntosControl.length} fechas de corte · ${actividadData.frecuenciaPuntosControl || 'trimestral'}`
-                                              : 'Configurar periodicidad de seguimiento'}
-                                          </div>
-                                          <div className="text-[10px] text-amber-600">Toca para configurar fechas y periodicidad</div>
+                                              ? `${actividadData.puntosControl.length} Cortes de Seguimiento`
+                                              : 'Sin cortes configurados'}
+                                          </span>
+                                          {actividadData?.frecuenciaPuntosControl && (
+                                            <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold capitalize">
+                                              {actividadData.frecuenciaPuntosControl}
+                                            </span>
+                                          )}
                                         </div>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, false);
+                                          }}
+                                          className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-semibold transition-colors"
+                                        >
+                                          <Settings className="w-3 h-3" />
+                                          Configurar
+                                        </button>
                                       </div>
-                                      <Settings className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                                    </button>
+
+                                      {/* Timeline de cortes */}
+                                      {actividadData?.puntosControl && actividadData.puntosControl.length > 0 && (
+                                        <div className="divide-y divide-gray-100">
+                                          {actividadData.puntosControl.map((pc: PuntoControl, pcIdx: number) => {
+                                            const hoyDate = new Date();
+                                            hoyDate.setHours(0,0,0,0);
+                                            const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
+                                            const esVencido = fechaCorte < hoyDate && pc.estado !== 'completado';
+                                            const esActivo = !esVencido && fechaCorte >= hoyDate && (pcIdx === 0 || new Date(actividadData.puntosControl![pcIdx-1].fechaProgramada + 'T00:00:00') < hoyDate);
+                                            const esCompletado = pc.estado === 'completado';
+                                            return (
+                                              <div key={pc.id} className={`px-3 py-2.5 flex items-start gap-3 ${esActivo ? 'bg-blue-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
+                                                {/* Indicador lateral */}
+                                                <div className="flex flex-col items-center pt-0.5">
+                                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${
+                                                    esCompletado ? 'bg-green-500 border-green-500 text-white' :
+                                                    esVencido ? 'bg-red-100 border-red-400 text-red-700' :
+                                                    esActivo ? 'bg-blue-500 border-blue-500 text-white' :
+                                                    'bg-gray-100 border-gray-300 text-gray-500'
+                                                  }`}>
+                                                    {esCompletado ? '✓' : pcIdx + 1}
+                                                  </div>
+                                                  {pcIdx < actividadData.puntosControl!.length - 1 && (
+                                                    <div className={`w-0.5 flex-1 mt-1 min-h-[20px] ${
+                                                      esCompletado ? 'bg-green-300' : 'bg-gray-200'
+                                                    }`} />
+                                                  )}
+                                                </div>
+
+                                                {/* Contenido del corte */}
+                                                <div className="flex-1 min-w-0">
+                                                  <div className="flex items-center justify-between mb-1">
+                                                    <span className="text-xs font-bold text-gray-900">{pc.nombre}</span>
+                                                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                                      esCompletado ? 'bg-green-100 text-green-700' :
+                                                      esVencido ? 'bg-red-100 text-red-700' :
+                                                      esActivo ? 'bg-blue-100 text-blue-700' :
+                                                      'bg-gray-100 text-gray-500'
+                                                    }`}>
+                                                      {esCompletado ? '✅ Completado' : esVencido ? '⚠️ Vencido' : esActivo ? '🔵 Activo' : '⏳ Futuro'}
+                                                    </span>
+                                                  </div>
+                                                  <div className="grid grid-cols-2 gap-2">
+                                                    <div className="flex items-center gap-1.5">
+                                                      <Calendar className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                                                      <span className="text-[11px] text-gray-700">
+                                                        <span className="text-[9px] text-gray-400 uppercase">Corte: </span>
+                                                        <span className="font-semibold">{new Date(pc.fechaProgramada + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                                      </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                      <Clock className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                                                      <span className="text-[11px] text-gray-700">
+                                                        <span className="text-[9px] text-gray-400 uppercase">Seguimiento: </span>
+                                                        <span className="font-semibold">{pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
+                                                      </span>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+
+                                      {/* Estado vacío */}
+                                      {(!actividadData?.puntosControl || actividadData.puntosControl.length === 0) && (
+                                        <div className="px-3 py-4 text-center">
+                                          <p className="text-xs text-gray-400">Haz clic en "Configurar" para definir los cortes de seguimiento</p>
+                                        </div>
+                                      )}
+                                    </div>
 
                                     {/* Selector de responsables por actividad */}
                                     <div className="mt-2" onClick={e => e.stopPropagation()}>
@@ -1905,27 +1995,107 @@ function Paso2({
                                     </div>
                                   </div>
 
-                                  {/* ✅ Botón puntos de control — siempre visible, con CTA clara */}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, true, index);
-                                    }}
-                                    className="w-full flex items-center justify-between gap-2 p-3 bg-amber-50 hover:bg-amber-100 border-2 border-amber-400 hover:border-amber-500 rounded-lg transition-all cursor-pointer"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <CalendarClock className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                                      <div className="text-left">
-                                        <div className="text-xs font-bold text-amber-800">
+                                  {/* ✅ Sección de puntos de control — vista profesional (custom) */}
+                                  <div className="border-2 border-blue-200 rounded-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                                    {/* Header con resumen y botón configurar */}
+                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2.5 flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <CalendarClock className="w-4 h-4 text-blue-600" />
+                                        <span className="text-xs font-bold text-blue-900">
                                           {actividad.puntosControl && actividad.puntosControl.length > 0
-                                            ? `${actividad.puntosControl.length} fechas de corte · ${actividad.frecuenciaPuntosControl || 'trimestral'}`
-                                            : 'Configurar periodicidad de seguimiento'}
-                                        </div>
-                                        <div className="text-[10px] text-amber-600">Toca para configurar fechas y periodicidad</div>
+                                            ? `${actividad.puntosControl.length} Cortes de Seguimiento`
+                                            : 'Sin cortes configurados'}
+                                        </span>
+                                        {actividad.frecuenciaPuntosControl && (
+                                          <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold capitalize">
+                                            {actividad.frecuenciaPuntosControl}
+                                          </span>
+                                        )}
                                       </div>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, true, index);
+                                        }}
+                                        className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-semibold transition-colors"
+                                      >
+                                        <Settings className="w-3 h-3" />
+                                        Configurar
+                                      </button>
                                     </div>
-                                    <Settings className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                                  </button>
+
+                                    {/* Timeline de cortes */}
+                                    {actividad.puntosControl && actividad.puntosControl.length > 0 && (
+                                      <div className="divide-y divide-gray-100">
+                                        {actividad.puntosControl.map((pc: PuntoControl, pcIdx: number) => {
+                                          const hoyDate = new Date();
+                                          hoyDate.setHours(0,0,0,0);
+                                          const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
+                                          const esVencido = fechaCorte < hoyDate && pc.estado !== 'completado';
+                                          const esActivo = !esVencido && fechaCorte >= hoyDate && (pcIdx === 0 || new Date(actividad.puntosControl![pcIdx-1].fechaProgramada + 'T00:00:00') < hoyDate);
+                                          const esCompletado = pc.estado === 'completado';
+                                          return (
+                                            <div key={pc.id} className={`px-3 py-2.5 flex items-start gap-3 ${esActivo ? 'bg-blue-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
+                                              {/* Indicador lateral */}
+                                              <div className="flex flex-col items-center pt-0.5">
+                                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${
+                                                  esCompletado ? 'bg-green-500 border-green-500 text-white' :
+                                                  esVencido ? 'bg-red-100 border-red-400 text-red-700' :
+                                                  esActivo ? 'bg-blue-500 border-blue-500 text-white' :
+                                                  'bg-gray-100 border-gray-300 text-gray-500'
+                                                }`}>
+                                                  {esCompletado ? '✓' : pcIdx + 1}
+                                                </div>
+                                                {pcIdx < actividad.puntosControl!.length - 1 && (
+                                                  <div className={`w-0.5 flex-1 mt-1 min-h-[20px] ${
+                                                    esCompletado ? 'bg-green-300' : 'bg-gray-200'
+                                                  }`} />
+                                                )}
+                                              </div>
+
+                                              {/* Contenido del corte */}
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between mb-1">
+                                                  <span className="text-xs font-bold text-gray-900">{pc.nombre}</span>
+                                                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                                    esCompletado ? 'bg-green-100 text-green-700' :
+                                                    esVencido ? 'bg-red-100 text-red-700' :
+                                                    esActivo ? 'bg-blue-100 text-blue-700' :
+                                                    'bg-gray-100 text-gray-500'
+                                                  }`}>
+                                                    {esCompletado ? '✅ Completado' : esVencido ? '⚠️ Vencido' : esActivo ? '🔵 Activo' : '⏳ Futuro'}
+                                                  </span>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                  <div className="flex items-center gap-1.5">
+                                                    <Calendar className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                                                    <span className="text-[11px] text-gray-700">
+                                                      <span className="text-[9px] text-gray-400 uppercase">Corte: </span>
+                                                      <span className="font-semibold">{new Date(pc.fechaProgramada + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                                    </span>
+                                                  </div>
+                                                  <div className="flex items-center gap-1.5">
+                                                    <Clock className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                                                    <span className="text-[11px] text-gray-700">
+                                                      <span className="text-[9px] text-gray-400 uppercase">Seguimiento: </span>
+                                                      <span className="font-semibold">{pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
+                                                    </span>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+
+                                    {/* Estado vacío */}
+                                    {(!actividad.puntosControl || actividad.puntosControl.length === 0) && (
+                                      <div className="px-3 py-4 text-center">
+                                        <p className="text-xs text-gray-400">Haz clic en "Configurar" para definir los cortes de seguimiento</p>
+                                      </div>
+                                    )}
+                                  </div>
 
                                   {/* Selector de responsables por actividad personalizada */}
                                   <div className="mt-2" onClick={e => e.stopPropagation()}>
@@ -2071,12 +2241,18 @@ function Paso2({
           fechaCorte={
             (() => {
               const rol = rolesConfig.find(r => r.numero === actividadConfigurando.numeroRol);
-              if (!rol) return undefined;
-              if (actividadConfigurando.esCustom && actividadConfigurando.indexCustom !== undefined) {
-                return rol.actividadesCustom[actividadConfigurando.indexCustom]?.fechaCorte;
-              } else {
-                return rol.actividadesSeleccionadas.find(a => a.nombre === actividadConfigurando.nombreActividad)?.fechaCorte;
+              if (!rol) {
+                console.log('[Wizard] ❌ Rol no encontrado');
+                return undefined;
               }
+              let fechaCorteActividad;
+              if (actividadConfigurando.esCustom && actividadConfigurando.indexCustom !== undefined) {
+                fechaCorteActividad = rol.actividadesCustom[actividadConfigurando.indexCustom]?.fechaCorte;
+              } else {
+                fechaCorteActividad = rol.actividadesSeleccionadas.find(a => a.nombre === actividadConfigurando.nombreActividad)?.fechaCorte;
+              }
+              console.log('[Wizard] 📅 Pasando fechaCorte al modal:', fechaCorteActividad);
+              return fechaCorteActividad;
             })()
           }
           puntosControlExistentes={
@@ -3258,7 +3434,7 @@ function SeccionGestionYSeguimiento({
         id: crypto.randomUUID(),
         puntoControlId,
         fechaRegistro: new Date().toISOString().split('T')[0],
-        registradoPor: 'Usuario',
+        registradoPor: plan.jefeOCI?.nombre || 'Usuario',
         texto: formEntrada.texto.trim(),
         tipo: formEntrada.tipo,
       };
@@ -4106,61 +4282,198 @@ function SeccionGestionYSeguimiento({
 
                                 {/* Lista completa colapsable */}
                                 {expandido && (
-                                  <div className="border-t border-orange-100 p-3 space-y-2">
-                                    {cortes.map(corte => {
+                                  <div className="border-t border-orange-100 p-2 space-y-2">
+                                    {cortes.map((corte, index) => {
                                       const pasado = corte.fechaProgramada <= hoy;
                                       const cumplido = esCumplido(corte);
                                       const entradasCorte = entradas.filter(e => e.puntoControlId === corte.id);
                                       // Cumplido a tiempo = tiene al menos una entrada registrada antes o en la fecha del corte
                                       const aTiempo = cumplido && entradasCorte.some(e => e.fechaRegistro <= corte.fechaProgramada);
                                       const conRetraso = cumplido && !aTiempo;
+                                      
+                                      // Formatear fechas compacto
+                                      const formatFecha = (fecha: string) => {
+                                        const d = new Date(fecha + 'T00:00:00');
+                                        const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+                                        return `${d.getDate()} ${meses[d.getMonth()]} ${d.getFullYear()}`;
+                                      };
+
                                       return (
-                                        <div key={corte.id} className={`rounded-lg border p-3 ${
-                                          corte.id === corteActivoId ? 'border-blue-300 bg-blue-50' :
-                                          aTiempo ? 'border-green-200 bg-green-50' :
-                                          conRetraso ? 'border-orange-300 bg-orange-50' :
-                                          pasado ? 'border-red-200 bg-red-50' :
-                                          'border-gray-200 bg-gray-50 opacity-50'
+                                        <div key={corte.id} className={`rounded-lg border overflow-hidden ${
+                                          corte.id === corteActivoId ? 'border-blue-400 bg-blue-50/40' :
+                                          aTiempo ? 'border-green-300 bg-green-50/40' :
+                                          conRetraso ? 'border-orange-300 bg-orange-50/40' :
+                                          pasado ? 'border-red-300 bg-red-50/40' :
+                                          'border-gray-200 bg-gray-50/40 opacity-60'
                                         }`}>
-                                          <div className="flex items-start justify-between gap-2">
-                                            <div>
-                                              <span className={`text-sm font-semibold ${corte.id === corteActivoId || pasado ? 'text-gray-800' : 'text-gray-400'}`}>{corte.nombre}</span>
-                                              <span className="ml-2 text-xs text-gray-500">{corte.fechaProgramada}</span>
+                                          {/* Header compacto con estado */}
+                                          <div className={`px-3 py-2 flex items-center justify-between ${
+                                            corte.id === corteActivoId ? 'bg-blue-100/60' :
+                                            aTiempo ? 'bg-green-100/60' :
+                                            conRetraso ? 'bg-orange-100/60' :
+                                            pasado ? 'bg-red-100/60' :
+                                            'bg-gray-100/60'
+                                          }`}>
+                                            <div className="flex items-center gap-2">
+                                              <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold ${
+                                                corte.id === corteActivoId ? 'bg-blue-600 text-white' :
+                                                aTiempo ? 'bg-green-600 text-white' :
+                                                conRetraso ? 'bg-orange-600 text-white' :
+                                                pasado ? 'bg-red-600 text-white' :
+                                                'bg-gray-400 text-white'
+                                              }`}>
+                                                {index + 1}
+                                              </span>
+                                              <span className={`text-sm font-bold ${
+                                                corte.id === corteActivoId || pasado ? 'text-gray-800' : 'text-gray-400'
+                                              }`}>
+                                                {corte.nombre}
+                                              </span>
                                             </div>
-                                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                                              aTiempo ? 'bg-green-200 text-green-800' :
-                                              conRetraso ? 'bg-orange-200 text-orange-800' :
-                                              corte.id === corteActivoId ? 'bg-blue-200 text-blue-800' :
-                                              pasado ? 'bg-red-200 text-red-800' :
-                                              'bg-gray-200 text-gray-500'
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                              aTiempo ? 'bg-green-600 text-white' :
+                                              conRetraso ? 'bg-orange-600 text-white' :
+                                              corte.id === corteActivoId ? 'bg-blue-600 text-white' :
+                                              pasado ? 'bg-red-600 text-white' :
+                                              'bg-gray-400 text-white'
                                             }`}>
-                                              {aTiempo ? '✓ Cumplido' : conRetraso ? '✓ Con retraso' : corte.id === corteActivoId ? '📍 Activo' : pasado ? '✗ Sin registrar' : '⏳ Futuro'}
+                                              {aTiempo ? '✓ OK' : conRetraso ? '⚠ Tarde' : corte.id === corteActivoId ? '📍 Activo' : pasado ? '✗ Pendiente' : '⏳ Futuro'}
                                             </span>
                                           </div>
-                                          {/* Entradas del corte */}
-                                          {entradasCorte.length > 0 && (
-                                            <div className="mt-2 space-y-1">
-                                              {entradasCorte.map(ent => (
-                                                <div key={ent.id} className={`text-xs bg-white rounded p-2 text-gray-700 border ${
-                                                  aTiempo ? 'border-green-300' : 'border-orange-300'
-                                                }`}>
-                                                  <span className={`font-medium ${aTiempo ? 'text-green-700' : 'text-orange-700'}`}>{ent.fechaRegistro}</span>{' · '}{ent.texto}
+
+                                          <div className="p-3 space-y-2">
+                                            {/* Fechas compactas en grid */}
+                                            <div className="grid grid-cols-2 gap-2">
+                                              {/* Fecha de corte */}
+                                              <div className="bg-orange-50 border border-orange-200 rounded-md p-2">
+                                                <div className="flex items-center gap-1 mb-0.5">
+                                                  <Calendar className="w-3 h-3 text-orange-600" />
+                                                  <span className="text-[9px] font-bold text-orange-700 uppercase">Corte</span>
                                                 </div>
-                                              ))}
+                                                <p className="text-xs font-bold text-gray-800">{formatFecha(corte.fechaProgramada)}</p>
+                                              </div>
+
+                                              {/* Fecha de seguimiento */}
+                                              {corte.fechaSeguimiento && (
+                                                <div className="bg-purple-50 border border-purple-200 rounded-md p-2">
+                                                  <div className="flex items-center gap-1 mb-0.5">
+                                                    <Clock className="w-3 h-3 text-purple-600" />
+                                                    <span className="text-[9px] font-bold text-purple-700 uppercase">Seguimiento</span>
+                                                  </div>
+                                                  <p className="text-xs font-bold text-gray-800">{formatFecha(corte.fechaSeguimiento)}</p>
+                                                </div>
+                                              )}
                                             </div>
-                                          )}
-                                          {/* Botón agregar entrada (cortes vencidos y activo actual) */}
-                                          {(pasado || corte.id === corteActivoId) && puedeGestionarEvidencias && (
-                                            <button
-                                              onClick={() => {
-                                                setModalCorteId(corte.id);
-                                                setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero });
-                                              }}
-                                              className="mt-2 text-xs text-orange-600 hover:text-orange-800 font-medium flex items-center gap-1"
-                                            >
-                                              <span className="text-base leading-none">+</span> {cumplido ? 'Agregar otra entrada' : 'Agregar entrada'}
-                                            </button>
-                                          )}
+
+                                            {/* Sección de entradas registradas - MÁS COMPACTA */}
+                                            {entradasCorte.length > 0 && (
+                                              <div className="bg-white border border-blue-200 rounded-md p-2">
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                  <div className="flex items-center gap-1">
+                                                    <FileText className="w-3 h-3 text-blue-600" />
+                                                    <span className="text-[9px] font-bold text-blue-700 uppercase">Documentación</span>
+                                                  </div>
+                                                  <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">
+                                                    {entradasCorte.length} registro{entradasCorte.length !== 1 ? 's' : ''}
+                                                  </span>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                  {entradasCorte.map(ent => (
+                                                    <div key={ent.id} className={`rounded-md overflow-hidden border ${
+                                                      aTiempo 
+                                                        ? 'bg-green-50/80 border-green-200' 
+                                                        : 'bg-orange-50/80 border-orange-200'
+                                                    }`}>
+                                                      {/* Header con fecha y badge integrado */}
+                                                      <div className={`px-2 py-1 flex items-center justify-between ${
+                                                        aTiempo ? 'bg-green-100/80' : 'bg-orange-100/80'
+                                                      }`}>
+                                                        <span className={`text-[10px] font-bold ${
+                                                          aTiempo ? 'text-green-800' : 'text-orange-800'
+                                                        }`}>
+                                                          📅 {formatFecha(ent.fechaRegistro)}
+                                                        </span>
+                                                        {aTiempo && (
+                                                          <span className="text-[9px] bg-green-600 text-white px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5">
+                                                            ✓ A TIEMPO
+                                                          </span>
+                                                        )}
+                                                        {conRetraso && (
+                                                          <span className="text-[9px] bg-orange-600 text-white px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5">
+                                                            ⚠ TARDE
+                                                          </span>
+                                                        )}
+                                                      </div>
+                                                      {/* Texto de la observación */}
+                                                      <div className="px-2 py-1.5">
+                                                        <p className="text-[11px] text-gray-700 leading-snug">{ent.texto}</p>
+                                                      </div>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {/* Botón agregar entrada - con restricción por fechas */}
+                                            {(() => {
+                                              // Lógica de ventana de tiempo:
+                                              // - Antes/en fechaProgramada: cualquiera con permiso puede subir (A TIEMPO)
+                                              // - Después de fechaProgramada y antes/en fechaSeguimiento: solo rol seguimiento (RETRASADO)
+                                              // - Después de fechaSeguimiento (o fechaProgramada si no hay seguimiento): BLOQUEADO
+                                              const fechaLimite = corte.fechaSeguimiento || corte.fechaProgramada;
+                                              const dentroDeCorte = hoy <= corte.fechaProgramada; // aún en plazo
+                                              const enVentanaSeguimiento = hoy > corte.fechaProgramada && hoy <= fechaLimite; // entre corte y seguimiento
+                                              const vencido = hoy > fechaLimite; // ya pasó todo
+
+                                              const puedeSubir = !vencido && (
+                                                (dentroDeCorte && puedeGestionarEvidencias) ||
+                                                (enVentanaSeguimiento && puedeSeguimiento)
+                                              );
+
+                                              if (!puedeSubir && (pasado || corte.id === corteActivoId)) {
+                                                return (
+                                                  <div className="w-full px-3 py-2 rounded-md text-xs text-center bg-gray-100 border border-gray-300 text-gray-500">
+                                                    🔒 Plazo vencido — no se pueden agregar documentos
+                                                  </div>
+                                                );
+                                              }
+
+                                              if (!puedeSubir) return null;
+
+                                              return (
+                                                <button
+                                                  onClick={() => {
+                                                    setModalCorteId(corte.id);
+                                                    setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero });
+                                                  }}
+                                                  className={`w-full px-3 py-2 rounded-md font-semibold text-xs flex items-center justify-center gap-1.5 transition-all ${
+                                                    enVentanaSeguimiento
+                                                      ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                                                      : corte.id === corteActivoId
+                                                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                                                      : cumplido
+                                                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                                                      : 'bg-orange-600 hover:bg-orange-700 text-white'
+                                                  }`}
+                                                >
+                                                  <Plus className="w-3.5 h-3.5" />
+                                                  {enVentanaSeguimiento
+                                                    ? '⚠ Registrar documentos (fuera de plazo)'
+                                                    : cumplido ? '+ Agregar más documentos' : 'Registrar documentos'}
+                                                </button>
+                                              );
+                                            })()}
+
+                                            {/* Mensaje si es futuro */}
+                                            {!pasado && corte.id !== corteActivoId && (
+                                              <div className="bg-gray-100 border border-gray-200 rounded-md p-2 text-center">
+                                                <p className="text-[10px] text-gray-500 flex items-center justify-center gap-1">
+                                                  <AlertCircle className="w-3 h-3" />
+                                                  Disponible desde {formatFecha(corte.fechaProgramada)}
+                                                </p>
+                                              </div>
+                                            )}
+                                          </div>
                                         </div>
                                       );
                                     })}
@@ -4239,28 +4552,64 @@ function SeccionGestionYSeguimiento({
                                 </p>
                               </div>
                             )}
-                            {puedeGestionarEvidencias && (
-                              <button
-                                onClick={() => {
-                                  // Auto-detectar corte activo: el primero sin entradas (por fecha)
-                                  const cortes = actividad.puntosControl || [];
-                                  const entradasAct = actividad.entradasSeguimiento || [];
-                                  const corteActivo = [...cortes]
-                                    .sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada))
-                                    .find(c => !entradasAct.some(e => e.puntoControlId === c.id));
-                                  setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero });
-                                  if (corteActivo) setModalCorteId(corteActivo.id);
-                                }}
-                                className={`w-full px-4 py-3 text-white rounded-lg font-semibold flex items-center justify-center gap-2 ${
-                                  actividad.configuracionEvidencias 
-                                    ? 'bg-green-600 hover:bg-green-700' 
-                                    : 'bg-blue-600 hover:bg-blue-700'
-                                }`}
-                              >
-                                <Paperclip className="w-5 h-5" />
-                                Gestionar evidencias y observaciones
-                              </button>
-                            )}
+                            {(() => {
+                              const cortesAct = actividad.puntosControl || [];
+                              const entradasAct = actividad.entradasSeguimiento || [];
+                              const cortesOrdenados = [...cortesAct].sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada));
+                              const hoyStr = new Date().toISOString().split('T')[0];
+
+                              // Helper: verificar si un corte es elegible (no vencido y con permiso)
+                              const esElegible = (c: PuntoControl) => {
+                                const fechaLimite = c.fechaSeguimiento || c.fechaProgramada;
+                                if (hoyStr > fechaLimite) return false;
+                                if (hoyStr <= c.fechaProgramada) return true;
+                                return puedeSeguimiento;
+                              };
+
+                              // Preferir corte activo (sin entradas) que sea elegible
+                              const corteActivo = cortesOrdenados.find(c =>
+                                !entradasAct.some(e => e.puntoControlId === c.id) && esElegible(c)
+                              );
+                              // Fallback: primer corte elegible (aunque ya tenga entradas)
+                              const corteElegible = corteActivo || cortesOrdenados.find(esElegible);
+
+                              const hayCortes = cortesOrdenados.length > 0;
+                              const bloqueado = hayCortes && !corteElegible;
+                              const enVentanaSeguimiento = corteElegible && hoyStr > corteElegible.fechaProgramada;
+
+                              if (bloqueado) {
+                                return (
+                                  <div className="w-full px-4 py-3 rounded-lg font-semibold text-sm text-center bg-gray-100 border-2 border-gray-300 text-gray-500 flex items-center justify-center gap-2">
+                                    🔒 Todos los cortes han vencido — no se pueden agregar documentos
+                                  </div>
+                                );
+                              }
+
+                              if (!puedeGestionarEvidencias) return null;
+
+                              return (
+                                <button
+                                  onClick={() => {
+                                    setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero });
+                                    if (hayCortes) {
+                                      setModalCorteId(corteElegible?.id || cortesOrdenados[0].id);
+                                    }
+                                  }}
+                                  className={`w-full px-4 py-3 text-white rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                                    enVentanaSeguimiento
+                                      ? 'bg-orange-500 hover:bg-orange-600'
+                                      : actividad.configuracionEvidencias 
+                                      ? 'bg-green-600 hover:bg-green-700' 
+                                      : 'bg-blue-600 hover:bg-blue-700'
+                                  }`}
+                                >
+                                  <Paperclip className="w-5 h-5" />
+                                  {enVentanaSeguimiento
+                                    ? '⚠ Gestionar evidencias (fuera de plazo)'
+                                    : 'Gestionar evidencias y observaciones'}
+                                </button>
+                              );
+                            })()}
                             <div className="mt-3 text-sm text-center">
                               {actividad.adjuntos && actividad.adjuntos.length > 0 && (
                                 <span className="text-green-700 font-semibold">
@@ -4330,13 +4679,29 @@ function SeccionGestionYSeguimiento({
       })}
 
       {/* Modal de Adjuntos */}
-      {modalAdjuntos && (
-        <ModalGestionAdjuntos
-          actividad={plan.roles
-            .find(r => r.numero === modalAdjuntos.rolNumero)
-            ?.actividades.find(a => a.id === modalAdjuntos.actividadId)!}
-          modoEntradaCorte={!!modalCorteId}
-          onCerrar={() => { setModalAdjuntos(null); setModalCorteId(null); }}
+      {modalAdjuntos && (() => {
+        const actividadModal = plan.roles
+          .find(r => r.numero === modalAdjuntos.rolNumero)
+          ?.actividades.find(a => a.id === modalAdjuntos.actividadId);
+        
+        // Obtener información del punto de control si hay un corte seleccionado
+        const puntoControlInfo = modalCorteId && actividadModal?.puntosControl
+          ? actividadModal.puntosControl.find(pc => pc.id === modalCorteId)
+          : undefined;
+
+        return (
+          <ModalGestionAdjuntos
+            actividad={actividadModal!}
+            modoEntradaCorte={!!modalCorteId}
+            autorNombre={plan.jefeOCI?.nombre || 'Usuario'}
+            puntoControl={puntoControlInfo ? {
+              id: puntoControlInfo.id,
+              nombre: puntoControlInfo.nombre,
+              fechaProgramada: puntoControlInfo.fechaProgramada,
+              fechaSeguimiento: puntoControlInfo.fechaSeguimiento,
+              orden: puntoControlInfo.orden
+            } : undefined}
+            onCerrar={() => { setModalAdjuntos(null); setModalCorteId(null); }}
           onActualizar={async (adjuntos, observaciones) => {
             // Obtener actividad actual
             const actividadActual = plan.roles
@@ -4346,19 +4711,34 @@ function SeccionGestionYSeguimiento({
             const adjuntosOriginales = actividadActual?.adjuntos || [];
             const actividadIdStr = String(modalAdjuntos.actividadId);
 
-            // ── CONTEXTO CORTE: crear EntradaSeguimiento desde observaciones y/o adjuntos nuevos ──
-            if (modalCorteId) {
-              let nuevasObs: Array<{ id: string; texto: string; fechaRegistro: string }> = [];
-              let obsListExistente: any[] = [];
+            // Determinar si estamos en modo corte:
+            // - modalCorteId explícito, O
+            // - la actividad tiene puntosControl (siempre usar flujo corte)
+            const tieneCortes = actividadActual?.puntosControl && actividadActual.puntosControl.length > 0;
+            const corteIdEfectivo = modalCorteId || (tieneCortes
+              ? [...actividadActual!.puntosControl!].sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada))[0]?.id
+              : null);
+
+            // ── CONTEXTO CORTE: crear EntradaSeguimiento (ÚNICA fuente de verdad) ──
+            if (corteIdEfectivo) {
+              const corteIdTarget = corteIdEfectivo;
+              const nombreJefe = plan.jefeOCI?.nombre || 'Usuario';
+
+              // Extraer solo las nuevas observaciones del modal (prefijo obs-)
+              let nuevasObs: Array<{ id: string; texto: string; fechaRegistro: string; puntoControlId?: string }> = [];
               try {
                 const parsed = JSON.parse(observaciones);
                 if (Array.isArray(parsed)) {
-                  obsListExistente = parsed;
                   nuevasObs = parsed.filter(o => typeof o.id === 'string' && o.id.startsWith('obs-'));
                 }
               } catch { /* no JSON */ }
 
-              const nuevosAdjuntos = adjuntos.filter(a => !adjuntosOriginales.find(o => o.id === a.id));
+              // Solo adjuntos realmente nuevos (creados en esta sesión del modal con prefijo adj-)
+              // Excluir los que vienen de entradas (ent-adj-*) y los que ya existen en la tabla
+              const nuevosAdjuntos = adjuntos.filter(a =>
+                typeof a.id === 'string' && a.id.startsWith('adj-') &&
+                !adjuntosOriginales.find(o => o.id === a.id)
+              );
 
               // Si no hay observaciones ni archivos nuevos, no hay nada que registrar
               if (nuevasObs.length === 0 && nuevosAdjuntos.length === 0) {
@@ -4366,38 +4746,47 @@ function SeccionGestionYSeguimiento({
                 return;
               }
 
-              // Si solo hay archivos sin observación, generar entrada automática con nombres de archivos
+              // Si solo hay archivos sin observación, generar entrada automática
               if (nuevasObs.length === 0 && nuevosAdjuntos.length > 0) {
                 const hoy = new Date().toISOString().split('T')[0];
-                const autoObs = {
+                nuevasObs = [{
                   id: `obs-${Date.now()}`,
                   texto: `Evidencia adjuntada: ${nuevosAdjuntos.map(a => a.nombre).join(', ')}`,
                   fechaRegistro: hoy,
-                  autor: 'Usuario',
-                };
-                nuevasObs = [autoObs];
-                // Agregar también al obsListExistente para que aparezca en el modal
-                obsListExistente = [...obsListExistente, autoObs];
+                }];
               }
 
-              // Marcar las obs recién guardadas como 'saved-' para que no se dupliquen
-              // si el usuario abre el modal de nuevo (el filtro solo toma las que empiezan con 'obs-')
-              const obsListMarcadas = obsListExistente.map(o =>
-                nuevasObs.some(n => n.id === o.id)
-                  ? { ...o, id: o.id.replace('obs-', 'saved-') }
-                  : o
-              );
-              const observacionesActualizadas = JSON.stringify(obsListMarcadas);
+              // Crear entradas de seguimiento (fuente de verdad para observaciones Y archivos por corte)
+              // Agrupar archivos por puntoControlId para embeber en la entrada correcta
+              const archivosPorCorte = nuevosAdjuntos.reduce((map, a) => {
+                const pcId = a.puntoControlId || corteIdTarget;
+                if (!map[pcId]) map[pcId] = [];
+                map[pcId].push({
+                  nombre: a.nombre,
+                  url: a.url || '',
+                  tipo: a.tipo || 'application/octet-stream',
+                  tamanio: a.tamaño || 0,
+                });
+                return map;
+              }, {} as Record<string, Array<{ nombre: string; url: string; tipo: string; tamanio: number }>>);
 
-              const corteIdTarget = modalCorteId;
-              const nuevasEntradas: EntradaSeguimiento[] = nuevasObs.map(obs => ({
-                id: `ent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                puntoControlId: corteIdTarget,
-                fechaRegistro: obs.fechaRegistro || new Date().toISOString().split('T')[0],
-                registradoPor: 'Usuario',
-                texto: obs.texto,
-                tipo: 'seguimiento' as const,
-              }));
+              // Track qué cortes ya recibieron sus archivos
+              const cortesConArchivos = new Set<string>();
+
+              const nuevasEntradas: EntradaSeguimiento[] = nuevasObs.map((obs) => {
+                const pcId = obs.puntoControlId || corteIdTarget;
+                const archivosDeEsteCorte = !cortesConArchivos.has(pcId) && archivosPorCorte[pcId];
+                if (archivosDeEsteCorte) cortesConArchivos.add(pcId);
+                return {
+                  id: `ent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  puntoControlId: pcId,
+                  fechaRegistro: obs.fechaRegistro || new Date().toISOString().split('T')[0],
+                  registradoPor: nombreJefe,
+                  texto: obs.texto,
+                  tipo: 'seguimiento' as const,
+                  ...(archivosDeEsteCorte ? { archivos: archivosDeEsteCorte } : {}),
+                };
+              });
 
               const entradasActualizadas = [...(actividadActual?.entradasSeguimiento || []), ...nuevasEntradas];
               const actividadConEntradas = { ...(actividadActual || {}), entradasSeguimiento: entradasActualizadas } as Actividad;
@@ -4407,22 +4796,22 @@ function SeccionGestionYSeguimiento({
 
               setGuardandoEntrada(true);
               try {
+                // SOLO guardar en entradas_seguimiento — NO duplicar en observaciones
                 const response = await actividadesApi.update(actividadIdStr, {
                   entradas_seguimiento: entradasActualizadas,
                   porcentaje_avance: nuevoPct,
                   estado: estadoBackend as any,
-                  observaciones: observacionesActualizadas,
                 });
                 if (!response.success) {
                   toast.error('Error al guardar entrada', { description: response.error });
                 } else {
                   // Guardar adjuntos si los hay
-                  if (adjuntos.length > 0) {
+                  if (nuevosAdjuntos.length > 0) {
                     await guardarEvidencias(
                       actividadIdStr,
                       adjuntos.map(a => ({ ...a, esNuevo: !adjuntosOriginales.find(o => o.id === a.id) })),
                       adjuntosOriginales,
-                      observacionesActualizadas
+                      '' // No pasar observaciones — ya están en entradas_seguimiento
                     );
                   }
                   const planActualizado = {
@@ -4438,7 +4827,6 @@ function SeccionGestionYSeguimiento({
                                 entradasSeguimiento: entradasActualizadas,
                                 porcentajeAvance: nuevoPct,
                                 estado: nuevoEstado,
-                                observacionesCumplimiento: observacionesActualizadas,
                               };
                             }
                             return act;
@@ -4497,7 +4885,8 @@ function SeccionGestionYSeguimiento({
             }
           }}
         />
-      )}
+        );
+      })()}
 
       {/* Modal de confirmación para desactivar/reactivar actividad */}
       <AnimatePresence>
@@ -5205,7 +5594,7 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                                   .filter(a => !((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).some(r => r.id === a.id))
                                   .map((auditor) => (
                                     <option key={auditor.id} value={auditor.id}>
-                                      {auditor.nombre} - {auditor.cargo}
+                                      {auditor.nombre}
                                     </option>
                                   ))}
                               </select>
@@ -5359,6 +5748,7 @@ function obtenerTextoPeriodicidad(frecuencia?: FrecuenciaPuntoControl): string {
   const mapeo: Record<FrecuenciaPuntoControl, string> = {
     'semanal': 'Seguimiento semanal',
     'mensual': 'Seguimiento mensual',
+    'bimensual': 'Seguimiento bimensual',
     'trimestral': 'Seguimiento trimestral',
     'semestral': 'Seguimiento semestral',
     'anual': 'Seguimiento anual',
@@ -6406,6 +6796,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
           actividad={plan.roles
             .find(r => r.numero === modalAdjuntos.rolNumero)
             ?.actividades.find(a => a.id === modalAdjuntos.actividadId)!}
+          autorNombre={plan.jefeOCI?.nombre || 'Usuario'}
           onCerrar={() => setModalAdjuntos(null)}
           onActualizar={(adjuntos, observaciones) => {
             const planActualizado = {

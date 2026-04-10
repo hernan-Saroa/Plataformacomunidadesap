@@ -248,13 +248,30 @@ function mapAuditoriaBackendToUI(
   const equipo: string[] = [];
   if (auditoria.equipoAuditor) {
     if (Array.isArray(auditoria.equipoAuditor)) {
-      equipo.push(...auditoria.equipoAuditor);
+      // El backend puede devolver EquipoAuditor[] (entidades ORM) o string[].
+      // Si son objetos (entidad), extraer nombre legible; si son strings, usar directo.
+      for (const item of auditoria.equipoAuditor) {
+        if (typeof item === 'string') {
+          equipo.push(item);
+        } else if (item && typeof item === 'object') {
+          // Prioridad: nombre del usuario relacionado > personaId > rol
+          const nombre =
+            item.usuario?.nombre ||
+            item.usuario?.nombreCompleto ||
+            item.nombre ||
+            item.nombreCompleto ||
+            item.personaId ||
+            item.rol ||
+            String(item.id ?? '');
+          if (nombre) equipo.push(nombre);
+        }
+      }
     } else if (typeof auditoria.equipoAuditor === 'object') {
       const ea = auditoria.equipoAuditor;
-      if (ea.auditores) equipo.push(...ea.auditores);
-      if (ea.profesionalesEspecializados) equipo.push(...ea.profesionalesEspecializados);
-      if (ea.profesionalesUniversitarios) equipo.push(...ea.profesionalesUniversitarios);
-      if (ea.tecnicos) equipo.push(...ea.tecnicos);
+      if (ea.auditores) equipo.push(...ea.auditores.map((a: any) => typeof a === 'string' ? a : (a?.nombre || a?.personaId || String(a))));
+      if (ea.profesionalesEspecializados) equipo.push(...ea.profesionalesEspecializados.map((a: any) => typeof a === 'string' ? a : (a?.nombre || a?.personaId || String(a))));
+      if (ea.profesionalesUniversitarios) equipo.push(...ea.profesionalesUniversitarios.map((a: any) => typeof a === 'string' ? a : (a?.nombre || a?.personaId || String(a))));
+      if (ea.tecnicos) equipo.push(...ea.tecnicos.map((a: any) => typeof a === 'string' ? a : (a?.nombre || a?.personaId || String(a))));
     }
   }
 
