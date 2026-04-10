@@ -28,7 +28,7 @@ export interface UsuarioSistema {
   cargo?: string;
   area?: string;
   activo: boolean;
-  rolCode?: string;     // código de rol del sistema (ej: 'JEFE_OCI', 'AUDITOR')
+  roles?: string[];     // roles del usuario en el sistema
 }
 
 // Configuración OCI del profesional
@@ -49,6 +49,7 @@ export interface ConfiguracionOCI {
   nombre?: string;
   email?: string;
   identificacion?: string;
+  roles?: string[];
 }
 
 // Profesional OCI completo
@@ -110,7 +111,7 @@ interface PersonaDisponible {
   numeroIdentificacion: string;
   email: string;
   cargo: string;
-  rolCode: string;
+  roles: string[];
   especialidad: string;
   auditoriasConducto: number;
   disponibilidad: string;
@@ -126,7 +127,7 @@ function convertirPersonaAUsuarioSistema(persona: PersonaDisponible): UsuarioSis
     cargo: persona.cargo,
     area: undefined,
     activo: true,
-    rolCode: persona.rolCode
+    roles: persona.roles
   };
 }
 
@@ -148,7 +149,8 @@ function convertirConfigBackendALocal(config: ConfigBackend): ConfiguracionOCI {
     // Datos enriquecidos del usuario
     nombre: config.nombre,
     email: config.email,
-    identificacion: config.identificacion
+    identificacion: config.identificacion,
+    roles: config.roles
   };
 }
 
@@ -185,7 +187,7 @@ export function useConfiguracionProfesionales() {
         cargo: '',
         area: undefined,
         activo: true,
-        rolCode: p.rolCode
+        roles: p.roles || []
       }));
       setUsuariosControlInterno(usuarios);
       
@@ -223,14 +225,9 @@ export function useConfiguracionProfesionales() {
     return configuracionesOCI
       .filter(config => config.activo)
       .map(config => {
-        // Buscar usuario en la lista del backend - comparar como números para evitar problemas de tipos
-        let usuario = usuariosControlInterno.find(
-          u => u.id === String(config.idTercero) || u.idTercero === String(config.idTercero)
-        );
-        
-        // Si no se encuentra en usuarios disponibles, crear usuario temporal desde los datos enriquecidos de la configuración
-        if (!usuario && config.nombre) {
-          console.log(`Config idTercero=${config.idTercero}: Usando datos enriquecidos de la configuración (${config.nombre})`);
+        let usuario: UsuarioSistema;
+
+        if (config.nombre) {
           usuario = {
             id: String(config.idTercero),
             idTercero: config.idTercero,
@@ -239,13 +236,18 @@ export function useConfiguracionProfesionales() {
             email: config.email || '',
             cargo: config.rolOCI as string,
             area: 'OCI',
-            activo: true
+            activo: true,
+            roles: config.roles || []
           };
-        } else if (usuario) {
-          console.log(`Config idTercero=${config.idTercero}: Usuario encontrado en lista (${usuario.nombre})`);
         } else {
-          console.warn(`Config idTercero=${config.idTercero}: Sin datos - omitido`);
-          return null;
+          const encontrado = usuariosControlInterno.find(
+            u => u.id === String(config.idTercero) || u.idTercero === String(config.idTercero)
+          );
+          if (!encontrado) {
+            console.warn(`Config idTercero=${config.idTercero}: Sin datos - omitido`);
+            return null;
+          }
+          usuario = encontrado;
         }
 
         // TODO: Calcular estadísticas reales desde auditorías

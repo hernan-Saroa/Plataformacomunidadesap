@@ -530,10 +530,9 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
             id: uniqueId, // ⚡ Agregar ID
             tipoEvidencia: 'SOLO_CHECK' as const, // ⚡ Valor por defecto
             puntosControl: [
-              { id: 'pc-1', orden: 1, nombre: 'Trimestral #1', descripcion: 'Punto de control trimestral', fechaProgramada: '2026-03-31', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-              { id: 'pc-2', orden: 2, nombre: 'Trimestral #2', descripcion: 'Punto de control trimestral', fechaProgramada: '2026-06-30', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-              { id: 'pc-3', orden: 3, nombre: 'Trimestral #3', descripcion: 'Punto de control trimestral', fechaProgramada: '2026-09-30', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-              { id: 'pc-4', orden: 4, nombre: 'Trimestral #4', descripcion: 'Punto de control trimestral', fechaProgramada: '2026-12-31', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] }
+              { id: 'pc-1', orden: 1, nombre: 'Trimestral #1', descripcion: 'Punto de control trimestral', fechaProgramada: '2026-03-31', fechaSeguimiento: '2026-05-31', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+              { id: 'pc-2', orden: 2, nombre: 'Trimestral #2', descripcion: 'Punto de control trimestral', fechaProgramada: '2026-06-30', fechaSeguimiento: '2026-08-30', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+              { id: 'pc-3', orden: 3, nombre: 'Trimestral #3', descripcion: 'Punto de control trimestral', fechaProgramada: '2026-09-30', fechaSeguimiento: '2026-11-30', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] }
             ],
             frecuenciaPuntosControl: 'trimestral' as const
           };
@@ -544,8 +543,8 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
             id: uniqueId, // ⚡ Agregar ID
             tipoEvidencia: 'SOLO_CHECK' as const, // ⚡ Valor por defecto
             puntosControl: [
-              { id: 'pc-5', orden: 1, nombre: 'Semestral #1', descripcion: 'Punto de control semestral', fechaProgramada: '2026-06-30', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-              { id: 'pc-6', orden: 2, nombre: 'Semestral #2', descripcion: 'Punto de control semestral', fechaProgramada: '2026-12-31', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] }
+              { id: 'pc-5', orden: 1, nombre: 'Semestral #1', descripcion: 'Punto de control semestral', fechaProgramada: '2026-06-30', fechaSeguimiento: '2026-08-30', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+              { id: 'pc-6', orden: 2, nombre: 'Semestral #2', descripcion: 'Punto de control semestral', fechaProgramada: '2026-12-31', fechaSeguimiento: '2027-02-28', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] }
             ],
             frecuenciaPuntosControl: 'semestral' as const
           };
@@ -1105,7 +1104,7 @@ function Paso2({
     setModalPuntosControlAbierto(true);
   };
 
-  const guardarPuntosControl = (puntos: PuntoControl[], frecuencia: FrecuenciaPuntoControl) => {
+  const guardarPuntosControl = (puntos: PuntoControl[], frecuencia: FrecuenciaPuntoControl, _fechaCorte: string) => {
     if (!actividadConfigurando) return;
 
     const { numeroRol, nombreActividad, esCustom, indexCustom } = actividadConfigurando;
@@ -3855,6 +3854,7 @@ function SeccionGestionYSeguimiento({
           actividad={plan.roles
             .find(r => r.numero === modalAdjuntos.rolNumero)
             ?.actividades.find(a => a.id === modalAdjuntos.actividadId)!}
+          autorNombre={plan.jefeOCI?.nombre || 'Usuario'}
           onCerrar={() => setModalAdjuntos(null)}
           onActualizar={async (adjuntos, observaciones) => {
             // Obtener actividad actual
@@ -5753,6 +5753,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
           actividad={plan.roles
             .find(r => r.numero === modalAdjuntos.rolNumero)
             ?.actividades.find(a => a.id === modalAdjuntos.actividadId)!}
+          autorNombre={plan.jefeOCI?.nombre || 'Usuario'}
           onCerrar={() => setModalAdjuntos(null)}
           onActualizar={(adjuntos, observaciones) => {
             const planActualizado = {

@@ -96,7 +96,7 @@ export function ConfiguracionProfesionalesModule() {
         p.usuario.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
         p.usuario.email.toLowerCase().includes(busqueda.toLowerCase());
       
-      const cumpleFiltroRol = filtroRol === 'TODOS' || p.configuracion.rolOCIG === filtroRol;
+      const cumpleFiltroRol = filtroRol === 'TODOS' || p.configuracion.rolOCI === filtroRol;
       
       return cumpleBusqueda && cumpleFiltroRol;
     });
@@ -425,24 +425,6 @@ function TarjetaProfesional({
             </div>
           </div>
 
-          {/* Puede ser líder */}
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-            <span className="font-bold text-gray-900">Puede ser Auditor Líder</span>
-            <button
-              type="button"
-              onClick={() => setForm({ ...form, puedeSerLider: !form.puedeSerLider })}
-              className={`relative w-12 h-6 rounded-full transition-all ${
-                form.puedeSerLider ? 'bg-blue-600' : 'bg-gray-300'
-              }`}
-            >
-              <div
-                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                  form.puedeSerLider ? 'translate-x-6' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-
           {/* Botones */}
           <div className="flex gap-3 pt-2">
             <button
@@ -476,14 +458,17 @@ function TarjetaProfesional({
               </h3>
               <p className="text-sm text-gray-600 mb-2">{profesional.usuario.email}</p>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold">
-                  {profesional.configuracion.rolOCIG}
-                </span>
-                {profesional.configuracion.puedeSerLider && (
-                  <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-xs font-bold">
-                    Puede ser Líder
-                  </span>
-                )}
+                {(profesional.usuario.roles && profesional.usuario.roles.length > 0)
+                  ? profesional.usuario.roles.map(rol => (
+                    <span key={rol} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold">
+                      {rol}
+                    </span>
+                  ))
+                  : (
+                    <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded-lg text-xs font-bold">
+                      Sin roles asignados
+                    </span>
+                  )}
                 <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-semibold">
                   CC: {profesional.usuario.identificacion}
                 </span>
@@ -603,11 +588,9 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<string>('');
   const [openCombobox, setOpenCombobox] = useState(false);
   const [openEspecialidades, setOpenEspecialidades] = useState(false);
-  const [rolOCIG, setRolOCIG] = useState<ConfiguracionOCIG['rolOCIG']>('Auditor');
   const [especialidades, setEspecialidades] = useState<string[]>([]);
   const [capacidad, setCapacidad] = useState(4);
   const [horas, setHoras] = useState(150);
-  const [puedeSerLider, setPuedeSerLider] = useState(true);
   const [busquedaEspecialidad, setBusquedaEspecialidad] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -633,11 +616,11 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
     const nuevaConfig: ConfiguracionOCIG = {
       usuarioId: usuarioSeleccionado,
       idTercero: usuario.idTercero,
-      rolOCIG,
+      rolOCI: (usuario.roles?.[0] || 'Auditor') as ConfiguracionOCIG['rolOCI'],
       especialidades,
       capacidadMaximaAuditorias: capacidad,
       horasMensualesDisponibles: horas,
-      puedeSerLider,
+      puedeSerLider: true,
       activo: true,
       fechaAsignacion: new Date().toISOString().split('T')[0]
     };
@@ -744,6 +727,9 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                             <div className="flex flex-col min-w-0 flex-1">
                               <span className="font-semibold truncate">{usuario.nombre}</span>
                               <span className="text-xs text-gray-500 truncate">{usuario.email}</span>
+                              <span className="text-xs text-blue-600 font-semibold mt-0.5">
+                                {usuario.roles && usuario.roles.length > 0 ? usuario.roles.join(', ') : 'Sin roles'}
+                              </span>
                             </div>
                           </CommandItem>
                         ))}
@@ -757,23 +743,6 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                   ⚠️ No hay usuarios disponibles. Todos los profesionales activos ya están asignados a OCIG.
                 </p>
               )}
-            </div>
-
-            {/* Rol OCIG */}
-            <div>
-              <label className="block text-sm font-bold text-gray-900 mb-2">
-                Rol en OCIG <span className="text-red-600">*</span>
-              </label>
-              <Select value={rolOCIG} onValueChange={(value) => setRolOCIG(value as any)}>
-                <SelectTrigger className="w-full font-semibold">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLES_OCIG.map(rol => (
-                    <SelectItem key={rol} value={rol}>{rol}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
 
             {/* Especialidades */}
@@ -871,26 +840,6 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
               </div>
             </div>
 
-            {/* Puede ser líder */}
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div>
-                <div className="font-bold text-gray-900">Puede ser Auditor Líder</div>
-                <div className="text-sm text-gray-600">Habilita al profesional para liderar auditorías</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPuedeSerLider(!puedeSerLider)}
-                className={`relative w-12 h-6 rounded-full transition-all ${
-                  puedeSerLider ? 'bg-blue-600' : 'bg-gray-300'
-                }`}
-              >
-                <div
-                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                    puedeSerLider ? 'translate-x-6' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
           </div>
 
           {/* Footer */}

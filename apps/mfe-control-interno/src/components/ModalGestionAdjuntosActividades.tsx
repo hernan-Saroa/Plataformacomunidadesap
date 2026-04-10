@@ -4,10 +4,10 @@
  * Respeta la configuración de evidencias para ocultar secciones no requeridas
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
-  X, Paperclip, Upload, Trash2, Eye, FileText, CheckCircle2, Check, AlertCircle
+  X, Paperclip, Upload, Trash2, Eye, FileText, CheckCircle2, Check, AlertCircle, Calendar, Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -20,6 +20,7 @@ interface ArchivoAdjunto {
   fechaCarga: string;
   cargadoPor: string;
   url?: string;
+  puntoControlId?: string;
 }
 
 type RequisitoEvidencia = 'OBLIGATORIO' | 'OPCIONAL' | 'NO_REQUERIDO';
@@ -51,15 +52,34 @@ interface Actividad {
   // Campo del backend (singular)
   observaciones?: string;
   configuracionEvidencias?: ConfiguracionEvidencias;
+  puntosControl?: InfoPuntoControl[];
+}
+
+interface InfoPuntoControl {
+  id: string;
+  nombre: string;
+  fechaProgramada: string;
+  fechaSeguimiento: string | null;
+  orden: number;
 }
 
 interface ModalGestionAdjuntosProps {
   actividad: Actividad;
   onCerrar: () => void;
   onActualizar: (adjuntos: ArchivoAdjunto[], observaciones: string) => void;
+  modoEntradaCorte?: boolean;
+  puntoControl?: InfoPuntoControl;
+  autorNombre?: string;
 }
 
-export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: ModalGestionAdjuntosProps) {
+export function ModalGestionAdjuntos({
+  actividad,
+  onCerrar,
+  onActualizar,
+  modoEntradaCorte = false,
+  puntoControl,
+  autorNombre = 'Usuario'
+}: ModalGestionAdjuntosProps) {
   const [adjuntos, setAdjuntos] = useState<ArchivoAdjunto[]>(actividad.adjuntos || []);
   
   // ✅ CORRECCIÓN: Extraer observaciones existentes del backend o frontend
@@ -88,7 +108,7 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
   
   const [observaciones, setObservaciones] = useState<string>(obtenerObservacionesIniciales());
   const [cargando, setCargando] = useState(false);
-  let fileInputRef: HTMLInputElement | null = null;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Configuración de evidencias (usa valores por defecto si no está definida)
   // Acepta tanto el formato nuevo (adjuntosRequeridos/observacionRequerida) como el del backend (documentos/observaciones booleans)
@@ -113,6 +133,13 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
   // Validar requisitos
   const validarRequisitos = (): { valido: boolean; errores: string[] } => {
     const errores: string[] = [];
+
+    if (modoEntradaCorte) {
+      if (!observaciones.trim() && adjuntos.length === 0) {
+        errores.push('Agrega al menos una observación o un archivo para registrar la entrada');
+      }
+      return { valido: errores.length === 0, errores };
+    }
     
     if (config.adjuntosRequeridos === 'OBLIGATORIO') {
       const minimo = config.minimoAdjuntos || 1;
@@ -161,8 +188,9 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
       tipo: archivo.type || 'application/octet-stream',
       tamaño: archivo.size,
       fechaCarga: new Date().toISOString(),
-      cargadoPor: 'Usuario Actual',
-      url: URL.createObjectURL(archivo) // En producción, esto vendría del backend
+      cargadoPor: autorNombre,
+      url: URL.createObjectURL(archivo), // En producción, esto vendría del backend
+      puntoControlId: puntoControl?.id
     }));
 
     setTimeout(() => {
@@ -231,12 +259,43 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
               <X className="w-6 h-6 text-gray-600" />
             </button>
           </div>
+          {puntoControl && (
+            <div className="mt-4 flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+              <div className="w-6 h-6 rounded bg-orange-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                {puntoControl.orden}
+              </div>
+              <p className="text-xs font-semibold text-orange-800 flex-1 truncate">{puntoControl.nombre}</p>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[10px] text-orange-700 flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />
+                  {new Date(`${puntoControl.fechaProgramada}T00:00:00`).toLocaleDateString('es-CO')}
+                </span>
+                {puntoControl.fechaSeguimiento && (
+                  <span className="text-[10px] text-purple-700 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {new Date(`${puntoControl.fechaSeguimiento}T00:00:00`).toLocaleDateString('es-CO')}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Content */}
         <div className="overflow-y-auto max-h-[60vh] p-6">
+          {modoEntradaCorte && (
+            <div className="mb-4 p-3 bg-orange-50 border-2 border-orange-200 rounded-xl flex items-start gap-3">
+              <span className="text-xl">📝</span>
+              <div>
+                <p className="font-bold text-orange-800 text-sm">Registrar entrada de corte</p>
+                <p className="text-xs text-orange-700 mt-0.5">
+                  Puedes adjuntar un archivo, escribir una observación, o ambas cosas. Al menos una es requerida.
+                </p>
+              </div>
+            </div>
+          )}
           {/* Indicador de requisitos */}
-          <div className="mb-4 p-4 bg-gray-50 border-2 border-gray-200 rounded-xl">
+          {!modoEntradaCorte && <div className="mb-4 p-4 bg-gray-50 border-2 border-gray-200 rounded-xl">
             <p className="font-bold text-gray-900 mb-3 flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-blue-600" />
               Configuración de evidencias
@@ -320,14 +379,14 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
                 </p>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Zona de carga - Solo si adjuntos están habilitados */}
           {(mostrarAdjuntos || mostrarAmbas) && (
             <>
               <div className="mb-6">
                 <input
-                  ref={(ref) => { fileInputRef = ref; }}
+                  ref={fileInputRef}
                   type="file"
                   multiple
                   onChange={handleAgregarArchivo}
@@ -335,7 +394,7 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip"
                 />
                 <button
-                  onClick={() => fileInputRef?.click()}
+                  onClick={() => fileInputRef.current?.click()}
                   disabled={cargando}
                   className="w-full p-8 border-2 border-dashed border-gray-300 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all disabled:opacity-50"
                 >
