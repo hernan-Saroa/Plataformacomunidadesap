@@ -1,3 +1,12 @@
+/**
+ * SEED SERVICE - DESHABILITADO
+ *
+ * Este servicio está configurado para NO cargar datos de prueba en la base de datos.
+ * Solo inicializa las secuencias necesarias para el funcionamiento del sistema.
+ *
+ * Para habilitar datos de prueba, descomente las llamadas en el método seed().
+ */
+
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -30,20 +39,24 @@ export class SeedService {
 
   /**
    * Ejecuta el seed con datos de prueba
+   * NOTA: Este seed está deshabilitado para evitar carga de datos en producción
    */
   async seed(): Promise<void> {
+    console.log('ℹ️ Seed deshabilitado - No se cargarán datos de prueba');
+
+    // Solo inicializar secuencias si no existen
     await this.initializeSequences();
-    await this.seedConfigurations();
 
-    const { abogado } = await this.createProfessionals();
-    await this.createSampleNews();
+    console.log('✅ Secuencias inicializadas exitosamente');
 
-    if (abogado) {
-      await this.createSampleProcesses(abogado);
-      await this.createSampleAutos();
-    }
-
-    console.log('✅ Seed completado exitosamente');
+    // Los siguientes métodos están comentados para evitar carga de datos de prueba:
+    // await this.seedConfigurations();
+    // const { abogado } = await this.createProfessionals();
+    // await this.createSampleNews();
+    // if (abogado) {
+    //   await this.createSampleProcesses(abogado);
+    //   await this.createSampleAutos();
+    // }
   }
 
   private async initializeSequences(): Promise<void> {
@@ -72,7 +85,13 @@ export class SeedService {
     }
   }
 
+  /**
+   * DESHABILITADO: Crea configuraciones de etapas y sistema
+   * Este método está deshabilitado para evitar carga de datos en producción
+   */
   private async seedConfigurations(): Promise<void> {
+    console.log('⚠️ Método seedConfigurations() está deshabilitado');
+
     // IMPORTANTE: Solo sembrar etapas si la tabla está COMPLETAMENTE vacía
     // Esto evita duplicados cuando hay etapas con nombres diferentes (con/sin acentos)
     const existingStagesCount = await this.stageConfigRepository.count();
@@ -117,6 +136,10 @@ export class SeedService {
     }
   }
 
+  /**
+   * DESHABILITADO: Crea profesionales de prueba
+   * Este método está deshabilitado para evitar carga de datos en producción
+   */
   private async createProfessionals(): Promise<{ jefe: DisciplinaryProfessional, abogado: DisciplinaryProfessional }> {
     let jefe = await this.professionalRepository.findOne({ where: { email: 'jefe@esap.edu.co' } });
     if (!jefe) {
@@ -144,6 +167,10 @@ export class SeedService {
     return { jefe, abogado: abogado! };
   }
 
+  /**
+   * DESHABILITADO: Crea noticias disciplinarias de prueba
+   * Este método está deshabilitado para evitar carga de datos en producción
+   */
   private async createSampleNews(): Promise<void> {
     const existingNews = await this.newsRepository.count();
     if (existingNews > 0) return;
@@ -228,6 +255,10 @@ export class SeedService {
     }
   }
 
+  /**
+   * DESHABILITADO: Crea procesos disciplinarios de prueba
+   * Este método está deshabilitado para evitar carga de datos en producción
+   */
   private async createSampleProcesses(abogado: DisciplinaryProfessional): Promise<void> {
     const existingProcesses = await this.processRepository.count();
     if (existingProcesses > 0) return;
@@ -238,12 +269,12 @@ export class SeedService {
     const processesData = [
       {
         news: noticias[0],
-        etapaActual: ProcessStage.EVALUACION,
+        etapaActual: 'EVALUACION',
         estado: ProcessStatus.ACTIVO,
       },
       {
         news: noticias[1],
-        etapaActual: ProcessStage.INDAGACION_PREVIA,
+        etapaActual: 'INDAGACION_PREVIA',
         estado: ProcessStatus.ACTIVO,
       },
     ];
@@ -274,6 +305,10 @@ export class SeedService {
     }
   }
 
+  /**
+   * DESHABILITADO: Crea autos procesales de prueba
+   * Este método está deshabilitado para evitar carga de datos en producción
+   */
   private async createSampleAutos(): Promise<void> {
     const count = await this.autoRepository.count();
     if (count > 0) return;

@@ -671,7 +671,7 @@ export class ProcessService {
 
       if (proceso.etapaActual !== stage) {
         // Validar transicion de etapa
-        this.validarTransicionEtapa(proceso.etapaActual as ProcessStage, stage);
+        this.validarTransicionEtapa(proceso.etapaActual, stage);
 
         // Calcular nuevo vencimiento
         const { fechaVencimiento } =
@@ -928,7 +928,7 @@ export class ProcessService {
    * NOTA: Se permiten movimientos hacia ATRÁS (a etapas anteriores) para dar flexibilidad.
    * Los movimientos hacia adelante deben seguir el flujo específico definido.
    */
-  private validarTransicionEtapa(etapaActual: ProcessStage, nuevaEtapa: ProcessStage): void {
+  private validarTransicionEtapa(etapaActual: string, nuevaEtapa: string): void {
     console.log('Validating transition from', etapaActual, 'to', nuevaEtapa);
 
     // No puede pasar a la misma etapa
@@ -940,7 +940,7 @@ export class ProcessService {
     }
 
     // SEGUNDA_INSTANCIA es etapa final, no puede salir de aquí
-    if (etapaActual === ProcessStage.SEGUNDA_INSTANCIA) {
+    if (etapaActual === 'SEGUNDA_INSTANCIA') {
       throw new HttpException(
         'No se puede cambiar la etapa desde Segunda Instancia',
         HttpStatus.BAD_REQUEST,
@@ -948,16 +948,16 @@ export class ProcessService {
     }
 
     // Definir el orden de etapas (índice numérico para cada etapa)
-    const ordenEtapas: Record<ProcessStage, number> = {
-      [ProcessStage.RECEPCION]: 1,
-      [ProcessStage.VALORACION]: 2,
-      [ProcessStage.INDAGACION_PREVIA]: 3,
-      [ProcessStage.INVESTIGACION]: 4,
-      [ProcessStage.EVALUACION]: 5,
-      [ProcessStage.JUZGAMIENTO]: 6,
-      [ProcessStage.INDAGACION]: 7,
-      [ProcessStage.FALLO]: 8,
-      [ProcessStage.SEGUNDA_INSTANCIA]: 9,
+    const ordenEtapas: Record<string, number> = {
+      'RECEPCION': 1,
+      'VALORACION': 2,
+      'INDAGACION_PREVIA': 3,
+      'INVESTIGACION': 4,
+      'EVALUACION': 5,
+      'JUZGAMIENTO': 6,
+      'INDAGACION': 7,
+      'FALLO': 8,
+      'SEGUNDA_INSTANCIA': 9,
     };
 
     const indiceActual = ordenEtapas[etapaActual];
@@ -970,70 +970,70 @@ export class ProcessService {
     }
 
     // Movimiento hacia ADELANTE: seguir el flujo ESPECÍFICO
-    if (etapaActual === ProcessStage.RECEPCION) {
+    if (etapaActual === 'RECEPCION') {
       // RECEPCION → INDAGACION_PREVIA / INVESTIGACION
-      if (nuevaEtapa !== ProcessStage.INDAGACION_PREVIA && nuevaEtapa !== ProcessStage.INVESTIGACION) {
+      if (nuevaEtapa !== 'INDAGACION_PREVIA' && nuevaEtapa !== 'INVESTIGACION') {
         throw new HttpException(
           `Desde RECEPCION solo puede ir a INDAGACION_PREVIA o INVESTIGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === ProcessStage.VALORACION) {
+    else if (etapaActual === 'VALORACION') {
       // VALORACION → INDAGACION_PREVIA / INVESTIGACION
-      if (nuevaEtapa !== ProcessStage.INDAGACION_PREVIA && nuevaEtapa !== ProcessStage.INVESTIGACION) {
+      if (nuevaEtapa !== 'INDAGACION_PREVIA' && nuevaEtapa !== 'INVESTIGACION') {
         throw new HttpException(
           `Desde VALORACION solo puede ir a INDAGACION_PREVIA o INVESTIGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === ProcessStage.INDAGACION_PREVIA || etapaActual === ProcessStage.INVESTIGACION) {
+    else if (etapaActual === 'INDAGACION_PREVIA' || etapaActual === 'INVESTIGACION') {
       // INDAGACION_PREVIA / INVESTIGACION → EVALUACION / JUZGAMIENTO / FALLO
       // También permite cambiar entre INDAGACION_PREVIA e INVESTIGACION (mismo nivel)
-      const esCambioMismoNivel = (etapaActual === ProcessStage.INDAGACION_PREVIA && nuevaEtapa === ProcessStage.INVESTIGACION) ||
-        (etapaActual === ProcessStage.INVESTIGACION && nuevaEtapa === ProcessStage.INDAGACION_PREVIA);
+      const esCambioMismoNivel = (etapaActual === 'INDAGACION_PREVIA' && nuevaEtapa === 'INVESTIGACION') ||
+        (etapaActual === 'INVESTIGACION' && nuevaEtapa === 'INDAGACION_PREVIA');
 
       if (!esCambioMismoNivel &&
-        nuevaEtapa !== ProcessStage.EVALUACION &&
-        nuevaEtapa !== ProcessStage.JUZGAMIENTO &&
-        nuevaEtapa !== ProcessStage.FALLO) {
+        nuevaEtapa !== 'EVALUACION' &&
+        nuevaEtapa !== 'JUZGAMIENTO' &&
+        nuevaEtapa !== 'FALLO') {
         throw new HttpException(
           `Desde INDAGACION_PREVIA o INVESTIGACION solo puede ir a EVALUACION, JUZGAMIENTO, FALLO o cambiar entre INDAGACION_PREVIA/INVESTIGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === ProcessStage.EVALUACION) {
+    else if (etapaActual === 'EVALUACION') {
       // EVALUACION → JUZGAMIENTO / FALLO
-      if (nuevaEtapa !== ProcessStage.JUZGAMIENTO && nuevaEtapa !== ProcessStage.FALLO) {
+      if (nuevaEtapa !== 'JUZGAMIENTO' && nuevaEtapa !== 'FALLO') {
         throw new HttpException(
           `Desde EVALUACION solo puede ir a JUZGAMIENTO o FALLO. Intento: ${etapaActual} → ${nuevaEtapa}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === ProcessStage.JUZGAMIENTO) {
+    else if (etapaActual === 'JUZGAMIENTO') {
       // JUZGAMIENTO → solo INDAGACION
-      if (nuevaEtapa !== ProcessStage.INDAGACION) {
+      if (nuevaEtapa !== 'INDAGACION') {
         throw new HttpException(
           `Desde JUZGAMIENTO solo puede ir a INDAGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === ProcessStage.INDAGACION) {
+    else if (etapaActual === 'INDAGACION') {
       // INDAGACION → solo FALLO
-      if (nuevaEtapa !== ProcessStage.FALLO) {
+      if (nuevaEtapa !== 'FALLO') {
         throw new HttpException(
           `Desde INDAGACION solo puede ir a FALLO. Intento: ${etapaActual} → ${nuevaEtapa}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === ProcessStage.FALLO) {
+    else if (etapaActual === 'FALLO') {
       // FALLO → solo SEGUNDA_INSTANCIA
-      if (nuevaEtapa !== ProcessStage.SEGUNDA_INSTANCIA) {
+      if (nuevaEtapa !== 'SEGUNDA_INSTANCIA') {
         throw new HttpException(
           `Desde FALLO solo puede ir a SEGUNDA_INSTANCIA. Intento: ${etapaActual} → ${nuevaEtapa}`,
           HttpStatus.BAD_REQUEST,
