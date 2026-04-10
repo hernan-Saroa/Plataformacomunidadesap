@@ -26,11 +26,17 @@ En modo MFE el frontend queda dividido en:
 
 ## Comandos base
 
+Importante:
+
+- `up` y `up-mfe` sólo inician contenedores existentes
+- si hiciste `git pull` y quieres publicar cambios nuevos, debes usar `rebuild`, `rebuild-all-mfe`, `rebuild-service` o `rebuild-mfe`
+
 ```bash
 ./deploy.dev.sh up
 ./deploy.dev.sh down
 ./deploy.dev.sh restart
 ./deploy.dev.sh rebuild
+./deploy.dev.sh rebuild-all-mfe
 ./deploy.dev.sh rebuild-frontend
 ./deploy.dev.sh rebuild-service auth-service
 ./deploy.dev.sh logs
@@ -86,16 +92,16 @@ Actualizar código:
 git pull
 ```
 
-Levantar backend completo:
+Si hubo cambios de backend o cambios compartidos:
 
 ```bash
-./deploy.dev.sh up
+./deploy.dev.sh rebuild
 ```
 
-Levantar frontend desacoplado:
+Si quieres publicar toda la app MFE completa con un solo comando:
 
 ```bash
-./deploy.dev.sh up-mfe
+./deploy.dev.sh rebuild-all-mfe
 ```
 
 Si cambias sólo un microfrontend:
@@ -110,6 +116,13 @@ Si cambias el shell:
 ./deploy.dev.sh rebuild-mfe shell
 ```
 
+Si sólo quieres iniciar contenedores ya construidos, sin publicar cambios nuevos:
+
+```bash
+./deploy.dev.sh up
+./deploy.dev.sh up-mfe
+```
+
 ## URLs útiles
 
 - Frontend: `http://4.156.71.181`
@@ -119,3 +132,9 @@ Si cambias el shell:
 ## Referencia adicional
 
 Para el detalle técnico del overlay MFE revisa [DEPLOY_MFE.md](/Users/henrryrojas/Documents/SAROA/ESAP/Plataformacomunidadesap/DEPLOY_MFE.md).
+
+Resumen práctico:
+
+- `rebuild` publica el stack base de `docker-compose.dev.yml`
+- `rebuild-all-mfe` publica backend + gateway + shell + todos los microfrontends
+- `rebuild-mfe <app>` publica sólo el shell, gateway o el microfrontend indicado

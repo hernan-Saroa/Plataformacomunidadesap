@@ -58,32 +58,28 @@ Esta es una plataforma de gestión para la comunidad ESAP, construida con una ar
 DEV:
 
 ```bash
-./deploy.dev.sh up
-./deploy.dev.sh up-mfe
+./deploy.dev.sh rebuild-all-mfe
 ./deploy.dev.sh rebuild-mfe auditoria
 ```
 
 PRE:
 
 ```bash
-./deploy.pre.sh up
-./deploy.pre.sh up-mfe
+./deploy.pre.sh rebuild
 ./deploy.pre.sh rebuild-mfe reportes
 ```
 
 QA:
 
 ```bash
-./deploy.qa.sh up
-./deploy.qa.sh up-mfe
+./deploy.qa.sh rebuild
 ./deploy.qa.sh rebuild-mfe shell
 ```
 
 PROD:
 
 ```bash
-./deploy.prod.sh up
-./deploy.prod.sh up-mfe
+./deploy.prod.sh rebuild
 ./deploy.prod.sh rebuild-mfe auditoria
 ```
 
@@ -120,6 +116,7 @@ rebuild-mfe-select
 ## Guías
 
 - [DEPLOY_DEV.md](DEPLOY_DEV.md)
+- [DEPLOY_LOCAL.md](/Plataformacomunidadesap/DEPLOY_LOCAL.md)
 - [DEPLOY_PRE.md](DEPLOY_PRE.md)
 - [DEPLOY_QA.md](DEPLOY_QA.md)
 - [DEPLOY_PROD.md](DEPLOY_PROD.md)

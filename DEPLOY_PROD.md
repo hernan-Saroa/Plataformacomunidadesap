@@ -16,6 +16,7 @@ Esta guía documenta el despliegue en producción usando [deploy.prod.sh](/Users
 ./deploy.prod.sh down
 ./deploy.prod.sh restart
 ./deploy.prod.sh rebuild
+./deploy.prod.sh rebuild-all-mfe
 ./deploy.prod.sh rebuild-frontend
 ./deploy.prod.sh rebuild-service auth-service
 ./deploy.prod.sh logs
@@ -46,8 +47,7 @@ Deploy completo:
 
 ```bash
 git pull
-./deploy.prod.sh up
-./deploy.prod.sh up-mfe
+./deploy.prod.sh rebuild-all-mfe
 ```
 
 Redeploy selectivo:
@@ -61,6 +61,12 @@ Si cambia el gateway:
 ```bash
 ./deploy.prod.sh rebuild-mfe gateway
 ```
+
+Resumen práctico:
+
+- `rebuild` publica el stack base de `docker-compose.prod.yml`
+- `rebuild-all-mfe` publica backend + gateway + shell + todos los microfrontends
+- `rebuild-mfe <app>` publica sólo el shell, gateway o el microfrontend indicado
 
 ## URLs útiles
 

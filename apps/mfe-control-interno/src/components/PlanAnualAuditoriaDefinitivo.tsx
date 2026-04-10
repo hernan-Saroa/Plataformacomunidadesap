@@ -1620,8 +1620,8 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               observaciones: '',
               // Campos nuevos migración 129
               control: act.control || '',
-              evaluacion: '',
-              seguimiento: '',
+              evaluacion: act.evaluacion || '',
+              seguimiento: act.seguimiento || '',
               requiereVerificacionDirector: act.requiereVerificacionDirector || false,
               configuracionEvidencias: configuracionEvidencias,
               puntos_control: act.puntosControl && act.puntosControl.length > 0 ? act.puntosControl : undefined,

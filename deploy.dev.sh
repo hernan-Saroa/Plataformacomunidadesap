@@ -57,6 +57,12 @@ compose_dev_mfe() {
     docker compose -f "$COMPOSE_FILE_DEV" -f "$COMPOSE_FILE_MFE" --env-file .env.dev "$@"
 }
 
+cleanup_build_artifacts() {
+    echo -e "${YELLOW}Limpiando node_modules/dist/build locales (frontend y backend) para reducir el contexto de build...${NC}"
+    rm -rf node_modules dist build
+    find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
+}
+
 resolve_mfe_service() {
     case "$1" in
         gateway|frontend)
@@ -112,14 +118,15 @@ usage() {
     echo "Uso: $0 [comando]"
     echo ""
     echo "Comandos disponibles:"
-    echo "  up        - Iniciar todos los servicios"
+    echo "  up        - Iniciar servicios existentes sin reconstruir imágenes"
     echo "  down      - Detener todos los servicios"
     echo "  restart   - Reiniciar todos los servicios"
     echo "  rebuild   - Reconstruir sin bajar servicios y publicar al finalizar"
+    echo "  rebuild-all-mfe - Reconstruir backend + gateway + shell + todos los MFEs"
     echo "  rebuild-frontend - Reconstruir y reiniciar solo frontend"
     echo "  rebuild-service <servicio> - Reconstruir y reiniciar solo un servicio"
     echo "  rebuild-select - Seleccionar interactivamente un servicio para rebuild"
-    echo "  up-mfe    - Iniciar frontend desacoplado: gateway + shell + MFEs"
+    echo "  up-mfe    - Iniciar frontend desacoplado existente sin reconstruir imágenes"
     echo "  down-mfe  - Detener frontend desacoplado"
     echo "  restart-mfe - Reiniciar frontend desacoplado"
     echo "  status-mfe - Ver estado de gateway, shell y MFEs"
@@ -141,6 +148,7 @@ cmd_up() {
     echo -e "${GREEN}Iniciando servicios...${NC}"
     compose_dev up -d
     echo -e "${GREEN}Servicios iniciados exitosamente${NC}"
+    echo -e "${YELLOW}Nota: si hiciste git pull y esperas publicar cambios nuevos, usa ./deploy.dev.sh rebuild${NC}"
     echo ""
 
     # Esperar a que la base de datos esté lista
@@ -177,9 +185,7 @@ cmd_rebuild() {
     echo -e "${YELLOW}Reconstruyendo servicios (sin detener la versión actual)...${NC}"
     echo -e "${YELLOW}La aplicación seguirá disponible mientras termina el build.${NC}"
 
-    echo -e "${YELLOW}Limpiando node_modules/dist/build locales (frontend y backend) para reducir el contexto de build...${NC}"
-    rm -rf node_modules dist build
-    find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
+    cleanup_build_artifacts
 
     # Construir imágenes con los contenedores actuales activos.
     compose_dev build
@@ -191,6 +197,27 @@ cmd_rebuild() {
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
     echo -e "${GREEN}Nueva versión publicada. Servicios reconstruidos y reiniciados.${NC}"
+}
+
+# Comando: rebuild-all-mfe
+cmd_rebuild_all_mfe() {
+    if [ ! -f "$COMPOSE_FILE_MFE" ]; then
+        echo -e "${RED}Error: Archivo ${COMPOSE_FILE_MFE} no encontrado${NC}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}Reconstruyendo backend + gateway + shell + todos los MFEs...${NC}"
+    echo -e "${YELLOW}La aplicación seguirá disponible mientras termina el build.${NC}"
+
+    cleanup_build_artifacts
+
+    compose_dev_mfe build
+    compose_dev_mfe up -d
+
+    echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
+    cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
+
+    echo -e "${GREEN}App completa publicada: microservicios + microfrontends.${NC}"
 }
 
 # Comando: rebuild-frontend (rápido)
@@ -250,6 +277,7 @@ cmd_up_mfe() {
     echo -e "${GREEN}Iniciando frontend desacoplado (gateway + shell + MFEs)...${NC}"
     compose_dev_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
     echo -e "${GREEN}Frontend MFE iniciado exitosamente${NC}"
+    echo -e "${YELLOW}Nota: si hiciste git pull y esperas publicar cambios nuevos del frontend, usa ./deploy.dev.sh rebuild-mfe <app>${NC}"
     echo ""
     echo -e "${YELLOW}URLs de acceso:${NC}"
     echo "  Gateway:     ${SERVER_URL_DEV}"
@@ -523,6 +551,9 @@ case "$1" in
         ;;
     rebuild)
         cmd_rebuild
+        ;;
+    rebuild-all-mfe)
+        cmd_rebuild_all_mfe
         ;;
     rebuild-frontend)
         cmd_rebuild_frontend
