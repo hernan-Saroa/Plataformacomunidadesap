@@ -41,6 +41,7 @@ import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
 import { toast } from 'sonner';
 import { configuracionesProfesionalesOCIApi } from './services/api';
+import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../../../services/api/controlInternoService';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -90,6 +91,7 @@ export interface AuditoriaUnificadaFormData {
   areaObjetivo: string;
   procesoAuditado: string;
   alcance: string;
+  focos?: string[]; // Focos de la auditoría (opcional, multi-select)
   
   // 3. EQUIPO AUDITOR
   auditorLider: string;
@@ -176,7 +178,8 @@ const AREAS_INSTITUCIONALES = [
   'Planeación Estratégica'
 ];
 
-const PROCESOS_INSTITUCIONALES = [
+// Datos fallback si no se cargan del backend
+const PROCESOS_INSTITUCIONALES_FALLBACK = [
   'Contratación',
   'Presupuesto',
   'Tesorería',
@@ -327,6 +330,17 @@ export function FormularioAuditoriaUnificado({
   // Estado para auditores cargados del backend
   const [auditoresDisponibles, setAuditoresDisponibles] = useState<AuditorOption[]>(AUDITORES_FALLBACK);
   const [cargandoAuditores, setCargandoAuditores] = useState(false);
+  
+  // Estado para procesos auditables cargados del backend
+  const [procesosAuditables, setProcesosAuditables] = useState<string[]>(PROCESOS_INSTITUCIONALES_FALLBACK);
+  const [cargandoProcesos, setCargandoProcesos] = useState(false);
+  
+  // Estado para búsqueda de procesos
+  const [busquedaProceso, setBusquedaProceso] = useState('');
+  const [mostrarSugerenciasProcesos, setMostrarSugerenciasProcesos] = useState(false);
+  
+  // Estado para evaluaciones completas (incluye datos de riesgo)
+  const [evaluacionesDisponibles, setEvaluacionesDisponibles] = useState<EvaluacionProceso[]>([]);
 
   const TOTAL_PASOS = 9;
   
@@ -362,6 +376,62 @@ export function FormularioAuditoriaUnificado({
     
     cargarAuditores();
   }, [open]);
+  
+  // Cargar procesos auditables desde el universo de auditorías
+  useEffect(() => {
+    const cargarProcesos = async () => {
+      if (!open) return;
+      
+      setCargandoProcesos(true);
+      try {
+        // Obtener evaluaciones del universo de auditorías
+        const evaluaciones = await controlInternoService.getEvaluaciones();
+        
+        if (evaluaciones && evaluaciones.length > 0) {
+          // Guardar evaluaciones completas para acceder a datos de riesgo
+          setEvaluacionesDisponibles(evaluaciones);
+          
+          // Extraer procesos únicos de las evaluaciones
+          const procesosUnicos = new Set<string>();
+          
+          evaluaciones.forEach((evaluacion: EvaluacionProceso) => {
+            // Si la evaluación tiene proceso asociado, agregarlo
+            if (evaluacion.proceso && evaluacion.proceso.nombre) {
+              procesosUnicos.add(evaluacion.proceso.nombre);
+            }
+          });
+          
+          // Convertir Set a array ordenado
+          const procesosArray = Array.from(procesosUnicos).sort();
+          
+          if (procesosArray.length > 0) {
+            setProcesosAuditables(procesosArray);
+            console.log(`[FormularioAuditoria] ✅ ${procesosArray.length} procesos auditables cargados desde el universo`);
+          } else {
+            console.warn('[FormularioAuditoria] No se encontraron procesos en las evaluaciones, usando fallback');
+          }
+        } else {
+          console.warn('[FormularioAuditoria] No hay evaluaciones registradas, usando procesos fallback');
+        }
+      } catch (error) {
+        console.error('[FormularioAuditoria] Error al cargar procesos auditables:', error);
+        // Mantener los datos fallback
+      } finally {
+        setCargandoProcesos(false);
+      }
+    };
+    
+    cargarProcesos();
+  }, [open]);
+
+  // Inicializar búsqueda con el proceso/título actual si existe
+  useEffect(() => {
+    if (formData.titulo && !busquedaProceso) {
+      setBusquedaProceso(formData.titulo);
+    } else if (formData.procesoAuditado && !busquedaProceso) {
+      setBusquedaProceso(formData.procesoAuditado);
+    }
+  }, [formData.titulo, formData.procesoAuditado, busquedaProceso]);
 
   // Handlers
   const handleChange = (field: keyof AuditoriaUnificadaFormData, value: any) => {
@@ -472,21 +542,15 @@ export function FormularioAuditoriaUnificado({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validaciones básicas
-    if (!formData.titulo || formData.titulo.length < 10) {
-      toast.error('El título debe tener al menos 10 caracteres');
+    // Validaciones básicas - titulo contiene el proceso seleccionado
+    if (!formData.titulo || formData.titulo.length < 5) {
+      toast.error('Debe seleccionar un proceso auditable como título');
       setPasoActual(1);
       return;
     }
 
-    if (!formData.territorial) {
-      toast.error('Debe seleccionar una territorial');
-      setPasoActual(2);
-      return;
-    }
-
-    if (!formData.auditorLider || !formData.auditorAsignado) {
-      toast.error('Debe asignar auditor líder y auditor asignado');
+    if (!formData.auditorLider) {
+      toast.error('Debe asignar un auditor líder');
       setPasoActual(3);
       return;
     }
@@ -634,9 +698,21 @@ export function FormularioAuditoriaUnificado({
   const renderPaso = () => {
     switch (pasoActual) {
       case 1:
-        return <Paso1InformacionBasica formData={formData} onChange={handleChange} />;
+        return (
+          <Paso1InformacionBasica 
+            formData={formData} 
+            onChange={handleChange} 
+            procesos={procesosAuditables} 
+            cargandoProcesos={cargandoProcesos}
+            busquedaProceso={busquedaProceso}
+            setBusquedaProceso={setBusquedaProceso}
+            mostrarSugerenciasProcesos={mostrarSugerenciasProcesos}
+            setMostrarSugerenciasProcesos={setMostrarSugerenciasProcesos}
+            evaluaciones={evaluacionesDisponibles}
+          />
+        );
       case 2:
-        return <Paso2ClasificacionAlcance formData={formData} onChange={handleChange} />;
+        return <Paso2ClasificacionAlcance formData={formData} onChange={handleChange} evaluaciones={evaluacionesDisponibles} />;
       case 3:
         return <Paso3EquipoAuditor formData={formData} onChange={handleChange} auditores={auditoresDisponibles} />;
       case 4:
@@ -898,7 +974,139 @@ interface PasoProps {
   onChange: (field: keyof AuditoriaUnificadaFormData, value: any) => void;
 }
 
-function Paso1InformacionBasica({ formData, onChange }: PasoProps) {
+interface Paso1Props extends PasoProps {
+  procesos: string[];
+  cargandoProcesos: boolean;
+  busquedaProceso: string;
+  setBusquedaProceso: (value: string) => void;
+  mostrarSugerenciasProcesos: boolean;
+  setMostrarSugerenciasProcesos: (value: boolean) => void;
+  evaluaciones: EvaluacionProceso[];
+}
+
+function Paso1InformacionBasica({ 
+  formData, 
+  onChange, 
+  procesos, 
+  cargandoProcesos,
+  busquedaProceso,
+  setBusquedaProceso,
+  mostrarSugerenciasProcesos,
+  setMostrarSugerenciasProcesos,
+  evaluaciones
+}: Paso1Props) {
+  // Filtrar procesos según búsqueda
+  const procesosFiltrados = procesos.filter(proceso =>
+    proceso.toLowerCase().includes(busquedaProceso.toLowerCase())
+  );
+
+  const handleSeleccionarProceso = (proceso: string) => {
+    // Guardar en ambos campos: titulo (para BD) y procesoAuditado
+    onChange('titulo', proceso);
+    onChange('procesoAuditado', proceso);
+    setBusquedaProceso(proceso);
+    setMostrarSugerenciasProcesos(false);
+    
+    // 🔍 Buscar la evaluación asociada al proceso seleccionado
+    const evaluacionProceso = evaluaciones.find(
+      (ev: EvaluacionProceso) => ev.proceso?.nombre === proceso
+    );
+    
+    if (evaluacionProceso && evaluacionProceso.proceso?.evaluacionRiesgo) {
+      const riesgo = evaluacionProceso.proceso.evaluacionRiesgo;
+      
+      // Mapear nivelRiesgo del backend al formato del formulario
+      let nivelRiesgoForm: 'Bajo' | 'Medio' | 'Alto' | 'Crítico' = 'Medio';
+      if (riesgo.nivelRiesgo) {
+        const nivel = riesgo.nivelRiesgo.toLowerCase();
+        if (nivel === 'bajo') nivelRiesgoForm = 'Bajo';
+        else if (nivel === 'medio') nivelRiesgoForm = 'Medio';
+        else if (nivel === 'alto') nivelRiesgoForm = 'Alto';
+        else if (nivel === 'critico' || nivel === 'crítico' || nivel === 'extremo') nivelRiesgoForm = 'Crítico';
+      }
+      
+      // Actualizar nivel de riesgo automáticamente
+      onChange('nivelRiesgo', nivelRiesgoForm);
+      
+      // Construir lista de riesgos identificados basados en la evaluación
+      const riesgosIdentificados: string[] = [];
+      
+      if (riesgo.riesgoInherente > 6) {
+        riesgosIdentificados.push(`Riesgo inherente ALTO (${riesgo.riesgoInherente}/9) - Requiere controles reforzados`);
+      }
+      
+      if (riesgo.riesgoResidual > 4) {
+        riesgosIdentificados.push(`Riesgo residual ELEVADO (${riesgo.riesgoResidual}/9) - Los controles actuales son insuficientes`);
+      }
+      
+      if (riesgo.nivelControl < 2) {
+        riesgosIdentificados.push(`Controles actuales DÉBILES (nivel ${riesgo.nivelControl}/3) - Se requiere fortalecer el ambiente de control`);
+      }
+      
+      if (riesgo.probabilidad >= 3) {
+        riesgosIdentificados.push(`Probabilidad de materialización ALTA (${riesgo.probabilidad}/3) - Se requiere monitoreo continuo`);
+      }
+      
+      if (riesgo.impacto >= 3) {
+        riesgosIdentificados.push(`Impacto potencial ALTO (${riesgo.impacto}/3) - Puede afectar significativamente los objetivos institucionales`);
+      }
+      
+      // Agregar información de decisión si existe
+      if (riesgo.decisionFinal && riesgo.motivoDecision) {
+        riesgosIdentificados.push(`Decisión DAFP: ${riesgo.decisionFinal} - ${riesgo.motivoDecision}`);
+      }
+      
+      // Actualizar riesgos identificados
+      if (riesgosIdentificados.length > 0) {
+        onChange('riesgosIdentificados', riesgosIdentificados);
+      }
+      
+      // Construir controles a aplicar basados en la evaluación
+      const controles: string[] = [];
+      
+      if (riesgo.nivelControl < 2) {
+        controles.push('Implementar mapa de riesgos actualizado del proceso');
+        controles.push('Documentar y formalizar controles existentes');
+      }
+      
+      if (riesgo.probabilidad >= 2) {
+        controles.push('Establecer indicadores de alerta temprana');
+        controles.push('Realizar pruebas de eficacia de controles preventivos');
+      }
+      
+      if (riesgo.impacto >= 3) {
+        controles.push('Verificar existencia de planes de contingencia');
+        controles.push('Evaluar segregación de funciones y responsabilidades');
+      }
+      
+      controles.push('Revisión documental de políticas y procedimientos');
+      controles.push('Entrevistas con responsables del proceso');
+      controles.push('Muestreo estadístico de transacciones');
+      
+      // Actualizar controles a aplicar
+      if (controles.length > 0) {
+        onChange('controlesAplicar', controles);
+      }
+      
+      console.log('✅ Riesgos y controles cargados automáticamente desde evaluación del proceso');
+      console.log(`   - Nivel de riesgo: ${nivelRiesgoForm}`);
+      console.log(`   - Riesgos identificados: ${riesgosIdentificados.length}`);
+      console.log(`   - Controles a aplicar: ${controles.length}`);
+      
+      // Notificar al usuario
+      toast.success('Riesgos y controles cargados automáticamente', {
+        description: `Nivel: ${nivelRiesgoForm} | ${riesgosIdentificados.length} riesgos | ${controles.length} controles`
+      });
+    }
+  };
+
+  const handleChangeBusqueda = (value: string) => {
+    setBusquedaProceso(value);
+    // Actualizar ambos campos mientras se escribe
+    onChange('titulo', value);
+    onChange('procesoAuditado', value);
+    setMostrarSugerenciasProcesos(true);
+  };
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center mb-6">
@@ -960,21 +1168,106 @@ function Paso1InformacionBasica({ formData, onChange }: PasoProps) {
             </div>
           )}
 
-          {/* Título */}
-          <FieldWrapper
-            label="Título de la Auditoría"
+          {/* Título de Auditoría - BÚSQUEDA CON AUTOCOMPLETADO */}
+          <FieldWrapper 
+            label="Título de Auditoría" 
             required
-            helpText="Mínimo 10 caracteres - Sea claro y específico"
+            helpText={
+              cargandoProcesos 
+                ? "Cargando procesos del Universo de Auditorías..." 
+                : `${procesos.length} procesos disponibles - Escribe para buscar`
+            }
           >
-            <Input
-              value={formData.titulo}
-              onChange={(e) => onChange('titulo', e.target.value)}
-              placeholder="Ej: Auditoría de Gestión Administrativa Territorial Antioquia 2025"
-              className="border-gray-300"
-            />
-            <div className="text-xs text-gray-500 text-right mt-1">
-              {formData.titulo.length}/200
+            <div className="relative">
+              <Input
+                value={busquedaProceso}
+                onChange={(e) => handleChangeBusqueda(e.target.value)}
+                onFocus={() => setMostrarSugerenciasProcesos(true)}
+                placeholder="Escribe para buscar y seleccionar el proceso a auditar..."
+                className="border-gray-300"
+                disabled={cargandoProcesos}
+                autoComplete="off"
+              />
+              
+              {cargandoProcesos && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                    className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full"
+                  />
+                </div>
+              )}
+
+              {/* Lista de sugerencias con información de riesgo */}
+              {mostrarSugerenciasProcesos && busquedaProceso && procesosFiltrados.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="absolute z-50 w-full mt-1 bg-white border-2 border-blue-300 rounded-lg shadow-xl max-h-80 overflow-y-auto"
+                >
+                  {procesosFiltrados.map((proceso, index) => {
+                    // Buscar evaluación para mostrar nivel de riesgo
+                    const evaluacion = evaluaciones.find(
+                      (ev: EvaluacionProceso) => ev.proceso?.nombre === proceso
+                    );
+                    const nivelRiesgo = evaluacion?.proceso?.evaluacionRiesgo?.nivelRiesgo || 'medio';
+                    const riesgoInherente = evaluacion?.proceso?.evaluacionRiesgo?.riesgoInherente || 0;
+                    
+                    // Colores según nivel de riesgo
+                    const colorRiesgo = 
+                      nivelRiesgo === 'bajo' ? 'bg-green-100 text-green-700 border-green-300' :
+                      nivelRiesgo === 'medio' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
+                      nivelRiesgo === 'alto' ? 'bg-orange-100 text-orange-700 border-orange-300' :
+                      'bg-red-100 text-red-700 border-red-300';
+                    
+                    return (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => handleSeleccionarProceso(proceso)}
+                        className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 flex-1">
+                            <CheckCircle className="w-4 h-4 text-blue-600 shrink-0" />
+                            <span className="text-sm font-medium text-gray-900">{proceso}</span>
+                          </div>
+                          {evaluacion && (
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs px-2 py-1 rounded-full border font-bold ${colorRiesgo}`}>
+                                {nivelRiesgo.toUpperCase()}
+                              </span>
+                              {riesgoInherente > 0 && (
+                                <span className="text-xs text-gray-500 font-medium">
+                                  {riesgoInherente}/9
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              )}
+
+              {/* Mensaje si no hay resultados */}
+              {mostrarSugerenciasProcesos && busquedaProceso && procesosFiltrados.length === 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-300 rounded-lg shadow-xl p-4 text-center"
+                >
+                  <p className="text-sm text-gray-600">
+                    <AlertCircle className="w-4 h-4 inline mr-2" />
+                    No se encontraron procesos que coincidan con "{busquedaProceso}"
+                  </p>
+                </motion.div>
+              )}
             </div>
+          
           </FieldWrapper>
 
           {/* Descripción */}
@@ -1004,65 +1297,192 @@ function Paso1InformacionBasica({ formData, onChange }: PasoProps) {
 // PASO 2: CLASIFICACIÓN Y ALCANCE
 // ═══════════════════════════════════════════════════════════════════════════
 
-function Paso2ClasificacionAlcance({ formData, onChange }: PasoProps) {
+interface Paso2Props extends PasoProps {
+  evaluaciones: EvaluacionProceso[];
+}
+
+function Paso2ClasificacionAlcance({ formData, onChange, evaluaciones }: Paso2Props) {
+  // Buscar la evaluación del proceso seleccionado para obtener la dependencia
+  const evaluacionProceso = evaluaciones.find(
+    (ev: EvaluacionProceso) => ev.proceso?.nombre === formData.titulo || ev.proceso?.nombre === formData.procesoAuditado
+  );
+  
+  const dependenciaProceso = evaluacionProceso?.proceso?.dependencia || 'No especificada';
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center mb-6">
         <Building2 className="w-12 h-12 mx-auto mb-3" style={{ color: '#003DA5' }} />
         <h3 className="text-xl font-black text-gray-900">Clasificación y Alcance</h3>
         <p className="text-sm text-gray-600 mt-1">
-          Defina el ámbito territorial, área y proceso a auditar
+          Defina la dependencia, focos de revisión y alcance de la auditoría
         </p>
       </div>
 
       <Card className="p-6 border-2 border-gray-200">
         <div className="space-y-4">
-          {/* Territorial */}
-          <FieldWrapper label="Territorial" required>
-            <select
-              value={formData.territorial}
-              onChange={(e) => onChange('territorial', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Seleccione una territorial...</option>
-              {TERRITORIALES.map(territorial => (
-                <option key={territorial} value={territorial}>
-                  {territorial}
-                </option>
-              ))}
-            </select>
+          {/* Dependencia del Proceso - Se obtiene automáticamente */}
+          <FieldWrapper 
+            label="Dependencia Responsable" 
+            required
+            helpText={formData.titulo ? "Obtenida automáticamente del proceso seleccionado" : "Seleccione primero un proceso en el Paso 1"}
+          >
+            <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 font-medium">
+              {formData.titulo ? (
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-blue-600" />
+                  <span>{dependenciaProceso}</span>
+                </div>
+              ) : (
+                <span className="text-gray-400">Primero seleccione un proceso en el Paso 1</span>
+              )}
+            </div>
           </FieldWrapper>
 
-          {/* Área Objetivo */}
-          <FieldWrapper label="Área Institucional" required>
-            <select
-              value={formData.areaObjetivo}
-              onChange={(e) => onChange('areaObjetivo', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Seleccione un área...</option>
-              {AREAS_INSTITUCIONALES.map(area => (
-                <option key={area} value={area}>
-                  {area}
-                </option>
-              ))}
-            </select>
-          </FieldWrapper>
+          {/* Foco de la Auditoría */}
+          <FieldWrapper 
+            label="Foco de la Auditoría"
+            helpText="Seleccione los focos de revisión que aplicarán a esta auditoría"
+          >
+            <div className="relative">
+              <select
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    const focosActuales = formData.focos || [];
+                    if (!focosActuales.includes(e.target.value)) {
+                      onChange('focos', [...focosActuales, e.target.value]);
+                    }
+                  }
+                }}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm appearance-none bg-white cursor-pointer"
+              >
+                <option value="">Agregar un foco de revisión...</option>
+                {[
+                  { value: 'autoevaluacion_calidad_academica', label: 'Autoevaluación de la Calidad Académica', icon: '🎓' },
+                  { value: 'formacion', label: 'Formación (Foco)', icon: '📚' },
+                  { value: 'capacitacion', label: 'Capacitación', icon: '🧑‍🏫' },
+                  { value: 'proceso_seleccion', label: 'Proceso de Selección', icon: '✅' },
+                  { value: 'alto_gobierno', label: 'Fortalecimiento del Alto Gobierno y la Alta Gerencia Pública', icon: '🏛️' },
+                  { value: 'gestion_estatal', label: 'Fortalecimiento Integral a la Gestión Estatal', icon: '🏢' },
+                  { value: 'investigacion', label: 'Investigación', icon: '🔬' },
+                  { value: 'atencion_personas', label: 'Atención a las Personas', icon: '🤝' },
+                  { value: 'direccionamiento_estrategico', label: 'Direccionamiento Estratégico', icon: '🎯' },
+                  { value: 'gestion_integrada', label: 'Gestión Integrada', icon: '🔗' },
+                  { value: 'gestion_documental', label: 'Gestión Documental', icon: '📁' },
+                  { value: 'gestion_comunicacion', label: 'Gestión de la Comunicación', icon: '📢' },
+                  { value: 'gestion_tecnologica', label: 'Gestión Tecnológica', icon: '💻' },
+                  { value: 'gestion_internacional', label: 'Gestión Internacional', icon: '🌐' },
+                  { value: 'bienestar_universitario', label: 'Bienestar Universitario', icon: '🏫' },
+                  { value: 'gestion_administrativa', label: 'Gestión Administrativa', icon: '⚙️' },
+                  { value: 'gestion_financiera', label: 'Gestión Financiera', icon: '💰' },
+                  { value: 'gestion_juridica', label: 'Gestión Jurídica', icon: '⚖️' },
+                  { value: 'gestion_contratacion', label: 'Gestión de Contratación', icon: '📝' },
+                  { value: 'gestion_talento_humano', label: 'Gestión del Talento Humano', icon: '👥' },
+                  { value: 'gestion_entornos_virtuales', label: 'Gestión de Entornos Virtuales', icon: '🖥️' },
+                  { value: 'control_interno_disciplinario', label: 'Control Interno Disciplinario', icon: '⚠️' },
+                  { value: 'territorial_antioquia', label: 'Territorial Antioquia', icon: '📍' },
+                  { value: 'territorial_atlantico', label: 'Territorial Atlántico - Cesar - Magdalena - La Guajira', icon: '📍' },
+                  { value: 'territorial_bolivar', label: 'Territorial Bolívar - Córdoba - Sucre - San Andrés', icon: '📍' },
+                  { value: 'territorial_boyaca', label: 'Territorial Boyacá - Casanare', icon: '📍' },
+                  { value: 'territorial_caldas', label: 'Territorial Caldas', icon: '📍' },
+                  { value: 'territorial_cauca', label: 'Territorial Cauca', icon: '📍' },
+                  { value: 'territorial_choco', label: 'Territorial Chocó', icon: '📍' },
+                  { value: 'territorial_cundinamarca', label: 'Territorial Cundinamarca', icon: '📍' },
+                  { value: 'territorial_huila', label: 'Territorial Huila - Caquetá - Putumayo', icon: '📍' },
+                  { value: 'territorial_meta', label: 'Territorial Meta - Guaviare - Guainía - Vaupés - Vichada - Amazonas', icon: '📍' },
+                  { value: 'territorial_narino', label: 'Territorial Nariño - Alto Putumayo', icon: '📍' },
+                  { value: 'territorial_norte_santander', label: 'Territorial Norte de Santander - Arauca', icon: '📍' },
+                  { value: 'territorial_quindio', label: 'Territorial Quindío - Risaralda', icon: '📍' },
+                  { value: 'territorial_santander', label: 'Territorial Santander', icon: '📍' },
+                  { value: 'territorial_tolima', label: 'Territorial Tolima', icon: '📍' },
+                  { value: 'territorial_valle', label: 'Territorial Valle', icon: '📍' },
+                ].filter(o => !(formData.focos || []).includes(o.value)).map(o => (
+                  <option key={o.value} value={o.value}>{o.icon}  {o.label}</option>
+                ))}
+              </select>
+              <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 rotate-90 pointer-events-none" />
+            </div>
 
-          {/* Proceso Auditado */}
-          <FieldWrapper label="Proceso Específico" required>
-            <select
-              value={formData.procesoAuditado}
-              onChange={(e) => onChange('procesoAuditado', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Seleccione un proceso...</option>
-              {PROCESOS_INSTITUCIONALES.map(proceso => (
-                <option key={proceso} value={proceso}>
-                  {proceso}
-                </option>
-              ))}
-            </select>
+            <AnimatePresence>
+              {formData.focos && formData.focos.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  className="mt-3 flex flex-wrap gap-2"
+                >
+                  {formData.focos.map((foco) => {
+                    const focoConfig: Record<string, { label: string; color: string }> = {
+                      autoevaluacion_calidad_academica: { label: 'Autoevaluación Calidad Académica', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+                      formacion: { label: 'Formación (Foco)', color: 'bg-blue-100 text-blue-800 border-blue-300' },
+                      capacitacion: { label: 'Capacitación', color: 'bg-amber-100 text-amber-800 border-amber-300' },
+                      proceso_seleccion: { label: 'Proceso de Selección', color: 'bg-purple-100 text-purple-800 border-purple-300' },
+                      alto_gobierno: { label: 'Alto Gobierno y Alta Gerencia', color: 'bg-rose-100 text-rose-800 border-rose-300' },
+                      gestion_estatal: { label: 'Gestión Estatal', color: 'bg-teal-100 text-teal-800 border-teal-300' },
+                      investigacion: { label: 'Investigación', color: 'bg-indigo-100 text-indigo-800 border-indigo-300' },
+                      atencion_personas: { label: 'Atención a las Personas', color: 'bg-pink-100 text-pink-800 border-pink-300' },
+                      direccionamiento_estrategico: { label: 'Direccionamiento Estratégico', color: 'bg-cyan-100 text-cyan-800 border-cyan-300' },
+                      gestion_integrada: { label: 'Gestión Integrada', color: 'bg-lime-100 text-lime-800 border-lime-300' },
+                      gestion_documental: { label: 'Gestión Documental', color: 'bg-orange-100 text-orange-800 border-orange-300' },
+                      gestion_comunicacion: { label: 'Gestión Comunicación', color: 'bg-sky-100 text-sky-800 border-sky-300' },
+                      gestion_tecnologica: { label: 'Gestión Tecnológica', color: 'bg-violet-100 text-violet-800 border-violet-300' },
+                      gestion_internacional: { label: 'Gestión Internacional', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+                      bienestar_universitario: { label: 'Bienestar Universitario', color: 'bg-blue-100 text-blue-800 border-blue-300' },
+                      gestion_administrativa: { label: 'Gestión Administrativa', color: 'bg-amber-100 text-amber-800 border-amber-300' },
+                      gestion_financiera: { label: 'Gestión Financiera', color: 'bg-green-100 text-green-800 border-green-300' },
+                      gestion_juridica: { label: 'Gestión Jurídica', color: 'bg-purple-100 text-purple-800 border-purple-300' },
+                      gestion_contratacion: { label: 'Gestión Contratación', color: 'bg-rose-100 text-rose-800 border-rose-300' },
+                      gestion_talento_humano: { label: 'Gestión Talento Humano', color: 'bg-teal-100 text-teal-800 border-teal-300' },
+                      gestion_entornos_virtuales: { label: 'Entornos Virtuales', color: 'bg-indigo-100 text-indigo-800 border-indigo-300' },
+                      control_interno_disciplinario: { label: 'Control Interno Disciplinario', color: 'bg-red-100 text-red-800 border-red-300' },
+                      territorial_antioquia: { label: 'Territorial Antioquia', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_atlantico: { label: 'Territorial Atlántico', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_bolivar: { label: 'Territorial Bolívar', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_boyaca: { label: 'Territorial Boyacá', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_caldas: { label: 'Territorial Caldas', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_cauca: { label: 'Territorial Cauca', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_choco: { label: 'Territorial Chocó', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_cundinamarca: { label: 'Territorial Cundinamarca', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_huila: { label: 'Territorial Huila', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_meta: { label: 'Territorial Meta', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_narino: { label: 'Territorial Nariño', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_norte_santander: { label: 'Territorial Norte de Santander', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_quindio: { label: 'Territorial Quindío', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_santander: { label: 'Territorial Santander', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_tolima: { label: 'Territorial Tolima', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                      territorial_valle: { label: 'Territorial Valle', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+                    };
+                    const config = focoConfig[foco] || { label: foco, color: 'bg-gray-100 text-gray-800 border-gray-300' };
+
+                    return (
+                      <motion.span
+                        key={foco}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-bold ${config.color}`}
+                      >
+                        {config.label}
+                        <button
+                          type="button"
+                          onClick={() => onChange('focos', formData.focos!.filter(f => f !== foco))}
+                          className="ml-0.5 hover:opacity-70 transition-opacity rounded-full"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </motion.span>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {(formData.focos || []).length === 5 && (
+              <p className="text-xs text-green-600 font-medium flex items-center gap-1 mt-2">
+                <CheckCircle className="w-3 h-3" />
+                Todos los focos seleccionados
+              </p>
+            )}
           </FieldWrapper>
 
           {/* Alcance */}
@@ -1115,7 +1535,23 @@ function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
 
       <Card className="p-6 border-2 border-gray-200">
         <div className="space-y-4">
-          {/* Auditor Líder */}
+          {/* Supervisor / Jefe OCI - PRIMERO */}
+          <FieldWrapper label="Supervisor / Jefe OCI" required>
+            <select
+              value={formData.supervisorAsignado}
+              onChange={(e) => onChange('supervisorAsignado', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Seleccione el supervisor / jefe OCI...</option>
+              {auditores.map(auditor => (
+                <option key={auditor.id} value={auditor.id}>
+                  {auditor.nombre}
+                </option>
+              ))}
+            </select>
+          </FieldWrapper>
+
+          {/* Auditor Líder - SEGUNDO */}
           <FieldWrapper label="Auditor Líder" required>
             <select
               value={formData.auditorLider}
@@ -1123,58 +1559,23 @@ function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el auditor líder...</option>
-              {auditores.map(auditor => (
+              {auditores.filter(a => a.id !== formData.supervisorAsignado).map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
-                  {auditor.nombre} - {auditor.cargo}
+                  {auditor.nombre}
                 </option>
               ))}
             </select>
           </FieldWrapper>
 
-          {/* Auditor Asignado */}
-          <FieldWrapper label="Auditor Asignado" required>
-            <select
-              value={formData.auditorAsignado}
-              onChange={(e) => onChange('auditorAsignado', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Seleccione el auditor asignado...</option>
-              {auditores.filter(a => a.id !== formData.auditorLider).map(auditor => (
-                <option key={auditor.id} value={auditor.id}>
-                  {auditor.nombre} - {auditor.cargo}
-                </option>
-              ))}
-            </select>
-          </FieldWrapper>
-
-          {/* Supervisor */}
-          <FieldWrapper label="Supervisor / Jefe OCI" required>
-            <select
-              value={formData.supervisorAsignado}
-              onChange={(e) => onChange('supervisorAsignado', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Seleccione el supervisor...</option>
-              {auditores.filter(a =>
-                a.id !== formData.auditorLider && a.id !== formData.auditorAsignado
-              ).map(auditor => (
-                <option key={auditor.id} value={auditor.id}>
-                  {auditor.nombre} - {auditor.cargo}
-                </option>
-              ))}
-            </select>
-          </FieldWrapper>
-
-          {/* Equipo Adicional */}
+          {/* Equipo Adicional - TERCERO */}
           <FieldWrapper
             label="Equipo Auditor Adicional (Opcional)"
             helpText="Seleccione otros auditores que participarán"
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {auditores.filter(a =>
-                a.id !== formData.auditorLider &&
-                a.id !== formData.auditorAsignado &&
-                a.id !== formData.supervisorAsignado
+                a.id !== formData.supervisorAsignado &&
+                a.id !== formData.auditorLider
               ).map(auditor => (
                 <button
                   key={auditor.id}
@@ -1206,7 +1607,6 @@ function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-bold text-gray-900">{auditor.nombre}</p>
-                      <p className="text-xs text-gray-600">{auditor.cargo}</p>
                     </div>
                   </div>
                 </button>
@@ -1771,6 +2171,51 @@ function Paso7RiesgosControles({
   setControlTemporal,
   onAgregarControl
 }: Paso7Props) {
+  const [editandoRiesgo, setEditandoRiesgo] = useState<number | null>(null);
+  const [textoEditadoRiesgo, setTextoEditadoRiesgo] = useState('');
+  const [editandoControl, setEditandoControl] = useState<number | null>(null);
+  const [textoEditadoControl, setTextoEditadoControl] = useState('');
+
+  const handleEditarRiesgo = (index: number) => {
+    setEditandoRiesgo(index);
+    setTextoEditadoRiesgo(formData.riesgosIdentificados[index]);
+  };
+
+  const handleGuardarRiesgo = (index: number) => {
+    if (textoEditadoRiesgo.trim().length >= 10) {
+      const nuevosRiesgos = [...formData.riesgosIdentificados];
+      nuevosRiesgos[index] = textoEditadoRiesgo.trim();
+      onChange('riesgosIdentificados', nuevosRiesgos);
+      setEditandoRiesgo(null);
+      setTextoEditadoRiesgo('');
+    }
+  };
+
+  const handleCancelarRiesgo = () => {
+    setEditandoRiesgo(null);
+    setTextoEditadoRiesgo('');
+  };
+
+  const handleEditarControl = (index: number) => {
+    setEditandoControl(index);
+    setTextoEditadoControl(formData.controlesAplicar[index]);
+  };
+
+  const handleGuardarControl = (index: number) => {
+    if (textoEditadoControl.trim().length >= 10) {
+      const nuevosControles = [...formData.controlesAplicar];
+      nuevosControles[index] = textoEditadoControl.trim();
+      onChange('controlesAplicar', nuevosControles);
+      setEditandoControl(null);
+      setTextoEditadoControl('');
+    }
+  };
+
+  const handleCancelarControl = () => {
+    setEditandoControl(null);
+    setTextoEditadoControl('');
+  };
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center mb-6">
@@ -1838,21 +2283,73 @@ function Paso7RiesgosControles({
                     className="flex items-start gap-2 p-3 bg-red-50 rounded-lg border border-red-200"
                   >
                     <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-gray-700 flex-1">{riesgo}</p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        onChange(
-                          'riesgosIdentificados',
-                          formData.riesgosIdentificados.filter((_, i) => i !== index)
-                        );
-                      }}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    
+                    {editandoRiesgo === index ? (
+                      // MODO EDICIÓN
+                      <div className="flex-1 space-y-2">
+                        <textarea
+                          value={textoEditadoRiesgo}
+                          onChange={(e) => setTextoEditadoRiesgo(e.target.value)}
+                          className="w-full px-3 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 text-sm"
+                          rows={3}
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleGuardarRiesgo(index)}
+                            disabled={textoEditadoRiesgo.trim().length < 10}
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                          >
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Guardar
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleCancelarRiesgo}
+                            className="text-gray-600"
+                          >
+                            <X className="w-3 h-3 mr-1" />
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      // MODO VISTA
+                      <>
+                        <p className="text-sm text-gray-700 flex-1">{riesgo}</p>
+                        <div className="flex gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditarRiesgo(index)}
+                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            title="Editar riesgo"
+                          >
+                            <Settings className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              onChange(
+                                'riesgosIdentificados',
+                                formData.riesgosIdentificados.filter((_, i) => i !== index)
+                              );
+                            }}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            title="Eliminar riesgo"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1895,21 +2392,73 @@ function Paso7RiesgosControles({
                     className="flex items-start gap-2 p-3 bg-green-50 rounded-lg border border-green-200"
                   >
                     <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-gray-700 flex-1">{control}</p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        onChange(
-                          'controlesAplicar',
-                          formData.controlesAplicar.filter((_, i) => i !== index)
-                        );
-                      }}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    
+                    {editandoControl === index ? (
+                      // MODO EDICIÓN
+                      <div className="flex-1 space-y-2">
+                        <textarea
+                          value={textoEditadoControl}
+                          onChange={(e) => setTextoEditadoControl(e.target.value)}
+                          className="w-full px-3 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm"
+                          rows={3}
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleGuardarControl(index)}
+                            disabled={textoEditadoControl.trim().length < 10}
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                          >
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Guardar
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleCancelarControl}
+                            className="text-gray-600"
+                          >
+                            <X className="w-3 h-3 mr-1" />
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      // MODO VISTA
+                      <>
+                        <p className="text-sm text-gray-700 flex-1">{control}</p>
+                        <div className="flex gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditarControl(index)}
+                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            title="Editar control"
+                          >
+                            <Settings className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              onChange(
+                                'controlesAplicar',
+                                formData.controlesAplicar.filter((_, i) => i !== index)
+                              );
+                            }}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            title="Eliminar control"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2236,6 +2785,10 @@ function Paso9VinculacionPlan({ formData, onChange }: PasoProps) {
           Resumen de la Auditoría
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <div className="md:col-span-2">
+            <p className="text-gray-600">Título (Proceso):</p>
+            <p className="font-bold text-gray-900">{formData.titulo || 'Sin seleccionar'}</p>
+          </div>
           <div>
             <p className="text-gray-600">Tipo:</p>
             <p className="font-bold text-gray-900 capitalize">{formData.tipoAuditoria}</p>

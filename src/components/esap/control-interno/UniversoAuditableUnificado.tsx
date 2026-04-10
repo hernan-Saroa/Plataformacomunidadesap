@@ -1044,7 +1044,7 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
                           </div>
                           <div>
                             <span className="text-gray-500">Auditor Líder:</span>
-                            <span className="ml-2 font-semibold text-gray-900">{auditoria.auditorLider}</span>
+                            <span className="ml-2 font-semibold text-gray-900">{typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria.auditorLider as any)?.nombre || 'No asignado'}</span>
                           </div>
                           <div>
                             <span className="text-gray-500">Periodo:</span>
