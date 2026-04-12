@@ -119,31 +119,31 @@ export interface DisciplinaryProcessReassignmentRequest {
 }
 
 export interface DisciplinaryProcess {
-     id: string;
-     radicadoProceso: string;
-     etapaActual: 'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO' | 'FALLO' | 'SEGUNDA_INSTANCIA' | 'INDAGACION';
-     kanbanStage?: string;
-     kanbanNotice?: string;
-     estado: 'ACTIVO' | 'SUSPENDIDO' | 'ARCHIVADO' | 'PRESCRITO';
-     abogadoAsignadoId: string;
-     abogadoAsignadoNombre: string;
-     fechaPrescripcion: string;
-     fechaVencimientoEtapa: string;
-     news: DisciplinaryNews;
-     createdAt: string;
-     updatedAt: string;
-     evidence?: any[];
-     // Estadísticas dinámicas
-     draftsCount?: number;
-     documentsCount?: number;
-     timePercentage?: number;
-     actuacionesCount?: number;
-     ultimaActuacion?: string | null;
-     ultimaActuacionFecha?: string | null;
-     tasksCount?: number;
-     completedTasksCount?: number;
-     pendingTasksCount?: number;
-     notesCount?: number;
+      id: string;
+      radicadoProceso: string;
+      etapaActual: string; // Now stores the stage name from configuration
+      kanbanStage?: string;
+      kanbanNotice?: string;
+      estado: 'ACTIVO' | 'SUSPENDIDO' | 'ARCHIVADO' | 'PRESCRITO';
+      abogadoAsignadoId: string;
+      abogadoAsignadoNombre: string;
+      fechaPrescripcion: string;
+      fechaVencimientoEtapa: string;
+      news: DisciplinaryNews;
+      createdAt: string;
+      updatedAt: string;
+      evidence?: any[];
+      // Estadísticas dinámicas
+      draftsCount?: number;
+      documentsCount?: number;
+      timePercentage?: number;
+      actuacionesCount?: number;
+      ultimaActuacion?: string | null;
+      ultimaActuacionFecha?: string | null;
+      tasksCount?: number;
+      completedTasksCount?: number;
+      pendingTasksCount?: number;
+      notesCount?: number;
 }
 
 export interface ProcessStatistics {
@@ -614,10 +614,9 @@ class DisciplinaryService {
         return apiClient.post<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/assign`, data);
     }
 
-    async cambiarEtapa(id: string, nuevaEtapa: string, kanbanStage?: string, kanbanNotice?: string): Promise<DisciplinaryProcess> {
+    async cambiarEtapa(id: string, stageId: string, kanbanNotice?: string): Promise<DisciplinaryProcess> {
         return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/stage`, {
-            stage: nuevaEtapa,
-            kanbanStage,
+            stageId,
             kanbanNotice,
         });
     }
@@ -963,8 +962,8 @@ class DisciplinaryService {
     }
 
     // ==================== CONFIGURACION ====================
-    async getStageConfiguration() {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/configuration/stages`);
+    async getStageConfiguration(): Promise<Array<{ id: string; etapa: string; orden: number; activo: boolean; color?: string; descripcion?: string }>> {
+        return apiClient.get<Array<{ id: string; etapa: string; orden: number; activo: boolean; color?: string; descripcion?: string }>>(`${SERVICE_PREFIX}/configuration/stages`);
     }
 
     async createStage(config: any) {

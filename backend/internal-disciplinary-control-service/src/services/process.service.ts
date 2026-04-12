@@ -7,7 +7,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, In } from 'typeorm';
 import {
   DisciplinaryProcess,
-  ProcessStage,
   ProcessStatus,
 } from '../entities/disciplinary-process.entity';
 import {
@@ -265,37 +264,37 @@ export class ProcessService {
         noticia.fechaRecepcion
       );
 
-      // Los procesos siempre inician en Valoración al ser creados desde una noticia
-      const etapaInicial = ProcessStage.VALORACION;
+       // Get initial kanban stage from configuration (orden 2 = VALORACION)
+       const initialKanbanStage = await this.stageConfigurationRepository.findOne({
+         where: { orden: 2, activo: true },
+       });
+       if (!initialKanbanStage) {
+         throw new HttpException(
+           'Initial kanban stage configuration for VALORACION not found',
+           HttpStatus.INTERNAL_SERVER_ERROR,
+         );
+       }
 
-      // Calcular fecha de vencimiento de la etapa inicial
-      const { fechaVencimiento } =
-        await this.terminosService.calculateVencimientoEtapa(etapaInicial);
+       // Los procesos siempre inician en la etapa configurada con orden 2 (Valoración)
+       const etapaInicial = initialKanbanStage.etapa;
 
-      // Get initial kanban stage order from configuration
-      const initialKanbanStage = await this.stageConfigurationRepository.findOne({
-        where: { orden: 2, activo: true },
-      });
-      if (!initialKanbanStage) {
-        throw new HttpException(
-          'Initial kanban stage configuration for VALORACION not found',
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
-      }
+       // Calcular fecha de vencimiento de la etapa inicial
+       const { fechaVencimiento } =
+         await this.terminosService.calculateVencimientoEtapa(etapaInicial);
 
-      // Crear proceso con la relación del abogado
-      const proceso = this.processRepository.create({
-        radicadoProceso,
-        newsId: createProcessDto.newsId,
-        abogadoAsignado: abogado, // Establecer la relación directamente
-        abogadoAsignadoId: abogado.id,
-        etapaActual: etapaInicial,
-        kanbanStage: initialKanbanStage.id, // El proceso inicia siempre en la columna Valoración del Kanban
-        estado: ProcessStatus.ACTIVO,
-        fechaPrescripcion,
-        fechaVencimientoEtapa: fechaVencimiento,
-        observaciones: createProcessDto.observaciones,
-      });
+       // Crear proceso con la relación del abogado
+       const proceso = this.processRepository.create({
+         radicadoProceso,
+         newsId: createProcessDto.newsId,
+         abogadoAsignado: abogado, // Establecer la relación directamente
+         abogadoAsignadoId: abogado.id,
+         etapaActual: etapaInicial, // Usar el nombre de la etapa configurada
+         kanbanStage: initialKanbanStage.id, // El proceso inicia siempre en la columna Valoración del Kanban
+         estado: ProcessStatus.ACTIVO,
+         fechaPrescripcion,
+         fechaVencimientoEtapa: fechaVencimiento,
+         observaciones: createProcessDto.observaciones,
+       });
 
       console.log('💾 Guardando proceso con abogado:', {
         abogadoId: abogado.id,
@@ -645,41 +644,50 @@ export class ProcessService {
    */
   async changeStage(
     id: string,
-    stage: ProcessStage,
-    kanbanStage?: number,
+    stageId: string,
     kanbanNotice?: string
   ): Promise<DisciplinaryProcess> {
     try {
       const proceso = await this.findById(id, false);
 
-       if (kanbanStage !== undefined) {
-         const stageConfig = await this.stageConfigurationRepository.findOne({
-           where: { orden: kanbanStage, activo: true },
-         });
-         if (!stageConfig) {
-           throw new HttpException(
-             `Stage configuration with orden ${kanbanStage} not found`,
-             HttpStatus.BAD_REQUEST,
-           );
-         }
-          proceso.kanbanStage = stageConfig.id;
+      // Get the new stage configuration
+      const newStageConfig = await this.stageConfigurationRepository.findOne({
+        where: { id: stageId, activo: true },
+      });
+      if (!newStageConfig) {
+        throw new HttpException(
+          `Stage configuration with id ${stageId} not found`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // Get current stage configuration to get its orden
+      const currentStageConfig = await this.stageConfigurationRepository.findOne({
+        where: { etapa: proceso.etapaActual, activo: true },
+      });
+      if (!currentStageConfig) {
+        throw new HttpException(
+          `Current stage configuration for ${proceso.etapaActual} not found`,
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
       if (kanbanNotice !== undefined) {
         proceso.kanbanNotice = kanbanNotice || null;
       }
 
-      if (proceso.etapaActual !== stage) {
-        // Validar transicion de etapa
-        this.validarTransicionEtapa(proceso.etapaActual, stage);
+      if (proceso.etapaActual !== newStageConfig.etapa) {
+        // Validar transicion de etapa using orden
+        this.validarTransicionEtapa(currentStageConfig.orden, newStageConfig.orden);
 
         // Calcular nuevo vencimiento
         const { fechaVencimiento } =
-          await this.terminosService.calculateVencimientoEtapa(stage);
+          await this.terminosService.calculateVencimientoEtapa(newStageConfig.etapa);
 
-        console.log('Changing stage for process', id, 'from', proceso.etapaActual, 'to', stage, 'new deadline', fechaVencimiento);
+        console.log('Changing stage for process', id, 'from', proceso.etapaActual, 'to', newStageConfig.etapa, 'new deadline', fechaVencimiento);
 
-        proceso.etapaActual = stage;
+        proceso.etapaActual = newStageConfig.etapa; // Set the stage name
+        proceso.kanbanStage = newStageConfig.id; // Set the stage ID
         proceso.fechaVencimientoEtapa = fechaVencimiento;
       }
 
@@ -751,7 +759,7 @@ export class ProcessService {
     id: string,
     updateStageDto: UpdateProcessStageDto,
   ): Promise<DisciplinaryProcess> {
-    return this.changeStage(id, updateStageDto.nuevaEtapa);
+    return this.changeStage(id, updateStageDto.nuevaEtapaId);
   }
 
   /**
@@ -914,128 +922,112 @@ export class ProcessService {
   }
 
   /**
-   * Valida las transiciones permitidas entre etapas
-   * Flujo ESPECÍFICO:
-   * - RECEPCION → INDAGACION_PREVIA / INVESTIGACION
-   * - VALORACION → INDAGACION_PREVIA / INVESTIGACION
-   * - INDAGACION_PREVIA / INVESTIGACION → EVALUACION / JUZGAMIENTO / FALLO
-   * - EVALUACION → JUZGAMIENTO / FALLO
-   * - JUZGAMIENTO → INDAGACION
-   * - INDAGACION → FALLO
-   * - FALLO → SEGUNDA_INSTANCIA
-   * - SEGUNDA_INSTANCIA → etapa final (no permite transiciones)
+   * Valida las transiciones permitidas entre etapas usando el orden configurado
+   * Flujo ESPECÍFICO basado en orden numérico:
+   * - Orden 1 (RECEPCION) → Orden 3 (INDAGACION_PREVIA) / Orden 4 (INVESTIGACION)
+   * - Orden 2 (VALORACION) → Orden 3 (INDAGACION_PREVIA) / Orden 4 (INVESTIGACION)
+   * - Orden 3-4 (INDAGACION_PREVIA/INVESTIGACION) → Orden 5 (EVALUACION) / Orden 6 (JUZGAMIENTO) / Orden 8 (FALLO)
+   * - Orden 5 (EVALUACION) → Orden 6 (JUZGAMIENTO) / Orden 8 (FALLO)
+   * - Orden 6 (JUZGAMIENTO) → Orden 7 (INDAGACION)
+   * - Orden 7 (INDAGACION) → Orden 8 (FALLO)
+   * - Orden 8 (FALLO) → Orden 9 (SEGUNDA_INSTANCIA)
+   * - Orden 9 (SEGUNDA_INSTANCIA) → etapa final (no permite transiciones)
    *
    * NOTA: Se permiten movimientos hacia ATRÁS (a etapas anteriores) para dar flexibilidad.
    * Los movimientos hacia adelante deben seguir el flujo específico definido.
    */
-  private validarTransicionEtapa(etapaActual: string, nuevaEtapa: string): void {
-    console.log('Validating transition from', etapaActual, 'to', nuevaEtapa);
+  private validarTransicionEtapa(ordenActual: number, ordenNueva: number): void {
+    console.log('Validating transition from orden', ordenActual, 'to orden', ordenNueva);
 
     // No puede pasar a la misma etapa
-    if (etapaActual === nuevaEtapa) {
+    if (ordenActual === ordenNueva) {
       throw new HttpException(
-        `No se puede pasar de ${etapaActual} a ${nuevaEtapa}`,
+        `No se puede pasar de la etapa con orden ${ordenActual} a la misma etapa`,
         HttpStatus.BAD_REQUEST,
       );
     }
 
-    // SEGUNDA_INSTANCIA es etapa final, no puede salir de aquí
-    if (etapaActual === 'SEGUNDA_INSTANCIA') {
+    // SEGUNDA_INSTANCIA (orden 9) es etapa final, no puede salir de aquí
+    if (ordenActual === 9) {
       throw new HttpException(
         'No se puede cambiar la etapa desde Segunda Instancia',
         HttpStatus.BAD_REQUEST,
       );
     }
 
-    // Definir el orden de etapas (índice numérico para cada etapa)
-    const ordenEtapas: Record<string, number> = {
-      'RECEPCION': 1,
-      'VALORACION': 2,
-      'INDAGACION_PREVIA': 3,
-      'INVESTIGACION': 4,
-      'EVALUACION': 5,
-      'JUZGAMIENTO': 6,
-      'INDAGACION': 7,
-      'FALLO': 8,
-      'SEGUNDA_INSTANCIA': 9,
-    };
-
-    const indiceActual = ordenEtapas[etapaActual];
-    const indiceNueva = ordenEtapas[nuevaEtapa];
-
     // Movimiento hacia ATRÁS: siempre permitido
-    if (indiceNueva < indiceActual) {
-      console.log(`Movimiento hacia atrás permitido: de ${etapaActual} a ${nuevaEtapa}`);
+    if (ordenNueva < ordenActual) {
+      console.log(`Movimiento hacia atrás permitido: de orden ${ordenActual} a orden ${ordenNueva}`);
       return; // Permitir sin validación adicional
     }
 
     // Movimiento hacia ADELANTE: seguir el flujo ESPECÍFICO
-    if (etapaActual === 'RECEPCION') {
-      // RECEPCION → INDAGACION_PREVIA / INVESTIGACION
-      if (nuevaEtapa !== 'INDAGACION_PREVIA' && nuevaEtapa !== 'INVESTIGACION') {
+    if (ordenActual === 1) { // RECEPCION
+      // RECEPCION → INDAGACION_PREVIA (3) / INVESTIGACION (4)
+      if (ordenNueva !== 3 && ordenNueva !== 4) {
         throw new HttpException(
-          `Desde RECEPCION solo puede ir a INDAGACION_PREVIA o INVESTIGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          `Desde RECEPCION (orden 1) solo puede ir a INDAGACION_PREVIA (orden 3) o INVESTIGACION (orden 4). Intento: orden ${ordenActual} → orden ${ordenNueva}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === 'VALORACION') {
-      // VALORACION → INDAGACION_PREVIA / INVESTIGACION
-      if (nuevaEtapa !== 'INDAGACION_PREVIA' && nuevaEtapa !== 'INVESTIGACION') {
+    else if (ordenActual === 2) { // VALORACION
+      // VALORACION → INDAGACION_PREVIA (3) / INVESTIGACION (4)
+      if (ordenNueva !== 3 && ordenNueva !== 4) {
         throw new HttpException(
-          `Desde VALORACION solo puede ir a INDAGACION_PREVIA o INVESTIGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          `Desde VALORACION (orden 2) solo puede ir a INDAGACION_PREVIA (orden 3) o INVESTIGACION (orden 4). Intento: orden ${ordenActual} → orden ${ordenNueva}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === 'INDAGACION_PREVIA' || etapaActual === 'INVESTIGACION') {
-      // INDAGACION_PREVIA / INVESTIGACION → EVALUACION / JUZGAMIENTO / FALLO
-      // También permite cambiar entre INDAGACION_PREVIA e INVESTIGACION (mismo nivel)
-      const esCambioMismoNivel = (etapaActual === 'INDAGACION_PREVIA' && nuevaEtapa === 'INVESTIGACION') ||
-        (etapaActual === 'INVESTIGACION' && nuevaEtapa === 'INDAGACION_PREVIA');
+    else if (ordenActual === 3 || ordenActual === 4) { // INDAGACION_PREVIA / INVESTIGACION
+      // INDAGACION_PREVIA / INVESTIGACION → EVALUACION (5) / JUZGAMIENTO (6) / FALLO (8)
+      // También permite cambiar entre INDAGACION_PREVIA e INVESTIGACION (orden 3 y 4)
+      const esCambioMismoNivel = (ordenActual === 3 && ordenNueva === 4) ||
+        (ordenActual === 4 && ordenNueva === 3);
 
       if (!esCambioMismoNivel &&
-        nuevaEtapa !== 'EVALUACION' &&
-        nuevaEtapa !== 'JUZGAMIENTO' &&
-        nuevaEtapa !== 'FALLO') {
+        ordenNueva !== 5 &&
+        ordenNueva !== 6 &&
+        ordenNueva !== 8) {
         throw new HttpException(
-          `Desde INDAGACION_PREVIA o INVESTIGACION solo puede ir a EVALUACION, JUZGAMIENTO, FALLO o cambiar entre INDAGACION_PREVIA/INVESTIGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          `Desde INDAGACION_PREVIA o INVESTIGACION (orden 3-4) solo puede ir a EVALUACION (5), JUZGAMIENTO (6), FALLO (8) o cambiar entre INDAGACION_PREVIA/INVESTIGACION. Intento: orden ${ordenActual} → orden ${ordenNueva}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === 'EVALUACION') {
-      // EVALUACION → JUZGAMIENTO / FALLO
-      if (nuevaEtapa !== 'JUZGAMIENTO' && nuevaEtapa !== 'FALLO') {
+    else if (ordenActual === 5) { // EVALUACION
+      // EVALUACION → JUZGAMIENTO (6) / FALLO (8)
+      if (ordenNueva !== 6 && ordenNueva !== 8) {
         throw new HttpException(
-          `Desde EVALUACION solo puede ir a JUZGAMIENTO o FALLO. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          `Desde EVALUACION (orden 5) solo puede ir a JUZGAMIENTO (6) o FALLO (8). Intento: orden ${ordenActual} → orden ${ordenNueva}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === 'JUZGAMIENTO') {
-      // JUZGAMIENTO → solo INDAGACION
-      if (nuevaEtapa !== 'INDAGACION') {
+    else if (ordenActual === 6) { // JUZGAMIENTO
+      // JUZGAMIENTO → INDAGACION (7)
+      if (ordenNueva !== 7) {
         throw new HttpException(
-          `Desde JUZGAMIENTO solo puede ir a INDAGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          `Desde JUZGAMIENTO (orden 6) solo puede ir a INDAGACION (7). Intento: orden ${ordenActual} → orden ${ordenNueva}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === 'INDAGACION') {
-      // INDAGACION → solo FALLO
-      if (nuevaEtapa !== 'FALLO') {
+    else if (ordenActual === 7) { // INDAGACION
+      // INDAGACION → FALLO (8)
+      if (ordenNueva !== 8) {
         throw new HttpException(
-          `Desde INDAGACION solo puede ir a FALLO. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          `Desde INDAGACION (orden 7) solo puede ir a FALLO (8). Intento: orden ${ordenActual} → orden ${ordenNueva}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === 'FALLO') {
-      // FALLO → solo SEGUNDA_INSTANCIA
-      if (nuevaEtapa !== 'SEGUNDA_INSTANCIA') {
+    else if (ordenActual === 8) { // FALLO
+      // FALLO → SEGUNDA_INSTANCIA (9)
+      if (ordenNueva !== 9) {
         throw new HttpException(
-          `Desde FALLO solo puede ir a SEGUNDA_INSTANCIA. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          `Desde FALLO (orden 8) solo puede ir a SEGUNDA_INSTANCIA (9). Intento: orden ${ordenActual} → orden ${ordenNueva}`,
           HttpStatus.BAD_REQUEST,
         );
       }

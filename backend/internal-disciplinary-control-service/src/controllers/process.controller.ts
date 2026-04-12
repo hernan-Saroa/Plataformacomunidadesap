@@ -191,8 +191,7 @@ export class ProcessController {
   ): Promise<DisciplinaryProcess> {
     return await this.processService.changeStage(
       id,
-      changeStageDto.stage,
-      changeStageDto.kanbanStage,
+      changeStageDto.stageId,
       changeStageDto.kanbanNotice
     );
   }
