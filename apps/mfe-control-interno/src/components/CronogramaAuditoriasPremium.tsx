@@ -221,6 +221,18 @@ function estiloDiaFestivo(): {
   };
 }
 
+function safeNombre(val: unknown): string {
+  if (typeof val === 'string') return val;
+  if (val && typeof val === 'object') {
+    const obj = val as Record<string, unknown>;
+    if (typeof obj.nombre === 'string') return obj.nombre;
+    if (typeof obj.personaId === 'string') return obj.personaId;
+    if (typeof obj.rolOCI === 'string') return obj.rolOCI;
+    if (typeof obj.id === 'string') return obj.id;
+  }
+  return 'No asignado';
+}
+
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
@@ -760,6 +772,19 @@ function VistaMes({ fecha, auditorias, onSeleccionar }: VistaMesProps) {
   const ultimoDia = new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0);
   const diasDelMes = ultimoDia.getDate();
   const diaSemanaInicio = primerDia.getDay();
+  const [diasExpandidos, setDiasExpandidos] = useState<Set<string>>(new Set());
+
+  const toggleDiaExpandido = (diaKey: string) => {
+    setDiasExpandidos((prev) => {
+      const next = new Set(prev);
+      if (next.has(diaKey)) {
+        next.delete(diaKey);
+      } else {
+        next.add(diaKey);
+      }
+      return next;
+    });
+  };
 
   // Crear array de días del calendario (incluyendo días del mes anterior)
   const diasCalendario = [];
@@ -799,6 +824,9 @@ function VistaMes({ fecha, auditorias, onSeleccionar }: VistaMesProps) {
           const festivoStyle = esFestivoDia ? estiloDiaFestivo() : null;
 
           const esHoy = dia.toDateString() === new Date().toDateString();
+          const diaKey = `${fecha.getFullYear()}-${fecha.getMonth()}-${dia.getDate()}`;
+          const estaExpandido = diasExpandidos.has(diaKey);
+          const auditoriasAMostrar = auditoriasDelDia.slice(0, estaExpandido ? auditoriasDelDia.length : 4);
 
           return (
             <div
@@ -827,19 +855,19 @@ function VistaMes({ fecha, auditorias, onSeleccionar }: VistaMesProps) {
                 )}
               </div>
 
-              <div className="space-y-1">
+              <div className={`space-y-1 ${estaExpandido ? 'max-h-[200px]' : 'max-h-[70px]'} overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent transition-all`}>
                 {esFestivoDia && festivoStyle && (
                   <p className="text-[8px] font-bold text-center leading-tight text-red-800 mb-0.5 line-clamp-2">
                     Festivo · sin auditorías
                   </p>
                 )}
-                {auditoriasDelDia.slice(0, 2).map((aud) => {
+                {auditoriasAMostrar.map((aud) => {
                   const { colores } = obtenerEstadoVisual(aud);
                   return (
                     <button
                       key={aud.id}
                       onClick={() => onSeleccionar(aud)}
-                      className="w-full p-1.5 rounded text-left text-[10px] font-bold transition-all hover:scale-105"
+                      className="w-full p-1 rounded text-left text-[9px] font-bold transition-all hover:scale-105 leading-tight"
                       style={{
                         backgroundColor: colores.bg,
                         color: colores.text,
@@ -850,10 +878,17 @@ function VistaMes({ fecha, auditorias, onSeleccionar }: VistaMesProps) {
                     </button>
                   );
                 })}
-                {auditoriasDelDia.length > 2 && (
-                  <div className="text-[10px] text-center text-gray-500 font-semibold">
-                    +{auditoriasDelDia.length - 2}
-                  </div>
+                {auditoriasDelDia.length > 4 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleDiaExpandido(diaKey);
+                    }}
+                    className="w-full text-[9px] text-center text-blue-600 hover:text-blue-800 font-bold py-0.5 hover:bg-blue-50 rounded transition-colors"
+                    title={estaExpandido ? 'Click para contraer' : 'Click para ver todas las auditorías'}
+                  >
+                    {estaExpandido ? '▲ Contraer' : `+${auditoriasDelDia.length - 4} más`}
+                  </button>
                 )}
               </div>
             </div>
@@ -996,7 +1031,7 @@ function VistaAño({ fecha, auditorias, onSeleccionar }: VistaAñoProps) {
                       <div className="text-[10px] text-gray-500 space-y-0.5">
                         <div className="flex items-center gap-1">
                           <Users className="w-3 h-3" />
-                          <span className="truncate">{auditoria.auditorLider}</span>
+                          <span className="truncate">{safeNombre(auditoria.auditorLider)}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
@@ -1309,7 +1344,7 @@ function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaPro
             <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
               <div className="text-xs font-bold text-gray-600 mb-1">Auditor Líder</div>
               <div className="text-sm font-black text-gray-900">
-                {auditoria.auditorLider}
+                {safeNombre(auditoria.auditorLider)}
               </div>
             </div>
             <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
@@ -1333,7 +1368,7 @@ function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaPro
                     key={idx}
                     className="px-3 py-1 bg-white rounded-lg text-xs font-bold text-gray-700 border border-blue-300"
                   >
-                    {miembro}
+                    {safeNombre(miembro)}
                   </span>
                 ))}
               </div>

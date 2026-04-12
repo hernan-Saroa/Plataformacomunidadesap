@@ -14,7 +14,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Calendar, Clock, Plus, Trash2, Save, AlertCircle,
@@ -31,6 +31,7 @@ export type FrecuenciaPuntoControl =
   | 'anual' 
   | 'semestral' 
   | 'trimestral' 
+  | 'bimensual'
   | 'mensual' 
   | 'semanal';
 
@@ -42,6 +43,7 @@ export interface PuntoControl {
   nombre: string;
   descripcion: string;
   fechaProgramada: string;
+  fechaSeguimiento: string | null;
   fechaReal: string | null;
   responsable: string;
   estado: EstadoPuntoControl;
@@ -53,67 +55,88 @@ export interface PuntoControl {
 // UTILIDADES
 // ════════════════════════════════════════════════════════════════════════════
 
+function finDeMes(año: number, mes: number): Date {
+  return new Date(año, mes + 1, 0);
+}
+
+function sumarMeses(fechaStr: string, meses: number): string {
+  const d = new Date(`${fechaStr}T00:00:00`);
+  d.setMonth(d.getMonth() + meses);
+  return d.toISOString().split('T')[0];
+}
+
 function generarPuntosControlAutomaticos(
   frecuencia: FrecuenciaPuntoControl,
   fechaInicio: string,
   fechaFin: string,
-  nombreActividad: string
+  _nombreActividad: string
 ): PuntoControl[] {
   if (frecuencia === 'personalizada') return [];
 
-  const inicio = new Date(fechaInicio);
-  const fin = new Date(fechaFin);
-  const puntos: PuntoControl[] = [];
+  const inicio = new Date(`${fechaInicio}T00:00:00`);
+  const fin = new Date(`${fechaFin}T00:00:00`);
+  const candidatos: Date[] = [];
 
-  let cantidadPuntos: number;
-  let nombreFrecuencia: string;
-
-  switch (frecuencia) {
-    case 'anual':
-      cantidadPuntos = 1;
-      nombreFrecuencia = 'Anual';
-      break;
-    case 'semestral':
-      cantidadPuntos = 2;
-      nombreFrecuencia = 'Semestral';
-      break;
-    case 'trimestral':
-      cantidadPuntos = 4;
-      nombreFrecuencia = 'Trimestral';
-      break;
-    case 'mensual':
-      cantidadPuntos = 12;
-      nombreFrecuencia = 'Mensual';
-      break;
-    case 'semanal':
-      cantidadPuntos = 52;
-      nombreFrecuencia = 'Semanal';
-      break;
-    default:
-      return [];
+  if (frecuencia === 'trimestral') {
+    for (let año = inicio.getFullYear(); año <= fin.getFullYear(); año++) {
+      [2, 5, 8].forEach((mes) => {
+        const f = finDeMes(año, mes);
+        if (f > inicio && f <= fin) candidatos.push(f);
+      });
+    }
+  } else if (frecuencia === 'semestral') {
+    for (let año = inicio.getFullYear(); año <= fin.getFullYear(); año++) {
+      [5, 11].forEach((mes) => {
+        const f = finDeMes(año, mes);
+        if (f > inicio && f <= fin) candidatos.push(f);
+      });
+    }
+  } else if (frecuencia === 'bimensual') {
+    for (let año = inicio.getFullYear(); año <= fin.getFullYear(); año++) {
+      [1, 3, 5, 7, 9, 11].forEach((mes) => {
+        const f = finDeMes(año, mes);
+        if (f > inicio && f <= fin) candidatos.push(f);
+      });
+    }
+  } else if (frecuencia === 'mensual') {
+    let cursor = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
+    while (cursor <= fin) {
+      const f = finDeMes(cursor.getFullYear(), cursor.getMonth());
+      if (f > inicio && f <= fin) candidatos.push(f);
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    }
+  } else if (frecuencia === 'anual') {
+    for (let año = inicio.getFullYear(); año <= fin.getFullYear(); año++) {
+      const f = finDeMes(año, 11);
+      if (f > inicio && f <= fin) candidatos.push(f);
+    }
+  } else if (frecuencia === 'semanal') {
+    const cursor = new Date(inicio);
+    cursor.setDate(cursor.getDate() + 7);
+    while (cursor <= fin) {
+      candidatos.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 7);
+    }
   }
 
-  const duracionTotal = fin.getTime() - inicio.getTime();
-  const intervalo = duracionTotal / cantidadPuntos;
+  if (candidatos.length === 0) candidatos.push(fin);
 
-  for (let i = 0; i < cantidadPuntos; i++) {
-    const fechaPunto = new Date(inicio.getTime() + (intervalo * (i + 1)));
-    
-    puntos.push({
+  return candidatos.map((fecha, i) => {
+    const fechaProgramada = fecha.toISOString().split('T')[0];
+    return {
       id: `pc-auto-${i + 1}`,
       orden: i + 1,
-      nombre: `${nombreFrecuencia} #${i + 1}`,
-      descripcion: `Punto de control ${nombreFrecuencia.toLowerCase()} para ${nombreActividad}`,
-      fechaProgramada: fechaPunto.toISOString().split('T')[0],
+      nombre: `Corte ${i + 1}`,
+      descripcion: '',
+      fechaProgramada,
+      fechaSeguimiento: sumarMeses(fechaProgramada, 2),
       fechaReal: null,
       responsable: '',
       estado: 'pendiente',
       observaciones: '',
       evidencias: []
-    });
-  }
-
-  return puntos;
+    };
+  });
 }
 
 function formatearFecha(fecha: string): string {
@@ -132,9 +155,10 @@ interface ModalConfiguracionPuntosControlProps {
   nombreActividad: string;
   fechaInicioActividad: string;
   fechaFinActividad: string;
+  fechaCorte?: string;
   puntosControlExistentes?: PuntoControl[];
   frecuenciaActual?: FrecuenciaPuntoControl;
-  onGuardar: (puntos: PuntoControl[], frecuencia: FrecuenciaPuntoControl) => void;
+  onGuardar: (puntos: PuntoControl[], frecuencia: FrecuenciaPuntoControl, fechaCorte: string) => void;
 }
 
 export function ModalConfiguracionPuntosControl({
@@ -143,46 +167,79 @@ export function ModalConfiguracionPuntosControl({
   nombreActividad,
   fechaInicioActividad,
   fechaFinActividad,
+  fechaCorte,
   puntosControlExistentes = [],
   frecuenciaActual,
   onGuardar
 }: ModalConfiguracionPuntosControlProps) {
   const [frecuenciaSeleccionada, setFrecuenciaSeleccionada] = useState<FrecuenciaPuntoControl>(
-    frecuenciaActual || 'mensual'
+    frecuenciaActual || 'trimestral'
   );
+  const [fechaCorteLocal, setFechaCorteLocal] = useState<string>(() => fechaCorte || fechaFinActividad);
   const [puntosControl, setPuntosControl] = useState<PuntoControl[]>(puntosControlExistentes);
   const [mostrarFormNuevo, setMostrarFormNuevo] = useState(false);
   const [puntoEditando, setPuntoEditando] = useState<string | null>(null);
+  const initialized = useRef(false);
+  const manualmenteEditado = useRef(false);
+  const prevFrecuencia = useRef<FrecuenciaPuntoControl>(frecuenciaActual || 'trimestral');
   
   // Form para nuevo punto personalizado
   const [nuevoPunto, setNuevoPunto] = useState({
     nombre: '',
     descripcion: '',
-    fechaProgramada: ''
+    fechaProgramada: '',
+    fechaSeguimiento: ''
   });
 
   // Form para editar punto existente
   const [puntoEditandoData, setPuntoEditandoData] = useState({
     nombre: '',
     descripcion: '',
-    fechaProgramada: ''
+    fechaProgramada: '',
+    fechaSeguimiento: ''
   });
 
-  // Regenerar puntos cuando cambia la frecuencia
   useEffect(() => {
-    if (frecuenciaSeleccionada !== 'personalizada') {
-      const puntosGenerados = generarPuntosControlAutomaticos(
-        frecuenciaSeleccionada,
-        fechaInicioActividad,
-        fechaFinActividad,
-        nombreActividad
-      );
-      setPuntosControl(puntosGenerados);
-    } else {
-      // Mantener existentes o limpiar
-      setPuntosControl(puntosControlExistentes.length > 0 ? puntosControlExistentes : []);
+    setFechaCorteLocal(fechaCorte || fechaFinActividad);
+  }, [fechaCorte, fechaFinActividad]);
+
+  useEffect(() => {
+    if (!initialized.current) {
+      initialized.current = true;
+      prevFrecuencia.current = frecuenciaSeleccionada;
+      if (puntosControlExistentes.length === 0 && frecuenciaSeleccionada !== 'personalizada') {
+        setPuntosControl(
+          generarPuntosControlAutomaticos(
+            frecuenciaSeleccionada,
+            fechaInicioActividad,
+            fechaCorteLocal || fechaFinActividad,
+            nombreActividad
+          )
+        );
+      }
+      return;
     }
-  }, [frecuenciaSeleccionada, fechaInicioActividad, fechaFinActividad]);
+
+    const frecuenciaCambio = prevFrecuencia.current !== frecuenciaSeleccionada;
+    prevFrecuencia.current = frecuenciaSeleccionada;
+
+    if (frecuenciaSeleccionada !== 'personalizada') {
+      if (frecuenciaCambio || !manualmenteEditado.current) {
+        setPuntosControl(
+          generarPuntosControlAutomaticos(
+            frecuenciaSeleccionada,
+            fechaInicioActividad,
+            fechaCorteLocal || fechaFinActividad,
+            nombreActividad
+          )
+        );
+      }
+      if (frecuenciaCambio) manualmenteEditado.current = false;
+    } else {
+      setPuntosControl(puntosControlExistentes.length > 0 ? puntosControlExistentes : []);
+      manualmenteEditado.current = false;
+    }
+  }, [frecuenciaSeleccionada, fechaInicioActividad, fechaCorteLocal, fechaFinActividad, nombreActividad, puntosControlExistentes]);
 
   const handleAgregarPunto = () => {
     if (!nuevoPunto.nombre.trim()) {
@@ -200,6 +257,7 @@ export function ModalConfiguracionPuntosControl({
       nombre: nuevoPunto.nombre,
       descripcion: nuevoPunto.descripcion,
       fechaProgramada: nuevoPunto.fechaProgramada,
+      fechaSeguimiento: nuevoPunto.fechaSeguimiento || null,
       fechaReal: null,
       responsable: '',
       estado: 'pendiente',
@@ -212,7 +270,7 @@ export function ModalConfiguracionPuntosControl({
     ));
 
     // Reset form
-    setNuevoPunto({ nombre: '', descripcion: '', fechaProgramada: '' });
+    setNuevoPunto({ nombre: '', descripcion: '', fechaProgramada: '', fechaSeguimiento: '' });
     setMostrarFormNuevo(false);
     toast.success('Punto de control agregado');
   };
@@ -227,13 +285,14 @@ export function ModalConfiguracionPuntosControl({
     setPuntoEditandoData({
       nombre: punto.nombre,
       descripcion: punto.descripcion,
-      fechaProgramada: punto.fechaProgramada
+      fechaProgramada: punto.fechaProgramada,
+      fechaSeguimiento: punto.fechaSeguimiento || ''
     });
   };
 
   const handleCancelarEdicion = () => {
     setPuntoEditando(null);
-    setPuntoEditandoData({ nombre: '', descripcion: '', fechaProgramada: '' });
+    setPuntoEditandoData({ nombre: '', descripcion: '', fechaProgramada: '', fechaSeguimiento: '' });
   };
 
   const handleGuardarEdicion = (id: string) => {
@@ -249,13 +308,13 @@ export function ModalConfiguracionPuntosControl({
     setPuntosControl(
       puntosControl.map(p => 
         p.id === id 
-          ? { ...p, nombre: puntoEditandoData.nombre, descripcion: puntoEditandoData.descripcion, fechaProgramada: puntoEditandoData.fechaProgramada }
+          ? { ...p, nombre: puntoEditandoData.nombre, descripcion: puntoEditandoData.descripcion, fechaProgramada: puntoEditandoData.fechaProgramada, fechaSeguimiento: puntoEditandoData.fechaSeguimiento || null }
           : p
       ).sort((a, b) => new Date(a.fechaProgramada).getTime() - new Date(b.fechaProgramada).getTime())
     );
-
+    manualmenteEditado.current = true;
     setPuntoEditando(null);
-    setPuntoEditandoData({ nombre: '', descripcion: '', fechaProgramada: '' });
+    setPuntoEditandoData({ nombre: '', descripcion: '', fechaProgramada: '', fechaSeguimiento: '' });
     toast.success('Punto de control actualizado');
   };
 
@@ -280,7 +339,7 @@ export function ModalConfiguracionPuntosControl({
       return;
     }
 
-    onGuardar(puntosControl, frecuenciaSeleccionada);
+    onGuardar(puntosControl, frecuenciaSeleccionada, fechaCorteLocal);
     toast.success(`${puntosControl.length} punto${puntosControl.length !== 1 ? 's' : ''} de control configurado${puntosControl.length !== 1 ? 's' : ''}`);
     onClose();
   };
@@ -293,7 +352,8 @@ export function ModalConfiguracionPuntosControl({
     cantidad: number;
   }[] = [
     { value: 'mensual', label: 'Mensual', descripcion: '12 checkpoints', color: 'bg-blue-500', cantidad: 12 },
-    { value: 'trimestral', label: 'Trimestral', descripcion: '4 checkpoints', color: 'bg-purple-500', cantidad: 4 },
+    { value: 'bimensual', label: 'Bimensual', descripcion: '6 checkpoints', color: 'bg-indigo-500', cantidad: 6 },
+    { value: 'trimestral', label: 'Trimestral', descripcion: '3 checkpoints', color: 'bg-purple-500', cantidad: 3 },
     { value: 'semestral', label: 'Semestral', descripcion: '2 checkpoints', color: 'bg-green-500', cantidad: 2 },
     { value: 'anual', label: 'Anual', descripcion: '1 checkpoint', color: 'bg-orange-500', cantidad: 1 },
     { value: 'semanal', label: 'Semanal', descripcion: '52 checkpoints', color: 'bg-red-500', cantidad: 52 },

@@ -48,6 +48,22 @@ SERVER_URL_ENV="http://172.16.202.169"
 ENV_FILE=".env.prod"
 ENV_NETWORK_KEY="superapp-net-prod"
 ENV_CONTAINER_SUFFIX="-prod"
+FRONTEND_MFE_SERVICES=(
+    frontend
+    frontend-shell
+    frontend-mfe-estructura-org
+    frontend-mfe-gestion-profesoral
+    frontend-mfe-programas-academicos
+    frontend-mfe-gestion-personas
+    frontend-mfe-auditoria
+    frontend-mfe-reportes
+    frontend-mfe-registro-academico
+    frontend-mfe-certificados-laborales
+    frontend-mfe-firma-electronica
+    frontend-mfe-control-interno
+    frontend-mfe-control-disciplinario
+    frontend-mfe-gestion-legal
+)
 
 compose_env() {
     docker compose -f "$COMPOSE_FILE_ENV" --env-file "$ENV_FILE" "$@"
@@ -62,9 +78,172 @@ compose_env_mfe() {
 }
 
 cleanup_build_artifacts() {
-    echo -e "${YELLOW}Limpiando node_modules/dist/build locales (frontend y backend) para reducir el contexto de build...${NC}"
-    rm -rf node_modules dist build
+    echo -e "${YELLOW}Limpiando artefactos locales del backend para reducir el contexto de build...${NC}"
     find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
+}
+
+append_unique() {
+    local value="$1"
+    shift
+    local existing
+    for existing in "$@"; do
+        if [ "$existing" = "$value" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+get_git_change_range() {
+    if git rev-parse --verify ORIG_HEAD >/dev/null 2>&1; then
+        local orig_head current_head
+        orig_head=$(git rev-parse ORIG_HEAD)
+        current_head=$(git rev-parse HEAD)
+        if [ "$orig_head" != "$current_head" ]; then
+            echo "ORIG_HEAD..HEAD"
+            return 0
+        fi
+    fi
+
+    if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+        echo "HEAD~1..HEAD"
+        return 0
+    fi
+
+    return 1
+}
+
+cmd_rebuild_changed() {
+    local range="${2:-}"
+    local changed_files
+    local backend_services=()
+    local frontend_services=()
+    local changed_file service_dir service_name
+    local rebuild_all_frontend=0
+    local run_migrations=0
+
+    if [ -z "$range" ]; then
+        if ! range=$(get_git_change_range); then
+            echo -e "${RED}No fue posible determinar un rango de cambios automáticamente.${NC}"
+            echo -e "${YELLOW}Usa: $0 rebuild-changed <rango-git>${NC}"
+            echo -e "${YELLOW}Ejemplo: $0 rebuild-changed HEAD~3..HEAD${NC}"
+            exit 1
+        fi
+    fi
+
+    echo -e "${GREEN}Analizando cambios en el rango: ${range}${NC}"
+    changed_files=$(git diff --name-only "$range")
+
+    if [ -z "$changed_files" ]; then
+        echo -e "${YELLOW}No se detectaron archivos cambiados en ${range}.${NC}"
+        exit 0
+    fi
+
+    while IFS= read -r changed_file; do
+        [ -z "$changed_file" ] && continue
+
+        case "$changed_file" in
+            db/migrations/*)
+                run_migrations=1
+                ;;
+            backend/*/*)
+                service_dir=$(echo "$changed_file" | cut -d/ -f2)
+                service_name="$service_dir"
+                if ! append_unique "$service_name" "${backend_services[@]}"; then
+                    backend_services+=("$service_name")
+                fi
+                ;;
+            apps/mfe-estructura-org/*)
+                service_name="frontend-mfe-estructura-org"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-gestion-profesoral/*)
+                service_name="frontend-mfe-gestion-profesoral"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-programas-academicos/*)
+                service_name="frontend-mfe-programas-academicos"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-gestion-personas/*)
+                service_name="frontend-mfe-gestion-personas"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-auditoria/*)
+                service_name="frontend-mfe-auditoria"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-reportes/*)
+                service_name="frontend-mfe-reportes"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-registro-academico/*)
+                service_name="frontend-mfe-registro-academico"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-certificados-laborales/*)
+                service_name="frontend-mfe-certificados-laborales"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-firma-electronica/*)
+                service_name="frontend-mfe-firma-electronica"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-control-interno/*)
+                service_name="frontend-mfe-control-interno"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-control-disciplinario/*)
+                service_name="frontend-mfe-control-disciplinario"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-gestion-legal/*)
+                service_name="frontend-mfe-gestion-legal"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/shell/*)
+                service_name="frontend-shell"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            nginx.frontend.gateway.conf|Dockerfile.frontend.gateway)
+                service_name="frontend"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            nginx.frontend.static.conf|Dockerfile.frontend.app|docker-compose.frontend-mfe.yml|package.json|package-lock.json|.npmrc|tsconfig.json|tsconfig.node.json|vite.config.ts|scripts/*|packages/*|apps/enums/*|apps/hooks/*|apps/lib/*|apps/services/*|apps/data/*)
+                rebuild_all_frontend=1
+                ;;
+        esac
+    done <<< "$changed_files"
+
+    if [ $rebuild_all_frontend -eq 1 ]; then
+        frontend_services=("${FRONTEND_MFE_SERVICES[@]}")
+    fi
+
+    if [ ${#backend_services[@]} -eq 0 ] && [ ${#frontend_services[@]} -eq 0 ] && [ $run_migrations -eq 0 ]; then
+        echo -e "${YELLOW}No se detectaron servicios afectados por los cambios.${NC}"
+        exit 0
+    fi
+
+    cleanup_build_artifacts
+
+    if [ ${#backend_services[@]} -gt 0 ]; then
+        echo -e "${YELLOW}Reconstruyendo backend afectado:${NC} ${backend_services[*]}"
+        compose_env build "${backend_services[@]}"
+        compose_env up -d --no-deps "${backend_services[@]}"
+    fi
+
+    if [ ${#frontend_services[@]} -gt 0 ]; then
+        echo -e "${YELLOW}Reconstruyendo frontend afectado:${NC} ${frontend_services[*]}"
+        compose_env_mfe build "${frontend_services[@]}"
+        compose_env_mfe up -d --no-deps "${frontend_services[@]}"
+    fi
+
+    if [ $run_migrations -eq 1 ] || [ ${#backend_services[@]} -gt 0 ]; then
+        echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
+        cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
+    fi
+
+    echo -e "${GREEN}Deploy inteligente completado.${NC}"
 }
 
 resolve_mfe_service() {
@@ -97,6 +276,7 @@ usage() {
     echo "  restart   - Reiniciar todos los servicios"
     echo "  rebuild   - Reconstruir sin bajar servicios y publicar al finalizar"
     echo "  rebuild-all-mfe - Reconstruir backend + gateway + shell + todos los MFEs"
+    echo "  rebuild-changed [rango] - Reconstruir solo servicios afectados por el último pull o por un rango git"
     echo "  rebuild-frontend - Reconstruir y reiniciar solo frontend"
     echo "  rebuild-service <servicio> - Reconstruir y reiniciar solo un servicio"
     echo "  rebuild-select - Seleccionar interactivamente un servicio para rebuild"
@@ -493,6 +673,9 @@ case "$1" in
         ;;
     rebuild-all-mfe)
         cmd_rebuild_all_mfe
+        ;;
+    rebuild-changed)
+        cmd_rebuild_changed "$@"
         ;;
     rebuild-frontend)
         cmd_rebuild_frontend
