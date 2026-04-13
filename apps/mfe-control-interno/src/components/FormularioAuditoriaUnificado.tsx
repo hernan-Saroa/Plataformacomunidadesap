@@ -787,7 +787,7 @@ export function FormularioAuditoriaUnificado({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[110]"
+            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9999]"
             onClick={onClose}
           />
 
@@ -797,7 +797,7 @@ export function FormularioAuditoriaUnificado({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[111] flex items-center justify-center p-4"
+            className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
           >
             <div
               className="bg-white rounded-lg shadow-2xl w-full h-full max-h-[90vh] flex flex-col max-w-5xl"
@@ -1535,14 +1535,14 @@ function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
 
       <Card className="p-6 border-2 border-gray-200">
         <div className="space-y-4">
-          {/* Supervisor / Jefe OCI - PRIMERO */}
-          <FieldWrapper label="Supervisor / Jefe OCI" required>
+          {/* Jefe OCI / Supervisor - PRIMERO */}
+          <FieldWrapper label="Jefe OCI / Supervisor" required>
             <select
               value={formData.supervisorAsignado}
               onChange={(e) => onChange('supervisorAsignado', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">Seleccione el supervisor / jefe OCI...</option>
+              <option value="">Seleccione el jefe OCI / supervisor...</option>
               {auditores.map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
                   {auditor.nombre}
