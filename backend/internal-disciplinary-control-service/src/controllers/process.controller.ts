@@ -730,8 +730,10 @@ export class ProcessController {
         };
       });
 
-      // Mapear autos procesales a documentos
-      const documentosAutos = (proceso.autos || []).map((auto: any) => {
+      // Mapear autos procesales a documentos (solo los aprobados, firmados o notificados)
+      const documentosAutos = (proceso.autos || []).filter((auto: any) =>
+        ['APROBADO', 'FIRMADO', 'NOTIFICADO'].includes(auto.estado)
+      ).map((auto: any) => {
         // Calcular tamaño aproximado del contenido HTML
         const sizeBytes = new TextEncoder().encode(auto.contenido || '').length;
         const tamaño = sizeBytes >= 1024 * 1024
