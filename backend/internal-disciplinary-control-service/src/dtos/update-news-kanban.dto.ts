@@ -1,7 +1,7 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsNumber } from 'class-validator';
 
 export class UpdateNewsKanbanDto {
   @IsOptional()
-  @IsString()
-  kanbanStage?: string;
+  @IsNumber()
+  kanbanStage?: number;
 }

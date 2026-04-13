@@ -1,0 +1,123 @@
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { remoteApps, repoRoot, shellApp } from './mfe.config.mjs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const viteCli = path.join(repoRoot, 'node_modules', 'vite', 'bin', 'vite.js');
+const nodeBinDir = path.dirname(process.execPath);
+const apps = [
+  {
+    name: shellApp.appDir,
+    cwd: path.join(repoRoot, 'apps', shellApp.appDir),
+    kind: 'host',
+  },
+  ...remoteApps.map((app) => ({
+    name: app.appDir,
+    cwd: path.join(repoRoot, 'apps', app.appDir),
+    kind: 'remote',
+    port: app.devPort,
+  })),
+];
+
+const children = new Set();
+let shuttingDown = false;
+
+if (!process.version.startsWith('v22.')) {
+  console.error(`[dev:all] Node incompatible: ${process.version}. Usa Node 22.`);
+  process.exit(1);
+}
+
+if (!existsSync(viteCli)) {
+  console.error('[dev:all] No se encontró Vite en node_modules. Ejecuta npm install en la raíz.');
+  process.exit(1);
+}
+
+const env = {
+  ...process.env,
+  PATH: process.env.PATH?.includes(nodeBinDir)
+    ? process.env.PATH
+    : `${nodeBinDir}:${process.env.PATH || ''}`,
+};
+
+console.log(`[dev:all] Usando Node ${process.version}`);
+
+function shutdown(signal = 'SIGTERM') {
+  if (shuttingDown) {
+    return;
+  }
+
+  shuttingDown = true;
+
+  for (const child of children) {
+    if (!child.killed) {
+      child.kill(signal);
+    }
+  }
+}
+
+function runManagedProcess(appName, role, cwd, args) {
+  const child = spawn(process.execPath, [viteCli, ...args], {
+    cwd,
+    env,
+    stdio: 'inherit',
+  });
+
+  child.appName = `${appName}:${role}`;
+  children.add(child);
+
+  child.on('exit', (code, signal) => {
+    children.delete(child);
+
+    if (shuttingDown) {
+      if (children.size === 0) {
+        process.exit(code ?? 0);
+      }
+      return;
+    }
+
+    if (code !== 0) {
+      console.error(`\n[dev:all] ${child.appName} terminó con código ${code}. Cerrando los demás procesos.`);
+      shutdown();
+      process.exit(code ?? 1);
+    }
+
+    if (signal) {
+      console.error(`\n[dev:all] ${child.appName} terminó por señal ${signal}. Cerrando los demás procesos.`);
+      shutdown();
+      process.exit(1);
+    }
+  });
+}
+
+const hostApp = apps.find((app) => app.kind === 'host');
+const remoteAppProcesses = apps.filter((app) => app.kind === 'remote');
+
+for (const app of remoteAppProcesses) {
+  console.log(`[dev:all] Build inicial de ${app.name}...`);
+
+  const result = spawnSync(process.execPath, [viteCli, 'build'], {
+    cwd: app.cwd,
+    env,
+    stdio: 'inherit',
+  });
+
+  if (result.error || result.status !== 0) {
+    if (result.error) {
+      console.error(`\n[dev:all] Falló el build inicial de ${app.name}:`, result.error);
+    }
+    process.exit(result.status ?? 1);
+  }
+
+  runManagedProcess(app.name, 'watch', app.cwd, ['build', '--watch', '--emptyOutDir', 'false']);
+  runManagedProcess(app.name, 'preview', app.cwd, ['preview', '--port', String(app.port), '--strictPort']);
+}
+
+if (hostApp) {
+  runManagedProcess(hostApp.name, 'dev', hostApp.cwd, []);
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

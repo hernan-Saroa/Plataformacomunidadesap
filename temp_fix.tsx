@@ -2202,7 +2202,7 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     prioridad: (noticia as any).prioridad || 'media',
     diasPendientes: (noticia as any).diasPendientes ?? dias,
     tipo: 'noticia',
-    etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion',
+    etapaActual: mapStageToUi((noticia as any).kanbanStage) || 'Recepcion',
     // ✅ Incluir proceso asociado desde el backend
     procesoAsociado: (noticia as any).procesoAsociadoId ? {
       id: (noticia as any).procesoAsociadoId,
@@ -2255,7 +2255,7 @@ export const normalizeNoticia = (raw: any): Noticia => {
     conductas: raw.conductas || raw.conductasSeleccionadas || [],
     prioridad: raw.prioridad || 'media',
     diasPendientes: raw.diasPendientes || 0,
-    etapaActual: raw.kanbanStage || raw.etapaActual || 'Recepcion',
+    etapaActual: mapStageToUi(raw.kanbanStage) || 'Recepcion',
     estado: raw.estado || 'pendiente',
     adjuntos: raw.adjuntos || []
   };
@@ -2263,7 +2263,7 @@ export const normalizeNoticia = (raw: any): Noticia => {
 
 export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
   const stageLabelMap: Record<string, string> = { EVALUACION: 'Valoración', INDAGACION_PREVIA: 'Indagación', INVESTIGACION: 'Investigación', JUZGAMIENTO: 'Juzgamiento' };
-  let etapa = proceso.kanbanStage || proceso.etapaActual;
+    let etapa = mapStageToUi(proceso.kanbanStage) || proceso.etapaActual;
 
   // ✅ Si no hay etapa definida, usar la etapa con orden 1 de la configuración
   if (!etapa && currentStages.length > 0) {
@@ -2418,6 +2418,7 @@ export function DashboardKanbanOperativo({
 
   // ✅ NUEVO: Estado para profesionales cargados desde el backend
   const [profesionalesList, setProfesionalesList] = useState<{ id: string; nombre: string }[]>([]);
+  const [profesionalesCompletos, setProfesionalesCompletos] = useState<any[]>([]);
   const [profesionalesLoading, setProfesionalesLoading] = useState(true);
 
   // ✅ NUEVO: Estado para solicitudes de reasignación pendientes
@@ -2436,56 +2437,9 @@ export function DashboardKanbanOperativo({
         }
       }
     } catch (error) {
-      console.error('Error al cargar entidades de remisión:', error);
-    }
-  }, []);
-
-  // ✅ NUEVO: Cargar entidades de remisión desde el backend
-  const cargarEntidadesRemision = async () => {
-    setEntidadesLoading(true);
-    setEntidadesError(null);
-    try {
-      const entidades = await entidadesRemisionService.getActivas();
-      setEntidadesRemision(entidades);
-    } catch (error: any) {
-      console.error('Error al cargar entidades de remisión:', error);
-      setEntidadesError(error?.message || 'Error al cargar entidades de remisión');
-      // Fallback: intentar cargar desde localStorage si el backend falla
-      try {
-        const configString = localStorage.getItem('disciplinario-configuracion');
-        if (configString) {
-          const config = JSON.parse(configString);
-          if (config.entidadesRemision) {
-            setEntidadesRemision(config.entidadesRemision.filter((e: any) => e.activo));
-          }
-        }
-      } catch (localError) {
-        console.error('Error al cargar desde localStorage:', localError);
-      }
-    } finally {
-      setEntidadesLoading(false);
-    }
-  };
-
-  // ✅ NUEVO: Cargar profesionales desde el backend
-  const cargarProfesionales = async () => {
-    setProfesionalesLoading(true);
-    try {
-      const profesionales = await disciplinaryService.getProfesionales();
-      console.log('[DashboardKanban] Profesionales recibidos del backend:', profesionales);
-
-      // Mapear al formato esperado: { id, nombre }
-      const profesionalesFormateados = profesionales.map((p: any) => ({
-        id: p.id,
-        nombre: p.nombreCompleto || p.nombre || p.email || `Profesional ${p.id}`
-      }));
-
-      console.log('[DashboardKanban] Profesionales formateados:', profesionalesFormateados);
-      setProfesionalesList(profesionalesFormateados);
-    } catch (error: any) {
-      console.error('Error al cargar profesionales:', error);
-      // Fallback vacío si falla
+      console.error('Error cargando profesionales:', error);
       setProfesionalesList([]);
+      setProfesionalesCompletos([]);
     } finally {
       setProfesionalesLoading(false);
     }
@@ -2628,7 +2582,7 @@ export function DashboardKanbanOperativo({
     const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
 
     // ✅ OBTENER ETAPA: usar kanbanStage del backend, o buscar en stages, o usar primera etapa config
-    let etapaRaw = (noticia as any).kanbanStage || (noticia as any).etapaActual;
+    let etapaRaw = mapStageToUi((noticia as any).kanbanStage) || (noticia as any).etapaActual;
     let etapaNormalizada: string;
 
     if (etapaRaw) {
@@ -2718,14 +2672,14 @@ export function DashboardKanbanOperativo({
       conductas: raw.conductas || raw.conductasSeleccionadas || [],
       prioridad: raw.prioridad || 'media',
       diasPendientes: raw.diasPendientes || 0,
-      etapaActual: raw.kanbanStage || raw.etapaActual || 'Recepción',
+      etapaActual: mapStageToUi(raw.kanbanStage) || 'Recepción',
       estado: raw.estado || 'pendiente'
     };
   };
 
   // Transformar proceso desde API al formato interno
   const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
-    let etapa = proceso.kanbanStage || proceso.etapaActual;
+  let etapa = mapStageToUi(proceso.kanbanStage) || proceso.etapaActual;
 
     // ✅ Si no hay etapa definida, usar la etapa con orden 1 de la configuración
     if (!etapa && currentStages.length > 0) {
@@ -5428,11 +5382,11 @@ export function DashboardKanbanOperativo({
             <ModalSolicitarReasignacion
               key="modal-solicitar-reasignacion"
               proceso={itemSeleccionado}
+              profesionales={profesionalesCompletos}
               onClose={() => {
                 setModalActivo(null);
                 setItemSeleccionado(null);
               }}
-              onSolicitar={handleConfirmarSolicitudReasignacion}
             />
           )}
 

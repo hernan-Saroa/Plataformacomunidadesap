@@ -2,6 +2,10 @@
     "name": "PlataformaComUNIdadESAP",
     "version": "0.1.0",
     "private": true,
+    "workspaces": [
+        "apps/*",
+        "packages/*"
+    ],
     "dependencies": {
         "@dnd-kit/core": "*",
         "@dnd-kit/sortable": "*",
@@ -51,6 +55,7 @@
         "jspdf": "*",
         "jspdf-autotable": "^5.0.7",
         "jsqr": "*",
+        "lodash": "^4.18.1",
         "lucide-react": "^0.487.0",
         "motion": "*",
         "pdfjs-dist": "3.11.174",
@@ -84,7 +89,10 @@
         "vite": "6.3.5"
     },
     "scripts": {
-        "dev": "vite",
-        "build": "vite build"
+        "dev": "npm run dev -w @esap-mfe/shell",
+        "dev:all": "node scripts/dev-all.mjs",
+        "build": "node scripts/build-frontends.mjs",
+        "build:app": "node scripts/build-frontend-app.mjs",
+        "build:shell": "npm run build -w @esap-mfe/shell"
     }
 }

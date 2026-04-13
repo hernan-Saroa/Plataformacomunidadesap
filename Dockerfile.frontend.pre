@@ -7,14 +7,11 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copiar archivos de dependencias primero (para aprovechar cache de Docker)
-COPY package.json package-lock.json* ./
+# Copiar el frontend completo para que npm detecte todos los workspaces del monorepo
+COPY . .
 
 # Instalar dependencias (cachea npm para rebuilds más rápidos)
 RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps
-
-# Copiar código fuente
-COPY . .
 
 # Argumento para la URL del API (se pasa en build time)
 ARG VITE_API_URL=http://172.16.202.222/services
@@ -44,7 +41,6 @@ FROM nginx:alpine AS production
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copiar archivos de build desde el stage anterior
-# vite.config.ts tiene outDir: 'build'
 COPY --from=builder /app/build /usr/share/nginx/html
 
 # Exponer puerto 80

@@ -9,12 +9,33 @@ import {
   Max,
   ArrayMinSize,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { RolOCIG } from '../entities/configuracion-profesional-ocig.entity';
 
-export class CreateConfiguracionProfesionalOCIGDto {
-  @IsInt()
-  idTercero: number;
+// Mapa de valores frontend → enum backend
+const ROL_MAP: Record<string, RolOCIG> = {
+  'Jefe OCI':       RolOCIG.JEFE_OCIG,
+  'Jefe OCIG':      RolOCIG.JEFE_OCIG,
+  'Auditor Sénior': RolOCIG.AUDITOR_SENIOR,
+  'Auditor Senior': RolOCIG.AUDITOR_SENIOR,
+  'Auditor':        RolOCIG.AUDITOR,
+  'Auditor Júnior': RolOCIG.AUDITOR_JUNIOR,
+  'Auditor Junior': RolOCIG.AUDITOR_JUNIOR,
+  'Apoyo Técnico':  RolOCIG.APOYO_TECNICO,
+  'Apoyo Tecnico':  RolOCIG.APOYO_TECNICO,
+};
 
+export class CreateConfiguracionProfesionalOCIGDto {
+  // Acepta UUID (nuevo) o string numérico legacy — se guarda tal cual en VARCHAR(36)
+  @Transform(({ value }) => String(value ?? '').trim())
+  @IsString()
+  idTercero: string;
+
+  // Acepta tanto rolOcig como rolOCI (alias del frontend)
+  @Transform(({ value, obj }) => {
+    const raw = value ?? obj['rolOCI'] ?? '';
+    return ROL_MAP[raw] ?? raw;
+  })
   @IsEnum(RolOCIG)
   rolOcig: RolOCIG;
 
@@ -46,6 +67,11 @@ export class CreateConfiguracionProfesionalOCIGDto {
 
 export class UpdateConfiguracionProfesionalOCIGDto {
   @IsOptional()
+  @Transform(({ value, obj }) => {
+    const raw = value ?? obj['rolOCI'] ?? undefined;
+    if (!raw) return undefined;
+    return ROL_MAP[raw] ?? raw;
+  })
   @IsEnum(RolOCIG)
   rolOcig?: RolOCIG;
 
@@ -81,7 +107,7 @@ export class UpdateConfiguracionProfesionalOCIGDto {
 
 export class ConfiguracionProfesionalOCIGResponseDto {
   id: string;
-  idTercero: number;
+  idTercero: string;
   rolOcig: RolOCIG;
   especialidades: string[];
   capacidadMaximaAuditorias: number;
@@ -97,4 +123,5 @@ export class ConfiguracionProfesionalOCIGResponseDto {
   nombre?: string;
   email?: string;
   identificacion?: string;
+  roles?: string[];
 }

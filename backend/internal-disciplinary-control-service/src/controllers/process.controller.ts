@@ -23,6 +23,7 @@ import {
 } from '@nestjs/swagger';
 import { ProcessService } from '../services/process.service';
 import { NewsService } from '../services/news.service';
+import { AutoService } from '../services/auto.service';
 import {
   CreateDisciplinaryProcessDto,
   DisciplinaryProcessResponseDto,
@@ -72,6 +73,7 @@ export class ProcessController {
     private processService: ProcessService,
     private newsService: NewsService,
     private storageService: StorageService,
+    private autoService: AutoService,
     private httpService: HttpService,
   ) { }
 
@@ -189,8 +191,7 @@ export class ProcessController {
   ): Promise<DisciplinaryProcess> {
     return await this.processService.changeStage(
       id,
-      changeStageDto.stage,
-      changeStageDto.kanbanStage,
+      changeStageDto.stageId,
       changeStageDto.kanbanNotice
     );
   }
@@ -844,7 +845,19 @@ export class ProcessController {
     @Res() res: Response,
   ) {
     const evidencias = await this.processService.getEvidenceByProcessId(processId);
-    const documento = evidencias.find(e => e.id === documentId);
+    let documento: any = evidencias.find(e => e.id === documentId);
+
+    if (!documento) {
+      // Buscar en autos antes de retornar 404
+      try {
+        const auto = await this.autoService.findById(documentId, []);
+        if (auto) {
+          // documentUrl viene como '/files/abc.pdf'; getFullPath espera solo 'abc.pdf'
+          const autoUrl = auto.documentUrl ? auto.documentUrl.replace(/^\/files\//, '') : null;
+          documento = { url: autoUrl, filename: auto.documentName, nombreDocumento: auto.documentName, fileType: auto.documentType };
+        }
+      } catch (_) {}
+    }
 
     if (!documento) {
       throw new HttpException('Documento no encontrado', HttpStatus.NOT_FOUND);

@@ -42,6 +42,230 @@ else
     exit 1
 fi
 
+COMPOSE_FILE_ENV="docker-compose.qa.yml"
+COMPOSE_FILE_MFE="docker-compose.frontend-mfe.yml"
+SERVER_URL_ENV="http://135.237.81.133"
+ENV_FILE=".env.qa"
+ENV_NETWORK_KEY="superapp-net-qa"
+ENV_CONTAINER_SUFFIX="-qa"
+FRONTEND_MFE_SERVICES=(
+    frontend
+    frontend-shell
+    frontend-mfe-estructura-org
+    frontend-mfe-gestion-profesoral
+    frontend-mfe-programas-academicos
+    frontend-mfe-gestion-personas
+    frontend-mfe-auditoria
+    frontend-mfe-reportes
+    frontend-mfe-registro-academico
+    frontend-mfe-certificados-laborales
+    frontend-mfe-firma-electronica
+    frontend-mfe-control-interno
+    frontend-mfe-control-disciplinario
+    frontend-mfe-gestion-legal
+)
+
+compose_env() {
+    docker compose -f "$COMPOSE_FILE_ENV" --env-file "$ENV_FILE" "$@"
+}
+
+compose_env_mfe() {
+    FRONTEND_NETWORK_KEY="$ENV_NETWORK_KEY" \
+    FRONTEND_CONTAINER_SUFFIX="$ENV_CONTAINER_SUFFIX" \
+    FRONTEND_VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_ENV/services}" \
+    FRONTEND_VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV:9000}" \
+    docker compose -f "$COMPOSE_FILE_ENV" -f "$COMPOSE_FILE_MFE" --env-file "$ENV_FILE" "$@"
+}
+
+cleanup_build_artifacts() {
+    echo -e "${YELLOW}Limpiando artefactos locales del backend para reducir el contexto de build...${NC}"
+    find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
+}
+
+append_unique() {
+    local value="$1"
+    shift
+    local existing
+    for existing in "$@"; do
+        if [ "$existing" = "$value" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+get_git_change_range() {
+    if git rev-parse --verify ORIG_HEAD >/dev/null 2>&1; then
+        local orig_head current_head
+        orig_head=$(git rev-parse ORIG_HEAD)
+        current_head=$(git rev-parse HEAD)
+        if [ "$orig_head" != "$current_head" ]; then
+            echo "ORIG_HEAD..HEAD"
+            return 0
+        fi
+    fi
+
+    if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+        echo "HEAD~1..HEAD"
+        return 0
+    fi
+
+    return 1
+}
+
+cmd_rebuild_changed() {
+    local range="${2:-}"
+    local changed_files
+    local backend_services=()
+    local frontend_services=()
+    local changed_file service_dir service_name
+    local rebuild_all_frontend=0
+    local run_migrations=0
+
+    if [ -z "$range" ]; then
+        if ! range=$(get_git_change_range); then
+            echo -e "${RED}No fue posible determinar un rango de cambios automáticamente.${NC}"
+            echo -e "${YELLOW}Usa: $0 rebuild-changed <rango-git>${NC}"
+            echo -e "${YELLOW}Ejemplo: $0 rebuild-changed HEAD~3..HEAD${NC}"
+            exit 1
+        fi
+    fi
+
+    echo -e "${GREEN}Analizando cambios en el rango: ${range}${NC}"
+    changed_files=$(git diff --name-only "$range")
+
+    if [ -z "$changed_files" ]; then
+        echo -e "${YELLOW}No se detectaron archivos cambiados en ${range}.${NC}"
+        exit 0
+    fi
+
+    while IFS= read -r changed_file; do
+        [ -z "$changed_file" ] && continue
+
+        case "$changed_file" in
+            db/migrations/*)
+                run_migrations=1
+                ;;
+            backend/*/*)
+                service_dir=$(echo "$changed_file" | cut -d/ -f2)
+                service_name="$service_dir"
+                if ! append_unique "$service_name" "${backend_services[@]}"; then
+                    backend_services+=("$service_name")
+                fi
+                ;;
+            apps/mfe-estructura-org/*)
+                service_name="frontend-mfe-estructura-org"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-gestion-profesoral/*)
+                service_name="frontend-mfe-gestion-profesoral"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-programas-academicos/*)
+                service_name="frontend-mfe-programas-academicos"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-gestion-personas/*)
+                service_name="frontend-mfe-gestion-personas"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-auditoria/*)
+                service_name="frontend-mfe-auditoria"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-reportes/*)
+                service_name="frontend-mfe-reportes"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-registro-academico/*)
+                service_name="frontend-mfe-registro-academico"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-certificados-laborales/*)
+                service_name="frontend-mfe-certificados-laborales"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-firma-electronica/*)
+                service_name="frontend-mfe-firma-electronica"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-control-interno/*)
+                service_name="frontend-mfe-control-interno"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-control-disciplinario/*)
+                service_name="frontend-mfe-control-disciplinario"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-gestion-legal/*)
+                service_name="frontend-mfe-gestion-legal"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/shell/*)
+                service_name="frontend-shell"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            nginx.frontend.gateway.conf|Dockerfile.frontend.gateway)
+                service_name="frontend"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            nginx.frontend.static.conf|Dockerfile.frontend.app|docker-compose.frontend-mfe.yml|package.json|package-lock.json|.npmrc|tsconfig.json|tsconfig.node.json|vite.config.ts|scripts/*|packages/*|apps/enums/*|apps/hooks/*|apps/lib/*|apps/services/*|apps/data/*)
+                rebuild_all_frontend=1
+                ;;
+        esac
+    done <<< "$changed_files"
+
+    if [ $rebuild_all_frontend -eq 1 ]; then
+        frontend_services=("${FRONTEND_MFE_SERVICES[@]}")
+    fi
+
+    if [ ${#backend_services[@]} -eq 0 ] && [ ${#frontend_services[@]} -eq 0 ] && [ $run_migrations -eq 0 ]; then
+        echo -e "${YELLOW}No se detectaron servicios afectados por los cambios.${NC}"
+        exit 0
+    fi
+
+    cleanup_build_artifacts
+
+    if [ ${#backend_services[@]} -gt 0 ]; then
+        echo -e "${YELLOW}Reconstruyendo backend afectado:${NC} ${backend_services[*]}"
+        compose_env build "${backend_services[@]}"
+        compose_env up -d --no-deps "${backend_services[@]}"
+    fi
+
+    if [ ${#frontend_services[@]} -gt 0 ]; then
+        echo -e "${YELLOW}Reconstruyendo frontend afectado:${NC} ${frontend_services[*]}"
+        compose_env_mfe build "${frontend_services[@]}"
+        compose_env_mfe up -d --no-deps "${frontend_services[@]}"
+    fi
+
+    if [ $run_migrations -eq 1 ] || [ ${#backend_services[@]} -gt 0 ]; then
+        echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
+        cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
+    fi
+
+    echo -e "${GREEN}Deploy inteligente completado.${NC}"
+}
+
+resolve_mfe_service() {
+    case "$1" in
+        gateway|frontend) echo "frontend" ;;
+        shell|frontend-shell) echo "frontend-shell" ;;
+        estructura-org|mfe-estructura-org|frontend-mfe-estructura-org) echo "frontend-mfe-estructura-org" ;;
+        gestion-profesoral|mfe-gestion-profesoral|frontend-mfe-gestion-profesoral) echo "frontend-mfe-gestion-profesoral" ;;
+        programas-academicos|mfe-programas-academicos|frontend-mfe-programas-academicos) echo "frontend-mfe-programas-academicos" ;;
+        gestion-personas|mfe-gestion-personas|frontend-mfe-gestion-personas) echo "frontend-mfe-gestion-personas" ;;
+        auditoria|mfe-auditoria|frontend-mfe-auditoria) echo "frontend-mfe-auditoria" ;;
+        reportes|mfe-reportes|frontend-mfe-reportes) echo "frontend-mfe-reportes" ;;
+        registro-academico|mfe-registro-academico|frontend-mfe-registro-academico) echo "frontend-mfe-registro-academico" ;;
+        certificados-laborales|mfe-certificados-laborales|frontend-mfe-certificados-laborales) echo "frontend-mfe-certificados-laborales" ;;
+        firma-electronica|mfe-firma-electronica|frontend-mfe-firma-electronica) echo "frontend-mfe-firma-electronica" ;;
+        control-interno|mfe-control-interno|frontend-mfe-control-interno) echo "frontend-mfe-control-interno" ;;
+        control-disciplinario|mfe-control-disciplinario|frontend-mfe-control-disciplinario) echo "frontend-mfe-control-disciplinario" ;;
+        gestion-legal|mfe-gestion-legal|frontend-mfe-gestion-legal) echo "frontend-mfe-gestion-legal" ;;
+        *) return 1 ;;
+    esac
+}
+
 # Función para mostrar uso
 usage() {
     echo "Uso: $0 [comando]"
@@ -51,9 +275,18 @@ usage() {
     echo "  down      - Detener todos los servicios"
     echo "  restart   - Reiniciar todos los servicios"
     echo "  rebuild   - Reconstruir sin bajar servicios y publicar al finalizar"
+    echo "  rebuild-all-mfe - Reconstruir backend + gateway + shell + todos los MFEs"
+    echo "  rebuild-changed [rango] - Reconstruir solo servicios afectados por el último pull o por un rango git"
     echo "  rebuild-frontend - Reconstruir y reiniciar solo frontend"
     echo "  rebuild-service <servicio> - Reconstruir y reiniciar solo un servicio"
     echo "  rebuild-select - Seleccionar interactivamente un servicio para rebuild"
+    echo "  up-mfe    - Iniciar frontend desacoplado: gateway + shell + MFEs"
+    echo "  down-mfe  - Detener frontend desacoplado"
+    echo "  restart-mfe - Reiniciar frontend desacoplado"
+    echo "  status-mfe - Ver estado de gateway, shell y MFEs"
+    echo "  logs-mfe [servicio] - Ver logs del stack MFE o de un MFE puntual"
+    echo "  rebuild-mfe <nombre> - Reconstruir y reiniciar gateway, shell o un MFE"
+    echo "  rebuild-mfe-select - Seleccionar interactivamente un servicio frontend MFE"
     echo "  logs      - Ver logs de todos los servicios"
     echo "  status    - Ver estado de los servicios"
     echo "  clean     - Limpiar contenedores e imágenes no usados (NO borra volúmenes)"
@@ -67,7 +300,7 @@ usage() {
 # Comando: up
 cmd_up() {
     echo -e "${GREEN}Iniciando servicios QA...${NC}"
-    docker compose -f docker-compose.qa.yml --env-file .env.qa up -d
+    compose_env up -d
     echo -e "${GREEN}Servicios QA iniciados exitosamente${NC}"
 
     # Esperar a que la base de datos esté lista
@@ -88,14 +321,14 @@ cmd_up() {
 # Comando: down
 cmd_down() {
     echo -e "${YELLOW}Deteniendo servicios QA...${NC}"
-    docker compose -f docker-compose.qa.yml down
+    compose_env down
     echo -e "${GREEN}Servicios QA detenidos${NC}"
 }
 
 # Comando: restart
 cmd_restart() {
     echo -e "${YELLOW}Reiniciando servicios QA...${NC}"
-    docker compose -f docker-compose.qa.yml --env-file .env.qa restart
+    compose_env restart
     echo -e "${GREEN}Servicios QA reiniciados${NC}"
 }
 
@@ -104,26 +337,43 @@ cmd_rebuild() {
     echo -e "${YELLOW}Reconstruyendo servicios QA (sin detener la versión actual)...${NC}"
     echo -e "${YELLOW}La aplicación seguirá disponible mientras termina el build.${NC}"
 
-    echo -e "${YELLOW}Limpiando node_modules/dist/build locales (frontend y backend) para reducir el contexto de build...${NC}"
-    rm -rf node_modules dist build
-    find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
+    cleanup_build_artifacts
 
     # Construir imágenes con los contenedores actuales activos.
-    docker compose -f docker-compose.qa.yml --env-file .env.qa build
+    compose_env build
 
     # Publicar nueva versión una vez terminado el build.
-    docker compose -f docker-compose.qa.yml --env-file .env.qa up -d
+    compose_env up -d
     # Ejecutar migraciones automáticamente
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
     echo -e "${GREEN}Nueva versión publicada. Servicios QA reconstruidos y reiniciados.${NC}"
 }
 
+cmd_rebuild_all_mfe() {
+    if [ ! -f "$COMPOSE_FILE_MFE" ]; then
+        echo -e "${RED}Error: Archivo ${COMPOSE_FILE_MFE} no encontrado${NC}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}Reconstruyendo backend + gateway + shell + todos los MFEs QA...${NC}"
+    echo -e "${YELLOW}La aplicación seguirá disponible mientras termina el build.${NC}"
+
+    cleanup_build_artifacts
+
+    compose_env_mfe build
+    compose_env_mfe up -d
+
+    echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
+    cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
+    echo -e "${GREEN}App completa QA publicada: microservicios + microfrontends.${NC}"
+}
+
 # Comando: rebuild-frontend (rápido)
 cmd_rebuild_frontend() {
     echo -e "${YELLOW}Reconstruyendo solo frontend QA...${NC}"
-    docker compose -f docker-compose.qa.yml --env-file .env.qa build frontend
-    docker compose -f docker-compose.qa.yml --env-file .env.qa up -d --no-deps frontend
+    compose_env build frontend
+    compose_env up -d --no-deps frontend
     echo -e "${GREEN}Frontend QA reconstruido y reiniciado${NC}"
 }
 
@@ -137,18 +387,18 @@ cmd_rebuild_service() {
     fi
 
     echo -e "${YELLOW}Reconstruyendo servicio QA: ${service}${NC}"
-    docker compose -f docker-compose.qa.yml --env-file .env.qa build "$service"
-    docker compose -f docker-compose.qa.yml --env-file .env.qa up -d --no-deps "$service"
+    compose_env build "$service"
+    compose_env up -d --no-deps "$service"
     echo -e "${GREEN}Servicio QA ${service} reconstruido y reiniciado${NC}"
 }
 
 # Comando: rebuild-select (selección interactiva de servicio)
 cmd_rebuild_select() {
     echo -e "${YELLOW}Cargando servicios QA disponibles...${NC}"
-    mapfile -t services < <(docker compose -f docker-compose.qa.yml --env-file .env.qa config --services)
+    mapfile -t services < <(compose_env config --services)
 
     if [ ${#services[@]} -eq 0 ]; then
-        echo -e "${RED}No se encontraron servicios en docker-compose.qa.yml${NC}"
+        echo -e "${RED}No se encontraron servicios en ${COMPOSE_FILE_ENV}${NC}"
         exit 1
     fi
 
@@ -166,15 +416,102 @@ cmd_rebuild_select() {
     done
 }
 
+cmd_up_mfe() {
+    if [ ! -f "$COMPOSE_FILE_MFE" ]; then
+        echo -e "${RED}Error: Archivo ${COMPOSE_FILE_MFE} no encontrado${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}Iniciando frontend desacoplado QA...${NC}"
+    compose_env_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    echo -e "${GREEN}Frontend MFE QA iniciado exitosamente${NC}"
+}
+
+cmd_down_mfe() {
+    echo -e "${YELLOW}Deteniendo frontend desacoplado QA...${NC}"
+    compose_env_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    echo -e "${GREEN}Frontend MFE QA detenido${NC}"
+}
+
+cmd_restart_mfe() {
+    echo -e "${YELLOW}Reiniciando frontend desacoplado QA...${NC}"
+    compose_env_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    echo -e "${GREEN}Frontend MFE QA reiniciado${NC}"
+}
+
+cmd_status_mfe() {
+    echo -e "${GREEN}Estado del frontend desacoplado QA:${NC}"
+    compose_env_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+}
+
+cmd_logs_mfe() {
+    local input_service="$1"
+    if [ -n "$input_service" ]; then
+        local resolved_service
+        if ! resolved_service=$(resolve_mfe_service "$input_service"); then
+            echo -e "${RED}Servicio MFE no reconocido: ${input_service}${NC}"
+            exit 1
+        fi
+        compose_env_mfe logs -f "$resolved_service"
+        return
+    fi
+    compose_env_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+}
+
+cmd_rebuild_mfe() {
+    local input_service="$1"
+    local resolved_service
+    if [ -z "$input_service" ]; then
+        echo -e "${RED}Error: Debes indicar el microfrontend, shell o gateway${NC}"
+        exit 1
+    fi
+    if ! resolved_service=$(resolve_mfe_service "$input_service"); then
+        echo -e "${RED}Servicio MFE no reconocido: ${input_service}${NC}"
+        exit 1
+    fi
+    echo -e "${YELLOW}Reconstruyendo servicio frontend MFE QA: ${resolved_service}${NC}"
+    compose_env_mfe build "$resolved_service"
+    compose_env_mfe up -d --no-deps "$resolved_service"
+    echo -e "${GREEN}Servicio ${resolved_service} reconstruido y reiniciado${NC}"
+}
+
+cmd_rebuild_mfe_select() {
+    local services=(
+        "frontend"
+        "frontend-shell"
+        "frontend-mfe-estructura-org"
+        "frontend-mfe-gestion-profesoral"
+        "frontend-mfe-programas-academicos"
+        "frontend-mfe-gestion-personas"
+        "frontend-mfe-auditoria"
+        "frontend-mfe-reportes"
+        "frontend-mfe-registro-academico"
+        "frontend-mfe-certificados-laborales"
+        "frontend-mfe-firma-electronica"
+        "frontend-mfe-control-interno"
+        "frontend-mfe-control-disciplinario"
+        "frontend-mfe-gestion-legal"
+    )
+    echo -e "${GREEN}Selecciona un servicio frontend MFE QA para rebuild:${NC}"
+    PS3="Ingresa el número (o Ctrl+C para cancelar): "
+    select selected in "${services[@]}"; do
+        if [ -n "$selected" ]; then
+            cmd_rebuild_mfe "$selected"
+            break
+        else
+            echo -e "${RED}Opción inválida. Intenta de nuevo.${NC}"
+        fi
+    done
+}
+
 # Comando: logs
 cmd_logs() {
-    docker compose -f docker-compose.qa.yml logs -f
+    compose_env logs -f
 }
 
 # Comando: status
 cmd_status() {
     echo -e "${GREEN}Estado de los servicios QA:${NC}"
-    docker compose -f docker-compose.qa.yml ps
+    compose_env ps
 }
 
 # Comando: clean
@@ -309,13 +646,13 @@ cmd_db_reset() {
     cmd_db_backup
 
     echo -e "${YELLOW}Deteniendo servicios...${NC}"
-    docker compose -f docker-compose.qa.yml down
+    compose_env down
 
     echo -e "${YELLOW}Eliminando volumen de base de datos...${NC}"
     docker volume rm esap-pgdata-qa 2>/dev/null || docker volume rm codigosuperappesap_pgdata-qa 2>/dev/null || true
 
     echo -e "${YELLOW}Reiniciando servicios (la DB se recreará)...${NC}"
-    docker compose -f docker-compose.qa.yml --env-file .env.qa up -d
+    compose_env up -d
 
     echo -e "${GREEN}Base de datos QA reiniciada con datos iniciales${NC}"
 }
@@ -334,6 +671,12 @@ case "$1" in
     rebuild)
         cmd_rebuild
         ;;
+    rebuild-all-mfe)
+        cmd_rebuild_all_mfe
+        ;;
+    rebuild-changed)
+        cmd_rebuild_changed "$@"
+        ;;
     rebuild-frontend)
         cmd_rebuild_frontend
         ;;
@@ -342,6 +685,27 @@ case "$1" in
         ;;
     rebuild-select)
         cmd_rebuild_select
+        ;;
+    up-mfe)
+        cmd_up_mfe
+        ;;
+    down-mfe)
+        cmd_down_mfe
+        ;;
+    restart-mfe)
+        cmd_restart_mfe
+        ;;
+    status-mfe)
+        cmd_status_mfe
+        ;;
+    logs-mfe)
+        cmd_logs_mfe "$2"
+        ;;
+    rebuild-mfe)
+        cmd_rebuild_mfe "$2"
+        ;;
+    rebuild-mfe-select)
+        cmd_rebuild_mfe_select
         ;;
     logs)
         cmd_logs
