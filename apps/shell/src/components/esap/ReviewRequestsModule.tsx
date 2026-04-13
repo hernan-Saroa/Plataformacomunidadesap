@@ -1715,7 +1715,7 @@ export function ReviewRequestsModule() {
                                   <div>
                                     <p className="text-xs text-gray-600">NIT</p>
                                     <p className="font-semibold text-gray-900">
-                                      {request.requester.companyNit || 'No informado'}
+                                      {request.requester.companyNit || ''}
                                     </p>
                                   </div>
                                 </div>
