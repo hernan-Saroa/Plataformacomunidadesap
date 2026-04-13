@@ -2145,7 +2145,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                   <div>
                                     <p className="text-xs text-gray-600">NIT</p>
                                     <p className="font-semibold text-gray-900">
-                                      {cert.requester.companyNit || 'No informado'}
+                                      {cert.requester.companyNit || ''}
                                     </p>
                                   </div>
                                 </div>

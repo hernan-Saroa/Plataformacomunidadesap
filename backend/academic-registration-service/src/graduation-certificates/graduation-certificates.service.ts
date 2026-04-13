@@ -474,7 +474,7 @@ export class GraduationCertificatesService {
               request.companyName ||
               requesterName ||
               'Empresa solicitante',
-            companyNit: companyNit || 'No informado',
+            companyNit: companyNit || request.companyNit,
             contactPerson: contactPerson || 'No informado',
             contactEmail: requesterEmail || dto.requesterEmail,
             requestDate: request.requestDate || new Date(),
@@ -1750,7 +1750,7 @@ export class GraduationCertificatesService {
         .replace(/'/g, '&#39;');
 
     const companyName = data.companyName || 'Empresa solicitante';
-    const companyNit = data.companyNit || 'No informado';
+    const companyNit = (data.companyNit || '').trim();
     const contactPerson = data.contactPerson || 'No informado';
     const contactEmail = data.contactEmail || 'No informado';
     const certificateNumber = data.certificateNumber || 'N/A';
@@ -1773,9 +1773,11 @@ export class GraduationCertificatesService {
     }
 
     const subject = `Notificacion de solicitud de certificado - ${companyName}`;
+    const nitTextLine = companyNit ? `NIT: ${companyNit}.\n` : '';
     const text =
       `Hola ${data.graduateName || 'graduado'},\n` +
-      `La empresa ${companyName} (NIT ${companyNit}) solicito un certificado de egresado a tu nombre.\n` +
+      `La empresa ${companyName} solicito un certificado de egresado a tu nombre.\n` +
+      nitTextLine +
       `Fecha y hora de la solicitud: ${formattedDate}.\n` +
       `Persona de contacto: ${contactPerson}.\n` +
       `Correo de contacto: ${contactEmail}.\n` +
@@ -1784,11 +1786,19 @@ export class GraduationCertificatesService {
 
     const safeGraduateName = safe(data.graduateName || 'Graduado');
     const safeCompanyName = safe(companyName);
-    const safeCompanyNit = safe(companyNit);
+    const safeCompanyNit = companyNit ? safe(companyNit) : '';
     const safeContactPerson = safe(contactPerson);
     const safeContactEmail = safe(contactEmail);
     const safeCertificateNumber = safe(certificateNumber);
     const safeFormattedDate = safe(formattedDate);
+    const nitHtmlRow = companyNit
+      ? `
+          <tr>
+            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
+              <strong>NIT:</strong> ${safeCompanyNit}
+            </td>
+          </tr>`
+      : '';
 
     const html = `
       <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
@@ -1813,11 +1823,7 @@ export class GraduationCertificatesService {
               <strong>Empresa:</strong> ${safeCompanyName}
             </td>
           </tr>
-          <tr>
-            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
-              <strong>NIT:</strong> ${safeCompanyNit}
-            </td>
-          </tr>
+          ${nitHtmlRow}
           <tr>
             <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
               <strong>Persona de contacto:</strong> ${safeContactPerson}
