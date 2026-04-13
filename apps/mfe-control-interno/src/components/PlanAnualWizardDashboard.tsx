@@ -9,7 +9,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
   TrendingUp, FileCheck, AlertCircle, BookOpen, Download, FileText,
-  Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, FileSpreadsheet, RefreshCw
+  Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, FileSpreadsheet, RefreshCw, Settings,
+  ChevronDown, ChevronUp, Calendar, Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModalGestionAdjuntos } from './ModalGestionAdjuntosActividades';
@@ -22,7 +23,7 @@ import {
 } from './ModalConfiguracionPuntosControl';
 // Hook para sincronizar evidencias con backend y API de auditores
 import { useSaveEvidencias, actividadesApi, planAnualApi, type CreateActividadDto } from './services/plan-anual';
-import { configuracionesProfesionalesOCIGApi } from './services/api';
+import { configuracionesProfesionalesOCIApi } from './services/api';
 // Servicio para vinculación de auditorías con Rol 4
 import { controlInternoService } from '../../../services/api/controlInternoService';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
@@ -68,14 +69,14 @@ interface Actividad {
   // ═══════════════════════════════════════════════════════════════════════
   configuracionEvidencias?: ConfiguracionEvidencias;
   
-  // Sistema de autorización del Jefe OCIG - Configurado en creación del plan
-  requiereAutorizacionJefeOCIG?: boolean; // Indica si requiere autorización del Jefe OCIG para completar
-  autorizadaPorJefeOCIG?: boolean; // Indica si fue autorizada por el Jefe OCIG
-  fechaAutorizacion?: string; // Fecha de autorización del Jefe OCIG
-  observacionesJefeOCIG?: string; // Observaciones del Jefe OCIG al autorizar
+  // Sistema de autorización del Jefe OCI - Configurado en creación del plan
+  requiereAutorizacionJefeOCI?: boolean; // Indica si requiere autorización del Jefe OCI para completar
+  autorizadaPorJefeOCI?: boolean; // Indica si fue autorizada por el Jefe OCI
+  fechaAutorizacion?: string; // Fecha de autorización del Jefe OCI
+  observacionesJefeOCI?: string; // Observaciones del Jefe OCI al autorizar
   
   // Sistema de verificación del Director (legacy)
-  requiereVerificacionDirector: boolean; // Indica si requiere verificación del Director OCIG
+  requiereVerificacionDirector: boolean; // Indica si requiere verificación del Director OCI
   verificadaPorDirector?: boolean; // Indica si fue verificada por el Director
   fechaVerificacion?: string; // Fecha de verificación del Director
   observacionesDirector?: string; // Observaciones del Director al verificar
@@ -83,9 +84,28 @@ interface Actividad {
   // ✅ NUEVO: Sistema de puntos de control
   puntosControl?: PuntoControl[]; // Puntos de control configurados
   frecuenciaPuntosControl?: FrecuenciaPuntoControl; // Frecuencia configurada
-  
+
+  // ✅ NUEVO: Entradas de seguimiento vinculadas a puntos de control
+  entradasSeguimiento?: EntradaSeguimiento[];
+
   // Soft delete
   activo?: boolean;
+}
+
+interface EntradaSeguimiento {
+  id: string;
+  puntoControlId: string;   // ID del punto de control (pc-auto-1, etc.)
+  fechaRegistro: string;    // ISO date — se compara con fechaProgramada del corte
+  registradoPor: string;
+  usuarioId?: string;
+  texto?: string;           // observación escrita (opcional)
+  archivos?: Array<{        // evidencias adjuntas (opcional)
+    nombre: string;
+    url: string;
+    tipo: string;
+    tamanio: number;
+  }>;
+  tipo: 'seguimiento' | 'hallazgo' | 'cierre';
 }
 
 interface ArchivoAdjunto {
@@ -137,6 +157,35 @@ function tieneObservaciones(obs: ObservacionCumplimiento[] | string | undefined)
   return contarObservaciones(obs) > 0;
 }
 
+/**
+ * Calcula el % de avance basado en cortes de seguimiento.
+ * Solo cuenta los cortes cuya fechaProgramada <= hoy.
+ * Un corte se considera cumplido si tiene ≥1 EntradaSeguimiento con fechaRegistro <= fechaProgramada del corte.
+ */
+function calcularPorcentajeCortes(actividad: Actividad): number {
+  const cortes = actividad.puntosControl;
+  const entradas = actividad.entradasSeguimiento || [];
+  if (!cortes || cortes.length === 0) return actividad.porcentajeAvance;
+
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  // Cumplido = tiene al menos una entrada, sin importar si la fecha ya venció o es futura
+  const cumplidos = cortes.filter(corte =>
+    entradas.some(e => e.puntoControlId === corte.id)
+  );
+
+  return Math.round((cumplidos.length / cortes.length) * 100);
+}
+
+/** Días restantes hasta una fecha (negativo = ya venció) */
+function diasHastaFecha(fechaISO: string): number {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const f = new Date(fechaISO + 'T00:00:00');
+  return Math.round((f.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 interface Rol {
   id?: string; // ID del rol desde el backend (requerido para crear actividades)
   numero: number;
@@ -183,8 +232,10 @@ interface ActividadBase {
   control: string;
   evaluacion: string;
   seguimiento: string;
-  requiereAutorizacionJefeOCIG?: boolean; // Checkbox      por actividad
+  requiereAutorizacionJefeOCI?: boolean; // Checkbox      por actividad
   tipoEvidencia?: 'SOLO_CHECK' | 'OBSERVACIONES' | 'ADJUNTOS' | 'COMPLETO'; // Tipo de evidencia requerida
+  responsables?: Auditor[]; // ✅ Responsables por actividad (múltiples)
+  fechaCorte?: string; // Fecha límite de corte para la actividad
   // ✅ NUEVO: Configuración de puntos de control
   puntosControl?: PuntoControl[];
   frecuenciaPuntosControl?: FrecuenciaPuntoControl;
@@ -453,107 +504,107 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
   const [fechaInicio, setFechaInicio] = useState(`${new Date().getFullYear()}-01-01`);
   const [fechaFin, setFechaFin] = useState(`${new Date().getFullYear()}-12-31`);
   
-  // Estado para auditores cargados desde backend (profesionales OCIG configurados)
+  // Estado para auditores cargados desde backend (profesionales OCI configurados)
   const [auditores, setAuditores] = useState<Auditor[]>(AUDITORES_DEFAULT);
-  const [jefesOCIG, setJefesOCIG] = useState<Auditor[]>([]);
+  const [jefesOCI, setJefesOCI] = useState<Auditor[]>([]);
   const [cargandoAuditores, setCargandoAuditores] = useState(true);
   const [jefeSeleccionado, setJefeSeleccionado] = useState<Auditor | null>(null);
   
-  // Función para cargar profesionales OCIG (reutilizable)
+  // Función para cargar profesionales OCI (reutilizable)
   const cargarAuditores = async () => {
     setCargandoAuditores(true);
     try {
-      // Usar profesionales OCIG configurados en lugar de personas disponibles
-      const response = await configuracionesProfesionalesOCIGApi.getAll();
-      console.log('[PlanAnual] Profesionales OCIG response:', response);
+      // Usar profesionales OCI configurados en lugar de personas disponibles
+      const response = await configuracionesProfesionalesOCIApi.getAll();
+      console.log('[PlanAnual] Profesionales OCI response:', response);
       
       if (response.success && response.data && response.data.length > 0) {
         // Transformar a formato Auditor
         const profesionales: Auditor[] = response.data
           .filter((config: any) => config.activo)
           .map((config: any) => ({
-            id: config.id, // UUID de configuracion_profesionales_ocig
+            id: config.id, // UUID de configuracion_profesionales_OCI
             nombre: config.nombre || `Profesional ${config.idTercero}`,
-            cargo: config.rolOcig || 'Auditor',
+            cargo: config.rolOCI || 'Auditor',
             email: config.email || ''
           }));
         
         setAuditores(profesionales);
         
-        // Filtrar solo los que son Jefe OCIG
+        // Filtrar solo los que son Jefe OCI
         const jefes = profesionales.filter((a: Auditor) => 
-          a.cargo === 'Jefe OCIG' || a.cargo.toLowerCase().includes('jefe')
+          a.cargo === 'Jefe OCI' || a.cargo.toLowerCase().includes('jefe')
         );
-        setJefesOCIG(jefes.length > 0 ? jefes : profesionales);
+        setJefesOCI(jefes.length > 0 ? jefes : profesionales);
         
         // Seleccionar el primer profesional por defecto si no hay uno seleccionado
         if (!jefeSeleccionado && profesionales.length > 0) {
           setJefeSeleccionado(profesionales[0]);
         }
         
-        console.log('[PlanAnual] Profesionales OCIG cargados:', profesionales.length);
+        console.log('[PlanAnual] Profesionales OCI cargados:', profesionales.length);
         return profesionales;
       } else {
-        console.warn('[PlanAnual] No hay profesionales OCIG configurados');
-        toast.warning('No hay profesionales OCIG configurados', {
+        console.warn('[PlanAnual] No hay profesionales OCI configurados');
+        toast.warning('No hay profesionales OCI configurados', {
           description: 'Configura el equipo en el módulo de Configuración'
         });
         setAuditores([]);
-        setJefesOCIG([]);
+        setJefesOCI([]);
         return [];
       }
     } catch (error) {
-      console.error('[PlanAnual] Error cargando profesionales OCIG:', error);
-      toast.error('Error al cargar profesionales OCIG');
+      console.error('[PlanAnual] Error cargando profesionales OCI:', error);
+      toast.error('Error al cargar profesionales OCI');
       return [];
     } finally {
       setCargandoAuditores(false);
     }
   };
   
-  // Cargar profesionales OCIG configurados al montar el componente
+  // Cargar profesionales OCI configurados al montar el componente
   useEffect(() => {
     cargarAuditores();
   }, []);
+
+  // Actualizar fechas de puntos de control cuando cambie la vigencia
+  useEffect(() => {
+    setRolesConfig(prev => prev.map(rol => ({
+      ...rol,
+      actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
+        const año = vigencia;
+        return {
+          ...act,
+          fechaCorte: `${año}-09-30`,
+          puntosControl: [
+            { ...act.puntosControl[0], fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31` },
+            { ...act.puntosControl[1], fechaProgramada: `${año}-06-30`, fechaSeguimiento: `${año}-08-30` },
+            { ...act.puntosControl[2], fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30` },
+          ]
+        };
+      })
+    })));
+  }, [vigencia]);
   const [rolesConfig, setRolesConfig] = useState<RolConfig[]>(() => 
     ROLES_DECRETO_648.map(rol => {
       const actividades = getActividadesPorRol(rol.numero);
       
-      // Agregar puntos de control de ejemplo a las primeras 2 actividades de cada rol
-      // ⚡ También agregar tipoEvidencia por defecto 'SOLO_CHECK' e ID único
+      // ⚡ Auto-generar 3 puntos de control trimestrales por actividad (Mar, Jun, Sep)
       const actividadesConPuntos = actividades.map((act, idx) => {
         const uniqueId = `rol-${rol.numero}-act-${idx}`; // ⚡ ID único por rol e índice
-        if (idx === 0) {
-          // Primera actividad: Puntos trimestrales
-          return {
-            ...act,
-            id: uniqueId, // ⚡ Agregar ID
-            tipoEvidencia: 'SOLO_CHECK' as const, // ⚡ Valor por defecto
-            puntosControl: [
-              { id: 'pc-1', orden: 1, nombre: 'Trimestral #1', descripcion: 'Punto de control trimestral', fechaProgramada: '2026-03-31', fechaSeguimiento: '2026-05-31', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-              { id: 'pc-2', orden: 2, nombre: 'Trimestral #2', descripcion: 'Punto de control trimestral', fechaProgramada: '2026-06-30', fechaSeguimiento: '2026-08-30', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-              { id: 'pc-3', orden: 3, nombre: 'Trimestral #3', descripcion: 'Punto de control trimestral', fechaProgramada: '2026-09-30', fechaSeguimiento: '2026-11-30', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] }
-            ],
-            frecuenciaPuntosControl: 'trimestral' as const
-          };
-        } else if (idx === 1) {
-          // Segunda actividad: Puntos semestrales
-          return {
-            ...act,
-            id: uniqueId, // ⚡ Agregar ID
-            tipoEvidencia: 'SOLO_CHECK' as const, // ⚡ Valor por defecto
-            puntosControl: [
-              { id: 'pc-5', orden: 1, nombre: 'Semestral #1', descripcion: 'Punto de control semestral', fechaProgramada: '2026-06-30', fechaSeguimiento: '2026-08-30', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-              { id: 'pc-6', orden: 2, nombre: 'Semestral #2', descripcion: 'Punto de control semestral', fechaProgramada: '2026-12-31', fechaSeguimiento: '2027-02-28', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] }
-            ],
-            frecuenciaPuntosControl: 'semestral' as const
-          };
-        }
-        // ⚡ Actividades sin puntos de control también tienen tipoEvidencia por defecto
+        const añoInicial = new Date().getFullYear();
+        const puntosDefault: PuntoControl[] = [
+          { id: `pc-${uniqueId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${añoInicial}-03-31`, fechaSeguimiento: `${añoInicial}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+          { id: `pc-${uniqueId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${añoInicial}-06-30`, fechaSeguimiento: `${añoInicial}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+          { id: `pc-${uniqueId}-3`, orden: 3, nombre: 'Corte 3', descripcion: '', fechaProgramada: `${añoInicial}-09-30`, fechaSeguimiento: `${añoInicial}-11-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+        ];
         return {
           ...act,
-          id: uniqueId, // ⚡ Agregar ID
-          tipoEvidencia: 'SOLO_CHECK' as const
+          id: uniqueId,
+          tipoEvidencia: 'SOLO_CHECK' as const,
+          fechaCorte: `${añoInicial}-09-30`,
+          puntosControl: puntosDefault,
+          frecuenciaPuntosControl: 'trimestral' as const,
         };
       });
       
@@ -620,6 +671,50 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
       toast.error('Responsables requeridos', {
         description: `Los siguientes roles tienen actividades pero no tienen responsables asignados: ${nombresRoles}. Debe asignar al menos un responsable por rol.`,
         duration: 6000
+      });
+      return false;
+    }
+
+    // Validar que cada actividad tenga al menos un responsable
+    const actividadesSinResponsable: string[] = [];
+    for (const rol of rolesConActividades) {
+      for (const act of (rol.actividadesSeleccionadas || [])) {
+        if (!act.responsables || act.responsables.length === 0) {
+          actividadesSinResponsable.push(`"${act.nombre.slice(0, 40)}" (Rol ${rol.numero})`);
+        }
+      }
+      for (const act of (rol.actividadesCustom || [])) {
+        if (!act.responsables || act.responsables.length === 0) {
+          actividadesSinResponsable.push(`"${act.nombre.slice(0, 40)}" (Rol ${rol.numero} personalizada)`);
+        }
+      }
+    }
+    if (actividadesSinResponsable.length > 0) {
+      toast.error('Responsable requerido por actividad', {
+        description: `Las siguientes actividades no tienen responsable: ${actividadesSinResponsable.slice(0, 3).join(', ')}${actividadesSinResponsable.length > 3 ? ` y ${actividadesSinResponsable.length - 3} más` : ''}.`,
+        duration: 7000
+      });
+      return false;
+    }
+
+    // Validar que cada actividad tenga fecha de corte
+    const actividadesSinFechaCorte: string[] = [];
+    for (const rol of rolesConActividades) {
+      for (const act of (rol.actividadesSeleccionadas || [])) {
+        if (!act.fechaCorte) {
+          actividadesSinFechaCorte.push(`"${act.nombre.slice(0, 40)}" (Rol ${rol.numero})`);
+        }
+      }
+      for (const act of (rol.actividadesCustom || [])) {
+        if (!act.fechaCorte) {
+          actividadesSinFechaCorte.push(`"${act.nombre.slice(0, 40)}" (Rol ${rol.numero} personalizada)`);
+        }
+      }
+    }
+    if (actividadesSinFechaCorte.length > 0) {
+      toast.error('Fecha de corte requerida', {
+        description: `Las siguientes actividades no tienen fecha de corte: ${actividadesSinFechaCorte.slice(0, 3).join(', ')}${actividadesSinFechaCorte.length > 3 ? ` y ${actividadesSinFechaCorte.length - 3} más` : ''}.`,
+        duration: 7000
       });
       return false;
     }
@@ -721,7 +816,7 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
                 onRecargarAuditores={cargarAuditores}
               />
             )}
-            {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={setRolesConfig} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} />}
+            {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={setRolesConfig} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} jefeOCI={jefeSeleccionado} />}
             {paso === 3 && <Paso3 key="paso3" vigencia={vigencia} jefeOCI={jefeSeleccionado} rolesConfig={rolesConfig} />}
           </AnimatePresence>
         </div>
@@ -794,6 +889,8 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             type="number" 
             value={vigencia} 
             onChange={(e) => handleVigenciaChange(parseInt(e.target.value))} 
+            min={2020}
+            max={2100}
             className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg font-bold focus:outline-none focus:border-blue-500" 
           />
           <p className="text-xs text-gray-500 mt-1">Al cambiar la vigencia, las fechas se ajustarán automáticamente</p>
@@ -876,12 +973,12 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
           {cargandoAuditores ? (
             <div className="flex items-center gap-2 px-4 py-3 border-2 border-gray-300 rounded-lg bg-gray-50">
               <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-              <span className="text-gray-600">Cargando profesionales OCIG...</span>
+              <span className="text-gray-600">Cargando profesionales OCI...</span>
             </div>
           ) : auditores.length === 0 ? (
             <div className="flex items-center gap-2 px-4 py-3 border-2 border-orange-300 rounded-lg bg-orange-50">
               <AlertCircle className="w-5 h-5 text-orange-600" />
-              <span className="text-orange-700">No hay profesionales OCIG configurados. Configura el equipo primero.</span>
+              <span className="text-orange-700">No hay profesionales OCI configurados. Configura el equipo primero.</span>
             </div>
           ) : (
             <select 
@@ -891,11 +988,11 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             >
               <option value="">Seleccionar responsable...</option>
               {auditores.map((a: any) => (
-                <option key={a.id} value={a.id}>{a.nombre} - {a.cargo}</option>
+                <option key={a.id} value={a.id}>{a.nombre}</option>
               ))}
             </select>
           )}
-          <p className="text-xs text-gray-500 mt-1">Profesional OCIG responsable del Plan Anual de Auditoría</p>
+          <p className="text-xs text-gray-500 mt-1">Profesional OCI responsable del Plan Anual de Auditoría</p>
         </div>
       </div>
     </motion.div>
@@ -908,13 +1005,15 @@ function Paso2({
   onRolesChange,
   fechaInicio,
   fechaFin,
-  auditores
+  auditores,
+  jefeOCI
 }: { 
   rolesConfig: RolConfig[]; 
   onRolesChange: (config: RolConfig[]) => void;
   fechaInicio: string;
   fechaFin: string;
   auditores: Auditor[];
+  jefeOCI?: Auditor | null;
 }) {
   const [rolExpandido, setRolExpandido] = useState<number | string | null>(1);
   const [mostrarFormActividad, setMostrarFormActividad] = useState<number | string | null>(null);
@@ -951,13 +1050,25 @@ function Paso2({
           // Seleccionar
           const actividadBase = getActividadesPorRol(numeroRol)?.find(a => a.nombre === nombreActividad);
           if (actividadBase) {
+            // Auto-asignar primer responsable del rol si existe
+            const primerResponsable = rol.responsables?.[0];
+            // Auto-generar 3 puntos de control trimestrales (31 Mar, 30 Jun, 30 Sep)
+            const año = vigencia;
+            const puntosDefault: PuntoControl[] = [
+              { id: `pc-${actId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+              { id: `pc-${actId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${año}-06-30`, fechaSeguimiento: `${año}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+              { id: `pc-${actId}-3`, orden: 3, nombre: 'Corte 3', descripcion: '', fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+            ];
             return {
               ...rol,
               actividadesSeleccionadas: [...rol.actividadesSeleccionadas, {
                 ...actividadBase,
-                id: actId, // ⚡ Usar el ID único
-                // ⚡ Valor por defecto: SOLO_CHECK (sin requisitos de documentos/observaciones)
-                tipoEvidencia: 'SOLO_CHECK' as const
+                id: actId,
+                tipoEvidencia: 'SOLO_CHECK' as const,
+                fechaCorte: `${año}-09-30`,
+                responsables: primerResponsable ? [primerResponsable] : [],
+                puntosControl: puntosDefault,
+                frecuenciaPuntosControl: 'trimestral' as const,
               }]
             };
           }
@@ -972,7 +1083,7 @@ function Paso2({
     return rolesConfig.some(rol => rol.actividadesSeleccionadas.some(a => a.id === actId));
   };
 
-  const toggleAutorizacionJefeOCIG = (actId: string) => {
+  const toggleAutorizacionJefeOCI = (actId: string) => {
     const nuevaConfig = rolesConfig.map(rol => {
       return {
         ...rol,
@@ -980,7 +1091,7 @@ function Paso2({
           if (act.id === actId) {
             return {
               ...act,
-              requiereAutorizacionJefeOCIG: !act.requiereAutorizacionJefeOCIG
+              requiereAutorizacionJefeOCI: !act.requiereAutorizacionJefeOCI
             };
           }
           return act;
@@ -1065,7 +1176,7 @@ function Paso2({
             if (i === index) {
               return {
                 ...act,
-                requiereAutorizacionJefeOCIG: !act.requiereAutorizacionJefeOCIG
+                requiereAutorizacionJefeOCI: !act.requiereAutorizacionJefeOCI
               };
             }
             return act;
@@ -1098,13 +1209,95 @@ function Paso2({
     onRolesChange(nuevaConfig);
   };
 
+  // ✅ Funciones para asignar responsables por actividad
+  const agregarResponsableActividad = (actId: string, auditor: Auditor) => {
+    const nuevaConfig = rolesConfig.map(rol => ({
+      ...rol,
+      actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
+        if (act.id === actId) {
+          const yaAsignado = (act.responsables || []).some(r => r.id === auditor.id);
+          if (yaAsignado) return act;
+          return { ...act, responsables: [...(act.responsables || []), auditor] };
+        }
+        return act;
+      })
+    }));
+    onRolesChange(nuevaConfig);
+  };
+
+  const quitarResponsableActividad = (actId: string, auditorId: string) => {
+    const nuevaConfig = rolesConfig.map(rol => ({
+      ...rol,
+      actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
+        if (act.id === actId) {
+          return { ...act, responsables: (act.responsables || []).filter(r => r.id !== auditorId) };
+        }
+        return act;
+      })
+    }));
+    onRolesChange(nuevaConfig);
+  };
+
+  const agregarResponsableCustom = (numeroRol: number, index: number, auditor: Auditor) => {
+    const nuevaConfig = rolesConfig.map(rol => {
+      if (rol.numero !== numeroRol) return rol;
+      return {
+        ...rol,
+        actividadesCustom: rol.actividadesCustom.map((act, i) => {
+          if (i !== index) return act;
+          const yaAsignado = (act.responsables || []).some(r => r.id === auditor.id);
+          if (yaAsignado) return act;
+          return { ...act, responsables: [...(act.responsables || []), auditor] };
+        })
+      };
+    });
+    onRolesChange(nuevaConfig);
+  };
+
+  const quitarResponsableCustom = (numeroRol: number, index: number, auditorId: string) => {
+    const nuevaConfig = rolesConfig.map(rol => {
+      if (rol.numero !== numeroRol) return rol;
+      return {
+        ...rol,
+        actividadesCustom: rol.actividadesCustom.map((act, i) => {
+          if (i !== index) return act;
+          return { ...act, responsables: (act.responsables || []).filter(r => r.id !== auditorId) };
+        })
+      };
+    });
+    onRolesChange(nuevaConfig);
+  };
+
+  const setFechaCorteActividad = (actId: string, fecha: string) => {
+    const nuevaConfig = rolesConfig.map(rol => ({
+      ...rol,
+      actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act =>
+        act.id === actId ? { ...act, fechaCorte: fecha } : act
+      )
+    }));
+    onRolesChange(nuevaConfig);
+  };
+
+  const setFechaCorteCustom = (numeroRol: number, index: number, fecha: string) => {
+    const nuevaConfig = rolesConfig.map(rol => {
+      if (rol.numero !== numeroRol) return rol;
+      return {
+        ...rol,
+        actividadesCustom: rol.actividadesCustom.map((act, i) =>
+          i === index ? { ...act, fechaCorte: fecha } : act
+        )
+      };
+    });
+    onRolesChange(nuevaConfig);
+  };
+
   // ✅ NUEVO: Funciones para configurar puntos de control
   const abrirConfiguracionPuntosControl = (numeroRol: number, nombreActividad: string, esCustom: boolean, indexCustom?: number) => {
     setActividadConfigurando({ numeroRol, nombreActividad, esCustom, indexCustom });
     setModalPuntosControlAbierto(true);
   };
 
-  const guardarPuntosControl = (puntos: PuntoControl[], frecuencia: FrecuenciaPuntoControl, _fechaCorte: string) => {
+  const guardarPuntosControl = (puntos: PuntoControl[], frecuencia: FrecuenciaPuntoControl, fechaCorteModal: string) => {
     if (!actividadConfigurando) return;
 
     const { numeroRol, nombreActividad, esCustom, indexCustom } = actividadConfigurando;
@@ -1120,7 +1313,8 @@ function Paso2({
                 return {
                   ...act,
                   puntosControl: puntos,
-                  frecuenciaPuntosControl: frecuencia
+                  frecuenciaPuntosControl: frecuencia,
+                  fechaCorte: fechaCorteModal
                 };
               }
               return act;
@@ -1135,7 +1329,8 @@ function Paso2({
                 return {
                   ...act,
                   puntosControl: puntos,
-                  frecuenciaPuntosControl: frecuencia
+                  frecuenciaPuntosControl: frecuencia,
+                  fechaCorte: fechaCorteModal
                 };
               }
               return act;
@@ -1196,6 +1391,29 @@ function Paso2({
                     <p className="text-sm text-gray-600">
                       {totalRol} actividades • {rol.responsables.length} responsables
                     </p>
+                    {/* Avatar chips for assigned responsibles */}
+                    {rol.responsables.length > 0 && (
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <div className="flex -space-x-1">
+                          {rol.responsables.slice(0, 4).map((r: Auditor) => (
+                            <div
+                              key={r.id}
+                              title={r.nombre}
+                              className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-white text-[9px] font-bold"
+                              style={{ backgroundColor: rol.color }}
+                            >
+                              {r.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                            </div>
+                          ))}
+                          {rol.responsables.length > 4 && (
+                            <div className="w-5 h-5 rounded-full bg-gray-400 border-2 border-white flex items-center justify-center text-white text-[9px] font-bold">
+                              +{rol.responsables.length - 4}
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-500">{rol.responsables.slice(0, 2).map((r: Auditor) => r.nombre.split(' ')[0]).join(', ')}{rol.responsables.length > 2 ? ` +${rol.responsables.length - 2}` : ''}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -1224,101 +1442,83 @@ function Paso2({
                     className="overflow-hidden"
                   >
                     <div className="px-5 pb-5 space-y-4 border-t-2 border-gray-200">
-                      {/* Sección de responsables */}
+                      {/* Sección de responsables del rol */}
                       <div className="pt-4">
-                        {/* Mensaje informativo */}
-                        <div className="mb-3 p-3 bg-blue-50 border-l-4 border-blue-400 rounded text-sm text-blue-800">
-                          <p className="font-semibold mb-1">💡 ¿Cómo funciona la asignación?</p>
-                          <p className="text-xs">
-                            <strong>Si asignas responsables aquí:</strong> Las actividades de este rol se distribuirán automáticamente entre ellos.<br/>
-                            <strong>Si no asignas responsables:</strong> Las actividades quedarán sin asignar y podrás hacerlo manualmente después.
-                          </p>
-                        </div>
-                        
-                        <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-3">
-                              <Users className="w-5 h-5 text-blue-600" />
-                              <div>
-                                <p className="font-semibold text-gray-900 text-sm">Responsables del rol (opcional)</p>
-                                <p className="text-xs text-gray-600 mt-0.5">
-                                  {(rol.responsables?.length || 0) === 0 
-                                    ? 'Puedes asignar responsables ahora o después' 
-                                    : `${rol.responsables.length} auditor${rol.responsables.length !== 1 ? 'es' : ''} asignado${rol.responsables.length !== 1 ? 's' : ''}`
-                                  }
-                                </p>
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5" />
+                          Responsables del rol
+                        </p>
+                        <div className="flex flex-col gap-1.5">
+                          {/* Chips de responsables asignados */}
+                          {rol.responsables.map((auditor: Auditor) => (
+                            <div key={auditor.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
+                              <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ backgroundColor: rol.color }}>
+                                {auditor.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
                               </div>
-                            </div>
-                          </div>
-
-                          {/* Lista de responsables asignados */}
-                          {(rol.responsables?.length || 0) > 0 && (
-                            <div className="flex flex-wrap gap-2 mb-3">
-                              {rol.responsables.map((auditor: any) => (
-                                <div key={auditor.id} className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-200 text-blue-900 rounded-lg text-xs font-medium">
-                                  <span>👤 {auditor.nombre}</span>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      const nuevaConfig = rolesConfig.map(r => {
-                                        if (r.numero === rol.numero) {
-                                          return {
-                                            ...r,
-                                            responsables: r.responsables.filter((resp: any) => resp.id !== auditor.id)
-                                          };
-                                        }
-                                        return r;
-                                      });
-                                      onRolesChange(nuevaConfig);
-                                    }}
-                                    className="hover:bg-blue-300 rounded p-0.5 transition-colors"
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Selector para agregar responsables */}
-                          <div className="flex gap-2">
-                            <select
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  const auditor = auditores.find(a => a.id === e.target.value);
-                                  if (auditor) {
-                                    const yaAsignado = rol.responsables?.some((r: any) => r.id === auditor.id);
-                                    if (yaAsignado) {
-                                      toast.error('Este auditor ya está asignado a este rol');
-                                      return;
+                              <span className="text-sm font-medium text-gray-900 flex-1">{auditor.nombre}</span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const nuevaConfig = rolesConfig.map(r => {
+                                    if (r.numero === rol.numero) {
+                                      return {
+                                        ...r,
+                                        responsables: r.responsables.filter((resp: any) => resp.id !== auditor.id)
+                                      };
                                     }
-                                    
-                                    const nuevaConfig = rolesConfig.map(r => {
-                                      if (r.numero === rol.numero) {
-                                        return {
-                                          ...r,
-                                          responsables: [...(r.responsables || []), auditor]
-                                        };
-                                      }
-                                      return r;
-                                    });
-                                    onRolesChange(nuevaConfig);
-                                    e.target.value = ''; // Reset selector
-                                    toast.success(`${auditor.nombre} asignado al rol`);
+                                    return r;
+                                  });
+                                  onRolesChange(nuevaConfig);
+                                }}
+                                className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-xs transition-colors flex-shrink-0"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                          {/* Dropdown para agregar — mismo estilo que SeccionAsignar */}
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              if (!e.target.value) return;
+                              const auditor = auditores.find(a => a.id === e.target.value);
+                              if (auditor) {
+                                const nuevaConfig = rolesConfig.map(r => {
+                                  if (r.numero === rol.numero) {
+                                    const nuevosResponsables = [...(r.responsables || []), auditor];
+                                    return {
+                                      ...r,
+                                      responsables: nuevosResponsables,
+                                      actividadesSeleccionadas: r.actividadesSeleccionadas.map(act => (
+                                        (!act.responsables || act.responsables.length === 0)
+                                          ? { ...act, responsables: [auditor] }
+                                          : act
+                                      )),
+                                      actividadesCustom: r.actividadesCustom.map(act => (
+                                        (!act.responsables || act.responsables.length === 0)
+                                          ? { ...act, responsables: [auditor] }
+                                          : act
+                                      ))
+                                    };
                                   }
-                                }
-                              }}
-                              className="flex-1 px-3 py-2 bg-white border-2 border-blue-300 rounded-lg text-sm focus:outline-none focus:border-blue-500"
-                              defaultValue=""
-                            >
-                              <option value="" disabled>Seleccionar auditor...</option>
-                              {auditores.map((auditor) => (
+                                  return r;
+                                });
+                                onRolesChange(nuevaConfig);
+                                toast.success(`${auditor.nombre} asignado al rol`);
+                              }
+                            }}
+                            className="px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm text-gray-500 bg-white"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <option value="">+ Agregar responsable…</option>
+                            {auditores
+                              .filter(a => !rol.responsables.some((r: any) => r.id === a.id))
+                              .map((auditor) => (
                                 <option key={auditor.id} value={auditor.id}>
-                                  {auditor.nombre} - {auditor.cargo}
+                                  {auditor.nombre}
                                 </option>
                               ))}
-                            </select>
-                          </div>
+                          </select>
                         </div>
                       </div>
 
@@ -1355,7 +1555,18 @@ function Paso2({
                                     <p className="font-semibold text-gray-900 text-sm">{actividad.nombre}</p>
                                     <p className="text-xs text-gray-600 mt-1">{actividad.descripcion}</p>
                                     {seleccionada && actividadData && (
-                                      <div className="flex items-center gap-2 mt-1.5">
+                                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                        {/* Responsable inline */}
+                                        {(actividadData.responsables && actividadData.responsables.length > 0) ? (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-[10px] font-medium">
+                                            👤 {actividadData.responsables[0].nombre}
+                                            {actividadData.responsables.length > 1 && ` +${actividadData.responsables.length - 1}`}
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-medium">
+                                            ⚠ Sin responsable
+                                          </span>
+                                        )}
                                         {(actividadData.tipoEvidencia === 'OBSERVACIONES' || actividadData.tipoEvidencia === 'COMPLETO') && (
                                           <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-[10px] font-medium">
                                             <FileText className="w-2.5 h-2.5" />
@@ -1368,12 +1579,17 @@ function Paso2({
                                             Adjuntos
                                           </span>
                                         )}
-                                        {actividadData.requiereAutorizacionJefeOCIG && (
+                                        {actividadData.requiereAutorizacionJefeOCI && (
                                           <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-800 rounded text-[10px] font-medium">
                                             <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
                                               <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                                             </svg>
                                             Requiere autorización
+                                          </span>
+                                        )}
+                                        {actividadData.fechaCorte && (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] font-medium">
+                                            📅 Corte: {actividadData.fechaCorte}
                                           </span>
                                         )}
                                       </div>
@@ -1384,14 +1600,14 @@ function Paso2({
                                 {/* Configuración de evidencias - Solo visible si actividad está seleccionada */}
                                 {seleccionada && (
                                   <div className="px-3 pb-3 pt-2 border-t border-blue-200 mt-2 space-y-3">
-                                    {/* Checkbox de autorización Jefe OCIG */}
+                                    {/* Checkbox de autorización Jefe OCI */}
                                     <label className="flex items-start gap-2 cursor-pointer p-2 hover:bg-blue-100/50 rounded-lg transition-colors">
                                       <input
                                         type="checkbox"
-                                        checked={actividadData?.requiereAutorizacionJefeOCIG || false}
+                                        checked={actividadData?.requiereAutorizacionJefeOCI || false}
                                         onChange={(e) => {
                                           e.stopPropagation();
-                                          toggleAutorizacionJefeOCIG(actId);
+                                          toggleAutorizacionJefeOCI(actId);
                                         }}
                                         className="w-4 h-4 text-orange-600 rounded border-gray-300 focus:ring-2 focus:ring-orange-500 mt-0.5"
                                       />
@@ -1401,11 +1617,11 @@ function Paso2({
                                             <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                                           </svg>
                                           <span className="text-xs font-semibold text-orange-900">
-                                            Requiere autorización del Jefe OCIG
+                                            Requiere autorización del Jefe OCI
                                           </span>
                                         </div>
                                         <p className="text-xs text-orange-700 mt-1">
-                                          Esta actividad no podrá completarse al 100% sin la autorización del Jefe de la OCIG
+                                          Esta actividad no podrá completarse al 100% sin la autorización del Jefe de la OCI
                                         </p>
                                       </div>
                                     </label>
@@ -1468,26 +1684,152 @@ function Paso2({
                                       </div>
                                     </div>
 
-                                    {/* ✅ NUEVO: Botón para configurar puntos de control */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, false);
-                                      }}
-                                      className="w-full flex items-center justify-between gap-2 p-3 bg-gradient-to-r from-[#F57C00]/10 to-[#FF6D00]/10 hover:from-[#F57C00]/20 hover:to-[#FF6D00]/20 border-2 border-[#F57C00]/30 rounded-lg transition-all group"
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <CalendarClock className="w-4 h-4 text-[#F57C00]" />
-                                        <span className="text-xs font-semibold text-gray-900">
-                                          {actividadData?.puntosControl && actividadData.puntosControl.length > 0
-                                            ? `${actividadData.puntosControl.length} punto${actividadData.puntosControl.length !== 1 ? 's' : ''} de control configurado${actividadData.puntosControl.length !== 1 ? 's' : ''}`
-                                            : 'Configurar puntos de control'}
-                                        </span>
+                                    {/* ✅ Sección de puntos de control — vista profesional */}
+                                    <div className="border-2 border-blue-200 rounded-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                                      {/* Header con resumen y botón configurar */}
+                                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2.5 flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          <CalendarClock className="w-4 h-4 text-blue-600" />
+                                          <span className="text-xs font-bold text-blue-900">
+                                            {actividadData?.puntosControl && actividadData.puntosControl.length > 0
+                                              ? `${actividadData.puntosControl.length} Cortes de Seguimiento`
+                                              : 'Sin cortes configurados'}
+                                          </span>
+                                          {actividadData?.frecuenciaPuntosControl && (
+                                            <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold capitalize">
+                                              {actividadData.frecuenciaPuntosControl}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, false);
+                                          }}
+                                          className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-semibold transition-colors"
+                                        >
+                                          <Settings className="w-3 h-3" />
+                                          Configurar
+                                        </button>
                                       </div>
+
+                                      {/* Timeline de cortes */}
                                       {actividadData?.puntosControl && actividadData.puntosControl.length > 0 && (
-                                        <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                        <div className="divide-y divide-gray-100">
+                                          {actividadData.puntosControl.map((pc: PuntoControl, pcIdx: number) => {
+                                            const hoyDate = new Date();
+                                            hoyDate.setHours(0,0,0,0);
+                                            const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
+                                            const esVencido = fechaCorte < hoyDate && pc.estado !== 'completado';
+                                            const esActivo = !esVencido && fechaCorte >= hoyDate && (pcIdx === 0 || new Date(actividadData.puntosControl![pcIdx-1].fechaProgramada + 'T00:00:00') < hoyDate);
+                                            const esCompletado = pc.estado === 'completado';
+                                            return (
+                                              <div key={pc.id} className={`px-3 py-2.5 flex items-start gap-3 ${esActivo ? 'bg-blue-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
+                                                {/* Indicador lateral */}
+                                                <div className="flex flex-col items-center pt-0.5">
+                                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${
+                                                    esCompletado ? 'bg-green-500 border-green-500 text-white' :
+                                                    esVencido ? 'bg-red-100 border-red-400 text-red-700' :
+                                                    esActivo ? 'bg-blue-500 border-blue-500 text-white' :
+                                                    'bg-gray-100 border-gray-300 text-gray-500'
+                                                  }`}>
+                                                    {esCompletado ? '✓' : pcIdx + 1}
+                                                  </div>
+                                                  {pcIdx < actividadData.puntosControl!.length - 1 && (
+                                                    <div className={`w-0.5 flex-1 mt-1 min-h-[20px] ${
+                                                      esCompletado ? 'bg-green-300' : 'bg-gray-200'
+                                                    }`} />
+                                                  )}
+                                                </div>
+
+                                                {/* Contenido del corte */}
+                                                <div className="flex-1 min-w-0">
+                                                  <div className="flex items-center justify-between mb-1">
+                                                    <span className="text-xs font-bold text-gray-900">{pc.nombre}</span>
+                                                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                                      esCompletado ? 'bg-green-100 text-green-700' :
+                                                      esVencido ? 'bg-red-100 text-red-700' :
+                                                      esActivo ? 'bg-blue-100 text-blue-700' :
+                                                      'bg-gray-100 text-gray-500'
+                                                    }`}>
+                                                      {esCompletado ? '✅ Completado' : esVencido ? '⚠️ Vencido' : esActivo ? '🔵 Activo' : '⏳ Futuro'}
+                                                    </span>
+                                                  </div>
+                                                  <div className="grid grid-cols-2 gap-2">
+                                                    <div className="flex items-center gap-1.5">
+                                                      <Calendar className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                                                      <span className="text-[11px] text-gray-700">
+                                                        <span className="text-[9px] text-gray-400 uppercase">Corte: </span>
+                                                        <span className="font-semibold">{new Date(pc.fechaProgramada + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                                      </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                      <Clock className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                                                      <span className="text-[11px] text-gray-700">
+                                                        <span className="text-[9px] text-gray-400 uppercase">Seguimiento: </span>
+                                                        <span className="font-semibold">{pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
+                                                      </span>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
                                       )}
-                                    </button>
+
+                                      {/* Estado vacío */}
+                                      {(!actividadData?.puntosControl || actividadData.puntosControl.length === 0) && (
+                                        <div className="px-3 py-4 text-center">
+                                          <p className="text-xs text-gray-400">Haz clic en "Configurar" para definir los cortes de seguimiento</p>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Selector de responsables por actividad */}
+                                    <div className="mt-2" onClick={e => e.stopPropagation()}>
+                                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1">
+                                        <Users className="w-3 h-3" />
+                                        Responsables de esta actividad
+                                      </p>
+                                      <div className="flex flex-col gap-1">
+                                        {/* Chips estilo SeccionAsignar */}
+                                        {(actividadData?.responsables || []).map(r => (
+                                          <div key={r.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
+                                            <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">
+                                              {r.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                            </div>
+                                            <span className="text-xs font-medium text-gray-900 flex-1">{r.nombre}</span>
+                                            <button
+                                              type="button"
+                                              onClick={e => { e.stopPropagation(); quitarResponsableActividad(actId, r.id); }}
+                                              className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-[10px] transition-colors flex-shrink-0"
+                                            >✕</button>
+                                          </div>
+                                        ))}
+                                        {/* Dropdown punteado */}
+                                        <select
+                                          className="px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-xs text-gray-500 bg-white"
+                                          value=""
+                                          onChange={e => {
+                                            e.stopPropagation();
+                                            const auditor = auditores.find(a => a.id === e.target.value);
+                                            if (auditor) agregarResponsableActividad(actId, auditor);
+                                          }}
+                                        >
+                                          <option value="">+ Agregar responsable…</option>
+                                          {auditores
+                                            .filter(a => !(actividadData?.responsables || []).some(r => r.id === a.id))
+                                            .map(a => (
+                                              <option key={a.id} value={a.id}>{a.nombre}</option>
+                                            ))}
+                                        </select>
+                                        {(actividadData?.responsables || []).length === 0 && (
+                                          <p className="text-[10px] text-red-500 flex items-center gap-1">⚠ Requerido</p>
+                                        )}
+                                      </div>
+                                    </div>
+
                                   </div>
                                 )}
                               </div>
@@ -1513,7 +1855,18 @@ function Paso2({
                                   <div className="flex-1 min-w-0">
                                     <p className="font-semibold text-gray-900 text-sm">{actividad.nombre}</p>
                                     <p className="text-xs text-gray-600 mt-1">{actividad.descripcion}</p>
-                                    <div className="flex items-center gap-2 mt-1.5">
+                                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                      {/* Responsable inline */}
+                                      {(actividad.responsables && actividad.responsables.length > 0) ? (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-[10px] font-medium">
+                                          👤 {actividad.responsables[0].nombre}
+                                          {actividad.responsables.length > 1 && ` +${actividad.responsables.length - 1}`}
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-medium">
+                                          ⚠ Sin responsable
+                                        </span>
+                                      )}
                                       {(actividad.tipoEvidencia === 'OBSERVACIONES' || actividad.tipoEvidencia === 'COMPLETO') && (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-[10px] font-medium">
                                           <FileText className="w-2.5 h-2.5" />
@@ -1526,12 +1879,17 @@ function Paso2({
                                           Adjuntos
                                         </span>
                                       )}
-                                      {actividad.requiereAutorizacionJefeOCIG && (
+                                      {actividad.requiereAutorizacionJefeOCI && (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-800 rounded text-[10px] font-medium">
                                           <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
                                             <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                                           </svg>
                                           Requiere autorización
+                                        </span>
+                                      )}
+                                      {actividad.fechaCorte && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] font-medium">
+                                          📅 Corte: {actividad.fechaCorte}
                                         </span>
                                       )}
                                     </div>
@@ -1553,11 +1911,11 @@ function Paso2({
                                 
                                 {/* Configuración de evidencias */}
                                 <div className="px-3 pb-3 pt-2 border-t border-green-300 mt-2 space-y-3">
-                                  {/* Checkbox de autorización Jefe OCIG */}
+                                  {/* Checkbox de autorización Jefe OCI */}
                                   <label className="flex items-start gap-2 cursor-pointer p-2 hover:bg-green-100/50 rounded-lg transition-colors">
                                     <input
                                       type="checkbox"
-                                      checked={actividad.requiereAutorizacionJefeOCIG || false}
+                                      checked={actividad.requiereAutorizacionJefeOCI || false}
                                       onChange={(e) => {
                                         e.stopPropagation();
                                         toggleAutorizacionCustom(rol.numero, index);
@@ -1570,11 +1928,11 @@ function Paso2({
                                           <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                                         </svg>
                                         <span className="text-xs font-semibold text-orange-900">
-                                          Requiere autorización del Jefe OCIG
+                                          Requiere autorización del Jefe OCI
                                         </span>
                                       </div>
                                       <p className="text-xs text-orange-700 mt-1">
-                                        Esta actividad no podrá completarse al 100% sin la autorización del Jefe de la OCIG
+                                        Esta actividad no podrá completarse al 100% sin la autorización del Jefe de la OCI
                                       </p>
                                     </div>
                                   </label>
@@ -1637,29 +1995,154 @@ function Paso2({
                                     </div>
                                   </div>
 
-                                  {/* ✅ NUEVO: Botón para configurar puntos de control en actividades custom */}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, true, index);
-                                    }}
-                                    className="w-full flex items-center justify-between gap-2 p-3 bg-gradient-to-r from-[#F57C00]/10 to-[#FF6D00]/10 hover:from-[#F57C00]/20 hover:to-[#FF6D00]/20 border-2 border-[#F57C00]/30 rounded-lg transition-all group"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <CalendarClock className="w-4 h-4 text-[#F57C00]" />
-                                      <span className="text-xs font-semibold text-gray-900">
-                                        {actividad.puntosControl && actividad.puntosControl.length > 0
-                                          ? `${actividad.puntosControl.length} punto${actividad.puntosControl.length !== 1 ? 's' : ''} de control configurado${actividad.puntosControl.length !== 1 ? 's' : ''}`
-                                          : 'Configurar puntos de control'}
-                                      </span>
+                                  {/* ✅ Sección de puntos de control — vista profesional (custom) */}
+                                  <div className="border-2 border-blue-200 rounded-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                                    {/* Header con resumen y botón configurar */}
+                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2.5 flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <CalendarClock className="w-4 h-4 text-blue-600" />
+                                        <span className="text-xs font-bold text-blue-900">
+                                          {actividad.puntosControl && actividad.puntosControl.length > 0
+                                            ? `${actividad.puntosControl.length} Cortes de Seguimiento`
+                                            : 'Sin cortes configurados'}
+                                        </span>
+                                        {actividad.frecuenciaPuntosControl && (
+                                          <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold capitalize">
+                                            {actividad.frecuenciaPuntosControl}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, true, index);
+                                        }}
+                                        className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-semibold transition-colors"
+                                      >
+                                        <Settings className="w-3 h-3" />
+                                        Configurar
+                                      </button>
                                     </div>
+
+                                    {/* Timeline de cortes */}
                                     {actividad.puntosControl && actividad.puntosControl.length > 0 && (
-                                      <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                      <div className="divide-y divide-gray-100">
+                                        {actividad.puntosControl.map((pc: PuntoControl, pcIdx: number) => {
+                                          const hoyDate = new Date();
+                                          hoyDate.setHours(0,0,0,0);
+                                          const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
+                                          const esVencido = fechaCorte < hoyDate && pc.estado !== 'completado';
+                                          const esActivo = !esVencido && fechaCorte >= hoyDate && (pcIdx === 0 || new Date(actividad.puntosControl![pcIdx-1].fechaProgramada + 'T00:00:00') < hoyDate);
+                                          const esCompletado = pc.estado === 'completado';
+                                          return (
+                                            <div key={pc.id} className={`px-3 py-2.5 flex items-start gap-3 ${esActivo ? 'bg-blue-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
+                                              {/* Indicador lateral */}
+                                              <div className="flex flex-col items-center pt-0.5">
+                                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${
+                                                  esCompletado ? 'bg-green-500 border-green-500 text-white' :
+                                                  esVencido ? 'bg-red-100 border-red-400 text-red-700' :
+                                                  esActivo ? 'bg-blue-500 border-blue-500 text-white' :
+                                                  'bg-gray-100 border-gray-300 text-gray-500'
+                                                }`}>
+                                                  {esCompletado ? '✓' : pcIdx + 1}
+                                                </div>
+                                                {pcIdx < actividad.puntosControl!.length - 1 && (
+                                                  <div className={`w-0.5 flex-1 mt-1 min-h-[20px] ${
+                                                    esCompletado ? 'bg-green-300' : 'bg-gray-200'
+                                                  }`} />
+                                                )}
+                                              </div>
+
+                                              {/* Contenido del corte */}
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between mb-1">
+                                                  <span className="text-xs font-bold text-gray-900">{pc.nombre}</span>
+                                                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                                    esCompletado ? 'bg-green-100 text-green-700' :
+                                                    esVencido ? 'bg-red-100 text-red-700' :
+                                                    esActivo ? 'bg-blue-100 text-blue-700' :
+                                                    'bg-gray-100 text-gray-500'
+                                                  }`}>
+                                                    {esCompletado ? '✅ Completado' : esVencido ? '⚠️ Vencido' : esActivo ? '🔵 Activo' : '⏳ Futuro'}
+                                                  </span>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                  <div className="flex items-center gap-1.5">
+                                                    <Calendar className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                                                    <span className="text-[11px] text-gray-700">
+                                                      <span className="text-[9px] text-gray-400 uppercase">Corte: </span>
+                                                      <span className="font-semibold">{new Date(pc.fechaProgramada + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                                    </span>
+                                                  </div>
+                                                  <div className="flex items-center gap-1.5">
+                                                    <Clock className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                                                    <span className="text-[11px] text-gray-700">
+                                                      <span className="text-[9px] text-gray-400 uppercase">Seguimiento: </span>
+                                                      <span className="font-semibold">{pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
+                                                    </span>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
                                     )}
-                                  </button>
+
+                                    {/* Estado vacío */}
+                                    {(!actividad.puntosControl || actividad.puntosControl.length === 0) && (
+                                      <div className="px-3 py-4 text-center">
+                                        <p className="text-xs text-gray-400">Haz clic en "Configurar" para definir los cortes de seguimiento</p>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Selector de responsables por actividad personalizada */}
+                                  <div className="mt-2" onClick={e => e.stopPropagation()}>
+                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1">
+                                      <Users className="w-3 h-3" />
+                                      Responsables de esta actividad
+                                    </p>
+                                    <div className="flex flex-col gap-1">
+                                      {(actividad.responsables || []).map(r => (
+                                        <div key={r.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
+                                          <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">
+                                            {r.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                          </div>
+                                          <span className="text-xs font-medium text-gray-900 flex-1">{r.nombre}</span>
+                                          <button
+                                            type="button"
+                                            onClick={e => { e.stopPropagation(); quitarResponsableCustom(rol.numero, index, r.id); }}
+                                            className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-[10px] transition-colors flex-shrink-0"
+                                          >✕</button>
+                                        </div>
+                                      ))}
+                                      <select
+                                        className="px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-xs text-gray-500 bg-white"
+                                        value=""
+                                        onChange={e => {
+                                          e.stopPropagation();
+                                          const auditor = auditores.find(a => a.id === e.target.value);
+                                          if (auditor) agregarResponsableCustom(rol.numero, index, auditor);
+                                        }}
+                                      >
+                                        <option value="">+ Agregar responsable…</option>
+                                        {auditores
+                                          .filter(a => !(actividad.responsables || []).some(r => r.id === a.id))
+                                          .map(a => (
+                                            <option key={a.id} value={a.id}>{a.nombre}</option>
+                                          ))}
+                                      </select>
+                                      {(actividad.responsables || []).length === 0 && (
+                                        <p className="text-[10px] text-red-500 flex items-center gap-1">⚠ Requerido</p>
+                                      )}
+                                    </div>
+                                  </div>
+
                                 </div>
                               </div>
                             ))}
+
                           </div>
                         </div>
                       )}
@@ -1755,6 +2238,23 @@ function Paso2({
           nombreActividad={actividadConfigurando.nombreActividad}
           fechaInicioActividad={fechaInicio}
           fechaFinActividad={fechaFin}
+          fechaCorte={
+            (() => {
+              const rol = rolesConfig.find(r => r.numero === actividadConfigurando.numeroRol);
+              if (!rol) {
+                console.log('[Wizard] ❌ Rol no encontrado');
+                return undefined;
+              }
+              let fechaCorteActividad;
+              if (actividadConfigurando.esCustom && actividadConfigurando.indexCustom !== undefined) {
+                fechaCorteActividad = rol.actividadesCustom[actividadConfigurando.indexCustom]?.fechaCorte;
+              } else {
+                fechaCorteActividad = rol.actividadesSeleccionadas.find(a => a.nombre === actividadConfigurando.nombreActividad)?.fechaCorte;
+              }
+              console.log('[Wizard] 📅 Pasando fechaCorte al modal:', fechaCorteActividad);
+              return fechaCorteActividad;
+            })()
+          }
           puntosControlExistentes={
             (() => {
               const rol = rolesConfig.find(r => r.numero === actividadConfigurando.numeroRol);
@@ -1892,6 +2392,8 @@ interface DashboardPlanProps {
   onCambiarPlan?: (planId: string) => void; // Callback para cambiar de plan activo
 }
 
+const PLAN_ANUAL_STORAGE_KEY = 'esap:plan_anual_activo';
+
 export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan }: DashboardPlanProps) {
   const [seccion, setSeccion] = useState<'gestion' | 'asignar' | 'aprobar'>('gestion');
   const [mostrarModalExportacion, setMostrarModalExportacion] = useState(false);
@@ -1913,20 +2415,20 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   // Permiso compuesto: editar O seguimiento para gestionar evidencias
   const puedeGestionarEvidencias = puedeEditarPlan || puedeSeguimiento;
 
-  // Cargar auditores desde backend al montar el componente (profesionales OCIG configurados)
+  // Cargar auditores desde backend al montar el componente (profesionales OCI configurados)
   useEffect(() => {
     const cargarAuditores = async () => {
       setCargandoAuditores(true);
       try {
-        const response = await configuracionesProfesionalesOCIGApi.getAll();
+        const response = await configuracionesProfesionalesOCIApi.getAll();
         if (response.success && response.data) {
-          // Mapear profesionales OCIG a formato Auditor
+          // Mapear profesionales OCI a formato Auditor
           const auditoresMapeados: Auditor[] = response.data
             .filter((p) => p.activo && p.nombre)
             .map((p) => ({
-              id: p.id, // UUID de configuracion_profesionales_ocig
+              id: p.id, // UUID de configuracion_profesionales_OCI
               nombre: p.nombre || '',
-              cargo: p.cargo || 'Profesional OCIG',
+              cargo: p.cargo || 'Profesional OCI',
               email: p.email || ''
             }));
           setAuditores(auditoresMapeados);
@@ -1940,6 +2442,18 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
     
     cargarAuditores();
   }, []);
+
+  // Sincronizar plan activo en localStorage cuando el plan cambia
+  useEffect(() => {
+    localStorage.setItem(PLAN_ANUAL_STORAGE_KEY, JSON.stringify({
+      id: plan.id,
+      vigencia: plan.vigencia,
+      estado: plan.estado,
+      version: plan.version,
+      jefeOCINombre: plan.jefeOCI?.nombre ?? '',
+      fechaCorte: `${plan.vigencia}-12-31`
+    }));
+  }, [plan.id]);
 
   // Estadísticas
   const totalActividades = plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0);
@@ -2145,23 +2659,44 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="bg-white border-b-2 border-gray-200 px-4 sm:px-8 py-4 sm:py-6">
+      <div className="bg-white border-b-2 border-gray-200 px-8 py-6">
+        <div className="max-w-7xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0">
+          {/* Izquierda: icono + título + badge de estado */}
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0 shadow-lg">
               <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">Plan Anual de Auditoría {plan.vigencia}</h1>
-              <p className="text-xs sm:text-sm text-gray-600 truncate">{plan.id} • Versión {plan.version} • {plan.jefeOCI.nombre}</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-black text-gray-900 truncate tracking-tight">Plan Anual de Auditoría {plan.vigencia}</h1>
+                <span className={`px-2.5 py-0.5 rounded-full font-bold border text-xs whitespace-nowrap ${plan.estado === 'VIGENTE' ? 'bg-green-100 text-green-700 border-green-300' : plan.estado === 'APROBADO' ? 'bg-blue-100 text-blue-700 border-blue-300' : plan.estado === 'EN_REVISION' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-gray-100 text-gray-600 border-gray-300'}`}>
+                  {plan.estado === 'BORRADOR' ? 'Borrador' : plan.estado === 'EN_REVISION' ? 'En revisión' : plan.estado === 'APROBADO' ? 'Aprobado' : plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado'}
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-gray-500 truncate mt-0.5">Versión {plan.version} • {plan.jefeOCI.nombre}</p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-shrink-0">
+          {/* Derecha: selector de plan + botones de acción */}
+          <div className="flex flex-row flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
             {planesDisponibles.length > 1 && onCambiarPlan && (
               <select
                 value={plan.id}
-                onChange={(e) => onCambiarPlan(e.target.value)}
+                onChange={(e) => {
+                  const planSeleccionado = planesDisponibles.find(p => p.id === e.target.value);
+                  if (planSeleccionado) {
+                    localStorage.setItem(PLAN_ANUAL_STORAGE_KEY, JSON.stringify({
+                      id: planSeleccionado.id,
+                      vigencia: planSeleccionado.vigencia,
+                      estado: planSeleccionado.estado,
+                      version: planSeleccionado.version,
+                      jefeOCINombre: planSeleccionado.jefeOCI?.nombre ?? '',
+                      fechaCorte: `${planSeleccionado.vigencia}-12-31`
+                    }));
+                  }
+                  onCambiarPlan(e.target.value);
+                }}
                 className="px-3 py-1.5 sm:py-2 border-2 border-blue-300 rounded-lg text-sm font-medium bg-blue-50 text-blue-900 focus:outline-none focus:border-blue-500"
               >
                 {planesDisponibles.map((p) => (
@@ -2172,25 +2707,20 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               </select>
             )}
 
-            <span className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold border-2 text-sm ${plan.estado === 'VIGENTE' ? 'bg-green-100 text-green-700 border-green-300' : plan.estado === 'APROBADO' ? 'bg-blue-100 text-blue-700 border-blue-300' : plan.estado === 'EN_REVISION' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-gray-100 text-gray-700 border-gray-300'}`}>
-              {plan.estado === 'BORRADOR' ? 'Borrador' : plan.estado === 'EN_REVISION' ? 'En revisión' : plan.estado === 'APROBADO' ? 'Aprobado' : plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado'}
-            </span>
-
             {onCrearNuevo && (
               <button 
                 onClick={onCrearNuevo}
-                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-medium flex items-center gap-2 transition-all shadow-md hover:shadow-lg text-sm"
+                className="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg text-xs sm:text-sm whitespace-nowrap"
               >
                 <Plus className="w-4 h-4" />
-                <span className="hidden xs:inline">Crear Nuevo Plan</span>
-                <span className="xs:hidden">Nuevo</span>
+                Nuevo Plan
               </button>
             )}
 
             <button
               type="button"
               onClick={() => setMostrarModalExportacion(true)}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-emerald-600 to-green-700 hover:from-emerald-700 hover:to-green-800 text-white rounded-lg font-medium flex items-center gap-2 transition-all shadow-md hover:shadow-lg text-sm"
+              className="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-emerald-600 to-green-700 hover:from-emerald-700 hover:to-green-800 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg text-xs sm:text-sm whitespace-nowrap"
             >
               <Download className="w-4 h-4" />
               Exportar
@@ -2311,7 +2841,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
                         <li>• {plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0)} actividades programadas</li>
                         <li>• Responsables asignados y fechas</li>
                         <li>• Estado de cumplimiento y avances</li>
-                        <li>• Información del Jefe OCIG: {plan.jefeOCI.nombre}</li>
+                        <li>• Información del Jefe OCI: {plan.jefeOCI.nombre}</li>
                       </ul>
                     </div>
                   </div>
@@ -2383,9 +2913,10 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
             </button>
           ))}
         </div>
+        </div>{/* cierre max-w-7xl */}
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-gray-50 p-8">
+      <div className="flex-1 overflow-y-auto bg-gray-50 px-8 py-6">
         <div className="max-w-7xl mx-auto">
           <AnimatePresence mode="wait">
             {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} />}
@@ -2424,6 +2955,14 @@ function SeccionGestionYSeguimiento({
   const [modalAdjuntos, setModalAdjuntos] = useState<{ actividadId: number | string; rolNumero: number } | null>(null);
   const [nuevaObservacion, setNuevaObservacion] = useState('');
   const [mostrarSelectorApoyo, setMostrarSelectorApoyo] = useState(false);
+
+  // ── ENTRADAS DE SEGUIMIENTO POR CORTE ────────────────────────────────────
+  const [corteConFormAbierto, setCorteConFormAbierto] = useState<string | null>(null);
+  const [formEntrada, setFormEntrada] = useState<{ texto: string; tipo: 'seguimiento' | 'hallazgo' | 'cierre' }>({ texto: '', tipo: 'seguimiento' });
+  const [guardandoEntrada, setGuardandoEntrada] = useState(false);
+  const [futuroExpandido, setFuturoExpandido] = useState<Record<string, boolean>>({});
+  const [modalCorteId, setModalCorteId] = useState<string | null>(null);
+
   // Modal de confirmación para desactivar/activar actividades
   const [modalConfirmacion, setModalConfirmacion] = useState<{
     visible: boolean;
@@ -2880,6 +3419,78 @@ function SeccionGestionYSeguimiento({
     toast.success('Responsable de apoyo eliminado');
   };
 
+  const agregarEntrada = async (rolNumero: number, actividadId: number | string, puntoControlId: string) => {
+    if (!formEntrada.texto.trim()) {
+      toast.error('Observación requerida', { description: 'Escribe al menos una observación para registrar la entrada.' });
+      return;
+    }
+    setGuardandoEntrada(true);
+    try {
+      const actividadActual = plan.roles
+        .find(r => r.numero === rolNumero)
+        ?.actividades.find(a => a.id === actividadId);
+
+      const nuevaEntrada: EntradaSeguimiento = {
+        id: crypto.randomUUID(),
+        puntoControlId,
+        fechaRegistro: new Date().toISOString().split('T')[0],
+        registradoPor: plan.jefeOCI?.nombre || 'Usuario',
+        texto: formEntrada.texto.trim(),
+        tipo: formEntrada.tipo,
+      };
+
+      const entradasActualizadas = [...(actividadActual?.entradasSeguimiento || []), nuevaEntrada];
+      const actividadConEntradas = { ...(actividadActual || {}), entradasSeguimiento: entradasActualizadas } as Actividad;
+      const nuevoPct = calcularPorcentajeCortes(actividadConEntradas);
+
+      const nuevoEstado: EstadoActividad =
+        nuevoPct === 100 ? 'COMPLETADA' :
+        nuevoPct > 0 ? 'EN_EJECUCION' :
+        'PENDIENTE';
+      const estadoBackend =
+        nuevoEstado === 'COMPLETADA' ? 'completada' :
+        nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' :
+        'pendiente';
+
+      const response = await actividadesApi.update(String(actividadId), {
+        entradas_seguimiento: entradasActualizadas,
+        porcentaje_avance: nuevoPct,
+        estado: estadoBackend as any,
+      });
+
+      if (!response.success) {
+        toast.error('Error al guardar', { description: response.error || 'No se pudo guardar la entrada.' });
+        return;
+      }
+
+      const planActualizado = {
+        ...plan,
+        roles: plan.roles.map(rol => {
+          if (rol.numero === rolNumero) {
+            return {
+              ...rol,
+              actividades: rol.actividades.map(act => {
+                if (act.id === actividadId) {
+                  return { ...act, entradasSeguimiento: entradasActualizadas, porcentajeAvance: nuevoPct, estado: nuevoEstado };
+                }
+                return act;
+              })
+            };
+          }
+          return rol;
+        })
+      };
+      onActualizar(planActualizado);
+      setCorteConFormAbierto(null);
+      setFormEntrada({ texto: '', tipo: 'seguimiento' });
+      toast.success('Entrada registrada', { description: 'El seguimiento del corte fue guardado.' });
+    } catch (e: any) {
+      toast.error('Error inesperado', { description: e?.message || 'Intenta de nuevo.' });
+    } finally {
+      setGuardandoEntrada(false);
+    }
+  };
+
   const guardarSeguimiento = async (rolNumero: number, actividadId: number | string) => {
     const actividadActual = plan.roles
       .find(r => r.numero === rolNumero)
@@ -2887,18 +3498,23 @@ function SeccionGestionYSeguimiento({
 
     if (
       formulario.porcentaje === 100 && 
-      actividadActual?.requiereAutorizacionJefeOCIG && 
-      !actividadActual?.autorizadaPorJefeOCIG
+      actividadActual?.requiereAutorizacionJefeOCI && 
+      !actividadActual?.autorizadaPorJefeOCI
     ) {
       toast.error('Autorización requerida', { 
-        description: 'Esta actividad requiere autorización del Jefe OCIG antes de completarse al 100%' 
+        description: 'Esta actividad requiere autorización del Jefe OCI antes de completarse al 100%' 
       });
       return;
     }
 
+    // Si tiene cortes configurados, el % se calcula automáticamente; si no, conservar el actual
+    const pctFinal = actividadActual?.puntosControl && actividadActual.puntosControl.length > 0
+      ? calcularPorcentajeCortes(actividadActual)
+      : actividadActual?.porcentajeAvance ?? 0;
+
     const nuevoEstado: EstadoActividad = 
-      formulario.porcentaje === 100 ? 'COMPLETADA' :
-      formulario.porcentaje > 0 ? 'EN_EJECUCION' :
+      pctFinal === 100 ? 'COMPLETADA' :
+      pctFinal > 0 ? 'EN_EJECUCION' :
       'PENDIENTE';
 
     // Mapear estado del frontend al formato del backend
@@ -2912,11 +3528,12 @@ function SeccionGestionYSeguimiento({
     try {
       // Preparar payload - Backend espera estos campos exactos
       const payload = {
-        estado: estadoBackend,
-        porcentaje_avance: formulario.porcentaje,
+        estado: estadoBackend as any,
+        porcentaje_avance: pctFinal,
         control: formulario.control,
         evaluacion: formulario.evaluacion,
-        seguimiento: formulario.seguimiento
+        seguimiento: formulario.seguimiento,
+        ...(actividadActual?.entradasSeguimiento ? { entradas_seguimiento: actividadActual.entradasSeguimiento } : {})
       };
       
       console.log('[GUARDAR] Payload:', payload);
@@ -2958,7 +3575,7 @@ function SeccionGestionYSeguimiento({
                   control: formulario.control,
                   evaluacion: formulario.evaluacion,
                   seguimiento: formulario.seguimiento,
-                  porcentajeAvance: formulario.porcentaje,
+                  porcentajeAvance: pctFinal,
                   estado: nuevoEstado
                 };
               }
@@ -2994,31 +3611,31 @@ function SeccionGestionYSeguimiento({
           PARTE 1: CONTEXTO DEL PLAN
           ══════════════════════════════════════════════════════════════════════ */}
       
-      {/* Banner de bienvenida */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-6 text-white">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">
-            <Shield className="w-6 h-6 text-white" />
+      {/* Banner de bienvenida - RESPONSIVE STACK */}
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-4 sm:p-6 text-white overflow-hidden shadow-lg border border-blue-400/20">
+        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 text-center sm:text-left">
+          <div className="w-14 h-14 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center flex-shrink-0 shadow-inner">
+            <Shield className="w-7 h-7 text-white" />
           </div>
-          <div className="flex-1">
-            <h2 className="text-2xl font-bold mb-2">Plan Anual de Auditoría Interna {plan.vigencia}</h2>
-            <p className="text-blue-100 mb-3">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl sm:text-2xl font-black mb-2 tracking-tight">Plan Anual de Auditoría Interna {plan.vigencia}</h2>
+            <p className="text-blue-50 text-sm sm:text-base mb-4 opacity-90 leading-relaxed">
               Estás visualizando el plan anual en ejecución. Este sistema permite gestionar el plan completo según el Decreto 648/2017,
               asignar responsables, hacer seguimiento y aprobar actividades.
             </p>
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Estado: {plan.estado}</span>
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-6 gap-y-2 text-xs sm:text-sm font-medium">
+              <div className="flex items-center gap-2 px-2 py-1 bg-white/10 rounded-lg">
+                <CheckCircle2 className="w-4 h-4 text-blue-200" />
+                <span className="opacity-90">Estado: <span className="font-bold">{plan.estado}</span></span>
               </div>
-              <div className="flex items-center gap-2">
-                <FileCheck className="w-4 h-4" />
-                <span>ID: {plan.id}</span>
+              <div className="flex items-center gap-2 px-2 py-1 bg-white/10 rounded-lg">
+                <FileCheck className="w-4 h-4 text-blue-200" />
+                <span className="opacity-90 font-mono">ID: {plan.id}</span>
               </div>
               {planesAnteriores.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  <span>{planesAnteriores.length} plan(es) anterior(es)</span>
+                <div className="flex items-center gap-2 px-2 py-1 bg-white/10 rounded-lg">
+                  <FileText className="w-4 h-4 text-blue-200" />
+                  <span className="opacity-90">{planesAnteriores.length} plan(es) anterior(es)</span>
                 </div>
               )}
             </div>
@@ -3026,10 +3643,13 @@ function SeccionGestionYSeguimiento({
         </div>
       </div>
 
-      {/* Información general */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Información general</h2>
-        <div className="grid grid-cols-4 gap-6">
+      {/* Información general - RESPONSIVE GRID */}
+      <div className="bg-white rounded-xl border-2 border-gray-200 p-6 shadow-sm">
+        <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+          <div className="w-1.5 h-6 bg-blue-600 rounded-full" />
+          Información general
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <div>
             <p className="text-sm text-gray-600 mb-1">Vigencia</p>
             <p className="text-2xl font-bold text-gray-900">{plan.vigencia}</p>
@@ -3418,16 +4038,16 @@ function SeccionGestionYSeguimiento({
                             Evidencias: ✗
                           </span>
                         )}
-                        {actividad.requiereAutorizacionJefeOCIG && (
+                        {actividad.requiereAutorizacionJefeOCI && (
                           <span className={`px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 ${
-                            actividad.autorizadaPorJefeOCIG
+                            actividad.autorizadaPorJefeOCI
                               ? 'bg-green-100 text-green-700 border border-green-300'
                               : 'bg-orange-100 text-orange-700 border border-orange-300'
                           }`}>
                             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                             </svg>
-                            {actividad.autorizadaPorJefeOCIG ? 'Autorizada Jefe OCIG' : 'Requiere Autorización OCIG'}
+                            {actividad.autorizadaPorJefeOCI ? 'Autorizada Jefe OCI' : 'Requiere Autorización OCI'}
                           </span>
                         )}
                         {actividad.requiereVerificacionDirector && (
@@ -3467,7 +4087,7 @@ function SeccionGestionYSeguimiento({
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
                       <SemaforoSeguimientoPAI 
-                        porcentaje={actividad.porcentajeAvance}
+                        porcentaje={actividad.puntosControl && actividad.puntosControl.length > 0 ? calcularPorcentajeCortes(actividad) : actividad.porcentajeAvance}
                         variant="bar"
                         size="md"
                         showLabel={true}
@@ -3603,94 +4223,265 @@ function SeccionGestionYSeguimiento({
                         </h4>
 
                         <div className="space-y-4">
-                          {/* Banner informativo si tiene puntos de control */}
-                          {actividad.puntosControl && actividad.puntosControl.length > 0 && (
-                            <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4 flex items-start gap-3">
-                              <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                              <div className="flex-1">
-                                <p className="font-semibold text-green-900 text-sm mb-1">
-                                  Actividad con puntos de control configurados
-                                </p>
-                                <p className="text-xs text-green-700">
-                                  <strong>{actividad.puntosControl.filter(p => p.estado === 'completado').length}</strong> de <strong>{actividad.puntosControl.length}</strong> puntos completados • 
-                                  Periodicidad: <strong>{actividad.frecuenciaPuntosControl}</strong>
-                                </p>
-                                <p className="text-xs text-green-600 mt-1">
-                                  El porcentaje y la periodicidad se calculan automáticamente según los puntos de control
-                                </p>
-                              </div>
-                            </div>
-                          )}
+                          {/* ── CORTES DE SEGUIMIENTO (colapsable, todos juntos) ── */}
+                          {actividad.puntosControl && actividad.puntosControl.length > 0 ? (() => {
+                            const hoy = new Date().toISOString().split('T')[0];
+                            const cortes = actividad.puntosControl!;
+                            const entradas = actividad.entradasSeguimiento || [];
 
-                          {/* Porcentaje de avance */}
-                          <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
-                            <label className="block text-sm font-semibold mb-3 flex items-center gap-2">
-                              Porcentaje de avance
-                              {actividad.puntosControl && actividad.puntosControl.length > 0 && (
-                                <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded uppercase">
-                                  Automático
-                                </span>
-                              )}
-                            </label>
-                            <div className="flex items-center gap-4">
-                              <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                step="5"
-                                value={formulario.porcentaje}
-                                onChange={(e) => setFormulario({ ...formulario, porcentaje: parseInt(e.target.value) })}
-                                disabled={!!(actividad.puntosControl && actividad.puntosControl.length > 0)}
-                                className="flex-1"
-                              />
-                              <div className={`w-20 px-4 py-2 border-2 rounded-lg text-center ${
-                                actividad.puntosControl && actividad.puntosControl.length > 0 
-                                  ? 'bg-green-100 border-green-300' 
-                                  : 'bg-gray-100 border-gray-300'
-                              }`}>
-                                <span className="text-2xl font-bold">{formulario.porcentaje}</span>
-                                <span className="text-sm">%</span>
-                              </div>
-                            </div>
-                            {actividad.puntosControl && actividad.puntosControl.length > 0 && (
-                              <p className="text-xs text-gray-500 mt-2 italic">
-                                Calculado automáticamente: {actividad.puntosControl.filter(p => p.estado === 'completado').length}/{actividad.puntosControl.length} puntos completados
-                              </p>
-                            )}
-                          </div>
+                            const esCumplido = (corte: PuntoControl) =>
+                              entradas.some(e => e.puntoControlId === corte.id);
 
-                          {/* Control (periodicidad) */}
-                          <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
-                            <label className="block text-sm font-semibold mb-2 flex items-center gap-2">
-                              🔍 Control (periodicidad)
-                              {actividad.frecuenciaPuntosControl && (
-                                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded uppercase">
-                                  Configurado
-                                </span>
-                              )}
-                            </label>
-                            {actividad.frecuenciaPuntosControl ? (
-                              <div className="w-full px-4 py-3 bg-blue-50 border-2 border-blue-300 rounded-lg">
-                                <p className="font-bold text-blue-900">{formulario.control}</p>
-                                <p className="text-xs text-blue-600 mt-1">
-                                  Definido en la configuración de puntos de control
-                                </p>
+                            const pasados = cortes.filter(c => c.fechaProgramada <= hoy);
+                            const cumplidos = pasados.filter(esCumplido).length;
+                            const pctActual = calcularPorcentajeCortes(actividad);
+                            const expandido = futuroExpandido[actividad.id] ?? false;
+                            // Activo = primer corte (por fecha) que todavía no tiene ninguna entrada
+                            const corteActivoId = [...cortes]
+                              .sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada))
+                              .find(c => !esCumplido(c))?.id;
+
+                            return (
+                              <div className="bg-white rounded-lg border-2 border-orange-200">
+                                {/* Header colapsable */}
+                                <button
+                                  onClick={() => setFuturoExpandido(prev => ({ ...prev, [actividad.id]: !expandido }))}
+                                  className="w-full flex items-center justify-between p-3 hover:bg-orange-50 rounded-t-lg"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {expandido
+                                      ? <ChevronUp className="w-4 h-4 text-orange-600" />
+                                      : <ChevronDown className="w-4 h-4 text-orange-600" />}
+                                    <span className="text-xs font-bold text-orange-700 uppercase tracking-wide">Cortes de seguimiento</span>
+                                    <span className="text-xs text-gray-500">({cumplidos}/{cortes.length} cumplidos)</span>
+                                  </div>
+                                  <span className="text-xs font-bold text-orange-600">{pctActual}%</span>
+                                </button>
+
+                                {/* Dots siempre visibles */}
+                                <div className="px-3 pb-2 flex items-center gap-1 flex-wrap">
+                                  {cortes.map((c, i) => {
+                                    const pasado = c.fechaProgramada <= hoy;
+                                    const cumplido = esCumplido(c);
+                                    const entradasC = entradas.filter(e => e.puntoControlId === c.id);
+                                    const aTiempo = cumplido && entradasC.some(e => e.fechaRegistro <= c.fechaProgramada);
+                                    const conRetraso = cumplido && !aTiempo;
+                                    return (
+                                      <span key={c.id} className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold border-2 ${
+                                        aTiempo ? 'bg-green-500 border-green-600 text-white' :
+                                        conRetraso ? 'bg-orange-600 border-orange-700 text-white' :
+                                        c.id === corteActivoId ? 'bg-blue-500 border-blue-600 text-white' :
+                                        pasado ? 'bg-red-500 border-red-600 text-white' :
+                                        'bg-gray-300 border-gray-400 text-gray-700'
+                                      }`} title={`${c.nombre} · ${c.fechaProgramada}`}>
+                                        {i + 1}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+
+                                {/* Lista completa colapsable */}
+                                {expandido && (
+                                  <div className="border-t border-orange-100 p-2 space-y-2">
+                                    {cortes.map((corte, index) => {
+                                      const pasado = corte.fechaProgramada <= hoy;
+                                      const cumplido = esCumplido(corte);
+                                      const entradasCorte = entradas.filter(e => e.puntoControlId === corte.id);
+                                      // Cumplido a tiempo = tiene al menos una entrada registrada antes o en la fecha del corte
+                                      const aTiempo = cumplido && entradasCorte.some(e => e.fechaRegistro <= corte.fechaProgramada);
+                                      const conRetraso = cumplido && !aTiempo;
+                                      
+                                      // Formatear fechas compacto
+                                      const formatFecha = (fecha: string) => {
+                                        const d = new Date(fecha + 'T00:00:00');
+                                        const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+                                        return `${d.getDate()} ${meses[d.getMonth()]} ${d.getFullYear()}`;
+                                      };
+
+                                      return (
+                                        <div key={corte.id} className={`rounded-lg border overflow-hidden ${
+                                          corte.id === corteActivoId ? 'border-blue-400 bg-blue-50/40' :
+                                          aTiempo ? 'border-green-300 bg-green-50/40' :
+                                          conRetraso ? 'border-orange-300 bg-orange-50/40' :
+                                          pasado ? 'border-red-300 bg-red-50/40' :
+                                          'border-gray-200 bg-gray-50/40 opacity-60'
+                                        }`}>
+                                          {/* Header compacto con estado */}
+                                          <div className={`px-3 py-2 flex items-center justify-between ${
+                                            corte.id === corteActivoId ? 'bg-blue-100/60' :
+                                            aTiempo ? 'bg-green-100/60' :
+                                            conRetraso ? 'bg-orange-100/60' :
+                                            pasado ? 'bg-red-100/60' :
+                                            'bg-gray-100/60'
+                                          }`}>
+                                            <div className="flex items-center gap-2">
+                                              <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold ${
+                                                corte.id === corteActivoId ? 'bg-blue-600 text-white' :
+                                                aTiempo ? 'bg-green-600 text-white' :
+                                                conRetraso ? 'bg-orange-600 text-white' :
+                                                pasado ? 'bg-red-600 text-white' :
+                                                'bg-gray-400 text-white'
+                                              }`}>
+                                                {index + 1}
+                                              </span>
+                                              <span className={`text-sm font-bold ${
+                                                corte.id === corteActivoId || pasado ? 'text-gray-800' : 'text-gray-400'
+                                              }`}>
+                                                {corte.nombre}
+                                              </span>
+                                            </div>
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                              aTiempo ? 'bg-green-600 text-white' :
+                                              conRetraso ? 'bg-orange-600 text-white' :
+                                              corte.id === corteActivoId ? 'bg-blue-600 text-white' :
+                                              pasado ? 'bg-red-600 text-white' :
+                                              'bg-gray-400 text-white'
+                                            }`}>
+                                              {aTiempo ? '✓ OK' : conRetraso ? '⚠ Tarde' : corte.id === corteActivoId ? '📍 Activo' : pasado ? '✗ Pendiente' : '⏳ Futuro'}
+                                            </span>
+                                          </div>
+
+                                          <div className="p-3 space-y-2">
+                                            {/* Fechas compactas en grid */}
+                                            <div className="grid grid-cols-2 gap-2">
+                                              {/* Fecha de corte */}
+                                              <div className="bg-orange-50 border border-orange-200 rounded-md p-2">
+                                                <div className="flex items-center gap-1 mb-0.5">
+                                                  <Calendar className="w-3 h-3 text-orange-600" />
+                                                  <span className="text-[9px] font-bold text-orange-700 uppercase">Corte</span>
+                                                </div>
+                                                <p className="text-xs font-bold text-gray-800">{formatFecha(corte.fechaProgramada)}</p>
+                                              </div>
+
+                                              {/* Fecha de seguimiento */}
+                                              {corte.fechaSeguimiento && (
+                                                <div className="bg-purple-50 border border-purple-200 rounded-md p-2">
+                                                  <div className="flex items-center gap-1 mb-0.5">
+                                                    <Clock className="w-3 h-3 text-purple-600" />
+                                                    <span className="text-[9px] font-bold text-purple-700 uppercase">Seguimiento</span>
+                                                  </div>
+                                                  <p className="text-xs font-bold text-gray-800">{formatFecha(corte.fechaSeguimiento)}</p>
+                                                </div>
+                                              )}
+                                            </div>
+
+                                            {/* Sección de entradas registradas - MÁS COMPACTA */}
+                                            {entradasCorte.length > 0 && (
+                                              <div className="bg-white border border-blue-200 rounded-md p-2">
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                  <div className="flex items-center gap-1">
+                                                    <FileText className="w-3 h-3 text-blue-600" />
+                                                    <span className="text-[9px] font-bold text-blue-700 uppercase">Documentación</span>
+                                                  </div>
+                                                  <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">
+                                                    {entradasCorte.length} registro{entradasCorte.length !== 1 ? 's' : ''}
+                                                  </span>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                  {entradasCorte.map(ent => (
+                                                    <div key={ent.id} className={`rounded-md overflow-hidden border ${
+                                                      aTiempo 
+                                                        ? 'bg-green-50/80 border-green-200' 
+                                                        : 'bg-orange-50/80 border-orange-200'
+                                                    }`}>
+                                                      {/* Header con fecha y badge integrado */}
+                                                      <div className={`px-2 py-1 flex items-center justify-between ${
+                                                        aTiempo ? 'bg-green-100/80' : 'bg-orange-100/80'
+                                                      }`}>
+                                                        <span className={`text-[10px] font-bold ${
+                                                          aTiempo ? 'text-green-800' : 'text-orange-800'
+                                                        }`}>
+                                                          📅 {formatFecha(ent.fechaRegistro)}
+                                                        </span>
+                                                        {aTiempo && (
+                                                          <span className="text-[9px] bg-green-600 text-white px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5">
+                                                            ✓ A TIEMPO
+                                                          </span>
+                                                        )}
+                                                        {conRetraso && (
+                                                          <span className="text-[9px] bg-orange-600 text-white px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5">
+                                                            ⚠ TARDE
+                                                          </span>
+                                                        )}
+                                                      </div>
+                                                      {/* Texto de la observación */}
+                                                      <div className="px-2 py-1.5">
+                                                        <p className="text-[11px] text-gray-700 leading-snug">{ent.texto}</p>
+                                                      </div>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {/* Botón agregar entrada - con restricción por fechas */}
+                                            {(() => {
+                                              // Lógica de ventana de tiempo:
+                                              // - Antes/en fechaProgramada: cualquiera con permiso puede subir (A TIEMPO)
+                                              // - Después de fechaProgramada y antes/en fechaSeguimiento: solo rol seguimiento (RETRASADO)
+                                              // - Después de fechaSeguimiento (o fechaProgramada si no hay seguimiento): BLOQUEADO
+                                              const fechaLimite = corte.fechaSeguimiento || corte.fechaProgramada;
+                                              const dentroDeCorte = hoy <= corte.fechaProgramada; // aún en plazo
+                                              const enVentanaSeguimiento = hoy > corte.fechaProgramada && hoy <= fechaLimite; // entre corte y seguimiento
+                                              const vencido = hoy > fechaLimite; // ya pasó todo
+
+                                              const puedeSubir = !vencido && (
+                                                (dentroDeCorte && puedeGestionarEvidencias) ||
+                                                (enVentanaSeguimiento && puedeSeguimiento)
+                                              );
+
+                                              if (!puedeSubir && (pasado || corte.id === corteActivoId)) {
+                                                return (
+                                                  <div className="w-full px-3 py-2 rounded-md text-xs text-center bg-gray-100 border border-gray-300 text-gray-500">
+                                                    🔒 Plazo vencido — no se pueden agregar documentos
+                                                  </div>
+                                                );
+                                              }
+
+                                              if (!puedeSubir) return null;
+
+                                              return (
+                                                <button
+                                                  onClick={() => {
+                                                    setModalCorteId(corte.id);
+                                                    setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero });
+                                                  }}
+                                                  className={`w-full px-3 py-2 rounded-md font-semibold text-xs flex items-center justify-center gap-1.5 transition-all ${
+                                                    enVentanaSeguimiento
+                                                      ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                                                      : corte.id === corteActivoId
+                                                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                                                      : cumplido
+                                                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                                                      : 'bg-orange-600 hover:bg-orange-700 text-white'
+                                                  }`}
+                                                >
+                                                  <Plus className="w-3.5 h-3.5" />
+                                                  {enVentanaSeguimiento
+                                                    ? '⚠ Registrar documentos (fuera de plazo)'
+                                                    : cumplido ? '+ Agregar más documentos' : 'Registrar documentos'}
+                                                </button>
+                                              );
+                                            })()}
+
+                                            {/* Mensaje si es futuro */}
+                                            {!pasado && corte.id !== corteActivoId && (
+                                              <div className="bg-gray-100 border border-gray-200 rounded-md p-2 text-center">
+                                                <p className="text-[10px] text-gray-500 flex items-center justify-center gap-1">
+                                                  <AlertCircle className="w-3 h-3" />
+                                                  Disponible desde {formatFecha(corte.fechaProgramada)}
+                                                </p>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
-                            ) : (
-                              <select
-                                value={formulario.control}
-                                onChange={(e) => setFormulario({ ...formulario, control: e.target.value })}
-                                className="w-full px-4 py-2 border-2 rounded-lg"
-                              >
-                                <option value="">Seleccionar...</option>
-                                <option value="Seguimiento mensual">Mensual</option>
-                                <option value="Seguimiento bimestral">Bimestral</option>
-                                <option value="Seguimiento trimestral">Trimestral</option>
-                                <option value="Seguimiento semestral">Semestral</option>
-                                <option value="Seguimiento anual">Anual</option>
-                              </select>
-                            )}
-                          </div>
+                            );
+                          })() : null}
 
                           {/* Evaluación */}
                           <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
@@ -3717,9 +4508,6 @@ function SeccionGestionYSeguimiento({
                               placeholder="Ejemplo: Se completó la auditoría al proceso X, se identificaron 3 hallazgos menores, se emitió informe el día DD/MM/AAAA..."
                               rows={4}
                             />
-                            <p className="text-xs text-gray-500 mt-2">
-                              ℹ️ Este campo es diferente de las <strong>Observaciones</strong> del botón "Gestionar evidencias" (abajo). Aquí registra las acciones concretas realizadas.
-                            </p>
                           </div>
 
                           {/* Botón gestionar evidencias */}
@@ -3728,7 +4516,6 @@ function SeccionGestionYSeguimiento({
                               ? 'border-green-300' 
                               : 'border-gray-200'
                           }`}>
-                            {/* Info de configuración de evidencias */}
                             {actividad.configuracionEvidencias && (
                               <div className="mb-3 p-3 bg-green-50 rounded-lg border border-green-200">
                                 <p className="text-xs font-semibold text-green-800 mb-2 flex items-center gap-1">
@@ -3765,21 +4552,64 @@ function SeccionGestionYSeguimiento({
                                 </p>
                               </div>
                             )}
-                            
-                            {/* Botón Gestionar evidencias - Solo visible si puede editar o hacer seguimiento */}
-                            {puedeGestionarEvidencias && (
-                              <button
-                                onClick={() => setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero })}
-                                className={`w-full px-4 py-3 text-white rounded-lg font-semibold flex items-center justify-center gap-2 ${
-                                  actividad.configuracionEvidencias 
-                                    ? 'bg-green-600 hover:bg-green-700' 
-                                    : 'bg-blue-600 hover:bg-blue-700'
-                                }`}
-                              >
-                                <Paperclip className="w-5 h-5" />
-                                Gestionar evidencias y observaciones
-                              </button>
-                            )}
+                            {(() => {
+                              const cortesAct = actividad.puntosControl || [];
+                              const entradasAct = actividad.entradasSeguimiento || [];
+                              const cortesOrdenados = [...cortesAct].sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada));
+                              const hoyStr = new Date().toISOString().split('T')[0];
+
+                              // Helper: verificar si un corte es elegible (no vencido y con permiso)
+                              const esElegible = (c: PuntoControl) => {
+                                const fechaLimite = c.fechaSeguimiento || c.fechaProgramada;
+                                if (hoyStr > fechaLimite) return false;
+                                if (hoyStr <= c.fechaProgramada) return true;
+                                return puedeSeguimiento;
+                              };
+
+                              // Preferir corte activo (sin entradas) que sea elegible
+                              const corteActivo = cortesOrdenados.find(c =>
+                                !entradasAct.some(e => e.puntoControlId === c.id) && esElegible(c)
+                              );
+                              // Fallback: primer corte elegible (aunque ya tenga entradas)
+                              const corteElegible = corteActivo || cortesOrdenados.find(esElegible);
+
+                              const hayCortes = cortesOrdenados.length > 0;
+                              const bloqueado = hayCortes && !corteElegible;
+                              const enVentanaSeguimiento = corteElegible && hoyStr > corteElegible.fechaProgramada;
+
+                              if (bloqueado) {
+                                return (
+                                  <div className="w-full px-4 py-3 rounded-lg font-semibold text-sm text-center bg-gray-100 border-2 border-gray-300 text-gray-500 flex items-center justify-center gap-2">
+                                    🔒 Todos los cortes han vencido — no se pueden agregar documentos
+                                  </div>
+                                );
+                              }
+
+                              if (!puedeGestionarEvidencias) return null;
+
+                              return (
+                                <button
+                                  onClick={() => {
+                                    setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero });
+                                    if (hayCortes) {
+                                      setModalCorteId(corteElegible?.id || cortesOrdenados[0].id);
+                                    }
+                                  }}
+                                  className={`w-full px-4 py-3 text-white rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                                    enVentanaSeguimiento
+                                      ? 'bg-orange-500 hover:bg-orange-600'
+                                      : actividad.configuracionEvidencias 
+                                      ? 'bg-green-600 hover:bg-green-700' 
+                                      : 'bg-blue-600 hover:bg-blue-700'
+                                  }`}
+                                >
+                                  <Paperclip className="w-5 h-5" />
+                                  {enVentanaSeguimiento
+                                    ? '⚠ Gestionar evidencias (fuera de plazo)'
+                                    : 'Gestionar evidencias y observaciones'}
+                                </button>
+                              );
+                            })()}
                             <div className="mt-3 text-sm text-center">
                               {actividad.adjuntos && actividad.adjuntos.length > 0 && (
                                 <span className="text-green-700 font-semibold">
@@ -3794,7 +4624,7 @@ function SeccionGestionYSeguimiento({
                             </div>
                           </div>
 
-                          {/* Botones de seguimiento - Solo visibles si puede editar o hacer seguimiento */}
+                          {/* Botones guardar/cancelar */}
                           {puedeGestionarEvidencias && (
                             <div className="flex gap-3">
                               <button
@@ -3811,26 +4641,26 @@ function SeccionGestionYSeguimiento({
                                     <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
                                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                                  </svg>
-                                  Guardando...
-                                </>
-                              ) : (
-                                <>
-                                  <Check className="w-5 h-5" />
-                                  Guardar
-                                </>
-                              )}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setActividadExpandida(null);
-                                setNuevaObservacion('');
-                                setMostrarSelectorApoyo(false);
-                              }}
-                              className="px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-semibold"
-                            >
-                              Cancelar
-                            </button>
+                                    </svg>
+                                    Guardando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Check className="w-5 h-5" />
+                                    Guardar
+                                  </>
+                                )}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setActividadExpandida(null);
+                                  setNuevaObservacion('');
+                                  setMostrarSelectorApoyo(false);
+                                }}
+                                className="px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-semibold"
+                              >
+                                Cancelar
+                              </button>
                             </div>
                           )}
                         </div>
@@ -3849,24 +4679,176 @@ function SeccionGestionYSeguimiento({
       })}
 
       {/* Modal de Adjuntos */}
-      {modalAdjuntos && (
-        <ModalGestionAdjuntos
-          actividad={plan.roles
-            .find(r => r.numero === modalAdjuntos.rolNumero)
-            ?.actividades.find(a => a.id === modalAdjuntos.actividadId)!}
-          autorNombre={plan.jefeOCI?.nombre || 'Usuario'}
-          onCerrar={() => setModalAdjuntos(null)}
+      {modalAdjuntos && (() => {
+        const actividadModal = plan.roles
+          .find(r => r.numero === modalAdjuntos.rolNumero)
+          ?.actividades.find(a => a.id === modalAdjuntos.actividadId);
+        
+        // Obtener información del punto de control si hay un corte seleccionado
+        const puntoControlInfo = modalCorteId && actividadModal?.puntosControl
+          ? actividadModal.puntosControl.find(pc => pc.id === modalCorteId)
+          : undefined;
+
+        return (
+          <ModalGestionAdjuntos
+            actividad={actividadModal!}
+            modoEntradaCorte={!!modalCorteId}
+            autorNombre={plan.jefeOCI?.nombre || 'Usuario'}
+            puntoControl={puntoControlInfo ? {
+              id: puntoControlInfo.id,
+              nombre: puntoControlInfo.nombre,
+              fechaProgramada: puntoControlInfo.fechaProgramada,
+              fechaSeguimiento: puntoControlInfo.fechaSeguimiento,
+              orden: puntoControlInfo.orden
+            } : undefined}
+            onCerrar={() => { setModalAdjuntos(null); setModalCorteId(null); }}
           onActualizar={async (adjuntos, observaciones) => {
             // Obtener actividad actual
-            const actividad = plan.roles
+            const actividadActual = plan.roles
               .find(r => r.numero === modalAdjuntos.rolNumero)
               ?.actividades.find(a => a.id === modalAdjuntos.actividadId);
 
-            const adjuntosOriginales = actividad?.adjuntos || [];
-
-            // Intentar sincronizar con backend
+            const adjuntosOriginales = actividadActual?.adjuntos || [];
             const actividadIdStr = String(modalAdjuntos.actividadId);
 
+            // Determinar si estamos en modo corte:
+            // - modalCorteId explícito, O
+            // - la actividad tiene puntosControl (siempre usar flujo corte)
+            const tieneCortes = actividadActual?.puntosControl && actividadActual.puntosControl.length > 0;
+            const corteIdEfectivo = modalCorteId || (tieneCortes
+              ? [...actividadActual!.puntosControl!].sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada))[0]?.id
+              : null);
+
+            // ── CONTEXTO CORTE: crear EntradaSeguimiento (ÚNICA fuente de verdad) ──
+            if (corteIdEfectivo) {
+              const corteIdTarget = corteIdEfectivo;
+              const nombreJefe = plan.jefeOCI?.nombre || 'Usuario';
+
+              // Extraer solo las nuevas observaciones del modal (prefijo obs-)
+              let nuevasObs: Array<{ id: string; texto: string; fechaRegistro: string; puntoControlId?: string }> = [];
+              try {
+                const parsed = JSON.parse(observaciones);
+                if (Array.isArray(parsed)) {
+                  nuevasObs = parsed.filter(o => typeof o.id === 'string' && o.id.startsWith('obs-'));
+                }
+              } catch { /* no JSON */ }
+
+              // Solo adjuntos realmente nuevos (creados en esta sesión del modal con prefijo adj-)
+              // Excluir los que vienen de entradas (ent-adj-*) y los que ya existen en la tabla
+              const nuevosAdjuntos = adjuntos.filter(a =>
+                typeof a.id === 'string' && a.id.startsWith('adj-') &&
+                !adjuntosOriginales.find(o => o.id === a.id)
+              );
+
+              // Si no hay observaciones ni archivos nuevos, no hay nada que registrar
+              if (nuevasObs.length === 0 && nuevosAdjuntos.length === 0) {
+                toast.warning('Agrega al menos una observación o un archivo para registrar la entrada', { duration: 3000 });
+                return;
+              }
+
+              // Si solo hay archivos sin observación, generar entrada automática
+              if (nuevasObs.length === 0 && nuevosAdjuntos.length > 0) {
+                const hoy = new Date().toISOString().split('T')[0];
+                nuevasObs = [{
+                  id: `obs-${Date.now()}`,
+                  texto: `Evidencia adjuntada: ${nuevosAdjuntos.map(a => a.nombre).join(', ')}`,
+                  fechaRegistro: hoy,
+                }];
+              }
+
+              // Crear entradas de seguimiento (fuente de verdad para observaciones Y archivos por corte)
+              // Agrupar archivos por puntoControlId para embeber en la entrada correcta
+              const archivosPorCorte = nuevosAdjuntos.reduce((map, a) => {
+                const pcId = a.puntoControlId || corteIdTarget;
+                if (!map[pcId]) map[pcId] = [];
+                map[pcId].push({
+                  nombre: a.nombre,
+                  url: a.url || '',
+                  tipo: a.tipo || 'application/octet-stream',
+                  tamanio: a.tamaño || 0,
+                });
+                return map;
+              }, {} as Record<string, Array<{ nombre: string; url: string; tipo: string; tamanio: number }>>);
+
+              // Track qué cortes ya recibieron sus archivos
+              const cortesConArchivos = new Set<string>();
+
+              const nuevasEntradas: EntradaSeguimiento[] = nuevasObs.map((obs) => {
+                const pcId = obs.puntoControlId || corteIdTarget;
+                const archivosDeEsteCorte = !cortesConArchivos.has(pcId) && archivosPorCorte[pcId];
+                if (archivosDeEsteCorte) cortesConArchivos.add(pcId);
+                return {
+                  id: `ent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  puntoControlId: pcId,
+                  fechaRegistro: obs.fechaRegistro || new Date().toISOString().split('T')[0],
+                  registradoPor: nombreJefe,
+                  texto: obs.texto,
+                  tipo: 'seguimiento' as const,
+                  ...(archivosDeEsteCorte ? { archivos: archivosDeEsteCorte } : {}),
+                };
+              });
+
+              const entradasActualizadas = [...(actividadActual?.entradasSeguimiento || []), ...nuevasEntradas];
+              const actividadConEntradas = { ...(actividadActual || {}), entradasSeguimiento: entradasActualizadas } as Actividad;
+              const nuevoPct = calcularPorcentajeCortes(actividadConEntradas);
+              const nuevoEstado: EstadoActividad = nuevoPct === 100 ? 'COMPLETADA' : nuevoPct > 0 ? 'EN_EJECUCION' : 'PENDIENTE';
+              const estadoBackend = nuevoEstado === 'COMPLETADA' ? 'completada' : nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' : 'pendiente';
+
+              setGuardandoEntrada(true);
+              try {
+                // SOLO guardar en entradas_seguimiento — NO duplicar en observaciones
+                const response = await actividadesApi.update(actividadIdStr, {
+                  entradas_seguimiento: entradasActualizadas,
+                  porcentaje_avance: nuevoPct,
+                  estado: estadoBackend as any,
+                });
+                if (!response.success) {
+                  toast.error('Error al guardar entrada', { description: response.error });
+                } else {
+                  // Guardar adjuntos si los hay
+                  if (nuevosAdjuntos.length > 0) {
+                    await guardarEvidencias(
+                      actividadIdStr,
+                      adjuntos.map(a => ({ ...a, esNuevo: !adjuntosOriginales.find(o => o.id === a.id) })),
+                      adjuntosOriginales,
+                      '' // No pasar observaciones — ya están en entradas_seguimiento
+                    );
+                  }
+                  const planActualizado = {
+                    ...plan,
+                    roles: plan.roles.map(r => {
+                      if (r.numero === modalAdjuntos.rolNumero) {
+                        return {
+                          ...r,
+                          actividades: r.actividades.map(act => {
+                            if (act.id === modalAdjuntos.actividadId) {
+                              return {
+                                ...act,
+                                entradasSeguimiento: entradasActualizadas,
+                                porcentajeAvance: nuevoPct,
+                                estado: nuevoEstado,
+                              };
+                            }
+                            return act;
+                          })
+                        };
+                      }
+                      return r;
+                    })
+                  };
+                  onActualizar(planActualizado);
+                  toast.success('Entrada registrada correctamente');
+                  setModalAdjuntos(null);
+                  setModalCorteId(null);
+                  try { await onRefetchPlan?.(); } catch { /* ignore */ }
+                }
+              } finally {
+                setGuardandoEntrada(false);
+              }
+              return;
+            }
+
+            // ── FLUJO NORMAL: gestión de adjuntos y observaciones sin corte ──
             const guardadoOk = await guardarEvidencias(
               actividadIdStr,
               adjuntos.map(a => ({ ...a, esNuevo: !adjuntosOriginales.find(o => o.id === a.id) })),
@@ -3903,7 +4885,8 @@ function SeccionGestionYSeguimiento({
             }
           }}
         />
-      )}
+        );
+      })()}
 
       {/* Modal de confirmación para desactivar/reactivar actividad */}
       <AnimatePresence>
@@ -4117,19 +5100,7 @@ function SeccionGestionYSeguimiento({
                   </div>
 
                   {/* Control */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">
-                      🔍 Control (periodicidad)
-                    </label>
-                    <textarea
-                      value={formularioEdicion.control}
-                      onChange={(e) => setFormularioEdicion(prev => ({ ...prev, control: e.target.value }))}
-                      rows={2}
-                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
-                      placeholder="Ej: Se hace seguimiento semestral, cuatrimestral, mensual..."
-                    />
-                  </div>
-
+                 
                   {/* Evaluación */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">
@@ -4235,8 +5206,25 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
 
   const asignarResponsable = async (rolNumero: number, actividadId: number | string, auditor: Auditor) => {
     console.log('👤 [asignarResponsable] Asignando:', { rolNumero, actividadId, auditor: auditor.nombre });
-    
+
     setAsignandoId(actividadId);
+
+    // Obtener la actividad actual para conocer sus responsables existentes
+    const actividadActual = plan.roles
+      .find(r => r.numero === rolNumero)
+      ?.actividades.find(a => a.id === actividadId);
+    const responsablesActuales: Auditor[] = actividadActual?.responsables?.length
+      ? actividadActual.responsables
+      : (actividadActual?.responsable ? [actividadActual.responsable] : []);
+
+    // Evitar duplicados
+    if (responsablesActuales.some(r => r.id === auditor.id)) {
+      toast.info('Ya asignado', { description: `${auditor.nombre} ya es responsable de esta actividad` });
+      setAsignandoId(null);
+      return;
+    }
+    const nuevosResponsables = [...responsablesActuales, auditor];
+
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -4245,7 +5233,7 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
             ...rol,
             actividades: rol.actividades.map(act => {
               if (act.id === actividadId) {
-                return { ...act, responsable: auditor };
+                return { ...act, responsables: nuevosResponsables, responsable: nuevosResponsables[0] };
               }
               return act;
             })
@@ -4256,12 +5244,64 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
     };
     onActualizar(planActualizado);
     try {
-      console.log('👤 [asignarResponsable] Enviando al backend:', { actividadId, responsable: auditor.nombre });
-      const res = await actividadesApi.update(String(actividadId), { responsable: auditor.nombre });
+      console.log('👤 [asignarResponsable] Enviando al backend:', { actividadId, responsables: nuevosResponsables.map(r => r.nombre) });
+      const res = await actividadesApi.update(String(actividadId), {
+        responsable: nuevosResponsables[0].nombre,
+        responsables: nuevosResponsables,
+      });
       console.log('👤 [asignarResponsable] Respuesta del backend:', res);
-      
+
       if (res.success) {
-        toast.success('Responsable asignado', { description: `${auditor.nombre} asignado a la actividad` });
+        toast.success('Responsable agregado', { description: `${auditor.nombre} agregado a la actividad` });
+        onRefetchPlan?.();
+      } else {
+        toast.error('Error al guardar', { description: res.error });
+        onRefetchPlan?.();
+      }
+    } catch (e) {
+      toast.error('Error', { description: 'No se pudo guardar en el servidor' });
+      onRefetchPlan?.();
+    } finally {
+      setAsignandoId(null);
+    }
+  };
+
+  const quitarResponsable = async (rolNumero: number, actividadId: number | string, auditorId: string) => {
+    setAsignandoId(actividadId);
+
+    const actividadActual = plan.roles
+      .find(r => r.numero === rolNumero)
+      ?.actividades.find(a => a.id === actividadId);
+    const responsablesActuales: Auditor[] = actividadActual?.responsables?.length
+      ? actividadActual.responsables
+      : (actividadActual?.responsable ? [actividadActual.responsable] : []);
+    const nuevosResponsables = responsablesActuales.filter(r => r.id !== auditorId);
+
+    const planActualizado = {
+      ...plan,
+      roles: plan.roles.map(rol => {
+        if (rol.numero === rolNumero) {
+          return {
+            ...rol,
+            actividades: rol.actividades.map(act => {
+              if (act.id === actividadId) {
+                return { ...act, responsables: nuevosResponsables, responsable: nuevosResponsables[0] || null };
+              }
+              return act;
+            })
+          };
+        }
+        return rol;
+      })
+    };
+    onActualizar(planActualizado);
+    try {
+      const res = await actividadesApi.update(String(actividadId), {
+        responsable: nuevosResponsables[0]?.nombre || '',
+        responsables: nuevosResponsables,
+      });
+      if (res.success) {
+        toast.success('Responsable quitado', { description: 'Responsable eliminado de la actividad' });
         onRefetchPlan?.();
       } else {
         toast.error('Error al guardar', { description: res.error });
@@ -4411,7 +5451,15 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
     >
       {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => {
         const isExpanded = rolExpandido === rol.numero;
-        const asignadas = rol.actividades.filter(a => a.responsable !== null).length;
+        const asignadas = rol.actividades.filter(a => (a.responsables?.length || 0) > 0 || a.responsable !== null).length;
+        // Unique responsibles across this role's activities (for role-level summary)
+        const responsablesDelRol = Array.from(
+          new Map(
+            rol.actividades
+              .flatMap(a => (a.responsables?.length ? a.responsables : a.responsable ? [a.responsable] : []) as Auditor[])
+              .map(r => [r.id, r])
+          ).values()
+        );
 
         return (
           <div key={rol.numero} className="bg-white rounded-xl border-2 border-gray-200">
@@ -4429,6 +5477,30 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                   <p className="text-sm text-gray-600">
                     {rol.actividades.length} actividades • {asignadas} asignadas • {rol.actividades.length - asignadas} pendientes
                   </p>
+                  {/* Responsables del rol: avatares de los auditores asignados a actividades de este rol */}
+                  {responsablesDelRol.length > 0 && (
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <span className="text-xs text-gray-500">Equipo:</span>
+                      <div className="flex -space-x-1">
+                        {responsablesDelRol.slice(0, 4).map((r) => (
+                          <div
+                            key={r.id}
+                            title={r.nombre}
+                            className="w-6 h-6 rounded-full bg-indigo-600 border-2 border-white flex items-center justify-center text-white text-[10px] font-bold"
+                            style={{ backgroundColor: rol.color }}
+                          >
+                            {r.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                          </div>
+                        ))}
+                        {responsablesDelRol.length > 4 && (
+                          <div className="w-6 h-6 rounded-full bg-gray-400 border-2 border-white flex items-center justify-center text-white text-[10px] font-bold">
+                            +{responsablesDelRol.length - 4}
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-500">{responsablesDelRol.map(r => r.nombre.split(' ')[0]).join(', ')}</span>
+                    </div>
+                  )}
                 </div>
               </div>
               
@@ -4437,7 +5509,7 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                   backgroundColor: rol.color + '20', 
                   color: rol.color 
                 }}>
-                  {Math.round((asignadas / rol.actividades.length) * 100)}% asignado
+                  {Math.round((asignadas / (rol.actividades.length || 1)) * 100)}% asignado
                 </span>
                 <motion.div
                   animate={{ rotate: isExpanded ? 180 : 0 }}
@@ -4483,33 +5555,53 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                             <p className="text-sm text-gray-600 mb-2">{actividad.descripcion}</p>
                             <div className="flex items-center gap-4 text-xs text-gray-500">
                               <span>📅 Inicio: {new Date(actividad.fechaInicio).toLocaleDateString('es-CO')}</span>
-                              <span>📅 Fin: {new Date(actividad.fechaFin).toLocaleDateString('es-CO')}</span>
+                              {actividad.fecha_corte && (
+                                <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full font-medium">📅 Corte: {new Date(actividad.fecha_corte + 'T00:00:00').toLocaleDateString('es-CO')}</span>
+                              )}
                             </div>
                           </div>
-                          {/* Select de asignación - Solo si tiene permiso */}
+                          {/* Responsables: chips + selector múltiple */}
                           {puedeAsignar ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-col gap-1.5 min-w-[220px]" onClick={(e) => e.stopPropagation()}>
+                              {/* Chips de responsables asignados */}
+                              {((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).map((resp) => (
+                                <div key={resp.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
+                                  <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                    {resp.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                                  </div>
+                                  <span className="text-sm font-medium text-gray-900 whitespace-nowrap flex-1">{resp.nombre}</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); quitarResponsable(rol.numero, actividad.id, resp.id); }}
+                                    className="text-blue-400 hover:text-red-600 leading-none ml-0.5 flex-shrink-0"
+                                    disabled={asignandoId === actividad.id}
+                                  >✕</button>
+                                </div>
+                              ))}
+                              {/* Select para añadir nuevo responsable */}
                               <select
-                                value={actividad.responsable?.nombre || ''}
+                                value=""
                                 onChange={(e) => {
-                                  const auditor = auditores.find(a => a.nombre === e.target.value);
+                                  const auditor = auditores.find(a => a.id === e.target.value);
                                   if (auditor) asignarResponsable(rol.numero, actividad.id, auditor);
                                 }}
-                                className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 min-w-[280px] text-sm"
+                                className="px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm text-gray-500 bg-white"
                                 onClick={(e) => e.stopPropagation()}
                                 disabled={cargandoAuditores || asignandoId === actividad.id}
                               >
-                                <option value="">🔹 Sin asignar</option>
-                                {auditores.map((auditor) => (
-                                  <option key={auditor.id} value={auditor.nombre}>
-                                    👤 {auditor.nombre} - {auditor.cargo}
-                                  </option>
-                                ))}
+                                <option value="">+ Agregar responsable…</option>
+                                {auditores
+                                  .filter(a => !((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).some(r => r.id === a.id))
+                                  .map((auditor) => (
+                                    <option key={auditor.id} value={auditor.id}>
+                                      {auditor.nombre}
+                                    </option>
+                                  ))}
                               </select>
                             </div>
                           ) : (
                             <div className="px-4 py-2 bg-gray-100 rounded-lg text-sm text-gray-600">
-                              {actividad.responsable?.nombre || 'Sin asignar'}
+                              {((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).map(r => r.nombre).join(', ') || 'Sin asignar'}
                             </div>
                           )}
                         </div>
@@ -4656,6 +5748,7 @@ function obtenerTextoPeriodicidad(frecuencia?: FrecuenciaPuntoControl): string {
   const mapeo: Record<FrecuenciaPuntoControl, string> = {
     'semanal': 'Seguimiento semanal',
     'mensual': 'Seguimiento mensual',
+    'bimensual': 'Seguimiento bimensual',
     'trimestral': 'Seguimiento trimestral',
     'semestral': 'Seguimiento semestral',
     'anual': 'Seguimiento anual',
@@ -4885,11 +5978,11 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
 
     if (
       formulario.porcentaje === 100 && 
-      actividadActual?.requiereAutorizacionJefeOCIG && 
-      !actividadActual?.autorizadaPorJefeOCIG
+      actividadActual?.requiereAutorizacionJefeOCI && 
+      !actividadActual?.autorizadaPorJefeOCI
     ) {
       toast.error('Autorización requerida', { 
-        description: 'Esta actividad requiere autorización del Jefe OCIG antes de completarse al 100%' 
+        description: 'Esta actividad requiere autorización del Jefe OCI antes de completarse al 100%' 
       });
       return;
     }
@@ -4910,7 +6003,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
     try {
       // Preparar payload - Backend espera estos campos exactos
       const payload = {
-        estado: estadoBackend,
+        estado: estadoBackend as any,
         porcentaje_avance: formulario.porcentaje,
         control: formulario.control,
         evaluacion: formulario.evaluacion,
@@ -5049,16 +6142,16 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                             Inactiva
                           </span>
                         )}
-                        {actividad.requiereAutorizacionJefeOCIG && (
+                        {actividad.requiereAutorizacionJefeOCI && (
                           <span className={`px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 ${
-                            actividad.autorizadaPorJefeOCIG
+                            actividad.autorizadaPorJefeOCI
                               ? 'bg-green-100 text-green-700 border border-green-300'
                               : 'bg-orange-100 text-orange-700 border border-orange-300'
                           }`}>
                             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                             </svg>
-                            {actividad.autorizadaPorJefeOCIG ? 'Autorizada Jefe OCIG' : 'Requiere Autorización OCIG'}
+                            {actividad.autorizadaPorJefeOCI ? 'Autorizada Jefe OCI' : 'Requiere Autorización OCI'}
                           </span>
                         )}
                         {actividad.requiereVerificacionDirector && (
@@ -5324,88 +6417,38 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                             </p>
                           </div>
 
-                          {/* GESTIÓN DE RESPONSABLES - Principal y Apoyo */}
-                          <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
-                            <label className="block text-sm font-semibold mb-3 flex items-center gap-2 text-blue-900">
-                              <Users className="w-4 h-4 text-blue-600" />
-                              👥 Equipo de trabajo
-                            </label>
-
-                            {/* Responsable Principal (NO EDITABLE) */}
-                            <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-3 mb-3">
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="text-xs font-semibold text-blue-700 mb-1">👤 RESPONSABLE PRINCIPAL (Asignado en programación)</p>
-                                  <p className="text-sm font-bold text-blue-900">
-                                    {actividad.responsable?.nombre || 'Sin asignar'}
-                                  </p>
-                                  <p className="text-xs text-blue-600">{actividad.responsable?.cargo}</p>
-                                </div>
-                                <span className="px-2 py-1 bg-blue-600 text-white text-[10px] font-bold rounded uppercase">
-                                  Principal
-                                </span>
+                          {/* RESPONSABLES - fila compacta */}
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                            <Users className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                            <span className="text-[10px] font-bold text-blue-500 uppercase shrink-0">Principal:</span>
+                            <span className="font-medium text-gray-800">{actividad.responsable?.nombre || 'Sin asignar'}</span>
+                            {actividad.responsablesApoyo && actividad.responsablesApoyo.length > 0 && (
+                              <>
+                                <span className="text-gray-300">·</span>
+                                <span className="text-[10px] font-bold text-purple-500 uppercase shrink-0">Apoyo:</span>
+                                {actividad.responsablesApoyo.map((resp) => (
+                                  <span key={resp.id} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-purple-50 border border-purple-200 rounded-full text-[10px] text-purple-800">
+                                    {resp.nombre}
+                                    <button onClick={() => { if (confirm(`¿Eliminar a ${resp.nombre}?`)) eliminarResponsableApoyo(rol.numero, actividad.id, resp.id); }} className="text-purple-400 hover:text-red-500 leading-none ml-0.5">✕</button>
+                                  </span>
+                                ))}
+                              </>
+                            )}
+                            <button
+                              onClick={() => setMostrarSelectorApoyo(!mostrarSelectorApoyo)}
+                              className="px-1.5 py-0.5 bg-purple-100 hover:bg-purple-200 text-purple-700 text-[10px] rounded font-medium"
+                            >+ apoyo</button>
+                            {mostrarSelectorApoyo && (
+                              <div className="w-full mt-1 flex flex-wrap gap-1">
+                                {auditores.filter(aud => aud.id !== actividad.responsable?.id && !(actividad.responsablesApoyo || []).some(r => r.id === aud.id)).map((auditor) => (
+                                  <button
+                                    key={auditor.id}
+                                    onClick={() => { agregarResponsableApoyo(rol.numero, actividad.id, auditor); setMostrarSelectorApoyo(false); }}
+                                    className="px-2 py-0.5 bg-white hover:bg-purple-50 border border-purple-200 rounded text-[11px] text-gray-700"
+                                  >{auditor.nombre}</button>
+                                ))}
                               </div>
-                            </div>
-
-                            {/* Responsables de Apoyo */}
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <p className="text-xs font-semibold text-purple-700">🤝 RESPONSABLES DE APOYO</p>
-                                <button
-                                  onClick={() => setMostrarSelectorApoyo(!mostrarSelectorApoyo)}
-                                  className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded-lg font-medium flex items-center gap-1"
-                                >
-                                  <Plus className="w-3 h-3" />
-                                  Agregar apoyo
-                                </button>
-                              </div>
-
-                              {/* Lista de responsables de apoyo */}
-                              {actividad.responsablesApoyo && actividad.responsablesApoyo.length > 0 ? (
-                                <div className="space-y-2 mb-2">
-                                  {actividad.responsablesApoyo.map((resp) => (
-                                    <div key={resp.id} className="bg-purple-50 border border-purple-200 rounded-lg p-2 flex items-center justify-between group">
-                                      <div>
-                                        <p className="text-sm font-semibold text-purple-900">{resp.nombre}</p>
-                                        <p className="text-xs text-purple-600">{resp.cargo}</p>
-                                      </div>
-                                      <button
-                                        onClick={() => {
-                                          if (confirm(`¿Eliminar a ${resp.nombre} del equipo de apoyo?`)) {
-                                            eliminarResponsableApoyo(rol.numero, actividad.id, resp.id);
-                                          }
-                                        }}
-                                        className="opacity-0 group-hover:opacity-100 transition-opacity text-red-600 hover:text-red-800 p-1"
-                                        title="Eliminar del equipo"
-                                      >
-                                        <X className="w-4 h-4" />
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-xs text-gray-500 italic mb-2">No hay responsables de apoyo asignados</p>
-                              )}
-
-                              {/* Selector de responsables de apoyo */}
-                              {mostrarSelectorApoyo && (
-                                <div className="bg-purple-50 border-2 border-purple-300 rounded-lg p-3">
-                                  <p className="text-xs font-semibold text-purple-900 mb-2">Seleccionar auditor de apoyo:</p>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    {auditores.filter(aud => aud.id !== actividad.responsable?.id).map((auditor) => (
-                                      <button
-                                        key={auditor.id}
-                                        onClick={() => agregarResponsableApoyo(rol.numero, actividad.id, auditor)}
-                                        className="text-left px-3 py-2 bg-white hover:bg-purple-100 border-2 border-purple-200 hover:border-purple-400 rounded-lg transition-all"
-                                      >
-                                        <p className="text-sm font-semibold text-purple-900">{auditor.nombre}</p>
-                                        <p className="text-xs text-purple-600">{auditor.cargo}</p>
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
+                            )}
                           </div>
 
                           {/* Archivos Adjuntos y Observaciones */}
@@ -5506,8 +6549,8 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                             </div>
                           </div>
 
-                          {/* Sistema de Autorización del Jefe OCIG - CONFIGURADO EN CREACIÓN */}
-                          {actividad.requiereAutorizacionJefeOCIG && (
+                          {/* Sistema de Autorización del Jefe OCI - CONFIGURADO EN CREACIÓN */}
+                          {actividad.requiereAutorizacionJefeOCI && (
                             <div className="bg-gradient-to-r from-orange-50 to-red-50 border-2 border-orange-300 rounded-lg p-4">
                               <div className="flex items-start gap-3 mb-3">
                                 <svg className="w-6 h-6 text-orange-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
@@ -5515,10 +6558,10 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                 </svg>
                                 <div className="flex-1">
                                   <p className="font-semibold text-orange-900 mb-1">
-                                    🔐 Requiere Autorización del Jefe OCIG
+                                    🔐 Requiere Autorización del Jefe OCI
                                   </p>
                                   <p className="text-xs text-orange-700">
-                                    Esta actividad fue configurada en la creación del Plan para requerir autorización del Jefe de la OCIG antes de completarse al 100%
+                                    Esta actividad fue configurada en la creación del Plan para requerir autorización del Jefe de la OCI antes de completarse al 100%
                                   </p>
                                 </div>
                               </div>
@@ -5526,19 +6569,19 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                               {/* Estado de Autorización */}
                               {formulario.porcentaje === 100 && (
                                 <div className="mt-3 pt-3 border-t-2 border-orange-300">
-                                  {actividad.autorizadaPorJefeOCIG ? (
+                                  {actividad.autorizadaPorJefeOCI ? (
                                     <div className="bg-green-50 border-2 border-green-300 rounded-lg p-3">
                                       <div className="flex items-center gap-2 text-green-800 mb-2">
                                         <CheckCircle2 className="w-5 h-5" />
-                                        <p className="font-bold">✓ Autorizada por el Jefe OCIG</p>
+                                        <p className="font-bold">✓ Autorizada por el Jefe OCI</p>
                                       </div>
                                       <p className="text-xs text-green-700">
                                         Fecha: {actividad.fechaAutorizacion ? new Date(actividad.fechaAutorizacion).toLocaleString('es-CO') : 'N/A'}
                                       </p>
-                                      {actividad.observacionesJefeOCIG && (
+                                      {actividad.observacionesJefeOCI && (
                                         <div className="mt-2 pt-2 border-t border-green-200">
-                                          <p className="text-xs font-semibold text-green-900">Observaciones del Jefe OCIG:</p>
-                                          <p className="text-sm text-green-800 mt-1">{actividad.observacionesJefeOCIG}</p>
+                                          <p className="text-xs font-semibold text-green-900">Observaciones del Jefe OCI:</p>
+                                          <p className="text-sm text-green-800 mt-1">{actividad.observacionesJefeOCI}</p>
                                         </div>
                                       )}
                                     </div>
@@ -5546,23 +6589,23 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                     <div className="bg-yellow-50 border-2 border-yellow-400 rounded-lg p-3">
                                       <p className="text-sm font-bold text-yellow-900 mb-2 flex items-center gap-2">
                                         <AlertCircle className="w-4 h-4" />
-                                        ⏳ Pendiente de autorización del Jefe OCIG
+                                        ⏳ Pendiente de autorización del Jefe OCI
                                       </p>
                                       <p className="text-xs text-yellow-800 mb-3">
-                                        Esta actividad alcanzará el 100% pero requiere la autorización del Jefe OCIG para considerarse completada.
+                                        Esta actividad alcanzará el 100% pero requiere la autorización del Jefe OCI para considerarse completada.
                                       </p>
                                       
-                                      {/* Solo el Jefe OCIG puede autorizar */}
+                                      {/* Solo el Jefe OCI puede autorizar */}
                                       <div className="space-y-2">
                                         <textarea
-                                          placeholder="Observaciones del Jefe OCIG (opcional)..."
+                                          placeholder="Observaciones del Jefe OCI (opcional)..."
                                           className="w-full px-3 py-2 border-2 border-yellow-300 rounded-lg text-sm"
                                           rows={2}
-                                          id={`obs-jefe-ocig-${actividad.id}`}
+                                          id={`obs-jefe-OCI-${actividad.id}`}
                                         />
                                         <button
                                           onClick={() => {
-                                            const observaciones = (document.getElementById(`obs-jefe-ocig-${actividad.id}`) as HTMLTextAreaElement)?.value || '';
+                                            const observaciones = (document.getElementById(`obs-jefe-OCI-${actividad.id}`) as HTMLTextAreaElement)?.value || '';
                                             const planActualizado = {
                                               ...plan,
                                               roles: plan.roles.map(r => {
@@ -5573,9 +6616,9 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                                       if (act.id === actividad.id) {
                                                         return {
                                                           ...act,
-                                                          autorizadaPorJefeOCIG: true,
+                                                          autorizadaPorJefeOCI: true,
                                                           fechaAutorizacion: new Date().toISOString(),
-                                                          observacionesJefeOCIG: observaciones
+                                                          observacionesJefeOCI: observaciones
                                                         };
                                                       }
                                                       return act;
@@ -5586,12 +6629,12 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                               })
                                             };
                                             onActualizar(planActualizado);
-                                            toast.success('Actividad autorizada por el Jefe OCIG');
+                                            toast.success('Actividad autorizada por el Jefe OCI');
                                           }}
                                           className="w-full px-4 py-2 bg-gradient-to-r from-orange-600 to-orange-700 hover:shadow-lg text-white rounded-lg font-semibold flex items-center justify-center gap-2"
                                         >
                                           <CheckCircle2 className="w-4 h-4" />
-                                          Autorizar como Jefe OCIG
+                                          Autorizar como Jefe OCI
                                         </button>
                                       </div>
                                     </div>
@@ -5632,7 +6675,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                               <div className="flex-1">
                                 <p className="font-semibold text-orange-900 flex items-center gap-2">
                                   <Shield className="w-4 h-4" />
-                                  Requiere verificación del Director OCIG
+                                  Requiere verificación del Director OCI
                                 </p>
                                 <p className="text-xs text-orange-700 mt-1">
                                   Si se marca, esta actividad solo se considerará completada después de la verificación y aprobación del Director de la Oficina de Control Interno
@@ -5647,7 +6690,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                   <div className="bg-green-50 border-2 border-green-300 rounded-lg p-3">
                                     <div className="flex items-center gap-2 text-green-800 mb-2">
                                       <CheckCircle2 className="w-5 h-5" />
-                                      <p className="font-bold">✓ Verificada por el Director OCIG</p>
+                                      <p className="font-bold">✓ Verificada por el Director OCI</p>
                                     </div>
                                     <p className="text-xs text-green-700">
                                       Fecha: {actividad.fechaVerificacion ? new Date(actividad.fechaVerificacion).toLocaleString('es-CO') : 'N/A'}
@@ -5708,7 +6751,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                         className="w-full px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:shadow-lg text-white rounded-lg font-semibold flex items-center justify-center gap-2"
                                       >
                                         <CheckCircle2 className="w-4 h-4" />
-                                        Verificar como Director OCIG
+                                        Verificar como Director OCI
                                       </button>
                                     </div>
                                   </div>
