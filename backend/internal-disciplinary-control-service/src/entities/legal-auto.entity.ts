@@ -87,6 +87,9 @@ export class LegalAuto {
   @Column({ type: 'timestamp', nullable: true })
   notificationDate: Date;
 
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  etapaDestino: string;
+
   @Column({ type: 'text', nullable: true })
   notificationEvidence: string; // URL del archivo de prueba de notificación
 

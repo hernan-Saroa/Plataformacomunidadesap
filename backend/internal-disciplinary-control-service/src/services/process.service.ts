@@ -8,6 +8,7 @@ import { Repository, Not, In } from 'typeorm';
 import {
   DisciplinaryProcess,
   ProcessStatus,
+  ProcessStage,
 } from '../entities/disciplinary-process.entity';
 import {
   CreateDisciplinaryProcessDto,
@@ -293,6 +294,7 @@ export class ProcessService {
          estado: ProcessStatus.ACTIVO,
          fechaPrescripcion,
          fechaVencimientoEtapa: fechaVencimiento,
+         fechaInicioEtapa: new Date(),
          observaciones: createProcessDto.observaciones,
        });
 
@@ -696,6 +698,42 @@ export class ProcessService {
       console.error('Error in changeStage:', error);
       throw error;
     }
+  }
+
+  /**
+   * Cambia la etapa del proceso por aprobación de auto de apertura (sin validación de transición)
+   */
+  async changeStageByAutoApertura(
+    id: string,
+    nuevaEtapa: ProcessStage,
+    fechaAprobacion: Date,
+  ): Promise<{ proceso: DisciplinaryProcess; tiempoAcumuladoDias: number | null }> {
+    const proceso = await this.findById(id, false);
+
+    let tiempoAcumuladoDias: number | null = null;
+    if (proceso.fechaInicioEtapa) {
+      tiempoAcumuladoDias = await this.terminosService.contarDiasHabiles(
+        proceso.fechaInicioEtapa,
+        fechaAprobacion,
+      );
+    }
+
+    const newStageConfig = await this.stageConfigurationRepository.findOne({
+      where: { etapa: nuevaEtapa, activo: true },
+    });
+
+    const { fechaVencimiento } =
+      await this.terminosService.calculateVencimientoEtapa(nuevaEtapa);
+
+    proceso.etapaActual = nuevaEtapa;
+    proceso.fechaInicioEtapa = fechaAprobacion;
+    proceso.fechaVencimientoEtapa = fechaVencimiento;
+    if (newStageConfig) {
+      proceso.kanbanStage = newStageConfig.id;
+    }
+
+    const procesoGuardado = await this.processRepository.save(proceso);
+    return { proceso: procesoGuardado, tiempoAcumuladoDias };
   }
 
   /**

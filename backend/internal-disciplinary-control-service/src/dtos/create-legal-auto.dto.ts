@@ -42,6 +42,10 @@ export class CreateLegalAutoDto {
   @IsOptional()
   @IsString()
   comentarios?: string;
+
+  @IsOptional()
+  @IsString()
+  etapaDestino?: string;
 }
 
 export class UpdateAutoStatusDto {
