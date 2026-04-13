@@ -232,9 +232,6 @@ export function PublicTitleVerification({
     if (requesterType === "empresa" && !requesterName.trim()) {
       return "Por favor ingresa el nombre de la empresa";
     }
-    if (requesterType === "empresa" && !companyNIT.trim()) {
-      return "Por favor ingresa el NIT de la empresa";
-    }
     if (requesterType === "empresa" && !contactPerson.trim()) {
       return "Por favor ingresa el nombre de la persona que solicita";
     }
@@ -1187,7 +1184,9 @@ export function PublicTitleVerification({
                             className="text-xs font-semibold text-gray-700 mb-2 block"
                           >
                             NIT de la Empresa{" "}
-                            <span className="text-red-500">*</span>
+                            <span className="text-gray-500 font-normal">
+                              (Opcional)
+                            </span>
                           </Label>
                           <Input
                             id="companyNIT"
@@ -1196,10 +1195,9 @@ export function PublicTitleVerification({
                             onChange={(e) => handleNITChange(e.target.value)}
                             placeholder="Ej: 9001234567"
                             className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
-                            required
                           />
                           <p className="text-xs text-gray-500 mt-1">
-                            Ingresa manualmente el número de NIT de la empresa.
+                            Si lo tienes, ingresa manualmente el número de NIT de la empresa.
                           </p>
                         </div>
 
