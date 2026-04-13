@@ -14,11 +14,11 @@
  */
 
 import { useState, useMemo } from 'react';
-import { Card } from '../../ui/card';
-import { Button } from '../../ui/button';
-import { Input } from '../../ui/input';
-import { Badge } from '../../ui/badge';
-import { Progress } from '../../ui/progress';
+import { Card } from '../ui/card';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Badge } from '../ui/badge';
+import { Progress } from '../ui/progress';
 import {
   Search, Filter, Clock, AlertTriangle, CheckCircle, XCircle,
   Mail, RefreshCw, Download, Eye, Users, Calendar, Shield,

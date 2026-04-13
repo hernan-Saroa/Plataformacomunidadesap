@@ -17,6 +17,7 @@ Esta guía documenta el despliegue en producción usando [deploy.prod.sh](/Users
 ./deploy.prod.sh restart
 ./deploy.prod.sh rebuild
 ./deploy.prod.sh rebuild-all-mfe
+./deploy.prod.sh rebuild-changed
 ./deploy.prod.sh rebuild-frontend
 ./deploy.prod.sh rebuild-service auth-service
 ./deploy.prod.sh logs
@@ -43,7 +44,14 @@ Esta guía documenta el despliegue en producción usando [deploy.prod.sh](/Users
 
 ## Flujo recomendado
 
-Deploy completo:
+Deploy inteligente después de `git pull`:
+
+```bash
+git pull
+./deploy.prod.sh rebuild-changed
+```
+
+Deploy completo solo si cambió gran parte del stack:
 
 ```bash
 git pull
@@ -65,6 +73,7 @@ Si cambia el gateway:
 Resumen práctico:
 
 - `rebuild` publica el stack base de `docker-compose.prod.yml`
+- `rebuild-changed` publica solo backend/MFEs afectados por el último pull o por un rango git
 - `rebuild-all-mfe` publica backend + gateway + shell + todos los microfrontends
 - `rebuild-mfe <app>` publica sólo el shell, gateway o el microfrontend indicado
 

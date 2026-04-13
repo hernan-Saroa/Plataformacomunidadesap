@@ -17,6 +17,7 @@ Esta guía documenta el despliegue en QA usando [deploy.qa.sh](/Users/henrryroja
 ./deploy.qa.sh restart
 ./deploy.qa.sh rebuild
 ./deploy.qa.sh rebuild-all-mfe
+./deploy.qa.sh rebuild-changed
 ./deploy.qa.sh rebuild-frontend
 ./deploy.qa.sh rebuild-service auth-service
 ./deploy.qa.sh logs
@@ -42,6 +43,15 @@ Esta guía documenta el despliegue en QA usando [deploy.qa.sh](/Users/henrryroja
 
 ## Flujo recomendado
 
+Deploy inteligente después de `git pull`:
+
+```bash
+git pull
+./deploy.qa.sh rebuild-changed
+```
+
+Deploy completo solo si cambió gran parte del stack:
+
 ```bash
 git pull
 ./deploy.qa.sh rebuild-all-mfe
@@ -56,6 +66,7 @@ Redeploy puntual:
 Resumen práctico:
 
 - `rebuild` publica el stack base de `docker-compose.qa.yml`
+- `rebuild-changed` publica solo backend/MFEs afectados por el último pull o por un rango git
 - `rebuild-all-mfe` publica backend + gateway + shell + todos los microfrontends
 - `rebuild-mfe <app>` publica sólo el shell, gateway o el microfrontend indicado
 
