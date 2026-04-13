@@ -1396,6 +1396,42 @@ export function PublicTitleVerification({
                   </div>
                 </div>
 
+                <div className="relative overflow-hidden rounded-xl border border-orange-200 bg-gradient-to-r from-orange-50 via-amber-50 to-rose-50/70 p-4 shadow-sm">
+                  <div className="pointer-events-none absolute right-4 top-4 hidden sm:flex h-10 w-10 items-center justify-center rounded-full border border-orange-200 bg-white/90 text-orange-500 shadow-sm">
+                    <Shield className="h-4 w-4" />
+                  </div>
+                  <div className="flex items-start gap-3 sm:pr-14">
+                    <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
+                      <FileText className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <p className="text-sm font-semibold text-gray-900">
+                        Importante sobre registros históricos y corrección de
+                        datos
+                      </p>
+                      <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
+                        Si el resultado no corresponde con la información
+                        esperada o el graduado no aparece en la consulta,
+                        verifica nuevamente los datos ingresados. Algunos
+                        registros históricos, especialmente de graduaciones del
+                        año 2010 o anteriores, pueden no encontrarse disponibles
+                        en esta base de datos y requerir revisión manual.
+                      </p>
+                      <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
+                        En estos casos, puedes escribir a{" "}
+                        <a
+                          href="mailto:ventanillaunica@esap.edu.co"
+                          className="font-semibold text-[#1e5da8] underline decoration-[#1e5da8]/30 underline-offset-2 hover:text-[#174a86]"
+                        >
+                          ventanillaunica@esap.edu.co
+                        </a>{" "}
+                        o acercarte a la ventanilla única de la ESAP para
+                        recibir orientación.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* 📜 Términos y Condiciones - Habeas Data */}
                 {matchSuggestions.length > 0 && (
                   <div className="bg-white border-2 border-blue-200 rounded-xl p-4 space-y-4">
