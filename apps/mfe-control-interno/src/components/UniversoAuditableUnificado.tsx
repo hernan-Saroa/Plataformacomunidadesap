@@ -31,7 +31,7 @@ import { toast } from 'sonner';
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
 // ✅ NUEVO: Cuestionario DAFP Visual SIMPLIFICADO - Implementación exacta según CUESTIONARIO_FLUJO_DAFP_VISUAL.md
 import { FormularioProcesoDafpVisual as FormularioProcesoAuditable, type FormularioDafpData as ProcesoAuditableData } from './FormularioProcesoDafpVisualSimplificado';
-import { ResponsiveTable, MobileCard, MobileCardRow, type Column } from '../../ui/responsive-table';
+import { ResponsiveTable, MobileCard, MobileCardRow, type Column } from '@esap-mfe/shared-ui/responsive-table';
 import { TabUniversoAuditableResponsive } from './TabUniversoAuditableResponsive';
 import { CronogramaAuditoriasPremium } from './CronogramaAuditoriasPremium';
 

@@ -8,14 +8,14 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
 import { usePermisos, PERMISOS } from '../config/PermisosContext';
-import { Input } from '../../../ui/input';
-import { Progress } from '../../../ui/progress';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Progress } from '@esap-mfe/shared-ui/progress';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import {
   Target, BarChart3, Activity, TrendingUp, Award, CheckCircle, AlertCircle,
   Calendar, Eye, Plus, Search, Filter, List, Clock, User, Download,
@@ -33,10 +33,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator
-} from '../../../ui/dropdown-menu';
+} from '@esap-mfe/shared-ui/dropdown-menu';
 import { legalService } from '../../../../services/api/legal.service';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // Importar modales ESAP 2025
 import { ModalNuevoIndicador } from './ModalNuevoIndicador';

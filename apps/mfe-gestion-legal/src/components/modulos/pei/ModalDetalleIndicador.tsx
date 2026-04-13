@@ -1,6 +1,6 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../../ui/dialog';
-import { Badge } from '../../../../ui/badge';
-import { ScrollArea } from '../../../../ui/scroll-area';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { ScrollArea } from '@esap-mfe/shared-ui/scroll-area';
 import { Target, Calendar, User, AlignLeft, TrendingUp } from 'lucide-react';
 
 interface ModalDetalleIndicadorProps {

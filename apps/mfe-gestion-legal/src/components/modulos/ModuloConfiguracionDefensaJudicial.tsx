@@ -6,10 +6,10 @@
  */
 
 import { useState } from 'react';
-import { Card } from '../../../ui/card';
-import { Button } from '../../../ui/button';
-import { Badge } from '../../../ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@esap-mfe/shared-ui/tabs';
 import { 
   Settings, FileText, Users, Bell, Shield, Database,
   Mail, Calendar, Scale, AlertCircle

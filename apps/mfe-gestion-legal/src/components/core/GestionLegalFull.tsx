@@ -52,7 +52,7 @@ import { siglFullTourSteps } from '../design-system/tourStepsMultiModulo';
 import { useNotifications } from '../../../esap/NotificationsContext';
 import { legalService } from '../../services/api/legal.service';
 import { authService } from '../../services/api/authService';
-import { Permissions } from '../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 type VistaDisponible =
   | 'defensa-judicial'

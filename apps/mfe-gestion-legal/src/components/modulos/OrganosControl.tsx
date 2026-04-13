@@ -14,23 +14,23 @@ import {
   Calendar, User, FileText, Download, Filter,
   Upload, Paperclip, Save, MoreVertical, Loader2
 } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModuleFilters } from '../design-system/ModuleFilters';
-import { Input } from '../../../ui/input';
-import { Textarea } from '../../../ui/textarea';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { ocService } from '../../../../services/api/legal.service';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // Modales
 import { ModalNuevoRequerimiento } from './ModalNuevoRequerimiento';

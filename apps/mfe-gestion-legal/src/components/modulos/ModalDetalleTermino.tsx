@@ -1,8 +1,8 @@
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Badge } from '../../../ui/badge';
-import { Textarea } from '../../../ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { SolicitudInforme } from '../core/types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';

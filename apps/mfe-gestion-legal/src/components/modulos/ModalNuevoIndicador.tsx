@@ -5,10 +5,10 @@
 
 import { useState, useEffect } from 'react';
 import { X, Target, Calendar, Users, TrendingUp } from 'lucide-react';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
-import { Label } from '../../../ui/label';
-import { Textarea } from '../../../ui/textarea';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';

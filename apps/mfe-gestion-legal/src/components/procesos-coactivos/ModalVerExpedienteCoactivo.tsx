@@ -12,7 +12,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { procesosCoactivosService } from '../../../../services/api/legal.service';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@esap-mfe/shared-ui/tabs';
 import { ModalHeaderClean } from '../modulos/ModalHeaderClean';
 
 interface ProcesoCoactivo {

@@ -10,11 +10,11 @@ import {
   Eye, MoreVertical, ChevronsUp, ChevronsDown, Scale, List,
   Download, Paperclip, Send, MessageSquare, FileCheck, Edit, Search
 } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@esap-mfe/shared-ui/select';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { toast } from 'sonner';
 import type { ExpedienteJudicial } from '../core/types';

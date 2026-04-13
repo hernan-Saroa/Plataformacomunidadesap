@@ -17,17 +17,17 @@ import {
   Users,
   Activity
 } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
-import { Input } from '../ui/input';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Input } from '@esap-mfe/shared-ui/input';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../ui/select';
+} from '@esap-mfe/shared-ui/select';
 
 interface Validacion {
   id: string;

@@ -10,12 +10,12 @@ import {
   ClipboardCheck, FolderOpen, AlertTriangle, TrendingUp, Target,
   Archive, MessageSquare, FileCheck, BarChart3, Calendar, FileText, ChevronRight, Eye, Building, User
 } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { Progress } from '../../../ui/progress';
-import { Input } from '../../../ui/input';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
+import { Progress } from '@esap-mfe/shared-ui/progress';
+import { Input } from '@esap-mfe/shared-ui/input';
 import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';

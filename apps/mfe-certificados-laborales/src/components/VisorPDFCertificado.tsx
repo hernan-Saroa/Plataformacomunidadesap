@@ -10,7 +10,7 @@ import {
   FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '../ui/button';
+import { Button } from '@esap-mfe/shared-ui/button';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { certificadosService } from '../../services/api/certificados.service';

@@ -5,9 +5,9 @@
  */
 
 import { TrendingUp, AlertTriangle, Clock, CheckCircle, FileText, Calendar, Scale, Gavel, FileQuestion, Inbox, CalendarClock, Eye, ChevronRight } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { useState, useEffect } from 'react';
 import { GuidedTour, TourButton, useTourCompleted } from '../design-system/GuidedTour';
 import { useTour } from '../design-system/TourContext'; // ✅ Importar contexto de tour

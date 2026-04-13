@@ -4,7 +4,7 @@
  */
 
 import { X, Bell, Share2, Download, ExternalLink, CheckCircle } from 'lucide-react';
-import { Button } from '../../../ui/button';
+import { Button } from '@esap-mfe/shared-ui/button';
 
 interface FooterExpedienteProps {
   expedienteId: string;

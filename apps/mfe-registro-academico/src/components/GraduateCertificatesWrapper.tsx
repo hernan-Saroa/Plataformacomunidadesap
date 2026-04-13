@@ -10,7 +10,7 @@ import { FileSearch, Award, AlertCircle } from 'lucide-react';
 import { ReviewRequestsModule } from './ReviewRequestsModule';
 import { VerificationCertificatesModule } from './VerificationCertificatesModule';
 import { authService } from '../../services/api/authService';
-import { Permissions } from '../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 interface GraduateCertificatesWrapperProps {
   onPendingCountChange?: (count: number) => void;

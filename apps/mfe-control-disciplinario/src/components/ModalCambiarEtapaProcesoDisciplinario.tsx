@@ -12,10 +12,10 @@ import {
   ArrowRight, AlertTriangle, CheckCircle,
   FileCheck, Edit, Search, Gavel, X
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
-import { Textarea } from '../../ui/textarea';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { toast } from 'sonner';
 import { ConfirmationModal } from '../ConfirmationModal';
 import { useConfiguration } from '../../../hooks/useConfiguration';

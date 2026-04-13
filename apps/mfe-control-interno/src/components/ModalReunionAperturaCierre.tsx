@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../ui/dialog';
-import { Button } from '../../ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { controlInternoService } from '../../../services/api/controlInternoService';
 import { auditoriasApi } from './services/api';
 import { toast } from 'sonner';

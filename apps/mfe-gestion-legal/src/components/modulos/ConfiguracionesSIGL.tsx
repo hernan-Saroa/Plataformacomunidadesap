@@ -29,7 +29,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ✅ Importar Context API
 import {

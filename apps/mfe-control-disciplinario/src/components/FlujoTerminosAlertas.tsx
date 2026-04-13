@@ -10,8 +10,8 @@ import {
   X, Info, Zap, Eye, Play, FileText, Users, Archive,
   TrendingUp, Target, AlertCircle, ChevronRight, HelpCircle
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 
 interface Etapa {
   id: string;

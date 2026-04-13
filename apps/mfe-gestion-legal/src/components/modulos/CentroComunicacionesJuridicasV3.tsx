@@ -23,12 +23,12 @@ import {
   Filter, Star, Gavel, Scale, Briefcase, Paperclip, ChevronLeft, ChevronRight,
   RefreshCw, Loader2, Reply, ArrowRight, Link2
 } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
-import { Checkbox } from '../../../ui/checkbox';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Checkbox } from '@esap-mfe/shared-ui/checkbox';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
@@ -40,7 +40,7 @@ import { ModalExpedienteComunicacion } from './ModalExpedienteComunicacion';
 import { DetalleCorreoModal } from './DetalleCorreoModal';
 import { correosJuridicosService, CorreoJuridico } from '../../../../services/api/legal.service';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
 import { usePermisos, PERMISOS } from '../config/PermisosContext';
 

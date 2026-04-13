@@ -1,11 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
-import { Progress } from '../../../ui/progress';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Progress } from '@esap-mfe/shared-ui/progress';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import {
   Target, BarChart3, Activity, TrendingUp, Award, CheckCircle, AlertCircle,
   Calendar, Eye, Plus, Search, Filter, List, Clock, User, FolderOpen, Download

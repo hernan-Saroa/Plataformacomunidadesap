@@ -27,7 +27,7 @@ import { TooltipGuia } from './TooltipGuia';
 import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';
 
 // ✅ DÍA 4: Container4K para padding adaptativo
-import { Container4K } from '../../ui/container-4k';
+import { Container4K } from '@esap-mfe/shared-ui/container-4k';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS

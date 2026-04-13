@@ -32,10 +32,10 @@ import {
   QrCode,  // NUEVO: Icono para QR
   Building2, MapPin  // ✅ NUEVO: Para filtro de sedes
 } from 'lucide-react';
-import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@esap-mfe/shared-ui/dropdown-menu';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CreateUserManualModal } from './CreateUserManualModal';
 import { MassEnrollmentModal } from './MassEnrollmentModal';

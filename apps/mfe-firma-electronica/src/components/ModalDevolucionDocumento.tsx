@@ -3,10 +3,10 @@
  * Permite al usuario rechazar y devolver documentos con observaciones
  */
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/dialog';
-import { Button } from '../ui/button';
-import { Card } from '../ui/card';
-import { Label } from '../ui/label';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Label } from '@esap-mfe/shared-ui/label';
 import { X, XCircle, Send, AlertCircle, MessageSquare } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';

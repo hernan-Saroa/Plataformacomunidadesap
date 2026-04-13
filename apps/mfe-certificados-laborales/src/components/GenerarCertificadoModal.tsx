@@ -14,11 +14,11 @@ import {
   Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Card } from '../ui/card';
-import { Label } from '../ui/label';
-import { Checkbox } from '../ui/checkbox';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Checkbox } from '@esap-mfe/shared-ui/checkbox';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { certificadosService } from '../../services/api/certificados.service';

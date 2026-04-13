@@ -26,9 +26,9 @@ import {
   Scale, Search, FileText, FileCheck, CheckCircle, Archive, AlertTriangle,
   Eye, Download, FileSignature, Bell, Plus, Info, Tag, X
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 import { BadgeNomenclatura } from './components/BadgeNomenclatura';
 import { previsualizarNomenclatura } from './utils/nomenclaturaDocumentos';

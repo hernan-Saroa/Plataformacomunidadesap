@@ -18,13 +18,13 @@ import {
   Shield, Target, Flag, Bookmark, Archive, Upload, Trash2, Check, Link as LinkIcon, Unlink
 } from 'lucide-react';
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
-import { Input } from '../../../ui/input';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@esap-mfe/shared-ui/tabs';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalNotificar } from './ModalNotificar';
@@ -43,7 +43,7 @@ import { legalService, correosJuridicosService } from '../../../../services/api/
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { isViewableInBrowser } from '../../../../utils/fileUtils';
 import { BarraProgresoExpediente } from '../core/BarraProgresoExpediente';
 import { TabActuacionesExpediente } from '../core/TabActuacionesExpediente';

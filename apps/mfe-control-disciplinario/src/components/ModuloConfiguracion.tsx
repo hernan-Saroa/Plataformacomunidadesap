@@ -11,11 +11,11 @@ import {
   AlertTriangle, CheckCircle, Mail, Calendar, Target, Zap,
   Plus, Trash2, Edit2, GripVertical, X, Upload, FileSignature, LayoutGrid, RotateCcw, AlertCircle
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
 import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import {

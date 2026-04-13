@@ -4,11 +4,11 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Badge } from '../../../ui/badge';
-import { Textarea } from '../../../ui/textarea';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import {
   MessageSquare, X, Send, AlertCircle, CheckCircle,
   Clock, User, TrendingUp, Filter, Loader2

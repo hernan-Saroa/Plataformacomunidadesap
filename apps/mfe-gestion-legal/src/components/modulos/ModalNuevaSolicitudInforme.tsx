@@ -8,10 +8,10 @@
  */
 
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import {
   FileText, Calendar, User, Building, Clock, X, AlertCircle,
   CheckCircle, Target, Info, TrendingUp
@@ -24,8 +24,8 @@ import { FormField, FormSection, FormProgress } from '../design-system/FormField
 import { ModalHeaderClean } from './ModalHeaderClean';
 
 // ✅ Importar hooks responsive
-import { useIsMobile } from '../../../../hooks/useIsMobile';
-import { useKeyboardVisible } from '../../../../hooks/useKeyboardVisible';
+import { useIsMobile } from '@esap-mfe/shared-hooks/useIsMobile';
+import { useKeyboardVisible } from '@esap-mfe/shared-hooks/useKeyboardVisible';
 
 interface ModalNuevaSolicitudInformeProps {
   isOpen: boolean;

@@ -9,7 +9,7 @@
  */
 
 import { Calendar, Clock, Info, AlertCircle } from 'lucide-react';
-import { Badge } from '../../../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { ModuleInfoTooltip } from './ModuleInfoTooltip';
 import { 
   calcularDiasHabilesEntreDosFechas, 

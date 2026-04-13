@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, AlertTriangle, Save, Loader2 } from 'lucide-react';
-import { Button } from '../../ui/button';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 
 interface ModalAgregarHallazgoRapidoProps {

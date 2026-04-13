@@ -42,9 +42,9 @@ import {
   Home
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Card, CardContent } from '../ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Card, CardContent } from '@esap-mfe/shared-ui/card';
 import esapLogo from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 

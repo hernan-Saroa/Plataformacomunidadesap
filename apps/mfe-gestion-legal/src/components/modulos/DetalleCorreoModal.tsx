@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../ui/dialog';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
 import { Mail, AlertTriangle, FileText, Eye, Download, Archive, User, Calendar, MapPin, Hash, Reply, Link, Search, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { correosJuridicosService } from '../../../../services/api/legal.service';

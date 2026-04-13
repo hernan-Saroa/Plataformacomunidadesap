@@ -21,7 +21,7 @@ import {
   disciplinaryService 
 } from '../../../../services/api/disciplinary.service';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // Etapas del proceso disciplinario
 const ETAPAS_STAGE = [

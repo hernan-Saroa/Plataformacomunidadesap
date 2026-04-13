@@ -8,8 +8,8 @@
  */
 
 import { CheckCircle, AlertCircle, XCircle, Shield, Info } from 'lucide-react';
-import { Badge } from '../../../ui/badge';
-import { Card } from '../../../ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
 import {
   validarDecreto648,
   obtenerEstadisticasPlan,

@@ -9,7 +9,7 @@ import {
   X, Upload, FileText, File, Image, FileSpreadsheet,
   Trash2, Check, AlertCircle, Paperclip, Plus, Info
 } from 'lucide-react';
-import { Badge } from '../../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
 
 interface ModalSubirDocumentoProps {

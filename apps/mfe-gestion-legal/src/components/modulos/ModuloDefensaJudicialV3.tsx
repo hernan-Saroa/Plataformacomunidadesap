@@ -17,10 +17,10 @@ import {
   ExternalLink, Download, Upload, RefreshCw, Paperclip,
   MessageSquare, FileCheck, Send, Archive, Mail, Edit, Trash2
 } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../ui/dialog';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
 import { toast } from 'sonner';
 
 import { legalService } from '../../../../services/api/legal.service';
@@ -41,13 +41,13 @@ import { VistaListaDefensaJudicial } from './VistaListaDefensaJudicial';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ✅ Importar configuraciones centralizadas
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
 import { usePermisos, PERMISOS } from '../config/PermisosContext';
-import { useResponsive } from '../../../../hooks/useResponsive';
+import { useResponsive } from '@esap-mfe/shared-hooks/useResponsive';
 import {
   ESAP_TOKENS,
   KanbanCard,

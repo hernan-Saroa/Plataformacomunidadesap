@@ -7,12 +7,12 @@
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Label } from '../../../ui/label';
-import { Textarea } from '../../../ui/textarea';
-import { Input } from '../../../ui/input';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { Input } from '@esap-mfe/shared-ui/input';
 import {
     AlertTriangle, X, Save, Scale, FileText, User
 } from 'lucide-react';

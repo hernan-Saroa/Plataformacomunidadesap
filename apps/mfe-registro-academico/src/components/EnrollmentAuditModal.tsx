@@ -5,7 +5,7 @@
 
 import { motion, AnimatePresence } from 'motion/react';
 import { X, FileText, User, Calendar, Clock, CheckCircle, Users, Mail } from 'lucide-react';
-import { Badge } from '../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 
 interface EnrollmentAuditModalProps {
   enrollment: any;

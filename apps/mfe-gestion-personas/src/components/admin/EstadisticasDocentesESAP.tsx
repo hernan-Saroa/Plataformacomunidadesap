@@ -7,7 +7,7 @@
  * Fecha: 23 de diciembre de 2024
  */
 
-import { Badge } from '../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Users, GraduationCap, MapPin, TrendingUp, BookOpen, Briefcase } from 'lucide-react';
 import { TODOS_LOS_DOCENTES } from '../../data/docentesGestionProfesoral';
 

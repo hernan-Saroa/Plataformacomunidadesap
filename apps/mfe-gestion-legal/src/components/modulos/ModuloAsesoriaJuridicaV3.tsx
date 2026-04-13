@@ -12,17 +12,17 @@ import {
   Archive, MessageSquare, History, Send, FileCheck, Mail, Columns3, List,
   AlertCircle, FolderOpen, FileQuestion, SortAsc, SortDesc, XCircle, Trash2, Settings
 } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { Input } from '../../../ui/input';
-import { Textarea } from '../../../ui/textarea';
-import { Label } from '../../../ui/label';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { Label } from '@esap-mfe/shared-ui/label';
 import { ConsultaJuridica } from '../core/types';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { useConfirmation } from '../../../ui/confirmation-dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { useConfirmation } from '@esap-mfe/shared-ui/confirmation-dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@esap-mfe/shared-ui/select';
 import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
@@ -32,7 +32,7 @@ import { legalService } from '../../../../services/api/legal.service';
 import { ModalNuevaConsulta } from './ModalNuevaConsulta';
 import { ModalExpedienteConsulta } from './ModalExpedienteConsulta';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ✅ Importar configuraciones centralizadas
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';

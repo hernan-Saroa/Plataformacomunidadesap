@@ -1,11 +1,11 @@
 
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
-import { Label } from '../../../ui/label';
-import { Textarea } from '../../../ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@esap-mfe/shared-ui/select';
 import { Calendar, Users, Video, MapPin, Clock, Save, Link as LinkIcon, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';

@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Textarea } from '../../../ui/textarea';
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { AlertTriangle } from 'lucide-react';
 
 interface ModalArchivarRequerimientoProps {

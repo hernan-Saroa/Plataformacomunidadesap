@@ -49,7 +49,7 @@ import { toast } from 'sonner';
 // ============ COMPONENTES DEL DESIGN SYSTEM ============
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
-import { Badge } from '../../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 
 // ============ COMPONENTES DE AUDITORÍA ============
 import { FormularioNuevaAuditoria } from './FormularioNuevaAuditoria';

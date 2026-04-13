@@ -8,10 +8,10 @@
 
 import { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
 import {
   Archive,
   Trash2,
@@ -30,7 +30,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 import { ModalHeaderClean } from '../modulos/ModalHeaderClean';
 
 // ==================== TIPOS ====================

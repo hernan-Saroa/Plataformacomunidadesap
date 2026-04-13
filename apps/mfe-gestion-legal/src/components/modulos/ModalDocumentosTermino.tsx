@@ -1,6 +1,6 @@
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { FileText, Download, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';

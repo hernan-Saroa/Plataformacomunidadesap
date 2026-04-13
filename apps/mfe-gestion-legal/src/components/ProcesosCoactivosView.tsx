@@ -18,7 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator
-} from '../../ui/dropdown-menu';
+} from '@esap-mfe/shared-ui/dropdown-menu';
 
 interface ProcesoCoactivo {
   id: string;

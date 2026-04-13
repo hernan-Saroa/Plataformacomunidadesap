@@ -6,14 +6,14 @@
  * ✅ Destinatarios dinámicos: abogados del proceso
  */
 
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../ui/dialog';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Input } from '../../../ui/input';
-import { Textarea } from '../../../ui/textarea';
-import { Checkbox } from '../../../ui/checkbox';
-import { Label } from '../../../ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@esap-mfe/shared-ui/dialog';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { Checkbox } from '@esap-mfe/shared-ui/checkbox';
+import { Label } from '@esap-mfe/shared-ui/label';
 import { 
   Bell, X, Send, User, Mail, MessageSquare, 
   CheckCircle, Users, AlertCircle

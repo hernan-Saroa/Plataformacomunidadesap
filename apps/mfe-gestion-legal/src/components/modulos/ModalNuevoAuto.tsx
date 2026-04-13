@@ -8,11 +8,11 @@
  */
 
 import { useState, useRef } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../ui/dialog';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Input } from '../../../ui/input';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@esap-mfe/shared-ui/dialog';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Input } from '@esap-mfe/shared-ui/input';
 import {
   FileText, Calendar, Upload, X, AlertCircle, CheckCircle,
   Save, Scale, Building2, User, Hash, FileUp, Paperclip, Settings

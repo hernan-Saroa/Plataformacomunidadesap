@@ -3,10 +3,10 @@
  * Muestra todo el ciclo de vida y progreso del documento
  */
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/dialog';
-import { Card } from '../ui/card';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import {
   X, CheckCircle, Clock, Eye, Mail, Download, Share2,
   AlertCircle, User, Calendar, MapPin, Smartphone, Monitor,

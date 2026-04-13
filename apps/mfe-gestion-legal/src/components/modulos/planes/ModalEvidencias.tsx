@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../../../ui/dialog';
-import { Button } from '../../../../ui/button';
-import { Input } from '../../../../ui/input';
-import { Label } from '../../../../ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { FileText, Download, Upload } from 'lucide-react';
-import { Card } from '../../../../ui/card';
+import { Card } from '@esap-mfe/shared-ui/card';
 import { buildApiUrl } from '../../../../../config/environment';
 
 interface ModalEvidenciasProps {

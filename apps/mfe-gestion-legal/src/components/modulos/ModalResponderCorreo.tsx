@@ -9,12 +9,12 @@ import {
   Reply, Paperclip, X, Send, Loader2, AlertCircle, User
 } from 'lucide-react';
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Input } from '../../../ui/input';
-import { Label } from '../../../ui/label';
-import { Textarea } from '../../../ui/textarea';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { correosJuridicosService } from '../../../../services/api/legal.service';
 

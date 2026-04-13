@@ -19,9 +19,9 @@ import {
   Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '../ui/button';
-import { Card } from '../ui/card';
-import { Input } from '../ui/input';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Input } from '@esap-mfe/shared-ui/input';
 import { certificadosService } from '../../services/api/certificados.service';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
 import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';

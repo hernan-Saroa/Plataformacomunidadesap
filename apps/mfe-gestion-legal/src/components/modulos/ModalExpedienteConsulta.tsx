@@ -20,16 +20,16 @@ import {
   Upload, BookOpen, Gavel, History, Trash2
 } from 'lucide-react';
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { useConfirmation } from '../../../ui/confirmation-dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
-import { Input } from '../../../ui/input';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { Textarea } from '../../../ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { useConfirmation } from '@esap-mfe/shared-ui/confirmation-dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@esap-mfe/shared-ui/select';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@esap-mfe/shared-ui/tabs';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 
 import type { ConsultaJuridica } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
@@ -38,7 +38,7 @@ import { ModalCompartir } from './ModalCompartir';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 interface ModalExpedienteConsultaProps {

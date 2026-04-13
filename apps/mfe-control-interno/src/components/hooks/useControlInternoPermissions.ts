@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SISTEMA DE PERMISOS FLEXIBLE - CONTROL INTERNO

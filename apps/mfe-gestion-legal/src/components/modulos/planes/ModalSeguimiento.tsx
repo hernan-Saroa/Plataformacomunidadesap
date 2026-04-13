@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../../../ui/dialog';
-import { Button } from '../../../../ui/button';
-import { Textarea } from '../../../../ui/textarea';
-import { Label } from '../../../../ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { Label } from '@esap-mfe/shared-ui/label';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Slider } from '../../../../ui/slider'; // Assuming exists or use input range
+import { Slider } from '@esap-mfe/shared-ui/slider'; // Assuming exists or use input range
 import { buildApiUrl } from '../../../../../config/environment';
 
 interface ModalSeguimientoProps {

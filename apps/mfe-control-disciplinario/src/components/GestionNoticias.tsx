@@ -36,10 +36,10 @@ import {
   HelpCircle,
   Send
 } from 'lucide-react';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
-import { Card } from '../../ui/card';
-import { Avatar, AvatarFallback } from '../../ui/avatar';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import { mapStageToUi } from '../../../services/api/esapDataService';
@@ -50,7 +50,7 @@ import { ModalDetallesNoticia } from './ModalDetallesNoticia';
 import { ModalArchivarNoticia } from './ModalArchivarNoticia';
 import { ModalRemitirCompetencia } from './ModalRemitirCompetencia';
 import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 import { disciplinaryService, DisciplinaryNews, CreateNewsDto } from '../../../services/api/disciplinary.service';
 

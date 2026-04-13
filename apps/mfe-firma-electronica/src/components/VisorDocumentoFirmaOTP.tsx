@@ -3,11 +3,11 @@
  * Diseño premium con canvas de firma y validación OTP de 6 dígitos
  */
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/dialog';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
-import { Card } from '../ui/card';
-import { Input } from '../ui/input';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Input } from '@esap-mfe/shared-ui/input';
 import {
   X, Download, PenTool, CheckCircle, AlertCircle, FileText,
   Eye, Trash2, RotateCcw, Save, Mail, Shield, Lock, Key

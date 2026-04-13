@@ -19,9 +19,9 @@ import {
   BarChart3, TrendingUp, Percent, Plus, Save, X,
   Settings, Copy, RefreshCw, Share2, Lock, Unlock
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 
 // ⭐ IMPORTAR COMPONENTE CRÍTICO: CATÁLOGO DE INFORMES DE LEY

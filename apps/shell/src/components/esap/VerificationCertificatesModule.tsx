@@ -75,7 +75,7 @@ import graduadosService, {
 } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
 import { authService } from '../../services/api/authService';
-import { Permissions } from '../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // Tipo de certificado con QR único (uno por solicitud)
 interface CertificateRequest {

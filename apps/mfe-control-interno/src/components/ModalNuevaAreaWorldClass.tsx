@@ -12,8 +12,8 @@
 import { useState } from 'react';
 import { Plus, Link2, Save } from 'lucide-react';
 import { ModalWorldClass } from './ModalWorldClass';
-import { Badge } from '../../ui/badge';
-import { Input } from '../../ui/input';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Input } from '@esap-mfe/shared-ui/input';
 import { toast } from 'sonner';
 
 // ============ TIPOS ============

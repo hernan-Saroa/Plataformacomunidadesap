@@ -39,10 +39,10 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
 // UI Components
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../ui/dialog';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
-import { Card } from '../../ui/card';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
 
 // Design System
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';

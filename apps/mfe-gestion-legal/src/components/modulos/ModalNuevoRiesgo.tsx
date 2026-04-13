@@ -5,10 +5,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Target, Shield, Activity, TrendingUp, Plus, Trash2, Loader2, Link } from 'lucide-react';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
-import { Label } from '../../../ui/label';
-import { Textarea } from '../../../ui/textarea';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { legalService, ocService } from '../../../../services/api/legal.service';

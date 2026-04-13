@@ -21,9 +21,9 @@ import {
   X, Save, AlertCircle, CheckCircle, Plus, Trash2,
   User, Calendar, Target, FileText, Shield, Info, MapPin, Zap, Clock
 } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
-import { Input } from '../../ui/input';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Input } from '@esap-mfe/shared-ui/input';
 import { toast } from 'sonner';
 import {
   validateAuditoriaForm,

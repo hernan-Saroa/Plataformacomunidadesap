@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 import { FileSearch, Target, MessageSquare, Info } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@esap-mfe/shared-ui/tabs";
 import { motion } from "motion/react";
 
 // Componentes existentes

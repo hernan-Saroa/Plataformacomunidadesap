@@ -1,9 +1,9 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../../ui/dialog';
-import { Card } from '../../../../ui/card';
-import { Badge } from '../../../../ui/badge';
-import { Button } from '../../../../ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { AlertTriangle, Clock, FileText, TrendingUp, Upload, Download, Eye, Loader2, Paperclip, X } from 'lucide-react';
-import { Avatar, AvatarFallback } from '../../../../ui/avatar';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { legalService } from '../../../../../services/api/legal.service';

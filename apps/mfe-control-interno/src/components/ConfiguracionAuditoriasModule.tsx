@@ -21,14 +21,14 @@ import {
   Plus, Edit, Eye, Clock, Users, HelpCircle, X, Trash2, AlertCircle,
   FileText, Check, GripVertical, Loader2
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
-import { Input } from '../../ui/input';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
 import { toast } from 'sonner';
 
 // ✅ DÍA 4: Container4K para padding adaptativo
-import { Container4K } from '../../ui/container-4k';
+import { Container4K } from '@esap-mfe/shared-ui/container-4k';
 
 // ✅ Hook para conexión con backend
 import { useConfiguracionAuditorias, type TipoAuditoriaFrontend as TipoAuditoria } from './services/useConfiguracionAuditorias';

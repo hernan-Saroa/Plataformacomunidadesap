@@ -7,13 +7,13 @@ import { toast } from 'sonner';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Input } from '../../../ui/input';
-import { Label } from '../../../ui/label';
-import { Textarea } from '../../../ui/textarea';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { 
   CheckCircle, X, Save, AlertCircle, Gavel, FileText, Calendar, User
 } from 'lucide-react';

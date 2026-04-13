@@ -28,7 +28,7 @@ import {
   AlertCircle,
   Loader2
 } from 'lucide-react';
-import { Button } from '../../ui/button';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 import { ResponsiveModalWrapper } from './ResponsiveModalWrapper';
 import { ResponsiveFormGrid, FormFieldGroup, FormActions } from './ResponsiveFormGrid';

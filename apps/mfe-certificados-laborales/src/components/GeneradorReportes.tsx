@@ -14,18 +14,18 @@ import {
   BarChart3
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '../ui/button';
-import { Card } from '../ui/card';
-import { Label } from '../ui/label';
-import { Input } from '../ui/input';
-import { Checkbox } from '../ui/checkbox';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Checkbox } from '@esap-mfe/shared-ui/checkbox';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../ui/select';
+} from '@esap-mfe/shared-ui/select';
 import {
   generarYDescargarReporte,
   descargarReporteCSV,

@@ -4,11 +4,11 @@
 import { useState } from 'react';
 import { FileText, Upload, X, CheckCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 import { ModalHeaderClean } from './ModalHeaderClean';
-import { Button } from '../../../ui/button';
-import { Label } from '../../../ui/label';
-import { Input } from '../../../ui/input';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Input } from '@esap-mfe/shared-ui/input';
 import { ocService } from '../../../../services/api/legal.service';
 
 interface ModalSubirDocumentoProps {

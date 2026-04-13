@@ -55,7 +55,7 @@ import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { auditoriasApi } from './services/api';
 import * as tablerosKanbanService from '../../../services/tableros-kanban.service';
 import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { API_MODE, MICROSERVICE_URLS } from '../../../config/environment';
 
 // ============ TIPOS ============

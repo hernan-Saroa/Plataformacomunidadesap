@@ -6,13 +6,13 @@
  * ✅ Filtros por tipo de comunicación
  */
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Input } from '../../../ui/input';
-import { Textarea } from '../../../ui/textarea';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { 
   MessageSquare, X, Send, Paperclip, Search, Filter,
   User, Calendar, Clock, CheckCircle, AlertCircle,

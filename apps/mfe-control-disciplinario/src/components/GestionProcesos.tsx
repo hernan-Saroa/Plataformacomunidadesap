@@ -12,9 +12,9 @@ import {
   Calendar, User, Mail, Phone, MapPin, Save, Upload, ChevronDown,
   Loader2, RefreshCw
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Avatar, AvatarFallback } from '../../ui/avatar';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { toast } from 'sonner';
 import { disciplinaryService, DisciplinaryProcess, DisciplinaryNews } from '../../../services/api/disciplinary.service';
 

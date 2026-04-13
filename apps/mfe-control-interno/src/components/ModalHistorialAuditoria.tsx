@@ -24,9 +24,9 @@ import {
   ChevronRight, ChevronDown, Search, Filter, RefreshCw,
   ArrowRight, Info, Shield, Eye, MessageSquare, Target
 } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
-import { Input } from '../../ui/input';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Input } from '@esap-mfe/shared-ui/input';
 import { getServiceUrl, API_MODE } from '../../../config/environment';
 import { toast } from 'sonner';
 

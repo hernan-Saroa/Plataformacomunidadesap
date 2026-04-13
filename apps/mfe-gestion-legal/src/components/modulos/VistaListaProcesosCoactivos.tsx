@@ -10,10 +10,10 @@ import {
   Download, Paperclip, MessageSquare, FileCheck, AlertCircle,
   MoreVertical, CreditCard, RefreshCw, FileText, Folder
 } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { toast } from 'sonner';
 import type { ProcesoCoactivo } from '../core/types';
 import {
@@ -22,7 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator
-} from '../../../ui/dropdown-menu';
+} from '@esap-mfe/shared-ui/dropdown-menu';
 
 interface VistaListaProps {
   procesos: Array<ProcesoCoactivo & { diasHastaPrescripcion: number }>;

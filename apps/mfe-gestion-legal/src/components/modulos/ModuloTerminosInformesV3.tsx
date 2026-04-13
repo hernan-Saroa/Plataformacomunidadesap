@@ -13,10 +13,10 @@ import {
 import { CardSIGL } from '../design-system/CardSIGL';
 import { ButtonSIGL } from '../design-system/ButtonSIGL';
 import { BadgeSIGL } from '../design-system/BadgeSIGL';
-import { Input } from '../../../ui/input';
-import { Button } from '../../../ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@esap-mfe/shared-ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 import { SolicitudInforme, EtapaSolicitudInforme } from '../core/types';
 import { solicitudesConsolidadas, estadisticasTerminosInformes } from '../data/datosSolicitudesInformes';
 import { ModalDetalleSolicitudInforme } from './ModalDetalleSolicitudInforme';

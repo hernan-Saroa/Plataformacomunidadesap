@@ -25,8 +25,8 @@ import {
   MapPin,
   Shield
 } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { ResponsiveModal } from '../shared/ResponsiveModal';
 import { toast } from 'sonner';
 import { PlanIndividualAuditoria, CriterioAuditoria, MiembroEquipo, DocumentoOCI } from './PlanIndividualAuditoria';

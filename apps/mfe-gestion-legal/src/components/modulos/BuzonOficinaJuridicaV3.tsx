@@ -12,12 +12,12 @@ import {
   Circle, Check, Sparkles, User, Building, Clock, List, Columns3,
   Filter, Star, ChevronLeft, ChevronRight
 } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
-import { Checkbox } from '../../../ui/checkbox';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Checkbox } from '@esap-mfe/shared-ui/checkbox';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { useEmails } from '../../../../hooks/useEmails';
 import type { CorreoJuridico } from '../../../../services/api/legal.service';
 import { legalService } from '../../../../services/api/legal.service';

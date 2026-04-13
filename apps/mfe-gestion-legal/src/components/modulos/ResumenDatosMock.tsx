@@ -3,8 +3,8 @@
  * Dashboard ejecutivo para verificar carga de datos de prueba
  */
 
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { 
   Scale, Users, AlertTriangle, Building, DollarSign, 
   FileText, CheckCircle, Clock, Archive 

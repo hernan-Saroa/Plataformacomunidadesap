@@ -4,9 +4,9 @@
  */
 
 import { Plus, Bookmark, Calendar, User } from 'lucide-react';
-import { Button } from '../../../ui/button';
-import { Badge } from '../../../ui/badge';
-import { Card } from '../../../ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
 import type { NotaExpediente } from './expedienteShared';
 
 interface TabNotasExpedienteProps {

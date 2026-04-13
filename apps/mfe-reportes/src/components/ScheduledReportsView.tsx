@@ -11,17 +11,17 @@ import {
   ChevronDown, ChevronUp, MoreVertical, Send, History,
   PlayCircle, PauseCircle, Ban
 } from 'lucide-react';
-import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
-import { Button } from '../ui/button';
-import { Progress } from '../ui/progress';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Progress } from '@esap-mfe/shared-ui/progress';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
-} from '../ui/dropdown-menu';
+} from '@esap-mfe/shared-ui/dropdown-menu';
 import { toast } from 'sonner';
 
 interface ScheduledReport {

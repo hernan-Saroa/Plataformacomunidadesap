@@ -4,10 +4,10 @@
  */
 
 import { Eye, Target, Calendar, User, TrendingUp, Activity, FileText, Clock, Award, AlertCircle, CheckCircle, Archive } from 'lucide-react';
-import { Button } from '../../../ui/button';
-import { Badge } from '../../../ui/badge';
-import { Progress } from '../../../ui/progress';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Progress } from '@esap-mfe/shared-ui/progress';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { ModalHeaderClean } from './ModalHeaderClean';
 
 interface Indicador {

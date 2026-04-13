@@ -3,10 +3,10 @@
  * Diseño premium con múltiples filtros y guardado de favoritos
  */
 
-import { Card } from '../ui/card';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
-import { Input } from '../ui/input';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Input } from '@esap-mfe/shared-ui/input';
 import {
   Filter, X, Calendar, User, FileText, Tag, Star,
   ChevronDown, RotateCcw, Save, Sparkles

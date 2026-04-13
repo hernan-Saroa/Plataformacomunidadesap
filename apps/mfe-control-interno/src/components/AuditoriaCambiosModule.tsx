@@ -32,9 +32,9 @@ import {
   Trash2, ArrowRightCircle, PlusCircle, X, ChevronLeft,
   ChevronRight, ChevronDown, Save, AlertTriangle, Info
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,

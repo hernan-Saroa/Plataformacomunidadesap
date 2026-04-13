@@ -24,9 +24,9 @@ import {
   FileCheck, Zap, Shield, Star, ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { ETAPAS_PROCESO, type EtapaProcesoId, type TipoAuto, type PlantillaArchivo } from './configuracion/SeccionPlantillasAutosUnificada';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl } from '../../../config/environment';

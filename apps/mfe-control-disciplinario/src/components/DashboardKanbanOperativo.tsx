@@ -21,10 +21,10 @@ import {
   ChevronsDown, ChevronsUp, ChevronUp, ChevronLeft, ChevronRight, Zap, Link2, UserCog, MessageCircle,
   ClipboardList, FileEdit, Loader2
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
-import { Avatar, AvatarFallback } from '../../ui/avatar';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { toast } from 'sonner';
 import { CreateNoticiaModal } from '../CreateNoticiaModal';
 import { EditorDocumentos } from './EditorDocumentos';
@@ -58,7 +58,7 @@ import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProces
 import { entidadesRemisionService, EntidadRemision } from '../../../services/api/entidadesRemisionService';
 // ✅ IMPORTAR SERVICIOS DE SUPABASE PARA PERSISTENCIA LOCAL (solo uso interno, datos principales vienen del backend)
 import { noticiasService } from '../../../services/api/esapDataService';
-import { Permissions } from '../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { authService } from '../../../services/api/authService';
 import {
   KanbanButtonPrimary,

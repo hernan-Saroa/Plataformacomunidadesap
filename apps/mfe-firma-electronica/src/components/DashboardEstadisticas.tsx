@@ -3,9 +3,9 @@
  * Diseño premium con recharts para visualización de datos
  */
 
-import { Card } from '../ui/card';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import {
   X, TrendingUp, TrendingDown, Download, Calendar,
   FileText, Users, Clock, Award, BarChart3, PieChart

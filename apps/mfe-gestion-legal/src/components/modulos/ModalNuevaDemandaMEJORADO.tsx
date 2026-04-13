@@ -20,11 +20,11 @@ import {
   Save, MapPin, DollarSign, Gavel, Plus, X, UserPlus, Users, 
   Clock, Info, CheckCircle, Mail, Phone
 } from 'lucide-react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 
 // ✅ Importar sistema de validación
 import { useFormValidation, CommonValidations } from '../hooks/useFormValidation';

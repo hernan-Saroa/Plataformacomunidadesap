@@ -13,10 +13,10 @@ import {
   ChevronRight, Flag, Ban, Search as SearchIcon, Forward, AlertCircle,
   Plus, Trash2, Check
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Avatar, AvatarFallback } from '../../ui/avatar';
-import { Button } from '../../ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 import { EditorDocumentos } from './EditorDocumentos';
 import { ModalSubirDocumento } from './ModalSubirDocumento';

@@ -7,7 +7,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Search, FileText, Calendar, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
-import { Badge } from '../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { useHistorialCertificados, type Empleado } from '../../hooks/useHistorialCertificados';
 

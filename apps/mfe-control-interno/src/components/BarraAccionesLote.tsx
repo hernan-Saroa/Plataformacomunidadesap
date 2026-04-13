@@ -19,9 +19,9 @@ import {
   CheckSquare, Archive, Send, AlertTriangle
 } from 'lucide-react';
 import { useState } from 'react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
-import { ConfirmationDialog } from '../../ui/confirmation-dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { ConfirmationDialog } from '@esap-mfe/shared-ui/confirmation-dialog';
 import { toast } from 'sonner';
 
 // ============ TIPOS ============

@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Search, CheckCircle, Calendar, Filter, Clock, AlertTriangle, Shield, Eye, X as XIcon, ArrowRight, UserCheck
 } from 'lucide-react';
-import { Badge } from '../../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
 
 // ==================== UTILIDADES ====================

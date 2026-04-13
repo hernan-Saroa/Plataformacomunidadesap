@@ -13,7 +13,7 @@ import { disciplinaryService } from '../../../services/api/disciplinary.service'
 import { legalService } from '../../../services/api/legal.service';
 import { OnlyOfficeEditor } from './OnlyOfficeEditor';
 import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { useAutosConfigurationActive } from '../../../hooks/useAutosConfiguration';
 
 // Funciones utilitarias globales - disponibles para todos los componentes
@@ -154,9 +154,9 @@ import {
   Paperclip, MessageSquare, UserCheck, AlertTriangle, Info, Users, ArrowLeft,
   Gavel, Copy
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -165,7 +165,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '../../ui/alert-dialog';
+} from '@esap-mfe/shared-ui/alert-dialog';
 import { toast } from 'sonner';
 import { VisorPDFAuto } from './VisorPDFAuto';
 

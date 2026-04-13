@@ -70,12 +70,12 @@ import {
   Menu
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Input } from '../../ui/input';
-import { Label } from '../../ui/label';
-import { Switch } from '../../ui/switch';
-import { Textarea } from '../../ui/textarea';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Switch } from '@esap-mfe/shared-ui/switch';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { PerfilUsuarioCompletoPT } from './PerfilUsuarioCompletoPT';
 import {
   Select,
@@ -83,11 +83,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../../ui/select';
+} from '@esap-mfe/shared-ui/select';
 import { PortalUsuarioAuditado } from './PortalUsuarioAuditado';
 import { ESAPLogo } from '../../assets/ESAPLogo';
 import { BreadcrumbNavegacion, StickyNavBar } from './BreadcrumbNavegacion';
-import { useIsMobile } from '../../../hooks/useIsMobile';
+import { useIsMobile } from '@esap-mfe/shared-hooks/useIsMobile';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS

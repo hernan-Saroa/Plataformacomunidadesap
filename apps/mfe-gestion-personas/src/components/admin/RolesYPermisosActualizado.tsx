@@ -16,9 +16,9 @@ import {
   Calendar, Mail, Phone, Building2, Globe, LogIn, LogOut,
   History, Award, Ban, CheckSquare, X, Save, RefreshCw
 } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
-import { Card } from '../ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
 import { toast } from 'sonner';
 
 // ============ TIPOS ============

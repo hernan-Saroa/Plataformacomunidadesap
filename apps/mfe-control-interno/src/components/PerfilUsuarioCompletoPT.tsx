@@ -19,12 +19,12 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Progress } from '../../ui/progress';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../ui/dialog';
-import { Avatar, AvatarImage, AvatarFallback } from '../../ui/avatar';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Progress } from '@esap-mfe/shared-ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@esap-mfe/shared-ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
+import { Avatar, AvatarImage, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import {
   ArrowLeft,
   User,

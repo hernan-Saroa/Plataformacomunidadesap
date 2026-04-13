@@ -5,8 +5,8 @@
 
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Download, Share2, Copy, CheckCircle } from 'lucide-react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/dialog';
-import { Button } from '../ui/button';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 import { useState } from 'react';
 import { copyToClipboard, downloadFile } from '@/utils/browser';

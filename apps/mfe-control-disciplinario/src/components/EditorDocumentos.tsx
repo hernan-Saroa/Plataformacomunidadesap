@@ -10,8 +10,8 @@ import {
   Bold, Italic, Underline, List, ListOrdered, AlignLeft,
   AlignCenter, AlignRight, Undo, Redo, Check, AlertCircle
 } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
 
 interface EditorDocumentosProps {

@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../../ui/dialog';
-import { Button } from '../../../../ui/button';
-import { Input } from '../../../../ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { Send, User } from 'lucide-react';
-import { Avatar, AvatarFallback } from '../../../../ui/avatar';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { buildApiUrl } from '../../../../../config/environment';
 
 interface ModalComentariosProps {

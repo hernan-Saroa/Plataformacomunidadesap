@@ -3,9 +3,9 @@
  * Pendientes = Tarjetas | Historial = Tabla con Paginación
  */
 
-import { Card } from '../ui/card';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import {
   FileText, Upload, Eye, Download, Share2, CheckCircle,
   Clock, AlertCircle, History, PenTool, MapPin,

@@ -5,8 +5,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Building2, MapPin, ChevronDown } from 'lucide-react';
-import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { ESTRUCTURA_ORGANIZACIONAL_ESAP } from '../../data/estructura-organizacional-completa';
 import type { UnidadOrganizacional } from '../../types/estructura-organizacional.types';
 

@@ -3,6 +3,7 @@
     "version": "0.1.0",
     "private": true,
     "dependencies": {
+    "@esap-mfe/shared-hooks": "*",
     "@esap-mfe/shared-types": "*",
         "@dnd-kit/core": "*",
         "@dnd-kit/sortable": "*",

@@ -5,7 +5,7 @@
  */
 
 import { Building2, Star, MapPin, ChevronDown } from 'lucide-react';
-import { Badge } from '../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { motion, AnimatePresence } from 'motion/react';
 import { useState } from 'react';
 import type { AsignacionSede } from '../../types';

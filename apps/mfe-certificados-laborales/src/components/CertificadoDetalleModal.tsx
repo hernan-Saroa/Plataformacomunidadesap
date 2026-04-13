@@ -19,9 +19,9 @@ import {
   Building2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
-import { Card } from '../ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
 import { copyToClipboard } from '../../utils/clipboard';
 import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 

@@ -33,16 +33,16 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
-import { Card } from '../ui/card';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../ui/select';
+} from '@esap-mfe/shared-ui/select';
 
 export function AnalyticsDashboard() {
   const [periodoSeleccionado, setPeriodoSeleccionado] = useState('7d');

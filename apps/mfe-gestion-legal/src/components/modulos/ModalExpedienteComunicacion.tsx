@@ -13,19 +13,19 @@ import {
   ExternalLink, Target, Flag, Loader2, Scale, Search
 } from 'lucide-react';
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { Textarea } from '../../../ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@esap-mfe/shared-ui/tabs';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { correosJuridicosService, AdjuntoCorreo } from '../../../../services/api/legal.service';
 
-import { Input } from '../../../ui/input';
+import { Input } from '@esap-mfe/shared-ui/input';
 import { legalService } from '../../../../services/api/legal.service';
 
 interface ComunicacionUnificada {

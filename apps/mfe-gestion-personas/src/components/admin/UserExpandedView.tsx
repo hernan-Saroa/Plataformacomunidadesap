@@ -17,7 +17,7 @@ import {
   UserPlus,
   Upload
 } from 'lucide-react';
-import { Badge } from '../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { motion } from 'motion/react';
 
 interface UserExpandedViewProps {

@@ -13,9 +13,9 @@ import {
   TrendingUp, Calendar, Hash, CheckCircle, Info, Sparkles,
   BarChart3, Copy, Eye
 } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Button } from '../../../ui/button';
-import { Badge } from '../../../ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
 import {
   generarNomenclatura,

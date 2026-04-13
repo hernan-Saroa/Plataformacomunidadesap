@@ -24,7 +24,7 @@ import {
   ClipboardCheck,
   ChevronLeft
 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../../ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@esap-mfe/shared-ui/tooltip';
 
 interface SidebarSIGLProps {
   vistaActual: string;

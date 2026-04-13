@@ -37,8 +37,8 @@ import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { HeaderModulOCIG } from './HeaderModuloCIG';
 
 // ✅ FASE 1 DÍA 3: Componentes responsive
-import { Container4K } from '../../ui/container-4k';
-import { ResponsiveGrid } from '../../ui/responsive-grid';
+import { Container4K } from '@esap-mfe/shared-ui/container-4k';
+import { ResponsiveGrid } from '@esap-mfe/shared-ui/responsive-grid';
 
 // ✅ Descarga de Expedientes en ZIP
 import { BotonDescargarExpedienteZip } from './DescargarExpedienteZip';

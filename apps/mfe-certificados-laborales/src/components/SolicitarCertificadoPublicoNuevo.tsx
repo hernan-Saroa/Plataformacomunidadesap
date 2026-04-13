@@ -5,9 +5,9 @@
 
 import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Card, CardContent } from '../ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Card, CardContent } from '@esap-mfe/shared-ui/card';
 import { 
   ArrowLeft, 
   Loader2, 

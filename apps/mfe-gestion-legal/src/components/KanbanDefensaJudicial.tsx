@@ -11,9 +11,9 @@ import {
   Scale, FileText, Clock, Eye, MessageSquare, History, AlertCircle,
   CheckCircle, XCircle, List, Columns3, Plus, Filter, Send
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 import { FormularioExpedienteJudicial } from './defensa-judicial/FormularioExpedienteJudicial';
 import { ModuloDefensaJudicial } from './ModuloDefensaJudicial';

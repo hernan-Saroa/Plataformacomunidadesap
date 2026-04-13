@@ -23,7 +23,7 @@ import {
   Layers, Search, AlertTriangle, CheckCircle2, AlertCircle,
   Plus, Edit2, Trash2, X, ChevronDown, ChevronUp, FileText, Eye, Target, Info, RefreshCw
 } from 'lucide-react';
-import { ResponsiveTable, MobileCard, MobileCardRow, type Column } from '../../ui/responsive-table';
+import { ResponsiveTable, MobileCard, MobileCardRow, type Column } from '@esap-mfe/shared-ui/responsive-table';
 import { useResponsive } from '@/hooks/useResponsive';
 import { FormularioEvaluacionDafpCompleta } from './FormularioEvaluacionDafpCompleta';
 import { VisualizadorResultadosDafp } from './VisualizadorResultadosDafp';

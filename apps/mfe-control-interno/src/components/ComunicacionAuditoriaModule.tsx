@@ -25,8 +25,8 @@ import {
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
-import { Button } from '../../ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
 import { ModalFinalizarAuditoria } from './modales/ModalesGestion';
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { InputSIGL, TextareaSIGL } from '../gestion-legal/design-system/InputSIGL';

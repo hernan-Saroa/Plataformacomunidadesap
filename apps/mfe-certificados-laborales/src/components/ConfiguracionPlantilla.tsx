@@ -145,23 +145,23 @@ import { toast } from 'sonner';
 
 
 
-import { Card } from '../ui/card';
+import { Card } from '@esap-mfe/shared-ui/card';
 
 
 
-import { Button } from '../ui/button';
+import { Button } from '@esap-mfe/shared-ui/button';
 
 
 
-import { Input } from '../ui/input';
+import { Input } from '@esap-mfe/shared-ui/input';
 
 
 
-import { Label } from '../ui/label';
+import { Label } from '@esap-mfe/shared-ui/label';
 
 
 
-import { Badge } from '../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 
 
 
@@ -189,7 +189,7 @@ import {
 
 
 
-} from '../ui/select';
+} from '@esap-mfe/shared-ui/select';
 
 
 
@@ -221,7 +221,7 @@ import {
 
 
 
-} from '../ui/dialog';
+} from '@esap-mfe/shared-ui/dialog';
 
 
 
@@ -245,7 +245,7 @@ import {
 
 
 
-} from '../ui/tabs';
+} from '@esap-mfe/shared-ui/tabs';
 
 
 

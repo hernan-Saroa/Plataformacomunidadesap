@@ -6,12 +6,12 @@
  * ✅ Footer sticky con botones siempre visibles
  */
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
-import { Input } from '../../../ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@esap-mfe/shared-ui/tabs';
+import { Input } from '@esap-mfe/shared-ui/input';
 import {
   Send, Download, Eye, FileText, Mail, ArrowRight,
   ArrowLeft, X, Upload, Plus, CheckCircle, Clock, AlertCircle,
@@ -25,7 +25,7 @@ import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { legalService } from '../../../../services/api/legal.service';
 import { getServiceUrl } from '../../../../config/environment';
 

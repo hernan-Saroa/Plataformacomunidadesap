@@ -13,12 +13,12 @@ import {
     Upload, Download, Eye, Loader2, Paperclip
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
-import { Textarea } from '../../../ui/textarea';
-import { Badge } from '../../../ui/badge';
-import { Progress } from '../../../ui/progress';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Progress } from '@esap-mfe/shared-ui/progress';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { legalService } from '../../../../services/api/legal.service';

@@ -16,22 +16,22 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from '../ui/dialog';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { Badge } from '../ui/badge';
-import { Switch } from '../ui/switch';
-import { Card } from '../ui/card';
+} from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Switch } from '@esap-mfe/shared-ui/switch';
+import { Card } from '@esap-mfe/shared-ui/card';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../ui/select';
-import { Checkbox } from '../ui/checkbox';
-import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
+} from '@esap-mfe/shared-ui/select';
+import { Checkbox } from '@esap-mfe/shared-ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@esap-mfe/shared-ui/radio-group';
 import { toast } from 'sonner';
 import { exportReport, ReportData, ReportField } from '../utils/reportExport';
 

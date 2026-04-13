@@ -13,15 +13,15 @@ import {
   MapPin, Building, CreditCard, FileCheck, Send, History, Archive
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 import { CardSIGL } from '../design-system/CardSIGL';
 import { BadgeSIGL } from '../design-system/BadgeSIGL';
 import { ButtonSIGL } from '../design-system/ButtonSIGL';
 import { ModalSIGL } from '../design-system/ModalSIGL';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import {
   procesosCoactivosService,
   ProcesoCoactivo as ProcesoCoactivoAPI,

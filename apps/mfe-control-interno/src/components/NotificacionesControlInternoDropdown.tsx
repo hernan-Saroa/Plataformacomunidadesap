@@ -18,9 +18,9 @@ import {
   Loader2
 } from 'lucide-react';
 import { useNotificacionesControlInterno } from './hooks/useNotificacionesControlInterno';
-import { ScrollArea } from '../../ui/scroll-area';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
+import { ScrollArea } from '@esap-mfe/shared-ui/scroll-area';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 
 interface Props {

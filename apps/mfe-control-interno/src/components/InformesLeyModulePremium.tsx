@@ -48,7 +48,7 @@ import { EntregaInforme, InformeLey } from './services/types';
 import { useCrearNotificacion } from './hooks/useCrearNotificacion';
 import { useAuth } from '../../../hooks/useAuth';
 import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS

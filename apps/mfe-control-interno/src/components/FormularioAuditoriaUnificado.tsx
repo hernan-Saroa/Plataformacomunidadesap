@@ -35,10 +35,10 @@ import {
   ClipboardCheck, DollarSign, TrendingUp, FileCheck, MapPin, Clock,
   AlertTriangle, CheckSquare, Layers, Zap, BookOpen, Settings
 } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
-import { Input } from '../../ui/input';
-import { Card } from '../../ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Card } from '@esap-mfe/shared-ui/card';
 import { toast } from 'sonner';
 import { configuracionesProfesionalesOCIApi } from './services/api';
 import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../../../services/api/controlInternoService';

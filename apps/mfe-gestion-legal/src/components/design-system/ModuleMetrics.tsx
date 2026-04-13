@@ -5,9 +5,9 @@
  */
 
 import React from 'react';
-import { Card } from '../../../ui/card';
+import { Card } from '@esap-mfe/shared-ui/card';
 import { LucideIcon } from 'lucide-react';
-import { useResponsive } from '../../../../hooks/useResponsive';
+import { useResponsive } from '@esap-mfe/shared-hooks/useResponsive';
 
 // ==================== TYPES ====================
 

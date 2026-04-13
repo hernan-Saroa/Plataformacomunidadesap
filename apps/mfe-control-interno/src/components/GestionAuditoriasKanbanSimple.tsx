@@ -15,11 +15,11 @@ import {
   Maximize2, Minimize2, RefreshCw, UserPlus, Send, FileDown, Archive, Trash2, Edit,
   ChevronsDown, ChevronsUp, Move, ChevronLeft, ChevronRight
 } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
-import { Input } from '../../ui/input';
-import { Card } from '../../ui/card';
-import { Avatar, AvatarFallback } from '../../ui/avatar';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { toast } from 'sonner';
 
 // ✅ Servicios de exportación
@@ -42,9 +42,9 @@ import {
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
 import { InicioAuditoriaWizardWorldClass } from './InicioAuditoriaWizardWorldClass';
 import { ExpedienteAuditoriaCompleto } from './ExpedienteAuditoriaCompleto';
-import { LoadingSpinner, CardLoading } from '../../ui/loading-spinner';
-import { SkeletonAuditoriaCard, SkeletonKanbanColumn } from '../../ui/skeleton';
-import { EmptyState } from '../../ui/empty-state';
+import { LoadingSpinner, CardLoading } from '@esap-mfe/shared-ui/loading-spinner';
+import { SkeletonAuditoriaCard, SkeletonKanbanColumn } from '@esap-mfe/shared-ui/skeleton';
+import { EmptyState } from '@esap-mfe/shared-ui/empty-state';
 import type { AuditoriaFormData } from '../../../utils/validation';
 import { TooltipGuia } from './TooltipGuia';
 import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';

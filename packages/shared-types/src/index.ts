@@ -3,6 +3,8 @@
  * Tipos TypeScript compartidos entre frontend y backend
  */
 
+export * from './permissions';
+
 // ============================================
 // AUTENTICACIÓN
 // ============================================

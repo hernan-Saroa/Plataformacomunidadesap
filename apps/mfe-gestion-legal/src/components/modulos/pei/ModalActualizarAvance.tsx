@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../../../ui/dialog';
-import { Button } from '../../../../ui/button';
-import { Input } from '../../../../ui/input';
-import { Label } from '../../../../ui/label';
-import { Textarea } from '../../../../ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { toast } from 'sonner';
 import axios from 'axios';
 import confetti from 'canvas-confetti';

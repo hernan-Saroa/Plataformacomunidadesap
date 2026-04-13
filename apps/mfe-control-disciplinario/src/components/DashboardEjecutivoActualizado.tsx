@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Badge } from '../../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import {
   LayoutDashboard, FileText, FolderOpen, CheckCircle, Archive,
   Clock, Users, BarChart3, Plus, Search, AlertTriangle, TrendingUp,

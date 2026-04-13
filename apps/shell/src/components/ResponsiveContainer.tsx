@@ -6,7 +6,7 @@
  */
 
 import { ReactNode } from 'react';
-import { useIsMobile } from '../hooks/useIsMobile';
+import { useIsMobile } from '@esap-mfe/shared-hooks/useIsMobile';
 
 interface ResponsiveContainerProps {
   mobile: ReactNode;

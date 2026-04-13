@@ -25,9 +25,9 @@ import {
   Percent,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Badge } from '../ui/badge';
-import { Avatar, AvatarFallback } from '../ui/avatar';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@esap-mfe/shared-ui/dropdown-menu';
 
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CertificadoDetalleModal } from './CertificadoDetalleModal';

@@ -5,11 +5,11 @@
  */
 
 import React from 'react';
-import { Card } from '../../../ui/card';
-import { Input } from '../../../ui/input';
-import { Button } from '../../../ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { Filter, Search, XCircle } from 'lucide-react';
-import { useResponsive } from '../../../../hooks/useResponsive';
+import { useResponsive } from '@esap-mfe/shared-hooks/useResponsive';
 
 // ==================== TYPES ====================
 

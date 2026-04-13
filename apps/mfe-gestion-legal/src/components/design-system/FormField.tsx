@@ -8,12 +8,12 @@
  * ✅ Diseño corporativo ESAP
  */
 
-import { Label } from '../../../ui/label';
-import { Input } from '../../../ui/input';
-import { Textarea } from '../../../ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@esap-mfe/shared-ui/select';
 import { AlertCircle, CheckCircle, Info, HelpCircle } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../../ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@esap-mfe/shared-ui/tooltip';
 
 export interface FormFieldProps {
   // Identificación

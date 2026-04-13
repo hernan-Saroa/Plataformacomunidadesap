@@ -21,9 +21,9 @@ import {
   Lightbulb, CheckCircle, Info, Sparkles,
   Play, ArrowRight, Target
 } from 'lucide-react';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { useTour } from './TourContext';
 
 export interface TourStep {

@@ -15,11 +15,11 @@ import {
   Zap
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '../ui/button';
-import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { copyToClipboard } from '../../utils/clipboard';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@esap-mfe/shared-ui/tabs';
 
 interface CodeExample {
   language: string;

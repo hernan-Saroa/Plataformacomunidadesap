@@ -16,13 +16,13 @@ import {
   X
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '../ui/button';
-import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { Switch } from '../ui/switch';
-import { Checkbox } from '../ui/checkbox';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Switch } from '@esap-mfe/shared-ui/switch';
+import { Checkbox } from '@esap-mfe/shared-ui/checkbox';
 
 interface CanalNotificacion {
   id: string;

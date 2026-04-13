@@ -5,7 +5,7 @@
 
 import { ReactNode } from 'react';
 import { Columns3, List } from 'lucide-react';
-import { useResponsive } from '../../../../hooks/useResponsive';
+import { useResponsive } from '@esap-mfe/shared-hooks/useResponsive';
 
 interface ModuleHeaderButton {
   label: string;

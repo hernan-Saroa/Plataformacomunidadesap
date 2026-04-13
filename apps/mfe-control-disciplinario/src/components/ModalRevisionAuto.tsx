@@ -17,7 +17,7 @@ import {
   Shield, Key, Users, Trash2, ChevronDown,
   Filter, Paperclip, ListFilter, List
 } from 'lucide-react';
-import { Badge } from '../../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
 
 // ==================== INTERFACES ====================

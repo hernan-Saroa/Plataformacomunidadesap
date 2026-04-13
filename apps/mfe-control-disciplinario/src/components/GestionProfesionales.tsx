@@ -24,12 +24,12 @@ import {
   ArrowRightLeft, PieChart, BarChart3, RefreshCw, AlertCircle,
   Calendar, ChevronDown, Building, CheckCircle2
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Avatar, AvatarFallback } from '../../ui/avatar';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { toast } from 'sonner';
 import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 import { disciplinaryService, DisciplinaryProcess } from '../../../services/api/disciplinary.service';
 

@@ -8,10 +8,10 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Badge } from '../../../ui/badge';
-import { Card } from '../../../ui/card';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
 import { toast } from 'sonner';
 
 import { disciplinaryService } from '../../../../services/api/disciplinary.service';
@@ -27,7 +27,7 @@ import { FormField, FormSection, FormProgress } from '../design-system/FormField
 import { ModalHeaderClean } from './ModalHeaderClean';
 
 // ✅ Importar hooks responsive
-import { useKeyboardVisible } from '../../../../hooks/useKeyboardVisible';
+import { useKeyboardVisible } from '@esap-mfe/shared-hooks/useKeyboardVisible';
 
 interface ModalNuevoProcesoDisciplinarioProps {
   isOpen: boolean;

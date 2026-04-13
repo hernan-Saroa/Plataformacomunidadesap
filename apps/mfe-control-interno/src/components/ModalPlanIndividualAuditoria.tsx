@@ -8,9 +8,9 @@ import {
   Target, Calendar, Users, FileText, CheckCircle2, Save, X,
   AlertCircle, Clock, TrendingUp, Layers, BookOpen, ClipboardList
 } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
 import { toast } from 'sonner';
 
 interface ModalPlanIndividualAuditoriaProps {

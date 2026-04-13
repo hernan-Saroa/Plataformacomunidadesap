@@ -3,10 +3,10 @@
  * Diseño premium tipo Comunicaciones del Proceso
  */
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/dialog';
-import { Button } from '../ui/button';
-import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import {
   X, History, CheckCircle, Clock, User, Calendar, Download, FileText,
   Share2, Upload, Eye, AlertCircle, Mail, ArrowRight

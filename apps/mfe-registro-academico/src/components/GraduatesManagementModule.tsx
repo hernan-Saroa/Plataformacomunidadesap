@@ -45,28 +45,28 @@ import {
   Database
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@esap-mfe/shared-ui/avatar';
 import { PaginationPremium } from '../shared/PaginationPremium';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@esap-mfe/shared-ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { Textarea } from '../ui/textarea';
+} from '@esap-mfe/shared-ui/dropdown-menu';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import React from 'react';
 import graduadosService, { GraduadoArchivo, GraduadoData } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
 import type { Seccional, Sede } from '../../services/api/types';
 import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';
 import { authService } from '../../services/api/authService';
-import { Permissions } from '../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { buildServiceAssetUrl } from '../../config/environment';
 
 type GraduateRow = {

@@ -7,10 +7,10 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Card } from '../../../ui/card';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
-import { Badge } from '../../../ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { 
   FileText, Save, RotateCcw, Eye, Settings, Image as ImageIcon,
   Type, AlignLeft, Mail, CheckCircle, AlertCircle

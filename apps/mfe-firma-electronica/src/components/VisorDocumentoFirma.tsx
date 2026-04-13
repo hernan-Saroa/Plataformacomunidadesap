@@ -3,10 +3,10 @@
  * Diseño corporativo ESAP premium con pad de firma integrado
  */
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/dialog';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
-import { Card } from '../ui/card';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
 import {
   X, Download, PenTool, CheckCircle, AlertCircle, FileText,
   Eye, Trash2, RotateCcw, Save

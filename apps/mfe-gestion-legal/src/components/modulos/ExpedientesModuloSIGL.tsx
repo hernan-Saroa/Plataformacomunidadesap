@@ -18,7 +18,7 @@ import {
   SUGERENCIAS_TIPO_DOCUMENTO,
 } from '../core/expedienteShared';
 import { ModalHeaderClean } from './ModalHeaderClean';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalSeleccionTipo } from './ModalSeleccionTipo';
 import { ModalAutos } from './ModalAutos';
@@ -26,7 +26,7 @@ import { ModalActas } from './ModalActas';
 import { ModalEvidencias } from './ModalEvidencias';
 import { ModalOficios } from './ModalOficios';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { ModalSubirRespuesta } from './ModalSubirRespuesta';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 

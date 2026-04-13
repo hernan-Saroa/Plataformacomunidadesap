@@ -29,9 +29,9 @@ import {
   PlayCircle, MessageSquare, Download, Upload, FileCheck, ClipboardList, 
   Clock, Trash2, ChevronRight
 } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 import { ModalPlanIndividualAuditoria } from './ModalPlanIndividualAuditoria';
 import { toast } from 'sonner';
 

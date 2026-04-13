@@ -1,6 +1,6 @@
 import { X, Link2, Calendar, User, FileText, Clock, AlertCircle, Info, ExternalLink } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Proceso {

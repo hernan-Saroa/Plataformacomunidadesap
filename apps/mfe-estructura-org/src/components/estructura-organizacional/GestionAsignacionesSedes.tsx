@@ -9,9 +9,9 @@ import {
   Building2, Plus, X, MapPin, Star, Calendar, AlertCircle, 
   Check, Edit2, Trash2, ChevronDown
 } from 'lucide-react';
-import { Card } from '../ui/card';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
 import type { CreateAsignacionSedeDTO } from '../../types';
 import { estructuraService } from '../../services/estructuraService';

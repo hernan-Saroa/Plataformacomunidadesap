@@ -5,7 +5,7 @@
  */
 
 import { Calendar, Info } from 'lucide-react';
-import { Badge } from '../../../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { ModuleInfoTooltip } from './ModuleInfoTooltip';
 
 interface BadgeDiasHabilesProps {

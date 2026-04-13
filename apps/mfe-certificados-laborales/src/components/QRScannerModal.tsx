@@ -11,8 +11,8 @@ import {
   SwitchCamera
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '../ui/button';
-import { Card } from '../ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
 import jsQR from 'jsqr';
 
 interface QRScannerModalProps {

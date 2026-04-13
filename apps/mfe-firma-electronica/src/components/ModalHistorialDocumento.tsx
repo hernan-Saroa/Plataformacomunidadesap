@@ -3,8 +3,8 @@
  * (Componente placeholder - se puede expandir en el futuro)
  */
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/dialog';
-import { Button } from '../ui/button';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { X } from 'lucide-react';
 
 interface ModalHistorialDocumentoProps {

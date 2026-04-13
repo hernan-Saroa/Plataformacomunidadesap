@@ -5,11 +5,11 @@
 
 import { useState, useEffect } from 'react';
 import { TrendingUp, Upload, FileText, Calendar, AlertCircle, CheckCircle } from 'lucide-react';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
-import { Label } from '../../../ui/label';
-import { Textarea } from '../../../ui/textarea';
-import { Progress } from '../../../ui/progress';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { Progress } from '@esap-mfe/shared-ui/progress';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import confetti from 'canvas-confetti';

@@ -24,9 +24,9 @@
  */
 
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../ui/dialog';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { 
   X, CheckCircle, FileText, Eye, Calendar, User, 
   File, AlertCircle, Check, Clock, ChevronRight,

@@ -13,10 +13,10 @@
 
 import { useState, useEffect } from 'react';
 import { X, User, Search, CheckCircle, AlertCircle, Users, Award, Shield } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
-import { Input } from '../../ui/input';
-import { Avatar, AvatarFallback } from '../../ui/avatar';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { toast } from 'sonner';
 
 interface Persona {

@@ -3,9 +3,9 @@
  * Para acceso seguro a documentos compartidos
  */
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/dialog';
-import { Button } from '../ui/button';
-import { Card } from '../ui/card';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
 import { X, Shield, Mail, AlertCircle, CheckCircle } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner';

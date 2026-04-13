@@ -5,14 +5,14 @@
  * ✅ Header azul corporativo con gradiente
  */
 
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../ui/dialog';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Input } from '../../../ui/input';
-import { Label } from '../../../ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
-import { Textarea } from '../../../ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@esap-mfe/shared-ui/dialog';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@esap-mfe/shared-ui/select';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import {
   Scale, Download, Eye, FileText, Calendar,
   AlertCircle, CheckCircle, Clock, X, Upload, Plus,
@@ -27,7 +27,7 @@ import { VisorPDFModal } from './VisorPDFModal';
 import { ModalNuevoAuto } from './ModalNuevoAuto';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 

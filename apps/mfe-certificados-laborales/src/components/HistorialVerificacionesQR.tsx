@@ -19,7 +19,7 @@ import {
   Activity,
   Shield,
 } from 'lucide-react';
-import { Badge } from '../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 
 interface VerificacionQR {
   id: string;

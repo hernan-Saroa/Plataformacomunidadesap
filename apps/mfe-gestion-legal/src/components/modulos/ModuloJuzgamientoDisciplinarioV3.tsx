@@ -18,15 +18,15 @@ import {
   Download, Upload, RefreshCw, Paperclip,
   MessageSquare, FileCheck, Send, Archive, Mail, Edit, Gavel, X, ArrowRight
 } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Textarea } from '../../../ui/textarea';
-import { Label } from '../../../ui/label';
-import { Input } from '../../../ui/input';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Input } from '@esap-mfe/shared-ui/input';
 import type { ProcesoDisciplinario } from '../core/types';
 import { procesosDisciplinariosMock } from '../data/datosProcesosDisciplinarios';
 import { ModuleHeader } from '../design-system/ModuleHeader';

@@ -13,8 +13,8 @@ import {
   Archive, Folder, Shield, Key, Copy, Share2, FileSignature,
   BarChart3, ZoomIn, RefreshCw, Package, Printer, Mail, Info, HelpCircle, Scale, Play
 } from 'lucide-react';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 import { FlujoProcesoDisciplinario } from './FlujoProcesoDisciplinario';
 import jsPDF from 'jspdf';
@@ -28,7 +28,7 @@ import '@react-pdf-viewer/default-layout/lib/styles/index.css';
 import { ModalGestionAutos, ModalGestionEvidencias, ModalGestionOficios, ModalGestionActas } from './ModalesGestionDocumental';
 import { EditorDocumentos } from './EditorDocumentos';
 import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 const normalizeControlDisciplinarioPath = (rawUrl: string): string => {
   let path = rawUrl.trim();

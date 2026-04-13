@@ -13,8 +13,8 @@ import {
     DialogContent,
     DialogTitle,
     DialogDescription,
-} from '../../../ui/dialog';
-import { Badge } from '../../../ui/badge';
+} from '@esap-mfe/shared-ui/dialog';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 
 interface BadgeConfig {
     label: string;

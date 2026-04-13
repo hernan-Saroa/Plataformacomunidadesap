@@ -12,10 +12,10 @@ import {
   Download, Paperclip, Send, MessageSquare, FileCheck, Edit, Search,
   AlertTriangle, Archive
 } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import type { ProcesoDisciplinario } from '../core/types';
 import { ModalProcesoDisciplinario } from './ModalProcesoDisciplinario';
 import { ModalComunicaciones } from './ModalComunicaciones';

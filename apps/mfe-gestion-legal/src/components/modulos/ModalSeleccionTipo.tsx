@@ -1,5 +1,5 @@
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { X, ArrowRight, File, Scale, Gavel, FileCheck, FolderCheck, Archive, FileQuestion, AlertCircle, FileText } from 'lucide-react';
 import { ModalHeaderClean } from './ModalHeaderClean';
 

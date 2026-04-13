@@ -10,11 +10,11 @@ import {
   CheckCircle, Eye, Plus, Search, Filter, XCircle, Send, Trash2,
   FileText, Download, Circle, Check, ChevronLeft, ChevronRight
 } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
-import { Checkbox } from '../../../ui/checkbox';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Checkbox } from '@esap-mfe/shared-ui/checkbox';
 import { Notificacion } from '../core/types';
 import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';

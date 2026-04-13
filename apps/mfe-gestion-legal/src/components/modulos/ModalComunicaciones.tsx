@@ -3,12 +3,12 @@
  * Diseño corporativo ESAP premium - Estilo Microsoft Teams / Slack
  */
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { Textarea } from '../../../ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import {
   MessageSquare, Send, User, Clock,
   CheckCircle, X, Trash2

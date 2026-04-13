@@ -6,9 +6,9 @@
  * ✅ Totalmente personalizable
  */
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Badge } from '../../../ui/badge';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { AlertCircle, CheckCircle, AlertTriangle, Info, Trash2, X } from 'lucide-react';
 
 interface DialogoConfirmacionProps {

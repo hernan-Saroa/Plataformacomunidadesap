@@ -16,7 +16,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '../../../ui/dialog';
+} from '@esap-mfe/shared-ui/dialog';
 
 interface ModalSIGLProps {
   isOpen: boolean;

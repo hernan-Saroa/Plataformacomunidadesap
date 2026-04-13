@@ -27,9 +27,9 @@ import {
   Info, TrendingUp, Shield, ClipboardList
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Input } from '../../ui/input';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Input } from '@esap-mfe/shared-ui/input';
 import { TooltipGuia } from './TooltipGuia';
 
 // ════════════════════════════════════════════════════════════════════════════

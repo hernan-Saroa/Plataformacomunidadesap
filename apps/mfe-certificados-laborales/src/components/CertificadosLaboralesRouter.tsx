@@ -20,7 +20,7 @@ import { GeneradorReportes } from './GeneradorReportes';
 import { NotificacionesValidacion } from './NotificacionesValidacion';
 import { APIDocumentacion } from './APIDocumentacion';
 import { ConfiguracionPlantilla } from './ConfiguracionPlantilla';
-import { Button } from '../ui/button';
+import { Button } from '@esap-mfe/shared-ui/button';
 
 type Vista = 
   | 'dashboard' 

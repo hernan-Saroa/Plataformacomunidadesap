@@ -4,7 +4,7 @@
  * Muestra tooltips explicativos cuando está deshabilitado
  */
 
-import { Button } from '../../ui/button';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 import type { AccionDisponible } from './accionesPorEtapa';
 

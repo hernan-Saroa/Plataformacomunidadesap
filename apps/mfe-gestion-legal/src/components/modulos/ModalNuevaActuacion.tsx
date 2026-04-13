@@ -8,9 +8,9 @@
 
 import { useState } from 'react';
 import { Clock, Calendar, FileText, User, AlertCircle, Save, CheckCircle } from 'lucide-react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 import { ModalHeaderClean } from './ModalHeaderClean';
-import { Button } from '../../../ui/button';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 

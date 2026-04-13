@@ -11,9 +11,9 @@ import {
   FileText, Scale, Users, Calendar, Tag, ChevronDown, ChevronUp,
   Paperclip, Download, History, Smile, AtSign, Hash,
 } from 'lucide-react';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
-import { Card } from '../../ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
   AlertDialogAction,
   AlertDialogCancel,
-} from '../../ui/alert-dialog';
+} from '@esap-mfe/shared-ui/alert-dialog';
 import { toast } from 'sonner';
 
 interface Persona {

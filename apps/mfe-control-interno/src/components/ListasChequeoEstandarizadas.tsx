@@ -13,9 +13,9 @@ import {
   ChevronDown, ChevronUp, Save, X, AlertCircle, CheckCircle2,
   Archive, BarChart3, Share2, History, Settings, Layers
 } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
-import { Card } from '../../ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
 import { useControlInterno } from './ControlInternoContext';
 import { useIntegracionControlInterno } from '../../../hooks/useIntegracionControlInterno';
 import { toast } from 'sonner';

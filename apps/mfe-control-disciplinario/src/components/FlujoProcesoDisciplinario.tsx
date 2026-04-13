@@ -10,7 +10,7 @@ import {
   Clock, UserCheck, ArrowRight, AlertCircle, Info,
   ChevronDown, ChevronUp, Lightbulb, BookOpen
 } from 'lucide-react';
-import { Card } from '../../ui/card';
+import { Card } from '@esap-mfe/shared-ui/card';
 
 interface EtapaFlujo {
   id: string;

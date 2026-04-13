@@ -12,7 +12,7 @@ import {
   Eye, Download, Trash2, AlertCircle, CheckCircle, Building2, MapPin, Phone, Mail 
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useResponsive } from '../../../../hooks/useResponsive';
+import { useResponsive } from '@esap-mfe/shared-hooks/useResponsive';
 
 interface PlantillaConfig {
   logo: string | null;

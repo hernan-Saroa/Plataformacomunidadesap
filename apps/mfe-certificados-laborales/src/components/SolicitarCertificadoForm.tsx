@@ -14,10 +14,10 @@ import {
   Download,
   Eye
 } from 'lucide-react';
-import { Card } from '../ui/card';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
 import { toast } from 'sonner';
 import { validarEmpleadoEnBD, generarCertificadoAutomatico } from '../../lib/api/certificadosAPI';
 

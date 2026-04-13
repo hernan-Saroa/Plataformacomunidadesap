@@ -20,8 +20,8 @@ import {
   X, CheckCircle, XCircle, Calendar, FileText, Clock, User,
   AlertTriangle, Info, ChevronDown, ChevronUp, Eye, ThumbsUp, ThumbsDown
 } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
 import { auditoriasApi } from './services/api';
 

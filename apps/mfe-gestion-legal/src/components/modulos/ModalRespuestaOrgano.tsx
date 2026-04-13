@@ -4,12 +4,12 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Badge } from '../../../ui/badge';
-import { Textarea } from '../../../ui/textarea';
-import { Input } from '../../../ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@esap-mfe/shared-ui/select';
 import {
   Send, X, FileText, CheckCircle, AlertCircle, Upload, Eye,
   Mail, Calendar, User, Building2, Clock, Save, Download, Loader2,
@@ -18,7 +18,7 @@ import {
 import { toast } from 'sonner';
 import { ocService, correosJuridicosService } from '../../../../services/api/legal.service';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 interface DocumentoSeleccionado {
   archivo: File;

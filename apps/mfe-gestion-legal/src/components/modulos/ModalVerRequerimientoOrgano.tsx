@@ -6,9 +6,9 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Badge } from '../../../ui/badge';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import {
   FileText, Calendar, User, Clock, CheckCircle, AlertTriangle, Download, X,

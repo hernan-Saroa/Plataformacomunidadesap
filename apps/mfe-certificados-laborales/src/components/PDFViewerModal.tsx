@@ -15,9 +15,9 @@ import {
   Eye,
   FileText,
 } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
-import { Dialog, DialogContent } from '../ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Dialog, DialogContent } from '@esap-mfe/shared-ui/dialog';
 import { toast } from 'sonner';
 import { copyToClipboard } from '@/utils/browser';
 

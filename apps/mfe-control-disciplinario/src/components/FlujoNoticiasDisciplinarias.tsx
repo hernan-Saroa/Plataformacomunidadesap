@@ -25,7 +25,7 @@ import {
   CornerDownLeft,
   UserCheck
 } from 'lucide-react';
-import { Card } from '../../ui/card';
+import { Card } from '@esap-mfe/shared-ui/card';
 
 interface Etapa {
   numero: number;

@@ -17,9 +17,9 @@ import {
   ChevronRight, Hash, Flag, Shield, AlertCircle, Info,
   Zap, Plus, Settings, Archive, Trash2, RefreshCw
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 
 // ⭐ IMPORTAR COMPONENTES CRÍTICOS

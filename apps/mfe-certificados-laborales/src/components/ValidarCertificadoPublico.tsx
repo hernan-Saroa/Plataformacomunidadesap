@@ -30,10 +30,10 @@ import {
   Globe
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 
 interface CertificadoValidado {
   id: string;

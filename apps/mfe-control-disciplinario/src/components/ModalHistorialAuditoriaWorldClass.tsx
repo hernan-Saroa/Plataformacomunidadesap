@@ -26,8 +26,8 @@ import {
   History, User, Calendar, FileText, Edit, Upload, Download, CheckCircle,
   AlertCircle, Info, Filter
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
 
 // ═══════════════════════════════════════════════════════════════════════════

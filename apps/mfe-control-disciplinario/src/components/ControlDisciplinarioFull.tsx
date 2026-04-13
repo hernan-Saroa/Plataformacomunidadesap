@@ -26,7 +26,7 @@ import { DashboardKanbanOperativo } from './DashboardKanbanOperativo'; // ✅ Ka
 import type { BorradorPendiente } from './ModalRevisionAuto';
 import { authService } from '../services/api/authService';
 import { disciplinaryService } from '../services/api/disciplinary.service';
-import { Permissions } from '../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 export interface ResultadoRevision {
   borradorId: string;

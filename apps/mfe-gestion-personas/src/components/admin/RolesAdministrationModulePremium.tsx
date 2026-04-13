@@ -32,14 +32,14 @@ import {
   Loader2,
   Scale
 } from 'lucide-react';
-import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
 import { CreateRoleModal } from './CreateRoleModal';
 import { EditRoleModal } from './EditRoleModal';
 import { RolePermissionsEditor } from './RolePermissionsEditor';
 import { useConfirmation } from './ConfirmationModal';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@esap-mfe/shared-ui/dropdown-menu';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { rolesService, type SystemRole, type RoleStats, type RoleFilters } from '../../services/api';
 import { useAuth } from '../../hooks';

@@ -11,7 +11,7 @@ import {
   X, Save, Upload, CornerDownLeft, UserCheck, Clock, MessageSquare,
   Paperclip, History, Bell, HelpCircle, Send, Archive
 } from 'lucide-react';
-import { Badge } from '../../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
 
 // ==================== INTERFACES ====================

@@ -19,8 +19,8 @@ import {
   X, Calendar, FileText, AlertTriangle, Clock, CheckCircle,
   Info, AlertCircle
 } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
 import { auditoriasApi } from './services/api';
 import { debugAuthToken } from './services/authDebug';

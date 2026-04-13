@@ -4,10 +4,10 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Badge } from '../../../ui/badge';
-import { Textarea } from '../../../ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import {
   FileText, Calendar, User, Building, Clock, X, AlertCircle,
   CheckCircle, Target, Edit, Send, Download, Upload, MessageSquare,

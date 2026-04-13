@@ -23,14 +23,14 @@ import {
   FileText, Calendar, User, Tag, Search, Filter, Star,
   StarOff, Clock, CheckCircle
 } from 'lucide-react';
-import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
-import { Input } from '../../ui/input';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Input } from '@esap-mfe/shared-ui/input';
 import { toast } from 'sonner';
-import { ConfirmationDialog } from '../../ui/confirmation-dialog';
+import { ConfirmationDialog } from '@esap-mfe/shared-ui/confirmation-dialog';
 import { auditoriasApi } from './services/api';
 import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ============ TIPOS ============
 

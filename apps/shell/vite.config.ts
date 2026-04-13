@@ -53,6 +53,7 @@ export default defineConfig(({ command }) => ({
       '@radix-ui/react-alert-dialog@1.1.6': '@radix-ui/react-alert-dialog',
       '@radix-ui/react-accordion@1.2.3': '@radix-ui/react-accordion',
       '@jsr/supabase__supabase-js@2.49.8': '@jsr/supabase__supabase-js',
+      '@esap-mfe/shared-hooks': path.resolve(__dirname, '../../packages/shared-hooks/src'),
       '@esap-mfe/shared-ui': path.resolve(__dirname, '../../packages/shared-ui/src'),
       '@esap-mfe/shared-types': path.resolve(__dirname, '../../packages/shared-types/src'),
       '@': path.resolve(__dirname, './src'),

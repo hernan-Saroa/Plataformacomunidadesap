@@ -3,8 +3,8 @@
  * Componente con diseño ESAP corporativo profesional
  */
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { 
   X, Download, Printer, ZoomIn, ZoomOut, Maximize2, FileText, 
   Eye, AlertCircle, ChevronLeft, ChevronRight 
@@ -12,7 +12,7 @@ import {
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
-import { Badge } from '../../../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 
 interface VisorPDFModalProps {
   isOpen: boolean;

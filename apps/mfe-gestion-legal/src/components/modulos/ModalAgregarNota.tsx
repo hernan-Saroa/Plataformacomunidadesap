@@ -6,13 +6,13 @@
  * ✅ Clasificación por tipo de nota
  */
 
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
-import { Label } from '../../../ui/label';
-import { Textarea } from '../../../ui/textarea';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import {
   Bookmark, X, Save, AlertCircle, CheckCircle,
   Flag, MessageSquare, Plus

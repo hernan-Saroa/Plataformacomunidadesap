@@ -7,12 +7,12 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
-import { Progress } from '../../../ui/progress';
-import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Progress } from '@esap-mfe/shared-ui/progress';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import {
   FileText, AlertTriangle, Target, Calendar, Eye, Plus, Search, Filter,
   Download, MoreVertical, Edit, Trash2, CheckCircle, AlertCircle, Clock,
@@ -25,15 +25,15 @@ import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalHeaderClean } from './ModalHeaderClean';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
-import { Textarea } from '../../../ui/textarea';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@esap-mfe/shared-ui/select';
+import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalDetallePlanV4 } from './ModalDetallePlanV4';
 import jsPDF from 'jspdf';
 import JSZip from 'jszip';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 import {
   DropdownMenu,
@@ -41,7 +41,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator
-} from '../../../ui/dropdown-menu';
+} from '@esap-mfe/shared-ui/dropdown-menu';
 import { add } from '@dnd-kit/utilities';
 import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';

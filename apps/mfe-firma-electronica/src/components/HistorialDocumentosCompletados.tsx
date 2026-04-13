@@ -3,11 +3,11 @@
  * Diseño corporativo ESAP premium con verificación y trazabilidad
  */
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/dialog';
-import { Button } from '../ui/button';
-import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
-import { Input } from '../ui/input';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Input } from '@esap-mfe/shared-ui/input';
 import {
   X, CheckCircle, Download, Share2, Search, Calendar, FileText,
   QrCode, Shield, Clock, User, Eye, Filter, ChevronDown, ChevronUp,

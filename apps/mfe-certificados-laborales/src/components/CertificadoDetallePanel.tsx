@@ -20,7 +20,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Badge } from '../ui/badge';
+import { Badge } from '@esap-mfe/shared-ui/badge';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
 import { ModalCodigoQR } from './ModalCodigoQR';
 import { HistorialVerificacionesQR } from './HistorialVerificacionesQR';

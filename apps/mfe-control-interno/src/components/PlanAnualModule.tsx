@@ -31,18 +31,18 @@ import {
   Download, Send, X, Check, Info, HelpCircle, FileText, Users, FileSpreadsheet,
   BarChart3, Activity
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Button } from '../../ui/button';
-import { Input } from '../../ui/input';
-import { Badge } from '../../ui/badge';
-import { Avatar, AvatarFallback } from '../../ui/avatar';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { toast } from 'sonner';
 import { planAnual5RolesApi } from './services/api';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import headerImg from '../../../assets/graduation-certificates/img_primera.png';
 import footerImg from '../../../assets/graduation-certificates/img_segunda.png';
 

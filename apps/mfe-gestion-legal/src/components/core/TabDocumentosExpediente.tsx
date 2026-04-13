@@ -14,9 +14,9 @@ import {
   Filter, User, File, BookOpen, Library, ArrowRight, Loader2, Search
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Card } from '../../../ui/card';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Card } from '@esap-mfe/shared-ui/card';
 import { ModalHeaderClean } from '../modulos/ModalHeaderClean';
 import {
   CATEGORIAS_DOCUMENTOS,

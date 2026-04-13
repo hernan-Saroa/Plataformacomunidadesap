@@ -40,7 +40,7 @@ import type { ReviewRequest, ReviewRequestStats } from '../../types';
 import graduadosService, { SolicitudCertificadoGraduado } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
 import { authService } from '../../services/api/authService';
-import { Permissions } from '../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import type { Seccional, Sede } from '../../services/api/types';
 
 type ApprovalForm = {

@@ -5,10 +5,10 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Badge } from '../../../ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@esap-mfe/shared-ui/tabs';
 import {
   AlertTriangle, Shield, FileText, X, Edit, Target,
   TrendingUp, Activity, CheckCircle, Clock, User, Calendar,
@@ -19,7 +19,7 @@ import { ModalHeaderClean } from './ModalHeaderClean';
 import type { Riesgo } from '../core/types';
 import { riesgosService, RiesgoHistorialAPI } from '../../../../services/api/legal.service';
 import { authService } from '../../../../services/api/authService';
-import { Permissions } from '../../../../enums/permissions';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 interface ModalDetalleRiesgoProps {
   open: boolean;
