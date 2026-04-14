@@ -140,6 +140,17 @@ export interface CreateActividadDto {
   configuracionEvidencias?: ConfiguracionEvidencias;
   puntos_control?: any[];
   frecuencia_puntos_control?: string;
+  // ⚡ NUEVO: Entradas de seguimiento iniciales (convertidas desde tareasSeguimiento)
+  entradas_seguimiento?: Array<{
+    id: string;
+    puntoControlId: string;
+    fechaRegistro: string;
+    registradoPor: string;
+    usuarioId?: string;
+    texto?: string;
+    archivos?: Array<{ nombre: string; url: string; tipo: string; tamanio: number }>;
+    tipo: 'seguimiento' | 'hallazgo' | 'cierre';
+  }>;
 }
 
 export interface UpdateActividadDto {

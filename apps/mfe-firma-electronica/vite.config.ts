@@ -8,13 +8,14 @@ const appDir = 'mfe-firma-electronica';
 
 export default defineConfig({
   base: getBuildBase(appDir),
+  root: __dirname,
   plugins: [
     react(),
     federation({
       name: 'firma_electronica',
       filename: 'remoteEntry.js',
       exposes: {
-        './Module': './src/components/ModuloFirmaElectronicaWorldClass.tsx',
+        './Module': path.resolve(__dirname, './src/components/ModuloFirmaElectronicaWorldClass.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),

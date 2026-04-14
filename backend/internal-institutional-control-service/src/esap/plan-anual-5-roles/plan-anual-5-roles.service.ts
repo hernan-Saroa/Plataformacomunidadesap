@@ -236,6 +236,9 @@ export class PlanAnual5RolesService {
     console.log('📥 [addActividad] Recibido createDto:');
     console.log('   - nombre:', createDto.nombre);
     console.log('   - configuracionEvidencias (RAW):', JSON.stringify(createDto.configuracionEvidencias, null, 2));
+    console.log('   - entradas_seguimiento (RAW):', JSON.stringify(createDto.entradas_seguimiento, null, 2));
+    console.log('   - tiene entradas?:', !!createDto.entradas_seguimiento);
+    console.log('   - cantidad entradas:', createDto.entradas_seguimiento?.length || 0);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
     const rol = await this.rolRepository.findOne({
@@ -306,12 +309,18 @@ export class PlanAnual5RolesService {
     console.log('✅ [addActividad] configEvidencias FINAL:', JSON.stringify(configEvidencias, null, 2));
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
+    // Log de entradas de seguimiento antes del INSERT
+    const entradasArray = createDto.entradas_seguimiento || [];
+    const entradasSeguimientoStr = JSON.stringify(entradasArray);
+    console.log('💾 [addActividad] Guardando entradas_seguimiento:', entradasSeguimientoStr);
+    console.log('💾 [addActividad] Tipo:', typeof entradasSeguimientoStr, 'Longitud:', entradasSeguimientoStr.length);
+    
     const query = `
       INSERT INTO control_interno.actividad_plan_anual_5 
       (rol_id, plan_id, nombre, descripcion, responsable, fecha_inicio, fecha_fin, estado, porcentaje_avance, observaciones, prioridad,
        control, evaluacion, seguimiento, requiere_verificacion_director, verificada_por_director, fecha_verificacion, observaciones_director, configuracion_evidencias,
-       puntos_control, frecuencia_puntos_control, responsables, fecha_corte)
-      VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23::date)
+       puntos_control, frecuencia_puntos_control, responsables, fecha_corte, entradas_seguimiento)
+      VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, $20::jsonb, $21, $22::jsonb, $23::date, $24::jsonb)
       RETURNING *
     `;
     
@@ -335,15 +344,19 @@ export class PlanAnual5RolesService {
       createDto.verificadaPorDirector || false,
       createDto.fechaVerificacion || null,
       createDto.observacionesDirector || null,
-      JSON.stringify(configEvidencias),
+      JSON.stringify(configEvidencias),  // $19::jsonb
       // Puntos de control y responsables múltiples
-      JSON.stringify(createDto.puntos_control || []),
-      createDto.frecuencia_puntos_control || null,
-      JSON.stringify(createDto.responsables || []),
-      createDto.fecha_corte || null,
+      JSON.stringify(createDto.puntos_control || []),  // $20::jsonb
+      createDto.frecuencia_puntos_control || null,  // $21
+      JSON.stringify(createDto.responsables || []),  // $22::jsonb
+      createDto.fecha_corte || null,  // $23::date
+      // ⚡ NUEVO: Entradas de seguimiento iniciales
+      entradasSeguimientoStr,  // $24::jsonb
     ]);
 
     const saved = result[0];
+    console.log('✅ [addActividad] Actividad guardada con ID:', saved.id);
+    console.log('📊 [addActividad] entradas_seguimiento guardadas:', saved.entradas_seguimiento?.length || 0);
 
     // Recalcular estadísticas del rol
     await this.recalcularRol(rolId);

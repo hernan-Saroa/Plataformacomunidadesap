@@ -8,15 +8,16 @@ const appDir = 'mfe-gestion-personas';
 
 export default defineConfig({
   base: getBuildBase(appDir),
+  root: __dirname,
   plugins: [
     react(),
     federation({
       name: 'gestion_personas',
       filename: 'remoteEntry.js',
       exposes: {
-        './Module': './src/components/admin/UsersPersonsModulePremium.tsx',
-        './Passwords': './src/components/admin/GestionUsuariosPasswordTracking.tsx',
-        './Roles': './src/components/admin/RolesAdministrationModulePremium.tsx',
+        './Module': path.resolve(__dirname, './src/components/admin/UsersPersonsModulePremium.tsx'),
+        './Passwords': path.resolve(__dirname, './src/components/admin/GestionUsuariosPasswordTracking.tsx'),
+        './Roles': path.resolve(__dirname, './src/components/admin/RolesAdministrationModulePremium.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),

@@ -8,13 +8,14 @@ const appDir = 'mfe-control-disciplinario';
 
 export default defineConfig({
   base: getBuildBase(appDir),
+  root: __dirname,
   plugins: [
     react(),
     federation({
       name: 'control_disciplinario',
       filename: 'remoteEntry.js',
       exposes: {
-        './Module': './src/components/ControlDisciplinarioFull.tsx',
+        './Module': path.resolve(__dirname, './src/components/ControlDisciplinarioFull.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),
