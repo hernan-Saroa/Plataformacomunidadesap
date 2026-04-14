@@ -66,7 +66,8 @@ export default defineConfig(({ command }) => ({
     emptyOutDir: false,
   },
   server: {
-    port: 3000,
-    open: true,
+    host: '0.0.0.0',
+    port: parseInt(process.env.VITE_PORT || '5173'),
+    open: false,
   },
 }));

@@ -9,9 +9,12 @@ ENV npm_config_fetch_retry_maxtimeout=60000
 COPY package*.json ./
 RUN npm install --legacy-peer-deps
 COPY . .
+# Instalar dependencias de workspaces que no se instalan con solo el root package.json
+RUN npm install --legacy-peer-deps -w @esap-mfe/shell
 # Si usas build de prod:
 # RUN npm run build
 
 # Para entorno dev con Vite:
+ENV VITE_PORT=5173
 EXPOSE 5173
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+CMD ["npm", "run", "dev", "-w", "@esap-mfe/shell"]
