@@ -1537,6 +1537,14 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             ...(rolConfig.actividadesCustom || [])
           ];
 
+          console.log(`📦 [handleCrearPlan] Rol ${rolBackend.rol_numero}:`, {
+            actividadesSeleccionadas: rolConfig.actividadesSeleccionadas?.length || 0,
+            actividadesCustom: rolConfig.actividadesCustom?.length || 0,
+            primeraActividad: todasActividades[0]?.nombre,
+            tieneTareas: !!todasActividades[0]?.tareasSeguimiento,
+            tareas: todasActividades[0]?.tareasSeguimiento?.length || 0
+          });
+
           const responsablesDelRol = rolConfig.responsables || [];
 
           // Crear cada actividad en el backend
@@ -1607,6 +1615,25 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               };
             }
 
+            // ⚡ Convertir tareasSeguimiento del wizard en entradas_seguimiento iniciales
+            console.log(`🔍 [handleCrearPlan] Actividad "${act.nombre}":`, {
+              tieneTareasSeguimiento: !!act.tareasSeguimiento,
+              cantidadTareas: act.tareasSeguimiento?.length || 0,
+              tareas: act.tareasSeguimiento
+            });
+            
+            const entradasSeguimientoIniciales = (act.tareasSeguimiento || []).map((tarea, idx) => ({
+              id: tarea.id || `entrada-${Date.now()}-${idx}`,
+              puntoControlId: act.puntosControl?.[0]?.id || 'pc-general', // Vincular al primer punto de control
+              fechaRegistro: new Date().toISOString(),
+              registradoPor: jefeOCI.nombre,
+              usuarioId: jefeOCI.id,
+              texto: tarea.descripcion,
+              tipo: 'seguimiento' as const
+            }));
+            
+            console.log(`📋 [handleCrearPlan] Entradas generadas: ${entradasSeguimientoIniciales.length}`);
+
             const resultActividad = await actividadesApi.create(rolBackend.id, {
               nombre: act.nombre,
               descripcion: act.descripcion || '',
@@ -1626,6 +1653,8 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               configuracionEvidencias: configuracionEvidencias,
               puntos_control: act.puntosControl && act.puntosControl.length > 0 ? act.puntosControl : undefined,
               frecuencia_puntos_control: act.frecuenciaPuntosControl || undefined,
+              // ⚡ NUEVO: Tareas de seguimiento convertidas a entradas iniciales
+              entradas_seguimiento: entradasSeguimientoIniciales.length > 0 ? entradasSeguimientoIniciales : undefined,
             });
 
             if (resultActividad.success) {
