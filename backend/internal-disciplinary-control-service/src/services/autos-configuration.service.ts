@@ -41,18 +41,6 @@ export class AutosConfigurationService {
   async create(
     createDto: CreateAutosConfigurationDto,
   ): Promise<AutoConfiguration> {
-    // Verificar si ya existe un auto con el mismo tipo
-    const existing = await this.autoConfigRepository.findOne({
-      where: { tipo: createDto.tipo },
-    });
-
-    if (existing) {
-      throw new HttpException(
-        `Ya existe una configuración para el tipo de auto: ${createDto.tipo}`,
-        HttpStatus.CONFLICT,
-      );
-    }
-
     const autoConfig = this.autoConfigRepository.create({
       tipo: createDto.tipo,
       nombre: createDto.nombre,

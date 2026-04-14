@@ -1689,24 +1689,18 @@ function ModalNuevaTarea({
   open,
   etapas,
   etapaActual,
-  profesionales,
-  loadingProfesionales,
   responsableInicial,
   saving,
   onClose,
   onSubmit,
-  onEnsureProfesionales,
 }: {
   open: boolean;
   etapas: string[];
   etapaActual: string;
-  profesionales: any[];
-  loadingProfesionales: boolean;
   responsableInicial: string;
   saving: boolean;
   onClose: () => void;
   onSubmit: (data: CreateDisciplinaryProcessTaskDto) => Promise<void>;
-  onEnsureProfesionales?: () => void | Promise<void>;
 }) {
   const etapasNormalizadas = Array.from(
     new Set(
@@ -1735,12 +1729,6 @@ function ModalNuevaTarea({
     setObservaciones('');
   }, [open, etapaActualNormalizada, responsableInicial]);
 
-  useEffect(() => {
-    if (!open) return;
-    if (profesionales.length > 0) return;
-    void onEnsureProfesionales?.();
-  }, [open, profesionales.length, onEnsureProfesionales]);
-
   if (!open) return null;
 
   const prioridadMeta = TASK_PRIORITY_META[prioridad];
@@ -1749,11 +1737,6 @@ function ModalNuevaTarea({
   const handleSubmit = async () => {
     if (!titulo.trim()) {
       toast.error('El titulo de la tarea es obligatorio');
-      return;
-    }
-
-    if (!responsableNombre.trim()) {
-      toast.error('El responsable es obligatorio');
       return;
     }
 
@@ -1971,29 +1954,13 @@ function ModalNuevaTarea({
             <div className="space-y-4">
               <label className="space-y-1.5 block">
                 <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Responsable</span>
-                <div className="relative">
-                  <select
-                    value={responsableNombre}
-                    onChange={(e) => setResponsableNombre(e.target.value)}
-                    disabled={loadingProfesionales}
-                    className="w-full appearance-none rounded-[22px] border border-slate-200 bg-white px-4 py-3.5 pr-10 text-sm font-medium text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50 disabled:opacity-60"
-                    style={{ borderRadius: '22px' }}
-                  >
-                    <option value="">Seleccionar responsable</option>
-                    {profesionales.map((prof, index) => {
-                      const displayName = prof.nombre || prof.nombreCompleto || prof.name || `Profesional ${prof.id || index}`;
-                      return (
-                        <option key={prof.id || index} value={displayName}>
-                          {displayName}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <ChevronRight className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-slate-400" />
-                  {loadingProfesionales && (
-                    <Loader2 className="absolute right-8 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />
-                  )}
-                </div>
+                <input
+                  value={responsableNombre}
+                  onChange={(e) => setResponsableNombre(e.target.value)}
+                  className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+                  style={{ borderRadius: '22px' }}
+                  placeholder="Nombre del profesional responsable"
+                />
               </label>
 
               <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5" style={{ borderRadius: '24px' }}>
@@ -2102,8 +2069,6 @@ export function ModalDetallesProceso({
   const [tareasError, setTareasError] = useState<string | null>(null);
   const [tareaExpandidaId, setTareaExpandidaId] = useState<string | null>(null);
   const [mostrarModalNuevaTarea, setMostrarModalNuevaTarea] = useState(false);
-  const [profesionales, setProfesionales] = useState<any[]>([]);
-  const [loadingProfesionales, setLoadingProfesionales] = useState(false);
   const [creandoTarea, setCreandoTarea] = useState(false);
   const [actualizandoTareaId, setActualizandoTareaId] = useState<string | null>(null);
   const [mostrarModalReasignar, setMostrarModalReasignar] = useState(false);
@@ -2119,8 +2084,6 @@ export function ModalDetallesProceso({
   const cargasRef = useRef<CargaActiva[]>([]);
   const colaCargasRef = useRef<Promise<void>>(Promise.resolve());
   const cancelarPendientesRef = useRef(false);
-  const cargandoProfesionalesRef = useRef(false);
-  const mountedRef = useRef(false);
   const [archivosEnColaCount, setArchivosEnColaCount] = useState(0);
   cargasRef.current = cargasActivas;
   const currentUser = authService.getCurrentUser();
@@ -2339,50 +2302,6 @@ export function ModalDetallesProceso({
       cancelled = true;
     };
   }, [proceso?.id]);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const ensureProfesionales = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
-    if (cargandoProfesionalesRef.current) return;
-    cargandoProfesionalesRef.current = true;
-    if (mountedRef.current) setLoadingProfesionales(true);
-
-    try {
-      const response = await disciplinaryService.getProfesionales();
-      let profs = response;
-      if (!Array.isArray(response)) {
-        if (response?.data && Array.isArray(response.data)) {
-          profs = response.data;
-        } else if (response?.data?.data && Array.isArray(response.data.data)) {
-          profs = response.data.data;
-        } else {
-          profs = [];
-        }
-      }
-      if (mountedRef.current) setProfesionales(profs);
-    } catch (error) {
-      console.error('[ModalDetallesProceso] Error cargando profesionales:', error);
-      if (!silent) {
-        toast.error('No se pudieron cargar los profesionales disponibles');
-      }
-    } finally {
-      cargandoProfesionalesRef.current = false;
-      if (mountedRef.current) setLoadingProfesionales(false);
-    }
-  }, []);
-
-  // ═══ Pre-cargar profesionales para creación de tareas ═══
-  useEffect(() => {
-    if (!proceso?.id) return;
-
-    if (profesionales.length > 0) return;
-    void ensureProfesionales({ silent: true });
-  }, [proceso?.id, profesionales.length, ensureProfesionales]);
 
   // ═══ Navegación rápida desde Scorecard ═══
   const navigateToTab = useCallback((tab: Tab, etapa: string) => {
@@ -3568,17 +3487,6 @@ export function ModalDetallesProceso({
       return;
     }
     const nuevoArchivo = e.target.files[0];
-    const extension = `.${nuevoArchivo.name.split('.').pop()?.toLowerCase() || ''}`;
-
-    if (!['.doc', '.docx'].includes(extension)) {
-      toast.error('Formato no permitido para autos', {
-        description: 'Solo se permiten archivos Word (.doc, .docx) para recargar autos.',
-      });
-      setAutoRecargar(null);
-      if (inputRecargarRef.current) inputRecargarRef.current.value = '';
-      return;
-    }
-
     const id = autoRecargar.id;
     const nuevaVersion = (autoRecargar.version || 1) + 1;
 
@@ -5790,7 +5698,7 @@ export function ModalDetallesProceso({
       <input
         ref={inputRecargarRef}
         type="file"
-        accept=".doc,.docx"
+        accept=".pdf,.doc,.docx"
         className="hidden"
         onChange={handleArchivoReemplazado}
       />
@@ -5873,13 +5781,10 @@ export function ModalDetallesProceso({
             open={mostrarModalNuevaTarea}
             etapas={Array.from(new Set([...ORDEN_ETAPAS, proceso.etapaActual, ...etapasTarOrdenadas, 'Sin etapa']))}
             etapaActual={proceso.etapaActual}
-            profesionales={profesionales}
-            loadingProfesionales={loadingProfesionales}
             responsableInicial={getNombre(proceso.profesionalAsignado)}
             saving={creandoTarea}
             onClose={() => setMostrarModalNuevaTarea(false)}
             onSubmit={handleCrearTarea}
-            onEnsureProfesionales={ensureProfesionales}
           />
         )}
       </AnimatePresence>
@@ -5920,6 +5825,9 @@ export function ModalDetallesProceso({
     document.body
   );
 }
+
+
+
 
 
 
