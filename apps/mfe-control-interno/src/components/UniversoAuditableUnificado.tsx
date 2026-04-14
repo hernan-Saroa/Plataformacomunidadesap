@@ -492,15 +492,19 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
                       onClick={async () => {
                         setMostrarMenuExportar(false);
                         try {
+                          if (evaluacionesFiltradas.length === 0) {
+                            toast.info('No hay procesos registrados para exportar con los filtros actuales.');
+                            return;
+                          }
                           const resultado = await exportarUniversoAuditablePDF(
-                            procesos,
+                            evaluacionesFiltradas,
                             {
-                              totalProcesos: estadisticas.totalProcesos,
-                              procesosAuditables: estadisticas.procesosAuditables,
-                              procesosCriticos: estadisticas.procesosCriticos,
-                              procesosAltos: estadisticas.procesosAltos,
-                              procesosMedios: estadisticas.procesosMedios,
-                              procesosBajos: estadisticas.procesosBajos
+                              totalProcesos: estadisticasEvaluaciones.totalProcesos,
+                              procesosAuditables: estadisticasEvaluaciones.procesosAuditables,
+                              procesosCriticos: estadisticasEvaluaciones.procesosCriticos,
+                              procesosAltos: estadisticasEvaluaciones.procesosAltos,
+                              procesosMedios: estadisticasEvaluaciones.procesosMedios,
+                              procesosBajos: estadisticasEvaluaciones.procesosBajos
                             },
                             { vigencia }
                           );
@@ -523,15 +527,19 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
                       onClick={async () => {
                         setMostrarMenuExportar(false);
                         try {
+                          if (evaluacionesFiltradas.length === 0) {
+                            toast.info('No hay procesos registrados para exportar con los filtros actuales.');
+                            return;
+                          }
                           const resultado = await exportarUniversoAuditableExcel(
-                            procesos,
+                            evaluacionesFiltradas,
                             {
-                              totalProcesos: estadisticas.totalProcesos,
-                              procesosAuditables: estadisticas.procesosAuditables,
-                              procesosCriticos: estadisticas.procesosCriticos,
-                              procesosAltos: estadisticas.procesosAltos,
-                              procesosMedios: estadisticas.procesosMedios,
-                              procesosBajos: estadisticas.procesosBajos
+                              totalProcesos: estadisticasEvaluaciones.totalProcesos,
+                              procesosAuditables: estadisticasEvaluaciones.procesosAuditables,
+                              procesosCriticos: estadisticasEvaluaciones.procesosCriticos,
+                              procesosAltos: estadisticasEvaluaciones.procesosAltos,
+                              procesosMedios: estadisticasEvaluaciones.procesosMedios,
+                              procesosBajos: estadisticasEvaluaciones.procesosBajos
                             },
                             { vigencia }
                           );
