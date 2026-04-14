@@ -21,6 +21,18 @@ export enum ProcessStatus {
   PRESCRITO = 'PRESCRITO',
 }
 
+export enum ProcessStage {
+  RECEPCION = 'RECEPCION',
+  VALORACION = 'VALORACION',
+  INDAGACION_PREVIA = 'INDAGACION_PREVIA',
+  INVESTIGACION = 'INVESTIGACION',
+  EVALUACION = 'EVALUACION',
+  JUZGAMIENTO = 'JUZGAMIENTO',
+  INDAGACION = 'INDAGACION',
+  FALLO = 'FALLO',
+  SEGUNDA_INSTANCIA = 'SEGUNDA_INSTANCIA',
+}
+
 @Entity('disciplinary_processes')
 export class DisciplinaryProcess {
   @PrimaryGeneratedColumn('uuid')
@@ -52,7 +64,7 @@ export class DisciplinaryProcess {
   @Column({
     type: 'varchar',
     length: 100,
-    default: 'EVALUACION',
+    default: 'VALORACION',
   })
   etapaActual: string;
 
