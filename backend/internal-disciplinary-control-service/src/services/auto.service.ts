@@ -1,6 +1,6 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-<import { In, Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { CreateLegalAutoDto } from '../dtos/create-legal-auto.dto';
 import { RegisterNotificationDto } from '../dtos/register-notification.dto';
 import { ReviewAction, ReviewAutoDto } from '../dtos/review-auto.dto';
@@ -15,8 +15,12 @@ import { DocumentConversionService } from './document-conversion.service';
 import { PdfModifierService } from './pdf-modifier.service';
 import { ProcessService } from './process.service';
 import { SequenceService } from './sequence.service';
-<import { JuridicaEmailService } from './juridica-email.service';
-import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
+import { JuridicaEmailService } from './juridica-email.service';
+import {
+  DisciplinaryProcess,
+  ProcessStage,
+  ProcessStatus,
+} from '../entities/disciplinary-process.entity';
 
 const APERTURA_TYPES = [
   AutoType.AUTO_APERTURA,
@@ -39,7 +43,7 @@ export class AutoService {
     private alertasService: AlertasService,
     private pdfModifierService: PdfModifierService,
     private sequenceService: SequenceService,
-<    private documentConversionService: DocumentConversionService,
+    private documentConversionService: DocumentConversionService,
     private juridicaEmailService: JuridicaEmailService,
   ) {}
 
@@ -112,7 +116,6 @@ export class AutoService {
       }
 
       // CORRECCIÓN AQUI: Mapeo manual de campos DTO -> Entidad
->>>>>>> origin/micro-frontend
       const auto = this.autoRepository.create({
         tipo: createAutoDto.tipoAuto,
         numero: createAutoDto.numero,
@@ -345,8 +348,6 @@ export class AutoService {
           );
         }
       }
-
->>>>>>> origin/micro-frontend
     } else if (reviewAutoDto.action === ReviewAction.RETURN) {
       auto.estado = AutoStatus.DEVUELTO;
       if (reviewAutoDto.observaciones) {
@@ -380,7 +381,6 @@ export class AutoService {
         documentUrl: auto.documentUrl,
         documentName: auto.documentName,
       });
->>>>>>> origin/micro-frontend
     }
 
     if (reviewAutoDto.observaciones) {
@@ -574,6 +574,61 @@ export class AutoService {
       if (updateData.documentSize !== undefined) {
         auto.documentSize = updateData.documentSize;
       }
+    }
+
+    return await this.autoRepository.save(auto);
+  }
+
+  /**
+   * Sube/actualiza el documento fuente mientras el auto está en revisión.
+   * Guarda versión previa (incluye documento anterior) e incrementa currentVersion.
+   */
+  async uploadDocumentoDuranteRevision(
+    id: string,
+    documentUrl: string,
+    documentName: string,
+    documentType: string,
+    documentSize: number,
+    comentario?: string,
+    userId?: string,
+  ): Promise<LegalAuto> {
+    const auto = await this.findById(id, ['process']);
+
+    if (
+      auto.estado !== AutoStatus.REVISION_JEFE &&
+      auto.estado !== AutoStatus.BORRADOR &&
+      auto.estado !== AutoStatus.DEVUELTO
+    ) {
+      throw new HttpException(
+        'Solo se puede cargar/actualizar el documento en borrador, devuelto o durante la revisión',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    await this.versionRepository.save({
+      auto: { id: auto.id } as LegalAuto,
+      contenido: auto.contenido,
+      versionNumber: auto.currentVersion,
+      createdBy: userId || null,
+      changeReason:
+        auto.estado === AutoStatus.REVISION_JEFE
+          ? 'Actualización de documento durante revisión'
+          : 'Actualización de archivo adjunto',
+      documentUrl: auto.documentUrl,
+      documentName: auto.documentName,
+    });
+
+    auto.currentVersion += 1;
+    auto.documentUrl = documentUrl;
+    auto.documentName = documentName;
+    auto.documentType = documentType;
+    auto.documentSize = documentSize;
+
+    if (comentario) {
+      const prefix = `[${new Date().toISOString()}] `;
+      auto.comentarios = auto.comentarios
+        ? `${auto.comentarios}\n${prefix}${comentario}`
+        : `${prefix}${comentario}`;
     }
 
     return await this.autoRepository.save(auto);
