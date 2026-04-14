@@ -10,6 +10,7 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
+
 export class CreateConfiguracionProfesionalOCIGDto {
   // Acepta UUID (nuevo) o string numérico legacy — se guarda tal cual en VARCHAR(36)
   @Transform(({ value }) => String(value ?? '').trim())
@@ -24,10 +25,10 @@ export class CreateConfiguracionProfesionalOCIGDto {
   @IsString()
   rolOcig: string;
 
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  @ArrayMinSize(1)
-  especialidades: string[];
+  especialidades?: string[];
 
   @IsOptional()
   @IsInt()

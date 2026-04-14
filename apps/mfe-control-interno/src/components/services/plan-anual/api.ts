@@ -70,9 +70,16 @@ async function apiRequest<T>(
     const data = text ? JSON.parse(text) : null;
 
     if (!response.ok) {
+      let errorMsg = data?.message || data?.error || `Error ${response.status}`;
+      // NestJS ValidationPipe returns an array of messages
+      if (Array.isArray(errorMsg)) {
+        errorMsg = errorMsg.join(', ');
+      } else if (Array.isArray(data?.message)) {
+        errorMsg = data.message.join(', ');
+      }
       return {
         success: false,
-        error: data?.message || data?.error || `Error ${response.status}`,
+        error: errorMsg,
       };
     }
 
@@ -137,6 +144,15 @@ export const planAnualApi = {
     return apiRequest<PlanAnual>(`${PLAN_ANUAL_ENDPOINT}/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Eliminar plan anual
+   */
+  delete: async (id: string): Promise<ApiResponse<void>> => {
+    return apiRequest<void>(`${PLAN_ANUAL_ENDPOINT}/${id}`, {
+      method: 'DELETE',
     });
   },
 

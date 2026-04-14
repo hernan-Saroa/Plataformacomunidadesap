@@ -430,9 +430,6 @@ export function ModuleLayout({
           </div>
         </div>
       </main>
-
-      {/* ⌨️ HELPER DE ATAJOS DE TECLADO */}
-      <KeyboardShortcutsHelper moduleColor={moduleColor} />
     </div>
   );
 }

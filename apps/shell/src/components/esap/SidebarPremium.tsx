@@ -1036,8 +1036,9 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                 )}
               </div>
 
-              {/* Módulos Administrativos */}
-              <div className="mb-8">
+              {/* Módulos Administrativos (GESTIÓN PERSONAS) */}
+              {hasGestionPersonas && (
+                <div className="mb-8">
             <AnimatePresence mode="wait">
               {!effectiveCollapsed && renderSectionHeader('estructura-org', <Building2 className="w-3 h-3" />, 'GESTIÓN PERSONAS', 6)}
             </AnimatePresence>
@@ -1114,9 +1115,11 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               )}
             </AnimatePresence>
           </div>
+          )}
 
           {/* Gestión Académica */}
-          <div className="mb-8">
+          {hasGestionAcademica && (
+            <div className="mb-8">
             <AnimatePresence mode="wait">
               {!effectiveCollapsed && renderSectionHeader('gestion-usuarios', <GraduationCap className="w-3 h-3" />, 'GESTIÓN ACADÉMICA', 7)}
             </AnimatePresence>
@@ -1219,6 +1222,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               )}
             </AnimatePresence>
           </div>
+          )}
             </>
           )}
         </nav>

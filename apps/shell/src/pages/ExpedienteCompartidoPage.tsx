@@ -28,6 +28,7 @@ import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
 import disciplinaryService from '../services/api/disciplinary.service';
 import { API_MODE, buildApiUrl } from '../config/environment';
+import * as mammoth from 'mammoth';
 
 // Tipos
 interface ExpedienteCompartidoData {
@@ -85,6 +86,7 @@ export function ExpedienteCompartidoPage() {
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [cargandoPDF, setCargandoPDF] = useState(false);
   const [errorPDF, setErrorPDF] = useState<string | null>(null);
+  const [esDocumentoConvertido, setEsDocumentoConvertido] = useState(false);
 
   // Cargar datos iniciales del expediente
   useEffect(() => {
@@ -175,6 +177,7 @@ export function ExpedienteCompartidoPage() {
     setPdfBlobUrl(null);
     setCargandoPDF(true);
     setErrorPDF(null);
+    setEsDocumentoConvertido(false);
 
     try {
       if (!token || !doc.id) {
@@ -197,8 +200,45 @@ export function ExpedienteCompartidoPage() {
       }
 
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      setPdfBlobUrl(url);
+
+      // Check if it's a DOCX file and convert to HTML for display
+      if (blob.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        const arrayBuffer = await blob.arrayBuffer();
+        try {
+          const result = await mammoth.convertToHtml({ arrayBuffer });
+          const htmlContent = result.value;
+          const docxHtml = `
+            <div style="font-family: Arial, sans-serif; padding: 20px; background: white; min-height: 100vh;">
+              <style>
+                .docx-content { max-width: 800px; margin: 0 auto; }
+                .docx-content p { margin-bottom: 10px; line-height: 1.5; }
+                .docx-content h1, .docx-content h2, .docx-content h3 { margin-top: 20px; margin-bottom: 10px; }
+                .docx-content ul, .docx-content ol { margin-left: 20px; }
+                .docx-content table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+                .docx-content td, .docx-content th { border: 1px solid #ddd; padding: 8px; }
+                .docx-content th { background-color: #f5f5f5; }
+              </style>
+              <div class="docx-content">
+                ${htmlContent}
+              </div>
+            </div>
+          `;
+          const htmlBlob = new Blob([docxHtml], { type: 'text/html' });
+          const url = window.URL.createObjectURL(htmlBlob);
+          setPdfBlobUrl(url);
+          setEsDocumentoConvertido(true);
+        } catch (conversionError) {
+          console.error('Error converting DOCX to HTML:', conversionError);
+          // Fallback to original blob
+          const url = window.URL.createObjectURL(blob);
+          setPdfBlobUrl(url);
+          setEsDocumentoConvertido(false);
+        }
+      } else {
+        const url = window.URL.createObjectURL(blob);
+        setPdfBlobUrl(url);
+        setEsDocumentoConvertido(false);
+      }
     } catch (error: any) {
       console.error('Error al cargar PDF:', error);
       setErrorPDF(error.message || 'No se pudo cargar el documento');
@@ -606,9 +646,9 @@ export function ExpedienteCompartidoPage() {
 
       {/* Modal Visor de Documento */}
       {showModalVisor && documentoSeleccionado && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowModalVisor(false)}
+          onClick={() => { setShowModalVisor(false); setPdfBlobUrl(null); setEsDocumentoConvertido(false); }}
         >
           <div
             className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl overflow-hidden flex flex-col" style={{ height: '92vh' }}
@@ -626,7 +666,7 @@ export function ExpedienteCompartidoPage() {
                   </p>
                 </div>
                 <button
-                  onClick={() => setShowModalVisor(false)}
+                  onClick={() => { setShowModalVisor(false); setPdfBlobUrl(null); setEsDocumentoConvertido(false); }}
                   className="p-2 hover:bg-gray-200 rounded-lg"
                 >
                   ✕
@@ -661,8 +701,10 @@ export function ExpedienteCompartidoPage() {
               {pdfBlobUrl && !cargandoPDF && !errorPDF && (
                 <iframe
                   src={pdfBlobUrl}
-                  className="w-full h-full border-0"
+                  className="w-full"
+                  style={{ height: '65vh', minHeight: '500px', border: 'none' }}
                   title={`Visor de ${documentoSeleccionado.nombre}`}
+                  sandbox={esDocumentoConvertido ? "allow-same-origin allow-scripts allow-popups allow-forms" : undefined}
                 />
               )}
             </div>
@@ -678,7 +720,7 @@ export function ExpedienteCompartidoPage() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => setShowModalVisor(false)}
+                onClick={() => { setShowModalVisor(false); setPdfBlobUrl(null); setEsDocumentoConvertido(false); }}
                 className="ml-auto"
               >
                 Cerrar
