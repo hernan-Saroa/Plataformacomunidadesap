@@ -394,6 +394,7 @@ export interface AssignProcessDto {
     newsId: string;
     abogadoId: string;
     abogadoNombre: string;
+    observaciones?: string;
 }
 
 export interface CreateAutoDto {

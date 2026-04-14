@@ -10,7 +10,7 @@ import { disciplinaryService } from '../../../services/api/disciplinary.service'
 import { buildApiUrl, API_MODE } from '../../../config/environment';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  FileText, Eye, CheckCircle, XCircle, Edit2,
+  FileText, Eye, CheckCircle, XCircle,
   MessageSquare, Clock, Send, Download, Upload, FileSignature,
   User, AlertCircle, History, X, Check,
   RotateCcw, Mail, Calendar, Info,
@@ -81,10 +81,12 @@ const getInitials = (nombre: string) => {
 
 function ModalAprobacion({
   onConfirm,
-  onCancel
+  onCancel,
+  borrador
 }: {
   onConfirm: (comentarios: string, tipoFirma: 'electronica' | 'digital' | 'local') => void;
   onCancel: () => void;
+  borrador?: { titulo?: string; plantilla?: string };
 }) {
   const [comentarios, setComentarios] = useState('');
   const [tipoFirma, setTipoFirma] = useState<'electronica' | 'digital' | 'local'>('local');
@@ -94,8 +96,8 @@ function ModalAprobacion({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{ zIndex: 10001, backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
       <motion.div
@@ -118,6 +120,23 @@ function ModalAprobacion({
             </p>
           </div>
         </div>
+
+        {/* Advertencia para auto pliego de cargos */}
+        {(borrador.titulo?.toLowerCase().includes('pliego') || borrador.plantilla?.toLowerCase().includes('pliego')) && (
+          <div className="mb-4 p-3 rounded-xl border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
+            <div className="flex items-start gap-2">
+              <AlertCircle style={{ width: 18, height: 18, color: '#D97706', marginTop: 1, flexShrink: 0 }} />
+              <div>
+                <p className="text-sm font-bold" style={{ color: '#92400E' }}>Auto Pliego de Cargos</p>
+                <p className="text-xs mt-1" style={{ color: '#B45309' }}>
+                  Al aprobar este auto, el proceso será <strong>cerrado permanentemente</strong> y se enviará
+                  un correo automático a la <strong>Oficina de Jurídica</strong> con la información consolidada del expediente.
+                  Esta acción no se puede revertir.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tipo de Firma */}
         <div className="mb-4">
@@ -225,8 +244,8 @@ function ModalDevolucion({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{ zIndex: 10001, backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
       <motion.div
@@ -372,8 +391,7 @@ export function ModalRevisionAuto({
   tituloModal = 'Revisión de Auto',
   descripcionModal
 }: ModalRevisionAutoProps) {
-  const [contenidoEditado, setContenidoEditado] = useState(borrador.contenido);
-  const [modoEdicion, setModoEdicion] = useState(false);
+
   const [comentariosJefe, setComentariosJefe] = useState('');
   const [showModalAprobar, setShowModalAprobar] = useState(false);
   const [showModalDevolver, setShowModalDevolver] = useState(false);
@@ -418,11 +436,31 @@ export function ModalRevisionAuto({
     };
   }, [borrador.autoId]);
 
-  const handleGuardarEdicion = () => {
-    toast.success('Cambios Guardados', {
-      description: 'Las modificaciones han sido registradas en la auditoría'
-    });
-    setModoEdicion(false);
+  const handleDescargarDocumento = () => {
+    if (documentoBackendUrl) {
+      // Descargar el documento desde el backend (PDF o archivo existente)
+      const link = document.createElement('a');
+      link.href = documentoBackendUrl;
+      link.download = `Auto-${borrador.numeroProceso || borrador.id}.pdf`;
+      link.click();
+      toast.success('Descarga iniciada', {
+        description: 'El documento se está descargando'
+      });
+    } else if (borrador.contenido?.trim()) {
+      // Descargar el contenido como archivo de texto
+      const blob = new Blob([borrador.contenido], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Auto-${borrador.numeroProceso || borrador.id}.html`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('Descarga iniciada', {
+        description: 'El documento se está descargando como HTML'
+      });
+    } else {
+      toast.error('No hay contenido para descargar');
+    }
   };
 
   const handleConfirmarAprobacion = (comentarios: string, tipoFirma: 'electronica' | 'digital' | 'local') => {
@@ -447,8 +485,8 @@ export function ModalRevisionAuto({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[200] flex items-center justify-center"
-        style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+        className="fixed inset-0 flex items-center justify-center"
+        style={{ zIndex: 10000, backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >
         <motion.div
@@ -667,12 +705,12 @@ export function ModalRevisionAuto({
                         </label>
                       )}
                       <button
-                        onClick={() => setModoEdicion(!modoEdicion)}
+                        onClick={handleDescargarDocumento}
                         className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
-                        style={{ background: modoEdicion ? '#6B7280' : '#003DA5' }}
+                        style={{ background: '#10B981' }}
                       >
-                        <Edit2 className="w-4 h-4" />
-                        {modoEdicion ? 'Cancelar' : 'Editar'}
+                        <Download className="w-4 h-4" />
+                        Descargar
                       </button>
                     </div>
                   </div>
@@ -730,42 +768,10 @@ export function ModalRevisionAuto({
                           </button>
                         </div>
                       </div>
-                    </div>
-                  )}
+                     </div>
+                   )}
 
-                  {modoEdicion ? (
-                    <div className="space-y-3">
-                      <div className="p-3 rounded-xl flex items-start gap-2" style={{ background: '#EFF6FF' }}>
-                        <Info className="w-4 h-4 flex-shrink-0" style={{ color: '#2563EB' }} />
-                        <p className="text-xs" style={{ color: '#1E40AF' }}>
-                          Las modificaciones quedarán registradas en auditoría.
-                        </p>
-                      </div>
-                      <textarea
-                        value={contenidoEditado}
-                        onChange={(e) => setContenidoEditado(e.target.value)}
-                        className="w-full h-80 p-4 border-2 rounded-xl text-sm focus:outline-none focus:border-[#003DA5] font-mono"
-                        style={{ borderColor: '#E5E7EB' }}
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleGuardarEdicion}
-                          className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-                          style={{ background: '#003DA5' }}
-                        >
-                          <Check className="w-4 h-4" />
-                          Guardar Cambios
-                        </button>
-                        <button
-                          onClick={() => setModoEdicion(false)}
-                          className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors"
-                          style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
-                        >
-                          Descartar
-                        </button>
-                      </div>
-                    </div>
-                  ) : cargandoDoc ? (
+                   {cargandoDoc ? (
                     <div className="flex items-center justify-center p-10 rounded-xl border-2" style={{ borderColor: '#E5E7EB', background: '#F8FAFC' }}>
                       <div className="text-center">
                         <div className="w-8 h-8 border-4 border-[#003DA5] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
@@ -833,7 +839,7 @@ export function ModalRevisionAuto({
                   ) : (
                     <div className="p-5 rounded-xl border-2" style={{ borderColor: '#E5E7EB', background: '#F8FAFC' }}>
                       <pre className="whitespace-pre-wrap font-serif text-sm leading-relaxed overflow-x-auto" style={{ color: '#1F2937' }}>
-                        {contenidoEditado}
+                        {borrador.contenido || 'Sin contenido disponible'}
                       </pre>
                     </div>
                   )}
@@ -903,6 +909,7 @@ export function ModalRevisionAuto({
           <ModalAprobacion
             onConfirm={handleConfirmarAprobacion}
             onCancel={() => setShowModalAprobar(false)}
+            borrador={borrador}
           />
         )}
         {showModalDevolver && (

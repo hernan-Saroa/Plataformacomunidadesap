@@ -14,13 +14,6 @@ import { DisciplinaryProfessional } from './disciplinary-professional.entity';
 import { Evidence } from './evidence.entity';
 
 
-export enum ProcessStatus {
-  ACTIVO = 'ACTIVO',
-  SUSPENDIDO = 'SUSPENDIDO',
-  ARCHIVADO = 'ARCHIVADO',
-  PRESCRITO = 'PRESCRITO',
-}
-
 export enum ProcessStage {
   RECEPCION = 'RECEPCION',
   VALORACION = 'VALORACION',
@@ -33,6 +26,13 @@ export enum ProcessStage {
   SEGUNDA_INSTANCIA = 'SEGUNDA_INSTANCIA',
 }
 
+export enum ProcessStatus {
+  ACTIVO = 'ACTIVO',
+  SUSPENDIDO = 'SUSPENDIDO',
+  ARCHIVADO = 'ARCHIVADO',
+  CERRADO = 'CERRADO',
+  PRESCRITO = 'PRESCRITO',
+}
 @Entity('disciplinary_processes')
 export class DisciplinaryProcess {
   @PrimaryGeneratedColumn('uuid')
@@ -84,7 +84,7 @@ export class DisciplinaryProcess {
   fechaVencimientoEtapa: Date;
 
   @Column({ type: 'timestamp', nullable: true })
-  fechaInicioEtapa: Date;
+  fechaInicioEtapa: Date | null;
 
   @Column({ type: 'text', nullable: true })
   observaciones: string;
@@ -110,6 +110,22 @@ export class DisciplinaryProcess {
   // para evitar dependencias circulares con DisciplinaryNewsProcess
 
   // ✅ NUEVO: Campos para asociar proceso a otro proceso
+  // Campos para cierre por Pliego de Cargos
+  @Column({ name: 'fecha_cierre', type: 'timestamp', nullable: true })
+  fechaCierre: Date | null;
+
+  @Column({ name: 'etapa_al_cierre', type: 'varchar', length: 100, nullable: true })
+  etapaAlCierre: string | null;
+
+  @Column({ name: 'cerrado_por_id', type: 'uuid', nullable: true })
+  cerradoPorId: string | null;
+
+  @Column({ name: 'correo_juridica_enviado', type: 'boolean', default: false })
+  correoJuridicaEnviado: boolean;
+
+  @Column({ name: 'correo_juridica_fecha_envio', type: 'timestamp', nullable: true })
+  correoJuridicaFechaEnvio: Date | null;
+
   @Column({ name: 'proceso_asociado_id', type: 'uuid', nullable: true })
   procesoAsociadoId: string | null;
 
