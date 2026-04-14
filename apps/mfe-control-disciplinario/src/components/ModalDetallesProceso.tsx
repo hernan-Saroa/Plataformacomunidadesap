@@ -1733,11 +1733,20 @@ function ModalNuevaTarea({
 
   useEffect(() => {
     const fetchProfesionales = async () => {
-      if (!open) return;
+      if (!open || profesionales.length > 0) return;
       setLoadingProfesionales(true);
       try {
         const response = await disciplinaryService.getProfesionales();
-        const profs = Array.isArray(response) ? response : (response?.data || []);
+        let profs = response;
+        if (!Array.isArray(response)) {
+          if (response?.data && Array.isArray(response.data)) {
+            profs = response.data;
+          } else if (response?.data?.data && Array.isArray(response.data.data)) {
+            profs = response.data.data;
+          } else {
+            profs = [];
+          }
+        }
         setProfesionales(profs);
       } catch (error) {
         console.error('Error fetching profesionales:', error);
@@ -1747,7 +1756,7 @@ function ModalNuevaTarea({
       }
     };
     fetchProfesionales();
-  }, [open]);
+  }, [open, profesionales.length]);
 
   if (!open) return null;
 
@@ -1989,7 +1998,7 @@ function ModalNuevaTarea({
                   >
                     <option value="">Seleccionar responsable</option>
                     {profesionales.map((prof, index) => {
-                      const displayName = prof.nombreCompleto || prof.nombre || prof.name || `Profesional ${prof.id || index}`;
+                      const displayName = prof.nombre || prof.nombreCompleto || prof.name || `Profesional ${prof.id || index}`;
                       return (
                         <option key={prof.id || index} value={displayName}>
                           {displayName}
@@ -2338,6 +2347,45 @@ export function ModalDetallesProceso({
           setNoticiasAsociadasLoading(false);
         }
       });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [proceso?.id]);
+
+  // ═══ Pre-cargar profesionales para creación de tareas ═══
+  useEffect(() => {
+    if (!proceso?.id) return;
+
+    let cancelled = false;
+    setLoadingProfesionales(true);
+
+    const fetchProfesionales = async () => {
+      try {
+        const response = await disciplinaryService.getProfesionales();
+        if (cancelled) return;
+        let profs = response;
+        if (!Array.isArray(response)) {
+          if (response?.data && Array.isArray(response.data)) {
+            profs = response.data;
+          } else if (response?.data?.data && Array.isArray(response.data.data)) {
+            profs = response.data.data;
+          } else {
+            profs = [];
+          }
+        }
+        setProfesionales(profs);
+      } catch (error) {
+        console.error('Error pre-cargando profesionales:', error);
+        // No mostrar toast aquí, ya que es pre-carga silenciosa
+      } finally {
+        if (!cancelled) {
+          setLoadingProfesionales(false);
+        }
+      }
+    };
+
+    void fetchProfesionales();
 
     return () => {
       cancelled = true;
