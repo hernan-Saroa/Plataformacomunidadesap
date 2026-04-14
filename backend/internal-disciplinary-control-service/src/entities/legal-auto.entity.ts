@@ -24,6 +24,7 @@ export enum AutoType {
   AUTO_APERTURA_INDAGACION = 'AUTO_APERTURA_INDAGACION',
   RESOLUCION = 'RESOLUCION',
   AUTO_NO_PREVISTO = 'AUTO_NO_PREVISTO',
+  AUTO_PRORROGA = 'AUTO_PRORROGA',
 }
 
 export enum AutoStatus {
@@ -98,6 +99,15 @@ export class LegalAuto {
 
   @Column({ type: 'text', nullable: true })
   rejection_comments: string;
+
+  @Column({ type: 'int', nullable: true })
+  prorrogaMeses: number | null; // 3 o 6 — Solo aplica para AUTO_PRORROGA
+
+  @Column({ type: 'timestamp', nullable: true })
+  fechaVencimientoAnterior: Date | null; // Registro para historial de prórroga
+
+  @Column({ type: 'timestamp', nullable: true })
+  fechaVencimientoNueva: Date | null; // Registro para historial de prórroga
 
   @Column('uuid', { nullable: true })
   aprobadoPorId: string; // ID del jefe que aprobó

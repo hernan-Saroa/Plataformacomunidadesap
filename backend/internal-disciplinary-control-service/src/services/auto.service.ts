@@ -4,7 +4,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { LegalAuto, AutoStatus, AutoType } from '../entities/legal-auto.entity';
 import { AutoVersion } from '../entities/auto-version.entity';
 import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-actuacion.entity';
@@ -55,6 +55,41 @@ export class AutoService {
       // Validar que el proceso existe
       const proceso = await this.processService.findById(createAutoDto.processId, false);
 
+      // Validaciones específicas para AUTO_PRORROGA
+      if (createAutoDto.tipoAuto === AutoType.AUTO_PRORROGA) {
+        if (proceso.estado !== 'ACTIVO') {
+          throw new HttpException(
+            'El proceso debe estar activo para crear un auto de prórroga',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+        if (!proceso.fechaVencimientoEtapa) {
+          throw new HttpException(
+            'El proceso no tiene un conteo de vencimiento activo',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+        if (!createAutoDto.prorrogaMeses || ![3, 6].includes(createAutoDto.prorrogaMeses)) {
+          throw new HttpException(
+            'Debe seleccionar una duración de prórroga: 3 o 6 meses',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+        const pendingProrroga = await this.autoRepository.findOne({
+          where: {
+            processId: createAutoDto.processId,
+            tipo: AutoType.AUTO_PRORROGA,
+            estado: In([AutoStatus.BORRADOR, AutoStatus.REVISION_JEFE]),
+          },
+        });
+        if (pendingProrroga) {
+          throw new HttpException(
+            'Ya existe un auto de prórroga pendiente para este proceso. No se puede crear otro hasta que se resuelva.',
+            HttpStatus.CONFLICT,
+          );
+        }
+      }
+
       // Validación para auto pliego de cargos
       if (createAutoDto.tipoAuto === AutoType.PLIEGO_CARGOS) {
         if (proceso.estado !== ProcessStatus.ACTIVO) {
@@ -94,6 +129,7 @@ export class AutoService {
         documentSize: createAutoDto.documentSize,
         comentarios: createAutoDto.comentarios,
         etapaDestino: createAutoDto.etapaDestino,
+        prorrogaMeses: createAutoDto.prorrogaMeses ?? null,
       });
 
       const savedAuto = await this.autoRepository.save(auto);
@@ -283,10 +319,76 @@ export class AutoService {
         await this.archiveProcess(auto.processId, aprobadoPorId);
       }
 
+      // Si es AUTO_PRORROGA, extender la fecha de vencimiento de la etapa activa
+      if (auto.tipo === AutoType.AUTO_PRORROGA && auto.prorrogaMeses) {
+        const proceso = await this.processService.findById(auto.processId, false);
+
+        const fechaVencimientoAnterior = proceso.fechaVencimientoEtapa
+          ? new Date(proceso.fechaVencimientoEtapa)
+          : null;
+
+        if (!fechaVencimientoAnterior) {
+          throw new HttpException(
+            'El proceso no tiene fecha de vencimiento vigente para extender',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        const nuevaFecha = new Date(fechaVencimientoAnterior);
+        nuevaFecha.setMonth(nuevaFecha.getMonth() + auto.prorrogaMeses);
+
+        proceso.fechaVencimientoEtapa = nuevaFecha;
+        await this.processService['processRepository'].save(proceso);
+
+        auto.fechaVencimientoAnterior = fechaVencimientoAnterior;
+        auto.fechaVencimientoNueva = nuevaFecha;
+
+        await this.actuacionesRepository.save({
+          processId: auto.processId,
+          tipo: 'PRORROGA',
+          etapa: proceso.etapaActual,
+          descripcion: `Prórroga aprobada: ${auto.prorrogaMeses} meses. ` +
+            `Fecha de vencimiento anterior: ${fechaVencimientoAnterior.toLocaleDateString('es-CO')}. ` +
+            `Nueva fecha de vencimiento: ${nuevaFecha.toLocaleDateString('es-CO')}.`,
+          responsableNombre: aprobadoPorId,
+          fechaActuacion: new Date(),
+          observaciones: `Auto: AUTO_PRORROGA | Aprobado por: ${aprobadoPorId} | Duración: ${auto.prorrogaMeses} meses`,
+        });
+
+        if (proceso.abogadoAsignadoId) {
+          await this.alertasService.crearNotificacionAuto(
+            auto.id,
+            TipoAlerta.SISTEMA,
+            proceso.abogadoAsignadoId,
+            `Prórroga Aprobada: ${proceso.radicadoProceso}`,
+            `Se aprobó la prórroga de ${auto.prorrogaMeses} meses para la etapa ${proceso.etapaActual}. ` +
+              `Nueva fecha de vencimiento: ${nuevaFecha.toLocaleDateString('es-CO')}.`,
+            aprobadoPorId,
+          );
+        }
+      }
+
     } else if (reviewAutoDto.action === ReviewAction.RETURN) {
       auto.estado = AutoStatus.DEVUELTO;
       if (reviewAutoDto.observaciones) {
         auto.rejection_comments = reviewAutoDto.observaciones;
+      }
+
+      // Notificación de rechazo para AUTO_PRORROGA
+      if (auto.tipo === AutoType.AUTO_PRORROGA && auto.prorrogaMeses) {
+        const proceso = auto.process;
+        if (proceso?.abogadoAsignadoId) {
+          await this.alertasService.crearNotificacionAuto(
+            auto.id,
+            TipoAlerta.SISTEMA,
+            proceso.abogadoAsignadoId,
+            `Prórroga Rechazada: ${proceso.radicadoProceso}`,
+            `La solicitud de prórroga de ${auto.prorrogaMeses} meses para la etapa ${proceso.etapaActual} fue rechazada. ` +
+              `La fecha de vencimiento permanece sin cambios. ` +
+              `Observaciones: ${reviewAutoDto.observaciones || 'Sin observaciones'}`,
+            aprobadoPorId,
+          );
+        }
       }
 
       // Registrar en Historial
