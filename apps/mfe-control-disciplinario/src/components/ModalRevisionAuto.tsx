@@ -466,6 +466,8 @@ export function ModalRevisionAuto({
   const [tipoVista, setTipoVista] = useState<'texto' | 'archivo'>('texto');
   const [documentoBackendUrl, setDocumentoBackendUrl] = useState<string | null>(null);
   const [cargandoDoc, setCargandoDoc] = useState(false);
+  const [comentarioSubida, setComentarioSubida] = useState('');
+  const [subiendoDoc, setSubiendoDoc] = useState(false);
 
   useEffect(() => {
     if (!borrador.autoId) return;
@@ -750,7 +752,7 @@ export function ModalRevisionAuto({
                         <label htmlFor="upload-auto" className="cursor-pointer">
                           <div className="px-4 py-2 rounded-xl border-2 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-semibold" style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>
                             <Upload className="w-4 h-4" />
-                            Subir Word/PDF
+                            Subir
                           </div>
                           <input
                             id="upload-auto"
@@ -761,9 +763,7 @@ export function ModalRevisionAuto({
                                 const file = e.target.files[0];
                                 setArchivoAuto(file);
                                 setTipoVista('archivo');
-                                toast.success('Archivo cargado', {
-                                  description: `${file.name} listo para visualizar`
-                                });
+                                setComentarioSubida('');
                               }
                             }}
                             className="hidden"
@@ -834,6 +834,54 @@ export function ModalRevisionAuto({
                           </button>
                         </div>
                       </div>
+                     </div>
+                   )}
+
+                   {/* Panel de comentario y confirmación de subida */}
+                   {archivoAuto && borrador.autoId && (
+                     <div className="p-4 rounded-xl border-2 mb-3" style={{ borderColor: '#BFDBFE', background: '#EFF6FF' }}>
+                       <p className="text-xs font-bold mb-2" style={{ color: '#1E40AF' }}>
+                         Comentario sobre el documento (opcional)
+                       </p>
+                       <textarea
+                         value={comentarioSubida}
+                         onChange={(e) => setComentarioSubida(e.target.value)}
+                         rows={2}
+                         placeholder="Describe los cambios realizados en este documento..."
+                         className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg focus:outline-none focus:border-blue-400 resize-none mb-3"
+                         style={{ background: '#fff' }}
+                       />
+                       <button
+                         disabled={subiendoDoc}
+                         onClick={async () => {
+                           if (!archivoAuto || !borrador.autoId) return;
+                           setSubiendoDoc(true);
+                           try {
+                             await disciplinaryService.uploadDocumentoRevision(
+                               borrador.autoId,
+                               archivoAuto,
+                               comentarioSubida,
+                             );
+                             toast.success('Documento reemplazado', { description: `Nueva versión guardada correctamente` });
+                             setArchivoAuto(null);
+                             setComentarioSubida('');
+                             setTipoVista('texto');
+                           } catch (err) {
+                             console.error('Error subiendo documento:', err);
+                             toast.error('Error al subir el documento');
+                           } finally {
+                             setSubiendoDoc(false);
+                           }
+                         }}
+                         className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50"
+                         style={{ background: subiendoDoc ? '#9CA3AF' : 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+                       >
+                         {subiendoDoc ? (
+                           <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Subiendo...</>
+                         ) : (
+                           <><Upload className="w-4 h-4" />Confirmar subida</>
+                         )}
+                       </button>
                      </div>
                    )}
 

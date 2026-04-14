@@ -11,8 +11,15 @@ import {
   HttpCode,
   HttpStatus,
   Res,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import {
   ApiTags,
   ApiOperation,
@@ -206,6 +213,61 @@ export class AutoController {
     @Body() registerNotificationDto: RegisterNotificationDto,
   ): Promise<LegalAuto> {
     return await this.autoService.registerNotification(id, registerNotificationDto);
+  }
+
+  /**
+   * Subir/reemplazar documento de un auto durante revisión (con control de versiones)
+   */
+  @Patch(':id/upload-document')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reemplazar documento del auto durante revisión' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = join(process.cwd(), 'uploads', 'autos');
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const ext = extname(file.originalname);
+          cb(null, `auto-${req.params.id}-${uniqueSuffix}${ext}`);
+        },
+      }),
+      fileFilter: (req, file, cb) => {
+        const allowed = ['.pdf', '.doc', '.docx'];
+        const ext = extname(file.originalname).toLowerCase();
+        if (allowed.includes(ext)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Solo se permiten archivos PDF o Word'), false);
+        }
+      },
+      limits: { fileSize: 20 * 1024 * 1024 },
+    }),
+  )
+  async uploadDocumento(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('comentario') comentario: string,
+    @Body('userId') userId: string,
+  ): Promise<LegalAuto> {
+    if (!file) {
+      throw new BadRequestException('No se ha subido ningún archivo');
+    }
+    const documentUrl = `/uploads/autos/${file.filename}`;
+    return await this.autoService.uploadDocumentoDuranteRevision(
+      id,
+      documentUrl,
+      file.originalname,
+      file.mimetype,
+      file.size,
+      comentario,
+      userId,
+    );
   }
 
   /**
