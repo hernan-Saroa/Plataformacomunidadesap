@@ -14,12 +14,13 @@ import {
 import { RegisterNotificationDto } from '../dtos/register-notification.dto';
 import { ReviewAutoDto, ReviewAction } from '../dtos/review-auto.dto';
 import { ProcessService } from './process.service';
-import { ProcessStage } from '../entities/disciplinary-process.entity';
+import { ProcessStage, ProcessStatus } from '../entities/disciplinary-process.entity';
 import { SystemConfiguration } from '../entities/system-configuration.entity';
 import { AlertasService } from './alertas.service';
 import { TipoAlerta } from '../entities/alerta-enviada.entity';
 import { PdfModifierService } from './pdf-modifier.service';
 import { SequenceService } from './sequence.service';
+import { JuridicaEmailService } from './juridica-email.service';
 
 const APERTURA_TYPES = [
   AutoType.AUTO_APERTURA,
@@ -42,6 +43,7 @@ export class AutoService {
     private alertasService: AlertasService,
     private pdfModifierService: PdfModifierService,
     private sequenceService: SequenceService,
+    private juridicaEmailService: JuridicaEmailService,
   ) { }
 
   /**
@@ -51,6 +53,32 @@ export class AutoService {
     try {
       // Validar que el proceso existe
       const proceso = await this.processService.findById(createAutoDto.processId, false);
+
+      // Validación para auto pliego de cargos
+      if (createAutoDto.tipoAuto === AutoType.PLIEGO_CARGOS) {
+        if (proceso.estado !== ProcessStatus.ACTIVO) {
+          throw new HttpException(
+            'Solo se puede crear un auto pliego de cargos sobre un proceso ACTIVO',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+        // Verificar que no exista otro pliego (pendiente o ya aprobado)
+        const pliegoExistente = await this.autoRepository.findOne({
+          where: [
+            { processId: createAutoDto.processId, tipo: AutoType.PLIEGO_CARGOS, estado: AutoStatus.BORRADOR },
+            { processId: createAutoDto.processId, tipo: AutoType.PLIEGO_CARGOS, estado: AutoStatus.REVISION_JEFE },
+            { processId: createAutoDto.processId, tipo: AutoType.PLIEGO_CARGOS, estado: AutoStatus.APROBADO },
+            { processId: createAutoDto.processId, tipo: AutoType.PLIEGO_CARGOS, estado: AutoStatus.FIRMADO },
+            { processId: createAutoDto.processId, tipo: AutoType.PLIEGO_CARGOS, estado: AutoStatus.NOTIFICADO },
+          ],
+        });
+        if (pliegoExistente) {
+          throw new HttpException(
+            'Ya existe un auto pliego de cargos para este proceso',
+            HttpStatus.CONFLICT,
+          );
+        }
+      }
 
       // CORRECCIÓN AQUI: Mapeo manual de campos DTO -> Entidad
       const auto = this.autoRepository.create({
@@ -205,14 +233,43 @@ export class AutoService {
           ? `Tiempo acumulado en etapa anterior: ${tiempoAcumuladoDias} día(s) hábil(es).`
           : 'Tiempo acumulado en etapa anterior: no disponible.';
 
+        const nombreAprobador = auto.process?.abogadoAsignado?.nombreCompleto || 'Jefe OCID';
         await this.actuacionesRepository.save({
           processId: auto.processId,
           tipo: 'CAMBIO_ETAPA',
           etapa: procesoActualizado.etapaActual,
           descripcion: `Cambio de etapa por aprobación de auto de apertura (${auto.numero}). Etapa anterior: ${etapaAnterior}. Nueva etapa: ${procesoActualizado.etapaActual}. ${tiempoTexto}`,
-          responsableNombre: aprobadoPorId,
+          responsableNombre: nombreAprobador,
           fechaActuacion: fechaAprobacion,
-          observaciones: `Auto: ${auto.tipo} | Aprobado por: ${aprobadoPorId}`,
+          observaciones: `Auto: ${auto.tipo} | Aprobado por: ${nombreAprobador}`,
+        });
+      }
+
+      // Si es auto pliego de cargos, cerrar proceso y notificar a jurídica
+      if (auto.tipo === AutoType.PLIEGO_CARGOS) {
+        const datosConsolidados = await this.processService.cerrarPorPliegoCargos(
+          auto.processId,
+          aprobadoPorId,
+        );
+
+        // Registrar actuación de cierre
+        await this.actuacionesRepository.save({
+          processId: auto.processId,
+          tipo: 'CIERRE_PLIEGO_CARGOS',
+          etapa: datosConsolidados.etapaAlCierre,
+          descripcion: `Proceso cerrado por aprobación de Auto Pliego de Cargos (${auto.numero}). Trasladado a Oficina Jurídica.`,
+          responsableNombre: datosConsolidados.profesionalResponsable || 'Jefe OCID',
+          fechaActuacion: new Date(),
+          observaciones: `Auto: ${auto.tipo} | Aprobado por: ${datosConsolidados.profesionalResponsable || aprobadoPorId} | Etapa al cierre: ${datosConsolidados.etapaAlCierre}`,
+        });
+
+        // Enviar correo a jurídica vía notifications-service (async, sin bloquear)
+        this.juridicaEmailService.enviarCorreoJuridica(auto.processId, datosConsolidados).then((enviado) => {
+          if (enviado) {
+            this.processService.marcarCorreoJuridicaEnviado(auto.processId);
+          }
+        }).catch((err) => {
+          console.error(`Error async enviando correo jurídica: ${err.message}`);
         });
       }
 

@@ -1289,7 +1289,17 @@ function VistaLista({
                             />
                           )}
                           {proceso && (
-                            <p className="text-xs" style={{ color: '#6B7280' }}>
+                            <p
+                              className="text-xs font-semibold px-1.5 py-0.5 rounded-full inline-block"
+                              style={
+                                proceso.estadoActual === 'CERRADO'
+                                  ? { color: '#92400E', background: '#FEF3C7' }
+                                  : proceso.estadoActual === 'ARCHIVADO'
+                                    ? { color: '#6B7280', background: '#F3F4F6' }
+                                    : { color: '#6B7280' }
+                              }
+                              title={proceso.estadoActual === 'CERRADO' ? 'Trasladado a Oficina Jurídica' : undefined}
+                            >
                               {proceso.estadoActual}
                             </p>
                           )}
