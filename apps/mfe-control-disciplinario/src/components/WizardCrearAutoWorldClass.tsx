@@ -345,14 +345,14 @@ export function WizardCrearAutoWorldClass({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validar que sea PDF (MIME type y extensión)
-      const allowedMimeTypes = ['application/pdf'];
-      const allowedExtensions = ['.pdf'];
+      // Validar que sea WORD (MIME type y extensión)
+      const allowedMimeTypes = ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      const allowedExtensions = ['.doc', '.docx'];
       const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
       
       if (!allowedMimeTypes.includes(file.type) || !allowedExtensions.includes(fileExtension)) {
         toast.error('Tipo de archivo no permitido', {
-          description: 'Para Autos solo se permiten archivos PDF'
+          description: 'Para Autos solo se permiten archivos WORD (.doc, .docx)',
         });
         // Limpiar el input
         if (fileInputRef.current) {
@@ -1159,7 +1159,7 @@ export function WizardCrearAutoWorldClass({
                             {subiendo ? 'Cargando archivo...' : 'Arrastra o haz clic para subir'}
                           </p>
                           <p className="text-sm text-gray-600 mb-4">
-                            Formatos soportados: .pdf
+                            Formatos soportados: .word
                           </p>
                           {subiendo && (
                             <div className="w-48 h-1.5 mx-auto bg-gray-200 rounded-full overflow-hidden">
@@ -1224,12 +1224,12 @@ export function WizardCrearAutoWorldClass({
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".pdf,application/pdf"
+                        accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         onChange={handleFileChange}
                         className="hidden"
                       />
                       <p className="text-xs text-gray-500 mt-2">
-                        ⚠️ Solo se permiten archivos PDF para Autos legales
+                        ⚠️ Solo se permiten archivos WORD para Autos legales
                       </p>
                     </div>
                   </motion.div>

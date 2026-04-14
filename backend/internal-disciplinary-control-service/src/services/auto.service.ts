@@ -70,10 +70,10 @@ export class AutoService {
 
       const savedAuto = await this.autoRepository.save(auto);
 
-      // Si tiene documento PDF, agregar el consecutivo
-      if (savedAuto.documentUrl && savedAuto.documentName?.toLowerCase().endsWith('.pdf')) {
+      // Si tiene documento WORD, agregar el consecutivo
+      if (savedAuto.documentUrl && (savedAuto.documentName?.toLowerCase().endsWith('.doc') || savedAuto.documentName?.toLowerCase().endsWith('.docx'))) {
         // Asumimos que documentUrl es el nombre del archivo en uploads (StorageService)
-        // Ejemplo: "1738923_archivo.pdf"
+        // Ejemplo: "1738923_archivo.doc"
         try {
           await this.pdfModifierService.addConsecutive(
             savedAuto.documentUrl,
@@ -81,7 +81,7 @@ export class AutoService {
             proceso.radicadoProceso
           );
         } catch (e) {
-          console.error('Error al agregar consecutivo al PDF', e);
+          console.error('Error al agregar consecutivo al WORD', e);
           // No fallamos la creación del auto, solo loggeamos
         }
       }
@@ -275,7 +275,7 @@ export class AutoService {
     auto.aprobadoPorId = userId;
 
     // Agregar la estampa visual AL MISMO ARCHIVO SIEMPRE (para todos los métodos de firma)
-    if (auto.documentUrl && auto.documentName?.toLowerCase().endsWith('.pdf')) {
+    if (auto.documentUrl && (auto.documentName?.toLowerCase().endsWith('.doc') || auto.documentName?.toLowerCase().endsWith('.docx'))) {
       try {
         // TODO: Obtener nombre real del usuario firmante
         const signerName = "Jefe Control Disciplinario";
@@ -288,7 +288,7 @@ export class AutoService {
           role
         );
       } catch (e) {
-        console.error('Error al estampar firma en PDF', e);
+        console.error('Error al estampar firma en WORD', e);
       }
     }
 

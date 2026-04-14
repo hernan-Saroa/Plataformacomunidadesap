@@ -479,9 +479,10 @@ export class ProcessController {
         'audio/wav',
         'audio/ogg',
       ],
-      // Auto: Solo PDF
+      // Auto: Solo WORD
       'AUTO': [
-        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       ],
       // Oficio: Solo PDF
       'OFICIO': [
@@ -609,7 +610,7 @@ export class ProcessController {
     const extensionesLista: Record<string, string[]> = {
       'EVIDENCIA': ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov', '.avi'],
       'PRUEBA DOCUMENTAL': ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov', '.avi'],
-      'AUTO': ['.pdf'],
+      'AUTO': ['.doc', '.docx'],
       'OFICIO': ['.pdf'],
       'NOTIFICACION': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
       'NOTIFICACIÓN': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
