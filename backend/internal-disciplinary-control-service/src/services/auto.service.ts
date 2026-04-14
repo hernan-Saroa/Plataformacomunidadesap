@@ -141,8 +141,7 @@ export class AutoService {
         try {
           await this.pdfModifierService.addConsecutive(
             savedAuto.documentUrl,
-            savedAuto.numero,
-            proceso.radicadoProceso
+            savedAuto.numero
           );
         } catch (e) {
           console.error('Error al agregar consecutivo al WORD', e);

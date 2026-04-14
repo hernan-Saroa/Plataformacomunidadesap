@@ -93,6 +93,7 @@ export function PublicTitleVerification({
   >([]);
   const [selectedSuggestionId, setSelectedSuggestionId] = useState("");
   const [showManualReviewDialog, setShowManualReviewDialog] = useState(false);
+  const [manualReviewAlertMessage, setManualReviewAlertMessage] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   useEffect(() => {
@@ -113,6 +114,7 @@ export function PublicTitleVerification({
     setMatchSuggestions([]);
     setSelectedSuggestionId("");
     setShowManualReviewDialog(false);
+    setManualReviewAlertMessage("");
   };
 
   const toDateInputValue = (value?: string | null) => {
@@ -289,6 +291,8 @@ export function PublicTitleVerification({
   };
 
   const handleManualReviewCreation = async () => {
+    setManualReviewAlertMessage("");
+
     const response = await graduadosService.autoservicio.solicitarCertificado(
       buildRequestPayload(),
     );
@@ -331,6 +335,28 @@ export function PublicTitleVerification({
     try {
       await handleManualReviewCreation();
     } catch (error: any) {
+      console.error("Error al crear la solicitud de revisión:", error);
+      toast.error("Error al crear la solicitud de revisión", {
+        description: error?.message || "Por favor intenta nuevamente",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+const handleManualReviewSubmit = async () => {
+    setIsGenerating(true);
+
+    try {
+      await handleManualReviewCreation();
+    } catch (error: any) {
+      if (error?.status === 409) {
+        setManualReviewAlertMessage(
+          "Ya registramos una solicitud de revisión manual para esta cédula y todavía se encuentra en proceso. Mientras esa solicitud siga activa, no es posible crear otra.",
+        );
+        return;
+      }
+
       console.error("Error al crear la solicitud de revisión:", error);
       toast.error("Error al crear la solicitud de revisión", {
         description: error?.message || "Por favor intenta nuevamente",
@@ -1655,7 +1681,7 @@ export function PublicTitleVerification({
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={() => setShowManualReviewDialog(false)}
+                          onClick={clearMatchSuggestions}
                           className="h-11 border-gray-300 text-sm font-semibold"
                         >
                           Seguir revisando
@@ -1663,7 +1689,7 @@ export function PublicTitleVerification({
                         <Button
                           type="button"
                           onClick={() => {
-                            void handleConfirmManualReviewCreation();
+                            void handleManualReviewSubmit();
                           }}
                           disabled={isGenerating || isConfirmingSelection}
                           className="h-11 bg-[#1e5da8] text-sm font-semibold text-white hover:bg-[#174a86] disabled:opacity-50"
@@ -1681,6 +1707,33 @@ export function PublicTitleVerification({
                           )}
                         </Button>
                       </div>
+
+                      {manualReviewAlertMessage && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0, y: -6 }}
+                          animate={{ opacity: 1, height: "auto", y: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm">
+                            <p className="font-semibold">
+                              Solicitud ya registrada
+                            </p>
+                            <p className="mt-1 leading-6">
+                              {manualReviewAlertMessage}
+                            </p>
+                            <p className="mt-2 leading-6">
+                              Nuestro equipo debe terminar esa validación antes de permitir una nueva solicitud. Si necesitas orientación adicional, comunícate con{" "}
+                              <a
+                                href="mailto:ventanillaunica@esap.edu.co"
+                                className="font-semibold text-[#1e5da8] underline decoration-[#1e5da8]/30 underline-offset-2 hover:text-[#174a86]"
+                              >
+                                ventanillaunica@esap.edu.co
+                              </a>
+                              .
+                            </p>
+                          </div>
+                        </motion.div>
+                      )}
                     </div>
                   </div>
                 )}
