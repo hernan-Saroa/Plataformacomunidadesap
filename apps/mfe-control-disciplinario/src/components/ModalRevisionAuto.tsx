@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { buildApiUrl, API_MODE } from '../../../config/environment';
 import { motion, AnimatePresence } from 'motion/react';
+import * as mammoth from 'mammoth';
 import {
   FileText, Eye, CheckCircle, XCircle,
   MessageSquare, Clock, Send, Download, Upload, FileSignature,
@@ -42,6 +43,10 @@ export interface BorradorPendiente {
   estado: 'pendiente_revision' | 'en_revision' | 'aprobado' | 'devuelto';
   historial: AccionRevision[];
   tiempoEspera?: string;
+  // Campos de prórroga (solo para AUTO_PRORROGA)
+  tipo?: string;
+  prorrogaMeses?: number;
+  fechaVencimientoEtapa?: string;
 }
 
 export interface AccionRevision {
@@ -72,6 +77,71 @@ const getInitials = (nombre: string) => {
   }
   return nombre.substring(0, 2).toUpperCase();
 };
+
+// ==================== COMPONENTE DOCX VIEWER ====================
+
+function DocxViewer({ file }: { file: File }) {
+  const [htmlContent, setHtmlContent] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const convertFile = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        setHtmlContent(result.value);
+      } catch (err: any) {
+        console.error('Error converting DOCX:', err);
+        setError('No se pudo convertir el archivo DOCX. Intente descargar el archivo.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    convertFile();
+  }, [file]);
+
+  if (loading) {
+    return (
+      <div className="w-full h-[600px] flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-[#003DA5] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm" style={{ color: '#6B7280' }}>Convirtiendo documento...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8 text-center bg-gray-50">
+        <FileText className="w-16 h-16 mx-auto mb-4" style={{ color: '#DC2626' }} />
+        <p className="font-bold mb-2" style={{ color: '#1F2937' }}>
+          Error al convertir documento
+        </p>
+        <p className="text-sm mb-4" style={{ color: '#6B7280' }}>
+          {error}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-[600px] overflow-y-auto bg-white border" style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
+      <div
+        className="max-w-4xl mx-auto"
+        dangerouslySetInnerHTML={{ __html: htmlContent }}
+        style={{
+          lineHeight: '1.5',
+          color: '#1F2937'
+        }}
+      />
+    </div>
+  );
+}
 
 // ==================== MODAL DE APROBACIÓN ====================
 
@@ -571,6 +641,51 @@ export function ModalRevisionAuto({
           <div className="flex-1 overflow-y-auto p-6">
             {activeTab === 'documento' ? (
               <div className="space-y-5">
+                {/* Bloque especial para AUTO_PRORROGA */}
+                {borrador.tipo === 'AUTO_PRORROGA' && borrador.prorrogaMeses && (
+                  <div className="p-4 rounded-xl border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#FEF3C7', color: '#D97706' }}>
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold mb-2" style={{ color: '#92400E' }}>
+                          AUTO DE PRORROGA — SOLICITUD DE EXTENSION
+                        </p>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <p className="text-xs text-amber-700">Duración solicitada:</p>
+                            <p className="font-bold text-amber-900">{borrador.prorrogaMeses} meses</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-amber-700">Vencimiento actual:</p>
+                            <p className="font-bold text-amber-900">
+                              {borrador.fechaVencimientoEtapa
+                                ? new Date(borrador.fechaVencimientoEtapa).toLocaleDateString('es-CO')
+                                : 'No disponible'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-amber-700">Nueva fecha estimada:</p>
+                            <p className="font-bold text-amber-900">
+                              {borrador.fechaVencimientoEtapa
+                                ? (() => {
+                                    const d = new Date(borrador.fechaVencimientoEtapa);
+                                    d.setMonth(d.getMonth() + borrador.prorrogaMeses!);
+                                    return d.toLocaleDateString('es-CO');
+                                  })()
+                                : 'No disponible'}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="text-xs mt-2" style={{ color: '#92400E' }}>
+                          Al aprobar este auto, la fecha de vencimiento de la etapa <strong>{borrador.etapa}</strong> se extenderá en {borrador.prorrogaMeses} meses.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Info Denunciado */}
                 <div className="p-4 rounded-xl" style={{ background: '#EFF6FF' }}>
                   <div className="flex items-start gap-3">
@@ -786,55 +901,57 @@ export function ModalRevisionAuto({
                         title="Visor PDF"
                       />
                     </div>
-                  ) : tipoVista === 'archivo' && archivoAuto ? (
-                    <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
-                      {archivoAuto.name.endsWith('.pdf') ? (
-                        <iframe
-                          src={URL.createObjectURL(archivoAuto)}
-                          className="w-full h-[600px]"
-                          title="Visualizador de PDF"
-                        />
-                      ) : (
-                        <div className="p-8 text-center">
-                          <FileText className="w-16 h-16 mx-auto mb-4" style={{ color: '#2563EB' }} />
-                          <p className="font-bold mb-2" style={{ color: '#1F2937' }}>
-                            Documento Word Cargado
-                          </p>
-                          <p className="text-sm mb-4" style={{ color: '#6B7280' }}>
-                            {archivoAuto.name}
-                          </p>
-                          <p className="text-xs mb-4" style={{ color: '#9CA3AF' }}>
-                            Los archivos Word (.doc, .docx) no pueden visualizarse directamente.<br />
-                            Puedes descargar el archivo o ver el contenido en modo texto.
-                          </p>
-                          <div className="flex gap-3 justify-center">
-                            <button
-                              onClick={() => {
-                                const url = URL.createObjectURL(archivoAuto);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = archivoAuto.name;
-                                a.click();
-                                URL.revokeObjectURL(url);
-                              }}
-                              className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
-                              style={{ background: '#10B981' }}
-                            >
-                              <Download className="w-4 h-4" />
-                              Descargar Archivo
-                            </button>
-                            <button
-                              onClick={() => setTipoVista('texto')}
-                              className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
-                              style={{ background: '#003DA5' }}
-                            >
-                              <FileText className="w-4 h-4" />
-                              Ver como Texto
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                   ) : tipoVista === 'archivo' && archivoAuto ? (
+                     <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
+                       {archivoAuto.name.endsWith('.pdf') ? (
+                         <iframe
+                           src={URL.createObjectURL(archivoAuto)}
+                           className="w-full h-[600px]"
+                           title="Visualizador de PDF"
+                         />
+                       ) : archivoAuto.name.endsWith('.docx') ? (
+                         <DocxViewer file={archivoAuto} />
+                       ) : (
+                         <div className="p-8 text-center">
+                           <FileText className="w-16 h-16 mx-auto mb-4" style={{ color: '#2563EB' }} />
+                           <p className="font-bold mb-2" style={{ color: '#1F2937' }}>
+                             Documento Word Cargado
+                           </p>
+                           <p className="text-sm mb-4" style={{ color: '#6B7280' }}>
+                             {archivoAuto.name}
+                           </p>
+                           <p className="text-xs mb-4" style={{ color: '#9CA3AF' }}>
+                             Los archivos Word (.doc, .docx) no pueden visualizarse directamente.<br />
+                             Puedes descargar el archivo o ver el contenido en modo texto.
+                           </p>
+                           <div className="flex gap-3 justify-center">
+                             <button
+                               onClick={() => {
+                                 const url = URL.createObjectURL(archivoAuto);
+                                 const a = document.createElement('a');
+                                 a.href = url;
+                                 a.download = archivoAuto.name;
+                                 a.click();
+                                 URL.revokeObjectURL(url);
+                               }}
+                               className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
+                               style={{ background: '#10B981' }}
+                             >
+                               <Download className="w-4 h-4" />
+                               Descargar Archivo
+                             </button>
+                             <button
+                               onClick={() => setTipoVista('texto')}
+                               className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
+                               style={{ background: '#003DA5' }}
+                             >
+                               <FileText className="w-4 h-4" />
+                               Ver como Texto
+                             </button>
+                           </div>
+                         </div>
+                       )}
+                     </div>
                   ) : (
                     <div className="p-5 rounded-xl border-2" style={{ borderColor: '#E5E7EB', background: '#F8FAFC' }}>
                       <pre className="whitespace-pre-wrap font-serif text-sm leading-relaxed overflow-x-auto" style={{ color: '#1F2937' }}>

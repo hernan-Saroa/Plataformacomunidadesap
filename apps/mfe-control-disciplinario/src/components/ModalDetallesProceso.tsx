@@ -20,6 +20,7 @@ import {
   Layers, BarChart3, Filter, FileDown, List,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import * as mammoth from 'mammoth';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
 import { ModalReasignarProfesional } from './ModalReasignarProfesional';
 import { ModalPliegoCargos } from './ModalPliegoCargos';
@@ -644,9 +645,44 @@ function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; p
           return;
         }
 
-        blobUrl = window.URL.createObjectURL(blob);
-        setDocumentUrl(blobUrl);
-        setDocumentMimeType(blob.type || archivo.fileType || getMimeTypeFromExtension(archivo.extension));
+        // Special handling for .docx files
+        if (archivo.extension === 'docx') {
+          const arrayBuffer = await blob.arrayBuffer();
+          try {
+            const result = await mammoth.convertToHtml({ arrayBuffer });
+            const htmlContent = result.value;
+            const docxHtml = `
+              <div style="font-family: Arial, sans-serif; padding: 20px; background: white; min-height: 100vh;">
+                <style>
+                  .docx-content { max-width: 800px; margin: 0 auto; }
+                  .docx-content p { margin-bottom: 10px; line-height: 1.5; }
+                  .docx-content h1, .docx-content h2, .docx-content h3 { margin-top: 20px; margin-bottom: 10px; }
+                  .docx-content ul, .docx-content ol { margin-left: 20px; }
+                  .docx-content table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+                  .docx-content td, .docx-content th { border: 1px solid #ddd; padding: 8px; }
+                  .docx-content th { background-color: #f5f5f5; }
+                </style>
+                <div class="docx-content">
+                  ${htmlContent}
+                </div>
+              </div>
+            `;
+            const htmlBlob = new Blob([docxHtml], { type: 'text/html' });
+            blobUrl = window.URL.createObjectURL(htmlBlob);
+            setDocumentUrl(blobUrl);
+            setDocumentMimeType('text/html');
+          } catch (conversionError) {
+            console.error('Error converting DOCX to HTML:', conversionError);
+            // Fallback to object tag
+            blobUrl = window.URL.createObjectURL(blob);
+            setDocumentUrl(blobUrl);
+            setDocumentMimeType(blob.type || archivo.fileType || getMimeTypeFromExtension(archivo.extension));
+          }
+        } else {
+          blobUrl = window.URL.createObjectURL(blob);
+          setDocumentUrl(blobUrl);
+          setDocumentMimeType(blob.type || archivo.fileType || getMimeTypeFromExtension(archivo.extension));
+        }
       } catch (err: any) {
         if (cancelled) return;
         setError(err?.message || 'No se pudo cargar el documento');
@@ -846,7 +882,7 @@ function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; p
                 />
               </div>
             </div>
-          ) : isHtml ? (
+          ) : isHtml || (documentMimeType === 'text/html' && archivo.extension === 'docx') ? (
             <div className="h-full w-full px-5 py-5">
               <div className="h-full w-full overflow-hidden rounded-[26px] border border-slate-200/80 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.12)]">
                 <iframe
