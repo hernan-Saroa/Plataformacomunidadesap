@@ -17,12 +17,13 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   Layers, Search, AlertTriangle, CheckCircle2, AlertCircle,
-  Plus, Edit2, Trash2, X, ChevronDown, ChevronUp, FileText, Eye, Target, Info, RefreshCw
+  Plus, Edit2, Trash2, X, ChevronDown, ChevronUp, FileText, Eye, Target, Info, RefreshCw, Download, FileSpreadsheet
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { ResponsiveTable, MobileCard, MobileCardRow, type Column } from '@esap-mfe/shared-ui/responsive-table';
 import { useResponsive } from '@/hooks/useResponsive';
 import { FormularioEvaluacionDafpCompleta } from './FormularioEvaluacionDafpCompleta';
@@ -30,6 +31,7 @@ import { VisualizadorResultadosDafp } from './VisualizadorResultadosDafp';
 import type { ProcesoAuditable as ProcesoAuditableType, EvaluacionDafpCompleta } from '@/types/control-interno';
 import { ETIQUETAS_RIESGO } from '@/lib/dafp/constants'; // Nuevo import
 import { calcularPonderacionRiesgo } from './dafp-utils'; // Para recalcular ponderación
+import { exportarUniversoAuditableExcel, exportarUniversoAuditablePDF } from './services/exportarUniversoAuditablePDF';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -91,6 +93,7 @@ interface Estadisticas {
 interface TabUniversoAuditableResponsiveProps {
   procesos: ProcesoAuditable[];
   estadisticas: Estadisticas;
+  vigencia?: number;
   busqueda: string;
   filtroRiesgo: NivelRiesgo | 'TODOS';
   filtroTipo: TipoProceso | 'TODOS';
@@ -131,6 +134,7 @@ function getColorRiesgo(nivel: NivelRiesgo) {
 export function TabUniversoAuditableResponsive({
   procesos,
   estadisticas,
+  vigencia = new Date().getFullYear(),
   busqueda,
   filtroRiesgo,
   filtroTipo,
@@ -150,6 +154,24 @@ export function TabUniversoAuditableResponsive({
   const { isMobile, isTablet } = useResponsive();
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(!isMobile);
   const [refreshing, setRefreshing] = useState(false);
+  const [mostrarMenuExportar, setMostrarMenuExportar] = useState(false);
+
+  const estadisticasParaExportar = useMemo(() => {
+    const total = procesos.length;
+    const auditables = procesos.filter((p) => p.auditable).length;
+    const criticos = procesos.filter((p) => p.nivelRiesgo === 'Crítico').length;
+    const altos = procesos.filter((p) => p.nivelRiesgo === 'Alto').length;
+    const medios = procesos.filter((p) => p.nivelRiesgo === 'Medio').length;
+    const bajos = procesos.filter((p) => p.nivelRiesgo === 'Bajo').length;
+    return {
+      totalProcesos: total,
+      procesosAuditables: auditables,
+      procesosCriticos: criticos,
+      procesosAltos: altos,
+      procesosMedios: medios,
+      procesosBajos: bajos,
+    };
+  }, [procesos]);
   
   // Handler para refresh manual
   const handleRefresh = async () => {
@@ -162,6 +184,46 @@ export function TabUniversoAuditableResponsive({
       } finally {
         setTimeout(() => setRefreshing(false), 500);
       }
+    }
+  };
+
+  const handleExportPdf = async () => {
+    setMostrarMenuExportar(false);
+    if (procesos.length === 0) {
+      toast.info('No hay procesos registrados para exportar con los filtros actuales.');
+      return;
+    }
+    try {
+      const resultado = await exportarUniversoAuditablePDF(
+        procesos as any,
+        estadisticasParaExportar,
+        { vigencia }
+      );
+      if (resultado.exito) toast.success('PDF exportado exitosamente');
+      else toast.error(resultado.error || 'Error al exportar');
+    } catch (error) {
+      console.error('Error al exportar PDF:', error);
+      toast.error('Error al exportar el PDF');
+    }
+  };
+
+  const handleExportExcel = async () => {
+    setMostrarMenuExportar(false);
+    if (procesos.length === 0) {
+      toast.info('No hay procesos registrados para exportar con los filtros actuales.');
+      return;
+    }
+    try {
+      const resultado = await exportarUniversoAuditableExcel(
+        procesos as any,
+        estadisticasParaExportar,
+        { vigencia }
+      );
+      if (resultado.exito) toast.success('Excel exportado exitosamente');
+      else toast.error(resultado.error || 'Error al exportar');
+    } catch (error) {
+      console.error('Error al exportar Excel:', error);
+      toast.error('Error al exportar el Excel');
     }
   };
   
@@ -840,7 +902,7 @@ export function TabUniversoAuditableResponsive({
                 Procesos del universo auditable institucional según el MECI
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               {onRefresh && (
                 <button
                   onClick={handleRefresh}
@@ -851,17 +913,49 @@ export function TabUniversoAuditableResponsive({
                   <span className="hidden md:inline">Actualizar</span>
                 </button>
               )}
+
+              <div className="relative">
+                <button
+                  onClick={() => setMostrarMenuExportar(!mostrarMenuExportar)}
+                  onBlur={() => setTimeout(() => setMostrarMenuExportar(false), 150)}
+                  className="w-full sm:w-auto px-3 py-2 bg-white border border-gray-300 hover:border-blue-600 text-gray-700 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all min-h-[44px] sm:min-h-0"
+                >
+                  <Download className="w-4 h-4" />
+                  Exportar
+                  <ChevronDown className={`w-4 h-4 transition-transform ${mostrarMenuExportar ? 'rotate-180' : ''}`} />
+                </button>
+
+                {mostrarMenuExportar && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                    <button
+                      onClick={handleExportPdf}
+                      className="w-full px-4 py-2 text-left text-gray-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
+                    >
+                      <FileText className="w-4 h-4 text-red-600" />
+                      Exportar a PDF
+                    </button>
+                    <button
+                      onClick={handleExportExcel}
+                      className="w-full px-4 py-2 text-left text-gray-700 hover:bg-green-50 flex items-center gap-3 transition-colors"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                      Exportar a Excel
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {puedeCrear && (
+                <button
+                  onClick={onAgregarProceso}
+                  className="w-full sm:w-auto px-6 py-3 sm:py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 hover:shadow-lg transition-all min-h-[44px] sm:min-h-0"
+                >
+                  <Plus className="w-5 h-5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Agregar Proceso</span>
+                  <span className="sm:hidden">Agregar</span>
+                </button>
+              )}
             </div>
-            {puedeCrear && (
-            <button
-              onClick={onAgregarProceso}
-              className="w-full sm:w-auto px-6 py-3 sm:py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 hover:shadow-lg transition-all min-h-[44px] sm:min-h-0"
-            >
-              <Plus className="w-5 h-5 sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">Agregar Proceso</span>
-              <span className="sm:hidden">Agregar</span>
-            </button>
-            )}
           </div>
         </div>
 
