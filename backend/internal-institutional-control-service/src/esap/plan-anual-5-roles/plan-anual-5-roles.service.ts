@@ -709,7 +709,7 @@ export class PlanAnual5RolesService {
       'Eliminación de Plan Anual',
       `El Plan Anual de Auditoría de la vigencia ${vigenciaOriginal} fue eliminado por el usuario. Eliminación lógica registrada por control de trazabilidad.`,
       usuarioId || 1, 
-      { accion: 'SOFT_DELETE', vigenciaOriginal },
+      JSON.stringify({ accion: 'SOFT_DELETE', vigenciaOriginal }),
       'eliminado'
     );
   }

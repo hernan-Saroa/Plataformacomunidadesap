@@ -9,22 +9,7 @@ import {
   ArrayMinSize,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { RolOCIG } from '../entities/configuracion-profesional-ocig.entity';
 
-// Mapa de valores frontend → enum backend
-const ROL_MAP: Record<string, RolOCIG> = {
-  'Jefe OCI': RolOCIG.JEFE_OCIG,
-  'Jefe OCIG': RolOCIG.JEFE_OCIG,
-  'Auditor Sénior': RolOCIG.AUDITOR_SENIOR,
-  'Auditor Senior': RolOCIG.AUDITOR_SENIOR,
-  'Auditor': RolOCIG.AUDITOR,
-  'Auditor Júnior': RolOCIG.AUDITOR_JUNIOR,
-  'Auditor Junior': RolOCIG.AUDITOR_JUNIOR,
-  'Apoyo Técnico': RolOCIG.APOYO_TECNICO,
-  'Apoyo Tecnico': RolOCIG.APOYO_TECNICO,
-  'Profesional OCI': RolOCIG.AUDITOR,
-  'Profesional DCI': RolOCIG.AUDITOR,
-};
 
 export class CreateConfiguracionProfesionalOCIGDto {
   // Acepta UUID (nuevo) o string numérico legacy — se guarda tal cual en VARCHAR(36)

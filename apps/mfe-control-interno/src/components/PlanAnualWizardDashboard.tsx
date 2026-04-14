@@ -4,7 +4,7 @@
  * v2.0 - Con soporte para puntos de control
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
@@ -971,7 +971,7 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreac
     setPaso(paso + 1);
   };
 
-  const handleFinalizar = () => {
+  const handleFinalizar = async () => {
     // Validación final de seguridad antes de crear el plan
     const rolesConActividades = rolesConfig.filter(rol => 
       (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0) > 0
