@@ -87,7 +87,7 @@ export class DisciplinaryProcess {
   fechaVencimientoEtapa: Date;
 
   @Column({ type: 'timestamp', nullable: true })
-  fechaInicioEtapa: Date;
+  fechaInicioEtapa: Date | null;
 
   @Column({ type: 'text', nullable: true })
   observaciones: string;

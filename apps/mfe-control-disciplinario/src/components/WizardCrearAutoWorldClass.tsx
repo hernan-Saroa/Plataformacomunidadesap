@@ -136,7 +136,7 @@ export function WizardCrearAutoWorldClass({
 }: WizardCrearAutoWorldClassProps) {
   // Estados del Wizard
   const [paso, setPaso] = useState(1);
-  const [vistaActual, setVistaActual] = useState<'wizard' | 'lista'>('wizard');
+  const [vistaActual, setVistaActual] = useState<'wizard' | 'lista'>('lista');
 
   // Estados del Paso 1
   const [tipoSeleccionado, setTipoSeleccionado] = useState<TipoAuto | null>(null);
@@ -590,7 +590,7 @@ export function WizardCrearAutoWorldClass({
                 )}
               </button>
 
-              {/* <button
+              <button
                 onClick={() => setVistaActual('lista')}
                 className={`relative px-5 py-3 rounded-t-2xl font-bold text-sm transition-all duration-300 ${vistaActual === 'lista'
                   ? 'text-blue-700'
@@ -616,7 +616,7 @@ export function WizardCrearAutoWorldClass({
                     transition={{ type: 'spring', duration: 0.5 }}
                   />
                 )}
-              </button> */}
+              </button>
             </div>
           </div>
         </div>

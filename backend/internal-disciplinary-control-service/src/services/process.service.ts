@@ -711,9 +711,12 @@ export class ProcessService {
     const proceso = await this.findById(id, false);
 
     let tiempoAcumuladoDias: number | null = null;
-    if (proceso.fechaInicioEtapa) {
+    const fechaInicioReferencia =
+      proceso.fechaInicioEtapa || proceso.createdAt || null;
+
+    if (fechaInicioReferencia) {
       tiempoAcumuladoDias = await this.terminosService.contarDiasHabiles(
-        proceso.fechaInicioEtapa,
+        fechaInicioReferencia,
         fechaAprobacion,
       );
     }
