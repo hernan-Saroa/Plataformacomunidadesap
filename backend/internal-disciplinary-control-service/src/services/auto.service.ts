@@ -396,6 +396,41 @@ export class AutoService {
     return await this.autoRepository.save(auto);
   }
 
+  /**
+   * Reemplaza el documento de un auto durante revisión, guardando la versión anterior
+   */
+  async uploadDocumentoDuranteRevision(
+    id: string,
+    documentUrl: string,
+    documentName: string,
+    documentType: string,
+    documentSize: number,
+    comentario: string,
+    userId?: string,
+  ): Promise<LegalAuto> {
+    const auto = await this.findById(id);
+
+    // Guardar versión anterior antes de reemplazar
+    await this.versionRepository.save({
+      auto: { id: auto.id } as LegalAuto,
+      contenido: auto.contenido || '',
+      versionNumber: auto.currentVersion,
+      createdBy: userId || null,
+      changeReason: comentario || 'Reemplazo de documento durante revisión',
+      documentUrl: auto.documentUrl || null,
+      documentName: auto.documentName || null,
+    });
+
+    // Reemplazar con el nuevo documento
+    auto.documentUrl = documentUrl;
+    auto.documentName = documentName;
+    auto.documentType = documentType;
+    auto.documentSize = documentSize;
+    auto.currentVersion += 1;
+
+    return await this.autoRepository.save(auto);
+  }
+
   async getVersions(id: string): Promise<AutoVersion[]> {
     return await this.versionRepository.find({
       where: { auto: { id } },
