@@ -71,6 +71,9 @@ export class DisciplinaryProcess {
   @Column({ type: 'timestamp', nullable: true })
   fechaVencimientoEtapa: Date;
 
+  @Column({ type: 'timestamp', nullable: true })
+  fechaInicioEtapa: Date;
+
   @Column({ type: 'text', nullable: true })
   observaciones: string;
 

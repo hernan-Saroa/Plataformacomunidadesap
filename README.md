@@ -64,6 +64,8 @@ Esta es una plataforma de gestión para la comunidad ESAP, construida con una ar
 
 5. **Opción A: Despliegue completo de frontend (Recomendado)**
    - Ejecuta `npm run dev:all` - inicia automáticamente todos los MFEs en puertos separados (3101-3112) y el shell en puerto 3000
+   - En equipos con menos RAM puedes iniciar solo un subconjunto: `npm run dev:all -- --apps=shell,mfe-control-interno,mfe-control-disciplinario`
+   - Para ver los nombres válidos: `npm run dev:all -- --list-apps`
    - Accede al frontend en http://localhost:3000
 
 6. **Opción B: Solo shell (Limitado)**
@@ -95,6 +97,8 @@ Esta es una plataforma de gestión para la comunidad ESAP, construida con una ar
 ### Frontend
 - `npm run dev`: Inicia solo el shell del frontend (puerto 3000). MFEs no disponibles.
 - `npm run dev:all`: Inicia todos los MFEs + shell. **Requiere Node.js v22+**.
+- `npm run dev:all -- --apps=<lista>`: Inicia solo los MFEs indicados, útil en Windows o equipos con poca memoria.
+- `npm run dev:all -- --list-apps`: Lista los nombres válidos para `--apps`.
 - `npm run build`: Construye todos los MFEs y el shell para producción.
 - `npm run build:shell`: Construye solo el shell.
 - `npm run build:app`: Construye una app específica (usa `-- <app-name>`).
@@ -166,6 +170,7 @@ rebuild-mfe-select
 
 ### Native Development
 - **Node.js versión**: `npm run dev:all` requiere Node.js v22+. Si tienes versión anterior, actualiza o usa Docker.
+- **Windows / poca RAM**: Si aparece `fatal error: out of memory`, usa `npm run dev:all -- --apps=...` para cargar solo los MFEs necesarios.
 - **MFEs no cargan**: Asegúrate de usar `npm run dev:all`, no solo `npm run dev`. Los MFEs necesitan correr en puertos separados.
 - **Errores de Module Federation**: Verifica que todos los MFEs estén corriendo (puertos 3101-3112) antes de acceder al shell.
 - **Puertos ocupados**: Los MFEs usan puertos 3101-3112. Libera estos puertos si es necesario.

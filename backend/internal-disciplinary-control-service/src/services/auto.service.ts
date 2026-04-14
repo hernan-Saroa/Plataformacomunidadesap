@@ -7,19 +7,26 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LegalAuto, AutoStatus, AutoType } from '../entities/legal-auto.entity';
 import { AutoVersion } from '../entities/auto-version.entity';
+import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-actuacion.entity';
 import {
   CreateLegalAutoDto,
 } from '../dtos/create-legal-auto.dto';
 import { RegisterNotificationDto } from '../dtos/register-notification.dto';
 import { ReviewAutoDto, ReviewAction } from '../dtos/review-auto.dto';
 import { ProcessService } from './process.service';
-
+import { ProcessStage } from '../entities/disciplinary-process.entity';
 import { SystemConfiguration } from '../entities/system-configuration.entity';
 import { AlertasService } from './alertas.service';
 import { TipoAlerta } from '../entities/alerta-enviada.entity';
 import { PdfModifierService } from './pdf-modifier.service';
 import { SequenceService } from './sequence.service';
 import { DisciplinaryProcess, ProcessStatus } from '../entities/disciplinary-process.entity';
+
+const APERTURA_TYPES = [
+  AutoType.AUTO_APERTURA,
+  AutoType.AUTO_APERTURA_INVESTIGACION,
+  AutoType.AUTO_APERTURA_INDAGACION,
+];
 
 @Injectable()
 export class AutoService {
@@ -30,6 +37,8 @@ export class AutoService {
     private versionRepository: Repository<AutoVersion>,
     @InjectRepository(SystemConfiguration)
     private configRepository: Repository<SystemConfiguration>,
+    @InjectRepository(DisciplinaryProcessActuacion)
+    private actuacionesRepository: Repository<DisciplinaryProcessActuacion>,
     private processService: ProcessService,
     private alertasService: AlertasService,
     private pdfModifierService: PdfModifierService,
@@ -56,6 +65,7 @@ export class AutoService {
         documentType: createAutoDto.documentType,
         documentSize: createAutoDto.documentSize,
         comentarios: createAutoDto.comentarios,
+        etapaDestino: createAutoDto.etapaDestino,
       });
 
       const savedAuto = await this.autoRepository.save(auto);
@@ -183,6 +193,33 @@ export class AutoService {
         documentUrl: auto.documentUrl,
         documentName: auto.documentName,
       });
+
+      // Si es auto de apertura con etapa destino, cambiar etapa del proceso
+      if (APERTURA_TYPES.includes(auto.tipo as AutoType) && auto.etapaDestino) {
+        const fechaAprobacion = new Date();
+        const etapaAnterior = auto.process.etapaActual;
+
+        const { proceso: procesoActualizado, tiempoAcumuladoDias } =
+          await this.processService.changeStageByAutoApertura(
+            auto.processId,
+            auto.etapaDestino as ProcessStage,
+            fechaAprobacion,
+          );
+
+        const tiempoTexto = tiempoAcumuladoDias !== null
+          ? `Tiempo acumulado en etapa anterior: ${tiempoAcumuladoDias} día(s) hábil(es).`
+          : 'Tiempo acumulado en etapa anterior: no disponible.';
+
+        await this.actuacionesRepository.save({
+          processId: auto.processId,
+          tipo: 'CAMBIO_ETAPA',
+          etapa: procesoActualizado.etapaActual,
+          descripcion: `Cambio de etapa por aprobación de auto de apertura (${auto.numero}). Etapa anterior: ${etapaAnterior}. Nueva etapa: ${procesoActualizado.etapaActual}. ${tiempoTexto}`,
+          responsableNombre: aprobadoPorId,
+          fechaActuacion: fechaAprobacion,
+          observaciones: `Auto: ${auto.tipo} | Aprobado por: ${aprobadoPorId}`,
+        });
+      }
 
       // Si es un auto de archivo, archivar el proceso y detener conteos de vencimiento
       if (auto.tipo === 'AUTO_ARCHIVO') {
