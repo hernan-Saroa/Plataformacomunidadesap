@@ -1717,6 +1717,8 @@ function ModalNuevaTarea({
   const [responsableNombre, setResponsableNombre] = useState(responsableInicial);
   const [fechaVencimiento, setFechaVencimiento] = useState(new Date().toISOString().split('T')[0]);
   const [observaciones, setObservaciones] = useState('');
+  const [profesionales, setProfesionales] = useState<any[]>([]);
+  const [loadingProfesionales, setLoadingProfesionales] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -1729,6 +1731,33 @@ function ModalNuevaTarea({
     setObservaciones('');
   }, [open, etapaActualNormalizada, responsableInicial]);
 
+  useEffect(() => {
+    const fetchProfesionales = async () => {
+      if (!open || profesionales.length > 0) return;
+      setLoadingProfesionales(true);
+      try {
+        const response = await disciplinaryService.getProfesionales();
+        let profs = response;
+        if (!Array.isArray(response)) {
+          if (response?.data && Array.isArray(response.data)) {
+            profs = response.data;
+          } else if (response?.data?.data && Array.isArray(response.data.data)) {
+            profs = response.data.data;
+          } else {
+            profs = [];
+          }
+        }
+        setProfesionales(profs);
+      } catch (error) {
+        console.error('Error fetching profesionales:', error);
+        toast.error('No se pudieron cargar los profesionales disponibles');
+      } finally {
+        setLoadingProfesionales(false);
+      }
+    };
+    fetchProfesionales();
+  }, [open, profesionales.length]);
+
   if (!open) return null;
 
   const prioridadMeta = TASK_PRIORITY_META[prioridad];
@@ -1737,6 +1766,11 @@ function ModalNuevaTarea({
   const handleSubmit = async () => {
     if (!titulo.trim()) {
       toast.error('El titulo de la tarea es obligatorio');
+      return;
+    }
+
+    if (!responsableNombre.trim()) {
+      toast.error('El responsable es obligatorio');
       return;
     }
 
@@ -1954,13 +1988,29 @@ function ModalNuevaTarea({
             <div className="space-y-4">
               <label className="space-y-1.5 block">
                 <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Responsable</span>
-                <input
-                  value={responsableNombre}
-                  onChange={(e) => setResponsableNombre(e.target.value)}
-                  className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
-                  style={{ borderRadius: '22px' }}
-                  placeholder="Nombre del profesional responsable"
-                />
+                <div className="relative">
+                  <select
+                    value={responsableNombre}
+                    onChange={(e) => setResponsableNombre(e.target.value)}
+                    disabled={loadingProfesionales}
+                    className="w-full appearance-none rounded-[22px] border border-slate-200 bg-white px-4 py-3.5 pr-10 text-sm font-medium text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50 disabled:opacity-60"
+                    style={{ borderRadius: '22px' }}
+                  >
+                    <option value="">Seleccionar responsable</option>
+                    {profesionales.map((prof, index) => {
+                      const displayName = prof.nombre || prof.nombreCompleto || prof.name || `Profesional ${prof.id || index}`;
+                      return (
+                        <option key={prof.id || index} value={displayName}>
+                          {displayName}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <ChevronRight className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-slate-400" />
+                  {loadingProfesionales && (
+                    <Loader2 className="absolute right-8 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />
+                  )}
+                </div>
               </label>
 
               <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5" style={{ borderRadius: '24px' }}>
@@ -2297,6 +2347,45 @@ export function ModalDetallesProceso({
           setNoticiasAsociadasLoading(false);
         }
       });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [proceso?.id]);
+
+  // ═══ Pre-cargar profesionales para creación de tareas ═══
+  useEffect(() => {
+    if (!proceso?.id) return;
+
+    let cancelled = false;
+    setLoadingProfesionales(true);
+
+    const fetchProfesionales = async () => {
+      try {
+        const response = await disciplinaryService.getProfesionales();
+        if (cancelled) return;
+        let profs = response;
+        if (!Array.isArray(response)) {
+          if (response?.data && Array.isArray(response.data)) {
+            profs = response.data;
+          } else if (response?.data?.data && Array.isArray(response.data.data)) {
+            profs = response.data.data;
+          } else {
+            profs = [];
+          }
+        }
+        setProfesionales(profs);
+      } catch (error) {
+        console.error('Error pre-cargando profesionales:', error);
+        // No mostrar toast aquí, ya que es pre-carga silenciosa
+      } finally {
+        if (!cancelled) {
+          setLoadingProfesionales(false);
+        }
+      }
+    };
+
+    void fetchProfesionales();
 
     return () => {
       cancelled = true;
