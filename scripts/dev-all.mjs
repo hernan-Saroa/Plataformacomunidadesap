@@ -13,6 +13,7 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const viteCli = path.join(repoRoot, 'node_modules', 'vite', 'bin', 'vite.js');
+const watchRunnerScript = path.join(__dirname, 'vite-watch-runner.mjs');
 const nodeBinDir = path.dirname(process.execPath);
 const allApps = [
   {
@@ -380,12 +381,32 @@ for (const app of remoteAppProcesses) {
   }
 
   startStaticPreviewServer(app);
-  runManagedProcess(app.name, 'watch', app.cwd, [
-    'build',
-    '--watch',
-    '--emptyOutDir',
-    'false',
-  ]);
+  // Usamos el runner script (API programática de vite) en vez del CLI
+  // porque --watch.ignored no se puede pasar como CLI arg (vite parsea --watch como boolean).
+  const buildRootDir = path.resolve(repoRoot, 'build');
+  const child = spawn(process.execPath, [watchRunnerScript, app.cwd, buildRootDir], {
+    env,
+    stdio: 'inherit',
+  });
+  child.appName = `${app.name}:watch`;
+  children.add(child);
+  child.on('exit', (code, signal) => {
+    children.delete(child);
+    if (shuttingDown) {
+      if (children.size === 0) process.exit(code ?? 0);
+      return;
+    }
+    if (code !== 0) {
+      console.error(`\n[dev:all] ${child.appName} terminó con código ${code}. Cerrando los demás procesos.`);
+      shutdown();
+      process.exit(code ?? 1);
+    }
+    if (signal) {
+      console.error(`\n[dev:all] ${child.appName} terminó por señal ${signal}. Cerrando los demás procesos.`);
+      shutdown();
+      process.exit(1);
+    }
+  });
 }
 
 if (hostApp) {

@@ -9,8 +9,9 @@ import { createPortal } from 'react-dom';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { buildApiUrl, API_MODE } from '../../../config/environment';
 import { motion, AnimatePresence } from 'motion/react';
+import * as mammoth from 'mammoth';
 import {
-  FileText, Eye, CheckCircle, XCircle, Edit2,
+  FileText, Eye, CheckCircle, XCircle,
   MessageSquare, Clock, Send, Download, Upload, FileSignature,
   User, AlertCircle, History, X, Check,
   RotateCcw, Mail, Calendar, Info,
@@ -42,6 +43,10 @@ export interface BorradorPendiente {
   estado: 'pendiente_revision' | 'en_revision' | 'aprobado' | 'devuelto';
   historial: AccionRevision[];
   tiempoEspera?: string;
+  // Campos de prórroga (solo para AUTO_PRORROGA)
+  tipo?: string;
+  prorrogaMeses?: number;
+  fechaVencimientoEtapa?: string;
 }
 
 export interface AccionRevision {
@@ -73,14 +78,81 @@ const getInitials = (nombre: string) => {
   return nombre.substring(0, 2).toUpperCase();
 };
 
+// ==================== COMPONENTE DOCX VIEWER ====================
+
+function DocxViewer({ file }: { file: File }) {
+  const [htmlContent, setHtmlContent] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const convertFile = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        setHtmlContent(result.value);
+      } catch (err: any) {
+        console.error('Error converting DOCX:', err);
+        setError('No se pudo convertir el archivo DOCX. Intente descargar el archivo.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    convertFile();
+  }, [file]);
+
+  if (loading) {
+    return (
+      <div className="w-full h-[600px] flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-[#003DA5] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm" style={{ color: '#6B7280' }}>Convirtiendo documento...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8 text-center bg-gray-50">
+        <FileText className="w-16 h-16 mx-auto mb-4" style={{ color: '#DC2626' }} />
+        <p className="font-bold mb-2" style={{ color: '#1F2937' }}>
+          Error al convertir documento
+        </p>
+        <p className="text-sm mb-4" style={{ color: '#6B7280' }}>
+          {error}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-[600px] overflow-y-auto bg-white border" style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
+      <div
+        className="max-w-4xl mx-auto"
+        dangerouslySetInnerHTML={{ __html: htmlContent }}
+        style={{
+          lineHeight: '1.5',
+          color: '#1F2937'
+        }}
+      />
+    </div>
+  );
+}
+
 // ==================== MODAL DE APROBACIÓN ====================
 
 function ModalAprobacion({
   onConfirm,
-  onCancel
+  onCancel,
+  borrador
 }: {
   onConfirm: (comentarios: string, tipoFirma: 'electronica' | 'digital' | 'local') => void;
   onCancel: () => void;
+  borrador?: { titulo?: string; plantilla?: string };
 }) {
   const [comentarios, setComentarios] = useState('');
   const [tipoFirma, setTipoFirma] = useState<'electronica' | 'digital' | 'local'>('local');
@@ -90,8 +162,8 @@ function ModalAprobacion({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{ zIndex: 10001, backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
       <motion.div
@@ -114,6 +186,23 @@ function ModalAprobacion({
             </p>
           </div>
         </div>
+
+        {/* Advertencia para auto pliego de cargos */}
+        {(borrador.titulo?.toLowerCase().includes('pliego') || borrador.plantilla?.toLowerCase().includes('pliego')) && (
+          <div className="mb-4 p-3 rounded-xl border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
+            <div className="flex items-start gap-2">
+              <AlertCircle style={{ width: 18, height: 18, color: '#D97706', marginTop: 1, flexShrink: 0 }} />
+              <div>
+                <p className="text-sm font-bold" style={{ color: '#92400E' }}>Auto Pliego de Cargos</p>
+                <p className="text-xs mt-1" style={{ color: '#B45309' }}>
+                  Al aprobar este auto, el proceso será <strong>cerrado permanentemente</strong> y se enviará
+                  un correo automático a la <strong>Oficina de Jurídica</strong> con la información consolidada del expediente.
+                  Esta acción no se puede revertir.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tipo de Firma */}
         <div className="mb-4">
@@ -221,8 +310,8 @@ function ModalDevolucion({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{ zIndex: 10001, backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
       <motion.div
@@ -368,8 +457,7 @@ export function ModalRevisionAuto({
   tituloModal = 'Revisión de Auto',
   descripcionModal
 }: ModalRevisionAutoProps) {
-  const [contenidoEditado, setContenidoEditado] = useState(borrador.contenido);
-  const [modoEdicion, setModoEdicion] = useState(false);
+
   const [comentariosJefe, setComentariosJefe] = useState('');
   const [showModalAprobar, setShowModalAprobar] = useState(false);
   const [showModalDevolver, setShowModalDevolver] = useState(false);
@@ -414,11 +502,31 @@ export function ModalRevisionAuto({
     };
   }, [borrador.autoId]);
 
-  const handleGuardarEdicion = () => {
-    toast.success('Cambios Guardados', {
-      description: 'Las modificaciones han sido registradas en la auditoría'
-    });
-    setModoEdicion(false);
+  const handleDescargarDocumento = () => {
+    if (documentoBackendUrl) {
+      // Descargar el documento desde el backend (PDF o archivo existente)
+      const link = document.createElement('a');
+      link.href = documentoBackendUrl;
+      link.download = `Auto-${borrador.numeroProceso || borrador.id}.pdf`;
+      link.click();
+      toast.success('Descarga iniciada', {
+        description: 'El documento se está descargando'
+      });
+    } else if (borrador.contenido?.trim()) {
+      // Descargar el contenido como archivo de texto
+      const blob = new Blob([borrador.contenido], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Auto-${borrador.numeroProceso || borrador.id}.html`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('Descarga iniciada', {
+        description: 'El documento se está descargando como HTML'
+      });
+    } else {
+      toast.error('No hay contenido para descargar');
+    }
   };
 
   const handleConfirmarAprobacion = (comentarios: string, tipoFirma: 'electronica' | 'digital' | 'local') => {
@@ -443,8 +551,8 @@ export function ModalRevisionAuto({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[200] flex items-center justify-center"
-        style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+        className="fixed inset-0 flex items-center justify-center"
+        style={{ zIndex: 10000, backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >
         <motion.div
@@ -531,6 +639,51 @@ export function ModalRevisionAuto({
           <div className="flex-1 overflow-y-auto p-6">
             {activeTab === 'documento' ? (
               <div className="space-y-5">
+                {/* Bloque especial para AUTO_PRORROGA */}
+                {borrador.tipo === 'AUTO_PRORROGA' && borrador.prorrogaMeses && (
+                  <div className="p-4 rounded-xl border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#FEF3C7', color: '#D97706' }}>
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold mb-2" style={{ color: '#92400E' }}>
+                          AUTO DE PRORROGA — SOLICITUD DE EXTENSION
+                        </p>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <p className="text-xs text-amber-700">Duración solicitada:</p>
+                            <p className="font-bold text-amber-900">{borrador.prorrogaMeses} meses</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-amber-700">Vencimiento actual:</p>
+                            <p className="font-bold text-amber-900">
+                              {borrador.fechaVencimientoEtapa
+                                ? new Date(borrador.fechaVencimientoEtapa).toLocaleDateString('es-CO')
+                                : 'No disponible'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-amber-700">Nueva fecha estimada:</p>
+                            <p className="font-bold text-amber-900">
+                              {borrador.fechaVencimientoEtapa
+                                ? (() => {
+                                    const d = new Date(borrador.fechaVencimientoEtapa);
+                                    d.setMonth(d.getMonth() + borrador.prorrogaMeses!);
+                                    return d.toLocaleDateString('es-CO');
+                                  })()
+                                : 'No disponible'}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="text-xs mt-2" style={{ color: '#92400E' }}>
+                          Al aprobar este auto, la fecha de vencimiento de la etapa <strong>{borrador.etapa}</strong> se extenderá en {borrador.prorrogaMeses} meses.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Info Denunciado */}
                 <div className="p-4 rounded-xl" style={{ background: '#EFF6FF' }}>
                   <div className="flex items-start gap-3">
@@ -618,12 +771,12 @@ export function ModalRevisionAuto({
                         </label>
                       )}
                       <button
-                        onClick={() => setModoEdicion(!modoEdicion)}
+                        onClick={handleDescargarDocumento}
                         className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
-                        style={{ background: modoEdicion ? '#6B7280' : '#003DA5' }}
+                        style={{ background: '#10B981' }}
                       >
-                        <Edit2 className="w-4 h-4" />
-                        {modoEdicion ? 'Cancelar' : 'Editar'}
+                        <Download className="w-4 h-4" />
+                        Descargar
                       </button>
                     </div>
                   </div>
@@ -681,42 +834,10 @@ export function ModalRevisionAuto({
                           </button>
                         </div>
                       </div>
-                    </div>
-                  )}
+                     </div>
+                   )}
 
-                  {modoEdicion ? (
-                    <div className="space-y-3">
-                      <div className="p-3 rounded-xl flex items-start gap-2" style={{ background: '#EFF6FF' }}>
-                        <Info className="w-4 h-4 flex-shrink-0" style={{ color: '#2563EB' }} />
-                        <p className="text-xs" style={{ color: '#1E40AF' }}>
-                          Las modificaciones quedarán registradas en auditoría.
-                        </p>
-                      </div>
-                      <textarea
-                        value={contenidoEditado}
-                        onChange={(e) => setContenidoEditado(e.target.value)}
-                        className="w-full h-80 p-4 border-2 rounded-xl text-sm focus:outline-none focus:border-[#003DA5] font-mono"
-                        style={{ borderColor: '#E5E7EB' }}
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleGuardarEdicion}
-                          className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-                          style={{ background: '#003DA5' }}
-                        >
-                          <Check className="w-4 h-4" />
-                          Guardar Cambios
-                        </button>
-                        <button
-                          onClick={() => setModoEdicion(false)}
-                          className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors"
-                          style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
-                        >
-                          Descartar
-                        </button>
-                      </div>
-                    </div>
-                  ) : cargandoDoc ? (
+                   {cargandoDoc ? (
                     <div className="flex items-center justify-center p-10 rounded-xl border-2" style={{ borderColor: '#E5E7EB', background: '#F8FAFC' }}>
                       <div className="text-center">
                         <div className="w-8 h-8 border-4 border-[#003DA5] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
@@ -732,59 +853,61 @@ export function ModalRevisionAuto({
                         title="Visor PDF"
                       />
                     </div>
-                  ) : tipoVista === 'archivo' && archivoAuto ? (
-                    <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
-                      {archivoAuto.name.endsWith('.pdf') ? (
-                        <iframe
-                          src={URL.createObjectURL(archivoAuto)}
-                          className="w-full h-[600px]"
-                          title="Visualizador de PDF"
-                        />
-                      ) : (
-                        <div className="p-8 text-center">
-                          <FileText className="w-16 h-16 mx-auto mb-4" style={{ color: '#2563EB' }} />
-                          <p className="font-bold mb-2" style={{ color: '#1F2937' }}>
-                            Documento Word Cargado
-                          </p>
-                          <p className="text-sm mb-4" style={{ color: '#6B7280' }}>
-                            {archivoAuto.name}
-                          </p>
-                          <p className="text-xs mb-4" style={{ color: '#9CA3AF' }}>
-                            Los archivos Word (.doc, .docx) no pueden visualizarse directamente.<br />
-                            Puedes descargar el archivo o ver el contenido en modo texto.
-                          </p>
-                          <div className="flex gap-3 justify-center">
-                            <button
-                              onClick={() => {
-                                const url = URL.createObjectURL(archivoAuto);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = archivoAuto.name;
-                                a.click();
-                                URL.revokeObjectURL(url);
-                              }}
-                              className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
-                              style={{ background: '#10B981' }}
-                            >
-                              <Download className="w-4 h-4" />
-                              Descargar Archivo
-                            </button>
-                            <button
-                              onClick={() => setTipoVista('texto')}
-                              className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
-                              style={{ background: '#003DA5' }}
-                            >
-                              <FileText className="w-4 h-4" />
-                              Ver como Texto
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                   ) : tipoVista === 'archivo' && archivoAuto ? (
+                     <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
+                       {archivoAuto.name.endsWith('.pdf') ? (
+                         <iframe
+                           src={URL.createObjectURL(archivoAuto)}
+                           className="w-full h-[600px]"
+                           title="Visualizador de PDF"
+                         />
+                       ) : archivoAuto.name.endsWith('.docx') ? (
+                         <DocxViewer file={archivoAuto} />
+                       ) : (
+                         <div className="p-8 text-center">
+                           <FileText className="w-16 h-16 mx-auto mb-4" style={{ color: '#2563EB' }} />
+                           <p className="font-bold mb-2" style={{ color: '#1F2937' }}>
+                             Documento Word Cargado
+                           </p>
+                           <p className="text-sm mb-4" style={{ color: '#6B7280' }}>
+                             {archivoAuto.name}
+                           </p>
+                           <p className="text-xs mb-4" style={{ color: '#9CA3AF' }}>
+                             Los archivos Word (.doc, .docx) no pueden visualizarse directamente.<br />
+                             Puedes descargar el archivo o ver el contenido en modo texto.
+                           </p>
+                           <div className="flex gap-3 justify-center">
+                             <button
+                               onClick={() => {
+                                 const url = URL.createObjectURL(archivoAuto);
+                                 const a = document.createElement('a');
+                                 a.href = url;
+                                 a.download = archivoAuto.name;
+                                 a.click();
+                                 URL.revokeObjectURL(url);
+                               }}
+                               className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
+                               style={{ background: '#10B981' }}
+                             >
+                               <Download className="w-4 h-4" />
+                               Descargar Archivo
+                             </button>
+                             <button
+                               onClick={() => setTipoVista('texto')}
+                               className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
+                               style={{ background: '#003DA5' }}
+                             >
+                               <FileText className="w-4 h-4" />
+                               Ver como Texto
+                             </button>
+                           </div>
+                         </div>
+                       )}
+                     </div>
                   ) : (
                     <div className="p-5 rounded-xl border-2" style={{ borderColor: '#E5E7EB', background: '#F8FAFC' }}>
                       <pre className="whitespace-pre-wrap font-serif text-sm leading-relaxed overflow-x-auto" style={{ color: '#1F2937' }}>
-                        {contenidoEditado}
+                        {borrador.contenido || 'Sin contenido disponible'}
                       </pre>
                     </div>
                   )}
@@ -854,6 +977,7 @@ export function ModalRevisionAuto({
           <ModalAprobacion
             onConfirm={handleConfirmarAprobacion}
             onCancel={() => setShowModalAprobar(false)}
+            borrador={borrador}
           />
         )}
         {showModalDevolver && (

@@ -20,8 +20,10 @@ import {
   Layers, BarChart3, Filter, FileDown, List,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import * as mammoth from 'mammoth';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
 import { ModalReasignarProfesional } from './ModalReasignarProfesional';
+import { ModalPliegoCargos } from './ModalPliegoCargos';
 import { authService } from '../../../services/api';
 import {
   disciplinaryService,
@@ -643,9 +645,44 @@ function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; p
           return;
         }
 
-        blobUrl = window.URL.createObjectURL(blob);
-        setDocumentUrl(blobUrl);
-        setDocumentMimeType(blob.type || archivo.fileType || getMimeTypeFromExtension(archivo.extension));
+        // Special handling for .docx files
+        if (archivo.extension === 'docx') {
+          const arrayBuffer = await blob.arrayBuffer();
+          try {
+            const result = await mammoth.convertToHtml({ arrayBuffer });
+            const htmlContent = result.value;
+            const docxHtml = `
+              <div style="font-family: Arial, sans-serif; padding: 20px; background: white; min-height: 100vh;">
+                <style>
+                  .docx-content { max-width: 800px; margin: 0 auto; }
+                  .docx-content p { margin-bottom: 10px; line-height: 1.5; }
+                  .docx-content h1, .docx-content h2, .docx-content h3 { margin-top: 20px; margin-bottom: 10px; }
+                  .docx-content ul, .docx-content ol { margin-left: 20px; }
+                  .docx-content table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+                  .docx-content td, .docx-content th { border: 1px solid #ddd; padding: 8px; }
+                  .docx-content th { background-color: #f5f5f5; }
+                </style>
+                <div class="docx-content">
+                  ${htmlContent}
+                </div>
+              </div>
+            `;
+            const htmlBlob = new Blob([docxHtml], { type: 'text/html' });
+            blobUrl = window.URL.createObjectURL(htmlBlob);
+            setDocumentUrl(blobUrl);
+            setDocumentMimeType('text/html');
+          } catch (conversionError) {
+            console.error('Error converting DOCX to HTML:', conversionError);
+            // Fallback to object tag
+            blobUrl = window.URL.createObjectURL(blob);
+            setDocumentUrl(blobUrl);
+            setDocumentMimeType(blob.type || archivo.fileType || getMimeTypeFromExtension(archivo.extension));
+          }
+        } else {
+          blobUrl = window.URL.createObjectURL(blob);
+          setDocumentUrl(blobUrl);
+          setDocumentMimeType(blob.type || archivo.fileType || getMimeTypeFromExtension(archivo.extension));
+        }
       } catch (err: any) {
         if (cancelled) return;
         setError(err?.message || 'No se pudo cargar el documento');
@@ -845,7 +882,7 @@ function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; p
                 />
               </div>
             </div>
-          ) : isHtml ? (
+          ) : isHtml || (documentMimeType === 'text/html' && archivo.extension === 'docx') ? (
             <div className="h-full w-full px-5 py-5">
               <div className="h-full w-full overflow-hidden rounded-[26px] border border-slate-200/80 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.12)]">
                 <iframe
@@ -2035,6 +2072,7 @@ export function ModalDetallesProceso({
   const [creandoTarea, setCreandoTarea] = useState(false);
   const [actualizandoTareaId, setActualizandoTareaId] = useState<string | null>(null);
   const [mostrarModalReasignar, setMostrarModalReasignar] = useState(false);
+  const [mostrarModalPliego, setMostrarModalPliego] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [autoEnviarRevision, setAutoEnviarRevision] = useState<Archivo | null>(null);
   const [autoRecargar, setAutoRecargar] = useState<Archivo | null>(null);
@@ -3549,7 +3587,7 @@ export function ModalDetallesProceso({
             </span>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0 ml-1">
-            {estaEnRevision && (
+            {/* {estaEnRevision && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleAbrirRevision(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all text-white"
                 style={{ background: '#003DA5' }}
@@ -3558,7 +3596,7 @@ export function ModalDetallesProceso({
                 title="Ver estado de revisión y aprobación">
                 <Shield className="w-3 h-3" /><span className="hidden sm:inline">Revisión</span>
               </button>
-            )}
+            )} */}
             {puedeEnviarRevision && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleEnviarARevision(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all text-white"
@@ -4000,6 +4038,41 @@ export function ModalDetallesProceso({
                         </p>
                       </div>
                     </div>
+
+                    {/* Acciones del Proceso */}
+                    {proceso.estadoActual === 'ACTIVO' && !archivosBackend.some(a => a.nombre?.includes('PLIEGO_CARGOS') || a.nombre?.includes('Pliego')) && (
+                      <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#D97706', background: '#FFFBEB' }}>
+                        <button
+                          onClick={() => setMostrarModalPliego(true)}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
+                          style={{ background: '#D97706', color: 'white' }}
+                        >
+                          <FileText className="w-4 h-4" />
+                          Auto Pliego de Cargos
+                        </button>
+                        <p className="text-[10px] text-center mt-1.5" style={{ color: '#92400E' }}>
+                          Cierra el proceso y traslada a Oficina Jurídica
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Badge CERRADO */}
+                    {proceso.estadoActual === 'CERRADO' && (
+                      <div className="rounded-xl border-2 p-4" style={{ borderColor: '#D97706', background: '#FEF3C7' }}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: '#D97706' }}>
+                            <FileText className="w-4 h-4 text-white" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-black" style={{ color: '#92400E' }}>PROCESO CERRADO</p>
+                            <p className="text-[10px]" style={{ color: '#B45309' }}>Trasladado a Oficina Jurídica por Pliego de Cargos</p>
+                          </div>
+                        </div>
+                        <p className="text-[10px]" style={{ color: '#92400E' }}>
+                          Este proceso está bloqueado para modificaciones.
+                        </p>
+                      </div>
+                    )}
 
                     {/* Hechos */}
                     {proceso.hechos && (
@@ -5733,6 +5806,29 @@ export function ModalDetallesProceso({
             proceso={proceso}
             onClose={() => setMostrarModalReasignar(false)}
             onSolicitarReasignacion={handleSolicitarReasignacion}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {mostrarModalPliego && (
+          <ModalPliegoCargos
+            proceso={{
+              id: proceso.id,
+              radicadoProceso: proceso.numeroProceso,
+              etapaActual: proceso.etapaActual,
+              estado: proceso.estadoActual || 'ACTIVO',
+              news: proceso as any,
+              abogadoAsignado: typeof proceso.profesionalAsignado === 'object'
+                ? { nombreCompleto: (proceso.profesionalAsignado as any)?.nombre }
+                : { nombreCompleto: proceso.profesionalAsignado as string },
+            }}
+            onClose={() => setMostrarModalPliego(false)}
+            onSuccess={() => {
+              setMostrarModalPliego(false);
+              toast.success('Auto Pliego de Cargos creado. Envíalo a revisión del Jefe.');
+              onClose();
+            }}
           />
         )}
       </AnimatePresence>
