@@ -10,7 +10,7 @@ import { Permissions } from '@esap-mfe/shared-types/permissions';
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Tipos de acciones disponibles (extensible)
-type AccionPermiso = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export' | 'assign' | 'activate' | 'follow-up';
+type AccionPermiso = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export' | 'assign' | 'activate' | 'follow-up' | 'execute';
 
 // Módulos del sistema Control Interno (extensible)
 type ModuloControlInterno = 
@@ -55,6 +55,8 @@ const MAPA_PERMISOS: Record<string, string> = {
   'auditorias:approve': Permissions.CONTROL_INTERNO_AUDITORIA_APPROVE,
   'auditorias:export': Permissions.CONTROL_INTERNO_AUDITORIA_EXPORT,
   'auditorias:manage': Permissions.CONTROL_INTERNO_AUDITORIA_MANAGE,
+  'auditorias:assign': Permissions.CONTROL_INTERNO_AUDITORIA_MANAGE,
+  'auditorias:execute': Permissions.CONTROL_INTERNO_AUDITORIA_EDIT, // Permiso para gestionar progreso de las asignaciones propias
   
   // Hallazgos
   'hallazgos:view': Permissions.CONTROL_INTERNO_HALLAZGOS_VIEW,
@@ -106,6 +108,7 @@ const MAPA_PERMISOS: Record<string, string> = {
   'configuraciones:edit': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
   'config-auditorias:view': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
   'config-auditorias:edit': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
+  'configuraciones:capacidades': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
   
   // Biblioteca / Listas de Chequeo
   'listas-chequeo:view': Permissions.CONTROL_INTERNO_LISTAS_CHEQUEO_VIEW,

@@ -266,7 +266,7 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
             .map((config: any) => ({
               id: String(config.idTercero),
               nombre: config.nombre || `Profesional ${config.idTercero}`,
-              cargo: config.rolOCI || 'Auditor'
+              cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor'
             }));
           setAuditoresDisponibles(auditores);
           console.log('[ModalEdicion] Auditores OCI cargados:', auditores.length);

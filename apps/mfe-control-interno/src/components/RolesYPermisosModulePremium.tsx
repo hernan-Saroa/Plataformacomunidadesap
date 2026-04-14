@@ -58,7 +58,7 @@ interface PersonaAsignada {
 interface PermisoModulo {
   id: string;
   modulo: string;
-  accion: 'leer' | 'crear' | 'editar' | 'eliminar' | 'aprobar' | 'full';
+  accion: 'leer' | 'crear' | 'editar' | 'eliminar' | 'aprobar' | 'full' | 'ejecutar';
   descripcion: string;
 }
 
@@ -90,10 +90,10 @@ const ROLES_CONTROL_INTERNO: RolControlInterno[] = [
     nivel: 'PROFESIONAL_AUDITOR',
     color: 'blue',
     permisos: [
-      { id: 'p6', modulo: 'Plan de Mejoramiento', accion: 'editar', descripcion: 'Crear y editar planes' },
+      { id: 'p6', modulo: 'Plan de Mejoramiento', accion: 'ejecutar', descripcion: 'Ejecutar asignadas' },
       { id: 'p7', modulo: 'Informes de Ley', accion: 'editar', descripcion: 'Crear y editar informes' },
       { id: 'p8', modulo: 'Expedientes', accion: 'editar', descripcion: 'Gestionar expedientes' },
-      { id: 'p9', modulo: 'Auditorías', accion: 'editar', descripcion: 'Gestionar auditorías' },
+      { id: 'p9', modulo: 'Auditorías', accion: 'ejecutar', descripcion: 'Ejecutar asignadas' },
       { id: 'p10', modulo: 'Configuraciones', accion: 'leer', descripcion: 'Solo lectura' }
     ]
   },
@@ -626,7 +626,7 @@ function CardPersonaEquipo({ persona }: CardPersonaEquipoProps) {
 
 function VistaPermisos() {
   const modulos = ['Plan de Mejoramiento', 'Informes de Ley', 'Expedientes', 'Auditorías', 'Configuraciones'];
-  const acciones = ['Leer', 'Crear', 'Editar', 'Eliminar', 'Aprobar'];
+  const acciones = ['Leer', 'Crear', 'Editar', 'Ejecutar', 'Eliminar', 'Aprobar'];
 
   return (
     <Container4K className="py-6">
@@ -665,11 +665,13 @@ function VistaPermisos() {
                         {permiso ? (
                           <span className={`px-3 py-1 rounded-lg text-xs font-medium ${
                             permiso.accion === 'full' ? 'bg-red-100 text-red-700' :
+                            permiso.accion === 'ejecutar' ? 'bg-orange-100 text-orange-700' :
                             permiso.accion === 'editar' ? 'bg-blue-100 text-blue-700' :
                             permiso.accion === 'crear' ? 'bg-green-100 text-green-700' :
                             'bg-gray-100 text-gray-700'
                           }`}>
                             {permiso.accion === 'full' ? 'Control Total' : 
+                             permiso.accion === 'ejecutar' ? 'Ejecutar' :
                              permiso.accion === 'editar' ? 'Editar' :
                              permiso.accion === 'crear' ? 'Crear' :
                              'Leer'}

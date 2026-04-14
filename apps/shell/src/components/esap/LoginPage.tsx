@@ -361,7 +361,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                   Correo Electrónico
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Mail className="absolute top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" style={{ left: '0.875rem', zIndex: 1 }} />
                   <input
                     type="email"
                     value={email}
@@ -370,7 +370,8 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                       setErrors({ ...errors, email: undefined });
                     }}
                     placeholder="correo@esap.edu.co"
-                    className={`w-full pl-12 pr-4 py-2.5 border-2 rounded-xl transition-all outline-none ${
+                    style={{ paddingLeft: '2.75rem' }}
+                    className={`w-full pr-4 py-2.5 border-2 rounded-xl transition-all outline-none ${
                       errors.email
                         ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-4 focus:ring-red-100'
                         : 'border-gray-300 focus:border-[#003DA5] focus:ring-4 focus:ring-[#003DA5]/10'
@@ -395,7 +396,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                   Contraseña
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Lock className="absolute top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" style={{ left: '0.875rem', zIndex: 1 }} />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
@@ -404,7 +405,8 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                       setErrors({ ...errors, password: undefined });
                     }}
                     placeholder="••••••••"
-                    className={`w-full pl-12 pr-12 py-2.5 border-2 rounded-xl transition-all outline-none ${
+                    style={{ paddingLeft: '2.75rem', paddingRight: '3rem' }}
+                    className={`w-full py-2.5 border-2 rounded-xl transition-all outline-none ${
                       errors.password
                         ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-4 focus:ring-red-100'
                         : 'border-gray-300 focus:border-[#003DA5] focus:ring-4 focus:ring-[#003DA5]/10'
@@ -415,6 +417,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    style={{ zIndex: 1 }}
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>

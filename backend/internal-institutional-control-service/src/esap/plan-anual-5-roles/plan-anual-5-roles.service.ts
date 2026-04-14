@@ -43,12 +43,13 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('plan.roles', 'roles')
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
+      .where("plan.estado != 'eliminado'")
       .orderBy('plan.año', 'DESC')
       .addOrderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC');
 
     if (year) {
-      query.where('plan.año = :year', { year });
+      query.andWhere('plan.año = :year', { year });
     }
 
     return query.getMany();
@@ -61,6 +62,7 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.id = :id', { id })
+      .andWhere("plan.estado != 'eliminado'")
       .orderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC')
       .getOne();
@@ -79,6 +81,7 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.año = :year', { year })
+      .andWhere("plan.estado != 'eliminado'")
       .orderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC')
       .getOne();
@@ -676,6 +679,38 @@ export class PlanAnual5RolesService {
       undefined,
       undefined,
       [{ campo: 'activo', valorAnterior: 'true', valorNuevo: 'false' }]
+    );
+  }
+
+  async remove(id: string, usuarioId?: string): Promise<void> {
+    const plan = await this.planRepository.findOne({
+      where: { id },
+      relations: ['roles', 'roles.actividades', 'roles.actividades.adjuntos'],
+    });
+
+    if (!plan) {
+      throw new NotFoundException(`Plan Anual con ID ${id} no encontrado`);
+    }
+
+    const vigenciaOriginal = plan.año;
+
+    // Soft delete release pattern
+    plan.estado = 'eliminado' as any;
+    // Liberar la vigencia para que el usuario pueda crear otro plan en el mismo año,
+    // garantizando que no choque con la restricción @Unique(['año']) de TypeORM
+    plan.año = -(Date.now() % 1000000000); 
+
+    await this.planRepository.save(plan);
+
+    // Dejar traza explícita e imborrable en el Módulo de Auditoría (Historial interno)
+    await this.registrarHistorial(
+      plan.id,
+      TipoEventoPlanAnual.CAMBIO_ESTADO,
+      'Eliminación de Plan Anual',
+      `El Plan Anual de Auditoría de la vigencia ${vigenciaOriginal} fue eliminado por el usuario. Eliminación lógica registrada por control de trazabilidad.`,
+      usuarioId || 1, 
+      JSON.stringify({ accion: 'SOFT_DELETE', vigenciaOriginal }),
+      'eliminado'
     );
   }
 
