@@ -93,8 +93,7 @@ export class SequenceService {
    * Formato: AUTO-{consecutivo}-{YYYY}
    */
   async generateAutoConsecutivo(): Promise<string> {
-    const year = new Date().getFullYear();
-    const sequenceName = `DISCIPLINARY_AUTO_${year}`;
+    const sequenceName = 'DISCIPLINARY_AUTO_GLOBAL';
 
     let sequence = await this.sequenceRepository.findOne({
       where: { name: sequenceName },
@@ -110,8 +109,8 @@ export class SequenceService {
     sequence.currentValue++;
     await this.sequenceRepository.save(sequence);
 
-    const paddedNumber = String(sequence.currentValue).padStart(3, '0');
-    return `AUTO-${paddedNumber}-${year}`;
+    const paddedNumber = String(sequence.currentValue).padStart(5, '0');
+    return `AUTO-${paddedNumber}`;
   }
 
   /**
