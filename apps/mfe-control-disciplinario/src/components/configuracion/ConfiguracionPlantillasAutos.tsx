@@ -23,13 +23,12 @@ import {
 } from '../../../../services/api/disciplinary.service';
 import { ConfirmationModal } from './ConfirmationModal';
 import {
-  ModalGestionarPlantillas,
-} from './ModalGestionarPlantillas';
-import { ModalNuevoTipoAuto } from './ModalNuevoTipoAuto';
-import {
   SeccionPlantillasAutosUnificada,
+  type PlantillaArchivo,
   type TipoAuto,
 } from './SeccionPlantillasAutosUnificada';
+import { ModalNuevoTipoAuto, type NuevoTipoAutoData } from './ModalNuevoTipoAuto';
+import { ModalGestionarPlantillas } from './ModalGestionarPlantillas';
 
 const TIPOS_AUTOS_DEFECTO: TipoAuto[] = [
   {
@@ -46,6 +45,44 @@ const TIPOS_AUTOS_DEFECTO: TipoAuto[] = [
     tipo: 'AUTO_APERTURA_INDAGACION',
   },
 ];
+
+// Mapea el tipoAccion del formulario al valor `tipo` que espera el backend
+const mapTipoAccionToBackend = (tipoAccion: string, etapa: string): string => {
+  switch (tipoAccion) {
+    case 'APERTURA':
+      if (etapa === 'INVESTIGACION') return 'AUTO_APERTURA_INVESTIGACION';
+      if (etapa === 'INDAGACION' || etapa === 'INDAGACION_PREVIA') return 'AUTO_APERTURA_INDAGACION';
+      return 'AUTO_APERTURA';
+    case 'ARCHIVO':
+      return 'AUTO_ARCHIVO';
+    case 'PRORROGA':
+      return 'AUTO_PRORROGA';
+    case 'PLIEGO':
+      return 'PLIEGO_CARGOS';
+    default:
+      return 'AUTO_NO_PREVISTO';
+  }
+};
+
+const buildLocalPlantilla = (file?: File): PlantillaArchivo | null => {
+  if (!file) return null;
+
+  return {
+    id: `plt-local-${Date.now()}`,
+    nombre: file.name.replace(/\.(docx?|DOCX?)$/, ''),
+    nombreArchivo: file.name,
+    descripcion: 'Plantilla cargada localmente',
+    url: '',
+    tamano: file.size,
+    tipoArchivo:
+      file.type ||
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    version: '1.0',
+    fechaCreacion: new Date().toISOString(),
+    fechaModificacion: new Date().toISOString(),
+    activo: true,
+  };
+};
 
 export function ConfiguracionPlantillasAutos() {
   const [tiposAutos, setTiposAutos] = useState<TipoAuto[]>([]);
@@ -256,7 +293,7 @@ export function ConfiguracionPlantillasAutos() {
     setMostrarModalTipoAuto(true);
   };
 
-  const guardarTipoAuto = async (nuevoTipo: any) => {
+  const guardarTipoAuto = async (nuevoTipo: NuevoTipoAutoData) => {
     if (tipoAutoEdicion) {
       try {
         const autoActual = tiposAutos.find((t) => t.id === tipoAutoEdicion.id);
@@ -269,7 +306,17 @@ export function ConfiguracionPlantillasAutos() {
           setTiposAutos((prev) =>
             prev.map((t) =>
               t.id === tipoAutoEdicion.id
-                ? { ...t, ...nuevoTipo, fechaModificacion: new Date().toISOString() }
+                ? {
+                    ...t,
+                    nombre: nuevoTipo.nombre,
+                    descripcion: nuevoTipo.descripcion,
+                    etapa: nuevoTipo.etapa,
+                    activo: nuevoTipo.activo,
+                    orden: nuevoTipo.orden,
+                    plantilla:
+                      buildLocalPlantilla(nuevoTipo.plantillaFile) || t.plantilla,
+                    fechaModificacion: new Date().toISOString(),
+                  }
                 : t,
             ),
           );
@@ -280,6 +327,14 @@ export function ConfiguracionPlantillasAutos() {
             estado: nuevoTipo.activo ? 'activo' : 'inactivo',
             orden: nuevoTipo.orden,
           });
+
+          if (nuevoTipo.plantillaFile) {
+            await disciplinaryService.uploadAutoPlantilla(
+              tipoAutoEdicion.id,
+              nuevoTipo.plantillaFile,
+            );
+          }
+
           await loadDatos();
         }
 
@@ -290,26 +345,48 @@ export function ConfiguracionPlantillasAutos() {
       }
     } else {
       try {
-        await disciplinaryService.createAutosConfiguration({
-          tipo: nuevoTipo.nombre.toUpperCase().replace(/ /g, '_'),
+        const tipoBackend = mapTipoAccionToBackend(nuevoTipo.tipoAccion, nuevoTipo.etapa);
+        const autoCreado = await disciplinaryService.createAutosConfiguration({
+          tipo: tipoBackend,
           nombre: nuevoTipo.nombre,
           estado: nuevoTipo.activo ? 'activo' : 'inactivo',
           stage: nuevoTipo.etapa,
           orden: nuevoTipo.orden || 1,
         });
+
+        if (nuevoTipo.plantillaFile) {
+          await disciplinaryService.uploadAutoPlantilla(
+            autoCreado.id,
+            nuevoTipo.plantillaFile,
+          );
+        }
+
         await loadDatos();
         toast.success('Tipo de auto creado correctamente');
       } catch (error) {
         console.error('Error creando:', error);
-        const tipoCompleto: TipoAuto = {
-          id: `tipo-auto-${Date.now()}`,
-          ...nuevoTipo,
-          plantilla: null,
-          fechaCreacion: new Date().toISOString(),
-          fechaModificacion: new Date().toISOString(),
-        };
-        setTiposAutos((prev) => [...prev, tipoCompleto]);
-        toast.success('Tipo de auto creado (local)');
+        const permitirFallbackLocal =
+          tiposAutos.length === 0 || tiposAutos.every((tipo) => !esAutoBackend(tipo.id));
+
+        if (permitirFallbackLocal) {
+          const ahora = new Date().toISOString();
+          const tipoCompleto: TipoAuto = {
+            id: `tipo-auto-${Date.now()}`,
+            nombre: nuevoTipo.nombre,
+            descripcion: nuevoTipo.descripcion,
+            etapa: nuevoTipo.etapa,
+            activo: nuevoTipo.activo,
+            orden: nuevoTipo.orden || 1,
+            plantilla: buildLocalPlantilla(nuevoTipo.plantillaFile),
+            fechaCreacion: ahora,
+            fechaModificacion: ahora,
+            tipo: mapTipoAccionToBackend(nuevoTipo.tipoAccion, nuevoTipo.etapa),
+          };
+          setTiposAutos((prev) => [...prev, tipoCompleto]);
+          toast.success('Tipo de auto creado localmente');
+        } else {
+          toast.error('Error al crear el tipo de auto');
+        }
       }
     }
 
@@ -447,7 +524,7 @@ export function ConfiguracionPlantillasAutos() {
 
   const actualizarPlantillasTipoAuto = async (
     tipoAutoId: string,
-    plantillas: any[],
+    plantillas: PlantillaArchivo[],
   ) => {
     const plantilla = plantillas[0];
     const auto = tiposAutos.find((t) => t.id === tipoAutoId);

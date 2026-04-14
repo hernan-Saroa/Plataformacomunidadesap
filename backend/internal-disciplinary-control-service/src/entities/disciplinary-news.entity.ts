@@ -61,12 +61,8 @@ export class DisciplinaryNews {
   @Column({ type: 'timestamp', nullable: true })
   fechaQueja?: Date;
 
-  @Column({
-    type: 'enum',
-    enum: NewsOrigin,
-    nullable: true,
-  })
-  origen: NewsOrigin;
+   @Column({ type: 'varchar', length: 50, nullable: true })
+   origen: string;
 
   @Column()
   territorial: string;
@@ -86,12 +82,8 @@ export class DisciplinaryNews {
   @Column({ type: 'text', array: true, nullable: true })
   conductas?: string[];
 
-  @Column({
-    type: 'enum',
-    enum: NewsStatus,
-    default: NewsStatus.RADICADA,
-  })
-  estado: NewsStatus;
+   @Column({ type: 'varchar', length: 50, default: 'RADICADA' })
+   estado: string;
 
   @Column({ type: 'text', array: true, nullable: true })
   adjuntos: string[];
