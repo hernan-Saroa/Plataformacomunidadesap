@@ -394,6 +394,7 @@ export interface AssignProcessDto {
     newsId: string;
     abogadoId: string;
     abogadoNombre: string;
+    observaciones?: string;
 }
 
 export interface CreateAutoDto {
@@ -906,6 +907,13 @@ class DisciplinaryService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/versions`);
     }
 
+    async uploadDocumentoRevision(id: string, file: File, comentario: string): Promise<any> {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (comentario) formData.append('comentario', comentario);
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
+    }
+
     // --- TÉRMINOS PROCESALES ---
 
     async getTerminos(params?: { estado?: string; search?: string; page?: number; limit?: number }): Promise<{ terminos: any[]; stats: any }> {
@@ -955,9 +963,9 @@ class DisciplinaryService {
     // --- ARCHIVOS ---
     async uploadFile(file: File, tipo: string = 'default'): Promise<{ url: string; filename: string }> {
         const formData = new FormData();
-        formData.append('file', file);
         // Enviar el tipo de documento para que el backend valide los formatos permitidos
         formData.append('tipo', tipo);
+        formData.append('file', file);
         return apiClient.upload<{ url: string; filename: string }>(`${SERVICE_PREFIX}/files/upload`, formData);
     }
 

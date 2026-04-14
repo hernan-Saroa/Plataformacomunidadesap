@@ -22,6 +22,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AutosConfigurationService } from '../services/autos-configuration.service';
 import {
+  AutoConfigurationDeletionImpactDto,
   CreateAutosConfigurationDto,
   UpdateAutosConfigurationDto,
 } from '../dtos/autos-configuration.dto';
@@ -66,6 +67,25 @@ export class AutosConfigurationController {
   @ApiOperation({ summary: 'Listar configuraciones activas' })
   async findActive(): Promise<AutoConfiguration[]> {
     return await this.autosConfigService.findActive();
+  }
+
+  /**
+   * Obtener impacto de eliminación de una configuración
+   */
+  @Get(':id/deletion-impact')
+  @ApiOperation({
+    summary:
+      'Consultar procesos asociados antes de eliminar una configuración de auto',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Impacto de eliminación calculado correctamente',
+    type: AutoConfigurationDeletionImpactDto,
+  })
+  async getDeletionImpact(
+    @Param('id') id: string,
+  ): Promise<AutoConfigurationDeletionImpactDto> {
+    return await this.autosConfigService.getDeletionImpact(id);
   }
 
   /**

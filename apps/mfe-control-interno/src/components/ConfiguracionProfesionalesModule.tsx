@@ -18,7 +18,7 @@
 
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
+import {
   Users, Save, Plus, Edit2, Trash2, AlertCircle, CheckCircle2,
   Clock, TrendingUp, Settings, UserPlus, Activity, Target,
   BarChart3, X, Info, Search, Filter, UserCheck, Wifi, WifiOff,
@@ -45,7 +45,7 @@ import {
   PopoverTrigger
 } from '@esap-mfe/shared-ui/popover';
 import { toast } from 'sonner';
-import { 
+import {
   useConfiguracionProfesionales,
   type UsuarioSistema,
   type ConfiguracionOCIG,
@@ -98,7 +98,7 @@ export function ConfiguracionProfesionalesModule() {
   const handleGuardarConfiguracionGlobal = async (nuevasCapacidades: any[]) => {
     // 1. Guardar en storage local
     await guardarCapacidades(nuevasCapacidades);
-    
+
     // 2. Aplicar a todos los profesionales actuales
     try {
       let actualizados = 0;
@@ -107,8 +107,8 @@ export function ConfiguracionProfesionalesModule() {
         if (capacidadParaRol) {
           // Solo actualizamos si cambiaron para no bombardear el backend innecesariamente
           if (prof.configuracion.capacidadMaximaAuditorias !== capacidadParaRol.capacidadMaximaAuditorias ||
-              prof.configuracion.horasMensualesDisponibles !== capacidadParaRol.horasMensualesDisponibles) {
-                
+            prof.configuracion.horasMensualesDisponibles !== capacidadParaRol.horasMensualesDisponibles) {
+
             await actualizarProfesional(prof.usuario.id, {
               capacidadMaximaAuditorias: capacidadParaRol.capacidadMaximaAuditorias,
               horasMensualesDisponibles: capacidadParaRol.horasMensualesDisponibles
@@ -117,10 +117,10 @@ export function ConfiguracionProfesionalesModule() {
           }
         }
       }
-      
+
       toast.success(`Capacidad global actualizada. Se actualizaron ${actualizados} profesionales.`);
       setMostrarModalConfiguracion(false);
-      
+
       // Recargar datos para estar seguros
       await cargarDatos();
     } catch (e) {
@@ -134,12 +134,12 @@ export function ConfiguracionProfesionalesModule() {
 
   const profesionalesFiltrados = useMemo(() => {
     return profesionalesOCIG.filter(p => {
-      const cumpleBusqueda = busqueda === '' || 
+      const cumpleBusqueda = busqueda === '' ||
         p.usuario.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
         p.usuario.email.toLowerCase().includes(busqueda.toLowerCase());
-      
+
       const cumpleFiltroRol = filtroRol === 'TODOS' || p.configuracion.rolOCI === filtroRol;
-      
+
       return cumpleBusqueda && cumpleFiltroRol;
     });
   }, [profesionalesOCIG, busqueda, filtroRol]);
@@ -263,7 +263,7 @@ export function ConfiguracionProfesionalesModule() {
           <p className="text-xs text-blue-600">activos en OCIG</p>
         </div>
 
-        <div 
+        <div
           className={`bg-white rounded-xl border-2 ${puedeConfigurarCapacidades ? 'border-green-300 hover:border-green-500 cursor-pointer shadow-sm hover:shadow-md transition-all group' : 'border-green-200'} p-4 relative`}
           onClick={() => puedeConfigurarCapacidades && setMostrarModalConfiguracion(true)}
           title={puedeConfigurarCapacidades ? "Configurar capacidad por rol..." : undefined}
@@ -281,7 +281,7 @@ export function ConfiguracionProfesionalesModule() {
           <p className="text-xs text-green-600">auditorías máx.</p>
         </div>
 
-        <div 
+        <div
           className={`bg-white rounded-xl border-2 ${puedeConfigurarCapacidades ? 'border-purple-300 hover:border-purple-500 cursor-pointer shadow-sm hover:shadow-md transition-all group' : 'border-purple-200'} p-4 relative`}
           onClick={() => puedeConfigurarCapacidades && setMostrarModalConfiguracion(true)}
           title={puedeConfigurarCapacidades ? "Configurar horas por rol..." : undefined}
@@ -673,7 +673,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!usuarioSeleccionado) {
       toast.error('❌ Debes seleccionar un usuario');
       return;
@@ -899,18 +899,16 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                           data-prof-item
                           data-prof-search={`${usuario.nombre} ${usuario.email} ${usuario.identificacion}`.toLowerCase()}
                           onClick={() => setUsuarioSeleccionado(usuario.id)}
-                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all text-sm ${
-                            usuarioSeleccionado === usuario.id
-                              ? 'bg-blue-50 ring-2 ring-blue-500 ring-inset'
-                              : 'hover:bg-gray-50'
-                          }`}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all text-sm ${usuarioSeleccionado === usuario.id
+                            ? 'bg-blue-50 ring-2 ring-blue-500 ring-inset'
+                            : 'hover:bg-gray-50'
+                            }`}
                         >
                           {/* Avatar */}
-                          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${
-                            usuarioSeleccionado === usuario.id
-                              ? 'text-white'
-                              : 'bg-gray-200 text-gray-600'
-                          }`} style={usuarioSeleccionado === usuario.id ? { backgroundColor: '#003DA5' } : {}}>
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${usuarioSeleccionado === usuario.id
+                            ? 'text-white'
+                            : 'bg-gray-200 text-gray-600'
+                            }`} style={usuarioSeleccionado === usuario.id ? { backgroundColor: '#003DA5' } : {}}>
                             {getInitials(usuario.nombre)}
                           </div>
                           {/* Info */}
@@ -919,17 +917,16 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                             <div className="text-[11px] text-gray-400 truncate">{usuario.email}</div>
                           </div>
                           {/* Role badge */}
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                            usuario.roles?.[0]?.includes('Jefe') ? 'bg-purple-100 text-purple-700' :
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${usuario.roles?.[0]?.includes('Jefe') ? 'bg-purple-100 text-purple-700' :
                             usuario.roles?.[0]?.includes('Líder') ? 'bg-blue-100 text-blue-700' :
-                            usuario.roles?.[0]?.includes('Senior') ? 'bg-cyan-100 text-cyan-700' :
-                            usuario.roles?.[0]?.includes('Junior') ? 'bg-green-100 text-green-700' :
-                            usuario.roles?.[0]?.includes('Auditado') ? 'bg-amber-100 text-amber-700' :
-                            usuario.roles?.[0]?.includes('Super') ? 'bg-red-100 text-red-700' :
-                            usuario.roles?.[0]?.includes('Profesional') ? 'bg-teal-100 text-teal-700' :
-                            usuario.roles?.[0]?.includes('Administrador') ? 'bg-indigo-100 text-indigo-700' :
-                            'bg-gray-100 text-gray-600'
-                          }`}>
+                              usuario.roles?.[0]?.includes('Senior') ? 'bg-cyan-100 text-cyan-700' :
+                                usuario.roles?.[0]?.includes('Junior') ? 'bg-green-100 text-green-700' :
+                                  usuario.roles?.[0]?.includes('Auditado') ? 'bg-amber-100 text-amber-700' :
+                                    usuario.roles?.[0]?.includes('Super') ? 'bg-red-100 text-red-700' :
+                                      usuario.roles?.[0]?.includes('Profesional') ? 'bg-teal-100 text-teal-700' :
+                                        usuario.roles?.[0]?.includes('Administrador') ? 'bg-indigo-100 text-indigo-700' :
+                                          'bg-gray-100 text-gray-600'
+                            }`}>
                             {usuario.roles?.[0] || 'Sin rol'}
                           </span>
                           {/* Check */}
@@ -984,11 +981,10 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                           key={rol}
                           type="button"
                           onClick={() => handleRolCambio(rol)}
-                          className={`px-2 py-2 rounded-lg text-xs font-bold text-center transition-all ${
-                            rolOCIG === rol
-                              ? 'text-white shadow-md ring-2 ring-blue-300'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                          }`}
+                          className={`px-2 py-2 rounded-lg text-xs font-bold text-center transition-all ${rolOCIG === rol
+                            ? 'text-white shadow-md ring-2 ring-blue-300'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            }`}
                           style={rolOCIG === rol ? { backgroundColor: '#003DA5' } : {}}
                         >
                           {rol}
@@ -1003,7 +999,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                       Especialidades
                       <span className="ml-1 text-gray-400 normal-case font-normal">({especialidades.length} seleccionadas) — Opcional</span>
                     </label>
-                    
+
                     {/* Selected chips */}
                     {especialidades.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mb-2">
@@ -1136,11 +1132,10 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                           key={preset.label}
                           type="button"
                           onClick={() => { setCapacidad(preset.cap); setHoras(preset.hrs); }}
-                          className={`p-2 rounded-lg border text-center transition-all ${
-                            capacidad === preset.cap && horas === preset.hrs
-                              ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-300'
-                              : 'border-gray-200 hover:border-blue-300 bg-white'
-                          }`}
+                          className={`p-2 rounded-lg border text-center transition-all ${capacidad === preset.cap && horas === preset.hrs
+                            ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-300'
+                            : 'border-gray-200 hover:border-blue-300 bg-white'
+                            }`}
                         >
                           <div className="text-[10px] font-bold text-gray-700">{preset.label}</div>
                           <div className="text-[10px] text-gray-400 mt-0.5">{preset.cap} aud · {preset.hrs}h</div>
@@ -1172,7 +1167,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                 Cancelar
               </button>
             )}
-            
+
             <div className="flex-1" />
 
             {/* Step counter */}

@@ -1,38 +1,92 @@
 /**
  * MODAL NUEVO TIPO DE AUTO - Configuración
- * Formulario simplificado para crear/editar tipos de autos
- * ✅ Las plantillas se gestionan desde otro modal
- * ✅ Validaciones completas
- * ✅ Diseño corporativo ESAP Desktop-First
+ * Formulario para crear/editar tipos de autos con selector visual de tipo de acción
+ * y carga obligatoria de plantilla .docx
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  X, AlertCircle, Info, Save, Loader
+import {
+  X, AlertCircle, Info, Save, Loader, Upload, FileText,
+  Zap, CheckCircle2, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ETAPAS_PROCESO, type EtapaProcesoId, type TipoAuto } from './SeccionPlantillasAutosUnificada';
 
+// ─── Tipos de acción disponibles ───────────────────────────────────────────
+export type TipoAccion = 'NORMAL' | 'APERTURA' | 'ARCHIVO' | 'PRORROGA' | 'PLIEGO';
+
+const TIPOS_ACCION: {
+  id: TipoAccion;
+  label: string;
+  descripcion: string;
+  conAccion: boolean;
+}[] = [
+  {
+    id: 'NORMAL',
+    label: 'Normal',
+    descripcion: 'Auto sin cambio de etapa automático',
+    conAccion: false,
+  },
+  {
+    id: 'APERTURA',
+    label: 'Apertura',
+    descripcion: 'Abre una nueva etapa (Investigación o Indagación)',
+    conAccion: true,
+  },
+  {
+    id: 'ARCHIVO',
+    label: 'Archivo',
+    descripcion: 'Archiva el proceso disciplinario',
+    conAccion: true,
+  },
+  {
+    id: 'PRORROGA',
+    label: 'Prórroga',
+    descripcion: 'Prorroga el término de la etapa actual',
+    conAccion: true,
+  },
+  {
+    id: 'PLIEGO',
+    label: 'Pliego de Cargos',
+    descripcion: 'Formula el pliego de cargos al investigado',
+    conAccion: true,
+  },
+];
+
+// ─── Interface exportada ────────────────────────────────────────────────────
+export interface NuevoTipoAutoData
+  extends Omit<TipoAuto, 'id' | 'fechaCreacion' | 'fechaModificacion' | 'plantillas'> {
+  tipoAccion: TipoAccion;
+  plantillaFile?: File;
+}
+
+// ─── Props ──────────────────────────────────────────────────────────────────
 interface ModalNuevoTipoAutoProps {
   isOpen: boolean;
   onClose: () => void;
-  onGuardar: (tipoAuto: Omit<TipoAuto, 'id' | 'fechaCreacion' | 'fechaModificacion' | 'plantillas'>) => void;
+  onGuardar: (data: NuevoTipoAutoData) => void;
   tipoEdicion?: TipoAuto | null;
 }
 
-export function ModalNuevoTipoAuto({ 
-  isOpen, 
-  onClose, 
-  onGuardar, 
-  tipoEdicion 
+// ─── Componente ─────────────────────────────────────────────────────────────
+export function ModalNuevoTipoAuto({
+  isOpen,
+  onClose,
+  onGuardar,
+  tipoEdicion,
 }: ModalNuevoTipoAutoProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+
   const [formData, setFormData] = useState({
     nombre: '',
     descripcion: '',
     etapa: 'INVESTIGACION' as EtapaProcesoId,
     activo: true,
-    orden: 1
+    orden: 1,
+    tipoAccion: 'NORMAL' as TipoAccion,
+    plantillaFile: undefined as File | undefined,
   });
 
   const [errores, setErrores] = useState<Record<string, string>>({});
@@ -43,95 +97,127 @@ export function ModalNuevoTipoAuto({
     if (tipoEdicion) {
       setFormData({
         nombre: tipoEdicion.nombre,
-        descripcion: tipoEdicion.descripcion,
+        descripcion: tipoEdicion.descripcion || '',
         etapa: tipoEdicion.etapa,
         activo: tipoEdicion.activo,
-        orden: tipoEdicion.orden
+        orden: tipoEdicion.orden,
+        tipoAccion: 'NORMAL',
+        plantillaFile: undefined,
       });
     } else {
-      // Reset para nuevo
       setFormData({
         nombre: '',
         descripcion: '',
         etapa: 'INVESTIGACION' as EtapaProcesoId,
         activo: true,
-        orden: 1
+        orden: 1,
+        tipoAccion: 'NORMAL',
+        plantillaFile: undefined,
       });
     }
     setErrores({});
   }, [tipoEdicion, isOpen]);
 
-  const validarFormulario = (): boolean => {
-    const nuevosErrores: Record<string, string> = {};
+  const esConAccion = TIPOS_ACCION.find((t) => t.id === formData.tipoAccion)?.conAccion ?? false;
+
+  const validar = (): boolean => {
+    const e: Record<string, string> = {};
 
     if (!formData.nombre.trim()) {
-      nuevosErrores.nombre = 'El nombre del auto es obligatorio';
+      e.nombre = 'El nombre del auto es obligatorio';
     } else if (formData.nombre.trim().length < 5) {
-      nuevosErrores.nombre = 'El nombre debe tener al menos 5 caracteres';
+      e.nombre = 'El nombre debe tener al menos 5 caracteres';
     }
 
-    if (!formData.descripcion.trim()) {
-      nuevosErrores.descripcion = 'La descripción es obligatoria';
-    } else if (formData.descripcion.trim().length < 10) {
-      nuevosErrores.descripcion = 'La descripción debe tener al menos 10 caracteres';
+    // Plantilla obligatoria al crear, opcional al editar
+    if (!tipoEdicion && !formData.plantillaFile) {
+      e.plantilla = 'Debes adjuntar la plantilla .docx para crear el tipo de auto';
     }
 
-    setErrores(nuevosErrores);
-    return Object.keys(nuevosErrores).length === 0;
+    if (formData.plantillaFile) {
+      const nombre = formData.plantillaFile.name.toLowerCase();
+      if (!nombre.endsWith('.docx') && !nombre.endsWith('.doc')) {
+        e.plantilla = 'Solo se aceptan archivos Word (.docx / .doc)';
+      }
+    }
+
+    setErrores(e);
+    return Object.keys(e).length === 0;
   };
 
   const handleGuardar = async () => {
-    if (!validarFormulario()) {
+    if (!validar()) {
       toast.error('Formulario incompleto', {
-        description: 'Por favor completa todos los campos obligatorios'
+        description: 'Revisa los campos marcados en rojo',
       });
       return;
     }
 
     setGuardando(true);
-
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((r) => setTimeout(r, 300));
 
-      const nuevoTipo: Omit<TipoAuto, 'id' | 'fechaCreacion' | 'fechaModificacion' | 'plantillas'> = {
+      const data: NuevoTipoAutoData = {
         nombre: formData.nombre.trim(),
         descripcion: formData.descripcion.trim(),
         etapa: formData.etapa,
         activo: formData.activo,
-        orden: formData.orden
+        orden: formData.orden,
+        tipoAccion: formData.tipoAccion,
+        plantillaFile: formData.plantillaFile,
       };
 
-      onGuardar(nuevoTipo);
+      onGuardar(data);
 
       toast.success(tipoEdicion ? 'Tipo de auto actualizado' : 'Tipo de auto creado', {
-        description: formData.nombre
+        description: formData.nombre,
       });
-
       onClose();
-    } catch (error) {
-      console.error('Error al guardar:', error);
-      toast.error('Error al guardar', {
-        description: 'No se pudo guardar el tipo de auto'
-      });
+    } catch (err) {
+      console.error('Error al guardar:', err);
+      toast.error('Error al guardar el tipo de auto');
     } finally {
       setGuardando(false);
     }
   };
 
+  const handleFileSelect = (file: File | undefined) => {
+    if (!file) return;
+    const nombre = file.name.toLowerCase();
+    if (!nombre.endsWith('.docx') && !nombre.endsWith('.doc')) {
+      setErrores((prev) => ({ ...prev, plantilla: 'Solo se aceptan archivos Word (.docx / .doc)' }));
+      return;
+    }
+    setFormData((prev) => ({ ...prev, plantillaFile: file }));
+    setErrores((prev) => {
+      const { plantilla, ...rest } = prev;
+      return rest;
+    });
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    handleFileSelect(e.dataTransfer.files[0]);
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+        >
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden"
+            className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-hidden flex flex-col"
           >
-            {/* Header */}
-            <div 
-              className="px-5 py-4 flex items-center justify-between text-white"
+            {/* ── Header ── */}
+            <div
+              className="px-5 py-4 flex items-center justify-between text-white flex-shrink-0"
               style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
             >
               <div>
@@ -151,155 +237,303 @@ export function ModalNuevoTipoAuto({
               </button>
             </div>
 
-            {/* Contenido */}
-            <div className="p-5 overflow-y-auto max-h-[calc(90vh-180px)]">
-              <div className="space-y-4">
-                {/* Nombre del Auto */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                    Nombre del Auto <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.nombre}
-                    onChange={(e) => {
-                      setFormData({ ...formData, nombre: e.target.value });
-                      setErrores(prev => {
-                        const { nombre, ...rest } = prev;
-                        return rest;
-                      });
-                    }}
-                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all ${
-                      errores.nombre ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="Ej: Auto de Apertura de Investigación Disciplinaria"
-                    disabled={guardando}
-                  />
-                  {errores.nombre && (
-                    <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" />
-                      {errores.nombre}
-                    </p>
-                  )}
-                </div>
+            {/* ── Cuerpo ── */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
 
-                {/* Etapa del Proceso */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                    Etapa del Proceso <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.etapa}
-                    onChange={(e) => setFormData({ ...formData, etapa: e.target.value as EtapaProcesoId })}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                    disabled={guardando}
-                  >
-                    {(Object.keys(ETAPAS_PROCESO) as EtapaProcesoId[])
-                      .sort((a, b) => ETAPAS_PROCESO[a].orden - ETAPAS_PROCESO[b].orden)
-                      .map((key) => {
-                        const etapa = ETAPAS_PROCESO[key];
-                        return (
-                          <option key={key} value={key}>
-                            {etapa.nombre} - {etapa.descripcion}
-                          </option>
-                        );
-                      })}
-                  </select>
-                  <p className="mt-1 text-xs text-gray-600 flex items-center gap-1">
-                    <Info className="w-3 h-3" />
-                    Selecciona en qué etapa se usará este tipo de auto
+              {/* Nombre */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                  Nombre del Auto <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.nombre}
+                  onChange={(e) => {
+                    setFormData((prev) => ({ ...prev, nombre: e.target.value }));
+                    setErrores((prev) => { const { nombre, ...r } = prev; return r; });
+                  }}
+                  disabled={guardando}
+                  className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all ${
+                    errores.nombre ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  placeholder="Ej: Auto de Apertura de Investigación Disciplinaria"
+                />
+                {errores.nombre && (
+                  <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" /> {errores.nombre}
                   </p>
-                </div>
+                )}
+              </div>
 
-                {/* Descripción / Cuándo Usar */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                    Descripción / Cuándo Usar <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    value={formData.descripcion}
-                    onChange={(e) => {
-                      setFormData({ ...formData, descripcion: e.target.value });
-                      setErrores(prev => {
-                        const { descripcion, ...rest } = prev;
-                        return rest;
-                      });
-                    }}
-                    rows={3}
-                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-none ${
-                      errores.descripcion ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="Describe cuándo y para qué se usa este tipo de auto..."
-                    disabled={guardando}
-                  />
-                  {errores.descripcion && (
-                    <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" />
-                      {errores.descripcion}
-                    </p>
+              {/* Tipo de acción — tarjetas */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-2">
+                  Tipo de Acción <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-5 gap-2">
+                  {TIPOS_ACCION.map((tipo) => {
+                    const selected = formData.tipoAccion === tipo.id;
+                    return (
+                      <button
+                        key={tipo.id}
+                        type="button"
+                        onClick={() => setFormData((prev) => ({ ...prev, tipoAccion: tipo.id }))}
+                        disabled={guardando}
+                        className={`relative flex flex-col items-center p-3 rounded-xl border-2 text-center transition-all ${
+                          selected
+                            ? tipo.conAccion
+                              ? 'border-amber-500 bg-amber-50'
+                              : 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {selected && (
+                          <CheckCircle2
+                            className={`absolute top-1.5 right-1.5 w-3.5 h-3.5 ${
+                              tipo.conAccion ? 'text-amber-500' : 'text-blue-500'
+                            }`}
+                          />
+                        )}
+                        {tipo.conAccion ? (
+                          <Zap
+                            className={`w-5 h-5 mb-1.5 ${
+                              selected ? 'text-amber-500' : 'text-gray-400'
+                            }`}
+                          />
+                        ) : (
+                          <FileText
+                            className={`w-5 h-5 mb-1.5 ${
+                              selected ? 'text-blue-500' : 'text-gray-400'
+                            }`}
+                          />
+                        )}
+                        <span
+                          className={`text-xs font-bold leading-tight ${
+                            selected
+                              ? tipo.conAccion
+                                ? 'text-amber-700'
+                                : 'text-blue-700'
+                              : 'text-gray-700'
+                          }`}
+                        >
+                          {tipo.label}
+                        </span>
+                        {tipo.conAccion && (
+                          <span className="mt-1 text-xs font-semibold text-amber-600">
+                            ⚡ Con acción
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1.5 text-xs text-gray-500">
+                  {TIPOS_ACCION.find((t) => t.id === formData.tipoAccion)?.descripcion}
+                </p>
+              </div>
+
+              {/* Alerta tipo con acción */}
+              <AnimatePresence>
+                {esConAccion && (
+                  <motion.div
+                    key="alerta-accion"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 flex items-start gap-2">
+                      <Zap className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-800">
+                        <span className="font-bold">Auto con acción automática:</span> Al aprobarse
+                        este tipo de auto, el sistema cambiará automáticamente el estado o etapa del
+                        proceso disciplinario.
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Etapa — solo si tipoAccion es APERTURA */}
+              <AnimatePresence>
+                {formData.tipoAccion === 'APERTURA' && (
+                  <motion.div
+                    key="etapa-selector"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Etapa que Abre <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={formData.etapa}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            etapa: e.target.value as EtapaProcesoId,
+                          }))
+                        }
+                        disabled={guardando}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      >
+                        {(Object.keys(ETAPAS_PROCESO) as EtapaProcesoId[])
+                          .sort((a, b) => ETAPAS_PROCESO[a].orden - ETAPAS_PROCESO[b].orden)
+                          .map((key) => {
+                            const etapa = ETAPAS_PROCESO[key];
+                            return (
+                              <option key={key} value={key}>
+                                {etapa.nombre}
+                              </option>
+                            );
+                          })}
+                      </select>
+                      <p className="mt-1 text-xs text-gray-500 flex items-center gap-1">
+                        <Info className="w-3 h-3" />
+                        Etapa a la que pasará el proceso al aprobar este auto
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Plantilla .docx */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                  Plantilla Word (.docx){' '}
+                  {!tipoEdicion && <span className="text-red-500">*</span>}
+                  {tipoEdicion && (
+                    <span className="ml-1 text-gray-400 font-normal">(opcional al editar)</span>
                   )}
-                </div>
+                </label>
 
-                {/* Estado Activo */}
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">
-                      Estado del tipo de auto
-                    </p>
-                    <p className="text-xs text-gray-600 mt-0.5">
-                      {formData.activo 
-                        ? 'Este tipo de auto estará disponible para usar' 
-                        : 'Este tipo de auto no estará disponible'}
-                    </p>
+                {formData.plantillaFile ? (
+                  <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-300 rounded-lg">
+                    <FileText className="w-5 h-5 text-green-600 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-green-800 truncate">
+                        {formData.plantillaFile.name}
+                      </p>
+                      <p className="text-xs text-green-600">
+                        {(formData.plantillaFile.size / 1024).toFixed(1)} KB
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData((prev) => ({ ...prev, plantillaFile: undefined }))
+                      }
+                      disabled={guardando}
+                      className="p-1 rounded hover:bg-green-100 text-green-700"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setFormData({ ...formData, activo: !formData.activo })}
-                    disabled={guardando}
-                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors disabled:opacity-50 ${
-                      formData.activo ? 'bg-green-500' : 'bg-gray-300'
+                ) : (
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                    onDragLeave={() => setDragging(false)}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`flex flex-col items-center justify-center gap-2 p-5 border-2 border-dashed rounded-xl cursor-pointer transition-all ${
+                      dragging
+                        ? 'border-blue-400 bg-blue-50'
+                        : errores.plantilla
+                        ? 'border-red-400 bg-red-50'
+                        : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50'
                     }`}
                   >
-                    <span
-                      className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                        formData.activo ? 'translate-x-6' : 'translate-x-1'
+                    <Upload
+                      className={`w-7 h-7 ${
+                        errores.plantilla ? 'text-red-400' : 'text-gray-400'
                       }`}
                     />
-                  </button>
-                </div>
-
-                {/* Información Adicional */}
-                <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded">
-                  <div className="flex items-start gap-2">
-                    <Info className="w-4 h-4 text-blue-700 flex-shrink-0 mt-0.5" />
-                    <div className="text-xs text-blue-900">
-                      <p className="font-semibold mb-1">Sobre las plantillas:</p>
-                      <ul className="list-disc list-inside space-y-0.5 ml-2">
-                        <li>Después de crear el tipo de auto, podrás agregar múltiples plantillas</li>
-                        <li>Usa el botón "Gestionar Plantillas" para agregar archivos Word/PDF</li>
-                        <li>Las plantillas estarán disponibles para descargar desde el Kanban</li>
-                      </ul>
-                    </div>
+                    <p className="text-sm font-semibold text-gray-700">
+                      Arrastra o haz clic para subir la plantilla
+                    </p>
+                    <p className="text-xs text-gray-500">Solo archivos .docx / .doc</p>
                   </div>
+                )}
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".docx,.doc"
+                  className="hidden"
+                  onChange={(e) => handleFileSelect(e.target.files?.[0])}
+                />
+
+                {errores.plantilla && (
+                  <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" /> {errores.plantilla}
+                  </p>
+                )}
+              </div>
+
+              {/* Descripción (opcional) */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                  Descripción{' '}
+                  <span className="text-gray-400 font-normal">(opcional)</span>
+                </label>
+                <textarea
+                  value={formData.descripcion}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, descripcion: e.target.value }))
+                  }
+                  rows={2}
+                  disabled={guardando}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none"
+                  placeholder="Describe cuándo y para qué se usa este tipo de auto..."
+                />
+              </div>
+
+              {/* Estado activo */}
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Estado del tipo de auto</p>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    {formData.activo
+                      ? 'Disponible para usar en procesos disciplinarios'
+                      : 'No estará disponible para nuevos procesos'}
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setFormData((prev) => ({ ...prev, activo: !prev.activo }))}
+                  disabled={guardando}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors disabled:opacity-50 ${
+                    formData.activo ? 'bg-green-500' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                      formData.activo ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
               </div>
             </div>
 
-            {/* Footer - Botones */}
-            <div className="border-t border-gray-200 px-5 py-4 flex items-center justify-end gap-2.5">
+            {/* ── Footer ── */}
+            <div className="border-t border-gray-200 px-5 py-4 flex items-center justify-end gap-2.5 flex-shrink-0">
               <button
                 onClick={onClose}
                 disabled={guardando}
-                className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-all disabled:opacity-50"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleGuardar}
                 disabled={guardando}
-                className="flex items-center gap-1.5 px-5 py-2 text-sm font-semibold text-white rounded-lg transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ 
-                  background: guardando ? '#9CA3AF' : 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                  boxShadow: guardando ? 'none' : '0 2px 4px rgba(41, 98, 255, 0.2)'
+                className="flex items-center gap-1.5 px-5 py-2 text-sm font-semibold text-white rounded-lg transition-all hover:shadow-lg disabled:opacity-50"
+                style={{
+                  background: guardando
+                    ? '#9CA3AF'
+                    : 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                 }}
               >
                 {guardando ? (

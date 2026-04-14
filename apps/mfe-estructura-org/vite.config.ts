@@ -8,13 +8,14 @@ const appDir = 'mfe-estructura-org';
 
 export default defineConfig({
   base: getBuildBase(appDir),
+  root: __dirname,
   plugins: [
     react(),
     federation({
       name: 'estructura_org',
       filename: 'remoteEntry.js',
       exposes: {
-        './Module': './src/components/estructura-organizacional/EstructuraOrganizacionalModule.tsx',
+        './Module': path.resolve(__dirname, './src/components/estructura-organizacional/EstructuraOrganizacionalModule.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),

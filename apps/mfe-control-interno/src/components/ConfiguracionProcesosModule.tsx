@@ -462,7 +462,7 @@ export function ConfiguracionProcesosModule() {
                   <th className="text-left px-3 py-3 font-semibold text-gray-700">Código</th>
                   <th className="text-left px-3 py-3 font-semibold text-gray-700">Nombre</th>
                   <th className="text-left px-3 py-3 font-semibold text-gray-700">Tipo</th>
-                  <th className="text-left px-3 py-3 font-semibold text-gray-700">Macroproceso</th>
+                  <th className="text-left px-3 py-3 font-semibold text-gray-700">Unidad auditable</th>
                   <th className="text-left px-3 py-3 font-semibold text-gray-700">Dependencia responsable</th>
                   <th className="text-left px-3 py-3 font-semibold text-gray-700">Estado</th>
                   <th className="px-3 py-3 font-semibold text-gray-700 w-24 text-center">Acciones</th>
@@ -538,7 +538,7 @@ export function ConfiguracionProcesosModule() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4"
             onClick={() => setModalOpen(false)}
           >
             <motion.div
@@ -599,7 +599,7 @@ export function ConfiguracionProcesosModule() {
 
                 {/* Macroproceso — entrada manual */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Macroproceso <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Unidad auditable <span className="text-red-500">*</span></label>
                   <input
                     value={form.macroproceso}
                     onChange={(e) => setField('macroproceso', e.target.value)}

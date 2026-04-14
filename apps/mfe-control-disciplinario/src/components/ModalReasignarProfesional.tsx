@@ -183,7 +183,7 @@ export function ModalReasignarProfesional({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
-        style={{ zIndex: 9998 }}
+        style={{ zIndex: 9999 }}
         onClick={onClose}
       >
         <motion.div

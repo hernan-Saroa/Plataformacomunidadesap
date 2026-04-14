@@ -8,14 +8,15 @@ const appDir = 'mfe-registro-academico';
 
 export default defineConfig({
   base: getBuildBase(appDir),
+  root: __dirname,
   plugins: [
     react(),
     federation({
       name: 'registro_academico',
       filename: 'remoteEntry.js',
       exposes: {
-        './Enrollment': './src/components/EnrollmentManagementModule.tsx',
-        './Graduates': './src/components/GraduatesManagementModule.tsx',
+        './Enrollment': path.resolve(__dirname, './src/components/EnrollmentManagementModule.tsx'),
+        './Graduates': path.resolve(__dirname, './src/components/GraduatesManagementModule.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),

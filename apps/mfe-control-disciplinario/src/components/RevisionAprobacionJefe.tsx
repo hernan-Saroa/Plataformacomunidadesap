@@ -529,6 +529,18 @@ export function RevisionAprobacionJefe({
                           </div>
                         </div>
                       )}
+
+                      {/* Advertencia para auto pliego de cargos */}
+                      {(borrador.titulo?.toLowerCase().includes('pliego') || borrador.plantilla?.toLowerCase().includes('pliego')) && esActivo && (
+                        <div className="mt-2 p-2 rounded-lg border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
+                          <div className="flex items-start gap-1.5">
+                            <AlertTriangle style={{ width: 12, height: 12, color: '#D97706', marginTop: 1, flexShrink: 0 }} />
+                            <p className="text-[10px] leading-relaxed" style={{ color: '#92400E' }}>
+                              <strong>Auto Pliego de Cargos:</strong> Al aprobar este auto, el proceso será <strong>cerrado permanentemente</strong> y se notificará automáticamente a la Oficina de Jurídica.
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </motion.div>

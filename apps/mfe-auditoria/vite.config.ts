@@ -8,13 +8,14 @@ const appDir = 'mfe-auditoria';
 
 export default defineConfig({
   base: getBuildBase(appDir),
+  root: __dirname,
   plugins: [
     react(),
     federation({
       name: 'auditoria',
       filename: 'remoteEntry.js',
       exposes: {
-        './Module': './src/components/AuditModulePremium.tsx',
+        './Module': path.resolve(__dirname, './src/components/AuditModulePremium.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),

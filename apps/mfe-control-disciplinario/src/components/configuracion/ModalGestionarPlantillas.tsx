@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { disciplinaryService } from '../../../../services/api/disciplinary.service';
+import { ConfirmationModal } from './ConfirmationModal';
 import { type TipoAuto, type PlantillaArchivo } from './SeccionPlantillasAutosUnificada';
 
 interface ModalGestionarPlantillasProps {
@@ -39,6 +40,7 @@ export function ModalGestionarPlantillas({
   });
   const [modalAgregarPlantilla, setModalAgregarPlantilla] = useState(false);
   const [plantillaEditando, setPlantillaEditando] = useState<PlantillaArchivo | null>(null);
+  const [plantillaPendienteEliminar, setPlantillaPendienteEliminar] = useState<PlantillaArchivo | null>(null);
   const [guardando, setGuardando] = useState(false);
 
   // Actualizar plantillas cuando cambie tipoAuto
@@ -60,12 +62,17 @@ export function ModalGestionarPlantillas({
     const plantilla = plantillas.find(p => p.id === plantillaId);
     if (!plantilla) return;
 
-    if (confirm(`¿Estás seguro de eliminar la plantilla "${plantilla.nombre}"?`)) {
-      setPlantillas(prev => prev.filter(p => p.id !== plantillaId));
-      toast.success('Plantilla eliminada', {
-        description: plantilla.nombre
-      });
-    }
+    setPlantillaPendienteEliminar(plantilla);
+  };
+
+  const confirmarEliminarPlantilla = () => {
+    if (!plantillaPendienteEliminar) return;
+
+    setPlantillas(prev => prev.filter(p => p.id !== plantillaPendienteEliminar.id));
+    toast.success('Plantilla eliminada', {
+      description: plantillaPendienteEliminar.nombre
+    });
+    setPlantillaPendienteEliminar(null);
   };
 
   const handleDescargarPlantilla = (plantilla: PlantillaArchivo) => {
@@ -393,6 +400,48 @@ export function ModalGestionarPlantillas({
           </motion.div>
         </div>
       </AnimatePresence>
+
+      <ConfirmationModal
+        open={!!plantillaPendienteEliminar}
+        onClose={() => setPlantillaPendienteEliminar(null)}
+        contentClassName="max-w-lg"
+      >
+        <div className="space-y-6">
+          <div className="space-y-2 pr-10">
+            <h3 className="text-xl font-bold text-gray-900">Eliminar plantilla</h3>
+            <p className="text-sm text-gray-600">
+              Esta accion retirara la plantilla de este tipo de auto. Podras
+              guardar despues los cambios del catalogo si deseas conservarlos.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+            <p className="text-sm font-semibold text-gray-900">
+              {plantillaPendienteEliminar?.nombre}
+            </p>
+            <p className="mt-1 text-xs text-gray-600">
+              {plantillaPendienteEliminar?.nombreArchivo}
+            </p>
+          </div>
+
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => setPlantillaPendienteEliminar(null)}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={confirmarEliminarPlantilla}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700"
+            >
+              Eliminar plantilla
+            </button>
+          </div>
+        </div>
+      </ConfirmationModal>
 
       {/* Modal Agregar/Editar Plantilla */}
       {modalAgregarPlantilla && (

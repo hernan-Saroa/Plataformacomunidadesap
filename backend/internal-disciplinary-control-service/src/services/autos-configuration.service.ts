@@ -2,7 +2,12 @@ import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AutoConfiguration } from '../entities/auto-configuration.entity';
+import { LegalAuto } from '../entities/legal-auto.entity';
+import { ProcessStatus } from '../entities/disciplinary-process.entity';
 import {
+  AutoConfigurationDeletionImpactDto,
+  AutoConfigurationUsageProcessDto,
+  AutoConfigurationUsageStateDto,
   CreateAutosConfigurationDto,
   UpdateAutosConfigurationDto,
 } from '../dtos/autos-configuration.dto';
@@ -12,7 +17,23 @@ export class AutosConfigurationService {
   constructor(
     @InjectRepository(AutoConfiguration)
     private autoConfigRepository: Repository<AutoConfiguration>,
+    @InjectRepository(LegalAuto)
+    private autoRepository: Repository<LegalAuto>,
   ) {}
+
+  private readonly ACTIVE_PROCESS_STATUSES = [
+    ProcessStatus.ACTIVO,
+    ProcessStatus.SUSPENDIDO,
+  ];
+
+  private readonly AUTO_STATUS_ORDER: Record<string, number> = {
+    BORRADOR: 1,
+    REVISION_JEFE: 2,
+    DEVUELTO: 3,
+    APROBADO: 4,
+    FIRMADO: 5,
+    NOTIFICADO: 6,
+  };
 
   /**
    * Crear una nueva configuración de auto
@@ -20,18 +41,6 @@ export class AutosConfigurationService {
   async create(
     createDto: CreateAutosConfigurationDto,
   ): Promise<AutoConfiguration> {
-    // Verificar si ya existe un auto con el mismo tipo
-    const existing = await this.autoConfigRepository.findOne({
-      where: { tipo: createDto.tipo },
-    });
-
-    if (existing) {
-      throw new HttpException(
-        `Ya existe una configuración para el tipo de auto: ${createDto.tipo}`,
-        HttpStatus.CONFLICT,
-      );
-    }
-
     const autoConfig = this.autoConfigRepository.create({
       tipo: createDto.tipo,
       nombre: createDto.nombre,
@@ -140,10 +149,167 @@ export class AutosConfigurationService {
   }
 
   /**
+   * Obtener impacto de eliminación para una configuración de auto
+   */
+  async getDeletionImpact(
+    id: string,
+  ): Promise<AutoConfigurationDeletionImpactDto> {
+    const autoConfig = await this.findById(id);
+    const schema =
+      this.autoConfigRepository.metadata.schema ||
+      this.autoRepository.metadata.schema ||
+      'public';
+    const autoTable = `"${schema}"."legal_autos"`;
+    const processTable = `"${schema}"."disciplinary_processes"`;
+    const professionalTable = `"${schema}"."disciplinary_professional"`;
+
+    // Esta consulta usa SQL crudo para evitar que TypeORM intente proyectar
+    // columnas del entity DisciplinaryProcess que no existen en algunas BD
+    // locales heredadas, como fechaInicioEtapa.
+    const usageRows = await this.autoRepository.query(
+      `
+        SELECT
+          process.id AS "processId",
+          process."radicadoProceso" AS "radicadoProceso",
+          process.estado AS "estado",
+          process."etapaActual" AS "etapaActual",
+          professional.nombre_completo AS "abogadoAsignadoNombre",
+          auto.estado AS "autoStatus",
+          COUNT(auto.id)::int AS "autosCount",
+          MAX(auto."createdAt") AS "ultimoAutoCreadoAt"
+        FROM ${autoTable} auto
+        INNER JOIN ${processTable} process
+          ON process.id = auto."processId"
+        LEFT JOIN ${professionalTable} professional
+          ON professional.id = process.abogado_asignado_id
+        WHERE auto.tipo::text = $1
+        GROUP BY
+          process.id,
+          process."radicadoProceso",
+          process.estado,
+          process."etapaActual",
+          professional.nombre_completo,
+          auto.estado
+        ORDER BY MAX(auto."createdAt") DESC
+      `,
+      [autoConfig.tipo],
+    );
+
+    const usageProcessesMap = new Map<
+      string,
+      AutoConfigurationUsageProcessDto & {
+        _latestTimestamp: number;
+      }
+    >();
+
+    usageRows.forEach(
+      (row: {
+        processId: string;
+        radicadoProceso: string;
+        estado: string;
+        etapaActual: string;
+        abogadoAsignadoNombre: string | null;
+        autoStatus: string;
+        autosCount: string | number;
+        ultimoAutoCreadoAt: string | null;
+      }) => {
+        const autosCount = Number(row.autosCount || 0);
+        const latestTimestamp = row.ultimoAutoCreadoAt
+          ? new Date(row.ultimoAutoCreadoAt).getTime()
+          : 0;
+
+        const stateEntry: AutoConfigurationUsageStateDto = {
+          status: row.autoStatus,
+          count: autosCount,
+        };
+
+        const existing = usageProcessesMap.get(row.processId);
+
+        if (!existing) {
+          usageProcessesMap.set(row.processId, {
+            processId: row.processId,
+            radicadoProceso: row.radicadoProceso,
+            estado: row.estado,
+            etapaActual: row.etapaActual,
+            abogadoAsignadoNombre: row.abogadoAsignadoNombre,
+            autosCount,
+            ultimoAutoCreadoAt: row.ultimoAutoCreadoAt,
+            autoStates: [stateEntry],
+            _latestTimestamp: latestTimestamp,
+          });
+          return;
+        }
+
+        existing.autosCount += autosCount;
+        existing.autoStates.push(stateEntry);
+
+        if (latestTimestamp > existing._latestTimestamp) {
+          existing._latestTimestamp = latestTimestamp;
+          existing.ultimoAutoCreadoAt = row.ultimoAutoCreadoAt;
+        }
+      },
+    );
+
+    const usageProcesses: AutoConfigurationUsageProcessDto[] = Array.from(
+      usageProcessesMap.values(),
+    )
+      .map((process) => ({
+        ...process,
+        autoStates: [...process.autoStates].sort(
+          (a, b) =>
+            (this.AUTO_STATUS_ORDER[a.status] || 999) -
+            (this.AUTO_STATUS_ORDER[b.status] || 999),
+        ),
+      }))
+      .sort(
+        (a, b) =>
+          new Date(b.ultimoAutoCreadoAt || 0).getTime() -
+          new Date(a.ultimoAutoCreadoAt || 0).getTime(),
+      )
+      .map(({ _latestTimestamp, ...process }) => process);
+
+    const activeProcesses = usageProcesses.filter((process) =>
+      this.ACTIVE_PROCESS_STATUSES.includes(process.estado as ProcessStatus),
+    );
+
+    const historicalProcessesCount =
+      usageProcesses.length - activeProcesses.length;
+
+    return {
+      autoConfigurationId: autoConfig.id,
+      autoTipo: autoConfig.tipo,
+      autoNombre: autoConfig.nombre,
+      canDelete: activeProcesses.length === 0,
+      activeProcessesCount: activeProcesses.length,
+      historicalProcessesCount,
+      activeProcesses,
+    };
+  }
+
+  /**
    * Eliminar una configuración
    */
   async delete(id: string): Promise<void> {
     const autoConfig = await this.findById(id);
+    const deletionImpact = await this.getDeletionImpact(id);
+
+    if (!deletionImpact.canDelete) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.CONFLICT,
+          message:
+            'No se puede eliminar este tipo de auto porque tiene procesos en curso asociados. Revise o cierre esos procesos antes de continuar.',
+          error: {
+            code: 'AUTO_CONFIGURATION_IN_USE',
+            message:
+              'No se puede eliminar este tipo de auto porque tiene procesos en curso asociados. Revise o cierre esos procesos antes de continuar.',
+            details: deletionImpact,
+          },
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
+
     await this.autoConfigRepository.remove(autoConfig);
   }
 

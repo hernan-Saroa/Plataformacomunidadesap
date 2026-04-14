@@ -479,9 +479,10 @@ export class ProcessController {
         'audio/wav',
         'audio/ogg',
       ],
-      // Auto: Solo PDF
+      // Auto: Solo WORD
       'AUTO': [
-        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       ],
       // Oficio: Solo PDF
       'OFICIO': [
@@ -609,7 +610,7 @@ export class ProcessController {
     const extensionesLista: Record<string, string[]> = {
       'EVIDENCIA': ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov', '.avi'],
       'PRUEBA DOCUMENTAL': ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov', '.avi'],
-      'AUTO': ['.pdf'],
+      'AUTO': ['.doc', '.docx'],
       'OFICIO': ['.pdf'],
       'NOTIFICACION': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
       'NOTIFICACIÓN': ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
@@ -730,10 +731,9 @@ export class ProcessController {
         };
       });
 
-      // Mapear autos procesales a documentos
+      // Mapear autos procesales a documentos del expediente (todos los estados).
       const documentosAutos = (proceso.autos || []).map((auto: any) => {
-        // Calcular tamaño aproximado del contenido HTML
-        const sizeBytes = new TextEncoder().encode(auto.contenido || '').length;
+        const sizeBytes = auto.documentSize || new TextEncoder().encode(auto.contenido || '').length;
         const tamaño = sizeBytes >= 1024 * 1024
           ? `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`
           : `${Math.max(1, (sizeBytes / 1024)).toFixed(0)} KB`;
@@ -760,7 +760,7 @@ export class ProcessController {
           // Si hay archivo, usar su tipo. Si no, es HTML.
           fileType: auto.documentUrl ? (auto.documentType || 'application/pdf') : 'text/html',
           archivoNombre: auto.documentName || `Auto-${auto.numero || 'borrador'}.${auto.documentUrl ? 'pdf' : 'html'}`,
-          fileSize: sizeBytes,
+          fileSize: auto.documentSize || sizeBytes,
           versiones: [
             // Agregar la versión actual como la más reciente
             {

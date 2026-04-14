@@ -92,12 +92,13 @@ export class NewsService {
         ...createNewsDto,
         adjuntos,
         fechaCaducidad,
-        estado: NewsStatus.RADICADA,
+        estado: 'RADICADA',
         kanbanStage: initialStage.id,
+        etapaActual: initialStage.etapa,
         historialAuditoria: initialHistory,
-      });
+      } as any);
 
-      return await this.newsRepository.save(noticia);
+      return await this.newsRepository.save(noticia) as unknown as DisciplinaryNews;
     } catch (error) {
       throw new HttpException(
         `Error al radicar noticia: ${error.message}`,

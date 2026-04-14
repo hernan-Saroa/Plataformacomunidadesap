@@ -331,8 +331,18 @@ class ControlInternoAPIClient {
   private servicePrefix: string;
 
   constructor() {
-    this.baseURL = CONTROL_INTERNO_BASE_URL;
-    this.servicePrefix = SERVICE_PREFIX;
+    // Normalizar baseURL y evitar duplicar el prefijo cuando VITE_API_URL
+    // ya viene configurada como `/services/control-institucional/api/v1`.
+    const normalizedBase = (CONTROL_INTERNO_BASE_URL || '').replace(/\/$/, '');
+    const normalizedPrefix = (SERVICE_PREFIX || '').replace(/\/$/, '');
+
+    this.baseURL = normalizedBase;
+    this.servicePrefix =
+      API_MODE === 'gateway' &&
+      normalizedPrefix &&
+      normalizedBase.toLowerCase().endsWith(normalizedPrefix.toLowerCase())
+        ? ''
+        : SERVICE_PREFIX;
   }
 
   private async request<T>(
@@ -584,49 +594,51 @@ class ControlInternoService {
    */
   async getEvaluaciones(vigencia?: number): Promise<EvaluacionProceso[]> {
     const q = vigencia ? `?vigencia=${vigencia}` : '';
-    return client.get<EvaluacionProceso[]>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones${q}`);
+    // `client` ya agrega `SERVICE_PREFIX` internamente (baseURL + servicePrefix + endpoint).
+    return client.get<EvaluacionProceso[]>(`/universo-auditorias/evaluaciones${q}`);
   }
 
   /**
    * Obtiene una evaluación por ID
    */
   async getEvaluacionById(id: string): Promise<EvaluacionProceso> {
-    return client.get<EvaluacionProceso>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/${id}`);
+    return client.get<EvaluacionProceso>(`/universo-auditorias/evaluaciones/${id}`);
   }
 
   /**
    * Obtiene evaluaciones por proceso
    */
   async getEvaluacionesByProceso(procesoId: string): Promise<EvaluacionProceso[]> {
-    return client.get<EvaluacionProceso[]>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/proceso/${procesoId}`);
+    return client.get<EvaluacionProceso[]>(`/universo-auditorias/evaluaciones/proceso/${procesoId}`);
   }
 
   /**
    * Obtiene estadísticas de evaluaciones por vigencia
    */
   async getEstadisticasEvaluaciones(vigencia: number): Promise<any> {
-    return client.get(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/estadisticas/${vigencia}`);
+    return client.get(`/universo-auditorias/evaluaciones/estadisticas/${vigencia}`);
   }
 
   /**
    * Crea una nueva evaluación de proceso
    */
   async createEvaluacion(data: CreateEvaluacionProcesoDTO): Promise<EvaluacionProceso> {
-    return client.post<EvaluacionProceso>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones`, data);
+    // `client` ya agrega `SERVICE_PREFIX` internamente (baseURL + servicePrefix + endpoint).
+    return client.post<EvaluacionProceso>(`/universo-auditorias/evaluaciones`, data);
   }
 
   /**
    * Actualiza una evaluación de proceso
    */
   async updateEvaluacion(id: string, data: Partial<CreateEvaluacionProcesoDTO>): Promise<EvaluacionProceso> {
-    return client.put<EvaluacionProceso>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/${id}`, data);
+    return client.put<EvaluacionProceso>(`/universo-auditorias/evaluaciones/${id}`, data);
   }
 
   /**
    * Elimina una evaluación de proceso
    */
   async deleteEvaluacion(id: string): Promise<void> {
-    return client.delete(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/${id}`);
+    return client.delete(`/universo-auditorias/evaluaciones/${id}`);
   }
 
   // ==========================================================================

@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsNotEmpty,
   IsNumber,
+  IsIn,
   Matches,
 } from 'class-validator';
 import { AutoType, AutoStatus } from '../entities/legal-auto.entity';
@@ -42,6 +43,15 @@ export class CreateLegalAutoDto {
   @IsOptional()
   @IsString()
   comentarios?: string;
+
+  @IsOptional()
+  @IsString()
+  etapaDestino?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @IsIn([3, 6])
+  prorrogaMeses?: number; // Solo para AUTO_PRORROGA: 3 o 6 meses
 }
 
 export class UpdateAutoStatusDto {

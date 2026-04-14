@@ -4,7 +4,6 @@ import {
   IsBoolean,
   IsArray,
   IsOptional,
-  IsEnum,
   Min,
   Max,
   ArrayMinSize,
@@ -14,15 +13,15 @@ import { RolOCIG } from '../entities/configuracion-profesional-ocig.entity';
 
 // Mapa de valores frontend → enum backend
 const ROL_MAP: Record<string, RolOCIG> = {
-  'Jefe OCI':       RolOCIG.JEFE_OCIG,
-  'Jefe OCIG':      RolOCIG.JEFE_OCIG,
+  'Jefe OCI': RolOCIG.JEFE_OCIG,
+  'Jefe OCIG': RolOCIG.JEFE_OCIG,
   'Auditor Sénior': RolOCIG.AUDITOR_SENIOR,
   'Auditor Senior': RolOCIG.AUDITOR_SENIOR,
-  'Auditor':        RolOCIG.AUDITOR,
+  'Auditor': RolOCIG.AUDITOR,
   'Auditor Júnior': RolOCIG.AUDITOR_JUNIOR,
   'Auditor Junior': RolOCIG.AUDITOR_JUNIOR,
-  'Apoyo Técnico':  RolOCIG.APOYO_TECNICO,
-  'Apoyo Tecnico':  RolOCIG.APOYO_TECNICO,
+  'Apoyo Técnico': RolOCIG.APOYO_TECNICO,
+  'Apoyo Tecnico': RolOCIG.APOYO_TECNICO,
   'Profesional OCI': RolOCIG.AUDITOR,
   'Profesional DCI': RolOCIG.AUDITOR,
 };
@@ -33,13 +32,13 @@ export class CreateConfiguracionProfesionalOCIGDto {
   @IsString()
   idTercero: string;
 
-  // Acepta tanto rolOcig como rolOCI (alias del frontend)
+  // Acepta cualquier rol como string
   @Transform(({ value, obj }) => {
-    const raw = value ?? obj['rolOCI'] ?? '';
-    return ROL_MAP[raw] ?? raw;
+    const raw = value ?? obj['rolOCIG'] ?? obj['rolOCI'] ?? '';
+    return String(raw).trim();
   })
-  @IsEnum(RolOCIG)
-  rolOcig: RolOCIG;
+  @IsString()
+  rolOcig: string;
 
   @IsOptional()
   @IsArray()
@@ -70,12 +69,12 @@ export class CreateConfiguracionProfesionalOCIGDto {
 export class UpdateConfiguracionProfesionalOCIGDto {
   @IsOptional()
   @Transform(({ value, obj }) => {
-    const raw = value ?? obj['rolOCI'] ?? undefined;
+    const raw = value ?? obj['rolOCIG'] ?? obj['rolOCI'] ?? undefined;
     if (!raw) return undefined;
-    return ROL_MAP[raw] ?? raw;
+    return String(raw).trim();
   })
-  @IsEnum(RolOCIG)
-  rolOcig?: RolOCIG;
+  @IsString()
+  rolOcig?: string;
 
   @IsOptional()
   @IsArray()
@@ -110,7 +109,7 @@ export class UpdateConfiguracionProfesionalOCIGDto {
 export class ConfiguracionProfesionalOCIGResponseDto {
   id: string;
   idTercero: string;
-  rolOcig: RolOCIG;
+  rolOcig: string; // Puede ser cualquier rol del sistema (ADMIN, USER, etc.)
   especialidades: string[];
   capacidadMaximaAuditorias: number;
   horasMensualesDisponibles: number;

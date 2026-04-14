@@ -460,11 +460,7 @@ export function SeccionPlantillasAutosUnificada({
                                 Ver
                               </button>
                               <button
-                                onClick={() => {
-                                  if (confirm(`¿Eliminar "${tipo.nombre}"?\n\nSe eliminará el tipo y su plantilla.\n\nEsta acción NO se puede deshacer.`)) {
-                                    onEliminarTipo(tipo.id);
-                                  }
-                                }}
+                                onClick={() => onEliminarTipo(tipo.id)}
                                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 border-2 border-red-300 text-red-700 hover:bg-red-100 transition-colors font-semibold text-xs"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />

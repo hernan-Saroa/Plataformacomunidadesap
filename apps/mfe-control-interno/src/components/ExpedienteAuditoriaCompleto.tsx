@@ -1680,9 +1680,19 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist, read
         </div>
       </div>
 
-      {/* 2. LISTA DE CHEQUEO */}
+      {/* 2. LISTA DE CHEQUEO - SOLO LECTURA (muestra listas de Planeación) */}
       <div className="bg-white border-2 border-amber-200 rounded-lg p-4">
-        <SeccionListasChequeoExpediente auditoriaId={auditoria.id} etapaActual="Ejecución" />
+        <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center gap-2 text-xs text-blue-700">
+            <AlertCircle className="w-4 h-4" />
+            <p><strong>📋 Referencia:</strong> Estas son las listas de <strong>Planeación</strong> (solo lectura). Para editarlas, ve a la pestaña de Planeación.</p>
+          </div>
+        </div>
+        <SeccionListasChequeoExpediente 
+          auditoriaId={auditoria.id} 
+          etapaActual="Planeación" 
+          readOnly={true}
+        />
       </div>
 
       {/* 3. REUNIÓN DE CIERRE */}
@@ -1765,9 +1775,7 @@ function TabComunicacion({ auditoria, onComunicacionCompletada, readOnly }: TabF
           </div>
         </div>
       </Card>
-      <div className="bg-white border-2 border-green-200 rounded-lg p-4">
-        <SeccionListasChequeoExpediente auditoriaId={auditoria.id} etapaActual="Comunicación" />
-      </div>
+      {/* ❌ LISTAS DE CHEQUEO ELIMINADAS DE COMUNICACIÓN */}
       <div className="bg-white border-2 border-green-200 rounded-lg p-4">
         <ComunicacionAuditoriaModule
           auditoriaId={auditoria.id}

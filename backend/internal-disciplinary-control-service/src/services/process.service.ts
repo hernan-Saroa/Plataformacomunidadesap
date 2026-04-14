@@ -8,6 +8,7 @@ import { Repository, Not, In } from 'typeorm';
 import {
   DisciplinaryProcess,
   ProcessStatus,
+  ProcessStage,
 } from '../entities/disciplinary-process.entity';
 import {
   CreateDisciplinaryProcessDto,
@@ -24,6 +25,8 @@ import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-a
 import { DisciplinaryProcessTask } from '../entities/disciplinary-process-task.entity';
 import { DisciplinaryProcessNote } from '../entities/disciplinary-process-note.entity';
 import { StageConfiguration } from '../entities/stage-configuration.entity';
+import { AlertasService } from './alertas.service';
+import { TipoAlerta } from '../entities/alerta-enviada.entity';
 
 @Injectable()
 export class ProcessService {
@@ -47,6 +50,7 @@ export class ProcessService {
     private sequenceService: SequenceService,
     private terminosService: TerminosCalculatorService,
     private newsService: NewsService,
+    private alertasService: AlertasService,
   ) { }
 
   private async buildActuacionesResumen(processIds: string[]): Promise<Map<string, {
@@ -293,6 +297,7 @@ export class ProcessService {
          estado: ProcessStatus.ACTIVO,
          fechaPrescripcion,
          fechaVencimientoEtapa: fechaVencimiento,
+         fechaInicioEtapa: new Date(),
          observaciones: createProcessDto.observaciones,
        });
 
@@ -339,6 +344,27 @@ export class ProcessService {
           email: resultado.abogadoAsignado?.email
         }
       });
+
+      // Enviar notificación interna al profesional asignado
+      try {
+        const asunto = `Nuevo proceso asignado: ${resultado.radicadoProceso}`;
+        const comentario = createProcessDto.observaciones?.trim();
+        const mensaje = comentario
+          ? `Se le ha asignado el proceso disciplinario ${resultado.radicadoProceso}.\n\nComentario: ${comentario}`
+          : `Se le ha asignado el proceso disciplinario ${resultado.radicadoProceso}.`;
+
+        await this.alertasService.crearNotificacionAuto(
+          null,
+          TipoAlerta.VISUAL,
+          resultado.abogadoAsignadoNombre,
+          asunto,
+          mensaje,
+          resultado.abogadoAsignadoId,
+        );
+      } catch (notifError) {
+        console.error('Error creando notificación de asignación:', notifError);
+        // No fallamos la transacción principal si falla la notificación
+      }
 
       return resultado as any;
     } catch (error) {
@@ -650,6 +676,13 @@ export class ProcessService {
     try {
       const proceso = await this.findById(id, false);
 
+      if (proceso.estado === ProcessStatus.CERRADO) {
+        throw new HttpException(
+          'No se puede cambiar la etapa de un proceso CERRADO',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
       // Get the new stage configuration
       const newStageConfig = await this.stageConfigurationRepository.findOne({
         where: { id: stageId, activo: true },
@@ -699,10 +732,57 @@ export class ProcessService {
   }
 
   /**
+   * Cambia la etapa del proceso por aprobación de auto de apertura (sin validación de transición)
+   */
+  async changeStageByAutoApertura(
+    id: string,
+    nuevaEtapa: ProcessStage,
+    fechaAprobacion: Date,
+  ): Promise<{ proceso: DisciplinaryProcess; tiempoAcumuladoDias: number | null }> {
+    const proceso = await this.findById(id, false);
+
+    let tiempoAcumuladoDias: number | null = null;
+    const fechaInicioReferencia =
+      proceso.fechaInicioEtapa || proceso.createdAt || null;
+
+    if (fechaInicioReferencia) {
+      tiempoAcumuladoDias = await this.terminosService.contarDiasHabiles(
+        fechaInicioReferencia,
+        fechaAprobacion,
+      );
+    }
+
+    const newStageConfig = await this.stageConfigurationRepository.findOne({
+      where: { etapa: nuevaEtapa, activo: true },
+    });
+
+    const { fechaVencimiento } =
+      await this.terminosService.calculateVencimientoEtapa(nuevaEtapa);
+
+    proceso.etapaActual = nuevaEtapa;
+    proceso.fechaInicioEtapa = fechaAprobacion;
+    proceso.fechaVencimientoEtapa = fechaVencimiento;
+    if (newStageConfig) {
+      proceso.kanbanStage = newStageConfig.id;
+    }
+
+    const procesoGuardado = await this.processRepository.save(proceso);
+    return { proceso: procesoGuardado, tiempoAcumuladoDias };
+  }
+
+  /**
    * Actualiza datos generales del proceso (abogado, hechos, disciplinable)
    */
   async update(id: string, updateDto: UpdateDisciplinaryProcessDto): Promise<DisciplinaryProcess> {
     const proceso = await this.findById(id, false);
+
+    if (proceso.estado === ProcessStatus.CERRADO) {
+      throw new HttpException(
+        'No se puede modificar un proceso que está CERRADO (trasladado a jurídica)',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     let updated = false;
 
     // 1. Actualizar abogado asignado si se proporciona
@@ -775,6 +855,90 @@ export class ProcessService {
   }
 
   /**
+   * Cierra el proceso por aprobación de Auto Pliego de Cargos.
+   * Retorna datos consolidados para el correo a jurídica.
+   */
+  async cerrarPorPliegoCargos(
+    id: string,
+    aprobadoPorId: string,
+  ): Promise<{
+    radicado: string;
+    etapaAlCierre: string;
+    profesionalResponsable: string;
+    fechaCreacion: string;
+    fechaCierre: string;
+    fechaVencimiento: string;
+    disciplinable: any;
+    hechos: string;
+    autosGenerados: number;
+    historialEtapas: string;
+  }> {
+    const proceso = await this.processRepository.findOne({
+      where: { id },
+      relations: ['news', 'abogadoAsignado', 'autos'],
+    });
+
+    if (!proceso) {
+      throw new HttpException('Proceso no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    if (proceso.estado !== ProcessStatus.ACTIVO) {
+      throw new HttpException(
+        'Solo se puede cerrar un proceso que esté ACTIVO',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const fechaCierre = new Date();
+    const etapaAlCierre = proceso.etapaActual;
+
+    // Calcular tiempo acumulado
+    let tiempoAcumuladoDias: number | null = null;
+    if (proceso.fechaInicioEtapa) {
+      tiempoAcumuladoDias = await this.terminosService.contarDiasHabiles(
+        proceso.fechaInicioEtapa,
+        fechaCierre,
+      );
+    }
+
+    // Actualizar estado del proceso
+    proceso.estado = ProcessStatus.CERRADO;
+    proceso.fechaCierre = fechaCierre;
+    proceso.etapaAlCierre = etapaAlCierre;
+    proceso.cerradoPorId = aprobadoPorId;
+
+    await this.processRepository.save(proceso);
+
+    // Preparar datos consolidados para el correo
+    const disciplinable = proceso.news?.disciplinable;
+    const hechos = proceso.news?.hechos || '';
+    const profesionalResponsable = proceso.abogadoAsignado?.nombreCompleto || 'Sin asignar';
+
+    return {
+      radicado: proceso.radicadoProceso,
+      etapaAlCierre,
+      profesionalResponsable,
+      fechaCreacion: proceso.createdAt?.toISOString() || '',
+      fechaCierre: fechaCierre.toISOString(),
+      fechaVencimiento: proceso.fechaVencimientoEtapa?.toISOString() || '',
+      disciplinable: Array.isArray(disciplinable) ? disciplinable[0] : disciplinable,
+      hechos,
+      autosGenerados: proceso.autos?.length || 0,
+      historialEtapas: `Etapa al cierre: ${etapaAlCierre}. Tiempo acumulado: ${tiempoAcumuladoDias ?? 'N/A'} día(s) hábil(es).`,
+    };
+  }
+
+  /**
+   * Marca que el correo a jurídica fue enviado exitosamente.
+   */
+  async marcarCorreoJuridicaEnviado(processId: string): Promise<void> {
+    await this.processRepository.update(processId, {
+      correoJuridicaEnviado: true,
+      correoJuridicaFechaEnvio: new Date(),
+    });
+  }
+
+  /**
    * Obtener proceso por radicado del proceso
    */
   async findByRadicado(radicadoProceso: string): Promise<DisciplinaryProcess> {
@@ -829,6 +993,13 @@ export class ProcessService {
     try {
 
       const proceso = await this.findById(id, false); // No cargar autos para evitar errores
+
+      if (proceso.estado === ProcessStatus.CERRADO) {
+        throw new HttpException(
+          'No se puede agregar evidencia a un proceso CERRADO',
+          HttpStatus.FORBIDDEN,
+        );
+      }
 
       // Determinar tipo de archivo desde la extensión si no se proporciona
       const extension = originalName.split('.').pop()?.toLowerCase() || '';

@@ -8,13 +8,14 @@ const appDir = 'mfe-gestion-profesoral';
 
 export default defineConfig({
   base: getBuildBase(appDir),
+  root: __dirname,
   plugins: [
     react(),
     federation({
       name: 'gestion_profesoral',
       filename: 'remoteEntry.js',
       exposes: {
-        './Module': './src/components/gestion-profesoral/GestionProfesoralApp.tsx',
+        './Module': path.resolve(__dirname, './src/components/gestion-profesoral/GestionProfesoralApp.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),

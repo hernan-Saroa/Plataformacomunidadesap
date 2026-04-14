@@ -8,13 +8,14 @@ const appDir = 'mfe-gestion-legal';
 
 export default defineConfig({
   base: getBuildBase(appDir),
+  root: __dirname,
   plugins: [
     react(),
     federation({
       name: 'gestion_legal',
       filename: 'remoteEntry.js',
       exposes: {
-        './Module': './src/components/core/GestionLegalFull.tsx',
+        './Module': path.resolve(__dirname, './src/components/core/GestionLegalFull.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),

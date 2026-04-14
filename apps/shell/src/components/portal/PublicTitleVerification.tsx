@@ -1410,23 +1410,19 @@ export function PublicTitleVerification({
                         datos
                       </p>
                       <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-                        Si el resultado no corresponde con la información
-                        esperada o el graduado no aparece en la consulta,
-                        verifica nuevamente los datos ingresados. Algunos
-                        registros históricos, especialmente de graduaciones del
-                        año 2010 o anteriores, pueden no encontrarse disponibles
-                        en esta base de datos y requerir revisión manual.
-                      </p>
-                      <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-                        En estos casos, puedes escribir a{" "}
+                        A través de este módulo podrá verificar los títulos
+                        expedidos desde el año 2000 hasta la fecha. En caso de
+                        que el título haya sido expedido con anterioridad,
+                        requiera algún ajuste o desee reportar una
+                        inconsistencia, deberá realizar la solicitud a través
+                        del correo electrónico{" "}
                         <a
                           href="mailto:ventanillaunica@esap.edu.co"
                           className="font-semibold text-[#1e5da8] underline decoration-[#1e5da8]/30 underline-offset-2 hover:text-[#174a86]"
                         >
                           ventanillaunica@esap.edu.co
                         </a>{" "}
-                        o acercarte a la ventanilla única de la ESAP para
-                        recibir orientación.
+                        adjuntando copia de Diploma o Acta de Grado.
                       </p>
                     </div>
                   </div>

@@ -59,6 +59,7 @@ import { SchedulerService } from './services/scheduler.service';
 import { SeedService } from './seed.service';
 import { OnlyOfficeService } from './services/onlyoffice.service';
 import { PdfModifierService } from './services/pdf-modifier.service';
+import { DocumentConversionService } from './services/document-conversion.service';
 import { databaseConfig } from './database.config';
 
 import { AppController } from './app.controller';
@@ -94,6 +95,7 @@ import { DisciplinaryProcessActuacionesService } from './services/disciplinary-p
 import { DisciplinaryProcessTasksService } from './services/disciplinary-process-tasks.service';
 import { DisciplinaryProcessNotesService } from './services/disciplinary-process-notes.service';
 import { DisciplinaryProcessReassignmentService } from './services/disciplinary-process-reassignment.service';
+import { JuridicaEmailService } from './services/juridica-email.service';
 
 @Module({
   imports: [
@@ -179,6 +181,7 @@ import { DisciplinaryProcessReassignmentService } from './services/disciplinary-
     DisciplinaryExportService,
     OnlyOfficeService,
     PdfModifierService,
+    DocumentConversionService,
     AutosConfigurationService,
     OficiosConfigurationService,
     ActasConfigurationService,
@@ -189,6 +192,7 @@ import { DisciplinaryProcessReassignmentService } from './services/disciplinary-
     DisciplinaryProcessTasksService,
     DisciplinaryProcessNotesService,
     DisciplinaryProcessReassignmentService,
+    JuridicaEmailService,
   ],
 })
 export class AppModule { }

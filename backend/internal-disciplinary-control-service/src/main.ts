@@ -46,17 +46,26 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  // Habilitar CORS con configuración específica
+  // Configurar CORS para desarrollo (permisivo)
   app.enableCors({
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://localhost:8080',
-      'http://127.0.0.1:5173',
-      'http://127.0.0.1:3000'
+    origin: true, // Permite todos los orígenes en desarrollo
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+      'Access-Control-Request-Method',
+      'Access-Control-Request-Headers',
+      'X-Client-Version',
+      'X-Client-Platform',
     ],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    exposedHeaders: ['Content-Length', 'Content-Type'],
     credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+    maxAge: 86400, // 24 hours
   });
 
   const port = process.env.PORT ?? 3005;
