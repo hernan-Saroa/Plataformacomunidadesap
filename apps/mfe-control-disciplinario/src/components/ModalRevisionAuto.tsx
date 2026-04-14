@@ -10,7 +10,7 @@ import { disciplinaryService } from '../../../services/api/disciplinary.service'
 import { buildApiUrl, API_MODE } from '../../../config/environment';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  FileText, Eye, CheckCircle, XCircle, Edit2,
+  FileText, Eye, CheckCircle, XCircle,
   MessageSquare, Clock, Send, Download, Upload, FileSignature,
   User, AlertCircle, History, X, Check,
   RotateCcw, Mail, Calendar, Info,
@@ -387,8 +387,7 @@ export function ModalRevisionAuto({
   tituloModal = 'Revisión de Auto',
   descripcionModal
 }: ModalRevisionAutoProps) {
-  const [contenidoEditado, setContenidoEditado] = useState(borrador.contenido);
-  const [modoEdicion, setModoEdicion] = useState(false);
+
   const [comentariosJefe, setComentariosJefe] = useState('');
   const [showModalAprobar, setShowModalAprobar] = useState(false);
   const [showModalDevolver, setShowModalDevolver] = useState(false);
@@ -433,11 +432,31 @@ export function ModalRevisionAuto({
     };
   }, [borrador.autoId]);
 
-  const handleGuardarEdicion = () => {
-    toast.success('Cambios Guardados', {
-      description: 'Las modificaciones han sido registradas en la auditoría'
-    });
-    setModoEdicion(false);
+  const handleDescargarDocumento = () => {
+    if (documentoBackendUrl) {
+      // Descargar el documento desde el backend (PDF o archivo existente)
+      const link = document.createElement('a');
+      link.href = documentoBackendUrl;
+      link.download = `Auto-${borrador.numeroProceso || borrador.id}.pdf`;
+      link.click();
+      toast.success('Descarga iniciada', {
+        description: 'El documento se está descargando'
+      });
+    } else if (borrador.contenido?.trim()) {
+      // Descargar el contenido como archivo de texto
+      const blob = new Blob([borrador.contenido], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Auto-${borrador.numeroProceso || borrador.id}.html`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('Descarga iniciada', {
+        description: 'El documento se está descargando como HTML'
+      });
+    } else {
+      toast.error('No hay contenido para descargar');
+    }
   };
 
   const handleConfirmarAprobacion = (comentarios: string, tipoFirma: 'electronica' | 'digital' | 'local') => {
@@ -637,12 +656,12 @@ export function ModalRevisionAuto({
                         </label>
                       )}
                       <button
-                        onClick={() => setModoEdicion(!modoEdicion)}
+                        onClick={handleDescargarDocumento}
                         className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
-                        style={{ background: modoEdicion ? '#6B7280' : '#003DA5' }}
+                        style={{ background: '#10B981' }}
                       >
-                        <Edit2 className="w-4 h-4" />
-                        {modoEdicion ? 'Cancelar' : 'Editar'}
+                        <Download className="w-4 h-4" />
+                        Descargar
                       </button>
                     </div>
                   </div>
@@ -700,42 +719,10 @@ export function ModalRevisionAuto({
                           </button>
                         </div>
                       </div>
-                    </div>
-                  )}
+                     </div>
+                   )}
 
-                  {modoEdicion ? (
-                    <div className="space-y-3">
-                      <div className="p-3 rounded-xl flex items-start gap-2" style={{ background: '#EFF6FF' }}>
-                        <Info className="w-4 h-4 flex-shrink-0" style={{ color: '#2563EB' }} />
-                        <p className="text-xs" style={{ color: '#1E40AF' }}>
-                          Las modificaciones quedarán registradas en auditoría.
-                        </p>
-                      </div>
-                      <textarea
-                        value={contenidoEditado}
-                        onChange={(e) => setContenidoEditado(e.target.value)}
-                        className="w-full h-80 p-4 border-2 rounded-xl text-sm focus:outline-none focus:border-[#003DA5] font-mono"
-                        style={{ borderColor: '#E5E7EB' }}
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleGuardarEdicion}
-                          className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-                          style={{ background: '#003DA5' }}
-                        >
-                          <Check className="w-4 h-4" />
-                          Guardar Cambios
-                        </button>
-                        <button
-                          onClick={() => setModoEdicion(false)}
-                          className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors"
-                          style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
-                        >
-                          Descartar
-                        </button>
-                      </div>
-                    </div>
-                  ) : cargandoDoc ? (
+                   {cargandoDoc ? (
                     <div className="flex items-center justify-center p-10 rounded-xl border-2" style={{ borderColor: '#E5E7EB', background: '#F8FAFC' }}>
                       <div className="text-center">
                         <div className="w-8 h-8 border-4 border-[#003DA5] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
@@ -803,7 +790,7 @@ export function ModalRevisionAuto({
                   ) : (
                     <div className="p-5 rounded-xl border-2" style={{ borderColor: '#E5E7EB', background: '#F8FAFC' }}>
                       <pre className="whitespace-pre-wrap font-serif text-sm leading-relaxed overflow-x-auto" style={{ color: '#1F2937' }}>
-                        {contenidoEditado}
+                        {borrador.contenido || 'Sin contenido disponible'}
                       </pre>
                     </div>
                   )}

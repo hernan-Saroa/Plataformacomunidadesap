@@ -31,6 +31,17 @@ import { ETAPAS_PROCESO, type EtapaProcesoId, type TipoAuto, type PlantillaArchi
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl } from '../../../config/environment';
 
+// Tipos de auto que disparan acciones automáticas al aprobarse
+const TIPOS_CON_ACCION = [
+  'AUTO_APERTURA',
+  'AUTO_APERTURA_INVESTIGACION',
+  'AUTO_APERTURA_INDAGACION',
+  'AUTO_ARCHIVO',
+  'AUTO_FORMULACION_PLIEGO',
+  'PLIEGO_CARGOS',
+  'AUTO_PRORROGA',
+];
+
 // ==================== DATOS MOCK ====================
 const TIPOS_AUTOS_MOCK: TipoAuto[] = [
   {
@@ -136,7 +147,7 @@ export function WizardCrearAutoWorldClass({
 }: WizardCrearAutoWorldClassProps) {
   // Estados del Wizard
   const [paso, setPaso] = useState(1);
-  const [vistaActual, setVistaActual] = useState<'wizard' | 'lista'>('wizard');
+  const [vistaActual, setVistaActual] = useState<'wizard' | 'lista'>('lista');
 
   // Estados del Paso 1
   const [tipoSeleccionado, setTipoSeleccionado] = useState<TipoAuto | null>(null);
@@ -345,14 +356,14 @@ export function WizardCrearAutoWorldClass({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validar que sea PDF (MIME type y extensión)
-      const allowedMimeTypes = ['application/pdf'];
-      const allowedExtensions = ['.pdf'];
+      // Validar que sea WORD (MIME type y extensión)
+      const allowedMimeTypes = ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      const allowedExtensions = ['.doc', '.docx'];
       const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
       
       if (!allowedMimeTypes.includes(file.type) || !allowedExtensions.includes(fileExtension)) {
         toast.error('Tipo de archivo no permitido', {
-          description: 'Para Autos solo se permiten archivos PDF'
+          description: 'Para Autos solo se permiten archivos WORD (.doc, .docx)',
         });
         // Limpiar el input
         if (fileInputRef.current) {
@@ -590,7 +601,7 @@ export function WizardCrearAutoWorldClass({
                 )}
               </button>
 
-              {/* <button
+              <button
                 onClick={() => setVistaActual('lista')}
                 className={`relative px-5 py-3 rounded-t-2xl font-bold text-sm transition-all duration-300 ${vistaActual === 'lista'
                   ? 'text-blue-700'
@@ -616,7 +627,7 @@ export function WizardCrearAutoWorldClass({
                     transition={{ type: 'spring', duration: 0.5 }}
                   />
                 )}
-              </button> */}
+              </button>
             </div>
           </div>
         </div>
@@ -863,13 +874,19 @@ export function WizardCrearAutoWorldClass({
                                       {tipo.descripcion}
                                     </p>
 
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                       <span
                                         className="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm"
                                         style={{ backgroundColor: etapa.color }}
                                       >
                                         {etapa.nombre}
                                       </span>
+                                      {tipo.tipo && TIPOS_CON_ACCION.includes(tipo.tipo) && (
+                                        <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-700 flex items-center gap-1">
+                                          <Zap className="w-3 h-3" />
+                                          Con acción
+                                        </span>
+                                      )}
                                       {/* Mostrar estado de plantilla del backend */}
                                       {tipo.estado_plantilla === 'activo' ? (
                                         <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-green-100 text-green-700">
@@ -1159,7 +1176,7 @@ export function WizardCrearAutoWorldClass({
                             {subiendo ? 'Cargando archivo...' : 'Arrastra o haz clic para subir'}
                           </p>
                           <p className="text-sm text-gray-600 mb-4">
-                            Formatos soportados: .pdf
+                            Formatos soportados: .word
                           </p>
                           {subiendo && (
                             <div className="w-48 h-1.5 mx-auto bg-gray-200 rounded-full overflow-hidden">
@@ -1224,12 +1241,12 @@ export function WizardCrearAutoWorldClass({
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".pdf,application/pdf"
+                        accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         onChange={handleFileChange}
                         className="hidden"
                       />
                       <p className="text-xs text-gray-500 mt-2">
-                        ⚠️ Solo se permiten archivos PDF para Autos legales
+                        ⚠️ Solo se permiten archivos WORD para Autos legales
                       </p>
                     </div>
                   </motion.div>

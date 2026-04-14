@@ -2105,7 +2105,7 @@ export function ModalDetallesProceso({
         const estadoAuto = doc.metadatos?.estado;
         const estado: Archivo['estado'] = estadoAuto === 'FIRMADO' || estadoAuto === 'NOTIFICADO' || estadoAuto === 'APROBADO'
           ? 'aprobado'
-          : estadoAuto === 'EN_REVISION' ? 'en_revision'
+          : estadoAuto === 'EN_REVISION' || estadoAuto === 'REVISION_JEFE' ? 'en_revision'
           : estadoAuto === 'DEVUELTO' ? 'devuelto'
           : estadoAuto === 'BORRADOR' ? 'borrador'
           : 'aprobado';

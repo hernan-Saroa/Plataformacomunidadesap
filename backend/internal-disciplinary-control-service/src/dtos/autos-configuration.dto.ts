@@ -161,3 +161,64 @@ export class AutosConfigurationResponseDto {
   @ApiPropertyOptional()
   estado_plantilla?: string;
 }
+
+export class AutoConfigurationUsageStateDto {
+  @ApiProperty()
+  status: string;
+
+  @ApiProperty()
+  count: number;
+}
+
+export class AutoConfigurationUsageProcessDto {
+  @ApiProperty()
+  processId: string;
+
+  @ApiProperty()
+  radicadoProceso: string;
+
+  @ApiProperty()
+  estado: string;
+
+  @ApiProperty()
+  etapaActual: string;
+
+  @ApiPropertyOptional()
+  abogadoAsignadoNombre?: string | null;
+
+  @ApiProperty()
+  autosCount: number;
+
+  @ApiPropertyOptional()
+  ultimoAutoCreadoAt?: string | null;
+
+  @ApiProperty({
+    type: [AutoConfigurationUsageStateDto],
+  })
+  autoStates: AutoConfigurationUsageStateDto[];
+}
+
+export class AutoConfigurationDeletionImpactDto {
+  @ApiProperty()
+  autoConfigurationId: string;
+
+  @ApiProperty()
+  autoTipo: string;
+
+  @ApiProperty()
+  autoNombre: string;
+
+  @ApiProperty()
+  canDelete: boolean;
+
+  @ApiProperty()
+  activeProcessesCount: number;
+
+  @ApiProperty()
+  historicalProcessesCount: number;
+
+  @ApiProperty({
+    type: [AutoConfigurationUsageProcessDto],
+  })
+  activeProcesses: AutoConfigurationUsageProcessDto[];
+}
