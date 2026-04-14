@@ -406,6 +406,8 @@ export interface CreateAutoDto {
     documentName?: string;
     documentType?: string;
     documentSize?: number;
+    etapaDestino?: string;
+    prorrogaMeses?: number;
 }
 
 export interface DocumentoExpediente {

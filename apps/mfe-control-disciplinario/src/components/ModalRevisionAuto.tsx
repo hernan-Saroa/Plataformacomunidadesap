@@ -42,6 +42,10 @@ export interface BorradorPendiente {
   estado: 'pendiente_revision' | 'en_revision' | 'aprobado' | 'devuelto';
   historial: AccionRevision[];
   tiempoEspera?: string;
+  // Campos de prórroga (solo para AUTO_PRORROGA)
+  tipo?: string;
+  prorrogaMeses?: number;
+  fechaVencimientoEtapa?: string;
 }
 
 export interface AccionRevision {
@@ -531,6 +535,51 @@ export function ModalRevisionAuto({
           <div className="flex-1 overflow-y-auto p-6">
             {activeTab === 'documento' ? (
               <div className="space-y-5">
+                {/* Bloque especial para AUTO_PRORROGA */}
+                {borrador.tipo === 'AUTO_PRORROGA' && borrador.prorrogaMeses && (
+                  <div className="p-4 rounded-xl border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#FEF3C7', color: '#D97706' }}>
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold mb-2" style={{ color: '#92400E' }}>
+                          AUTO DE PRORROGA — SOLICITUD DE EXTENSION
+                        </p>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <p className="text-xs text-amber-700">Duración solicitada:</p>
+                            <p className="font-bold text-amber-900">{borrador.prorrogaMeses} meses</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-amber-700">Vencimiento actual:</p>
+                            <p className="font-bold text-amber-900">
+                              {borrador.fechaVencimientoEtapa
+                                ? new Date(borrador.fechaVencimientoEtapa).toLocaleDateString('es-CO')
+                                : 'No disponible'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-amber-700">Nueva fecha estimada:</p>
+                            <p className="font-bold text-amber-900">
+                              {borrador.fechaVencimientoEtapa
+                                ? (() => {
+                                    const d = new Date(borrador.fechaVencimientoEtapa);
+                                    d.setMonth(d.getMonth() + borrador.prorrogaMeses!);
+                                    return d.toLocaleDateString('es-CO');
+                                  })()
+                                : 'No disponible'}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="text-xs mt-2" style={{ color: '#92400E' }}>
+                          Al aprobar este auto, la fecha de vencimiento de la etapa <strong>{borrador.etapa}</strong> se extenderá en {borrador.prorrogaMeses} meses.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Info Denunciado */}
                 <div className="p-4 rounded-xl" style={{ background: '#EFF6FF' }}>
                   <div className="flex items-start gap-3">

@@ -114,6 +114,8 @@ interface ProcesoCompleto {
   id: string;
   numeroProceso: string;
   etapaActual: string;
+  fechaVencimientoEtapa?: string;
+  estado?: string;
   denunciado: {
     nombre: string;
     numeroIdentificacion: string;
@@ -161,6 +163,7 @@ export function WizardCrearAutoWorldClass({
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [etapaDestino, setEtapaDestino] = useState('');
+  const [prorrogaMeses, setProrrogaMeses] = useState<number | null>(null);
 
   // Estados del Paso 3
   const [archivoAdjunto, setArchivoAdjunto] = useState<File | null>(null);
@@ -341,6 +344,10 @@ export function WizardCrearAutoWorldClass({
         toast.error('Debes seleccionar la etapa a la que transiciona el proceso');
         return;
       }
+      if (tipoSeleccionado?.tipo === 'AUTO_PRORROGA' && !prorrogaMeses) {
+        toast.error('Debes seleccionar la duración de la prórroga: 3 o 6 meses');
+        return;
+      }
     }
     if (paso === 3 && !archivoAdjunto) {
       toast.error('Debes adjuntar el archivo del auto');
@@ -416,6 +423,7 @@ export function WizardCrearAutoWorldClass({
         if (n.includes('FALLO') && n.includes('SANCION')) return 'FALLO_SANCION';
         if (n.includes('FALLO') && n.includes('ABSOLUTORIO')) return 'FALLO_ABSOLUTORIO';
         if (n.includes('RESOLUCION')) return 'RESOLUCION';
+        if (n.includes('PRORROGA')) return 'AUTO_PRORROGA';
         // Fallback: intentar convertir a snake_case
         return nombre.toUpperCase().replace(/\s+/g, '_')
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -448,6 +456,7 @@ export function WizardCrearAutoWorldClass({
         documentType: archivoAdjunto.type,
         documentSize: archivoAdjunto.size,
         etapaDestino: etapaDestino || undefined,
+        prorrogaMeses: prorrogaMeses || undefined,
       });
 
       toast.success('Auto creado exitosamente', {
@@ -479,6 +488,7 @@ export function WizardCrearAutoWorldClass({
     setFechaVencimiento('');
     setObservaciones('');
     setEtapaDestino('');
+    setProrrogaMeses(null);
     setArchivoAdjunto(null);
     setObservacionesAdjunto('');
     setPlantillaDescargada(false);
@@ -1093,6 +1103,76 @@ export function WizardCrearAutoWorldClass({
                           <p className="text-xs text-gray-500 mt-1">
                             Al aprobar este auto, el proceso pasará automáticamente a esta etapa.
                           </p>
+                        </div>
+                      )}
+
+                      {/* Prórroga — solo para AUTO_PRORROGA */}
+                      {tipoSeleccionado?.tipo === 'AUTO_PRORROGA' && (
+                        <div className="mb-5 space-y-4">
+                          {/* Info de la etapa activa */}
+                          <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                            <p className="text-sm font-bold text-amber-900 mb-3">Etapa Activa del Proceso</p>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <span className="text-xs text-amber-700">Etapa actual:</span>
+                                <p className="font-bold text-amber-900 text-sm">{proceso.etapaActual || 'No disponible'}</p>
+                              </div>
+                              <div>
+                                <span className="text-xs text-amber-700">Vencimiento actual:</span>
+                                <p className="font-bold text-amber-900 text-sm">
+                                  {proceso.fechaVencimientoEtapa
+                                    ? new Date(proceso.fechaVencimientoEtapa).toLocaleDateString('es-CO')
+                                    : 'Sin fecha de vencimiento'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Selector de duración */}
+                          <div>
+                            <label className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+                              <Clock className="w-4 h-4 text-blue-600" />
+                              Duración de la Prórroga
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <div className="grid grid-cols-2 gap-4">
+                              {[3, 6].map((meses) => (
+                                <button
+                                  key={meses}
+                                  type="button"
+                                  onClick={() => setProrrogaMeses(meses)}
+                                  className={`p-5 rounded-2xl border-2 transition-all ${
+                                    prorrogaMeses === meses
+                                      ? 'border-blue-600 bg-blue-50 shadow-lg'
+                                      : 'border-gray-200 hover:border-blue-300 bg-white'
+                                  }`}
+                                >
+                                  <div className="text-3xl font-black text-center text-gray-900">{meses}</div>
+                                  <div className="text-sm font-bold text-center mt-1 text-gray-700">meses</div>
+                                  <div className="text-xs text-gray-500 text-center mt-2">
+                                    {meses === 3 ? 'Extensión corta' : 'Extensión larga'}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Preview de nueva fecha */}
+                          {prorrogaMeses && proceso.fechaVencimientoEtapa && (
+                            <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%)', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                              <p className="text-sm font-bold text-green-900 mb-2">Nueva fecha estimada</p>
+                              <p className="text-2xl font-black text-green-700">
+                                {(() => {
+                                  const base = new Date(proceso.fechaVencimientoEtapa);
+                                  base.setMonth(base.getMonth() + prorrogaMeses);
+                                  return base.toLocaleDateString('es-CO');
+                                })()}
+                              </p>
+                              <p className="text-xs text-green-600 mt-1">
+                                * La fecha definitiva se calcula al momento de la aprobación
+                              </p>
+                            </div>
+                          )}
                         </div>
                       )}
 
