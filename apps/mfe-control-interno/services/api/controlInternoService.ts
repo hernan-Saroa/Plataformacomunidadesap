@@ -584,7 +584,8 @@ class ControlInternoService {
    */
   async getEvaluaciones(vigencia?: number): Promise<EvaluacionProceso[]> {
     const q = vigencia ? `?vigencia=${vigencia}` : '';
-    return client.get<EvaluacionProceso[]>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones${q}`);
+    // `client` ya agrega `SERVICE_PREFIX` internamente (baseURL + servicePrefix + endpoint).
+    return client.get<EvaluacionProceso[]>(`/universo-auditorias/evaluaciones${q}`);
   }
 
   /**
@@ -612,7 +613,8 @@ class ControlInternoService {
    * Crea una nueva evaluación de proceso
    */
   async createEvaluacion(data: CreateEvaluacionProcesoDTO): Promise<EvaluacionProceso> {
-    return client.post<EvaluacionProceso>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones`, data);
+    // `client` ya agrega `SERVICE_PREFIX` internamente (baseURL + servicePrefix + endpoint).
+    return client.post<EvaluacionProceso>(`/universo-auditorias/evaluaciones`, data);
   }
 
   /**
