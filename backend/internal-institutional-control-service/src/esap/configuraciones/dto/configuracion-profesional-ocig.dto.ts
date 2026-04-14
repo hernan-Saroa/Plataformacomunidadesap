@@ -23,6 +23,8 @@ const ROL_MAP: Record<string, RolOCIG> = {
   'Auditor Junior': RolOCIG.AUDITOR_JUNIOR,
   'Apoyo Técnico':  RolOCIG.APOYO_TECNICO,
   'Apoyo Tecnico':  RolOCIG.APOYO_TECNICO,
+  'Profesional OCI': RolOCIG.AUDITOR,
+  'Profesional DCI': RolOCIG.AUDITOR,
 };
 
 export class CreateConfiguracionProfesionalOCIGDto {
@@ -39,10 +41,10 @@ export class CreateConfiguracionProfesionalOCIGDto {
   @IsEnum(RolOCIG)
   rolOcig: RolOCIG;
 
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  @ArrayMinSize(1)
-  especialidades: string[];
+  especialidades?: string[];
 
   @IsOptional()
   @IsInt()

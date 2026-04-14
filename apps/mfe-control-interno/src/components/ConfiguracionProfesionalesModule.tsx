@@ -53,6 +53,9 @@ import {
   ESPECIALIDADES_DISPONIBLES,
   ROLES_OCIG
 } from './services/useConfiguracionProfesionales';
+import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
+import { useConfiguracionCapacidadesGlobales } from './services/useConfiguracionCapacidadesGlobales';
+import { ModalConfiguracionCapacidadesRoles } from './ModalConfiguracionCapacidadesRoles';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS (importados desde el hook)
@@ -82,9 +85,48 @@ export function ConfiguracionProfesionalesModule() {
 
   // Estado local del UI
   const [mostrarModalAgregar, setMostrarModalAgregar] = useState(false);
+  const [mostrarModalConfiguracion, setMostrarModalConfiguracion] = useState(false);
   const [profesionalEditando, setProfesionalEditando] = useState<ProfesionalOCIG | null>(null);
   const [busqueda, setBusqueda] = useState('');
   const [filtroRol, setFiltroRol] = useState<string>('TODOS');
+
+  // Integración permisos y capacidades
+  const { tienePermiso } = useControlInternoPermissions();
+  const puedeConfigurarCapacidades = tienePermiso('configuraciones:capacidades');
+  const { capacidadesRoles, guardarCapacidades, getCapacidadPorRol } = useConfiguracionCapacidadesGlobales();
+
+  const handleGuardarConfiguracionGlobal = async (nuevasCapacidades: any[]) => {
+    // 1. Guardar en storage local
+    await guardarCapacidades(nuevasCapacidades);
+    
+    // 2. Aplicar a todos los profesionales actuales
+    try {
+      let actualizados = 0;
+      for (const prof of profesionalesOCIG) {
+        const capacidadParaRol = nuevasCapacidades.find(c => c.rol === prof.configuracion.rolOCI);
+        if (capacidadParaRol) {
+          // Solo actualizamos si cambiaron para no bombardear el backend innecesariamente
+          if (prof.configuracion.capacidadMaximaAuditorias !== capacidadParaRol.capacidadMaximaAuditorias ||
+              prof.configuracion.horasMensualesDisponibles !== capacidadParaRol.horasMensualesDisponibles) {
+                
+            await actualizarProfesional(prof.usuario.id, {
+              capacidadMaximaAuditorias: capacidadParaRol.capacidadMaximaAuditorias,
+              horasMensualesDisponibles: capacidadParaRol.horasMensualesDisponibles
+            });
+            actualizados++;
+          }
+        }
+      }
+      
+      toast.success(`Capacidad global actualizada. Se actualizaron ${actualizados} profesionales.`);
+      setMostrarModalConfiguracion(false);
+      
+      // Recargar datos para estar seguros
+      await cargarDatos();
+    } catch (e) {
+      toast.error('Ocurrió un error al aplicar las capacidades a los profesionales actuales');
+    }
+  };
 
   // ════════════════════════════════════════════════════════════════════════════
   // FILTRAR PROFESIONALES
@@ -221,19 +263,37 @@ export function ConfiguracionProfesionalesModule() {
           <p className="text-xs text-blue-600">activos en OCIG</p>
         </div>
 
-        <div className="bg-white rounded-xl border-2 border-green-200 p-4">
+        <div 
+          className={`bg-white rounded-xl border-2 ${puedeConfigurarCapacidades ? 'border-green-300 hover:border-green-500 cursor-pointer shadow-sm hover:shadow-md transition-all group' : 'border-green-200'} p-4 relative`}
+          onClick={() => puedeConfigurarCapacidades && setMostrarModalConfiguracion(true)}
+          title={puedeConfigurarCapacidades ? "Configurar capacidad por rol..." : undefined}
+        >
+          {puedeConfigurarCapacidades && (
+            <div className="absolute top-2 right-2 p-1.5 rounded-full bg-green-50 text-green-700 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-green-100 z-10 shadow-sm border border-green-200">
+              <Settings className="w-3.5 h-3.5" />
+            </div>
+          )}
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-green-700">Capacidad Total</span>
-            <Target className="w-4 h-4 text-green-600" />
+            <Target className={`w-4 h-4 text-green-600 ${puedeConfigurarCapacidades ? 'group-hover:invisible' : ''}`} />
           </div>
           <p className="text-2xl font-black text-green-700">{estadisticasGlobales.capacidadTotal}</p>
           <p className="text-xs text-green-600">auditorías máx.</p>
         </div>
 
-        <div className="bg-white rounded-xl border-2 border-purple-200 p-4">
+        <div 
+          className={`bg-white rounded-xl border-2 ${puedeConfigurarCapacidades ? 'border-purple-300 hover:border-purple-500 cursor-pointer shadow-sm hover:shadow-md transition-all group' : 'border-purple-200'} p-4 relative`}
+          onClick={() => puedeConfigurarCapacidades && setMostrarModalConfiguracion(true)}
+          title={puedeConfigurarCapacidades ? "Configurar horas por rol..." : undefined}
+        >
+          {puedeConfigurarCapacidades && (
+            <div className="absolute top-2 right-2 p-1.5 rounded-full bg-purple-50 text-purple-700 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-purple-100 z-10 shadow-sm border border-purple-200">
+              <Settings className="w-3.5 h-3.5" />
+            </div>
+          )}
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-purple-700">Horas Totales</span>
-            <Clock className="w-4 h-4 text-purple-600" />
+            <Clock className={`w-4 h-4 text-purple-600 ${puedeConfigurarCapacidades ? 'group-hover:invisible' : ''}`} />
           </div>
           <p className="text-2xl font-black text-purple-700">{estadisticasGlobales.horasTotales}</p>
           <p className="text-xs text-purple-600">horas/mes</p>
@@ -325,6 +385,14 @@ export function ConfiguracionProfesionalesModule() {
           usuariosDisponibles={usuariosDisponiblesParaOCIG}
           onAgregar={handleAgregarProfesional}
           onCerrar={() => setMostrarModalAgregar(false)}
+        />
+      )}
+
+      {mostrarModalConfiguracion && (
+        <ModalConfiguracionCapacidadesRoles
+          capacidadesIniciales={capacidadesRoles}
+          onGuardar={handleGuardarConfiguracionGlobal}
+          onCerrar={() => setMostrarModalConfiguracion(false)}
         />
       )}
     </div>
@@ -585,12 +653,22 @@ interface ModalAgregarProfesionalProps {
 }
 
 function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: ModalAgregarProfesionalProps) {
+  const ROLES_OCIG = ['Jefe OCI', 'Auditor Sénior', 'Auditor', 'Auditor Júnior', 'Apoyo Técnico', 'Profesional OCI'];
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<string>('');
   const [openCombobox, setOpenCombobox] = useState(false);
   const [openEspecialidades, setOpenEspecialidades] = useState(false);
   const [especialidades, setEspecialidades] = useState<string[]>([]);
-  const [capacidad, setCapacidad] = useState(4);
-  const [horas, setHoras] = useState(150);
+  const { getCapacidadPorRol } = useConfiguracionCapacidadesGlobales();
+  const [rolOCIG, setRolOCIG] = useState('Auditor');
+  const [capacidad, setCapacidad] = useState(() => getCapacidadPorRol('Auditor').capacidadMaximaAuditorias);
+  const [horas, setHoras] = useState(() => getCapacidadPorRol('Auditor').horasMensualesDisponibles);
+
+  const handleRolCambio = (nuevoRol: string) => {
+    setRolOCIG(nuevoRol);
+    const defaults = getCapacidadPorRol(nuevoRol);
+    setCapacidad(defaults.capacidadMaximaAuditorias);
+    setHoras(defaults.horasMensualesDisponibles);
+  };
   const [busquedaEspecialidad, setBusquedaEspecialidad] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -601,10 +679,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
       return;
     }
 
-    if (especialidades.length === 0) {
-      toast.error('❌ Debes agregar al menos una especialidad');
-      return;
-    }
+    // Especialidades son opcionales
 
     // Obtener el usuario para conseguir idTercero
     const usuario = usuariosDisponibles.find(u => u.id === usuarioSeleccionado);
@@ -616,8 +691,8 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
     const nuevaConfig: ConfiguracionOCIG = {
       usuarioId: usuarioSeleccionado,
       idTercero: usuario.idTercero,
-      rolOCI: (usuario.roles?.[0] || 'Auditor') as ConfiguracionOCIG['rolOCI'],
-      especialidades,
+      rolOCI: rolOCIG as ConfiguracionOCIG['rolOCI'],
+      especialidades: especialidades.length > 0 ? especialidades : ['Control Interno'],
       capacidadMaximaAuditorias: capacidad,
       horasMensualesDisponibles: horas,
       puedeSerLider: true,
@@ -643,222 +718,489 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
     e => !especialidades.includes(e) && e.toLowerCase().includes(busquedaEspecialidad.toLowerCase())
   );
 
+  // ── Wizard step state ──
+  const [wizardStep, setWizardStep] = useState(1);
+  const totalSteps = 3;
+
+  const canAdvanceStep = (step: number) => {
+    if (step === 1) return !!usuarioSeleccionado;
+    if (step === 2) return true;
+    return true;
+  };
+
+  const selectedUser = usuariosDisponibles.find(u => u.id === usuarioSeleccionado);
+
+  const getInitials = (name: string) => name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 flex items-center justify-center z-50"
+      style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
       onClick={onCerrar}
     >
       <motion.div
-        initial={{ scale: 0.9, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.9, y: 20 }}
-        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        initial={{ scale: 0.92, y: 30, opacity: 0 }}
+        animate={{ scale: 1, y: 0, opacity: 1 }}
+        exit={{ scale: 0.92, y: 30, opacity: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+        className="bg-white rounded-2xl shadow-2xl w-full overflow-hidden flex flex-col"
+        style={{ maxWidth: '540px', maxHeight: 'calc(100vh - 2rem)', margin: '1rem' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <form onSubmit={handleSubmit}>
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-xl sticky top-0 z-10">
-            <div className="flex items-center justify-between">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-[inherit]">
+          {/* ═══ Header ESAP Corporate Blue ═══ */}
+          <div
+            style={{
+              background: 'linear-gradient(135deg, #003DA5 0%, #002d7a 60%, #001f5c 100%)',
+              padding: '1.25rem 1.25rem 1rem',
+              color: '#ffffff',
+              position: 'relative',
+              overflow: 'hidden',
+              flexShrink: 0,
+              borderRadius: '1rem 1rem 0 0',
+            }}
+          >
+            {/* Decorative background elements */}
+            <div style={{ position: 'absolute', top: '-2rem', right: '-2rem', width: '7rem', height: '7rem', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.06)' }} />
+            <div style={{ position: 'absolute', bottom: '-1.5rem', left: '-1.5rem', width: '5rem', height: '5rem', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.04)' }} />
+
+            {/* Title row */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
               <div>
-                <h2 className="text-2xl font-black">Asignar Profesional a OCIG</h2>
-                <p className="text-sm text-blue-100 mt-1">
-                  Configura el rol y capacidad del profesional en el equipo
+                <h2 style={{ fontSize: '1.125rem', fontWeight: 800, letterSpacing: '-0.01em', color: '#ffffff', textShadow: '0 1px 3px rgba(0,0,0,0.2)', margin: 0 }}>
+                  Asignar Profesional
+                </h2>
+                <p style={{ fontSize: '0.75rem', marginTop: '0.25rem', color: 'rgba(255,255,255,0.65)', margin: '0.25rem 0 0' }}>
+                  Equipo OCIG — Control Interno de Gestión
                 </p>
               </div>
               <button
                 type="button"
                 onClick={onCerrar}
-                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                style={{ width: '2rem', height: '2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.12)', border: 'none', cursor: 'pointer', color: '#ffffff', transition: 'background-color 0.2s' }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.25)')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.12)')}
               >
-                <X className="w-6 h-6" />
+                <X className="w-4 h-4" />
               </button>
+            </div>
+
+            {/* ═══ Step Indicator ═══ */}
+            <div className="relative flex items-center">
+              {[
+                { num: 1, label: 'Profesional', icon: '👤' },
+                { num: 2, label: 'Rol y Área', icon: '🎯' },
+                { num: 3, label: 'Capacidad', icon: '⚡' },
+              ].map((step, i) => (
+                <div key={step.num} className="flex items-center flex-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (step.num < wizardStep || canAdvanceStep(wizardStep)) {
+                        setWizardStep(step.num);
+                      }
+                    }}
+                    className="flex items-center gap-1.5 rounded-full transition-all"
+                    style={{
+                      padding: '0.3rem 0.6rem',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      ...(wizardStep === step.num
+                        ? { backgroundColor: '#ffffff', color: '#003DA5', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }
+                        : wizardStep > step.num
+                          ? { backgroundColor: 'rgba(255,255,255,0.25)', color: '#ffffff' }
+                          : { backgroundColor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)' }
+                      )
+                    }}
+                  >
+                    <span
+                      className="flex items-center justify-center rounded-full"
+                      style={{
+                        width: '1.2rem', height: '1.2rem', fontSize: '0.55rem', fontWeight: 900,
+                        ...(wizardStep > step.num
+                          ? { backgroundColor: '#22c55e', color: '#fff' }
+                          : wizardStep === step.num
+                            ? { backgroundColor: '#003DA5', color: '#fff' }
+                            : { backgroundColor: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)' }
+                        )
+                      }}
+                    >
+                      {wizardStep > step.num ? '✓' : step.num}
+                    </span>
+                    <span className="hidden sm:inline">{step.label}</span>
+                    <span className="sm:hidden">{step.icon}</span>
+                  </button>
+                  {i < 2 && (
+                    <div
+                      className="flex-1 mx-1 rounded-full"
+                      style={{
+                        height: '2px',
+                        backgroundColor: wizardStep > step.num ? '#22c55e' : 'rgba(255,255,255,0.15)',
+                        transition: 'background-color 0.3s'
+                      }}
+                    />
+                  )}
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Formulario */}
-          <div className="p-6 space-y-6">
-            {/* Seleccionar Usuario */}
-            <div>
-              <label className="block text-sm font-bold text-gray-900 mb-2">
-                Profesional <span className="text-red-600">*</span>
-              </label>
-              <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    role="combobox"
-                    aria-expanded={openCombobox}
-                    className="w-full flex items-center justify-between px-4 py-3 border-2 border-gray-300 rounded-lg hover:border-blue-400 focus:border-blue-500 focus:outline-none font-semibold bg-white text-left"
-                  >
-                    {usuarioSeleccionado
-                      ? usuariosDisponibles.find(u => u.id === usuarioSeleccionado)?.nombre || 'Usuario seleccionado'
-                      : '-- Buscar profesional --'}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent 
-                  className="p-0" 
-                  align="start" 
-                  sideOffset={4}
-                  style={{ width: 'var(--radix-popover-trigger-width)' }}
+          {/* ═══ Step Content ═══ */}
+          <div className="flex-1 overflow-y-auto p-5" style={{ minHeight: 0 }}>
+            <AnimatePresence mode="wait">
+              {/* ──────── STEP 1: Seleccionar profesional ──────── */}
+              {wizardStep === 1 && (
+                <motion.div
+                  key="step1"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-3"
                 >
-                  <Command className="border rounded-lg">
-                    <CommandInput placeholder="Buscar por nombre, email o identificación..." className="h-11 w-full" />
-                    <CommandList className="max-h-[280px]">
-                      <CommandEmpty>No se encontraron profesionales.</CommandEmpty>
-                      <CommandGroup>
-                        {usuariosDisponibles.map(usuario => (
-                          <CommandItem
-                            key={usuario.id}
-                            value={`${usuario.nombre} ${usuario.email} ${usuario.identificacion}`}
-                            onSelect={(currentValue) => {
-                              console.log('📌 Seleccionado:', usuario.id, usuario.nombre, currentValue);
-                              setUsuarioSeleccionado(usuario.id);
-                              setOpenCombobox(false);
-                            }}
-                            className="py-3 px-3 cursor-pointer"
-                          >
-                            <Check
-                              className={`mr-2 h-4 w-4 shrink-0 ${usuarioSeleccionado === usuario.id ? 'opacity-100' : 'opacity-0'}`}
-                            />
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className="font-semibold truncate">{usuario.nombre}</span>
-                              <span className="text-xs text-gray-500 truncate">{usuario.email}</span>
-                              <span className="text-xs text-blue-600 font-semibold mt-0.5">
-                                {usuario.roles && usuario.roles.length > 0 ? usuario.roles.join(', ') : 'Sin roles'}
-                              </span>
-                            </div>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-              {usuariosDisponibles.length === 0 && (
-                <p className="text-sm text-yellow-600 mt-2">
-                  ⚠️ No hay usuarios disponibles. Todos los profesionales activos ya están asignados a OCIG.
-                </p>
-              )}
-            </div>
-
-            {/* Especialidades */}
-            <div>
-              <label className="block text-sm font-bold text-gray-900 mb-2">
-                Especialidades <span className="text-red-600">*</span>
-              </label>
-              <div className="space-y-2">
-                {/* Especialidades seleccionadas */}
-                {especialidades.length > 0 && (
-                  <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg border-2 border-gray-200">
-                    {especialidades.map(esp => (
-                      <span
-                        key={esp}
-                        className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-semibold flex items-center gap-2"
-                      >
-                        {esp}
-                        <button
-                          type="button"
-                          onClick={() => removerEspecialidad(esp)}
-                          className="hover:bg-blue-200 rounded-full p-0.5"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    ))}
+                  <div className="flex items-center gap-2 mb-1">
+                    <Users className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm font-bold text-gray-800">¿Quién se unirá al equipo?</span>
                   </div>
-                )}
 
-                {/* Buscar especialidad */}
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Click para agregar especialidad..."
-                    value={busquedaEspecialidad}
-                    onChange={(e) => setBusquedaEspecialidad(e.target.value)}
-                    onFocus={() => setOpenEspecialidades(true)}
-                    onBlur={() => setTimeout(() => setOpenEspecialidades(false), 200)}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  />
+                  {/* Search input */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Buscar por nombre o email..."
+                      className="w-full pl-9 pr-3 py-2.5 text-sm border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none bg-gray-50 focus:bg-white transition-colors"
+                      onChange={(e) => {
+                        const term = e.target.value.toLowerCase();
+                        document.querySelectorAll('[data-prof-item]').forEach((el: any) => {
+                          const searchText = el.getAttribute('data-prof-search') || '';
+                          el.style.display = searchText.includes(term) ? '' : 'none';
+                        });
+                      }}
+                    />
+                  </div>
 
-                  {/* Lista de especialidades disponibles */}
-                  {openEspecialidades && especialidadesFiltradas.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 max-h-40 overflow-y-auto border-2 border-gray-200 rounded-lg bg-white shadow-lg">
-                      {especialidadesFiltradas.map(esp => (
+                  {/* User list */}
+                  <div className="max-h-[240px] overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
+                    {usuariosDisponibles.length === 0 ? (
+                      <div className="p-6 text-center text-gray-400 text-sm">
+                        <AlertCircle className="w-8 h-8 mx-auto mb-2 text-amber-400" />
+                        Todos los profesionales ya están asignados
+                      </div>
+                    ) : (
+                      usuariosDisponibles.map(usuario => (
                         <button
-                          key={esp}
+                          key={usuario.id}
                           type="button"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            agregarEspecialidad(esp);
-                          }}
-                          className="w-full text-left px-4 py-2 hover:bg-blue-50 transition-colors text-sm border-b border-gray-100 last:border-0"
+                          data-prof-item
+                          data-prof-search={`${usuario.nombre} ${usuario.email} ${usuario.identificacion}`.toLowerCase()}
+                          onClick={() => setUsuarioSeleccionado(usuario.id)}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all text-sm ${
+                            usuarioSeleccionado === usuario.id
+                              ? 'bg-blue-50 ring-2 ring-blue-500 ring-inset'
+                              : 'hover:bg-gray-50'
+                          }`}
                         >
-                          + {esp}
+                          {/* Avatar */}
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${
+                            usuarioSeleccionado === usuario.id
+                              ? 'text-white'
+                              : 'bg-gray-200 text-gray-600'
+                          }`} style={usuarioSeleccionado === usuario.id ? { backgroundColor: '#003DA5' } : {}}>
+                            {getInitials(usuario.nombre)}
+                          </div>
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-gray-900 truncate">{usuario.nombre}</div>
+                            <div className="text-[11px] text-gray-400 truncate">{usuario.email}</div>
+                          </div>
+                          {/* Role badge */}
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                            usuario.roles?.[0]?.includes('Jefe') ? 'bg-purple-100 text-purple-700' :
+                            usuario.roles?.[0]?.includes('Líder') ? 'bg-blue-100 text-blue-700' :
+                            usuario.roles?.[0]?.includes('Senior') ? 'bg-cyan-100 text-cyan-700' :
+                            usuario.roles?.[0]?.includes('Junior') ? 'bg-green-100 text-green-700' :
+                            usuario.roles?.[0]?.includes('Auditado') ? 'bg-amber-100 text-amber-700' :
+                            usuario.roles?.[0]?.includes('Super') ? 'bg-red-100 text-red-700' :
+                            usuario.roles?.[0]?.includes('Profesional') ? 'bg-teal-100 text-teal-700' :
+                            usuario.roles?.[0]?.includes('Administrador') ? 'bg-indigo-100 text-indigo-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {usuario.roles?.[0] || 'Sin rol'}
+                          </span>
+                          {/* Check */}
+                          {usuarioSeleccionado === usuario.id && (
+                            <CheckCircle2 className="w-5 h-5 shrink-0" style={{ color: '#003DA5' }} />
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Selection hint */}
+                  {!usuarioSeleccionado && usuariosDisponibles.length > 0 && (
+                    <p className="text-xs text-gray-400 text-center">
+                      Selecciona un profesional para continuar
+                    </p>
+                  )}
+                </motion.div>
+              )}
+
+              {/* ──────── STEP 2: Especialidades ──────── */}
+              {wizardStep === 2 && (
+                <motion.div
+                  key="step2"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-4"
+                >
+                  {/* Selected user preview */}
+                  {selectedUser && (
+                    <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl border border-blue-200">
+                      <div className="w-10 h-10 rounded-full text-white flex items-center justify-center text-sm font-black" style={{ backgroundColor: '#003DA5' }}>
+                        {getInitials(selectedUser.nombre)}
+                      </div>
+                      <div>
+                        <div className="font-bold text-gray-900 text-sm">{selectedUser.nombre}</div>
+                        <div className="text-xs text-gray-500">{selectedUser.email}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Rol OCIG */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                      Rol en OCIG
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {ROLES_OCIG.map(rol => (
+                        <button
+                          key={rol}
+                          type="button"
+                          onClick={() => handleRolCambio(rol)}
+                          className={`px-2 py-2 rounded-lg text-xs font-bold text-center transition-all ${
+                            rolOCIG === rol
+                              ? 'text-white shadow-md ring-2 ring-blue-300'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                          style={rolOCIG === rol ? { backgroundColor: '#003DA5' } : {}}
+                        >
+                          {rol}
                         </button>
                       ))}
                     </div>
-                  )}
-                </div>
-              </div>
-            </div>
+                  </div>
 
-            {/* Capacidades */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-bold text-gray-900 mb-2">
-                  Capacidad Máxima
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={capacidad}
-                  onChange={(e) => setCapacidad(parseInt(e.target.value) || 1)}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-bold text-lg"
-                />
-                <p className="text-xs text-gray-500 mt-1">Auditorías simultáneas</p>
-              </div>
+                  {/* Especialidades */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                      Especialidades
+                      <span className="ml-1 text-gray-400 normal-case font-normal">({especialidades.length} seleccionadas) — Opcional</span>
+                    </label>
+                    
+                    {/* Selected chips */}
+                    {especialidades.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {especialidades.map(esp => (
+                          <motion.span
+                            key={esp}
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-full text-xs font-semibold shadow-sm"
+                          >
+                            {esp}
+                            <button
+                              type="button"
+                              onClick={() => removerEspecialidad(esp)}
+                              className="hover:bg-white/20 rounded-full p-0.5 transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </motion.span>
+                        ))}
+                      </div>
+                    )}
 
-              <div>
-                <label className="block text-sm font-bold text-gray-900 mb-2">
-                  Horas Mensuales
-                </label>
-                <input
-                  type="number"
-                  min="40"
-                  max="200"
-                  step="10"
-                  value={horas}
-                  onChange={(e) => setHoras(parseInt(e.target.value) || 40)}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-bold text-lg"
-                />
-                <p className="text-xs text-gray-500 mt-1">Horas disponibles</p>
-              </div>
-            </div>
+                    {/* Available chips */}
+                    <div className="flex flex-wrap gap-1.5 p-2.5 bg-gray-50 rounded-xl border border-gray-200 max-h-[120px] overflow-y-auto">
+                      {ESPECIALIDADES_DISPONIBLES.filter(e => !especialidades.includes(e)).map(esp => (
+                        <button
+                          key={esp}
+                          type="button"
+                          onClick={() => agregarEspecialidad(esp)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-200 text-gray-600 rounded-full text-xs font-medium hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                        >
+                          <Plus className="w-3 h-3" />
+                          {esp}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
 
+              {/* ──────── STEP 3: Capacidad ──────── */}
+              {wizardStep === 3 && (
+                <motion.div
+                  key="step3"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-4"
+                >
+                  {/* Summary card */}
+                  <div className="p-4 bg-gradient-to-br from-gray-50 to-blue-50 rounded-xl border border-blue-100">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-11 h-11 rounded-full text-white flex items-center justify-center text-sm font-black" style={{ backgroundColor: '#003DA5' }}>
+                        {selectedUser ? getInitials(selectedUser.nombre) : '?'}
+                      </div>
+                      <div>
+                        <div className="font-bold text-gray-900">{selectedUser?.nombre}</div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">{rolOCIG}</span>
+                          <span className="text-xs text-gray-400">·</span>
+                          <span className="text-xs text-gray-500">{especialidades.length} especialidad(es)</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {especialidades.map(e => (
+                        <span key={e} className="text-[10px] px-2 py-0.5 bg-white border border-gray-200 rounded-full text-gray-600">{e}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Capacity controls */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider">
+                        Auditorías Simultáneas
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="range"
+                          min="1"
+                          max="10"
+                          value={capacidad}
+                          onChange={(e) => setCapacidad(parseInt(e.target.value))}
+                          className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-600"
+                        />
+                        <div className="flex justify-between mt-1">
+                          <span className="text-[10px] text-gray-400">1</span>
+                          <span className="text-lg font-black text-blue-600">{capacidad}</span>
+                          <span className="text-[10px] text-gray-400">10</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider">
+                        Horas / Mes
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="range"
+                          min="40"
+                          max="200"
+                          step="10"
+                          value={horas}
+                          onChange={(e) => setHoras(parseInt(e.target.value))}
+                          className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-600"
+                        />
+                        <div className="flex justify-between mt-1">
+                          <span className="text-[10px] text-gray-400">40h</span>
+                          <span className="text-lg font-black text-blue-600">{horas}h</span>
+                          <span className="text-[10px] text-gray-400">200h</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick capacity presets */}
+                  <div>
+                    <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Perfiles predefinidos</span>
+                    <div className="grid grid-cols-3 gap-1.5 mt-1">
+                      {[
+                        { label: 'Dedicación Parcial', cap: 2, hrs: 80 },
+                        { label: 'Dedicación Media', cap: 4, hrs: 120 },
+                        { label: 'Dedicación Completa', cap: 6, hrs: 160 },
+                      ].map(preset => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => { setCapacidad(preset.cap); setHoras(preset.hrs); }}
+                          className={`p-2 rounded-lg border text-center transition-all ${
+                            capacidad === preset.cap && horas === preset.hrs
+                              ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-300'
+                              : 'border-gray-200 hover:border-blue-300 bg-white'
+                          }`}
+                        >
+                          <div className="text-[10px] font-bold text-gray-700">{preset.label}</div>
+                          <div className="text-[10px] text-gray-400 mt-0.5">{preset.cap} aud · {preset.hrs}h</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
-          {/* Footer */}
-          <div className="bg-gray-50 border-t-2 border-gray-200 p-6 rounded-b-xl flex gap-3">
-            <button
-              type="button"
-              onClick={onCerrar}
-              className="flex-1 px-6 py-3 bg-white border-2 border-gray-300 hover:bg-gray-100 rounded-lg font-bold text-gray-700 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={!usuarioSeleccionado || especialidades.length === 0}
-              className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <UserCheck className="w-5 h-5" />
-              Asignar a OCIG
-            </button>
+          {/* ═══ Footer ═══ */}
+          <div className="shrink-0 border-t border-gray-200 px-4 py-3 flex items-center gap-2" style={{ backgroundColor: '#f9fafb' }}>
+            {wizardStep > 1 ? (
+              <button
+                type="button"
+                onClick={() => setWizardStep(wizardStep - 1)}
+                className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                ← Atrás
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onCerrar}
+                className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+            )}
+            
+            <div className="flex-1" />
+
+            {/* Step counter */}
+            <span className="text-xs text-gray-400 font-medium hidden sm:inline">
+              Paso {wizardStep} de {totalSteps}
+            </span>
+
+            {wizardStep < totalSteps ? (
+              <button
+                type="button"
+                disabled={!canAdvanceStep(wizardStep)}
+                onClick={() => setWizardStep(wizardStep + 1)}
+                className="px-5 py-2 text-white text-sm font-bold rounded-lg transition-all shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                style={{ backgroundColor: canAdvanceStep(wizardStep) ? '#003DA5' : '#9ca3af' }}
+              >
+                Siguiente →
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!usuarioSeleccionado}
+                className="px-5 py-2 text-white text-sm font-bold rounded-lg transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                style={{ background: 'linear-gradient(135deg, #16a34a, #059669)' }}
+              >
+                <UserCheck className="w-4 h-4" />
+                Asignar a OCIG
+              </button>
+            )}
           </div>
         </form>
       </motion.div>

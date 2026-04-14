@@ -81,7 +81,7 @@ export function ResponsiveHeader({
       if (headerRef.current) {
         const width = headerRef.current.offsetWidth;
         setContainerWidth(width);
-        console.log('📏 Header width:', width); // DEBUG
+
       }
     };
     
@@ -107,17 +107,7 @@ export function ResponsiveHeader({
   const shouldShowCompact = containerWidth >= 1100 && containerWidth < 1300; // Iconos
   const shouldShowFull = containerWidth >= 1300;         // Completo
   
-  // Debug
-  useEffect(() => {
-    if (containerWidth > 0) {
-      console.log('🎨 Render mode:', {
-        width: containerWidth,
-        minimal: shouldShowMinimal,
-        compact: shouldShowCompact,
-        full: shouldShowFull
-      });
-    }
-  }, [containerWidth, shouldShowMinimal, shouldShowCompact, shouldShowFull]);
+
   
   const getBadgeClassName = (variant?: string) => {
     const variants = {
@@ -219,7 +209,7 @@ export function ResponsiveHeader({
 
       {/* Right Section: Actions - RENDERIZADO ULTRA-AGRESIVO */}
       {allActions.length > 0 && (
-        <>
+        <div className="flex items-center">
           {/* 🚀 MODO COMPLETO: Todos los botones (> 1200px) */}
           {shouldShowFull && (
             <div className="flex flex-wrap items-center gap-2">
@@ -363,7 +353,7 @@ export function ResponsiveHeader({
               )}
             </div>
           )}
-        </>
+        </div>
       )}
     </motion.div>
   );

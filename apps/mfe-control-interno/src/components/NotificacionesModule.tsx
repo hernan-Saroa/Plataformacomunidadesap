@@ -895,22 +895,23 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
             {/* Toggle */}
             <button
               onClick={() => onToggle(evento.id)}
-              className={`relative w-14 h-7 rounded-full transition-all flex-shrink-0 ${
+              className={`relative inline-flex h-7 w-[52px] items-center rounded-full transition-colors flex-shrink-0 m-0 p-0 border-0 focus:outline-none ${
                 evento.activo ? 'bg-green-600' : 'bg-gray-300'
               }`}
               title={evento.activo ? 'Desactivar' : 'Activar'}
             >
-              <div
-                className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-transform flex items-center justify-center ${
-                  evento.activo ? 'translate-x-7' : 'translate-x-0'
+              <span className="sr-only">Toggle notification</span>
+              <span
+                className={`inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform duration-200 shadow-sm ${
+                  evento.activo ? 'translate-x-[28px]' : 'translate-x-[4px]'
                 }`}
               >
                 {evento.activo ? (
-                  <Play className="w-3 h-3 text-green-600" />
+                  <Play className="w-3 h-3 text-green-600 ml-0.5" strokeWidth={3} />
                 ) : (
-                  <Pause className="w-3 h-3 text-gray-400" />
+                  <Pause className="w-3 h-3 text-gray-400" strokeWidth={3} />
                 )}
-              </div>
+              </span>
             </button>
           </div>
 
