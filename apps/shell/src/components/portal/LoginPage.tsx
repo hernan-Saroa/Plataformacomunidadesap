@@ -400,46 +400,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
               </motion.p>
             </div>
 
-            {/* Social Login Button */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="mb-5"
-            >
-              {microsoftLoginError && (
-                <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  {microsoftLoginError}
-                </div>
-              )}
 
-              <button
-                type="button"
-                onClick={() => handleSocialLogin('Microsoft')}
-                disabled={isLoading || isMicrosoftLoading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all group"
-              >
-                <Building2 className="w-5 h-5 text-gray-600 group-hover:text-gray-900" />
-                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
-                  {isMicrosoftLoading ? 'Conectando con Microsoft...' : 'Iniciar sesión con Microsoft'}
-                </span>
-              </button>
-            </motion.div>
-
-            {/* Divider */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              className="relative mb-5"
-            >
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-white text-gray-500">O continúa con tu correo</span>
-              </div>
-            </motion.div>
 
             {/* Login Form */}
             <motion.form
@@ -451,27 +412,26 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
             >
               {/* Email Field */}
               <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-900 mb-2">
+                  <Mail className="w-4 h-4 text-gray-500" />
                   Correo Electrónico
                 </label>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value);
-                      setErrors({ ...errors, email: undefined });
-                    }}
-                    placeholder="correo@esap.edu.co"
-                    className={`w-full pl-12 pr-4 py-2.5 border-2 rounded-xl transition-all outline-none ${
-                      errors.email
-                        ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-4 focus:ring-red-100'
-                        : 'border-gray-300 focus:border-[#003DA5] focus:ring-4 focus:ring-[#003DA5]/10'
-                    }`}
-                    disabled={isLoading}
-                  />
-                </div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setErrors({ ...errors, email: undefined });
+                  }}
+                  placeholder="correo@esap.edu.co"
+                  style={{ padding: '0.625rem 1rem' }}
+                  className={`w-full border-2 rounded-xl transition-all outline-none text-sm ${
+                    errors.email
+                      ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-4 focus:ring-red-100'
+                      : 'border-gray-300 focus:border-[#003DA5] focus:ring-4 focus:ring-[#003DA5]/10'
+                  }`}
+                  disabled={isLoading}
+                />
                 {errors.email && (
                   <motion.p
                     initial={{ opacity: 0, height: 0 }}
@@ -485,11 +445,11 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
               {/* Password Field */}
               <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-900 mb-2">
+                  <Lock className="w-4 h-4 text-gray-500" />
                   Contraseña
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
@@ -498,7 +458,8 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                       setErrors({ ...errors, password: undefined });
                     }}
                     placeholder="••••••••"
-                    className={`w-full pl-12 pr-12 py-2.5 border-2 rounded-xl transition-all outline-none ${
+                    style={{ padding: '0.625rem 3rem 0.625rem 1rem' }}
+                    className={`w-full border-2 rounded-xl transition-all outline-none text-sm ${
                       errors.password
                         ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-4 focus:ring-red-100'
                         : 'border-gray-300 focus:border-[#003DA5] focus:ring-4 focus:ring-[#003DA5]/10'
@@ -508,7 +469,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
@@ -566,78 +527,8 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
               </button>
             </motion.form>
 
-            {/* Credenciales de Prueba - Collapsible */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.8 }}
-              className="mt-5 bg-blue-50 border-2 border-blue-200 rounded-xl overflow-hidden"
-            >
-              <button
-                type="button"
-                onClick={() => setIsCredentialsOpen(!isCredentialsOpen)}
-                className="w-full p-3 flex items-center justify-between hover:bg-blue-100/50 transition-colors group"
-              >
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-blue-900" />
-                  <span className="text-xs font-semibold text-blue-900">Credenciales de prueba</span>
-                </div>
-                <ChevronDown 
-                  className={`w-4 h-4 text-blue-900 transition-transform duration-300 ${
-                    isCredentialsOpen ? 'rotate-180' : ''
-                  }`}
-                />
-              </button>
-              
-              <motion.div
-                initial={false}
-                animate={{
-                  height: isCredentialsOpen ? 'auto' : 0,
-                  opacity: isCredentialsOpen ? 1 : 0
-                }}
-                transition={{ duration: 0.3, ease: 'easeInOut' }}
-                className="overflow-hidden"
-              >
-                <div className="px-3 pb-3 space-y-1.5 text-xs text-blue-800">
-                  <p className="font-semibold text-blue-900 mb-2">📧 Email: cualquier correo válido</p>
-                  <p className="font-semibold text-blue-900 mb-2">🔒 Contraseña: cualquier texto (min. 6 caracteres)</p>
-                  
-                  {/* Usuarios Externos - Portal */}
-                  <div className="pt-2 border-t border-blue-200">
-                    <p className="font-bold text-blue-900 mb-1.5 flex items-center gap-1">
-                      👥 PORTAL TRANSACCIONAL (Externos)
-                    </p>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">estudiantes@esap.edu.co</code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">egresados@esap.edu.co</code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">docentes@esap.edu.co</code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">funcionario@esap.edu.co <span className="text-blue-600">(Funcionario)</span></code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px]">planta@esap.edu.co <span className="text-blue-600">(Docente Planta)</span></code>
-                  </div>
 
-                  {/* Usuarios Internos - Backoffice */}
-                  <div className="pt-2 border-t border-blue-200">
-                    <p className="font-bold text-blue-900 mb-1.5 flex items-center gap-1">
-                      🏢 BACKOFFICE ADMINISTRATIVO (Internos)
-                    </p>
-                    <p className="text-[10px] text-blue-700 mb-1.5 italic">✅ Acceso total a todos los módulos:</p>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">superuser@esap.edu.co <span className="text-blue-600">(Super Admin)</span></code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">rector@esap.edu.co <span className="text-blue-600">(Rector)</span></code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">director@esap.edu.co <span className="text-blue-600">(Director)</span></code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">admin@esap.edu.co <span className="text-blue-600">(Administrador)</span></code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">cerlaboral@esap.edu.co <span className="text-blue-600">(Certificados)</span></code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">ar.empresarial@esap.edu.co <span className="text-blue-600">(Arq. Empresarial)</span></code>
-                    <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">arqempresarial@esap.edu.co <span className="text-blue-600">(Arq. Empresarial)</span></code>
-                    
-                    <p className="text-[10px] text-orange-700 mb-1.5 mt-3 italic">⚠️ Acceso exclusivo a un solo módulo:</p>
-                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">ocig@esap.edu.co <span className="text-orange-700">(🔍 Solo Control Interno OCIG)</span></code>
-                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">c.disciplinario@esap.edu.co <span className="text-orange-700">(⚖️ Solo Control Disciplinario)</span></code>
-                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">gestion.profesoral@esap.edu.co <span className="text-orange-700">(📚 Solo Gestión Profesoral)</span></code>
-                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">gestion.legal@esap.edu.co <span className="text-orange-700">(⚖️ Solo Gestión Legal)</span></code>
-                    <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">registro.academico@esap.edu.co <span className="text-orange-700">(📚 Solo Registro Académico)</span></code>
-                  </div>
-                </div>
-              </motion.div>
-            </motion.div>
+
 
             {/* Footer */}
             <motion.p

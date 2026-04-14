@@ -4,13 +4,13 @@
  * v2.0 - Con soporte para puntos de control
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
-  TrendingUp, FileCheck, AlertCircle, BookOpen, Download, FileText,
+  TrendingUp, FileCheck, AlertCircle, AlertTriangle, BookOpen, Download, FileText,
   Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, FileSpreadsheet, RefreshCw, Settings,
-  ChevronDown, ChevronUp, Calendar, Clock
+  ChevronDown, ChevronUp, Calendar, Clock, Search
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModalGestionAdjuntos } from './ModalGestionAdjuntosActividades';
@@ -584,15 +584,149 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// COMPONENTE: SELECTOR DE PROFESIONAL DISEÑADO (Combobox)
+// ════════════════════════════════════════════════════════════════════════════
+
+function SelectorProfesional({
+  auditores,
+  onSelect,
+  placeholder = "+ Agregar responsable…",
+  disabled = false,
+  className = ""
+}: {
+  auditores: Auditor[];
+  onSelect: (id: string | null) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const filtrados = auditores.filter(a => 
+    a.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
+    (a.email || '').toLowerCase().includes(busqueda.toLowerCase())
+  );
+
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  };
+
+  const getRoleBadgeColor = (role: string) => {
+    const r = role.toLowerCase();
+    if (r.includes('jefe') || r.includes('super') || r.includes('director')) return 'bg-purple-100 text-purple-700';
+    if (r.includes('líder') || r.includes('lider') || r.includes('senior') || r.includes('sénior')) return 'bg-cyan-100 text-cyan-700';
+    if (r.includes('junior') || r.includes('júnior')) return 'bg-green-100 text-green-700';
+    if (r.includes('auditado')) return 'bg-amber-100 text-amber-700';
+    return 'bg-blue-100 text-blue-700';
+  };
+
+  return (
+    <div className={`relative w-full ${className}`} ref={containerRef}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsOpen(!isOpen); }}
+        className={`w-full px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm text-gray-500 bg-white text-left flex justify-between items-center transition-colors hover:border-blue-400 hover:bg-blue-50 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      >
+        <span className="truncate">{placeholder}</span>
+        <svg className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ opacity: 0, y: -5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -5 }}
+            transition={{ duration: 0.15 }}
+            className="absolute z-50 mt-1 w-[320px] max-w-[90vw] md:w-[380px] bg-white border border-gray-200 rounded-xl shadow-xl left-0 top-full overflow-hidden flex flex-col max-h-[320px]"
+          >
+            <div className="p-2 border-b border-gray-100 sticky top-0 bg-gray-50 shadow-sm z-10 flex gap-2 items-center">
+              <Search className="w-4 h-4 text-gray-400 absolute left-4" />
+              <input
+                type="text"
+                autoFocus
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar por nombre o email..."
+                className="w-full pl-8 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onClick={e => e.stopPropagation()}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && filtrados.length > 0) {
+                     e.preventDefault();
+                     onSelect(filtrados[0].id);
+                     setIsOpen(false);
+                     setBusqueda('');
+                  }
+                }}
+              />
+            </div>
+            <div className="overflow-y-auto flex-1 divide-y divide-gray-50 py-1">
+              {filtrados.length === 0 ? (
+                <div className="p-6 text-center text-sm text-gray-500">
+                  <AlertCircle className="w-8 h-8 mx-auto mb-2 text-amber-400" />
+                  No hay profesionales disponibles
+                </div>
+              ) : (
+                filtrados.map(auditor => (
+                  <button
+                    key={auditor.id}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSelect(auditor.id);
+                      setIsOpen(false);
+                      setBusqueda('');
+                    }}
+                    className="w-full text-left p-2 hover:bg-blue-50 transition-colors flex items-center gap-3 group"
+                  >
+                    <div className="w-9 h-9 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-[11px] font-black shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                      {getInitials(auditor.nombre)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm truncate">{auditor.nombre}</p>
+                      <p className="text-[11px] text-gray-400 truncate">{auditor.email || 'jefe.oci@esap.edu.co'}</p>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${getRoleBadgeColor(auditor.cargo || 'Funcionario')}`}>
+                      {auditor.cargo || 'Funcionario'}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // WIZARD DE CREACIÓN
 // ════════════════════════════════════════════════════════════════════════════
 
 interface WizardCreacionProps {
   onCancelar: () => void;
-  onCrear: (vigencia: number, jefeOCI: Auditor, rolesConfig: RolConfig[], fechaInicio: string, fechaFin: string) => void;
+  onCrear: (vigencia: number, jefeOCI: Auditor, rolesConfig: RolConfig[], fechaInicio: string, fechaFin: string) => Promise<boolean>;
+  onTerminado?: () => void;
 }
 
-export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
+export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreacionProps) {
   const [paso, setPaso] = useState(1);
   const [vigencia, setVigencia] = useState(new Date().getFullYear());
   const [fechaInicio, setFechaInicio] = useState(`${new Date().getFullYear()}-01-01`);
@@ -603,6 +737,8 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
   const [jefesOCI, setJefesOCI] = useState<Auditor[]>([]);
   const [cargandoAuditores, setCargandoAuditores] = useState(true);
   const [jefeSeleccionado, setJefeSeleccionado] = useState<Auditor | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   
   // Función para cargar profesionales OCI (reutilizable)
   const cargarAuditores = async () => {
@@ -619,7 +755,7 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
           .map((config: any) => ({
             id: config.id, // UUID de configuracion_profesionales_OCI
             nombre: config.nombre || `Profesional ${config.idTercero}`,
-            cargo: config.rolOCI || 'Auditor',
+            cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor',
             email: config.email || ''
           }));
         
@@ -835,7 +971,7 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
     setPaso(paso + 1);
   };
 
-  const handleFinalizar = () => {
+  const handleFinalizar = async () => {
     // Validación final de seguridad antes de crear el plan
     const rolesConActividades = rolesConfig.filter(rol => 
       (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0) > 0
@@ -858,8 +994,46 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
       return;
     }
     
-    onCrear(vigencia, jefeSeleccionado, rolesConfig, fechaInicio, fechaFin);
+    try {
+      setIsSubmitting(true);
+      const exito = await onCrear(vigencia, jefeSeleccionado, rolesConfig, fechaInicio, fechaFin);
+      setIsSubmitting(false);
+      
+      if (exito) {
+        setShowSuccessModal(true);
+      }
+    } catch (e: any) {
+      setIsSubmitting(false);
+      toast.error('Error al enviar el plan', { description: e?.message || 'Error desconocido' });
+    }
   };
+
+  if (showSuccessModal) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm"
+      >
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
+          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Check className="w-10 h-10 text-green-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">¡Plan Creado con Éxito!</h2>
+          <p className="text-gray-600 mb-8 border-b pb-8">
+            El Plan Anual de Auditoría {vigencia} ha sido guardado correctamente. Ahora puedes revisarlo desde el Dashboard.
+          </p>
+          <button
+            onClick={() => onTerminado?.()}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow hover:shadow-md flex items-center justify-center gap-2"
+          >
+            Ir al Dashboard <ArrowRight className="w-5 h-5" />
+          </button>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -932,8 +1106,21 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
               Siguiente <ArrowRight className="w-4 h-4" />
             </button>
           ) : (
-            <button onClick={handleFinalizar} className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex items-center gap-2">
-              <Check className="w-4 h-4" /> Crear
+            <button 
+              onClick={handleFinalizar} 
+              disabled={isSubmitting}
+              className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex items-center gap-2 disabled:opacity-50"
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  Creando...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" /> Crear
+                </>
+              )}
             </button>
           )}
         </div>
@@ -1082,7 +1269,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             >
               <option value="">Seleccionar responsable...</option>
               {auditores.map((a: any) => (
-                <option key={a.id} value={a.id}>{a.nombre}</option>
+                <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Funcionario'}</option>
               ))}
             </select>
           )}
@@ -1571,11 +1758,11 @@ function Paso2({
                             </div>
                           ))}
                           {/* Dropdown para agregar — mismo estilo que SeccionAsignar */}
-                          <select
-                            value=""
-                            onChange={(e) => {
-                              if (!e.target.value) return;
-                              const auditor = auditores.find(a => a.id === e.target.value);
+                          <SelectorProfesional
+                            auditores={auditores.filter(a => !rol.responsables.some((r: any) => r.id === a.id))}
+                            onSelect={(id) => {
+                              if (!id) return;
+                              const auditor = auditores.find(a => a.id === id);
                               if (auditor) {
                                 const nuevaConfig = rolesConfig.map(r => {
                                   if (r.numero === rol.numero) {
@@ -1601,18 +1788,7 @@ function Paso2({
                                 toast.success(`${auditor.nombre} asignado al rol`);
                               }
                             }}
-                            className="px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm text-gray-500 bg-white"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <option value="">+ Agregar responsable…</option>
-                            {auditores
-                              .filter(a => !rol.responsables.some((r: any) => r.id === a.id))
-                              .map((auditor) => (
-                                <option key={auditor.id} value={auditor.id}>
-                                  {auditor.nombre}
-                                </option>
-                              ))}
-                          </select>
+                          />
                         </div>
                       </div>
 
@@ -1631,6 +1807,7 @@ function Paso2({
                             return (
                               <div
                                 key={actId}
+                                style={{ contentVisibility: 'auto', containIntrinsicSize: '150px' }}
                                 className={`border-2 rounded-lg transition-colors ${
                                   seleccionada
                                     ? 'border-blue-400 bg-blue-50'
@@ -1906,22 +2083,14 @@ function Paso2({
                                           </div>
                                         ))}
                                         {/* Dropdown punteado */}
-                                        <select
-                                          className="px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-xs text-gray-500 bg-white"
-                                          value=""
-                                          onChange={e => {
-                                            e.stopPropagation();
-                                            const auditor = auditores.find(a => a.id === e.target.value);
+                                        <SelectorProfesional
+                                          auditores={auditores.filter(a => !(actividadData?.responsables || []).some(r => r.id === a.id))}
+                                          onSelect={(id) => {
+                                            if (!id) return;
+                                            const auditor = auditores.find(a => a.id === id);
                                             if (auditor) agregarResponsableActividad(actId, auditor);
                                           }}
-                                        >
-                                          <option value="">+ Agregar responsable…</option>
-                                          {auditores
-                                            .filter(a => !(actividadData?.responsables || []).some(r => r.id === a.id))
-                                            .map(a => (
-                                              <option key={a.id} value={a.id}>{a.nombre}</option>
-                                            ))}
-                                        </select>
+                                        />
                                         {(actividadData?.responsables || []).length === 0 && (
                                           <p className="text-[10px] text-red-500 flex items-center gap-1">⚠ Requerido</p>
                                         )}
@@ -2337,22 +2506,14 @@ function Paso2({
                                           >✕</button>
                                         </div>
                                       ))}
-                                      <select
-                                        className="px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-xs text-gray-500 bg-white"
-                                        value=""
-                                        onChange={e => {
-                                          e.stopPropagation();
-                                          const auditor = auditores.find(a => a.id === e.target.value);
+                                      <SelectorProfesional
+                                        auditores={auditores.filter(a => !(actividad.responsables || []).some(r => r.id === a.id))}
+                                        onSelect={(id) => {
+                                          if (!id) return;
+                                          const auditor = auditores.find(a => a.id === id);
                                           if (auditor) agregarResponsableCustom(rol.numero, index, auditor);
                                         }}
-                                      >
-                                        <option value="">+ Agregar responsable…</option>
-                                        {auditores
-                                          .filter(a => !(actividad.responsables || []).some(r => r.id === a.id))
-                                          .map(a => (
-                                            <option key={a.id} value={a.id}>{a.nombre}</option>
-                                          ))}
-                                      </select>
+                                      />
                                       {(actividad.responsables || []).length === 0 && (
                                         <p className="text-[10px] text-red-500 flex items-center gap-1">⚠ Requerido</p>
                                       )}
@@ -2732,10 +2893,21 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const [seccion, setSeccion] = useState<'gestion' | 'asignar' | 'aprobar'>('gestion');
   const [mostrarModalExportacion, setMostrarModalExportacion] = useState(false);
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
+  const [mostrarModalEliminar, setMostrarModalEliminar] = useState(false);
+  const [eliminandoPlan, setEliminandoPlan] = useState(false);
   
   // Estado para auditores cargados desde backend
   const [auditores, setAuditores] = useState<Auditor[]>([]);
   const [cargandoAuditores, setCargandoAuditores] = useState(true);
+
+  // Cargar usuario actual para filtros de visibilidad
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  useEffect(() => {
+    try {
+      const userDataStr = localStorage.getItem('esap_user_data');
+      if (userDataStr) setCurrentUser(JSON.parse(userDataStr));
+    } catch (e) {}
+  }, []);
   
   // Permisos del Plan Anual (sistema flexible basado en permisos, no roles)
   const { puedeRealizar, esSuperUsuario } = useControlInternoPermissions();
@@ -2790,11 +2962,51 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   }, [plan.id]);
 
   // Estadísticas
-  const totalActividades = plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0);
-  const actividadesAsignadas = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.responsable !== null).length, 0);
-  const actividadesCompletadas = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.estado === 'COMPLETADA').length, 0);
-  const actividadesEnEjecucion = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.estado === 'EN_EJECUCION').length, 0);
-  const avancePromedio = Math.round(plan.roles.reduce((sum, rol) => sum + rol.actividades.reduce((s, a) => s + a.porcentajeAvance, 0), 0) / totalActividades);
+  // Estadísticas cacheadas para mejorar rendimiento y scroll
+  const { totalActividades, actividadesAsignadas, actividadesCompletadas, actividadesEnEjecucion, avancePromedio } = useMemo(() => {
+    const total = plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0);
+    const asignadas = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.responsable !== null).length, 0);
+    const completadas = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.estado === 'COMPLETADA').length, 0);
+    const enEjecucion = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.estado === 'EN_EJECUCION').length, 0);
+    
+    const avance = total > 0 
+      ? Math.round(plan.roles.reduce((sum, rol) => sum + rol.actividades.reduce((s, a) => {
+          const pct = (a.estado === 'Completada' || a.estado === 'COMPLETADA') ? 100 
+                    : (a.entradasSeguimiento && a.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(a) : 0);
+          return s + pct;
+        }, 0), 0) / total) 
+      : 0;
+
+    return { totalActividades: total, actividadesAsignadas: asignadas, actividadesCompletadas: completadas, actividadesEnEjecucion: enEjecucion, avancePromedio: avance };
+  }, [plan.roles]);
+
+
+
+  const handleEliminarPlan = async () => {
+    setMostrarModalEliminar(true);
+  };
+
+  const ejecutarEliminacionPlan = async () => {
+    setEliminandoPlan(true);
+    try {
+      const { planAnualApi } = await import('./services/plan-anual/api');
+      const res = await planAnualApi.delete(plan.id);
+      if (res.success) {
+        toast.success('Plan eliminado exitosamente', { description: 'Los registros han sido borrados de la base de datos.'});
+        setMostrarModalEliminar(false);
+        if (onActualizar) {
+          onActualizar(null as any); // Devuelve a la vista inicial
+          window.location.reload(); 
+        }
+      } else {
+        toast.error('Error al eliminar', { description: res.error || 'No se pudo eliminar el plan' });
+      }
+    } catch (error) {
+      toast.error('Error al eliminar', { description: 'Ocurrió un error inesperado' });
+    } finally {
+      setEliminandoPlan(false);
+    }
+  };
 
   const handleExportarExcel = async () => {
     setExportando('excel');
@@ -2896,19 +3108,28 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         currentY += 7;
 
         // Calcular avance promedio del rol
-        const sumaAvanceRol = rol.actividades.reduce((s, a) => s + a.porcentajeAvance, 0);
+        const sumaAvanceRol = rol.actividades.reduce((s, a) => {
+          const pct = (a.estado === 'Completada' || a.estado === 'COMPLETADA') ? 100 
+                    : (a.entradasSeguimiento && a.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(a) : 0);
+          return s + pct;
+        }, 0);
         const promedioRol = rol.actividades.length > 0 ? Math.round(sumaAvanceRol / rol.actividades.length) : 0;
+
         sumaAvanceTotal += sumaAvanceRol;
         totalActividadesCount += rol.actividades.length;
 
-        const actividadesData = rol.actividades.map((act, idx) => [
-          (idx + 1).toString(),
-          act.nombre,
-          act.responsable?.nombre || 'Sin asignar',
-          act.estado === 'COMPLETADA' ? 'Completada' : 
-          act.estado === 'EN_EJECUCION' ? 'En ejecución' : 'Pendiente',
-          `${act.porcentajeAvance}%`
-        ]);
+        const actividadesData = rol.actividades.map((act, idx) => {
+          const pctFinal = (act.estado === 'Completada' || act.estado === 'COMPLETADA') ? 100 
+                    : (act.entradasSeguimiento && act.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(act) : 0);
+          return [
+            (idx + 1).toString(),
+            act.nombre,
+            act.responsable?.nombre || 'Sin asignar',
+            act.estado === 'COMPLETADA' ? 'Completada' : 
+            act.estado === 'EN_EJECUCION' ? 'En ejecución' : 'Pendiente',
+            `${pctFinal}%`
+          ];
+        });
         
         // Agregar fila de subtotal del rol
         actividadesData.push([
@@ -3059,6 +3280,17 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               <Download className="w-4 h-4" />
               Exportar
             </button>
+
+            {plan.estado === 'BORRADOR' && (
+              <button
+                type="button"
+                onClick={handleEliminarPlan}
+                className="flex items-center justify-center p-2.5 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 rounded-lg transition-colors border border-red-200 shadow-sm"
+                title="Eliminar permanentemente este plan en borrador"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -3185,6 +3417,65 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           </motion.div>
         )}
 
+        {/* Modal de Confirmación de Eliminación */}
+        {mostrarModalEliminar && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4 backdrop-blur-sm"
+            onClick={() => !eliminandoPlan && setMostrarModalEliminar(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative"
+            >
+              <div className="p-6 text-center pt-8">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <AlertTriangle className="w-8 h-8 text-red-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  ¿Eliminar este Plan Anual?
+                </h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  Estás a punto de eliminar permanentemente el Plan Anual de Auditoría <strong>{plan.vigencia}</strong>. 
+                  Esta acción no tiene marcha atrás y eliminará todas sus actividades configuradas.
+                </p>
+                
+                <div className="flex gap-3 mt-8">
+                  <button
+                    onClick={() => setMostrarModalEliminar(false)}
+                    disabled={eliminandoPlan}
+                    className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors disabled:opacity-50"
+                  >
+                    Mantener plan
+                  </button>
+                  <button
+                    onClick={ejecutarEliminacionPlan}
+                    disabled={eliminandoPlan}
+                    className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {eliminandoPlan ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Eliminando...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        Sí, eliminar
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
         {/* KPIs */}
         <div className="grid grid-cols-5 gap-4 mb-6">
           <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
@@ -3253,7 +3544,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       <div className="flex-1 overflow-y-auto bg-gray-50 px-8 py-6">
         <div className="max-w-7xl mx-auto">
           <AnimatePresence mode="wait">
-            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} />}
+            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} onCambiarPlan={onCambiarPlan} />}
             {seccion === 'asignar' && <SeccionAsignar key="asignar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} auditores={auditores} cargandoAuditores={cargandoAuditores} puedeAsignar={puedeAsignarActividades} />}
             {seccion === 'aprobar' && <SeccionAprobacion key="aprobar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} puedeAprobarPlan={puedeAprobarPlan} puedeActivarPlan={puedeActivarPlan} />}
           </AnimatePresence>
@@ -3275,7 +3566,8 @@ function SeccionGestionYSeguimiento({
   onActualizar, 
   onRefetchPlan,
   onAbrirRol4,
-  auditores
+  auditores,
+  onCambiarPlan
 }: { 
   plan: PlanAnual; 
   planesAnteriores?: PlanAnual[]; 
@@ -3283,7 +3575,9 @@ function SeccionGestionYSeguimiento({
   onRefetchPlan?: () => Promise<void>;
   onAbrirRol4?: () => void;
   auditores: Auditor[];
+  onCambiarPlan?: (planId: string) => void;
 }) {
+
   // Estados para el seguimiento
   const [actividadExpandida, setActividadExpandida] = useState<number | string | null>(null);
   const [modalAdjuntos, setModalAdjuntos] = useState<{ actividadId: number | string; rolNumero: number } | null>(null);
@@ -3345,8 +3639,19 @@ function SeccionGestionYSeguimiento({
   const puedeEditarPlan = puedeRealizar('plan-anual', 'edit');
   const puedeSeguimiento = puedeRealizar('plan-anual', 'follow-up');
   const puedeEliminarPlan = puedeRealizar('plan-anual', 'delete');
+  const puedeAprobarPlan = puedeRealizar('plan-anual', 'approve');
+  const puedeAsignarActividades = puedeRealizar('plan-anual', 'assign');
   // Permiso compuesto: editar O seguimiento para gestionar evidencias
   const puedeGestionarEvidencias = puedeEditarPlan || puedeSeguimiento;
+
+  // ✅ Usuario para visualización condicional
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  useEffect(() => {
+    try {
+      const userDataStr = localStorage.getItem('esap_user_data');
+      if (userDataStr) setCurrentUser(JSON.parse(userDataStr));
+    } catch (e) {}
+  }, []);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // NUEVO: Estado para cumplimiento de auditorías (Rol 4)
@@ -3945,37 +4250,6 @@ function SeccionGestionYSeguimiento({
           PARTE 1: CONTEXTO DEL PLAN
           ══════════════════════════════════════════════════════════════════════ */}
       
-      {/* Banner de bienvenida - RESPONSIVE STACK */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-4 sm:p-6 text-white overflow-hidden shadow-lg border border-blue-400/20">
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 text-center sm:text-left">
-          <div className="w-14 h-14 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center flex-shrink-0 shadow-inner">
-            <Shield className="w-7 h-7 text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-xl sm:text-2xl font-black mb-2 tracking-tight">Plan Anual de Auditoría Interna {plan.vigencia}</h2>
-            <p className="text-blue-50 text-sm sm:text-base mb-4 opacity-90 leading-relaxed">
-              Estás visualizando el plan anual en ejecución. Este sistema permite gestionar el plan completo según el Decreto 648/2017,
-              asignar responsables, hacer seguimiento y aprobar actividades.
-            </p>
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-6 gap-y-2 text-xs sm:text-sm font-medium">
-              <div className="flex items-center gap-2 px-2 py-1 bg-white/10 rounded-lg">
-                <CheckCircle2 className="w-4 h-4 text-blue-200" />
-                <span className="opacity-90">Estado: <span className="font-bold">{plan.estado}</span></span>
-              </div>
-              <div className="flex items-center gap-2 px-2 py-1 bg-white/10 rounded-lg">
-                <FileCheck className="w-4 h-4 text-blue-200" />
-                <span className="opacity-90 font-mono">ID: {plan.id}</span>
-              </div>
-              {planesAnteriores.length > 0 && (
-                <div className="flex items-center gap-2 px-2 py-1 bg-white/10 rounded-lg">
-                  <FileText className="w-4 h-4 text-blue-200" />
-                  <span className="opacity-90">{planesAnteriores.length} plan(es) anterior(es)</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Información general - RESPONSIVE GRID */}
       <div className="bg-white rounded-xl border-2 border-gray-200 p-6 shadow-sm">
@@ -4011,15 +4285,33 @@ function SeccionGestionYSeguimiento({
       </div>
 
       {/* Alertas y recomendaciones */}
-      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6">
-        <div className="flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <h3 className="font-semibold text-blue-900 mb-2">Cumplimiento normativo</h3>
-            <p className="text-sm text-blue-700">
-              Este plan cumple con la estructura obligatoria del <strong>Decreto 648 de 2017</strong>: 
-              5 roles estratégicos con 22 actividades distribuidas según el marco normativo de control interno.
+      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 relative">
+        <div className="absolute top-4 right-4 text-xs font-mono text-blue-400 bg-white/50 px-2 py-1 rounded">
+          ID: {plan.id}
+        </div>
+        <div className="flex items-start gap-4">
+          <AlertCircle className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="pr-20">
+            <h3 className="font-semibold text-blue-900 mb-2">
+              {plan.estado === 'BORRADOR' ? 'Instrucciones: Modo Borrador' : 'Gestión del Plan'}
+            </h3>
+            <p className="text-sm text-blue-800 mb-3">
+              {plan.estado === 'BORRADOR'
+                ? 'Tu plan está en Borrador. Asegúrate de desplegar los roles, asignar responsables y definir la periodicidad (fechas y cortes) antes de solicitar su aprobación para iniciar ejecución.'
+                : 'Estás visualizando un plan en ejecución. Este sistema permite gestionar el plan completo, asignar responsables, hacer seguimiento y aprobar actividades.'}
             </p>
+            <div className="flex flex-wrap gap-2">
+              <div className="bg-blue-100/50 rounded p-2 inline-block">
+                <p className="text-xs text-blue-800">
+                  📌 <strong>Cumplimiento Normativo:</strong> Este diseño cumple con la estructura obligatoria del Decreto 648 de 2017 empleando 5 roles estratégicos fijos.
+                </p>
+              </div>
+              <div className="bg-blue-100/50 rounded p-2 inline-block">
+                <p className="text-xs text-blue-800">
+                   ⚙️ <strong>Sistema Automático:</strong> El porcentaje de avance se calcula automáticamente conforme a las evidencias de seguimiento y fechas de corte.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -4056,13 +4348,27 @@ function SeccionGestionYSeguimiento({
                 </div>
                 
                 <div className="flex items-center gap-3">
-                  <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gray-200 text-gray-700">
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    planAnterior.estado === 'BORRADOR' || planAnterior.estado === 'EN_REVISION'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-green-100 text-green-700'
+                  }`}>
                     {planAnterior.estado}
                   </span>
                   <div className="text-right text-xs text-gray-500">
-                    <p>Aprobado: {planAnterior.fechaAprobacion}</p>
+                    <p>Aprobado: {planAnterior.fechaAprobacion || 'N/A'}</p>
                     <p>{planAnterior.roles.reduce((sum, rol) => sum + rol.actividades.length, 0)} actividades</p>
                   </div>
+                  {onCambiarPlan && (
+                    <button
+                      onClick={() => onCambiarPlan(planAnterior.id)}
+                      className="ml-4 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 hover:text-blue-600 transition-colors text-sm font-medium flex items-center gap-2"
+                      title="Abrir y gestionar este plan"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Visualizar
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -4075,48 +4381,30 @@ function SeccionGestionYSeguimiento({
           Vista unificada: estadísticas + seguimiento detallado
           ══════════════════════════════════════════════════════════════════════ */}
       
-      {/* Info header */}
-      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3 flex-1">
-            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="font-semibold text-blue-900 mb-2">Sistema de seguimiento y control</h3>
-              <p className="text-sm text-blue-700 mb-2">
-                Registra el <strong>control</strong> (periodicidad), la <strong>evaluación</strong> (estado), 
-                y el <strong>seguimiento</strong> (acciones y evidencias) de cada actividad.
-              </p>
-              <p className="text-sm text-blue-700 flex items-center gap-1.5">
-                <CalendarClock className="w-4 h-4" />
-                <strong>Automático:</strong> El porcentaje de avance y la periodicidad se calculan automáticamente 
-                en actividades con puntos de control configurados.
-              </p>
-            </div>
-          </div>
-
-          {/* ✅ NUEVO: Botones de control global */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => toggleTodosRoles(false)}
-              className="px-4 py-2 bg-white hover:bg-green-50 border-2 border-green-500 text-green-700 rounded-lg font-semibold text-sm flex items-center gap-2 transition-all"
-              title="Expandir todos los roles"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-              Expandir todos
-            </button>
-            <button
-              onClick={() => toggleTodosRoles(true)}
-              className="px-4 py-2 bg-white hover:bg-gray-100 border-2 border-gray-400 text-gray-700 rounded-lg font-semibold text-sm flex items-center gap-2 transition-all"
-              title="Colapsar todos los roles"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-              </svg>
-              Colapsar todos
-            </button>
-          </div>
+      {/* ✅ NUEVO: Botones de control global reubicados */}
+      <div className="flex justify-end items-center pb-2">
+        <div className="flex bg-gray-50 border border-gray-200 rounded-lg p-1">
+          <button
+            onClick={() => toggleTodosRoles(false)}
+            className="px-3 py-1.5 hover:bg-white hover:text-green-700 hover:shadow-sm text-gray-600 rounded-md font-medium text-xs flex items-center gap-1.5 transition-all"
+            title="Expandir todos los roles"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+            Expandir todo
+          </button>
+          <div className="w-px bg-gray-200 mx-1 self-stretch"></div>
+          <button
+            onClick={() => toggleTodosRoles(true)}
+            className="px-3 py-1.5 hover:bg-white hover:text-gray-900 hover:shadow-sm text-gray-600 rounded-md font-medium text-xs flex items-center gap-1.5 transition-all"
+            title="Colapsar todos los roles"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+            Colapsar todo
+          </button>
         </div>
       </div>
 
@@ -4124,12 +4412,36 @@ function SeccionGestionYSeguimiento({
       {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => {
         // Solo contar actividades activas (activo !== false) para estadísticas
         const actividadesActivas = rol.actividades.filter(a => a.activo !== false);
-        const totalActividades = actividadesActivas.length;
-        const asignadas = actividadesActivas.filter(a => a.responsable !== null).length;
-        const completadas = actividadesActivas.filter(a => a.estado === 'COMPLETADA').length;
-        const enProgreso = actividadesActivas.filter(a => a.estado === 'EN_EJECUCION').length;
+
+        // ✅ DEFINIR SI EL USUARIO PUEDE VER TODO EL PLAN
+        const liderazgoVerTodos = puedeAprobarPlan || esSuperUsuario || puedeEditarPlan || puedeAsignarActividades;
+
+        // ✅ FILTRAR ACTIVIDADES PARA QUE EL AUDITOR SOLO VEA LAS PROPIAS
+        const actividadesVisibles = actividadesActivas.filter(actividad => {
+          if (liderazgoVerTodos) return true; // Líderes o planificadores ven todo
+          if (!currentUser) return false;
+          
+          const currentName = currentUser.nombre || currentUser.nombres || '';
+          const currentId = String(currentUser.id || currentUser.idPersona || currentUser.documento || '');
+
+          const isMainResp = String(actividad.responsable?.id) === currentId || (actividad.responsable?.nombre && currentName && actividad.responsable.nombre.includes(currentName));
+          const isRespAdicional = actividad.responsables?.some(r => String(r.id) === currentId || (r.nombre && currentName && r.nombre.includes(currentName)));
+          const isApoyo = actividad.responsablesApoyo?.some(r => String(r.id) === currentId || (r.nombre && currentName && r.nombre.includes(currentName)));
+
+          return isMainResp || isRespAdicional || isApoyo;
+        });
+
+        // Si el usuario no tiene capacidad de gestión/análisis y no tiene actividades en este rol, lo ocultamos
+        if (!liderazgoVerTodos && actividadesVisibles.length === 0) {
+           return null;
+        }
+
+        const totalActividades = actividadesVisibles.length;
+        const asignadas = actividadesVisibles.filter(a => a.responsable !== null).length;
+        const completadas = actividadesVisibles.filter(a => a.estado === 'COMPLETADA').length;
+        const enProgreso = actividadesVisibles.filter(a => a.estado === 'EN_EJECUCION').length;
         const avance = totalActividades > 0 
-          ? Math.round(actividadesActivas.reduce((s, a) => s + (a.porcentajeAvance || 0), 0) / totalActividades) 
+          ? Math.round(actividadesVisibles.reduce((s, a) => s + (a.porcentajeAvance || 0), 0) / totalActividades) 
           : 0;
         const estaColapsado = rolesColapsados[rol.numero] || false;
         
@@ -4344,8 +4656,27 @@ function SeccionGestionYSeguimiento({
                 className="overflow-hidden"
               >
                 <div className="space-y-3">
-            {rol.actividades.map((actividad, idx) => (
-              <div key={`${rol.numero}-${idx}-${actividad.id}`} className={`border-2 rounded-lg overflow-hidden ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200'}`}>
+            {actividadesVisibles.length === 0 ? (
+              <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl p-8 text-center mt-2">
+                <div className="w-16 h-16 mx-auto bg-gray-200 rounded-full flex items-center justify-center mb-4">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                  </svg>
+                </div>
+                <h4 className="text-gray-900 font-bold mb-2">Aún no hay actividades</h4>
+                <p className="text-gray-500 max-w-md mx-auto text-sm">
+                  {liderazgoVerTodos 
+                    ? "Este rol está vacío. Por favor, cambia a la pestaña superior 'Asignar responsables' para empezar a crear la planificación."
+                    : "No tienes actividades bajo tu responsabilidad en este rol."}
+                </p>
+              </div>
+            ) : (
+            actividadesVisibles.map((actividad, idx) => (
+              <div 
+                key={`${rol.numero}-${idx}-${actividad.id}`} 
+                style={{ contentVisibility: 'auto', containIntrinsicSize: '250px' }}
+                className={`border-2 rounded-lg overflow-hidden ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200'}`}
+              >
                 {/* Header */}
                 <div className={`p-4 ${actividad.activo === false ? 'bg-red-50' : 'bg-gray-50'}`}>
                   <div className="flex items-start justify-between mb-3">
@@ -4421,7 +4752,7 @@ function SeccionGestionYSeguimiento({
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
                       <SemaforoSeguimientoPAI 
-                        porcentaje={actividad.puntosControl && actividad.puntosControl.length > 0 ? calcularPorcentajeCortes(actividad) : actividad.porcentajeAvance}
+                        porcentaje={(actividad.estado === 'Completada' || actividad.estado === 'COMPLETADA') ? 100 : (actividad.entradasSeguimiento && actividad.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(actividad) : 0)}
                         variant="bar"
                         size="md"
                         showLabel={true}
@@ -5076,7 +5407,8 @@ function SeccionGestionYSeguimiento({
                   )}
                 </AnimatePresence>
               </div>
-            ))}
+            ))
+            )}
                 </div>
               </motion.div>
             )}
@@ -5946,7 +6278,11 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                       </div>
                     ) : (
                       rol.actividades.map((actividad, index) => (
-                        <div key={`${rol.numero}-${index}-${actividad.id}`} className={`flex items-start gap-3 p-4 border-2 rounded-lg transition-colors ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200 hover:border-gray-300'}`}>
+                        <div 
+                          key={`${rol.numero}-${index}-${actividad.id}`} 
+                          style={{ contentVisibility: 'auto', containIntrinsicSize: '150px' }}
+                          className={`flex items-start gap-3 p-4 border-2 rounded-lg transition-colors ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200 hover:border-gray-300'}`}
+                        >
                           <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-600">
                             {index + 1}
                           </div>
@@ -5986,25 +6322,15 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                                 </div>
                               ))}
                               {/* Select para añadir nuevo responsable */}
-                              <select
-                                value=""
-                                onChange={(e) => {
-                                  const auditor = auditores.find(a => a.id === e.target.value);
+                              <SelectorProfesional
+                                disabled={cargandoAuditores || asignandoId === actividad.id}
+                                auditores={auditores.filter(a => !((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).some(r => r.id === a.id))}
+                                onSelect={(id) => {
+                                  if (!id) return;
+                                  const auditor = auditores.find(a => a.id === id);
                                   if (auditor) asignarResponsable(rol.numero, actividad.id, auditor);
                                 }}
-                                className="px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm text-gray-500 bg-white"
-                                onClick={(e) => e.stopPropagation()}
-                                disabled={cargandoAuditores || asignandoId === actividad.id}
-                              >
-                                <option value="">+ Agregar responsable…</option>
-                                {auditores
-                                  .filter(a => !((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).some(r => r.id === a.id))
-                                  .map((auditor) => (
-                                    <option key={auditor.id} value={auditor.id}>
-                                      {auditor.nombre}
-                                    </option>
-                                  ))}
-                              </select>
+                              />
                             </div>
                           ) : (
                             <div className="px-4 py-2 bg-gray-100 rounded-lg text-sm text-gray-600">
@@ -6534,7 +6860,11 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
 
           <div className="space-y-3">
             {rol.actividades.map((actividad, idx) => (
-              <div key={`${rol.numero}-${idx}-${actividad.id}`} className={`border-2 rounded-lg overflow-hidden ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200'}`}>
+              <div 
+                key={`${rol.numero}-${idx}-${actividad.id}`} 
+                style={{ contentVisibility: 'auto', containIntrinsicSize: '250px' }}
+                className={`border-2 rounded-lg overflow-hidden ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200'}`}
+              >
                 {/* Header */}
                 <div className={`p-4 ${actividad.activo === false ? 'bg-red-50' : 'bg-gray-50'}`}>
                   <div className="flex items-start justify-between mb-3">

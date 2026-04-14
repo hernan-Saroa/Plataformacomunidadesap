@@ -360,7 +360,7 @@ export function FormularioAuditoriaUnificado({
             .map((config: any) => ({
               id: String(config.idTercero),
               nombre: config.nombre || `Profesional ${config.idTercero}`,
-              cargo: config.rolOCI || 'Auditor'
+              cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor'
             }));
           setAuditoresDisponibles(auditores);
         } else {

@@ -231,12 +231,13 @@ export function useConfiguracionKanban(): UseConfiguracionKanbanResult {
       const tablero = await tablerosKanbanService.getByTipo(TipoTablero.AUDITORIAS);
 
       if (tablero) {
-        console.log(`✅ [useConfiguracionKanban] Tablero encontrado: ${tablero.id} con ${tablero.etapas.length} etapas`);
+        const etapasBrutas = tablero.etapas || [];
+        console.log(`✅ [useConfiguracionKanban] Tablero encontrado: ${tablero.id} con ${etapasBrutas.length} etapas`);
         
         setTableroId(tablero.id);
         
         // Mapear etapas del backend al formato frontend
-        const etapasMapeadas = tablero.etapas
+        const etapasMapeadas = etapasBrutas
           .sort((a, b) => a.orden - b.orden)
           .map(mapearEtapaBackendAFrontend);
         
