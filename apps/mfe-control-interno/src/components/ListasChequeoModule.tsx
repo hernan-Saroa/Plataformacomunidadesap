@@ -1063,19 +1063,24 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
           ? 'seguimiento'
           : 'planeacion') as ListaChequeoService['tipo'];
 
+      // ✅ VALIDAR Y SANITIZAR auditoriaId (debe ser UUID válido o undefined)
+      const auditoriaIdSanitized = listaEditada.auditoriaId && typeof listaEditada.auditoriaId === 'string'
+        ? listaEditada.auditoriaId
+        : undefined;
+
       const actualizada = await controlInternoService.updateListaChequeo(listaAEditar.id, {
         nombre: listaEditada.nombre,
         descripcion: listaEditada.descripcion,
         tipo,
         activa: listaEditada.activa ?? true,
         // ✅ VINCULACIÓN CON AUDITORÍA
-        auditoriaId: listaEditada.auditoriaId,
-        nombreAuditoria: listaEditada.auditoriaCodigoNombre,
-        // ✅ FASES QUE IMPACTA LA LISTA
-        fasePlaneacion: listaEditada.fasesImpactadas?.planeacion || false,
-        faseEjecucion: listaEditada.fasesImpactadas?.ejecucion || false,
-        faseComunicacion: listaEditada.fasesImpactadas?.comunicacion || false,
-        faseSeguimiento: listaEditada.fasesImpactadas?.seguimiento || false,
+        auditoriaId: auditoriaIdSanitized,
+        nombreAuditoria: listaEditada.auditoriaCodigoNombre || undefined,
+        // ✅ FASES FIJAS: Planeación (crear) + Ejecución (visualizar)
+        fasePlaneacion: true,
+        faseEjecucion: true,
+        faseComunicacion: false,
+        faseSeguimiento: false,
       });
 
       setListas(prev => prev.map(l => 
@@ -1141,8 +1146,13 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
           ? 'seguimiento'
           : 'planeacion') as ListaChequeoService['tipo'];
 
-      // Generar código único para la lista
+      // Generar código único para la lista (fuera del try para el catch)
       const codigoLista = `LC-${tipo.toUpperCase().substring(0, 4)}-${Date.now().toString().slice(-6)}`;
+
+      // ✅ VALIDAR Y SANITIZAR auditoriaId (debe ser UUID válido o undefined)
+      const auditoriaIdSanitized = listaCompleta.auditoriaId && typeof listaCompleta.auditoriaId === 'string'
+        ? listaCompleta.auditoriaId
+        : undefined;
 
       const creadaApi = await controlInternoService.createListaChequeo({
         codigo: codigoLista,
@@ -1152,19 +1162,19 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
         categoria: 'biblioteca',
         activa: true,
         items: (listaCompleta.items || []).map((item, idx) => ({
-          texto: item.texto,
+          texto: String(item.texto || ''),
           categoria: 'General',
           obligatorio: true,
-          orden: idx + 1
+          orden: Number(idx) + 1
         })),
         // ✅ VINCULACIÓN CON AUDITORÍA
-        auditoriaId: listaCompleta.auditoriaId,
-        nombreAuditoria: listaCompleta.auditoriaCodigoNombre,
-        // ✅ FASES QUE IMPACTA LA LISTA
-        fasePlaneacion: listaCompleta.fasesImpactadas?.planeacion || false,
-        faseEjecucion: listaCompleta.fasesImpactadas?.ejecucion || false,
-        faseComunicacion: listaCompleta.fasesImpactadas?.comunicacion || false,
-        faseSeguimiento: listaCompleta.fasesImpactadas?.seguimiento || false,
+        auditoriaId: auditoriaIdSanitized,
+        nombreAuditoria: listaCompleta.auditoriaCodigoNombre || undefined,
+        // ✅ FASES FIJAS: Planeación (crear) + Ejecución (visualizar)
+        fasePlaneacion: true,
+        faseEjecucion: true,
+        faseComunicacion: false,
+        faseSeguimiento: false,
       });
 
       setListas(prev => [mapApiListaToUI(creadaApi), ...prev]);
@@ -1175,10 +1185,15 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
       });
       return;
     } catch (error) {
-      console.error('Error creando lista en backend:', error);
+      console.error('❌ Error creando lista en backend:', error);
+      
+      // Mostrar error detallado
+      const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
+      toast.error('❌ Error al crear la lista', {
+        description: errorMsg,
+        duration: 7000
+      });
     }
-
-    toast.error('❌ No se pudo crear la lista en backend');
   };
 
   return (
@@ -1645,21 +1660,14 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
   const modoEdicion = !!listaEditar;
   const [nombre, setNombre] = useState(listaEditar?.nombre || '');
   const [descripcion, setDescripcion] = useState(listaEditar?.descripcion || '');
-  const etapaInicial = listaEditar?.etapaKanban || 'PLANEACION';
-  const etapaPermitida = ['PLANEACION', 'EJECUCION', 'COMUNICACION'].includes(etapaInicial) ? etapaInicial : 'COMUNICACION';
-  const [etapaKanban, setEtapaKanban] = useState<EtapaKanban>(etapaPermitida as EtapaKanban);
+  // ✅ ETAPA FIJA: Siempre PLANEACION (oculto para el usuario)
+  const etapaKanban = 'PLANEACION' as EtapaKanban;
   const [items, setItems] = useState<ItemChequeo[]>(listaEditar?.items || []);
   const [nuevoItemTexto, setNuevoItemTexto] = useState('');
   const [plantillaItemActual, setPlantillaItemActual] = useState<string>(''); // Plantilla para el ítem que se está creando
   
   // ✅ VINCULACIÓN CON AUDITORÍAS OCI
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState(listaEditar?.auditoriaId || '');
-  const [fasesSeleccionadas, setFasesSeleccionadas] = useState(listaEditar?.fasesImpactadas || {
-    planeacion: false,
-    ejecucion: false,
-    comunicacion: false,
-    seguimiento: false
-  });
   
   // ✅ LEGACY: Configuración de auditoría (mantener compatibilidad)
   const [etapaProceso, setEtapaProceso] = useState(listaEditar?.etapaProceso || '');
@@ -1727,12 +1735,22 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
       return;
     }
 
-    // ✅ Verificar que al menos una fase esté seleccionada si hay auditoría
-    const hayFasesSeleccionadas = Object.values(fasesSeleccionadas).some(v => v);
-    if (auditoriaSeleccionada && !hayFasesSeleccionadas) {
-      toast.error('❌ Selecciona al menos una fase de impacto');
+    // ✅ VALIDACIÓN: Auditoría es OBLIGATORIA
+    if (!auditoriaSeleccionada) {
+      toast.error('❌ Debes vincular la lista a una auditoría. Es obligatorio.', {
+        description: 'Selecciona una auditoría del Plan Anual para continuar',
+        duration: 5000
+      });
       return;
     }
+
+    // ✅ Las listas se crean en Planeación y se visualizan en Ejecución (fijas)
+    const fasesSeleccionadasFijas = {
+      planeacion: true,
+      ejecucion: true,
+      comunicacion: false,
+      seguimiento: false
+    };
 
     // Buscar info completa de la auditoría seleccionada
     let auditoriaInfo = undefined;
@@ -1741,8 +1759,8 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
       if (auditoria) {
         auditoriaInfo = {
           auditoriaId: auditoria.id,
-          auditoriaCodigoNombre: `${auditoria.codigo} - ${auditoria.titulo}`,
-          fasesImpactadas: fasesSeleccionadas
+          auditoriaCodigoNombre: `${auditoria.codigo} - ${auditoria.nombre}`,
+          fasesImpactadas: fasesSeleccionadasFijas
         };
       }
     }
@@ -1829,21 +1847,7 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
             />
           </div>
 
-          {/* Etapa Kanban */}
-          <div>
-            <label className="block text-xs sm:text-sm font-bold text-gray-900 mb-2">
-              Etapa del Kanban <span className="text-red-600">*</span>
-            </label>
-            <select
-              value={etapaKanban}
-              onChange={(e) => setEtapaKanban(e.target.value as EtapaKanban)}
-              className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-semibold"
-            >
-              <option value="PLANEACION">Planeación</option>
-              <option value="EJECUCION">Ejecución</option>
-              <option value="COMUNICACION">Comunicación</option>
-            </select>
-          </div>
+          {/* Etapa Kanban - FIJA EN PLANEACION (OCULTA) */}
 
           {/* ═══════════════════════════════════════════════════════════════ */}
           {/* SECCIÓN: VINCULACIÓN CON AUDITORÍAS OCI */}
@@ -1855,32 +1859,23 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
               <h3 className="text-sm font-black text-purple-900">🔗 Vinculación con Auditorías OCI</h3>
             </div>
             <p className="text-xs text-purple-700 mb-4">
-              <strong>Clave:</strong> Vincula esta lista a una auditoría específica y define qué fases impactará. Esto permite trazabilidad completa y actualización automática del progreso de la auditoría.
+              <strong>🔴 OBLIGATORIO:</strong> Vincula esta lista a una auditoría específica del Plan Anual y define qué fases impactará. Esto garantiza trazabilidad completa y actualización automática del progreso de la auditoría.
             </p>
 
             <div className="space-y-4">
               {/* Selector de Auditoría */}
-              <div className="bg-white rounded-lg p-3 border-2 border-purple-200">
+              <div className="bg-white rounded-lg p-3 border-2 border-red-300 bg-red-50">
                 <label className="block text-xs font-bold text-gray-900 mb-2">
-                  🎯 Auditoría OCI <span className="text-purple-600">(Recomendado)</span>
+                  🎯 Auditoría OCI <span className="text-red-600">*OBLIGATORIO*</span>
                 </label>
                 <select
                   value={auditoriaSeleccionada}
                   onChange={(e) => {
                     setAuditoriaSeleccionada(e.target.value);
-                    // Si deselecciona, limpiar fases
-                    if (!e.target.value) {
-                      setFasesSeleccionadas({
-                        planeacion: false,
-                        ejecucion: false,
-                        comunicacion: false,
-                        seguimiento: false
-                      });
-                    }
                   }}
                   className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none font-semibold bg-white"
                 >
-                  <option value="">🔍 Selecciona una auditoría del Plan Anual...</option>
+                  <option value="">🔍 Selecciona una auditoría del Plan Anual (OBLIGATORIO)...</option>
                   {auditorias.map((auditoria) => (
                     <option key={auditoria.id} value={auditoria.id}>
                       {auditoria.codigo} - {auditoria.titulo} ({auditoria.estado})
@@ -1894,115 +1889,17 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
                 )}
               </div>
 
-              {/* Selector de Fases Impactadas */}
-              {auditoriaSeleccionada && (
-                <div className="bg-white rounded-lg p-3 border-2 border-blue-200">
-                  <label className="block text-xs font-bold text-gray-900 mb-3">
-                    📊 Fases que Impacta esta Lista <span className="text-red-600">*</span>
-                  </label>
-                  <p className="text-xs text-gray-600 mb-3">
-                    Selecciona las fases de la auditoría donde se utilizará esta lista. Al completar items, se actualizará el progreso de cada fase.
-                  </p>
-                  
-                  <div className="space-y-2">
-                    {/* Fase: Planeación */}
-                    <label className="flex items-center gap-3 p-2 rounded-lg hover:bg-blue-50 cursor-pointer transition-colors border border-gray-200">
-                      <input
-                        type="checkbox"
-                        checked={fasesSeleccionadas.planeacion}
-                        onChange={(e) => setFasesSeleccionadas(prev => ({
-                          ...prev,
-                          planeacion: e.target.checked
-                        }))}
-                        className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                      />
-                      <div className="flex-1">
-                        <span className="text-sm font-bold text-gray-900">📋 Planeación</span>
-                        <p className="text-xs text-gray-600">Definición de objetivos, alcance y metodología</p>
-                      </div>
-                      {fasesSeleccionadas.planeacion && (
-                        <span className="text-xs font-bold text-green-600">✅ Seleccionada</span>
-                      )}
-                    </label>
 
-                    {/* Fase: Ejecución */}
-                    <label className="flex items-center gap-3 p-2 rounded-lg hover:bg-green-50 cursor-pointer transition-colors border border-gray-200">
-                      <input
-                        type="checkbox"
-                        checked={fasesSeleccionadas.ejecucion}
-                        onChange={(e) => setFasesSeleccionadas(prev => ({
-                          ...prev,
-                          ejecucion: e.target.checked
-                        }))}
-                        className="w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
-                      />
-                      <div className="flex-1">
-                        <span className="text-sm font-bold text-gray-900">🔍 Ejecución</span>
-                        <p className="text-xs text-gray-600">Recopilación de evidencias y trabajo de campo</p>
-                      </div>
-                      {fasesSeleccionadas.ejecucion && (
-                        <span className="text-xs font-bold text-green-600">✅ Seleccionada</span>
-                      )}
-                    </label>
-
-                    {/* Fase: Comunicación */}
-                    <label className="flex items-center gap-3 p-2 rounded-lg hover:bg-purple-50 cursor-pointer transition-colors border border-gray-200">
-                      <input
-                        type="checkbox"
-                        checked={fasesSeleccionadas.comunicacion}
-                        onChange={(e) => setFasesSeleccionadas(prev => ({
-                          ...prev,
-                          comunicacion: e.target.checked
-                        }))}
-                        className="w-4 h-4 text-purple-600 rounded focus:ring-2 focus:ring-purple-500"
-                      />
-                      <div className="flex-1">
-                        <span className="text-sm font-bold text-gray-900">📢 Comunicación</span>
-                        <p className="text-xs text-gray-600">Informes preliminares y definitivos</p>
-                      </div>
-                      {fasesSeleccionadas.comunicacion && (
-                        <span className="text-xs font-bold text-green-600">✅ Seleccionada</span>
-                      )}
-                    </label>
-
-                    {/* Fase: Seguimiento */}
-                    <label className="flex items-center gap-3 p-2 rounded-lg hover:bg-orange-50 cursor-pointer transition-colors border border-gray-200">
-                      <input
-                        type="checkbox"
-                        checked={fasesSeleccionadas.seguimiento}
-                        onChange={(e) => setFasesSeleccionadas(prev => ({
-                          ...prev,
-                          seguimiento: e.target.checked
-                        }))}
-                        className="w-4 h-4 text-orange-600 rounded focus:ring-2 focus:ring-orange-500"
-                      />
-                      <div className="flex-1">
-                        <span className="text-sm font-bold text-gray-900">👁️ Seguimiento</span>
-                        <p className="text-xs text-gray-600">Monitoreo de planes de mejoramiento</p>
-                      </div>
-                      {fasesSeleccionadas.seguimiento && (
-                        <span className="text-xs font-bold text-green-600">✅ Seleccionada</span>
-                      )}
-                    </label>
-                  </div>
-
-                  {/* Resumen de fases seleccionadas */}
-                  {Object.values(fasesSeleccionadas).some(v => v) && (
-                    <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded-lg">
-                      <p className="text-xs font-bold text-green-800">
-                        ✅ Esta lista impactará {Object.values(fasesSeleccionadas).filter(v => v).length} fase(s)
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Indicador si no hay auditoría seleccionada */}
               {!auditoriaSeleccionada && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <p className="text-xs text-blue-700">
-                    ℹ️ <strong>Opcional:</strong> Puedes crear la lista sin vincularla a una auditoría específica. Sin embargo, es recomendable vincularla para tener trazabilidad completa.
-                  </p>
+                <div className="bg-red-50 border-2 border-red-300 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-700">
+                      <strong>⚠️ REQUERIDO:</strong> Debes seleccionar una auditoría del Plan Anual. La vinculación es obligatoria para garantizar la trazabilidad y control de las auditorías OCIG.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
