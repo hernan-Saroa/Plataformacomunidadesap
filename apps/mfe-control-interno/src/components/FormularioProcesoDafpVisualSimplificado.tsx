@@ -710,7 +710,7 @@ export function FormularioProcesoDafpVisual({
                       />
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-bold text-gray-700">Macroproceso</label>
+                      <label className="mb-1.5 block text-xs font-bold text-gray-700">Unidad auditable</label>
                       <input
                         type="text"
                         readOnly
