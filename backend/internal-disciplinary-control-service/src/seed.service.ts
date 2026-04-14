@@ -10,13 +10,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { DisciplinaryNews, NewsOrigin, NewsStatus } from './entities/disciplinary-news.entity';
+import { DisciplinaryNews } from './entities/disciplinary-news.entity';
 import { Sequence } from './entities/sequence.entity';
 import { DisciplinaryProfessional } from './entities/disciplinary-professional.entity';
-import { DisciplinaryProcess, ProcessStatus } from './entities/disciplinary-process.entity';
+import { DisciplinaryProcess } from './entities/disciplinary-process.entity';
 import { StageConfiguration } from './entities/stage-configuration.entity';
 import { SystemConfiguration } from './entities/system-configuration.entity';
-import { LegalAuto, AutoStatus, AutoType } from './entities/legal-auto.entity';
+import { LegalAuto } from './entities/legal-auto.entity';
 
 @Injectable()
 export class SeedService {
@@ -98,13 +98,13 @@ export class SeedService {
 
     if (existingStagesCount === 0) {
       const stages = [
-        { etapa: 'RECEPCION', diasHabiles: 3, descripcion: 'Recepción de la noticia', activo: true },
-        { etapa: 'VALORACION', diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
-        { etapa: 'INDAGACION_PREVIA', diasHabiles: 40, descripcion: 'Indagación previa', activo: true },
-        { etapa: 'INVESTIGACION', diasHabiles: 60, descripcion: 'Investigación disciplinaria', activo: true },
-        { etapa: 'EVALUACION', diasHabiles: 10, descripcion: 'Evaluación de investigación', activo: true },
-        { etapa: 'JUZGAMIENTO', diasHabiles: 50, descripcion: 'Etapa de juzgamiento', activo: true },
-        { etapa: 'SEGUNDA_INSTANCIA', diasHabiles: 10, descripcion: 'Segunda instancia', activo: true },
+        { etapa: 'RECEPCION', orden: 1, diasHabiles: 3, descripcion: 'Recepción de la noticia', activo: true },
+        { etapa: 'VALORACION', orden: 2, diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
+        { etapa: 'INDAGACION_PREVIA', orden: 3, diasHabiles: 40, descripcion: 'Indagación previa', activo: true },
+        { etapa: 'INVESTIGACION', orden: 4, diasHabiles: 60, descripcion: 'Investigación disciplinaria', activo: true },
+        { etapa: 'EVALUACION', orden: 5, diasHabiles: 10, descripcion: 'Evaluación de investigación', activo: true },
+        { etapa: 'JUZGAMIENTO', orden: 6, diasHabiles: 50, descripcion: 'Etapa de juzgamiento', activo: true },
+        { etapa: 'SEGUNDA_INSTANCIA', orden: 7, diasHabiles: 10, descripcion: 'Segunda instancia', activo: true },
       ];
 
       for (const stage of stages) {
@@ -177,7 +177,7 @@ export class SeedService {
 
     const news = [
       {
-        origen: NewsOrigin.QUEJOSO,
+        origen: 'QUEJOSO',
         territorial: 'BOGOTA',
         dependenciaDenunciado: 'RECURSOS HUMANOS',
         denunciante: {
@@ -193,10 +193,10 @@ export class SeedService {
         },
         hechos: 'Se alega incumplimiento en los procedimientos administrativos y trato discriminatorio hacia el personal.',
         adjuntos: [],
-        estado: NewsStatus.RADICADA,
+        estado: 'RADICADA',
       },
       {
-        origen: NewsOrigin.OFICIO,
+        origen: 'OFICIO',
         territorial: 'MEDELLIN',
         dependenciaDenunciado: 'TESORERIA',
         denunciante: {
@@ -211,10 +211,10 @@ export class SeedService {
         },
         hechos: 'Presunta irregularidad en el manejo de fondos públicos según auditoría interna.',
         adjuntos: [],
-        estado: NewsStatus.ASIGNADA,
+        estado: 'ASIGNADA',
       },
       {
-        origen: NewsOrigin.ANONIMO,
+        origen: 'ANONIMO',
         territorial: 'CALI',
         dependenciaDenunciado: 'CONTRATACION',
         denunciante: {
@@ -227,7 +227,7 @@ export class SeedService {
         },
         hechos: 'Posible favorecimiento en proceso de licitación.',
         adjuntos: [],
-        estado: NewsStatus.DEVUELTA,
+        estado: 'DEVUELTA',
       },
     ];
 
@@ -248,7 +248,7 @@ export class SeedService {
         radicado,
         ...newsData,
         fechaRecepcion: new Date(),
-      });
+      } as any);
 
       await this.newsRepository.save(noticia);
       console.log(`✅ Noticia creada: ${radicado}`);
@@ -270,12 +270,12 @@ export class SeedService {
       {
         news: noticias[0],
         etapaActual: 'EVALUACION',
-        estado: ProcessStatus.ACTIVO,
+        estado: 'ACTIVO',
       },
       {
         news: noticias[1],
         etapaActual: 'INDAGACION_PREVIA',
-        estado: ProcessStatus.ACTIVO,
+        estado: 'ACTIVO',
       },
     ];
 
@@ -298,7 +298,7 @@ export class SeedService {
         etapaActual: procData.etapaActual,
         estado: procData.estado,
         abogadoAsignado: abogado,
-      });
+      } as any);
 
       await this.processRepository.save(proceso);
       console.log(`✅ Proceso creado: ${radicadoProceso}`);
@@ -319,9 +319,9 @@ export class SeedService {
     const autoRevision = this.autoRepository.create({
       process: processes[0],
       processId: processes[0].id,
-      tipo: AutoType.AUTO_APERTURA_INDAGACION,
+      tipo: 'AUTO_APERTURA_INDAGACION',
       contenido: '<h2>AUTO DE APERTURA</h2><p>Texto de prueba</p>',
-      estado: AutoStatus.REVISION_JEFE,
+      estado: 'REVISION_JEFE',
       currentVersion: 1,
       comentarios: 'Favor revisar',
       createdAt: new Date(),

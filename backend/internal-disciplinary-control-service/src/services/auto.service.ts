@@ -20,6 +20,7 @@ import { AlertasService } from './alertas.service';
 import { TipoAlerta } from '../entities/alerta-enviada.entity';
 import { PdfModifierService } from './pdf-modifier.service';
 import { SequenceService } from './sequence.service';
+import { DisciplinaryProcess, ProcessStatus } from '../entities/disciplinary-process.entity';
 
 const APERTURA_TYPES = [
   AutoType.AUTO_APERTURA,
@@ -129,17 +130,21 @@ export class AutoService {
   }
 
   /**
-   * Envía un auto a revisión (cambia de BORRADOR a REVISION_JEFE)
+   * Envía un auto a revisión (cambia a REVISION_JEFE)
    */
   async sendToReview(id: string): Promise<LegalAuto> {
     const auto = await this.findById(id, ['process']);
 
-    if (auto.estado !== AutoStatus.BORRADOR) {
+    // Para autos que no son de archivo, solo permitir enviar borradores o autos devueltos a revisión
+    if (auto.tipo !== AutoType.AUTO_ARCHIVO && auto.estado !== AutoStatus.BORRADOR && auto.estado !== AutoStatus.DEVUELTO) {
       throw new HttpException(
-        'Solo se pueden enviar borradores a revisión',
+        'Solo se pueden enviar borradores o autos devueltos a revisión',
         HttpStatus.BAD_REQUEST,
       );
     }
+
+    // Para autos de archivo, permitir enviar a revisión en cualquier estado
+    // No hay restricciones adicionales para AUTO_ARCHIVO
 
     auto.estado = AutoStatus.REVISION_JEFE;
     return await this.autoRepository.save(auto);
@@ -214,6 +219,11 @@ export class AutoService {
           fechaActuacion: fechaAprobacion,
           observaciones: `Auto: ${auto.tipo} | Aprobado por: ${aprobadoPorId}`,
         });
+      }
+
+      // Si es un auto de archivo, archivar el proceso y detener conteos de vencimiento
+      if (auto.tipo === 'AUTO_ARCHIVO') {
+        await this.archiveProcess(auto.processId, aprobadoPorId);
       }
 
     } else if (reviewAutoDto.action === ReviewAction.RETURN) {
@@ -306,9 +316,9 @@ export class AutoService {
   async updateContent(id: string, nuevoContenido: string, userId?: string): Promise<LegalAuto> {
     const auto = await this.findById(id, ['process']);
 
-    if (auto.estado !== AutoStatus.BORRADOR && auto.estado !== AutoStatus.DEVUELTO) {
+    if (auto.estado !== AutoStatus.BORRADOR && auto.estado !== AutoStatus.DEVUELTO && auto.tipo !== 'AUTO_ARCHIVO') {
       throw new HttpException(
-        'Solo se pueden editar borradores o autos devueltos',
+        'Solo se pueden editar borradores, autos devueltos o autos de archivo',
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -344,8 +354,8 @@ export class AutoService {
     if (updateData.numero !== undefined) auto.numero = updateData.numero;
     if (updateData.comentarios !== undefined) auto.comentarios = updateData.comentarios;
 
-    // Contenido y archivos solo se pueden editar en estados editables
-    const canEditContent = auto.estado === AutoStatus.BORRADOR || auto.estado === AutoStatus.DEVUELTO;
+    // Contenido y archivos solo se pueden editar en estados editables, excepto para autos de archivo que siempre se pueden editar
+    const canEditContent = auto.estado === AutoStatus.BORRADOR || auto.estado === AutoStatus.DEVUELTO || auto.tipo === 'AUTO_ARCHIVO';
 
     if (!canEditContent && (updateData.contenidoHtml || updateData.documentUrl)) {
       throw new HttpException(
@@ -479,6 +489,39 @@ export class AutoService {
   async delete(id: string): Promise<void> {
     const auto = await this.findById(id);
     await this.autoRepository.delete(auto.id);
+  }
+
+  /**
+   * Archiva el proceso cuando se aprueba un auto de archivo
+   */
+  private async archiveProcess(processId: string, aprobadoPorId: string): Promise<void> {
+    try {
+      // Cambiar estado a archivado
+      await this.processService.updateStatus(processId, ProcessStatus.ARCHIVADO);
+
+      // Detener conteo de vencimiento activo (limpiar fecha de vencimiento)
+      const process = await this.processService.findById(processId, false);
+      process.fechaVencimientoEtapa = null;
+      await this.processService['processRepository'].save(process); // Acceso directo al repo para actualizar fecha
+
+      // Notificar al profesional responsable
+      if (process.abogadoAsignadoId) {
+        const asunto = `Proceso Archivado: ${process.radicadoProceso}`;
+        const mensaje = `El proceso ${process.radicadoProceso} ha sido archivado tras la aprobación del auto de archivo. Todos los conteos de vencimiento han sido detenidos.`;
+
+        await this.alertasService.crearNotificacionAuto(
+          null, // No hay auto específico
+          TipoAlerta.SISTEMA,
+          process.abogadoAsignadoId, // Notificar al abogado asignado
+          asunto,
+          mensaje,
+          aprobadoPorId
+        );
+      }
+    } catch (error) {
+      console.error('Error archivando proceso:', error);
+      // No fallamos la aprobación del auto si falla el archivado
+    }
   }
 
   /**
