@@ -591,21 +591,21 @@ class ControlInternoService {
    * Obtiene una evaluación por ID
    */
   async getEvaluacionById(id: string): Promise<EvaluacionProceso> {
-    return client.get<EvaluacionProceso>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/${id}`);
+    return client.get<EvaluacionProceso>(`/universo-auditorias/evaluaciones/${id}`);
   }
 
   /**
    * Obtiene evaluaciones por proceso
    */
   async getEvaluacionesByProceso(procesoId: string): Promise<EvaluacionProceso[]> {
-    return client.get<EvaluacionProceso[]>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/proceso/${procesoId}`);
+    return client.get<EvaluacionProceso[]>(`/universo-auditorias/evaluaciones/proceso/${procesoId}`);
   }
 
   /**
    * Obtiene estadísticas de evaluaciones por vigencia
    */
   async getEstadisticasEvaluaciones(vigencia: number): Promise<any> {
-    return client.get(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/estadisticas/${vigencia}`);
+    return client.get(`/universo-auditorias/evaluaciones/estadisticas/${vigencia}`);
   }
 
   /**
@@ -619,14 +619,14 @@ class ControlInternoService {
    * Actualiza una evaluación de proceso
    */
   async updateEvaluacion(id: string, data: Partial<CreateEvaluacionProcesoDTO>): Promise<EvaluacionProceso> {
-    return client.put<EvaluacionProceso>(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/${id}`, data);
+    return client.put<EvaluacionProceso>(`/universo-auditorias/evaluaciones/${id}`, data);
   }
 
   /**
    * Elimina una evaluación de proceso
    */
   async deleteEvaluacion(id: string): Promise<void> {
-    return client.delete(`${SERVICE_PREFIX}/universo-auditorias/evaluaciones/${id}`);
+    return client.delete(`/universo-auditorias/evaluaciones/${id}`);
   }
 
   // ==========================================================================
