@@ -244,6 +244,16 @@ export class AutoController {
   async downloadPdf(@Param('id') id: string, @Res() res: Response) {
     const auto = await this.autoService.findById(id);
 
+    const isStoredPdf =
+      !!auto.documentUrl &&
+      (auto.documentType === 'application/pdf' ||
+        auto.documentName?.toLowerCase().endsWith('.pdf') ||
+        auto.documentUrl.toLowerCase().endsWith('.pdf'));
+
+    if (isStoredPdf) {
+      return res.redirect(auto.documentUrl);
+    }
+
     // Por ahora retornamos HTML renderizable
     res.setHeader('Content-Type', 'text/html');
     res.setHeader('Content-Disposition', `inline; filename="Auto-${auto.numero || 'borrador'}.html"`);
