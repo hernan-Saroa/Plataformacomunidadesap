@@ -2859,16 +2859,38 @@ export function DashboardKanbanOperativo({
       // Transformar procesos al formato interno
       const procesosTransformados = procesosFiltrados.map(p => toProcesoFromApi(p, etapasConfig));
 
+      // Separar procesos archivados (en etapa 'Archivo') de los activos
+      const procesosActivos = procesosTransformados.filter(p =>
+        p.etapaActual !== 'Archivo' && p.estadoActual !== 'ARCHIVADO'
+      );
+      const procesosArchivados = procesosTransformados.filter(p =>
+        p.etapaActual === 'Archivo' || p.estadoActual === 'ARCHIVADO'
+      );
+
+      // Transformar procesos archivados al formato de archivados
+      const procesosArchivadosTransformados = procesosArchivados.map(p => ({
+        ...p,
+        fechaArchivo: (p as any).fechaCreacion || new Date().toISOString(),
+        motivoArchivo: 'Completado - Archivo'
+      }));
+
       // Combinar noticias y procesos activos
       const todosLosItems: Item[] = [
         ...noticiasTransformadas,
-        ...procesosTransformados
+        ...procesosActivos
+      ];
+
+      // Combinar archivados de noticias y procesos
+      const todosLosArchivados = [
+        ...archivadosTransformados,
+        ...procesosArchivadosTransformados
       ];
 
       console.log('[DashboardKanban] Total items para Kanban:', todosLosItems.length);
+      console.log('[DashboardKanban] Total items archivados:', todosLosArchivados.length);
 
       setItems(todosLosItems);
-      setItemsArchivados(archivadosTransformados as any);
+      setItemsArchivados(todosLosArchivados as any);
       setDatosCargados(true);
     } catch (error: any) {
       console.error('Error al cargar datos:', error);
