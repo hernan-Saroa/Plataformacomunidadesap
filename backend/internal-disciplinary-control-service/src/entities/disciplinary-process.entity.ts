@@ -13,17 +13,6 @@ import { LegalAuto } from './legal-auto.entity';
 import { DisciplinaryProfessional } from './disciplinary-professional.entity';
 import { Evidence } from './evidence.entity';
 
-export enum ProcessStage {
-  RECEPCION = 'RECEPCION',
-  VALORACION = 'VALORACION',
-  INDAGACION_PREVIA = 'INDAGACION_PREVIA',
-  INVESTIGACION = 'INVESTIGACION',
-  EVALUACION = 'EVALUACION',
-  JUZGAMIENTO = 'JUZGAMIENTO',
-  INDAGACION = 'INDAGACION',
-  FALLO = 'FALLO',
-  SEGUNDA_INSTANCIA = 'SEGUNDA_INSTANCIA',
-}
 
 export enum ProcessStatus {
   ACTIVO = 'ACTIVO',
@@ -73,12 +62,8 @@ export class DisciplinaryProcess {
   @Column({ type: 'text', nullable: true })
   kanbanNotice: string | null;
 
-  @Column({
-    type: 'enum',
-    enum: ProcessStatus,
-    default: ProcessStatus.ACTIVO,
-  })
-  estado: ProcessStatus;
+   @Column({ type: 'varchar', length: 50, default: 'ACTIVO' })
+   estado: string;
 
   @Column({ type: 'timestamp', nullable: true })
   fechaPrescripcion: Date;
