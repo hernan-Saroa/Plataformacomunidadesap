@@ -59,6 +59,7 @@ import { SchedulerService } from './services/scheduler.service';
 import { SeedService } from './seed.service';
 import { OnlyOfficeService } from './services/onlyoffice.service';
 import { PdfModifierService } from './services/pdf-modifier.service';
+import { DocumentConversionService } from './services/document-conversion.service';
 import { databaseConfig } from './database.config';
 
 import { AppController } from './app.controller';
@@ -180,6 +181,7 @@ import { JuridicaEmailService } from './services/juridica-email.service';
     DisciplinaryExportService,
     OnlyOfficeService,
     PdfModifierService,
+    DocumentConversionService,
     AutosConfigurationService,
     OficiosConfigurationService,
     ActasConfigurationService,
