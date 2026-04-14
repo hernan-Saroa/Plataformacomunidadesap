@@ -73,21 +73,44 @@ type AuditoriaProgramada = AuditoriaProgramadaUI;
  *   Extremo  / Cada año    → 80h
  *   Alto     / Cada 2 años → 60h
  *   Moderado / Cada 3 años → 40h
- *   Bajo     / Cada 4 años → 24h
+ *   Bajo (Priorizado) / Cada 4 años → 24h
+ *   Bajo / No auditar → 0h
  */
 function calcHorasEstimadas(nivelCriticidad?: string, ciclo?: string): number {
+  const c = (ciclo || '').toLowerCase();
+  if (c.includes('no auditar')) return 0;
   const n = (nivelCriticidad || '').toLowerCase();
   if (n === 'extremo')  return 80;
   if (n === 'alto')     return 60;
   if (n === 'moderado') return 40;
   if (n === 'bajo')     return 24;
+  if (n.includes('bajo')) return 24;
   // fallback por ciclo
-  const c = (ciclo || '').toLowerCase();
-  if (c.includes('cada año') || c.includes('anual')) return 80;
+  if (c.includes('todos los años') || c.includes('cada año') || c.includes('anual')) return 80;
   if (c.includes('2')) return 60;
   if (c.includes('3')) return 40;
   if (c.includes('4')) return 24;
-  return 24;
+  return 0;
+}
+
+function resolverResultadoDafp(ponderacion: number, modoEspecial?: string) {
+  const base =
+    ponderacion < 1.5
+      ? { nivel: 'Bajo', ciclo: 'No auditar' }
+      : ponderacion < 2
+      ? { nivel: 'Bajo (Priorizado)', ciclo: 'Cada 4 años' }
+      : ponderacion < 3
+      ? { nivel: 'Moderado', ciclo: 'Cada 3 años' }
+      : ponderacion < 4
+      ? { nivel: 'Alto', ciclo: 'Cada 2 años' }
+      :
+      { nivel: 'Extremo', ciclo: 'Cada año' };
+
+  if (modoEspecial === 'todos_los_anos') {
+    return { ...base, ciclo: 'Todos los años' };
+  }
+
+  return base;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -283,22 +306,21 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     const totalRiesgos = riesgoExt + riesgoAlt + riesgoMod + riesgoBaj;
     
     // Calcular ponderación DAFP si tenemos todos los criterios
-    const riCuan = riesgoExt >= 1 ? 5 : riesgoAlt >= 1 ? 4 : riesgoMod >= 1 ? 3 : riesgoBaj >= 1 ? 2 : 0;
+    const riCuan = riesgoExt >= 1 ? 5 : riesgoAlt >= 1 ? 4 : riesgoMod >= 1 ? 3 : riesgoBaj >= 1 ? 2 : 1;
     const tiempo = datos.tiempoUltimaAuditoria || 0;
     const ad = datos.temasAltaDireccion || 0;
     const obj = datos.objetivosEstrategicos || 0;
     const hall = datos.hallazgosAnteriores || 0;
     
-    let ponderacionFinalDafp = 0;
-    let nivelCriticidadDafp = '';
-    let cicloRotacionDafp = '';
-    
-    if (totalRiesgos > 0 && tiempo > 0 && ad > 0 && obj > 0 && hall > 0) {
+    let ponderacionFinalDafp = Number(datos.ponderacionFinalDafp) || 0;
+    let nivelCriticidadDafp = datos.nivelCriticidadDafp || '';
+    let cicloRotacionDafp = datos.cicloRotacionDafp || '';
+
+    if (tiempo > 0 && ad > 0 && obj > 0 && hall > 0 && (!ponderacionFinalDafp || !nivelCriticidadDafp || !cicloRotacionDafp)) {
       ponderacionFinalDafp = +(riCuan * 0.4 + tiempo * 0.1 + ad * 0.1 + obj * 0.1 + hall * 0.3).toFixed(2);
-      if (ponderacionFinalDafp >= 4.0)      { nivelCriticidadDafp = 'Extremo';  cicloRotacionDafp = 'Cada año'; }
-      else if (ponderacionFinalDafp >= 3.0) { nivelCriticidadDafp = 'Alto';     cicloRotacionDafp = 'Cada 2 años'; }
-      else if (ponderacionFinalDafp >= 2.0) { nivelCriticidadDafp = 'Moderado'; cicloRotacionDafp = 'Cada 3 años'; }
-      else                                  { nivelCriticidadDafp = 'Bajo';     cicloRotacionDafp = 'Cada 4 años'; }
+      const resultado = resolverResultadoDafp(ponderacionFinalDafp, datos.modoProcesoEspecial);
+      nivelCriticidadDafp = resultado.nivel;
+      cicloRotacionDafp = resultado.ciclo;
     }
 
     console.log('[handleAgregarEvaluacion] Guardando evaluación con datos:', {
@@ -334,7 +356,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       hallazgosAnteriores: Number(datos.hallazgosAnteriores) || Number(hall),
       ponderacionFinalDafp: Number(ponderacionFinalDafp),
       nivelCriticidadDafp: nivelCriticidadDafp,
-      cicloRotacionDafp: cicloRotacionDafp || 'Anual',
+      cicloRotacionDafp: cicloRotacionDafp || 'No auditar',
       decisionFinal: datos.decisionFinal || 'AUDITORÍA POSTERIOR',
       motivoDecision: datos.motivoDecision || '',
       prioridadRegla: Number(datos.prioridadRegla) || 5,
@@ -360,22 +382,21 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     const totalRiesgosCalc = riesgoExt + riesgoAlt + riesgoMod + riesgoBaj;
     
     // Calcular ponderación DAFP si tenemos todos los criterios
-    const riCuan = riesgoExt >= 1 ? 5 : riesgoAlt >= 1 ? 4 : riesgoMod >= 1 ? 3 : riesgoBaj >= 1 ? 2 : 0;
+    const riCuan = riesgoExt >= 1 ? 5 : riesgoAlt >= 1 ? 4 : riesgoMod >= 1 ? 3 : riesgoBaj >= 1 ? 2 : 1;
     const tiempo = datos.tiempoUltimaAuditoria || 0;
     const ad = datos.temasAltaDireccion || 0;
     const obj = datos.objetivosEstrategicos || 0;
     const hall = datos.hallazgosAnteriores || 0;
     
-    let ponderacionFinalDafp = 0;
-    let nivelCriticidadDafp = '';
-    let cicloRotacionDafp = '';
-    
-    if (totalRiesgosCalc > 0 && tiempo > 0 && ad > 0 && obj > 0 && hall > 0) {
+    let ponderacionFinalDafp = Number(datos.ponderacionFinalDafp) || 0;
+    let nivelCriticidadDafp = datos.nivelCriticidadDafp || '';
+    let cicloRotacionDafp = datos.cicloRotacionDafp || '';
+
+    if (tiempo > 0 && ad > 0 && obj > 0 && hall > 0 && (!ponderacionFinalDafp || !nivelCriticidadDafp || !cicloRotacionDafp)) {
       ponderacionFinalDafp = +(riCuan * 0.4 + tiempo * 0.1 + ad * 0.1 + obj * 0.1 + hall * 0.3).toFixed(2);
-      if (ponderacionFinalDafp >= 4.0)      { nivelCriticidadDafp = 'Extremo';  cicloRotacionDafp = 'Cada año'; }
-      else if (ponderacionFinalDafp >= 3.0) { nivelCriticidadDafp = 'Alto';     cicloRotacionDafp = 'Cada 2 años'; }
-      else if (ponderacionFinalDafp >= 2.0) { nivelCriticidadDafp = 'Moderado'; cicloRotacionDafp = 'Cada 3 años'; }
-      else                                  { nivelCriticidadDafp = 'Bajo';     cicloRotacionDafp = 'Cada 4 años'; }
+      const resultado = resolverResultadoDafp(ponderacionFinalDafp, datos.modoProcesoEspecial);
+      nivelCriticidadDafp = resultado.nivel;
+      cicloRotacionDafp = resultado.ciclo;
     }
 
     const evaluacionData: Partial<EvaluacionProcesoUI> = {

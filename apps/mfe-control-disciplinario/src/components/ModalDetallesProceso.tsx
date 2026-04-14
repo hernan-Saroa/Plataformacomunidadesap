@@ -3576,6 +3576,17 @@ export function ModalDetallesProceso({
       return;
     }
     const nuevoArchivo = e.target.files[0];
+    const extension = `.${nuevoArchivo.name.split('.').pop()?.toLowerCase() || ''}`;
+
+    if (!['.doc', '.docx'].includes(extension)) {
+      toast.error('Formato no permitido para autos', {
+        description: 'Solo se permiten archivos Word (.doc, .docx) para recargar autos.',
+      });
+      setAutoRecargar(null);
+      if (inputRecargarRef.current) inputRecargarRef.current.value = '';
+      return;
+    }
+
     const id = autoRecargar.id;
     const nuevaVersion = (autoRecargar.version || 1) + 1;
 
@@ -5787,7 +5798,7 @@ export function ModalDetallesProceso({
       <input
         ref={inputRecargarRef}
         type="file"
-        accept=".pdf,.doc,.docx"
+        accept=".doc,.docx"
         className="hidden"
         onChange={handleArchivoReemplazado}
       />

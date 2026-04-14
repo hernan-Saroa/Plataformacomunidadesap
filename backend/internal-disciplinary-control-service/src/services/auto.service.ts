@@ -1,26 +1,21 @@
-import {
-  Injectable,
-  HttpException,
-  HttpStatus,
-} from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+<import { In, Repository } from 'typeorm';
+import { CreateLegalAutoDto } from '../dtos/create-legal-auto.dto';
+import { RegisterNotificationDto } from '../dtos/register-notification.dto';
+import { ReviewAction, ReviewAutoDto } from '../dtos/review-auto.dto';
 import { LegalAuto, AutoStatus, AutoType } from '../entities/legal-auto.entity';
 import { AutoVersion } from '../entities/auto-version.entity';
+import { TipoAlerta } from '../entities/alerta-enviada.entity';
 import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-actuacion.entity';
-import {
-  CreateLegalAutoDto,
-} from '../dtos/create-legal-auto.dto';
-import { RegisterNotificationDto } from '../dtos/register-notification.dto';
-import { ReviewAutoDto, ReviewAction } from '../dtos/review-auto.dto';
-import { ProcessService } from './process.service';
-import { ProcessStage, ProcessStatus } from '../entities/disciplinary-process.entity';
+
 import { SystemConfiguration } from '../entities/system-configuration.entity';
 import { AlertasService } from './alertas.service';
-import { TipoAlerta } from '../entities/alerta-enviada.entity';
+import { DocumentConversionService } from './document-conversion.service';
 import { PdfModifierService } from './pdf-modifier.service';
+import { ProcessService } from './process.service';
 import { SequenceService } from './sequence.service';
-import { JuridicaEmailService } from './juridica-email.service';
+<import { JuridicaEmailService } from './juridica-email.service';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 
 const APERTURA_TYPES = [
@@ -44,15 +39,15 @@ export class AutoService {
     private alertasService: AlertasService,
     private pdfModifierService: PdfModifierService,
     private sequenceService: SequenceService,
+<    private documentConversionService: DocumentConversionService,
     private juridicaEmailService: JuridicaEmailService,
-  ) { }
+  ) {}
 
   /**
    * Crea un nuevo auto (borrador)
    */
   async create(createAutoDto: CreateLegalAutoDto): Promise<LegalAuto> {
     try {
-      // Validar que el proceso existe
       const proceso = await this.processService.findById(createAutoDto.processId, false);
 
       // Validaciones específicas para AUTO_PRORROGA
@@ -117,6 +112,7 @@ export class AutoService {
       }
 
       // CORRECCIÓN AQUI: Mapeo manual de campos DTO -> Entidad
+>>>>>>> origin/micro-frontend
       const auto = this.autoRepository.create({
         tipo: createAutoDto.tipoAuto,
         numero: createAutoDto.numero,
@@ -132,29 +128,12 @@ export class AutoService {
         prorrogaMeses: createAutoDto.prorrogaMeses ?? null,
       });
 
-      const savedAuto = await this.autoRepository.save(auto);
-
-      // Si tiene documento WORD, agregar el consecutivo
-      if (savedAuto.documentUrl && (savedAuto.documentName?.toLowerCase().endsWith('.doc') || savedAuto.documentName?.toLowerCase().endsWith('.docx'))) {
-        // Asumimos que documentUrl es el nombre del archivo en uploads (StorageService)
-        // Ejemplo: "1738923_archivo.doc"
-        try {
-          await this.pdfModifierService.addConsecutive(
-            savedAuto.documentUrl,
-            savedAuto.numero,
-            proceso.radicadoProceso
-          );
-        } catch (e) {
-          console.error('Error al agregar consecutivo al WORD', e);
-          // No fallamos la creación del auto, solo loggeamos
-        }
-      }
-
-      return savedAuto;
+      return await this.autoRepository.save(auto);
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
       }
+
       throw new HttpException(
         `Error al crear auto: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -172,14 +151,19 @@ export class AutoService {
   /**
    * Obtiene un auto por ID
    */
-  async findById(id: string, relations: string[] = ['process', 'versions']): Promise<LegalAuto> {
+  async findById(
+    id: string,
+    relations: string[] = ['process', 'versions'],
+  ): Promise<LegalAuto> {
     const auto = await this.autoRepository.findOne({
       where: { id },
       relations,
     });
+
     if (!auto) {
       throw new HttpException('Auto no encontrado', HttpStatus.NOT_FOUND);
     }
+
     return auto;
   }
 
@@ -188,8 +172,8 @@ export class AutoService {
    */
   async findByProcessId(processId: string): Promise<LegalAuto[]> {
     return await this.autoRepository.find({
-      where: { processId: processId },
-      order: { createdAt: 'DESC' }
+      where: { processId },
+      order: { createdAt: 'DESC' },
     });
   }
 
@@ -199,23 +183,23 @@ export class AutoService {
   async sendToReview(id: string): Promise<LegalAuto> {
     const auto = await this.findById(id, ['process']);
 
-    // Para autos que no son de archivo, solo permitir enviar borradores o autos devueltos a revisión
-    if (auto.tipo !== AutoType.AUTO_ARCHIVO && auto.estado !== AutoStatus.BORRADOR && auto.estado !== AutoStatus.DEVUELTO) {
+    if (
+      auto.tipo !== AutoType.AUTO_ARCHIVO &&
+      auto.estado !== AutoStatus.BORRADOR &&
+      auto.estado !== AutoStatus.DEVUELTO
+    ) {
       throw new HttpException(
         'Solo se pueden enviar borradores o autos devueltos a revisión',
         HttpStatus.BAD_REQUEST,
       );
     }
 
-    // Para autos de archivo, permitir enviar a revisión en cualquier estado
-    // No hay restricciones adicionales para AUTO_ARCHIVO
-
     auto.estado = AutoStatus.REVISION_JEFE;
     return await this.autoRepository.save(auto);
   }
 
   /**
-   * Aprueba o rechaza un auto (operación del Jefe)
+   * Aprueba o devuelve un auto (operación del Jefe)
    */
   async approve(
     id: string,
@@ -223,6 +207,12 @@ export class AutoService {
     aprobadoPorId: string,
   ): Promise<LegalAuto> {
     const auto = await this.findById(id, ['process']);
+    const previousSnapshot = {
+      contenido: auto.contenido,
+      versionNumber: auto.currentVersion,
+      documentUrl: auto.documentUrl,
+      documentName: auto.documentName,
+    };
 
     if (auto.estado !== AutoStatus.REVISION_JEFE) {
       throw new HttpException(
@@ -231,34 +221,22 @@ export class AutoService {
       );
     }
 
-    // AUDIT LOGGING (System Config based)
     try {
       const config = await this.configRepository.findOne({ where: {} });
       if (config?.securitySettings?.auditEnabled) {
-        console.log(`[AUDIT] Action: ${reviewAutoDto.action} | AutoID: ${id} | User: ${aprobadoPorId} | Timestamp: ${new Date().toISOString()}`);
+        console.log(
+          `[AUDIT] Action: ${reviewAutoDto.action} | AutoID: ${id} | User: ${aprobadoPorId} | Timestamp: ${new Date().toISOString()}`,
+        );
       }
-    } catch (e) {
-      console.warn('Audit log failed', e);
+    } catch (error) {
+      console.warn('Audit log failed', error);
     }
 
     if (reviewAutoDto.action === ReviewAction.APPROVE) {
       auto.estado = AutoStatus.APROBADO;
-
-      // Asignar consecutivo global al momento de la aprobación
       auto.numero = await this.sequenceService.generateAutoConsecutivo();
+      await this.prepareApprovedDocument(auto);
 
-      // Registrar en Histoial (Version)
-      await this.versionRepository.save({
-        auto: { id: auto.id } as LegalAuto,
-        contenido: auto.contenido, // No cambia el contenido
-        versionNumber: auto.currentVersion,
-        createdBy: aprobadoPorId,
-        changeReason: 'Auto Aprobado por Jefe (Pendiente de Firma)',
-        documentUrl: auto.documentUrl,
-        documentName: auto.documentName,
-      });
-
-      // Si es auto de apertura con etapa destino, cambiar etapa del proceso
       if (APERTURA_TYPES.includes(auto.tipo as AutoType) && auto.etapaDestino) {
         const fechaAprobacion = new Date();
         const etapaAnterior = auto.process.etapaActual;
@@ -270,9 +248,10 @@ export class AutoService {
             fechaAprobacion,
           );
 
-        const tiempoTexto = tiempoAcumuladoDias !== null
-          ? `Tiempo acumulado en etapa anterior: ${tiempoAcumuladoDias} día(s) hábil(es).`
-          : 'Tiempo acumulado en etapa anterior: no disponible.';
+        const tiempoTexto =
+          tiempoAcumuladoDias !== null
+            ? `Tiempo acumulado en etapa anterior: ${tiempoAcumuladoDias} día(s) hábil(es).`
+            : 'Tiempo acumulado en etapa anterior: no disponible.';
 
         const nombreAprobador = auto.process?.abogadoAsignado?.nombreCompleto || 'Jefe OCID';
         await this.actuacionesRepository.save({
@@ -314,8 +293,7 @@ export class AutoService {
         });
       }
 
-      // Si es un auto de archivo, archivar el proceso y detener conteos de vencimiento
-      if (auto.tipo === 'AUTO_ARCHIVO') {
+      if (auto.tipo === AutoType.AUTO_ARCHIVO) {
         await this.archiveProcess(auto.processId, aprobadoPorId);
       }
 
@@ -368,6 +346,7 @@ export class AutoService {
         }
       }
 
+>>>>>>> origin/micro-frontend
     } else if (reviewAutoDto.action === ReviewAction.RETURN) {
       auto.estado = AutoStatus.DEVUELTO;
       if (reviewAutoDto.observaciones) {
@@ -401,6 +380,7 @@ export class AutoService {
         documentUrl: auto.documentUrl,
         documentName: auto.documentName,
       });
+>>>>>>> origin/micro-frontend
     }
 
     if (reviewAutoDto.observaciones) {
@@ -408,56 +388,87 @@ export class AutoService {
     }
     auto.aprobadoPorId = aprobadoPorId;
 
-    return await this.autoRepository.save(auto);
+    const savedAuto = await this.autoRepository.save(auto);
+
+    try {
+      await this.versionRepository.save({
+        auto: { id: savedAuto.id } as LegalAuto,
+        contenido: previousSnapshot.contenido,
+        versionNumber: previousSnapshot.versionNumber,
+        createdBy: aprobadoPorId,
+        changeReason:
+          reviewAutoDto.action === ReviewAction.APPROVE
+            ? previousSnapshot.documentUrl &&
+              previousSnapshot.documentUrl !== savedAuto.documentUrl
+              ? `Documento fuente aprobado y convertido a PDF final (${savedAuto.numero})`
+              : 'Auto Aprobado por Jefe'
+            : `Auto Devuelto: ${reviewAutoDto.observaciones || 'Sin observaciones'}`,
+        documentUrl:
+          reviewAutoDto.action === ReviewAction.APPROVE
+            ? previousSnapshot.documentUrl
+            : savedAuto.documentUrl,
+        documentName:
+          reviewAutoDto.action === ReviewAction.APPROVE
+            ? previousSnapshot.documentName
+            : savedAuto.documentName,
+      });
+    } catch (error) {
+      console.error(
+        'No se pudo registrar la version historica del auto:',
+        error,
+      );
+    }
+
+    return savedAuto;
   }
 
   /**
-   * Firma digitalmente un auto aprobado
+   * Firma digitalmente un auto aprobado o en revisión
    */
   async sign(id: string, userId: string, signData?: any): Promise<LegalAuto> {
     const auto = await this.findById(id, ['process']);
 
-    // Permitir firmar si está APROBADO o EN REVISIÓN (Jefe puede firmar directo)
-    if (auto.estado !== AutoStatus.APROBADO && auto.estado !== AutoStatus.REVISION_JEFE) {
+    if (
+      auto.estado !== AutoStatus.APROBADO &&
+      auto.estado !== AutoStatus.REVISION_JEFE
+    ) {
       throw new HttpException(
         'Solo se pueden firmar autos que estén en revisión o aprobados',
         HttpStatus.BAD_REQUEST,
       );
     }
 
-    // NOTA: A petición del usuario, NO reemplazamos el archivo original con el archivo subido (Firma Local).
-    // Mantenemos el archivo original (que ya tiene el consecutivo) y le estampamos la firma visualmente al final.
+    await this.preparePdfDocumentForSignature(auto);
 
-    // La firma queda en el mismo documento (modificado in-place)
+    if (auto.documentUrl && this.isPdfDocument(auto)) {
+      try {
+        const signerName = 'Jefe Control Disciplinario';
+        const role = 'Jefe Oficina';
+
+        await this.pdfModifierService.addSignature(
+          auto.documentUrl,
+          signerName,
+          role,
+        );
+      } catch (error) {
+        console.error('Error al estampar firma en PDF', error);
+        throw new HttpException(
+          'No fue posible estampar la firma sobre el PDF del auto',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+    }
+
     auto.firmaUrl = auto.documentUrl;
     auto.estado = AutoStatus.FIRMADO;
     auto.aprobadoPorId = userId;
 
-    // Agregar la estampa visual AL MISMO ARCHIVO SIEMPRE (para todos los métodos de firma)
-    if (auto.documentUrl && (auto.documentName?.toLowerCase().endsWith('.doc') || auto.documentName?.toLowerCase().endsWith('.docx'))) {
-      try {
-        // TODO: Obtener nombre real del usuario firmante
-        const signerName = "Jefe Control Disciplinario";
-        const role = "Jefe Oficina";
-
-        // Esto modifica el archivo en disco (in-place)
-        await this.pdfModifierService.addSignature(
-          auto.documentUrl,
-          signerName,
-          role
-        );
-      } catch (e) {
-        console.error('Error al estampar firma en WORD', e);
-      }
-    }
-
-    // Registrar en Historial
     await this.versionRepository.save({
       auto: { id: auto.id } as LegalAuto,
       contenido: auto.contenido,
       versionNumber: auto.currentVersion,
-      createdBy: userId, // Quien firma
-      changeReason: 'Auto Firmado (Estampado Digital en Documento Original)',
+      createdBy: userId,
+      changeReason: 'Auto Firmado (Estampado Digital en PDF)',
       documentUrl: auto.documentUrl,
       documentName: auto.documentName,
     });
@@ -467,22 +478,26 @@ export class AutoService {
 
   /**
    * Actualiza el contenido de un auto (solo si está en BORRADOR)
+   * Guarda versión anterior
    */
-  /**
-   * Actualiza el contenido de un auto (solo si está en BORRADOR)
-   * GUARDA VERSIÓN ANTERIOR
-   */
-  async updateContent(id: string, nuevoContenido: string, userId?: string): Promise<LegalAuto> {
+  async updateContent(
+    id: string,
+    nuevoContenido: string,
+    userId?: string,
+  ): Promise<LegalAuto> {
     const auto = await this.findById(id, ['process']);
 
-    if (auto.estado !== AutoStatus.BORRADOR && auto.estado !== AutoStatus.DEVUELTO && auto.tipo !== 'AUTO_ARCHIVO') {
+    if (
+      auto.estado !== AutoStatus.BORRADOR &&
+      auto.estado !== AutoStatus.DEVUELTO &&
+      auto.tipo !== AutoType.AUTO_ARCHIVO
+    ) {
       throw new HttpException(
         'Solo se pueden editar borradores, autos devueltos o autos de archivo',
         HttpStatus.BAD_REQUEST,
       );
     }
 
-    // Si hay contenido previo, guardar versión
     if (auto.contenido && auto.contenido !== nuevoContenido) {
       await this.versionRepository.save({
         auto: { id: auto.id } as LegalAuto,
@@ -496,25 +511,24 @@ export class AutoService {
 
     auto.contenido = nuevoContenido;
     return await this.autoRepository.save(auto);
-    auto.contenido = nuevoContenido;
-    return await this.autoRepository.save(auto);
   }
 
   /**
-   * Actualiza un auto completo (Metadatos y Archivo)
-   * Los metadatos básicos (tipo, numero, comentarios) se pueden editar en cualquier estado
-   * El contenido y archivos solo se pueden editar en BORRADOR o DEVUELTO
+   * Actualiza un auto completo (metadatos y archivo)
    */
   async update(id: string, updateData: any, userId?: string): Promise<LegalAuto> {
     const auto = await this.findById(id, ['process']);
 
-    // Metadatos básicos siempre se pueden editar (tipo, numero, comentarios)
     if (updateData.tipo !== undefined) auto.tipo = updateData.tipo;
     if (updateData.numero !== undefined) auto.numero = updateData.numero;
-    if (updateData.comentarios !== undefined) auto.comentarios = updateData.comentarios;
+    if (updateData.comentarios !== undefined) {
+      auto.comentarios = updateData.comentarios;
+    }
 
-    // Contenido y archivos solo se pueden editar en estados editables, excepto para autos de archivo que siempre se pueden editar
-    const canEditContent = auto.estado === AutoStatus.BORRADOR || auto.estado === AutoStatus.DEVUELTO || auto.tipo === 'AUTO_ARCHIVO';
+    const canEditContent =
+      auto.estado === AutoStatus.BORRADOR ||
+      auto.estado === AutoStatus.DEVUELTO ||
+      auto.tipo === AutoType.AUTO_ARCHIVO;
 
     if (!canEditContent && (updateData.contenidoHtml || updateData.documentUrl)) {
       throw new HttpException(
@@ -523,33 +537,43 @@ export class AutoService {
       );
     }
 
-    // Detectar cambios sustanciales para versionar (solo si se puede editar contenido)
     if (canEditContent) {
-      const contentChanged = updateData.contenidoHtml && updateData.contenidoHtml !== auto.contenido;
-      const fileChanged = updateData.documentUrl && updateData.documentUrl !== auto.documentUrl;
+      const contentChanged =
+        updateData.contenidoHtml &&
+        updateData.contenidoHtml !== auto.contenido;
+      const fileChanged =
+        updateData.documentUrl && updateData.documentUrl !== auto.documentUrl;
 
       if (contentChanged || fileChanged) {
-        // Guardar versión anterior
         await this.versionRepository.save({
           auto: { id: auto.id } as LegalAuto,
-          contenido: auto.contenido, // Guardamos el contenido HTML antiguo
+          contenido: auto.contenido,
           versionNumber: auto.currentVersion,
           createdBy: userId || null,
-          changeReason: fileChanged ? 'Actualización de archivo adjunto' : 'Actualización de contenido',
-          documentUrl: auto.documentUrl, // Guardar referencia al archivo actual
+          changeReason: fileChanged
+            ? 'Actualización de archivo adjunto'
+            : 'Actualización de contenido',
+          documentUrl: auto.documentUrl,
           documentName: auto.documentName,
         });
         auto.currentVersion += 1;
       }
 
-      // Actualizar contenido y archivos solo si está permitido
       if (updateData.contenidoHtml !== undefined) {
         auto.contenido = updateData.contenidoHtml;
       }
-      if (updateData.documentUrl !== undefined) auto.documentUrl = updateData.documentUrl;
-      if (updateData.documentName !== undefined) auto.documentName = updateData.documentName;
-      if (updateData.documentType !== undefined) auto.documentType = updateData.documentType;
-      if (updateData.documentSize !== undefined) auto.documentSize = updateData.documentSize;
+      if (updateData.documentUrl !== undefined) {
+        auto.documentUrl = updateData.documentUrl;
+      }
+      if (updateData.documentName !== undefined) {
+        auto.documentName = updateData.documentName;
+      }
+      if (updateData.documentType !== undefined) {
+        auto.documentType = updateData.documentType;
+      }
+      if (updateData.documentSize !== undefined) {
+        auto.documentSize = updateData.documentSize;
+      }
     }
 
     return await this.autoRepository.save(auto);
@@ -562,25 +586,32 @@ export class AutoService {
     });
   }
 
-  async getAutoVersionContent(id: string, versionNumber: number): Promise<AutoVersion> {
+  async getAutoVersionContent(
+    id: string,
+    versionNumber: number,
+  ): Promise<AutoVersion> {
     const version = await this.versionRepository.findOne({
       where: {
         auto: { id },
-        versionNumber: versionNumber
+        versionNumber,
       },
-      relations: ['auto']
+      relations: ['auto'],
     });
 
     if (!version) {
       throw new HttpException('Versión no encontrada', HttpStatus.NOT_FOUND);
     }
+
     return version;
   }
 
   /**
    * Registra la notificación de un auto (Secretaría)
    */
-  async registerNotification(id: string, dto: RegisterNotificationDto): Promise<LegalAuto> {
+  async registerNotification(
+    id: string,
+    dto: RegisterNotificationDto,
+  ): Promise<LegalAuto> {
     const auto = await this.findById(id);
 
     if (auto.estado !== AutoStatus.FIRMADO) {
@@ -598,31 +629,24 @@ export class AutoService {
 
     const savedAuto = await this.autoRepository.save(auto);
 
-    // Registrar en Historial (Version)
     await this.versionRepository.save({
       auto: { id: savedAuto.id } as LegalAuto,
       contenido: savedAuto.contenido,
       versionNumber: savedAuto.currentVersion,
-      createdBy: 'Sistema', // O el ID del usuario si estuviera disponible
+      createdBy: 'Sistema',
       changeReason: JSON.stringify({
         action: 'NOTIFICACION_REGISTRADA',
         date: dto.notificationDate,
-        evidenceUrl: dto.notificationEvidence || null
+        evidenceUrl: dto.notificationEvidence || null,
       }),
     });
 
-    // Generar Notificación de Sistema en la Bandeja
     try {
       const asunto = `Auto Notificado: ${auto.tipo} - ${auto.numero || 'Sin Número'}`;
       const mensaje = `El auto ha sido notificado correctamente con fecha ${dto.notificationDate}. Radicado: ${auto.process?.radicadoProceso || 'N/A'}`;
 
-      // Intentar obtener email del profesional asignado o usuario actual (si estuviera disponible)
-      // Como fallback usamos 'Usuario Actual' o idealmente el ID del abogado asignado al proceso
-      // Por ahora asignamos el aviso al abogado del proceso si existe
       let destinatario = 'Profesional Asignado';
       if (auto.process && auto.process.abogadoAsignadoId) {
-        // TODO: Lookup email from UserService if needed, or store it.
-        // For now, assuming we want to notify the system/tray.
         destinatario = 'Sistema';
       }
 
@@ -632,11 +656,10 @@ export class AutoService {
         destinatario,
         asunto,
         mensaje,
-        'Sistema'
+        'Sistema',
       );
-    } catch (e) {
-      console.error('Error creando notificación en bandeja:', e);
-      // No fallamos la transacción principal si falla la notificación auxiliar
+    } catch (error) {
+      console.error('Error creando notificación en bandeja:', error);
     }
 
     return savedAuto;
@@ -653,41 +676,109 @@ export class AutoService {
   /**
    * Archiva el proceso cuando se aprueba un auto de archivo
    */
-  private async archiveProcess(processId: string, aprobadoPorId: string): Promise<void> {
+  private async archiveProcess(
+    processId: string,
+    aprobadoPorId: string,
+  ): Promise<void> {
     try {
-      // Cambiar estado a archivado
       await this.processService.updateStatus(processId, ProcessStatus.ARCHIVADO);
 
-      // Detener conteo de vencimiento activo (limpiar fecha de vencimiento)
       const process = await this.processService.findById(processId, false);
       process.fechaVencimientoEtapa = null;
-      await this.processService['processRepository'].save(process); // Acceso directo al repo para actualizar fecha
+      await this.processService['processRepository'].save(process);
 
-      // Notificar al profesional responsable
       if (process.abogadoAsignadoId) {
         const asunto = `Proceso Archivado: ${process.radicadoProceso}`;
         const mensaje = `El proceso ${process.radicadoProceso} ha sido archivado tras la aprobación del auto de archivo. Todos los conteos de vencimiento han sido detenidos.`;
 
         await this.alertasService.crearNotificacionAuto(
-          null, // No hay auto específico
+          null,
           TipoAlerta.SISTEMA,
-          process.abogadoAsignadoId, // Notificar al abogado asignado
+          process.abogadoAsignadoId,
           asunto,
           mensaje,
-          aprobadoPorId
+          aprobadoPorId,
         );
       }
     } catch (error) {
       console.error('Error archivando proceso:', error);
-      // No fallamos la aprobación del auto si falla el archivado
     }
   }
 
-  /**
-   * Genera una URL de firma simulada
-   */
-  private generateMockSignatureUrl(autoId: string, tipoFirma: string): string {
-    const timestamp = new Date().toISOString();
-    return `https://storage.example.com/firmas/${autoId}_${tipoFirma}_${timestamp}.pdf`;
+  private isWordDocument(
+    auto: Pick<LegalAuto, 'documentName' | 'documentType' | 'documentUrl'>,
+  ): boolean {
+    const source = `${auto.documentName || auto.documentUrl || ''}`.toLowerCase();
+
+    return (
+      source.endsWith('.doc') ||
+      source.endsWith('.docx') ||
+      auto.documentType === 'application/msword' ||
+      auto.documentType ===
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    );
+  }
+
+  private isPdfDocument(
+    auto: Pick<LegalAuto, 'documentName' | 'documentType' | 'documentUrl'>,
+  ): boolean {
+    const source = `${auto.documentName || auto.documentUrl || ''}`.toLowerCase();
+    return source.endsWith('.pdf') || auto.documentType === 'application/pdf';
+  }
+
+  private async prepareApprovedDocument(auto: LegalAuto): Promise<void> {
+    if (!auto.documentUrl || !auto.numero) {
+      return;
+    }
+
+    const approvedPdfName = `${auto.numero}.pdf`;
+
+    if (this.isWordDocument(auto)) {
+      const convertedDocument =
+        await this.documentConversionService.convertWordToPdf(
+          auto.documentUrl,
+          approvedPdfName,
+        );
+
+      await this.pdfModifierService.addConsecutive(
+        convertedDocument.documentUrl,
+        auto.numero,
+      );
+
+      auto.documentUrl = convertedDocument.documentUrl;
+      auto.documentName = approvedPdfName;
+      auto.documentType = convertedDocument.documentType;
+      auto.documentSize = convertedDocument.documentSize;
+      return;
+    }
+
+    if (this.isPdfDocument(auto)) {
+      await this.pdfModifierService.addConsecutive(auto.documentUrl, auto.numero);
+      auto.documentName = approvedPdfName;
+      auto.documentType = 'application/pdf';
+      auto.documentSize =
+        (await this.documentConversionService.getFileSize(auto.documentUrl)) ??
+        auto.documentSize;
+    }
+  }
+
+  private async preparePdfDocumentForSignature(auto: LegalAuto): Promise<void> {
+    if (!auto.documentUrl) {
+      return;
+    }
+
+    if (this.isPdfDocument(auto)) {
+      auto.documentType = 'application/pdf';
+      auto.documentSize =
+        (await this.documentConversionService.getFileSize(auto.documentUrl)) ??
+        auto.documentSize;
+      return;
+    }
+
+    if (!auto.numero) {
+      auto.numero = await this.sequenceService.generateAutoConsecutivo();
+    }
+
+    await this.prepareApprovedDocument(auto);
   }
 }
