@@ -10,7 +10,7 @@ export const shellApp = {
   workspace: '@esap-mfe/shell',
   appDir: 'shell',
   federationName: 'shell',
-  devPort: 5173,
+  devPort: 3000,
   serviceName: 'frontend-shell',
 };
 
