@@ -4916,8 +4916,6 @@ function SeccionGestionYSeguimiento({
                               </div>
                             </div>
                           )}
-                                    className="mt-0.5 w-6 h-6 flex items-center justify-center rounded-full bg-red-50 border border-red-200 text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors flex-shrink-0"
-                          )
 
                           {/* Botón gestionar evidencias */}
                           <div className={`bg-white rounded-lg border-2 p-4 ${
