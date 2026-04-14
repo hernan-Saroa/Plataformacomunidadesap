@@ -331,8 +331,18 @@ class ControlInternoAPIClient {
   private servicePrefix: string;
 
   constructor() {
-    this.baseURL = CONTROL_INTERNO_BASE_URL;
-    this.servicePrefix = SERVICE_PREFIX;
+    // Normalizar baseURL y evitar duplicar el prefijo cuando VITE_API_URL
+    // ya viene configurada como `/services/control-institucional/api/v1`.
+    const normalizedBase = (CONTROL_INTERNO_BASE_URL || '').replace(/\/$/, '');
+    const normalizedPrefix = (SERVICE_PREFIX || '').replace(/\/$/, '');
+
+    this.baseURL = normalizedBase;
+    this.servicePrefix =
+      API_MODE === 'gateway' &&
+      normalizedPrefix &&
+      normalizedBase.toLowerCase().endsWith(normalizedPrefix.toLowerCase())
+        ? ''
+        : SERVICE_PREFIX;
   }
 
   private async request<T>(
