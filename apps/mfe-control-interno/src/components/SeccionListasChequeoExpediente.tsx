@@ -69,6 +69,7 @@ interface ListaChequeo {
 interface SeccionListasChequeoExpedienteProps {
   auditoriaId: string;
   etapaActual: EtapaKanban;
+  readOnly?: boolean; // ✅ Modo solo lectura (deshabilita edición)
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -123,7 +124,8 @@ function mapApiListaToExpediente(apiLista: any): ListaChequeo {
 
 export function SeccionListasChequeoExpediente({
   auditoriaId,
-  etapaActual
+  etapaActual,
+  readOnly = false
 }: SeccionListasChequeoExpedienteProps) {
   const [listas, setListas] = useState<ListaChequeo[]>([]);
   const [listaExpandida, setListaExpandida] = useState<string | null>(null);
@@ -165,6 +167,15 @@ export function SeccionListasChequeoExpediente({
   const listasEtapaActual = listas.filter(lista => lista.etapaKanban === etapaActual);
 
   const toggleItem = async (listaId: string, itemId: string) => {
+    // ✅ VALIDACIÓN: No permitir edición en modo solo lectura
+    if (readOnly) {
+      toast.info('👁️ Solo lectura', {
+        description: 'Esta lista es solo para visualización. No se puede editar.',
+        duration: 3000
+      });
+      return;
+    }
+
     // ✅ VALIDACIÓN: Solo permitir toggle si la lista pertenece a la etapa actual
     const lista = listas.find(l => l.id === listaId);
     if (!lista) return;
@@ -438,7 +449,8 @@ export function SeccionListasChequeoExpediente({
                           >
                             <button
                               onClick={() => toggleItem(lista.id, item.id)}
-                              className="flex-shrink-0 mt-0.5"
+                              className={`flex-shrink-0 mt-0.5 ${readOnly ? 'cursor-default opacity-60' : 'cursor-pointer'}`}
+                              disabled={readOnly}
                             >
                               {item.completado ? (
                                 <CheckCircle2 className="w-5 h-5 text-green-600" />

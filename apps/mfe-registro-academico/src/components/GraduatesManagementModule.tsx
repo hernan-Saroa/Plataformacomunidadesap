@@ -715,7 +715,7 @@ export function GraduatesManagementModule() {
             program: graduate.programName || 'No especificado',
             document: graduate.idNumber,
             enrollmentMethod: resolveEnrollmentMethod(createdBy),
-            enrollmentDate: graduate.enrollmentDate || graduate.graduationDate,
+            enrollmentDate: graduate.enrollmentDate || '',
             graduationDate: graduate.graduationDate,
             documentsCount: graduate.filesCount ?? 0,
             createdBy: createdBy?.trim() || undefined,
@@ -1247,6 +1247,19 @@ export function GraduatesManagementModule() {
     return `"${safeValue.replace(/"/g, '""')}"`;
   };
 
+  const handleOpenExportModal = () => {
+    if (filteredUsers.length > 0) {
+      setIsExportModalOpen(true);
+      return;
+    }
+
+    toast.info('No hay graduados para exportar', {
+      description: hasActiveFilters
+        ? 'Los filtros activos no tienen resultados. Ajustalos antes de exportar.'
+        : 'Aun no existen graduados registrados para exportacion.',
+    });
+  };
+
   const handleExportGraduates = () => {
     if (isExporting) return;
 
@@ -1262,17 +1275,30 @@ export function GraduatesManagementModule() {
 
     setIsExporting(true);
 
+    if (filteredUsers.length === 0) {
+      toast.info('No hay graduados para exportar', {
+        description: hasActiveFilters
+          ? 'Los filtros activos no tienen resultados. Ajustalos antes de exportar.'
+          : 'Aun no existen graduados registrados para exportacion.',
+      });
+      setIsExporting(false);
+      return;
+    }
+
     const rows = filteredUsers.filter((user) => {
       if (!startDate && !endDate) return true;
-      const gradDate = parseDateOnly(user.graduationDate);
-      if (!gradDate) return false;
-      if (startDate && gradDate < startDate) return false;
-      if (endDate && gradDate > endDate) return false;
+      const enrollmentDate = parseDateOnly(user.enrollmentDate);
+      if (!enrollmentDate) return false;
+      if (startDate && enrollmentDate < startDate) return false;
+      if (endDate && enrollmentDate > endDate) return false;
       return true;
     });
 
     if (rows.length === 0) {
-      toast.info('No hay graduados en el rango seleccionado');
+      toast.info('No hay graduados para exportar', {
+        description:
+          'No se encontraron graduados que cumplan con los filtros activos y el rango de fecha de enrolamiento seleccionado.',
+      });
       setIsExporting(false);
       return;
     }
@@ -1367,7 +1393,7 @@ export function GraduatesManagementModule() {
           {
             label: "Exportar",
             icon: Download,
-            onClick: () => setIsExportModalOpen(true),
+            onClick: handleOpenExportModal,
             variant: "secondary"
           }
         ]}
@@ -1973,7 +1999,7 @@ export function GraduatesManagementModule() {
               Exportar Graduados
             </DialogTitle>
             <DialogDescription>
-              Filtra por fecha de grado y descarga el listado en CSV.
+              Filtra por fecha de enrolamiento y descarga el listado en CSV.
             </DialogDescription>
           </DialogHeader>
 
@@ -2000,7 +2026,7 @@ export function GraduatesManagementModule() {
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-xs text-blue-700">
-                Se exportaran los graduados que cumplan con los filtros activos y el rango de fechas.
+                Se exportaran los graduados que cumplan con los filtros activos y el rango de fecha de enrolamiento.
               </p>
             </div>
           </div>
