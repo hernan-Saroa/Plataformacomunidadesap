@@ -1133,41 +1133,42 @@ function ModalVisorDocumento({
                                   }
                                   throw new Error('El archivo no es un PDF válido.');
                                 }
-                              } else if (nombreArchivo.endsWith('.doc') || nombreArchivo.endsWith('.docx')) {
-                                tipoDetectado = 'word';
-                                // Convert DOCX to HTML
-                                const arrayBuffer = await blob.arrayBuffer();
-                                try {
-                                  const result = await mammoth.convertToHtml({ arrayBuffer });
-                                  const htmlContent = result.value;
-                                  const docxHtml = `
-                                    <div style="font-family: Arial, sans-serif; padding: 20px; background: white; min-height: 100vh;">
-                                      <style>
-                                        .docx-content { max-width: 800px; margin: 0 auto; }
-                                        .docx-content p { margin-bottom: 10px; line-height: 1.5; }
-                                        .docx-content h1, .docx-content h2, .docx-content h3 { margin-top: 20px; margin-bottom: 10px; }
-                                        .docx-content ul, .docx-content ol { margin-left: 20px; }
-                                        .docx-content table { border-collapse: collapse; width: 100%; margin: 10px 0; }
-                                        .docx-content td, .docx-content th { border: 1px solid #ddd; padding: 8px; }
-                                        .docx-content th { background-color: #f5f5f5; }
-                                      </style>
-                                      <div class="docx-content">
-                                        ${htmlContent}
-                                      </div>
-                                    </div>
-                                  `;
-                                  const htmlBlob = new Blob([docxHtml], { type: 'text/html' });
-                                  const url = window.URL.createObjectURL(htmlBlob);
-                                  if (pdfBlobUrl) window.URL.revokeObjectURL(pdfBlobUrl);
-                                  setPdfBlobUrl(url);
-                                  setTipoArchivo('html'); // Treat as HTML now
-                                  setErrorPDF(null);
-                                  setCargandoPDF(false);
-                                  return;
-                                } catch (conversionError) {
-                                  console.error('Error converting DOCX to HTML:', conversionError);
-                                  // Fallback to original blob
-                                }
+                               } else if (blob.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+                                 tipoDetectado = 'word';
+                                 // Convert DOCX to HTML
+                                 const arrayBuffer = await blob.arrayBuffer();
+                                 try {
+                                   const result = await mammoth.convertToHtml({ arrayBuffer });
+                                   const htmlContent = result.value;
+                                   const docxHtml = `
+                                     <div style="font-family: Arial, sans-serif; padding: 20px; background: white; min-height: 100vh;">
+                                       <style>
+                                         .docx-content { max-width: 800px; margin: 0 auto; }
+                                         .docx-content p { margin-bottom: 10px; line-height: 1.5; }
+                                         .docx-content h1, .docx-content h2, .docx-content h3 { margin-top: 20px; margin-bottom: 10px; }
+                                         .docx-content ul, .docx-content ol { margin-left: 20px; }
+                                         .docx-content table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+                                         .docx-content td, .docx-content th { border: 1px solid #ddd; padding: 8px; }
+                                         .docx-content th { background-color: #f5f5f5; }
+                                       </style>
+                                       <div class="docx-content">
+                                         ${htmlContent}
+                                       </div>
+                                     </div>
+                                   `;
+                                   const htmlBlob = new Blob([docxHtml], { type: 'text/html' });
+                                   const url = window.URL.createObjectURL(htmlBlob);
+                                   if (pdfBlobUrl) window.URL.revokeObjectURL(pdfBlobUrl);
+                                   setPdfBlobUrl(url);
+                                   setTipoArchivo('html'); // Treat as HTML now
+                                   setErrorPDF(null);
+                                   setCargandoPDF(false);
+                                   return;
+                                 } catch (conversionError) {
+                                   console.error('Error converting DOCX to HTML:', conversionError);
+                                   // Fallback to original blob
+                                 }
+                               }
                               } else if (nombreArchivo.endsWith('.ppt') || nombreArchivo.endsWith('.pptx')) {
                                 tipoDetectado = 'ppt';
                               } else if (nombreArchivo.endsWith('.xls') || nombreArchivo.endsWith('.xlsx')) {
