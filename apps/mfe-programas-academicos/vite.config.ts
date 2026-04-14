@@ -8,13 +8,14 @@ const appDir = 'mfe-programas-academicos';
 
 export default defineConfig({
   base: getBuildBase(appDir),
+  root: __dirname,
   plugins: [
     react(),
     federation({
       name: 'programas_academicos',
       filename: 'remoteEntry.js',
       exposes: {
-        './Module': './src/components/ProgramasAcademicosModule.tsx',
+        './Module': path.resolve(__dirname, './src/components/ProgramasAcademicosModule.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),

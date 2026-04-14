@@ -5,6 +5,7 @@ import path from 'path';
 import { getBuildOutDir, getRemoteDefinitions, shellApp } from '../../scripts/mfe.config.mjs';
 
 export default defineConfig(({ command }) => ({
+  root: __dirname,
   plugins: [
     react(),
     federation({

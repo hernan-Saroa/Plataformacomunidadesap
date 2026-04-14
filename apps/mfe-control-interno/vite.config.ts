@@ -8,13 +8,14 @@ const appDir = 'mfe-control-interno';
 
 export default defineConfig({
   base: getBuildBase(appDir),
+  root: __dirname,
   plugins: [
     react(),
     federation({
       name: 'control_interno',
       filename: 'remoteEntry.js',
       exposes: {
-        './Module': './src/components/ControlInternoFull.tsx',
+        './Module': path.resolve(__dirname, './src/components/ControlInternoFull.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),

@@ -8,13 +8,14 @@ const appDir = 'mfe-certificados-laborales';
 
 export default defineConfig({
   base: getBuildBase(appDir),
+  root: __dirname,
   plugins: [
     react(),
     federation({
       name: 'certificados_laborales',
       filename: 'remoteEntry.js',
       exposes: {
-        './Router': './src/components/CertificadosLaboralesRouter.tsx',
+        './Router': path.resolve(__dirname, './src/components/CertificadosLaboralesRouter.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),

@@ -8,13 +8,14 @@ const appDir = 'mfe-reportes';
 
 export default defineConfig({
   base: getBuildBase(appDir),
+  root: __dirname,
   plugins: [
     react(),
     federation({
       name: 'reportes',
       filename: 'remoteEntry.js',
       exposes: {
-        './Module': './src/components/ReportsModuleV2.tsx',
+        './Module': path.resolve(__dirname, './src/components/ReportsModuleV2.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),
