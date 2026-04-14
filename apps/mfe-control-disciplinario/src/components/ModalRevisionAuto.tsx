@@ -465,13 +465,15 @@ export function ModalRevisionAuto({
   const [archivoAuto, setArchivoAuto] = useState<File | null>(null);
   const [tipoVista, setTipoVista] = useState<'texto' | 'archivo'>('texto');
   const [documentoBackendUrl, setDocumentoBackendUrl] = useState<string | null>(null);
+  const [documentoDownloadUrl, setDocumentoDownloadUrl] = useState<string | null>(null);
+  const [documentoDownloadServerUrl, setDocumentoDownloadServerUrl] = useState<string | null>(null);
   const [cargandoDoc, setCargandoDoc] = useState(false);
   const [comentarioSubida, setComentarioSubida] = useState('');
   const [subiendoDoc, setSubiendoDoc] = useState(false);
 
   useEffect(() => {
     if (!borrador.autoId) return;
-    let blobUrl: string | null = null;
+    const urlsToRevoke: string[] = [];
     const cargarDocumento = async () => {
       try {
         setCargandoDoc(true);
@@ -486,8 +488,44 @@ export function ModalRevisionAuto({
           });
           if (response.ok) {
             const blob = await response.blob();
-            blobUrl = window.URL.createObjectURL(blob);
-            setDocumentoBackendUrl(blobUrl);
+            const originalBlobUrl = window.URL.createObjectURL(blob);
+            urlsToRevoke.push(originalBlobUrl);
+            setDocumentoDownloadUrl(originalBlobUrl);
+            setDocumentoDownloadServerUrl(fileUrl);
+            // Check if it's a DOCX file and convert to HTML for display
+            if (blob.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+              const arrayBuffer = await blob.arrayBuffer();
+              try {
+                const result = await mammoth.convertToHtml({ arrayBuffer });
+                const htmlContent = result.value;
+                const docxHtml = `
+                  <div style="font-family: Arial, sans-serif; padding: 20px; background: white; min-height: 100vh;">
+                    <style>
+                      .docx-content { max-width: 800px; margin: 0 auto; }
+                      .docx-content p { margin-bottom: 10px; line-height: 1.5; }
+                      .docx-content h1, .docx-content h2, .docx-content h3 { margin-top: 20px; margin-bottom: 10px; }
+                      .docx-content ul, .docx-content ol { margin-left: 20px; }
+                      .docx-content table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+                      .docx-content td, .docx-content th { border: 1px solid #ddd; padding: 8px; }
+                      .docx-content th { background-color: #f5f5f5; }
+                    </style>
+                    <div class="docx-content">
+                      ${htmlContent}
+                    </div>
+                  </div>
+                `;
+                const htmlBlob = new Blob([docxHtml], { type: 'text/html' });
+                const displayBlobUrl = window.URL.createObjectURL(htmlBlob);
+                urlsToRevoke.push(displayBlobUrl);
+                setDocumentoBackendUrl(displayBlobUrl);
+              } catch (conversionError) {
+                console.error('Error converting DOCX to HTML:', conversionError);
+                // Fallback to original blob for display
+                setDocumentoBackendUrl(originalBlobUrl);
+              }
+            } else {
+              setDocumentoBackendUrl(originalBlobUrl);
+            }
           }
         } else if (auto.contenido) {
           setContenidoEditado(auto.contenido);
@@ -500,20 +538,21 @@ export function ModalRevisionAuto({
     };
     cargarDocumento();
     return () => {
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      urlsToRevoke.forEach(url => URL.revokeObjectURL(url));
     };
   }, [borrador.autoId]);
 
-  const handleDescargarDocumento = () => {
-    if (documentoBackendUrl) {
-      // Descargar el documento desde el backend (PDF o archivo existente)
-      const link = document.createElement('a');
-      link.href = documentoBackendUrl;
-      link.download = `Auto-${borrador.numeroProceso || borrador.id}.pdf`;
-      link.click();
-      toast.success('Descarga iniciada', {
-        description: 'El documento se está descargando'
-      });
+  const handleDescargarDocumento = async () => {
+    if (documentoDownloadServerUrl) {
+      try {
+        await disciplinaryService.downloadFileFromUrl(documentoDownloadServerUrl, `Auto-${borrador.numeroProceso || borrador.id}`);
+        toast.success('Descarga iniciada', {
+          description: 'El documento se está descargando'
+        });
+      } catch (error) {
+        console.error('Error descargando documento:', error);
+        toast.error('Error al descargar el documento');
+      }
     } else if (borrador.contenido?.trim()) {
       // Descargar el contenido como archivo de texto
       const blob = new Blob([borrador.contenido], { type: 'text/html' });
@@ -892,15 +931,16 @@ export function ModalRevisionAuto({
                         <p className="text-sm" style={{ color: '#6B7280' }}>Cargando documento...</p>
                       </div>
                     </div>
-                  ) : documentoBackendUrl ? (
-                    <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
-                      <iframe
-                        src={documentoBackendUrl}
-                        className="w-full"
-                        style={{ height: '65vh', minHeight: '400px', border: 'none' }}
-                        title="Visor PDF"
-                      />
-                    </div>
+                   ) : documentoBackendUrl ? (
+                     <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
+                       <iframe
+                         src={documentoBackendUrl}
+                         className="w-full"
+                         style={{ height: '65vh', minHeight: '400px', border: 'none' }}
+                         title="Visor de Documento"
+                         sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                       />
+                     </div>
                    ) : tipoVista === 'archivo' && archivoAuto ? (
                      <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
                        {archivoAuto.name.endsWith('.pdf') ? (

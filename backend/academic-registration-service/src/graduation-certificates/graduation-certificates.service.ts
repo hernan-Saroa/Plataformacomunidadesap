@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   Logger,
   InternalServerErrorException,
 } from '@nestjs/common';
@@ -374,6 +375,14 @@ export class GraduationCertificatesService {
       this.logger.warn(
         `Graduado no encontrado para idNumber=${dto.idNumber?.trim()} idIssueDate=${issueDate || 'N/A'}`,
       );
+
+      const activeManualReview =
+        await this.findActiveManualReviewRequestByIdNumber(dto.idNumber);
+      if (activeManualReview) {
+        throw new ConflictException(
+          'Ya registramos una solicitud de revisión manual para esta cédula y todavía se encuentra en proceso.',
+        );
+      }
     }
 
     const requestNumber = await this.generateRequestNumber();
@@ -1049,6 +1058,35 @@ export class GraduationCertificatesService {
     }
 
     return this.graduateRepository.find({ where });
+  }
+
+  private async findActiveManualReviewRequestByIdNumber(
+    idNumber: string,
+  ): Promise<GraduationCertificateRequest | null> {
+    const normalizedIdNumber = (idNumber || '').replace(/\D+/g, '');
+    const trimmedIdNumber = (idNumber || '').trim();
+
+    if (!normalizedIdNumber && !trimmedIdNumber) {
+      return null;
+    }
+
+    const query = this.requestRepository
+      .createQueryBuilder('request')
+      .where('request.manualReview = :manualReview', { manualReview: true })
+      .andWhere('request.status IN (:...statuses)', {
+        statuses: ['PENDING', 'PROCESSING'],
+      });
+
+    if (normalizedIdNumber) {
+      query.andWhere(
+        `REPLACE(REPLACE(REPLACE(request.idNumber, '.', ''), '-', ''), ' ', '') = :idNumber`,
+        { idNumber: normalizedIdNumber },
+      );
+    } else {
+      query.andWhere('request.idNumber = :idNumber', { idNumber: trimmedIdNumber });
+    }
+
+    return query.orderBy('request.requestDate', 'DESC').getOne();
   }
 
   private splitFullName(fullName?: string): {
@@ -2818,6 +2856,8 @@ export class GraduationCertificatesService {
       const seccionalName =
         payload?.seccionalName ||
         (request as { seccionalName?: string }).seccionalName;
+      const enrollmentDate = new Date();
+      enrollmentDate.setHours(12, 0, 0, 0);
 
       const reviewerName = payload?.reviewerName || request.reviewerName;
       const createdGraduate = this.graduateRepository.create({
@@ -2832,6 +2872,7 @@ export class GraduationCertificatesService {
         phone: payload?.phone?.trim() || undefined,
         programName,
         programType,
+        enrollmentDate,
         graduationDate,
         degreeTitle,
         campus,
