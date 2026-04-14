@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react';
 import { Plus, AlertCircle, Save, RotateCcw, Edit2, Trash2, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { SeccionPlantillasAutosUnificada, type TipoAuto } from './SeccionPlantillasAutosUnificada';
-import { ModalNuevoTipoAuto } from './ModalNuevoTipoAuto';
+import { ModalNuevoTipoAuto, type NuevoTipoAutoData } from './ModalNuevoTipoAuto';
 import { ModalGestionarPlantillas } from './ModalGestionarPlantillas';
 import { disciplinaryService, AutoConfiguration } from '../../../../services/api/disciplinary.service';
 
@@ -40,6 +40,24 @@ const ETAPAS_PROCESO = [
   { value: 'FALLO', label: 'Fallo' },
   { value: 'SEGUNDA_INSTANCIA', label: 'Segunda Instancia' },
 ];
+
+// Mapea el tipoAccion del formulario al valor `tipo` que espera el backend
+const mapTipoAccionToBackend = (tipoAccion: string, etapa: string): string => {
+  switch (tipoAccion) {
+    case 'APERTURA':
+      if (etapa === 'INVESTIGACION') return 'AUTO_APERTURA_INVESTIGACION';
+      if (etapa === 'INDAGACION' || etapa === 'INDAGACION_PREVIA') return 'AUTO_APERTURA_INDAGACION';
+      return 'AUTO_APERTURA';
+    case 'ARCHIVO':
+      return 'AUTO_ARCHIVO';
+    case 'PRORROGA':
+      return 'AUTO_PRORROGA';
+    case 'PLIEGO':
+      return 'PLIEGO_CARGOS';
+    default:
+      return 'AUTO_NO_PREVISTO';
+  }
+};
 
 export function ConfiguracionPlantillasAutos() {
   const [tiposAutos, setTiposAutos] = useState<any[]>([]);
@@ -120,29 +138,31 @@ export function ConfiguracionPlantillasAutos() {
     setMostrarModalTipoAuto(true);
   };
 
-  const guardarTipoAuto = async (nuevoTipo: any) => {
+  const guardarTipoAuto = async (nuevoTipo: NuevoTipoAutoData) => {
     // Si hay un tipo en edición, actualizar en BD
     if (tipoAutoEdicion) {
       try {
         const autoActual = tiposAutos.find(t => t.id === tipoAutoEdicion.id);
-        // Los autos locales tienen ID que startsWith('tipo-auto-') o son de TIPOS_AUTOS_DEFECTO
-        // Los autos del backend tienen IDs de UUID (no startsWith('tipo-auto-'))
         if (autoActual && (autoActual.id.startsWith('tipo-auto-') || autoActual.id === 'auto-apertura-indagacion')) {
-          // Es un tipo local, guardar en localStorage
-          setTiposAutos(tiposAutos.map(t => 
-            t.id === tipoAutoEdicion.id 
+          // Es un tipo local
+          setTiposAutos(tiposAutos.map(t =>
+            t.id === tipoAutoEdicion.id
               ? { ...t, ...nuevoTipo, fechaModificacion: new Date().toISOString() }
               : t
           ));
         } else {
-          // Es un auto de la BD, actualizar en BD
+          // Es un auto de la BD
           await disciplinaryService.updateAutosConfiguration(tipoAutoEdicion.id, {
             nombre: nuevoTipo.nombre,
             stage: nuevoTipo.etapa,
             estado: nuevoTipo.activo ? 'activo' : 'inactivo',
             orden: nuevoTipo.orden
           });
-          await loadDatos(); // Recargar datos
+          // Si viene nueva plantilla, subirla
+          if (nuevoTipo.plantillaFile) {
+            await disciplinaryService.uploadAutoPlantilla(tipoAutoEdicion.id, nuevoTipo.plantillaFile);
+          }
+          await loadDatos();
         }
         toast.success('Tipo de auto actualizado correctamente');
       } catch (error) {
@@ -152,30 +172,26 @@ export function ConfiguracionPlantillasAutos() {
     } else {
       // Crear nuevo tipo
       try {
-        await disciplinaryService.createAutosConfiguration({
-          tipo: nuevoTipo.nombre.toUpperCase().replace(/ /g, '_'),
+        const tipoBackend = mapTipoAccionToBackend(nuevoTipo.tipoAccion, nuevoTipo.etapa);
+        const autoCreado = await disciplinaryService.createAutosConfiguration({
+          tipo: tipoBackend,
           nombre: nuevoTipo.nombre,
           estado: nuevoTipo.activo ? 'activo' : 'inactivo',
           stage: nuevoTipo.etapa,
           orden: nuevoTipo.orden || 1
         });
-        await loadDatos(); // Recargar datos
+        // Subir plantilla obligatoria
+        if (nuevoTipo.plantillaFile) {
+          await disciplinaryService.uploadAutoPlantilla(autoCreado.id, nuevoTipo.plantillaFile);
+        }
+        await loadDatos();
         toast.success('Tipo de auto creado correctamente');
       } catch (error) {
         console.error('Error creando:', error);
-        // Guardar localmente si falla
-        const tipoCompleto: any = {
-          id: `tipo-auto-${Date.now()}`,
-          ...nuevoTipo,
-          plantilla: null,
-          fechaCreacion: new Date().toISOString(),
-          fechaModificacion: new Date().toISOString()
-        };
-        setTiposAutos([...tiposAutos, tipoCompleto]);
-        toast.success('Tipo de auto creado (local)');
+        toast.error('Error al crear el tipo de auto');
       }
     }
-    
+
     setCambiosPendientes(true);
     setMostrarModalTipoAuto(false);
     setTipoAutoEdicion(null);
