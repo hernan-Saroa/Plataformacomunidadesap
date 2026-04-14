@@ -731,9 +731,7 @@ export class ProcessController {
         };
       });
 
-      // Mapear autos procesales a documentos del expediente.
-      // El expediente debe reflejar todos los autos asociados al proceso, no solo los finales,
-      // para mantener consistencia con Gestión de Autos y con la validación de eliminación del catálogo.
+      // Mapear autos procesales a documentos del expediente (todos los estados).
       const documentosAutos = (proceso.autos || []).map((auto: any) => {
         const sizeBytes = auto.documentSize || new TextEncoder().encode(auto.contenido || '').length;
         const tamaño = sizeBytes >= 1024 * 1024

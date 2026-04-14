@@ -89,6 +89,7 @@ function iniciales(nombre: string) {
 export function WizardConvertirProcesoWorldClass({ noticia, onConfirmar, onCerrar }: Props) {
   const [profesionalId, setProfesionalId] = useState('');
   const [busqueda, setBusqueda] = useState('');
+  const [comentario, setComentario] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [profesionales, setProfesionales] = useState<any[]>([]);
 
@@ -144,7 +145,7 @@ export function WizardConvertirProcesoWorldClass({ noticia, onConfirmar, onCerra
       descripcionAdicional: '',
       profesionalId: seleccionado.id,
       profesionalNombre: seleccionado.nombre,
-      observaciones: '',
+      observaciones: comentario.trim(),
     });
     setEnviando(false);
   };
@@ -360,6 +361,20 @@ export function WizardConvertirProcesoWorldClass({ noticia, onConfirmar, onCerra
                 })
               )}
             </div>
+          </div>
+
+          {/* ── Comentario ── */}
+          <div>
+            <label className="block text-sm font-bold text-gray-800 mb-2">
+              Comentario <span className="text-gray-400 font-normal text-xs">(opcional)</span>
+            </label>
+            <textarea
+              value={comentario}
+              onChange={e => setComentario(e.target.value)}
+              rows={3}
+              placeholder="Agrega una observación o instrucción para el profesional asignado..."
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 resize-none"
+            />
           </div>
         </div>
 
