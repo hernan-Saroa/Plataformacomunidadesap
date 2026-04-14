@@ -338,10 +338,10 @@ export function TabUniversoAuditableResponsive({
   // Priorización DAFP RE-E-GE-034: años activos dentro del cuatrienio
   const calcPriorizacionAnos = (ciclo?: string) => {
     if (!ciclo) return [];
-    if (ciclo === 'Cada año')    return [1, 2, 3, 4]; // Extremo: todos
-    if (ciclo === 'Cada 2 años') return [2, 4];       // Alto: años pares
-    if (ciclo === 'Cada 3 años') return [3];           // Moderado: tercer año
-    if (ciclo === 'Cada 4 años') return [4];           // Bajo: cuarto año
+    if (ciclo === 'Todos los años' || ciclo === 'Cada año') return [1, 2, 3, 4];
+    if (ciclo === 'Cada 2 años') return [2, 4];
+    if (ciclo === 'Cada 3 años') return [3];
+    if (ciclo === 'Cada 4 años') return [4];
     return [];
   };
 
@@ -350,6 +350,7 @@ export function TabUniversoAuditableResponsive({
     'Alto':     { bg: '#FFEDD5', text: '#9A3412' },
     'Moderado': { bg: '#FEF9C3', text: '#854D0E' },
     'Bajo':     { bg: '#DBEAFE', text: '#1E40AF' },
+    'Bajo (Priorizado)': { bg: '#DBEAFE', text: '#1E40AF' },
   };
 
   const columns: Column<ProcesoAuditable>[] = [
