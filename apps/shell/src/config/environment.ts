@@ -302,6 +302,7 @@ export const API_ENDPOINTS = {
     REFRESH: '/auth/api/v1/refresh',
     VERIFY: '/auth/api/v1/verify',
     FORGOT_PASSWORD: '/auth/api/v1/forgot-password',
+    VERIFY_RESET_CODE: '/auth/api/v1/verify-reset-code',
     RESET_PASSWORD: '/auth/api/v1/reset-password',
     CHANGE_PASSWORD: '/auth/api/v1/change-password',
   },
