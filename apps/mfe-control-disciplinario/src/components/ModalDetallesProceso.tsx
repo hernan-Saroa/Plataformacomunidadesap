@@ -3540,7 +3540,7 @@ export function ModalDetallesProceso({
             </span>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0 ml-1">
-            {estaEnRevision && (
+            {/* {estaEnRevision && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleAbrirRevision(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all text-white"
                 style={{ background: '#003DA5' }}
@@ -3549,7 +3549,7 @@ export function ModalDetallesProceso({
                 title="Ver estado de revisión y aprobación">
                 <Shield className="w-3 h-3" /><span className="hidden sm:inline">Revisión</span>
               </button>
-            )}
+            )} */}
             {puedeEnviarRevision && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleEnviarARevision(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all text-white"
