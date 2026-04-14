@@ -94,6 +94,7 @@ import { DisciplinaryProcessActuacionesService } from './services/disciplinary-p
 import { DisciplinaryProcessTasksService } from './services/disciplinary-process-tasks.service';
 import { DisciplinaryProcessNotesService } from './services/disciplinary-process-notes.service';
 import { DisciplinaryProcessReassignmentService } from './services/disciplinary-process-reassignment.service';
+import { JuridicaEmailService } from './services/juridica-email.service';
 
 @Module({
   imports: [
@@ -189,6 +190,7 @@ import { DisciplinaryProcessReassignmentService } from './services/disciplinary-
     DisciplinaryProcessTasksService,
     DisciplinaryProcessNotesService,
     DisciplinaryProcessReassignmentService,
+    JuridicaEmailService,
   ],
 })
 export class AppModule { }

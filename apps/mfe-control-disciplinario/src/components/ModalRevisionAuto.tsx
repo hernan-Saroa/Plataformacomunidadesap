@@ -77,10 +77,12 @@ const getInitials = (nombre: string) => {
 
 function ModalAprobacion({
   onConfirm,
-  onCancel
+  onCancel,
+  borrador
 }: {
   onConfirm: (comentarios: string, tipoFirma: 'electronica' | 'digital' | 'local') => void;
   onCancel: () => void;
+  borrador?: { titulo?: string; plantilla?: string };
 }) {
   const [comentarios, setComentarios] = useState('');
   const [tipoFirma, setTipoFirma] = useState<'electronica' | 'digital' | 'local'>('local');
@@ -90,8 +92,8 @@ function ModalAprobacion({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{ zIndex: 10001, backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
       <motion.div
@@ -114,6 +116,23 @@ function ModalAprobacion({
             </p>
           </div>
         </div>
+
+        {/* Advertencia para auto pliego de cargos */}
+        {(borrador.titulo?.toLowerCase().includes('pliego') || borrador.plantilla?.toLowerCase().includes('pliego')) && (
+          <div className="mb-4 p-3 rounded-xl border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
+            <div className="flex items-start gap-2">
+              <AlertCircle style={{ width: 18, height: 18, color: '#D97706', marginTop: 1, flexShrink: 0 }} />
+              <div>
+                <p className="text-sm font-bold" style={{ color: '#92400E' }}>Auto Pliego de Cargos</p>
+                <p className="text-xs mt-1" style={{ color: '#B45309' }}>
+                  Al aprobar este auto, el proceso será <strong>cerrado permanentemente</strong> y se enviará
+                  un correo automático a la <strong>Oficina de Jurídica</strong> con la información consolidada del expediente.
+                  Esta acción no se puede revertir.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tipo de Firma */}
         <div className="mb-4">
@@ -221,8 +240,8 @@ function ModalDevolucion({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{ zIndex: 10001, backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
       <motion.div
@@ -464,8 +483,8 @@ export function ModalRevisionAuto({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[200] flex items-center justify-center"
-        style={{ backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+        className="fixed inset-0 flex items-center justify-center"
+        style={{ zIndex: 10000, backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >
         <motion.div
@@ -703,61 +722,53 @@ export function ModalRevisionAuto({
                      </div>
                    )}
 
-                  {/* Panel de comentario y confirmación de subida */}
-                  {archivoAuto && borrador.autoId && (
-                    <div className="p-4 rounded-xl border-2 mb-3" style={{ borderColor: '#BFDBFE', background: '#EFF6FF' }}>
-                      <p className="text-xs font-bold mb-2" style={{ color: '#1E40AF' }}>
-                        Comentario sobre el documento (opcional)
-                      </p>
-                      <textarea
-                        value={comentarioSubida}
-                        onChange={(e) => setComentarioSubida(e.target.value)}
-                        rows={2}
-                        placeholder="Describe los cambios realizados en este documento..."
-                        className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg focus:outline-none focus:border-blue-400 resize-none mb-3"
-                        style={{ background: '#fff' }}
-                      />
-                      <button
-                        disabled={subiendoDoc}
-                        onClick={async () => {
-                          if (!archivoAuto || !borrador.autoId) return;
-                          setSubiendoDoc(true);
-                          try {
-                            await disciplinaryService.uploadDocumentoRevision(
-                              borrador.autoId,
-                              archivoAuto,
-                              comentarioSubida,
-                            );
-                            toast.success('Documento reemplazado', {
-                              description: `Nueva versión guardada correctamente`
-                            });
-                            setArchivoAuto(null);
-                            setComentarioSubida('');
-                            setTipoVista('texto');
-                          } catch (err) {
-                            console.error('Error subiendo documento:', err);
-                            toast.error('Error al subir el documento');
-                          } finally {
-                            setSubiendoDoc(false);
-                          }
-                        }}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50"
-                        style={{ background: subiendoDoc ? '#9CA3AF' : 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
-                      >
-                        {subiendoDoc ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            Subiendo...
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="w-4 h-4" />
-                            Confirmar subida
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
+                   {/* Panel de comentario y confirmación de subida */}
+                   {archivoAuto && borrador.autoId && (
+                     <div className="p-4 rounded-xl border-2 mb-3" style={{ borderColor: '#BFDBFE', background: '#EFF6FF' }}>
+                       <p className="text-xs font-bold mb-2" style={{ color: '#1E40AF' }}>
+                         Comentario sobre el documento (opcional)
+                       </p>
+                       <textarea
+                         value={comentarioSubida}
+                         onChange={(e) => setComentarioSubida(e.target.value)}
+                         rows={2}
+                         placeholder="Describe los cambios realizados en este documento..."
+                         className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg focus:outline-none focus:border-blue-400 resize-none mb-3"
+                         style={{ background: '#fff' }}
+                       />
+                       <button
+                         disabled={subiendoDoc}
+                         onClick={async () => {
+                           if (!archivoAuto || !borrador.autoId) return;
+                           setSubiendoDoc(true);
+                           try {
+                             await disciplinaryService.uploadDocumentoRevision(
+                               borrador.autoId,
+                               archivoAuto,
+                               comentarioSubida,
+                             );
+                             toast.success('Documento reemplazado', { description: `Nueva versión guardada correctamente` });
+                             setArchivoAuto(null);
+                             setComentarioSubida('');
+                             setTipoVista('texto');
+                           } catch (err) {
+                             console.error('Error subiendo documento:', err);
+                             toast.error('Error al subir el documento');
+                           } finally {
+                             setSubiendoDoc(false);
+                           }
+                         }}
+                         className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50"
+                         style={{ background: subiendoDoc ? '#9CA3AF' : 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+                       >
+                         {subiendoDoc ? (
+                           <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Subiendo...</>
+                         ) : (
+                           <><Upload className="w-4 h-4" />Confirmar subida</>
+                         )}
+                       </button>
+                     </div>
+                   )}
 
                    {cargandoDoc ? (
                     <div className="flex items-center justify-center p-10 rounded-xl border-2" style={{ borderColor: '#E5E7EB', background: '#F8FAFC' }}>
@@ -897,6 +908,7 @@ export function ModalRevisionAuto({
           <ModalAprobacion
             onConfirm={handleConfirmarAprobacion}
             onCancel={() => setShowModalAprobar(false)}
+            borrador={borrador}
           />
         )}
         {showModalDevolver && (
