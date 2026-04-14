@@ -31,6 +31,17 @@ import { ETAPAS_PROCESO, type EtapaProcesoId, type TipoAuto, type PlantillaArchi
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl } from '../../../config/environment';
 
+// Tipos de auto que disparan acciones automáticas al aprobarse
+const TIPOS_CON_ACCION = [
+  'AUTO_APERTURA',
+  'AUTO_APERTURA_INVESTIGACION',
+  'AUTO_APERTURA_INDAGACION',
+  'AUTO_ARCHIVO',
+  'AUTO_FORMULACION_PLIEGO',
+  'PLIEGO_CARGOS',
+  'AUTO_PRORROGA',
+];
+
 // ==================== DATOS MOCK ====================
 const TIPOS_AUTOS_MOCK: TipoAuto[] = [
   {
@@ -863,13 +874,19 @@ export function WizardCrearAutoWorldClass({
                                       {tipo.descripcion}
                                     </p>
 
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                       <span
                                         className="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm"
                                         style={{ backgroundColor: etapa.color }}
                                       >
                                         {etapa.nombre}
                                       </span>
+                                      {tipo.tipo && TIPOS_CON_ACCION.includes(tipo.tipo) && (
+                                        <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-700 flex items-center gap-1">
+                                          <Zap className="w-3 h-3" />
+                                          Con acción
+                                        </span>
+                                      )}
                                       {/* Mostrar estado de plantilla del backend */}
                                       {tipo.estado_plantilla === 'activo' ? (
                                         <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-green-100 text-green-700">
