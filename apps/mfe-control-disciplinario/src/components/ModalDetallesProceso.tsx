@@ -1689,18 +1689,24 @@ function ModalNuevaTarea({
   open,
   etapas,
   etapaActual,
+  profesionales,
+  loadingProfesionales,
   responsableInicial,
   saving,
   onClose,
   onSubmit,
+  onEnsureProfesionales,
 }: {
   open: boolean;
   etapas: string[];
   etapaActual: string;
+  profesionales: any[];
+  loadingProfesionales: boolean;
   responsableInicial: string;
   saving: boolean;
   onClose: () => void;
   onSubmit: (data: CreateDisciplinaryProcessTaskDto) => Promise<void>;
+  onEnsureProfesionales?: () => void | Promise<void>;
 }) {
   const etapasNormalizadas = Array.from(
     new Set(
@@ -1717,8 +1723,6 @@ function ModalNuevaTarea({
   const [responsableNombre, setResponsableNombre] = useState(responsableInicial);
   const [fechaVencimiento, setFechaVencimiento] = useState(new Date().toISOString().split('T')[0]);
   const [observaciones, setObservaciones] = useState('');
-  const [profesionales, setProfesionales] = useState<any[]>([]);
-  const [loadingProfesionales, setLoadingProfesionales] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -1732,31 +1736,10 @@ function ModalNuevaTarea({
   }, [open, etapaActualNormalizada, responsableInicial]);
 
   useEffect(() => {
-    const fetchProfesionales = async () => {
-      if (!open || profesionales.length > 0) return;
-      setLoadingProfesionales(true);
-      try {
-        const response = await disciplinaryService.getProfesionales();
-        let profs = response;
-        if (!Array.isArray(response)) {
-          if (response?.data && Array.isArray(response.data)) {
-            profs = response.data;
-          } else if (response?.data?.data && Array.isArray(response.data.data)) {
-            profs = response.data.data;
-          } else {
-            profs = [];
-          }
-        }
-        setProfesionales(profs);
-      } catch (error) {
-        console.error('Error fetching profesionales:', error);
-        toast.error('No se pudieron cargar los profesionales disponibles');
-      } finally {
-        setLoadingProfesionales(false);
-      }
-    };
-    fetchProfesionales();
-  }, [open, profesionales.length]);
+    if (!open) return;
+    if (profesionales.length > 0) return;
+    void onEnsureProfesionales?.();
+  }, [open, profesionales.length, onEnsureProfesionales]);
 
   if (!open) return null;
 
@@ -2119,6 +2102,8 @@ export function ModalDetallesProceso({
   const [tareasError, setTareasError] = useState<string | null>(null);
   const [tareaExpandidaId, setTareaExpandidaId] = useState<string | null>(null);
   const [mostrarModalNuevaTarea, setMostrarModalNuevaTarea] = useState(false);
+  const [profesionales, setProfesionales] = useState<any[]>([]);
+  const [loadingProfesionales, setLoadingProfesionales] = useState(false);
   const [creandoTarea, setCreandoTarea] = useState(false);
   const [actualizandoTareaId, setActualizandoTareaId] = useState<string | null>(null);
   const [mostrarModalReasignar, setMostrarModalReasignar] = useState(false);
@@ -2134,6 +2119,8 @@ export function ModalDetallesProceso({
   const cargasRef = useRef<CargaActiva[]>([]);
   const colaCargasRef = useRef<Promise<void>>(Promise.resolve());
   const cancelarPendientesRef = useRef(false);
+  const cargandoProfesionalesRef = useRef(false);
+  const mountedRef = useRef(false);
   const [archivosEnColaCount, setArchivosEnColaCount] = useState(0);
   cargasRef.current = cargasActivas;
   const currentUser = authService.getCurrentUser();
@@ -2353,44 +2340,49 @@ export function ModalDetallesProceso({
     };
   }, [proceso?.id]);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const ensureProfesionales = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (cargandoProfesionalesRef.current) return;
+    cargandoProfesionalesRef.current = true;
+    if (mountedRef.current) setLoadingProfesionales(true);
+
+    try {
+      const response = await disciplinaryService.getProfesionales();
+      let profs = response;
+      if (!Array.isArray(response)) {
+        if (response?.data && Array.isArray(response.data)) {
+          profs = response.data;
+        } else if (response?.data?.data && Array.isArray(response.data.data)) {
+          profs = response.data.data;
+        } else {
+          profs = [];
+        }
+      }
+      if (mountedRef.current) setProfesionales(profs);
+    } catch (error) {
+      console.error('[ModalDetallesProceso] Error cargando profesionales:', error);
+      if (!silent) {
+        toast.error('No se pudieron cargar los profesionales disponibles');
+      }
+    } finally {
+      cargandoProfesionalesRef.current = false;
+      if (mountedRef.current) setLoadingProfesionales(false);
+    }
+  }, []);
+
   // ═══ Pre-cargar profesionales para creación de tareas ═══
   useEffect(() => {
     if (!proceso?.id) return;
 
-    let cancelled = false;
-    setLoadingProfesionales(true);
-
-    const fetchProfesionales = async () => {
-      try {
-        const response = await disciplinaryService.getProfesionales();
-        if (cancelled) return;
-        let profs = response;
-        if (!Array.isArray(response)) {
-          if (response?.data && Array.isArray(response.data)) {
-            profs = response.data;
-          } else if (response?.data?.data && Array.isArray(response.data.data)) {
-            profs = response.data.data;
-          } else {
-            profs = [];
-          }
-        }
-        setProfesionales(profs);
-      } catch (error) {
-        console.error('Error pre-cargando profesionales:', error);
-        // No mostrar toast aquí, ya que es pre-carga silenciosa
-      } finally {
-        if (!cancelled) {
-          setLoadingProfesionales(false);
-        }
-      }
-    };
-
-    void fetchProfesionales();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [proceso?.id]);
+    if (profesionales.length > 0) return;
+    void ensureProfesionales({ silent: true });
+  }, [proceso?.id, profesionales.length, ensureProfesionales]);
 
   // ═══ Navegación rápida desde Scorecard ═══
   const navigateToTab = useCallback((tab: Tab, etapa: string) => {
@@ -5881,10 +5873,13 @@ export function ModalDetallesProceso({
             open={mostrarModalNuevaTarea}
             etapas={Array.from(new Set([...ORDEN_ETAPAS, proceso.etapaActual, ...etapasTarOrdenadas, 'Sin etapa']))}
             etapaActual={proceso.etapaActual}
+            profesionales={profesionales}
+            loadingProfesionales={loadingProfesionales}
             responsableInicial={getNombre(proceso.profesionalAsignado)}
             saving={creandoTarea}
             onClose={() => setMostrarModalNuevaTarea(false)}
             onSubmit={handleCrearTarea}
+            onEnsureProfesionales={ensureProfesionales}
           />
         )}
       </AnimatePresence>
@@ -5925,9 +5920,6 @@ export function ModalDetallesProceso({
     document.body
   );
 }
-
-
-
 
 
 

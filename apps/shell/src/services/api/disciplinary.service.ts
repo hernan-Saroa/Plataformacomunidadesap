@@ -1067,9 +1067,9 @@ class DisciplinaryService {
     // --- ARCHIVOS ---
     async uploadFile(file: File, tipo: string = 'default'): Promise<{ url: string; filename: string }> {
         const formData = new FormData();
+        formData.append('file', file);
         // Enviar el tipo de documento para que el backend valide los formatos permitidos
         formData.append('tipo', tipo);
-        formData.append('file', file);
         return apiClient.upload<{ url: string; filename: string }>(`${SERVICE_PREFIX}/files/upload`, formData);
     }
 
