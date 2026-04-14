@@ -25,6 +25,8 @@ import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-a
 import { DisciplinaryProcessTask } from '../entities/disciplinary-process-task.entity';
 import { DisciplinaryProcessNote } from '../entities/disciplinary-process-note.entity';
 import { StageConfiguration } from '../entities/stage-configuration.entity';
+import { AlertasService } from './alertas.service';
+import { TipoAlerta } from '../entities/alerta-enviada.entity';
 
 @Injectable()
 export class ProcessService {
@@ -48,6 +50,7 @@ export class ProcessService {
     private sequenceService: SequenceService,
     private terminosService: TerminosCalculatorService,
     private newsService: NewsService,
+    private alertasService: AlertasService,
   ) { }
 
   private async buildActuacionesResumen(processIds: string[]): Promise<Map<string, {
@@ -341,6 +344,27 @@ export class ProcessService {
           email: resultado.abogadoAsignado?.email
         }
       });
+
+      // Enviar notificación interna al profesional asignado
+      try {
+        const asunto = `Nuevo proceso asignado: ${resultado.radicadoProceso}`;
+        const comentario = createProcessDto.observaciones?.trim();
+        const mensaje = comentario
+          ? `Se le ha asignado el proceso disciplinario ${resultado.radicadoProceso}.\n\nComentario: ${comentario}`
+          : `Se le ha asignado el proceso disciplinario ${resultado.radicadoProceso}.`;
+
+        await this.alertasService.crearNotificacionAuto(
+          null,
+          TipoAlerta.VISUAL,
+          resultado.abogadoAsignadoNombre,
+          asunto,
+          mensaje,
+          resultado.abogadoAsignadoId,
+        );
+      } catch (notifError) {
+        console.error('Error creando notificación de asignación:', notifError);
+        // No fallamos la transacción principal si falla la notificación
+      }
 
       return resultado as any;
     } catch (error) {

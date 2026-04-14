@@ -3749,7 +3749,8 @@ export function DashboardKanbanOperativo({
       const procesoApi = await disciplinaryService.asignarProceso({
         newsId: itemSeleccionado.id,
         abogadoId: datos.profesionalId,
-        abogadoNombre: datos.profesionalNombre
+        abogadoNombre: datos.profesionalNombre,
+        observaciones: datos.observaciones,
       });
 
       // ✅ Mapear la respuesta de la API al formato que usa la UI
