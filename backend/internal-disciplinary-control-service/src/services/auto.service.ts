@@ -270,33 +270,8 @@ export class AutoService {
         });
       }
 
-      // Si es auto pliego de cargos, cerrar proceso y notificar a jurídica
-      if (auto.tipo === AutoType.PLIEGO_CARGOS) {
-        const datosConsolidados = await this.processService.cerrarPorPliegoCargos(
-          auto.processId,
-          aprobadoPorId,
-        );
-
-        // Registrar actuación de cierre
-        await this.actuacionesRepository.save({
-          processId: auto.processId,
-          tipo: 'CIERRE_PLIEGO_CARGOS',
-          etapa: datosConsolidados.etapaAlCierre,
-          descripcion: `Proceso cerrado por aprobación de Auto Pliego de Cargos (${auto.numero}). Trasladado a Oficina Jurídica.`,
-          responsableNombre: datosConsolidados.profesionalResponsable || 'Jefe OCID',
-          fechaActuacion: new Date(),
-          observaciones: `Auto: ${auto.tipo} | Aprobado por: ${datosConsolidados.profesionalResponsable || aprobadoPorId} | Etapa al cierre: ${datosConsolidados.etapaAlCierre}`,
-        });
-
-        // Enviar correo a jurídica vía notifications-service (async, sin bloquear)
-        this.juridicaEmailService.enviarCorreoJuridica(auto.processId, datosConsolidados).then((enviado) => {
-          if (enviado) {
-            this.processService.marcarCorreoJuridicaEnviado(auto.processId);
-          }
-        }).catch((err) => {
-          console.error(`Error async enviando correo jurídica: ${err.message}`);
-        });
-      }
+      // Nota: Para auto pliego de cargos, se aprueba pero no se cierra el proceso inmediatamente.
+      // El envío a jurídica se hace posteriormente mediante el botón "Envío a jurídica".
 
       if (auto.tipo === AutoType.AUTO_ARCHIVO) {
         await this.archiveProcess(auto.processId, aprobadoPorId);
@@ -817,6 +792,53 @@ export class AutoService {
         (await this.documentConversionService.getFileSize(auto.documentUrl)) ??
         auto.documentSize;
     }
+  }
+
+  /**
+   * Envía el auto pliego de cargos aprobado a la Oficina Jurídica
+   */
+  async sendPliegoToJuridica(id: string, enviadoPorId: string): Promise<void> {
+    const auto = await this.findById(id, ['process']);
+
+    if (auto.tipo !== AutoType.PLIEGO_CARGOS) {
+      throw new HttpException(
+        'Esta operación solo aplica para autos de pliego de cargos',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (auto.estado !== AutoStatus.APROBADO) {
+      throw new HttpException(
+        'El auto debe estar aprobado para poder enviarlo a jurídica',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Cerrar el proceso
+    const datosConsolidados = await this.processService.cerrarPorPliegoCargos(
+      auto.processId,
+      enviadoPorId,
+    );
+
+    // Registrar actuación de envío a jurídica
+    await this.actuacionesRepository.save({
+      processId: auto.processId,
+      tipo: 'ENVIO_JURIDICA_PLIEGO_CARGOS',
+      etapa: datosConsolidados.etapaAlCierre,
+      descripcion: `Auto Pliego de Cargos (${auto.numero}) enviado a Oficina Jurídica. Proceso cerrado.`,
+      responsableNombre: enviadoPorId,
+      fechaActuacion: new Date(),
+      observaciones: `Auto: ${auto.tipo} | Enviado por: ${enviadoPorId} | Etapa al cierre: ${datosConsolidados.etapaAlCierre}`,
+    });
+
+    // Enviar correo a jurídica vía notifications-service (async, sin bloquear)
+    this.juridicaEmailService.enviarCorreoJuridica(auto.processId, datosConsolidados).then((enviado) => {
+      if (enviado) {
+        this.processService.marcarCorreoJuridicaEnviado(auto.processId);
+      }
+    }).catch((err) => {
+      console.error(`Error async enviando correo jurídica: ${err.message}`);
+    });
   }
 
   private async preparePdfDocumentForSignature(auto: LegalAuto): Promise<void> {
