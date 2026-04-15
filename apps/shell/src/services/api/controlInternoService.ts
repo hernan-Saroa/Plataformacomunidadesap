@@ -39,7 +39,8 @@ export interface ProcesoAuditable {
   nombre: string;
   descripcion: string;
   tipo: string;
-  macroproceso: string;
+  macroproceso?: string;
+  unidadesAuditables?: { id: string; nombre: string; descripcion?: string }[];
   responsable: string;
   dependencia: string;
   territorial?: string;

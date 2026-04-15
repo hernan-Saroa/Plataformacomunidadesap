@@ -26,6 +26,7 @@ import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Input } from '@esap-mfe/shared-ui/input';
 import { toast } from 'sonner';
+import { HeaderSeccionConfig } from './HeaderSeccionConfig';
 
 // ✅ DÍA 4: Container4K para padding adaptativo
 import { Container4K } from '@esap-mfe/shared-ui/container-4k';
@@ -149,89 +150,26 @@ export function ConfiguracionAuditoriasModule() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50">
-      <div className="max-w-[1600px] mx-auto p-6">
+      <div className="w-full h-full p-4 sm:p-6 lg:p-8">
         
         {/* HEADER */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-xl shadow-lg p-6 mb-6"
+        <HeaderSeccionConfig
+          icon={<Target className="w-full h-full" />}
+          titulo="Configuración de Auditorías"
+          subtitulo="Tipos, listas y parámetros de auditoría"
         >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-[#059669] to-[#047857] rounded-xl flex items-center justify-center shadow-lg">
-                <Target className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  Configuración de Auditorías
-                </h1>
-                <p className="text-sm text-gray-600">
-                  Tipos, listas y parámetros de auditoría
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-                Conectado al servidor
-              </Badge>
-              <Button 
-                onClick={handleGuardarCambios} 
-                variant="outline"
-              >
-                <Save className="w-4 h-4 mr-2" />
-                Sincronizar
-              </Button>
-            </div>
-          </div>
-
-          {/* TABS */}
-          <div className="flex gap-2 mt-6">
-            {TABS_CONFIG.map((tab) => {
-              const isActive = tabActiva === tab.id;
-              const Icon = tab.icon;
-              // Mostrar contador real de tipos
-              const badgeCount = tab.id === 'tipos' ? tipos.length : undefined;
-
-              return (
-                <motion.button
-                  key={tab.id}
-                  onClick={() => setTabActiva(tab.id)}
-                  className={`
-                    relative flex items-center gap-3 px-5 py-3 rounded-xl transition-all flex-1
-                    ${isActive ? 'bg-white shadow-lg ring-2 ring-[#003DA5]/20' : 'hover:bg-white/50'}
-                  `}
-                  whileHover={{ y: -2 }}
-                >
-                  {isActive && (
-                    <motion.div
-                      layoutId="activeTab"
-                      className="absolute inset-0 bg-gradient-to-r rounded-xl opacity-5"
-                      style={{ background: `linear-gradient(135deg, ${tab.color}20, ${tab.color}10)` }}
-                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                    />
-                  )}
-                  <div
-                    className="relative p-2 rounded-lg"
-                    style={{ background: isActive ? `${tab.color}15` : 'transparent' }}
-                  >
-                    <Icon className="w-5 h-5" style={{ color: isActive ? tab.color : '#6B7280' }} />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <span className={`font-semibold text-sm ${isActive ? 'text-gray-900' : 'text-gray-700'}`}>
-                      {tab.label}
-                    </span>
-                    <p className="text-xs text-gray-500">{tab.description}</p>
-                  </div>
-                  {badgeCount !== undefined && badgeCount > 0 && (
-                    <Badge variant={isActive ? 'default' : 'outline'} className="text-xs">{badgeCount}</Badge>
-                  )}
-                </motion.button>
-              );
-            })}
-          </div>
-        </motion.div>
+          <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+            Conectado al servidor
+          </Badge>
+          <Button 
+            onClick={handleGuardarCambios} 
+            variant="outline"
+            size="sm"
+          >
+            <Save className="w-4 h-4 mr-2" />
+            Sincronizar
+          </Button>
+        </HeaderSeccionConfig>
 
         {/* CONTENIDO */}
         <AnimatePresence mode="wait">

@@ -122,6 +122,9 @@ export class CreateProcesoAuditableDto {
   macroproceso: string;
 
   @IsOptional()
+  unidadesAuditables?: { id: string; nombre: string; descripcion?: string }[];
+
+  @IsOptional()
   @IsString()
   responsable?: string;
 

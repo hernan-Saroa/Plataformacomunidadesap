@@ -56,6 +56,17 @@ interface TareaSeguimiento {
   fechaCompletado?: string;
   responsables?: string[];
   observaciones?: string;
+  // ✅ Requisitos por tarea (antes estaban al nivel de actividad)
+  requiereObservaciones?: boolean;
+  requiereAdjuntos?: boolean;
+  adjuntosTarea?: { nombre: string; url: string; fecha: string }[];
+  // ✅ Fecha de entrega opcional
+  fechaEntrega?: string;
+  // ✅ Evaluación por el responsable
+  evaluada?: boolean;
+  aceptada?: boolean;
+  observacionesEvaluacion?: string;
+  fechaEvaluacion?: string;
 }
 
 interface Actividad {
@@ -767,10 +778,7 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreac
         );
         setJefesOCI(jefes.length > 0 ? jefes : profesionales);
         
-        // Seleccionar el primer profesional por defecto si no hay uno seleccionado
-        if (!jefeSeleccionado && profesionales.length > 0) {
-          setJefeSeleccionado(profesionales[0]);
-        }
+        // NO auto-seleccionar: el usuario debe elegir explícitamente el responsable
         
         console.log('[PlanAnual] Profesionales OCI cargados:', profesionales.length);
         return profesionales;
@@ -1008,40 +1016,41 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreac
     }
   };
 
-  if (showSuccessModal) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm"
-      >
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Check className="w-10 h-10 text-green-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">¡Plan Creado con Éxito!</h2>
-          <p className="text-gray-600 mb-8 border-b pb-8">
-            El Plan Anual de Auditoría {vigencia} ha sido guardado correctamente. Ahora puedes revisarlo desde el Dashboard.
-          </p>
-          <button
-            onClick={() => onTerminado?.()}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow hover:shadow-md flex items-center justify-center gap-2"
-          >
-            Ir al Dashboard <ArrowRight className="w-5 h-5" />
-          </button>
-        </div>
-      </motion.div>
-    );
-  }
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="flex-1 flex flex-col bg-white"
+      className="flex-1 flex flex-col bg-white relative"
     >
+      {/* Success Modal Overlay */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Fondo blanco difuminado */}
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm" />
+          {/* Modal */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+            className="relative bg-white rounded-2xl shadow-2xl border-2 border-gray-200 w-full max-w-md p-8 text-center z-10"
+          >
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Check className="w-10 h-10 text-green-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">¡Plan Creado con Éxito!</h2>
+            <p className="text-gray-600 mb-8 border-b pb-8">
+              El Plan Anual de Auditoría {vigencia} ha sido guardado correctamente. Ahora puedes revisarlo desde el Dashboard.
+            </p>
+            <button
+              onClick={() => onTerminado?.()}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow hover:shadow-md flex items-center justify-center gap-2"
+            >
+              Ir al Dashboard <ArrowRight className="w-5 h-5" />
+            </button>
+          </motion.div>
+        </div>
+      )}
       {/* Header */}
       <div className="border-b-2 border-gray-200 px-8 py-6">
         <div className="flex items-center justify-between mb-6">
@@ -1102,7 +1111,15 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreac
             </button>
           )}
           {paso < 3 ? (
-            <button onClick={avanzarPaso} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center gap-2">
+            <button 
+              onClick={avanzarPaso} 
+              disabled={paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia)}
+              className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${
+                paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia)
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                  : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+              }`}
+            >
               Siguiente <ArrowRight className="w-4 h-4" />
             </button>
           ) : (
@@ -1165,7 +1182,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
 
       <div className="bg-white rounded-xl border-2 border-gray-200 p-8 space-y-6">
         <div>
-          <label className="block text-sm font-semibold text-gray-900 mb-2">Vigencia</label>
+          <label className="block text-sm font-semibold text-gray-900 mb-2">Vigencia <span className="text-red-500">*</span></label>
           <input 
             type="number" 
             value={vigencia} 
@@ -1179,7 +1196,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-semibold text-gray-900 mb-2">Fecha de inicio</label>
+            <label className="block text-sm font-semibold text-gray-900 mb-2">Fecha de inicio <span className="text-red-500">*</span></label>
             <input 
               type="date" 
               value={fechaInicio} 
@@ -1202,7 +1219,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             )}
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-900 mb-2">Fecha de finalización</label>
+            <label className="block text-sm font-semibold text-gray-900 mb-2">Fecha de finalización <span className="text-red-500">*</span></label>
             <input 
               type="date" 
               value={fechaFin} 
@@ -1250,30 +1267,39 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
         )}
 
         <div>
-          <label className="block text-sm font-semibold text-gray-900 mb-2">Responsable del Plan</label>
+          <label className="block text-sm font-semibold text-gray-900 mb-2">Responsable del Plan <span className="text-red-500">*</span></label>
           {cargandoAuditores ? (
             <div className="flex items-center gap-2 px-4 py-3 border-2 border-gray-300 rounded-lg bg-gray-50">
               <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
               <span className="text-gray-600">Cargando profesionales OCI...</span>
             </div>
-          ) : auditores.length === 0 ? (
-            <div className="flex items-center gap-2 px-4 py-3 border-2 border-orange-300 rounded-lg bg-orange-50">
-              <AlertCircle className="w-5 h-5 text-orange-600" />
-              <span className="text-orange-700">No hay profesionales OCI configurados. Configura el equipo primero.</span>
-            </div>
-          ) : (
-            <select 
-              value={jefeOCI?.id || ''} 
-              onChange={(e) => onJefeChange(auditores.find((a: any) => a.id === e.target.value))} 
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-            >
-              <option value="">Seleccionar responsable...</option>
-              {auditores.map((a: any) => (
-                <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Funcionario'}</option>
-              ))}
-            </select>
-          )}
-          <p className="text-xs text-gray-500 mt-1">Profesional OCI responsable del Plan Anual de Auditoría</p>
+          ) : (() => {
+            // Solo mostrar profesionales con rol Jefe OCIG / Auditor Sénior
+            const responsablesAutorizados = auditores.filter((a: any) => {
+              const cargo = (a.cargo || '').toLowerCase();
+              const esJefeOCI = cargo.includes('jefe') && (cargo.includes('oci') || cargo.includes('ocig'));
+              const esAuditorSenior = cargo.includes('auditor') && (cargo.includes('senior') || cargo.includes('sénior') || cargo.includes('señior') || cargo.includes('sr'));
+              return esJefeOCI || esAuditorSenior;
+            });
+            return responsablesAutorizados.length === 0 ? (
+              <div className="flex items-center gap-2 px-4 py-3 border-2 border-orange-300 rounded-lg bg-orange-50">
+                <AlertCircle className="w-5 h-5 text-orange-600" />
+                <span className="text-orange-700">No hay profesionales con rol Jefe OCIG o Auditor Sénior configurados. Configure uno en Profesionales OCI.</span>
+              </div>
+            ) : (
+              <select 
+                value={jefeOCI?.id || ''} 
+                onChange={(e) => onJefeChange(responsablesAutorizados.find((a: any) => a.id === e.target.value))} 
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+              >
+                <option value="">Seleccionar responsable...</option>
+                {responsablesAutorizados.map((a: any) => (
+                  <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Jefe OCIG'}</option>
+                ))}
+              </select>
+            );
+          })()}
+          <p className="text-xs text-gray-500 mt-1">Solo profesionales con rol Jefe OCIG o Auditor Sénior pueden ser responsables del Plan Anual</p>
         </div>
       </div>
     </motion.div>
@@ -1655,6 +1681,7 @@ function Paso2({
           const isExpanded = rolExpandido === rol.numero;
           const actividadesBase = getActividadesPorRol(rol.numero);
           const totalRol = rol.actividadesSeleccionadas.length + rol.actividadesCustom.length;
+          const faltaResponsable = totalRol > 0 && rol.responsables.length === 0;
 
           return (
             <div key={rol.numero} className="bg-white rounded-xl border-2 border-gray-200 overflow-hidden">
@@ -1670,7 +1697,11 @@ function Paso2({
                   <div>
                     <h3 className="font-bold text-gray-900">Rol {rol.numero}: {rol.nombre}</h3>
                     <p className="text-sm text-gray-600">
-                      {totalRol} actividades • {rol.responsables.length} responsables
+                      {totalRol} actividades • {(() => {
+                        const totalTareas = [...rol.actividadesSeleccionadas, ...rol.actividadesCustom]
+                          .reduce((sum, a) => sum + (a.tareasSeguimiento?.length || 0), 0);
+                        return totalTareas > 0 ? `${totalTareas} tareas • ` : '';
+                      })()}{rol.responsables.length} responsables
                     </p>
                     {/* Avatar chips for assigned responsibles */}
                     {rol.responsables.length > 0 && (
@@ -2097,87 +2128,133 @@ function Paso2({
                                       </div>
                                     </div>
 
-                                    {/* ✅ Tareas de seguimiento editables */}
-                                    <div className="mt-2" onClick={e => e.stopPropagation()}>
-                                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1">
-                                        <Check className="w-3 h-3" />
-                                        Tareas de seguimiento
-                                        <span className="text-[10px] text-gray-400 font-normal normal-case">({(actividadData?.tareasSeguimiento || []).length})</span>
-                                      </p>
-                                      <div className="flex flex-col gap-1.5">
-                                        {(actividadData?.tareasSeguimiento || []).map((tarea) => (
-                                          <div key={tarea.id} className="flex items-center gap-1.5 bg-green-50 border border-green-200 rounded-full px-3 py-1">
-                                            <span className="text-xs text-gray-900 flex-1 truncate" title={tarea.descripcion}>{tarea.descripcion}</span>
-                                            {/* Chips de responsables */}
-                                            {(tarea.responsables || []).map((resp, ri) => (
-                                              <div key={ri} className="flex items-center gap-0.5 bg-blue-50 border border-blue-200 rounded-full px-1.5 py-0.5 flex-shrink-0">
-                                                <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center text-white text-[7px] font-bold flex-shrink-0">
-                                                  {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                                                </div>
-                                                <span className="text-[9px] font-medium text-gray-700">{resp.split(' ')[0]}</span>
+                                    {/* ✅ Tareas de seguimiento — World-class design */}
+                                    <div className="mt-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm" onClick={e => e.stopPropagation()}>
+                                      <div className="flex items-center justify-between mb-3">
+                                        <p className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                                          <span className="w-5 h-5 rounded-md bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+                                            <Check className="w-3 h-3 text-white" />
+                                          </span>
+                                          Tareas de seguimiento
+                                          {(actividadData?.tareasSeguimiento || []).length > 0 && (
+                                            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">
+                                              {(actividadData?.tareasSeguimiento || []).length}
+                                            </span>
+                                          )}
+                                        </p>
+                                      </div>
+
+                                      <div className="space-y-2">
+                                        {(actividadData?.tareasSeguimiento || []).map((tarea) => {
+                                          const updateTarea = (updates: Partial<TareaSeguimiento>) => {
+                                            const nuevaConfig = rolesConfig.map(r => ({
+                                              ...r,
+                                              actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
+                                                a.id === actId ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, ...updates } : t) } : a
+                                              )
+                                            }));
+                                            onRolesChange(nuevaConfig);
+                                          };
+                                          return (
+                                          <div key={tarea.id} className="group bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all">
+                                            {/* Header de la tarea */}
+                                            <div className="px-3 py-2.5 flex items-start gap-2.5">
+                                              <div className="w-5 h-5 mt-0.5 rounded bg-green-100 flex items-center justify-center flex-shrink-0">
+                                                <Check className="w-3 h-3 text-green-600" />
+                                              </div>
+                                              <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
+                                                {/* Responsables como chips */}
+                                                {(tarea.responsables || []).length > 0 && (
+                                                  <div className="flex flex-wrap gap-1 mt-1.5">
+                                                    {(tarea.responsables || []).map((resp, ri) => (
+                                                      <span key={ri} className="inline-flex items-center gap-1 pl-0.5 pr-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[10px]">
+                                                        <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[7px] font-bold">
+                                                          {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                                        </span>
+                                                        <span className="text-blue-800 font-medium">{resp.split(' ').slice(0, 2).join(' ')}</span>
+                                                        <button
+                                                          onClick={() => updateTarea({ responsables: (tarea.responsables || []).filter((_, idx) => idx !== ri) })}
+                                                          className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[8px] flex items-center justify-center transition-colors"
+                                                        >×</button>
+                                                      </span>
+                                                    ))}
+                                                  </div>
+                                                )}
+                                              </div>
+                                              {/* Acciones */}
+                                              <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                <select
+                                                  className="text-[10px] border border-gray-300 rounded-md px-1 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
+                                                  value=""
+                                                  onChange={(e) => {
+                                                    if (!e.target.value) return;
+                                                    const aud = auditores.find(a => a.id === e.target.value);
+                                                    if (!aud) return;
+                                                    updateTarea({ responsables: [...(tarea.responsables || []), aud.nombre] });
+                                                  }}
+                                                >
+                                                  <option value="">+ Asignar</option>
+                                                  {auditores
+                                                    .filter(a => !(tarea.responsables || []).includes(a.nombre))
+                                                    .map(a => (
+                                                      <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
+                                                    ))}
+                                                </select>
                                                 <button
                                                   onClick={() => {
                                                     const nuevaConfig = rolesConfig.map(r => ({
                                                       ...r,
                                                       actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                        a.id === actId ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, responsables: (t.responsables || []).filter((_, idx) => idx !== ri) } : t) } : a
+                                                        a.id === actId ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a
                                                       )
                                                     }));
                                                     onRolesChange(nuevaConfig);
                                                   }}
-                                                  className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-[8px] transition-colors flex-shrink-0"
-                                                >✕</button>
+                                                  className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                                  title="Eliminar tarea"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
                                               </div>
-                                            ))}
-                                            {/* Agregar responsable */}
-                                            <select
-                                              className="text-[10px] border-2 border-dashed border-gray-300 rounded-lg px-1.5 py-0.5 text-gray-500 bg-white flex-shrink-0"
-                                              value=""
-                                              onChange={(e) => {
-                                                if (!e.target.value) return;
-                                                const aud = auditores.find(a => a.id === e.target.value);
-                                                if (!aud) return;
-                                                const nuevaConfig = rolesConfig.map(r => ({
-                                                  ...r,
-                                                  actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                    a.id === actId ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, responsables: [...(t.responsables || []), aud.nombre] } : t) } : a
-                                                  )
-                                                }));
-                                                onRolesChange(nuevaConfig);
-                                              }}
-                                            >
-                                              <option value="">+ Responsable</option>
-                                              {auditores
-                                                .filter(a => !(tarea.responsables || []).includes(a.nombre))
-                                                .map(a => (
-                                                  <option key={a.id} value={a.id}>{a.nombre}</option>
-                                                ))}
-                                            </select>
-                                            {/* Eliminar tarea */}
-                                            <button
-                                              onClick={() => {
-                                                const nuevaConfig = rolesConfig.map(r => ({
-                                                  ...r,
-                                                  actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                    a.id === actId ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a
-                                                  )
-                                                }));
-                                                onRolesChange(nuevaConfig);
-                                              }}
-                                              className="w-5 h-5 flex items-center justify-center rounded-full bg-red-50 border border-red-200 text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors flex-shrink-0"
-                                              title="Eliminar tarea"
-                                            >
-                                              <Trash2 className="w-2.5 h-2.5" />
-                                            </button>
+                                            </div>
+
+                                            {/* Footer: opciones compactas */}
+                                            <div className="px-3 pb-2 flex items-center gap-4 border-t border-gray-100 pt-1.5">
+                                              <label className="flex items-center gap-1.5 cursor-pointer group/opt" title="Requiere observaciones al completar">
+                                                <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => updateTarea({ requiereObservaciones: !tarea.requiereObservaciones })}>
+                                                  <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} />
+                                                </div>
+                                                <span className={`text-[11px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝 Observaciones</span>
+                                              </label>
+                                              <label className="flex items-center gap-1.5 cursor-pointer group/opt" title="Requiere archivos adjuntos">
+                                                <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => updateTarea({ requiereAdjuntos: !tarea.requiereAdjuntos })}>
+                                                  <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} />
+                                                </div>
+                                                <span className={`text-[11px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎 Adjuntos</span>
+                                              </label>
+                                              <div className="flex items-center gap-1.5 ml-auto">
+                                                <span className="text-[11px] text-gray-500">📅</span>
+                                                <input
+                                                  type="date"
+                                                  value={tarea.fechaEntrega || ''}
+                                                  onChange={(e) => updateTarea({ fechaEntrega: e.target.value })}
+                                                  className="text-[11px] border border-gray-200 rounded-md px-1.5 py-0.5 bg-white hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none w-[120px]"
+                                                  title="Fecha de entrega (opcional)"
+                                                />
+                                              </div>
+                                            </div>
                                           </div>
-                                        ))}
-                                        {/* Agregar nueva tarea */}
-                                        <div className="flex gap-1.5">
+                                          );
+                                        })}
+
+                                        {/* Agregar nueva tarea — diseño premium */}
+                                        <div className="flex gap-2 mt-1">
                                           <input
                                             type="text"
                                             data-tarea-wizard={actId}
-                                            placeholder="Escribir nueva tarea…"
-                                            className="flex-1 px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-green-500 text-xs text-gray-500 bg-white"
+                                            placeholder="✍ Escribir nueva tarea…"
+                                            className="flex-1 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-green-500 focus:bg-green-50/30 text-sm text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
                                             onClick={e => e.stopPropagation()}
                                             onKeyDown={(e) => {
                                               if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
@@ -2207,9 +2284,9 @@ function Paso2({
                                                 input.value = '';
                                               }
                                             }}
-                                            className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium flex items-center gap-1 flex-shrink-0"
+                                            className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm hover:shadow transition-all flex-shrink-0"
                                           >
-                                            <Plus className="w-3 h-3" /> Agregar
+                                            <Plus className="w-3.5 h-3.5" /> Agregar
                                           </button>
                                         </div>
                                       </div>
@@ -2520,83 +2597,140 @@ function Paso2({
                                     </div>
                                   </div>
 
-                                  {/* ✅ Tareas de seguimiento editables (custom) */}
-                                  <div className="mt-2" onClick={e => e.stopPropagation()}>
-                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1">
-                                      <Check className="w-3 h-3" />
-                                      Tareas de seguimiento
-                                      <span className="text-[10px] text-gray-400 font-normal normal-case">({(actividad.tareasSeguimiento || []).length})</span>
-                                    </p>
-                                    <div className="flex flex-col gap-1.5">
-                                      {(actividad.tareasSeguimiento || []).map((tarea) => (
-                                        <div key={tarea.id} className="flex items-center gap-1.5 bg-green-50 border border-green-200 rounded-full px-3 py-1">
-                                          <span className="text-xs text-gray-900 flex-1 truncate" title={tarea.descripcion}>{tarea.descripcion}</span>
-                                          {(tarea.responsables || []).map((resp, ri) => (
-                                            <div key={ri} className="flex items-center gap-0.5 bg-blue-50 border border-blue-200 rounded-full px-1.5 py-0.5 flex-shrink-0">
-                                              <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center text-white text-[7px] font-bold flex-shrink-0">
-                                                {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                                              </div>
-                                              <span className="text-[9px] font-medium text-gray-700">{resp.split(' ')[0]}</span>
+                                  {/* ✅ Tareas de seguimiento — World-class design (custom) */}
+                                  <div className="mt-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm" onClick={e => e.stopPropagation()}>
+                                    <div className="flex items-center justify-between mb-3">
+                                      <p className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                                        <span className="w-5 h-5 rounded-md bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+                                          <Check className="w-3 h-3 text-white" />
+                                        </span>
+                                        Tareas de seguimiento
+                                        {(actividad.tareasSeguimiento || []).length > 0 && (
+                                          <span className="ml-1 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">
+                                            {(actividad.tareasSeguimiento || []).length}
+                                          </span>
+                                        )}
+                                      </p>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                      {(actividad.tareasSeguimiento || []).map((tarea) => {
+                                        const updateTareaCustom = (updates: Partial<TareaSeguimiento>) => {
+                                          const nuevaConfig = rolesConfig.map(r => {
+                                            if (r.numero !== rol.numero) return r;
+                                            return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
+                                              i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, ...updates } : t) } : a
+                                            )};
+                                          });
+                                          onRolesChange(nuevaConfig);
+                                        };
+                                        return (
+                                        <div key={tarea.id} className="group bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all">
+                                          {/* Header de la tarea */}
+                                          <div className="px-3 py-2.5 flex items-start gap-2.5">
+                                            <div className="w-5 h-5 mt-0.5 rounded bg-green-100 flex items-center justify-center flex-shrink-0">
+                                              <Check className="w-3 h-3 text-green-600" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                              <p className="text-sm font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
+                                              {(tarea.responsables || []).length > 0 && (
+                                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                                  {(tarea.responsables || []).map((resp, ri) => (
+                                                    <span key={ri} className="inline-flex items-center gap-1 pl-0.5 pr-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[10px]">
+                                                      <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[7px] font-bold">
+                                                        {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                                      </span>
+                                                      <span className="text-blue-800 font-medium">{resp.split(' ').slice(0, 2).join(' ')}</span>
+                                                      <button
+                                                        onClick={() => {
+                                                          const nuevaConfig = rolesConfig.map(r => {
+                                                            if (r.numero !== rol.numero) return r;
+                                                            return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
+                                                              i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, responsables: (t.responsables || []).filter((_, idx) => idx !== ri) } : t) } : a
+                                                            )};
+                                                          });
+                                                          onRolesChange(nuevaConfig);
+                                                        }}
+                                                        className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[8px] flex items-center justify-center transition-colors"
+                                                      >×</button>
+                                                    </span>
+                                                  ))}
+                                                </div>
+                                              )}
+                                            </div>
+                                            {/* Acciones */}
+                                            <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                              <select
+                                                className="text-[10px] border border-gray-300 rounded-md px-1 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
+                                                value=""
+                                                onChange={(e) => {
+                                                  if (!e.target.value) return;
+                                                  const aud = auditores.find(a => a.id === e.target.value);
+                                                  if (!aud) return;
+                                                  updateTareaCustom({ responsables: [...(tarea.responsables || []), aud.nombre] });
+                                                }}
+                                              >
+                                                <option value="">+ Asignar</option>
+                                                {auditores
+                                                  .filter(a => !(tarea.responsables || []).includes(a.nombre))
+                                                  .map(a => (
+                                                    <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
+                                                  ))}
+                                              </select>
                                               <button
                                                 onClick={() => {
                                                   const nuevaConfig = rolesConfig.map(r => {
                                                     if (r.numero !== rol.numero) return r;
                                                     return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
-                                                      i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, responsables: (t.responsables || []).filter((_, idx) => idx !== ri) } : t) } : a
+                                                      i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a
                                                     )};
                                                   });
                                                   onRolesChange(nuevaConfig);
                                                 }}
-                                                className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-[8px] transition-colors flex-shrink-0"
-                                              >✕</button>
+                                                className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                                title="Eliminar tarea"
+                                              >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                              </button>
                                             </div>
-                                          ))}
-                                          <select
-                                            className="text-[10px] border-2 border-dashed border-gray-300 rounded-lg px-1.5 py-0.5 text-gray-500 bg-white flex-shrink-0"
-                                            value=""
-                                            onChange={(e) => {
-                                              if (!e.target.value) return;
-                                              const aud = auditores.find(a => a.id === e.target.value);
-                                              if (!aud) return;
-                                              const nuevaConfig = rolesConfig.map(r => {
-                                                if (r.numero !== rol.numero) return r;
-                                                return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
-                                                  i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, responsables: [...(t.responsables || []), aud.nombre] } : t) } : a
-                                                )};
-                                              });
-                                              onRolesChange(nuevaConfig);
-                                            }}
-                                          >
-                                            <option value="">+ Responsable</option>
-                                            {auditores
-                                              .filter(a => !(tarea.responsables || []).includes(a.nombre))
-                                              .map(a => (
-                                                <option key={a.id} value={a.id}>{a.nombre}</option>
-                                              ))}
-                                          </select>
-                                          <button
-                                            onClick={() => {
-                                              const nuevaConfig = rolesConfig.map(r => {
-                                                if (r.numero !== rol.numero) return r;
-                                                return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
-                                                  i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a
-                                                )};
-                                              });
-                                              onRolesChange(nuevaConfig);
-                                            }}
-                                            className="w-5 h-5 flex items-center justify-center rounded-full bg-red-50 border border-red-200 text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors flex-shrink-0"
-                                            title="Eliminar tarea"
-                                          >
-                                            <Trash2 className="w-2.5 h-2.5" />
-                                          </button>
+                                          </div>
+
+                                          {/* Footer: opciones compactas */}
+                                          <div className="px-3 pb-2 flex items-center gap-4 border-t border-gray-100 pt-1.5">
+                                            <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere observaciones al completar">
+                                              <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => updateTareaCustom({ requiereObservaciones: !tarea.requiereObservaciones })}>
+                                                <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} />
+                                              </div>
+                                              <span className={`text-[11px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝 Observaciones</span>
+                                            </label>
+                                            <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere archivos adjuntos">
+                                              <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => updateTareaCustom({ requiereAdjuntos: !tarea.requiereAdjuntos })}>
+                                                <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} />
+                                              </div>
+                                              <span className={`text-[11px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎 Adjuntos</span>
+                                            </label>
+                                            <div className="flex items-center gap-1.5 ml-auto">
+                                              <span className="text-[11px] text-gray-500">📅</span>
+                                              <input
+                                                type="date"
+                                                value={tarea.fechaEntrega || ''}
+                                                onChange={(e) => updateTareaCustom({ fechaEntrega: e.target.value })}
+                                                className="text-[11px] border border-gray-200 rounded-md px-1.5 py-0.5 bg-white hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none w-[120px]"
+                                                title="Fecha de entrega (opcional)"
+                                              />
+                                            </div>
+                                          </div>
                                         </div>
-                                      ))}
-                                      <div className="flex gap-1.5">
+                                        );
+                                      })}
+
+                                      {/* Agregar nueva tarea — diseño premium */}
+                                      <div className="flex gap-2 mt-1">
                                         <input
                                           type="text"
                                           data-tarea-wizard-custom={`${rol.numero}-${index}`}
-                                          placeholder="Escribir nueva tarea…"
-                                          className="flex-1 px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-green-500 text-xs text-gray-500 bg-white"
+                                          placeholder="✍ Escribir nueva tarea…"
+                                          className="flex-1 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-green-500 focus:bg-green-50/30 text-sm text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
                                           onClick={e => e.stopPropagation()}
                                           onKeyDown={(e) => {
                                             if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
@@ -2626,9 +2760,9 @@ function Paso2({
                                               input.value = '';
                                             }
                                           }}
-                                          className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium flex items-center gap-1 flex-shrink-0"
+                                          className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm hover:shadow transition-all flex-shrink-0"
                                         >
-                                          <Plus className="w-3 h-3" /> Agregar
+                                          <Plus className="w-3.5 h-3.5" /> Agregar
                                         </button>
                                       </div>
                                     </div>
@@ -2828,6 +2962,18 @@ function Paso3({ vigencia, jefeOCI, rolesConfig }: any) {
             <span className="text-gray-600">Total actividades:</span>
             <span className="font-bold text-gray-900">{totalActividades} actividades</span>
           </div>
+          {(() => {
+            const totalTareas = rolesConfig.reduce((sum: number, rol: any) => {
+              return sum + [...(rol.actividadesSeleccionadas || []), ...(rol.actividadesCustom || [])]
+                .reduce((s: number, a: any) => s + (a.tareasSeguimiento?.length || 0), 0);
+            }, 0);
+            return totalTareas > 0 ? (
+              <div className="flex justify-between py-2 border-b border-gray-200">
+                <span className="text-gray-600">Total tareas:</span>
+                <span className="font-bold text-gray-900">{totalTareas} tareas de seguimiento</span>
+              </div>
+            ) : null;
+          })()}
           <div className="flex justify-between py-2">
             <span className="text-gray-600">Total responsables:</span>
             <span className="font-bold text-gray-900">{totalResponsables} auditores asignados</span>
@@ -2857,7 +3003,11 @@ function Paso3({ vigencia, jefeOCI, rolesConfig }: any) {
                     <div>
                       <p className="font-semibold text-gray-900 text-sm">{rol.nombre}</p>
                       <p className="text-xs text-gray-600">
-                        {numActividades} actividad{numActividades !== 1 ? 'es' : ''} • {rol.responsables?.length || 0} responsable{(rol.responsables?.length || 0) !== 1 ? 's' : ''}
+                        {numActividades} actividad{numActividades !== 1 ? 'es' : ''}{(() => {
+                          const totalTareas = [...(rol.actividadesSeleccionadas || []), ...(rol.actividadesCustom || [])]
+                            .reduce((sum: number, a: any) => sum + (a.tareasSeguimiento?.length || 0), 0);
+                          return totalTareas > 0 ? ` • ${totalTareas} tarea${totalTareas !== 1 ? 's' : ''}` : '';
+                        })()} • {rol.responsables?.length || 0} responsable{(rol.responsables?.length || 0) !== 1 ? 's' : ''}
                       </p>
                     </div>
                   </div>
@@ -4069,11 +4219,14 @@ function SeccionGestionYSeguimiento({
         .find(r => r.numero === rolNumero)
         ?.actividades.find(a => a.id === actividadId);
 
+      // Usar el usuario logueado actual, no el Jefe OCI
+      const nombreUsuarioActual = currentUser?.nombre || currentUser?.nombre_completo || plan.jefeOCI?.nombre || 'Usuario';
       const nuevaEntrada: EntradaSeguimiento = {
         id: crypto.randomUUID(),
         puntoControlId,
         fechaRegistro: new Date().toISOString().split('T')[0],
-        registradoPor: plan.jefeOCI?.nombre || 'Usuario',
+        registradoPor: nombreUsuarioActual,
+        usuarioId: currentUser?.id || currentUser?.userId || plan.jefeOCI?.id,
         texto: formEntrada.texto.trim(),
         tipo: formEntrada.tipo,
       };
@@ -4725,6 +4878,11 @@ function SeccionGestionYSeguimiento({
                             {actividad.verificadaPorDirector ? 'Verificada Director' : 'Requiere Verificación'}
                           </span>
                         )}
+                        {(actividad.tareasSeguimiento?.length || 0) > 0 && (
+                          <span className="px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 bg-blue-100 text-blue-700 border border-blue-300">
+                            ✅ {actividad.tareasSeguimiento!.filter(t => t.completada).length}/{actividad.tareasSeguimiento!.length} tareas
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 flex-wrap">
                         <p className="text-sm text-gray-900 flex items-center gap-1.5">
@@ -5192,58 +5350,208 @@ function SeccionGestionYSeguimiento({
                               </label>
 
                               {/* Lista de tareas */}
-                              <div className="space-y-2 mt-3">
-                                {(actividad.entradasSeguimiento || []).map((entrada: any) => (
-                                  <div key={entrada.id} className={`flex items-start gap-3 p-3 rounded-lg border transition-all ${
-                                    entrada.completada ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200 hover:border-blue-300'
+                              <div className="space-y-3 mt-3">
+                                {(actividad.entradasSeguimiento || []).map((entrada: any) => {
+                                  const avance = entrada.avance ?? (entrada.completada ? 100 : 0);
+                                  const vencida = entrada.fechaEntrega && new Date(entrada.fechaEntrega) < new Date() && !entrada.completada;
+                                  return (
+                                  <div key={entrada.id} className={`rounded-lg border transition-all overflow-hidden ${
+                                    entrada.completada ? 'bg-green-50 border-green-200' : vencida ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200 hover:border-blue-300'
                                   }`}>
-                                    <button
-                                      onClick={async () => {
-                                        const nuevasEntradas = (actividad.entradasSeguimiento || []).map((e: any) =>
-                                          e.id === entrada.id ? { ...e, completada: !e.completada, fechaCompletado: !e.completada ? new Date().toISOString() : undefined } : e
-                                        );
-                                        // Guardar en BD
-                                        try {
-                                          await actividadesApi.update(String(actividad.id), {
-                                            entradas_seguimiento: nuevasEntradas
-                                          });
-                                          // Actualizar estado local
-                                          const nuevoRoles = plan.roles.map(r => ({
-                                            ...r,
-                                            actividades: r.actividades.map(a =>
-                                              a.id === actividad.id ? { ...a, entradasSeguimiento: nuevasEntradas } : a
-                                            )
-                                          }));
-                                          onActualizar({ ...plan, roles: nuevoRoles });
-                                          toast.success('Tarea actualizada');
-                                        } catch (error) {
-                                          console.error('Error al actualizar tarea:', error);
-                                          toast.error('Error al actualizar la tarea');
-                                        }
-                                      }}
-                                      className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                                        entrada.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white hover:border-blue-400'
-                                      }`}
-                                    >
-                                      {entrada.completada && (
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                      )}
-                                    </button>
-                                    <div className="flex-1 min-w-0">
-                                      <p className={`text-sm ${entrada.completada ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                                        {entrada.texto}
-                                      </p>
-                                      <div className="flex items-center gap-2 mt-1">
-                                        {entrada.fechaCompletado && (
-                                          <span className="text-xs text-green-600">✓ {new Date(entrada.fechaCompletado).toLocaleDateString()}</span>
-                                        )}
-                                        <span className="text-xs text-gray-500">Por: {entrada.registradoPor}</span>
+                                    {/* Barra de progreso visual */}
+                                    <div className="h-1 bg-gray-200 relative">
+                                      <div className={`h-full transition-all ${avance >= 100 ? 'bg-green-500' : avance >= 50 ? 'bg-blue-500' : avance > 0 ? 'bg-amber-500' : 'bg-gray-300'}`} style={{ width: `${Math.min(avance, 100)}%` }} />
+                                    </div>
+
+                                    <div className="p-3 space-y-2">
+                                      {/* Fila 1: checkbox + descripción + badges */}
+                                      <div className="flex items-start gap-3">
+                                        <button
+                                          onClick={async () => {
+                                            const nuevasEntradas = (actividad.entradasSeguimiento || []).map((e: any) =>
+                                              e.id === entrada.id ? { ...e, completada: !e.completada, avance: !e.completada ? 100 : e.avance, fechaCompletado: !e.completada ? new Date().toISOString() : undefined } : e
+                                            );
+                                            try {
+                                              await actividadesApi.update(String(actividad.id), { entradas_seguimiento: nuevasEntradas });
+                                              const nuevoRoles = plan.roles.map(r => ({
+                                                ...r,
+                                                actividades: r.actividades.map(a =>
+                                                  a.id === actividad.id ? { ...a, entradasSeguimiento: nuevasEntradas } : a
+                                                )
+                                              }));
+                                              onActualizar({ ...plan, roles: nuevoRoles });
+                                              toast.success('Tarea actualizada');
+                                            } catch (error) {
+                                              console.error('Error al actualizar tarea:', error);
+                                              toast.error('Error al actualizar la tarea');
+                                            }
+                                          }}
+                                          className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                                            entrada.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white hover:border-blue-400'
+                                          }`}
+                                        >
+                                          {entrada.completada && (
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                          )}
+                                        </button>
+                                        <div className="flex-1 min-w-0">
+                                          <p className={`text-sm font-medium ${entrada.completada ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                                            {entrada.texto}
+                                          </p>
+                                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                            {entrada.fechaCompletado && (
+                                              <span className="text-[10px] text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full">✓ {new Date(entrada.fechaCompletado).toLocaleDateString()}</span>
+                                            )}
+                                            {entrada.fechaEntrega && (
+                                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${vencida ? 'bg-red-100 text-red-700 font-semibold' : 'bg-gray-100 text-gray-600'}`}>
+                                                📅 {vencida ? '⚠ Vencida: ' : 'Entrega: '}{new Date(entrada.fechaEntrega).toLocaleDateString()}
+                                              </span>
+                                            )}
+                                            {entrada.requiereObservaciones && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">📝 Obs.</span>}
+                                            {entrada.requiereAdjuntos && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">📎 Adj.</span>}
+                                            <span className="text-[10px] text-gray-500">Por: {entrada.registradoPor}</span>
+                                          </div>
+                                        </div>
+                                        {/* Badge de avance */}
+                                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                                          avance >= 100 ? 'bg-green-100 text-green-700' : avance >= 50 ? 'bg-blue-100 text-blue-700' : avance > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
+                                        }`}>
+                                          {avance}%
+                                        </span>
                                       </div>
+
+                                      {/* Fila 2: Slider de avance */}
+                                      {!entrada.completada && (
+                                        <div className="flex items-center gap-2 pl-8">
+                                          <span className="text-[10px] text-gray-500 w-10">Avance:</span>
+                                          <input
+                                            type="range"
+                                            min={0}
+                                            max={100}
+                                            step={5}
+                                            value={avance}
+                                            onChange={async (e) => {
+                                              const nuevoAvance = Number(e.target.value);
+                                              const nuevasEntradas = (actividad.entradasSeguimiento || []).map((en: any) =>
+                                                en.id === entrada.id ? { ...en, avance: nuevoAvance, completada: nuevoAvance >= 100, fechaCompletado: nuevoAvance >= 100 ? new Date().toISOString() : en.fechaCompletado } : en
+                                              );
+                                              try {
+                                                await actividadesApi.update(String(actividad.id), { entradas_seguimiento: nuevasEntradas });
+                                                const nuevoRoles = plan.roles.map(r => ({
+                                                  ...r,
+                                                  actividades: r.actividades.map(a =>
+                                                    a.id === actividad.id ? { ...a, entradasSeguimiento: nuevasEntradas } : a
+                                                  )
+                                                }));
+                                                onActualizar({ ...plan, roles: nuevoRoles });
+                                              } catch (error) {
+                                                console.error('Error avance:', error);
+                                              }
+                                            }}
+                                            className="flex-1 h-1.5 accent-blue-600 cursor-pointer"
+                                          />
+                                          <span className="text-[10px] font-bold text-gray-700 w-8 text-right">{avance}%</span>
+                                        </div>
+                                      )}
+
+                                      {/* Fila 3: Observaciones si es requerido */}
+                                      {entrada.requiereObservaciones && !entrada.completada && (
+                                        <div className="pl-8">
+                                          <textarea
+                                            placeholder="Escribir observaciones de la tarea..."
+                                            value={entrada.observaciones || ''}
+                                            onChange={async (e) => {
+                                              const nuevasEntradas = (actividad.entradasSeguimiento || []).map((en: any) =>
+                                                en.id === entrada.id ? { ...en, observaciones: e.target.value } : en
+                                              );
+                                              const nuevoRoles = plan.roles.map(r => ({
+                                                ...r,
+                                                actividades: r.actividades.map(a =>
+                                                  a.id === actividad.id ? { ...a, entradasSeguimiento: nuevasEntradas } : a
+                                                )
+                                              }));
+                                              onActualizar({ ...plan, roles: nuevoRoles });
+                                            }}
+                                            onBlur={async () => {
+                                              try {
+                                                await actividadesApi.update(String(actividad.id), { entradas_seguimiento: actividad.entradasSeguimiento });
+                                              } catch (_) {}
+                                            }}
+                                            className="w-full text-xs border border-gray-300 rounded-lg px-2 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none resize-none"
+                                            rows={2}
+                                          />
+                                        </div>
+                                      )}
+
+                                      {/* Fila 4: Evidencias aceptadas / Evaluación del Jefe */}
+                                      {entrada.completada && (
+                                        <div className="pl-8 flex items-center gap-2 flex-wrap">
+                                          {entrada.evaluada ? (
+                                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${entrada.aceptada ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                              {entrada.aceptada ? '✅ Evidencia aceptada' : '❌ Evidencia rechazada'}
+                                            </span>
+                                          ) : (
+                                            <>
+                                              <button
+                                                onClick={async () => {
+                                                  const nuevasEntradas = (actividad.entradasSeguimiento || []).map((en: any) =>
+                                                    en.id === entrada.id ? { ...en, evaluada: true, aceptada: true, fechaEvaluacion: new Date().toISOString() } : en
+                                                  );
+                                                  try {
+                                                    await actividadesApi.update(String(actividad.id), { entradas_seguimiento: nuevasEntradas });
+                                                    const nuevoRoles = plan.roles.map(r => ({
+                                                      ...r,
+                                                      actividades: r.actividades.map(a =>
+                                                        a.id === actividad.id ? { ...a, entradasSeguimiento: nuevasEntradas } : a
+                                                      )
+                                                    }));
+                                                    onActualizar({ ...plan, roles: nuevoRoles });
+                                                    toast.success('Tarea aceptada');
+                                                  } catch (error) {
+                                                    toast.error('Error al evaluar');
+                                                  }
+                                                }}
+                                                className="text-[10px] font-semibold px-2 py-1 rounded bg-green-600 hover:bg-green-700 text-white transition-colors"
+                                              >
+                                                ✓ Aceptar
+                                              </button>
+                                              <button
+                                                onClick={async () => {
+                                                  const nuevasEntradas = (actividad.entradasSeguimiento || []).map((en: any) =>
+                                                    en.id === entrada.id ? { ...en, evaluada: true, aceptada: false, completada: false, avance: 0, fechaEvaluacion: new Date().toISOString() } : en
+                                                  );
+                                                  try {
+                                                    await actividadesApi.update(String(actividad.id), { entradas_seguimiento: nuevasEntradas });
+                                                    const nuevoRoles = plan.roles.map(r => ({
+                                                      ...r,
+                                                      actividades: r.actividades.map(a =>
+                                                        a.id === actividad.id ? { ...a, entradasSeguimiento: nuevasEntradas } : a
+                                                      )
+                                                    }));
+                                                    onActualizar({ ...plan, roles: nuevoRoles });
+                                                    toast.info('Tarea devuelta para corrección');
+                                                  } catch (error) {
+                                                    toast.error('Error al evaluar');
+                                                  }
+                                                }}
+                                                className="text-[10px] font-semibold px-2 py-1 rounded bg-red-500 hover:bg-red-600 text-white transition-colors"
+                                              >
+                                                ✕ Rechazar
+                                              </button>
+                                              <span className="text-[10px] text-gray-400 italic">Pendiente de evaluación</span>
+                                            </>
+                                          )}
+                                          {entrada.fechaEvaluacion && (
+                                            <span className="text-[10px] text-gray-500">Evaluada: {new Date(entrada.fechaEvaluacion).toLocaleDateString()}</span>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             </div>
                           )}
@@ -5432,7 +5740,7 @@ function SeccionGestionYSeguimiento({
           <ModalGestionAdjuntos
             actividad={actividadModal!}
             modoEntradaCorte={!!modalCorteId}
-            autorNombre={plan.jefeOCI?.nombre || 'Usuario'}
+            autorNombre={currentUser?.nombre || currentUser?.nombre_completo || plan.jefeOCI?.nombre || 'Usuario'}
             puntoControl={puntoControlInfo ? {
               id: puntoControlInfo.id,
               nombre: puntoControlInfo.nombre,
@@ -5461,7 +5769,8 @@ function SeccionGestionYSeguimiento({
             // ── CONTEXTO CORTE: crear EntradaSeguimiento (ÚNICA fuente de verdad) ──
             if (corteIdEfectivo) {
               const corteIdTarget = corteIdEfectivo;
-              const nombreJefe = plan.jefeOCI?.nombre || 'Usuario';
+              // Usar el usuario logueado actual para trazabilidad
+              const nombreUsuarioActual = currentUser?.nombre || currentUser?.nombre_completo || plan.jefeOCI?.nombre || 'Usuario';
 
               // Extraer solo las nuevas observaciones del modal (prefijo obs-)
               let nuevasObs: Array<{ id: string; texto: string; fechaRegistro: string; puntoControlId?: string }> = [];
@@ -5520,7 +5829,8 @@ function SeccionGestionYSeguimiento({
                   id: `ent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                   puntoControlId: pcId,
                   fechaRegistro: obs.fechaRegistro || new Date().toISOString().split('T')[0],
-                  registradoPor: nombreJefe,
+                  registradoPor: nombreUsuarioActual,
+                  usuarioId: currentUser?.id || currentUser?.userId || plan.jefeOCI?.id,
                   texto: obs.texto,
                   tipo: 'seguimiento' as const,
                   ...(archivosDeEsteCorte ? { archivos: archivosDeEsteCorte } : {}),
@@ -6214,7 +6524,10 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                 <div>
                   <h3 className="font-bold text-gray-900">Rol {rol.numero}: {rol.nombre}</h3>
                   <p className="text-sm text-gray-600">
-                    {rol.actividades.length} actividades • {asignadas} asignadas • {rol.actividades.length - asignadas} pendientes
+                    {rol.actividades.length} actividades{(() => {
+                      const totalTareas = rol.actividades.reduce((sum: number, a: any) => sum + (a.tareasSeguimiento?.length || 0), 0);
+                      return totalTareas > 0 ? ` • ${totalTareas} tareas` : '';
+                    })()} • {asignadas} asignadas • {rol.actividades.length - asignadas} pendientes
                   </p>
                   {/* Responsables del rol: avatares de los auditores asignados a actividades de este rol */}
                   {responsablesDelRol.length > 0 && (
@@ -7171,9 +7484,15 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                   tarea.completada ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200 hover:border-blue-300'
                                 }`}>
                                   <button
-                                    onClick={() => {
+                                    onClick={async () => {
+                                      const nombreUsuario = currentUser?.nombre || currentUser?.nombre_completo || plan.jefeOCI?.nombre || 'Usuario';
                                       const nuevasTareas = (actividad.tareasSeguimiento || []).map(t =>
-                                        t.id === tarea.id ? { ...t, completada: !t.completada, fechaCompletado: !t.completada ? new Date().toISOString().split('T')[0] : undefined } : t
+                                        t.id === tarea.id ? { 
+                                          ...t, 
+                                          completada: !t.completada, 
+                                          fechaCompletada: !t.completada ? new Date().toISOString().split('T')[0] : undefined,
+                                          completadaPor: !t.completada ? nombreUsuario : undefined 
+                                        } : t
                                       );
                                       const nuevoRoles = plan.roles.map(r => ({
                                         ...r,
@@ -7182,6 +7501,14 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                         )
                                       }));
                                       onActualizar({ ...plan, roles: nuevoRoles });
+                                      // Persistir al backend
+                                      try {
+                                        await actividadesApi.update(String(actividad.id), {
+                                          tareas_seguimiento: nuevasTareas
+                                        });
+                                      } catch (e) {
+                                        console.warn('[Tareas] Error al persistir:', e);
+                                      }
                                     }}
                                     className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
                                       tarea.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white hover:border-blue-400'
@@ -7247,7 +7574,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                         {auditores
                                           .filter(a => !(tarea.responsables || []).includes(a.nombre))
                                           .map(a => (
-                                            <option key={a.id} value={a.id}>{a.nombre}</option>
+                                            <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
                                           ))}
                                       </select>
                                     </div>
@@ -7720,7 +8047,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
           actividad={plan.roles
             .find(r => r.numero === modalAdjuntos.rolNumero)
             ?.actividades.find(a => a.id === modalAdjuntos.actividadId)!}
-          autorNombre={plan.jefeOCI?.nombre || 'Usuario'}
+          autorNombre={currentUser?.nombre || currentUser?.nombre_completo || plan.jefeOCI?.nombre || 'Usuario'}
           onCerrar={() => setModalAdjuntos(null)}
           onActualizar={(adjuntos, observaciones) => {
             const planActualizado = {

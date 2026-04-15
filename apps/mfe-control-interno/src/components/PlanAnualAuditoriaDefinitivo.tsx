@@ -1439,6 +1439,16 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               puntosControl: actExtendido.puntos_control || [],
               frecuenciaPuntosControl: actExtendido.frecuencia_puntos_control || null,
               entradasSeguimiento: actExtendido.entradas_seguimiento || actExtendido.entradasSeguimiento || [],
+              // Tareas de seguimiento (sub-tareas)
+              tareasSeguimiento: (actExtendido.tareas_seguimiento || actExtendido.tareasSeguimiento || []).map((t: any) => ({
+                id: t.id,
+                descripcion: t.descripcion,
+                completada: t.completada || false,
+                responsables: t.responsables || [],
+                fechaLimite: t.fechaLimite || t.fecha_limite || undefined,
+                fechaCompletada: t.fechaCompletada || t.fecha_completada || undefined,
+                completadaPor: t.completadaPor || t.completada_por || undefined,
+              })),
               fechaCorte: formatearFecha(actExtendido.fecha_corte) || '',
             };
           })
@@ -1621,24 +1631,8 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               };
             }
 
-            // ⚡ Convertir tareasSeguimiento del wizard en entradas_seguimiento iniciales
-            console.log(`🔍 [handleCrearPlan] Actividad "${act.nombre}":`, {
-              tieneTareasSeguimiento: !!act.tareasSeguimiento,
-              cantidadTareas: act.tareasSeguimiento?.length || 0,
-              tareas: act.tareasSeguimiento
-            });
-            
-            const entradasSeguimientoIniciales = (act.tareasSeguimiento || []).map((tarea, idx) => ({
-              id: tarea.id || `entrada-${Date.now()}-${idx}`,
-              puntoControlId: act.puntosControl?.[0]?.id || 'pc-general', // Vincular al primer punto de control
-              fechaRegistro: new Date().toISOString(),
-              registradoPor: jefeOCI.nombre,
-              usuarioId: jefeOCI.id,
-              texto: tarea.descripcion,
-              tipo: 'seguimiento' as const
-            }));
-            
-            console.log(`📋 [handleCrearPlan] Entradas generadas: ${entradasSeguimientoIniciales.length}`);
+            // ⚡ Las tareas de seguimiento NO se convierten en entradas_seguimiento al crear.
+            // Un plan nuevo debe iniciar en 0%. Las entradas se crean manualmente durante el seguimiento.
 
             const resultActividad = await actividadesApi.create(rolBackend.id, {
               nombre: act.nombre,
@@ -1659,8 +1653,16 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               configuracionEvidencias: configuracionEvidencias,
               puntos_control: act.puntosControl && act.puntosControl.length > 0 ? act.puntosControl : undefined,
               frecuencia_puntos_control: act.frecuenciaPuntosControl || undefined,
-              // ⚡ NUEVO: Tareas de seguimiento convertidas a entradas iniciales
-              entradas_seguimiento: entradasSeguimientoIniciales.length > 0 ? entradasSeguimientoIniciales : undefined,
+              // Tareas de seguimiento (sub-tareas de la actividad)
+              tareas_seguimiento: act.tareasSeguimiento && act.tareasSeguimiento.length > 0 
+                ? act.tareasSeguimiento.map(t => ({
+                    id: t.id,
+                    descripcion: t.descripcion,
+                    completada: false,
+                    responsables: t.responsables || [],
+                    fechaLimite: t.fechaLimite || undefined,
+                  }))
+                : undefined,
             });
 
             if (resultActividad.success) {

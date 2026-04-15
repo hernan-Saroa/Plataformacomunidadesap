@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { controlInternoService } from '../../../services/api/controlInternoService';
+import { HeaderSeccionConfig } from './HeaderSeccionConfig';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -657,28 +658,13 @@ export function NotificacionesModule() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* HEADER CON EXPLICACIÓN */}
+      {/* HEADER */}
       {/* ═══════════════════════════════════════════════════════════════ */}
-      <div className="bg-gradient-to-br from-blue-50 via-white to-blue-50 rounded-xl border-2 border-blue-200 p-6 mb-6">
-        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-          <div className="flex items-start gap-4">
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-3 rounded-xl">
-              <Settings className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-black text-gray-900 mb-2">
-                Configuración de Notificaciones
-              </h1>
-              <p className="text-sm sm:text-base text-gray-600 mb-4">
-                Configura qué eventos del sistema generan notificaciones automáticas
-              </p>
-
-              {/* Explicación clara */}
-              
-            </div>
-          </div>
-        </div>
-      </div>
+      <HeaderSeccionConfig
+        icon={<Settings className="w-full h-full" />}
+        titulo="Configuración de Notificaciones"
+        subtitulo="Configura qué eventos del sistema generan notificaciones automáticas"
+      />
 
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* ESTADÍSTICAS */}

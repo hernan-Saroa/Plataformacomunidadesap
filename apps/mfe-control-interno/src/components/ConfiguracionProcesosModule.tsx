@@ -5,14 +5,17 @@
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Layers, Plus, Edit2, X, Loader2, Search, CheckCircle2, XCircle,
-  RefreshCw, Settings, Tag, Trash2, Save
+  RefreshCw, Settings, Tag, Trash2, Save, ChevronDown, ChevronRight,
+  Building2, Star, AlertCircle, CheckCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { controlInternoService } from '@/services/api/controlInternoService';
 import type { ProcesoAuditable } from '@/services/api/controlInternoService';
+import { HeaderSeccionConfig } from './HeaderSeccionConfig';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS DE PROCESO — Todos en localStorage (editables y eliminables)
@@ -23,7 +26,8 @@ type TipoItem = { value: string; label: string; color: string };
 const TIPOS_DEFAULT: TipoItem[] = [
   { value: 'estrategico', label: 'Estratégico', color: 'bg-purple-100 text-purple-700' },
   { value: 'misional',    label: 'Misional',    color: 'bg-blue-100 text-blue-700'     },
-  { value: 'transversal', label: 'Transversal', color: 'bg-green-100 text-green-700'   },
+  { value: 'apoyo',       label: 'Apoyo',       color: 'bg-green-100 text-green-700'   },
+  { value: 'transversal', label: 'Transversal', color: 'bg-emerald-100 text-emerald-700' },
   { value: 'evaluacion',  label: 'Evaluación',  color: 'bg-orange-100 text-orange-700' },
   { value: 'territorial', label: 'Territorial', color: 'bg-teal-100 text-teal-700'     },
 ];
@@ -46,7 +50,17 @@ const TIPOS_STORAGE_KEY = 'esap_tipos_proceso_all';
 export function loadTipos(): TipoItem[] {
   try {
     const raw = localStorage.getItem(TIPOS_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : TIPOS_DEFAULT;
+    if (!raw) return TIPOS_DEFAULT;
+    const stored: TipoItem[] = JSON.parse(raw);
+    // Merge: add any missing default types (e.g. 'apoyo') that weren't in old localStorage
+    const existingValues = new Set(stored.map(t => t.value));
+    const missing = TIPOS_DEFAULT.filter(d => !existingValues.has(d.value));
+    if (missing.length > 0) {
+      const merged = [...stored, ...missing];
+      localStorage.setItem(TIPOS_STORAGE_KEY, JSON.stringify(merged));
+      return merged;
+    }
+    return stored;
   } catch { return TIPOS_DEFAULT; }
 }
 
@@ -91,6 +105,23 @@ export function ConfiguracionProcesosModule() {
   const [guardando, setGuardando] = useState(false);
   const [form, setForm]           = useState(FORM_VACIO);
 
+  // ── Unidades Auditables ──
+  const [unidades, setUnidades] = useState<{ id: string; nombre: string; descripcion: string }[]>([]);
+
+  // ── Filas Expandidas ──
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [confirmandoInactivar, setConfirmandoInactivar] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const toggleRow = (id: string) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   // ── Procesos especiales ★ ──
   const [espIds, setEspIds] = useState<Set<string>>(loadEspIds);
 
@@ -104,6 +135,9 @@ export function ConfiguracionProcesosModule() {
   const [nuevoTipoLabel, setNuevoTipoLabel] = useState('');
   const [editandoTipo, setEditandoTipo]     = useState<TipoItem | null>(null);
   const [editandoTipoLabel, setEditandoTipoLabel] = useState('');
+  
+  // Nuevo estado para la estructura intuitiva de unidades
+  const [unidadInput, setUnidadInput] = useState('');
 
   // ── Cargar procesos ──
   const fetchProcesos = useCallback(async () => {
@@ -126,6 +160,7 @@ export function ConfiguracionProcesosModule() {
     return procesos.filter(p =>
       p.nombre.toLowerCase().includes(q) ||
       p.codigo.toLowerCase().includes(q) ||
+      (p.unidadesAuditables || []).some(u => u.nombre.toLowerCase().includes(q)) ||
       (p.macroproceso || '').toLowerCase().includes(q)
     );
   }, [procesos, busqueda]);
@@ -138,19 +173,31 @@ export function ConfiguracionProcesosModule() {
     setForm(FORM_VACIO);
     setDependencias([]);
     setDepInput('');
+    setUnidades([{ id: crypto.randomUUID(), nombre: '', descripcion: '' }]);
     setModalOpen(true);
   };
 
   const handleOpenEdit = (p: ProcesoAuditable) => {
     setEditando(p);
     const tipoRaw = (p.tipo || '').toLowerCase();
+    // Buscar el tipo en la lista; si no existe, usar el valor raw de la DB tal cual
     const tipo = tiposList.find(t =>
       t.value === tipoRaw || t.label.toLowerCase() === tipoRaw
-    )?.value || tipoRaw || 'estrategico';
+    )?.value || tipoRaw;
     // Dividir dependencias guardadas (separadas por "; ")
     const deps = (p.dependencia || '').split(';').map(d => d.trim()).filter(Boolean);
     setDependencias(deps);
     setDepInput('');
+    
+    let initialUnidades = p.unidadesAuditables || [];
+    if (initialUnidades.length === 0 && p.macroproceso) {
+      initialUnidades = [{ id: crypto.randomUUID(), nombre: p.macroproceso, descripcion: '' }];
+    }
+    if (initialUnidades.length === 0) {
+      initialUnidades = [{ id: crypto.randomUUID(), nombre: '', descripcion: '' }];
+    }
+    setUnidades(initialUnidades);
+
     setForm({
       nombre:       p.nombre,
       codigo:       p.codigo,
@@ -167,8 +214,9 @@ export function ConfiguracionProcesosModule() {
       toast.error('Nombre y código son obligatorios');
       return;
     }
-    if (!form.macroproceso.trim()) {
-      toast.error('Ingrese el macroproceso');
+    const filteredUnidades = unidades.filter(u => u.nombre.trim());
+    if (filteredUnidades.length === 0) {
+      toast.error('Agregue al menos una unidad auditable');
       return;
     }
     const allDeps = [...dependencias];
@@ -185,7 +233,8 @@ export function ConfiguracionProcesosModule() {
         nombre:       form.nombre,
         codigo:       form.codigo,
         tipo:         form.tipo as any,
-        macroproceso: form.macroproceso,
+        macroproceso: filteredUnidades[0].nombre, // Backward compatibility
+        unidadesAuditables: filteredUnidades,
         dependencia:  dependenciaStr,
         responsable:  dependenciaStr,
         descripcion:  form.nombre,
@@ -223,6 +272,8 @@ export function ConfiguracionProcesosModule() {
       }
 
       setModalOpen(false);
+      setSuccessMsg(editando ? `"${form.nombre}" actualizado` : `"${form.nombre}" creado`);
+      setTimeout(() => setSuccessMsg(null), 1800);
       fetchProcesos();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar el proceso');
@@ -232,10 +283,10 @@ export function ConfiguracionProcesosModule() {
   };
 
   const handleInactivar = async (p: ProcesoAuditable) => {
-    if (!confirm(`¿Inactivar "${p.nombre}"? No se eliminará el historial.`)) return;
     try {
       await controlInternoService.inactivarProceso(p.id);
       toast.success('Proceso inactivado');
+      setConfirmandoInactivar(null);
       fetchProcesos();
     } catch { toast.error('Error al inactivar'); }
   };
@@ -302,49 +353,44 @@ export function ConfiguracionProcesosModule() {
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    <div className="w-full h-full p-4 sm:p-6 lg:p-8">
 
       {/* ─── Cabecera ─── */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-5 mb-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-3 rounded-xl">
-              <Layers className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">Catálogo de Procesos</h2>
-              <p className="text-sm text-gray-500">Procesos parametrizados para Universo de Auditoría</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setGestionarTipos(v => !v)}
-              className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-colors ${
-                gestionarTipos ? 'bg-blue-50 border-blue-300 text-blue-700' : 'hover:bg-gray-50'
-              }`}
-              title="Gestionar tipos de proceso"
-            >
-              <Settings className="w-4 h-4" /> Tipos
-            </button>
-            <button onClick={fetchProcesos} className="p-2 border rounded-lg hover:bg-gray-50" title="Actualizar">
-              <RefreshCw className="w-4 h-4" />
-            </button>
-            <button
-              onClick={handleOpenCreate}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
-            >
-              <Plus className="w-4 h-4" /> Crear proceso
-            </button>
-          </div>
-        </div>
-        <div className="mt-4 relative">
+      <HeaderSeccionConfig
+        icon={<Layers className="w-full h-full" />}
+        titulo="Catálogo de Procesos"
+        subtitulo="Procesos parametrizados para Universo de Auditoría"
+      >
+        <button
+          onClick={() => setGestionarTipos(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-medium transition-colors ${
+            gestionarTipos ? 'bg-blue-50 border-blue-300 text-blue-700' : 'border-gray-300 hover:bg-gray-50'
+          }`}
+          title="Gestionar tipos de proceso"
+        >
+          <Settings className="w-3.5 h-3.5" /> Tipos
+        </button>
+        <button onClick={fetchProcesos} className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50" title="Actualizar">
+          <RefreshCw className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={handleOpenCreate}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium"
+        >
+          <Plus className="w-3.5 h-3.5" /> Crear proceso
+        </button>
+      </HeaderSeccionConfig>
+
+      {/* Barra de búsqueda */}
+      <div className="bg-white rounded-xl border border-gray-200 p-3 mb-5">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
             placeholder="Buscar por nombre, código o macroproceso..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm"
+            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm"
           />
         </div>
       </div>
@@ -459,10 +505,11 @@ export function ConfiguracionProcesosModule() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
+                  <th className="w-10 px-3 py-3"></th>
                   <th className="text-left px-3 py-3 font-semibold text-gray-700">Código</th>
-                  <th className="text-left px-3 py-3 font-semibold text-gray-700">Nombre</th>
+                  <th className="text-left px-3 py-3 font-semibold text-gray-700">Proceso</th>
                   <th className="text-left px-3 py-3 font-semibold text-gray-700">Tipo</th>
-                  <th className="text-left px-3 py-3 font-semibold text-gray-700">Unidad auditable</th>
+                  <th className="text-center px-3 py-3 font-semibold text-gray-700">Unidades</th>
                   <th className="text-left px-3 py-3 font-semibold text-gray-700">Dependencia responsable</th>
                   <th className="text-left px-3 py-3 font-semibold text-gray-700">Estado</th>
                   <th className="px-3 py-3 font-semibold text-gray-700 w-24 text-center">Acciones</th>
@@ -471,8 +518,14 @@ export function ConfiguracionProcesosModule() {
               <tbody>
                 {procesosFiltrados.map((p) => {
                   const tipoInfo = getTipoInfo(p.tipo || '');
+                  const isExpanded = expandedRows.has(p.id);
+                  const units = p.unidadesAuditables || (p.macroproceso ? [{ id: 'old', nombre: p.macroproceso, descripcion: '' }] : []);
                   return (
-                    <tr key={p.id} className="border-b hover:bg-gray-50/60 transition-colors">
+                    <React.Fragment key={p.id}>
+                    <tr onClick={() => toggleRow(p.id)} className={`border-b transition-colors cursor-pointer ${isExpanded ? 'bg-blue-50/40' : 'hover:bg-gray-50/60'}`}>
+                      <td className="px-3 py-2.5 text-center text-gray-400">
+                        {isExpanded ? <ChevronDown className="w-4 h-4 mx-auto" /> : <ChevronRight className="w-4 h-4 mx-auto" />}
+                      </td>
                       <td className="px-3 py-2.5 font-mono text-xs text-gray-600">{p.codigo}</td>
                       <td className="px-3 py-2.5 font-medium text-gray-900">
                         <span className="flex items-center gap-1.5">
@@ -487,7 +540,11 @@ export function ConfiguracionProcesosModule() {
                           {tipoInfo.label}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 text-gray-600 text-xs">{p.macroproceso || '—'}</td>
+                      <td className="px-3 py-2.5 text-center">
+                        <span className="inline-flex items-center justify-center bg-blue-100 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-full min-w-[24px]">
+                          {units.length}
+                        </span>
+                      </td>
                       <td className="px-3 py-2.5 text-xs">
                         {p.dependencia
                           ? p.dependencia.split(';').map(d => d.trim()).filter(Boolean).map((d, i) => (
@@ -507,14 +564,32 @@ export function ConfiguracionProcesosModule() {
                         </span>
                       </td>
                       <td className="px-3 py-2.5">
-                        <div className="flex gap-1 justify-center">
+                        <div className="flex gap-1 justify-center" onClick={(e) => e.stopPropagation()}>
                           <button onClick={() => handleOpenEdit(p)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Editar">
                             <Edit2 className="w-4 h-4" />
                           </button>
                           {(p as any).activo !== false ? (
-                            <button onClick={() => handleInactivar(p)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded" title="Inactivar">
-                              <XCircle className="w-4 h-4" />
-                            </button>
+                            confirmandoInactivar === p.id ? (
+                              <div className="flex items-center gap-1 bg-red-50 border border-red-200 rounded-lg px-2 py-1">
+                                <span className="text-[11px] text-red-700 font-semibold whitespace-nowrap">¿Inactivar?</span>
+                                <button
+                                  onClick={() => handleInactivar(p)}
+                                  className="px-2 py-0.5 bg-red-600 text-white text-[11px] font-bold rounded hover:bg-red-700 transition-colors"
+                                >
+                                  Sí
+                                </button>
+                                <button
+                                  onClick={() => setConfirmandoInactivar(null)}
+                                  className="px-2 py-0.5 bg-white text-gray-600 text-[11px] font-bold rounded border border-gray-300 hover:bg-gray-100 transition-colors"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <button onClick={() => setConfirmandoInactivar(p.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors" title="Inactivar">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )
                           ) : (
                             <button onClick={() => handleActivar(p)} className="p-1.5 text-green-600 hover:bg-green-50 rounded" title="Activar">
                               <CheckCircle2 className="w-4 h-4" />
@@ -523,6 +598,36 @@ export function ConfiguracionProcesosModule() {
                         </div>
                       </td>
                     </tr>
+                    {isExpanded && (
+                      <tr className="bg-slate-50/50 border-b border-blue-100">
+                        <td colSpan={8} className="p-0">
+                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="p-4 pl-12 overflow-hidden">
+                            <div className="bg-white rounded-lg border border-blue-100 shadow-sm p-4 text-sm max-w-3xl">
+                              <h4 className="font-semibold text-gray-800 mb-3 border-b border-gray-100 pb-2 flex items-center gap-2">
+                                <Layers className="w-4 h-4 text-blue-600" />
+                                Unidades Auditables vinculadas ({units.length})
+                              </h4>
+                              {units.length > 0 ? (
+                                <ul className="space-y-2">
+                                  {units.map((u, i) => (
+                                    <li key={u.id || i} className="flex items-start gap-2 text-gray-700 bg-gray-50/50 p-2 rounded">
+                                      <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5 shrink-0" />
+                                      <div>
+                                        <span className="font-medium text-gray-900">{u.nombre}</span>
+                                        {u.descripcion && <p className="text-gray-500 text-xs mt-0.5">{u.descripcion}</p>}
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-gray-500 italic text-xs">No hay unidades auditables registradas.</p>
+                              )}
+                            </div>
+                          </motion.div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -530,7 +635,6 @@ export function ConfiguracionProcesosModule() {
           </div>
         )}
       </div>
-
       {/* ─── Modal Crear / Editar ─── */}
       <AnimatePresence>
         {modalOpen && (
@@ -538,175 +642,339 @@ export function ConfiguracionProcesosModule() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4"
+            className="fixed inset-0 flex items-center justify-center z-[1000] p-4"
+            style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)' }}
             onClick={() => setModalOpen(false)}
           >
             <motion.div
-              initial={{ scale: 0.95, y: 10 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 10 }}
+              initial={{ scale: 0.95, y: 15, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 15, opacity: 0 }}
+              transition={{ type: 'spring', duration: 0.4, bounce: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-xl shadow-xl w-full max-w-md"
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]"
             >
               {/* Header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b">
-                <h3 className="text-base font-bold text-gray-900">
-                  {editando ? 'Editar proceso' : 'Crear proceso'}
-                </h3>
-                <button onClick={() => setModalOpen(false)} className="p-1 hover:bg-gray-100 rounded">
-                  <X className="w-4 h-4" />
+              <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-50 to-blue-100/50 flex items-center justify-center border border-blue-100 shadow-sm text-blue-600">
+                    <Layers className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-[1.15rem] font-bold text-slate-800 tracking-tight leading-tight">
+                      {editando ? 'Edición de proceso' : 'Registro de nuevo proceso'}
+                    </h3>
+                    <p className="text-sm text-slate-500 mt-0.5 font-medium">
+                      Configure la estructura y jerarquía para el Universo Auditaje
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setModalOpen(false)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
               {/* Body */}
-              <div className="px-5 py-4 space-y-4">
+              <div className="px-8 py-6 space-y-8 overflow-y-auto" style={{ backgroundColor: '#FCFDFD' }}>
 
-                {/* Código */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Código <span className="text-red-500">*</span></label>
-                  <input
-                    value={form.codigo}
-                    onChange={(e) => setField('codigo', e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 outline-none"
-                    placeholder="PROC-001"
-                  />
-                </div>
-
-                {/* Nombre */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Nombre <span className="text-red-500">*</span></label>
-                  <input
-                    value={form.nombre}
-                    onChange={(e) => setField('nombre', e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 outline-none"
-                    placeholder="Nombre del proceso"
-                  />
-                </div>
-
-                {/* Tipo */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Tipo <span className="text-red-500">*</span></label>
-                  <select
-                    value={form.tipo}
-                    onChange={(e) => setField('tipo', e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-blue-500 outline-none bg-white"
-                  >
-                    {tiposList.map(t => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Macroproceso — entrada manual */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Unidad auditable <span className="text-red-500">*</span></label>
-                  <input
-                    value={form.macroproceso}
-                    onChange={(e) => setField('macroproceso', e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 outline-none"
-                    placeholder="Ej: Gestión Financiera"
-                  />
-                </div>
-
-                {/* Dependencia responsable — multi-chip */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Dependencia responsable <span className="text-red-500">*</span>
-                  </label>
-
-                  {/* Chips de dependencias ya agregadas */}
-                  {dependencias.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-2">
-                      {dependencias.map((dep, i) => (
-                        <span key={i} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">
-                          {dep}
-                          <button
-                            type="button"
-                            onClick={() => setDependencias(prev => prev.filter((_, idx) => idx !== i))}
-                            className="hover:text-red-600 transition-colors ml-0.5"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
+                {/* Info General */}
+                <section>
+                  <h4 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <div className="w-1.5 h-4 bg-blue-600 rounded-full" />
+                    Información Básica
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                    {/* Código */}
+                    <div className="md:col-span-3">
+                      <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">
+                        Código <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        value={form.codigo}
+                        onChange={(e) => setField('codigo', e.target.value)}
+                        className="w-full px-4 py-2.5 bg-white text-sm border border-slate-200 rounded-lg focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10 outline-none transition-all shadow-sm font-medium"
+                        placeholder="Ej. GCON-01"
+                      />
                     </div>
-                  )}
 
-                  {/* Input + botón agregar */}
-                  <div className="flex gap-2">
-                    <input
-                      value={depInput}
-                      onChange={(e) => setDepInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          const val = depInput.trim();
-                          if (val && !dependencias.includes(val)) {
-                            setDependencias(prev => [...prev, val]);
-                            setDepInput('');
+                    {/* Nombre */}
+                    <div className="md:col-span-6">
+                      <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">
+                        Proceso <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        value={form.nombre}
+                        onChange={(e) => setField('nombre', e.target.value)}
+                        className="w-full px-4 py-2.5 bg-white text-sm border border-slate-200 rounded-lg focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10 outline-none transition-all shadow-sm font-medium"
+                        placeholder="Nombre completo del proceso"
+                      />
+                    </div>
+
+                    {/* Tipo */}
+                    <div className="md:col-span-3">
+                      <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">
+                        Tipo <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={form.tipo}
+                          onChange={(e) => setField('tipo', e.target.value)}
+                          className="w-full px-4 py-2.5 bg-white text-sm border border-slate-200 rounded-lg focus:border-blue-600 focus:ring-4 focus:ring-blue-600/10 outline-none transition-all shadow-sm font-medium appearance-none cursor-pointer"
+                        >
+                          <option value="" disabled hidden>Seleccione...</option>
+                          {tiposList.map(t => (
+                            <option key={t.value} value={t.value}>{t.label}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* ─── Divider ─── */}
+                <div className="relative py-4">
+                  <div className="absolute inset-0 flex items-center px-6">
+                    <div className="w-full border-t border-slate-200" />
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-white px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      Configuración Avanzada
+                    </span>
+                  </div>
+                </div>
+
+                <div className="px-6 pb-6">
+                  {/* ─── Unidades Auditables ─── */}
+                  <div className="mb-6 bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                    <div className="flex items-center gap-2.5 mb-4">
+                      <div className="p-1.5 bg-blue-50 rounded-md">
+                        <Layers className="w-5 h-5 text-blue-700" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-800">Unidades Auditables</h4>
+                        <p className="text-[11px] text-slate-500">Agregue las sub-unidades adscritas al proceso</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2 mb-4">
+                      <input
+                        value={unidadInput}
+                        onChange={(e) => setUnidadInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const val = unidadInput.trim();
+                            if (val && !unidades.some(u => u.nombre === val)) {
+                              setUnidades(prev => [...prev, { id: crypto.randomUUID(), nombre: val, descripcion: '' }]);
+                              setUnidadInput('');
+                            }
                           }
-                        }
-                      }}
-                      className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 outline-none"
-                      placeholder="Ej: Dirección Financiera"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const val = depInput.trim();
-                        if (val && !dependencias.includes(val)) {
-                          setDependencias(prev => [...prev, val]);
-                          setDepInput('');
-                        }
-                      }}
-                      className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1 text-sm"
-                      title="Agregar dependencia"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
+                        }}
+                        className="flex-1 min-w-0 text-[13px] border border-slate-200 bg-slate-50 rounded-lg px-3 py-2.5 focus:bg-white focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none transition-all placeholder:text-slate-400"
+                        placeholder="Nombre de la unidad auditable..."
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = unidadInput.trim();
+                          if (val && !unidades.some(u => u.nombre === val)) {
+                            setUnidades(prev => [...prev, { id: crypto.randomUUID(), nombre: val, descripcion: '' }]);
+                            setUnidadInput('');
+                          }
+                        }}
+                        className="px-3 py-2.5 bg-blue-50 text-blue-700 border border-transparent rounded-lg text-[13px] font-bold hover:bg-blue-100 hover:border-blue-200 transition-colors shrink-0 flex items-center gap-1.5"
+                      >
+                        <Plus className="w-4 h-4" /> Agregar
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {unidades.filter(u => u.nombre.trim()).length === 0 ? (
+                        <p className="text-[12px] text-slate-400 italic">Cero unidades registradas.</p>
+                      ) : (
+                        unidades.filter(u => u.nombre.trim()).map((u, i) => (
+                          <span key={u.id} className="inline-flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 text-[12px] font-medium px-3 py-1 rounded-full shadow-sm hover:border-blue-300 transition-colors">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                            {u.nombre}
+                            <button
+                              type="button"
+                              onClick={() => setUnidades(prev => prev.filter((_, idx) => idx !== i))}
+                              className="text-slate-400 hover:text-red-500 focus:outline-none ml-0.5 transition-colors"
+                              title="Eliminar unidad"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </span>
+                        ))
+                      )}
+                    </div>
                   </div>
-                  <p className="text-[10px] text-gray-400 mt-1">Presione Enter o el botón + para agregar cada dependencia</p>
+
+                  {/* ─── Dependencias & Proceso Especial ─── */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Dependencias */}
+                    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                      <div className="flex items-center gap-2.5 mb-4">
+                        <div className="p-1.5 bg-violet-50 rounded-md">
+                          <Building2 className="w-5 h-5 text-violet-700" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-800">Dependencias</h4>
+                          <p className="text-[11px] text-slate-500">Áreas responsables</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2 mb-4">
+                        <input
+                          value={depInput}
+                          onChange={(e) => setDepInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const val = depInput.trim();
+                              if (val && !dependencias.includes(val)) {
+                                setDependencias(prev => [...prev, val]);
+                                setDepInput('');
+                              }
+                            }
+                          }}
+                          className="flex-1 min-w-0 text-[13px] border border-slate-200 bg-slate-50 rounded-lg px-3 py-2.5 focus:bg-white focus:border-violet-600 focus:ring-1 focus:ring-violet-600 outline-none transition-all placeholder:text-slate-400"
+                          placeholder="Nombre área involucrada..."
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const val = depInput.trim();
+                            if (val && !dependencias.includes(val)) {
+                              setDependencias(prev => [...prev, val]);
+                              setDepInput('');
+                            }
+                          }}
+                          className="px-3 py-2.5 bg-violet-50 text-violet-700 border border-transparent rounded-lg text-[13px] font-bold hover:bg-violet-100 hover:border-violet-200 transition-colors shrink-0 flex items-center gap-1.5"
+                        >
+                          <Plus className="w-4 h-4" /> Añadir
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {dependencias.length === 0 ? (
+                          <p className="text-[12px] text-slate-400 italic">Sin dependencias asignadas.</p>
+                        ) : (
+                          dependencias.map((dep, i) => (
+                            <span key={i} className="inline-flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 text-[12px] font-medium px-3 py-1 rounded-full shadow-sm hover:border-violet-300 transition-colors">
+                              <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" />
+                              {dep}
+                              <button
+                                type="button"
+                                onClick={() => setDependencias(prev => prev.filter((_, idx) => idx !== i))}
+                                className="text-slate-400 hover:text-red-500 focus:outline-none ml-0.5 transition-colors"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Proceso Especial */}
+                    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-2.5 mb-3">
+                          <div className="p-1.5 bg-amber-50 rounded-md">
+                            <Star className="w-5 h-5 text-amber-600" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-800">Proceso Especial</h4>
+                            <p className="text-[11px] text-slate-500">Prioridad obligatoria anual</p>
+                          </div>
+                        </div>
+                        
+                        <div className="bg-slate-50 border border-slate-200 p-3 mb-4 text-[12px] text-slate-600 leading-relaxed rounded-lg">
+                          Al activarlo, el sistema exigirá su auditoría obligatoria cada año, ignorando la matriz normal de ponderación de riesgos.
+                        </div>
+                      </div>
+
+                      <div className="pt-2">
+                        <label className="flex items-center justify-center gap-3 cursor-pointer group bg-white p-3 rounded-lg border-2 border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-all has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50/50">
+                          <input
+                            type="checkbox"
+                            checked={form.esEspecial}
+                            onChange={(e) => setForm(prev => ({ ...prev, esEspecial: e.target.checked }))}
+                            className="w-5 h-5 text-blue-600 bg-white border-slate-300 rounded focus:ring-blue-600 focus:ring-2 cursor-pointer transition-colors"
+                          />
+                          <span className="text-[13px] font-bold text-slate-800 select-none">
+                            {form.esEspecial ? 'MARCADO COMO ESPECIAL' : 'Marcar como proceso especial'}
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Proceso especial ★ */}
-                <label className={`flex items-center gap-3 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all ${
-                  form.esEspecial ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-gray-50 hover:border-gray-300'
-                }`}>
-                  <input
-                    type="checkbox"
-                    checked={form.esEspecial}
-                    onChange={(e) => setForm(prev => ({ ...prev, esEspecial: e.target.checked }))}
-                    className="w-4 h-4 accent-amber-500"
-                  />
-                  <div>
-                    <div className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
-                      Proceso especial <span className="text-amber-500">★</span>
-                    </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      Se audita todos los años del cuatrienio independientemente de la ponderación DAFP
-                    </div>
-                  </div>
-                </label>
               </div>
 
               {/* Footer */}
-              <div className="flex justify-end gap-2 px-5 py-4 border-t">
+              <div className="flex items-center justify-end gap-3 px-6 py-4 bg-white border-t border-slate-100">
                 <button
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                  className="px-5 py-2.5 text-[13px] font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={handleSave}
                   disabled={guardando}
-                  className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-lg text-[13px] font-bold disabled:opacity-50 flex items-center gap-2 shadow-sm shadow-blue-600/20 transition-all"
                 >
-                  {guardando && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Guardar
+                  {guardando ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  {editando ? 'Guardar Cambios' : 'Confirmar Registro'}
                 </button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* TOAST PREMIUM — WORLD CLASS                                   */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {successMsg && (
+          <motion.div
+            initial={{ x: 80, opacity: 0, scale: 0.95 }}
+            animate={{ x: 0, opacity: 1, scale: 1 }}
+            exit={{ x: 80, opacity: 0, scale: 0.95 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 400 }}
+            className="fixed top-6 right-6 z-[9999] flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl border border-white/20"
+            style={{ background: 'linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%)' }}
+          >
+            <motion.div
+              initial={{ scale: 0, rotate: -180 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ delay: 0.1, type: 'spring', damping: 12 }}
+              className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0"
+            >
+              <CheckCircle className="w-5 h-5 text-white" />
+            </motion.div>
+            <div>
+              <p className="text-sm font-bold text-white leading-tight">{successMsg}</p>
+              <p className="text-[11px] text-white/70 font-medium">Cambios guardados ✓</p>
+            </div>
+            <motion.div
+              className="absolute bottom-0 left-0 h-[3px] rounded-b-xl bg-white/30"
+              initial={{ width: '100%' }}
+              animate={{ width: '0%' }}
+              transition={{ duration: 1.8, ease: 'linear' }}
+            />
           </motion.div>
         )}
       </AnimatePresence>

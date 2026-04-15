@@ -322,8 +322,8 @@ export class PlanAnual5RolesService {
       INSERT INTO control_interno.actividad_plan_anual_5 
       (rol_id, plan_id, nombre, descripcion, responsable, fecha_inicio, fecha_fin, estado, porcentaje_avance, observaciones, prioridad,
        control, evaluacion, seguimiento, requiere_verificacion_director, verificada_por_director, fecha_verificacion, observaciones_director, configuracion_evidencias,
-       puntos_control, frecuencia_puntos_control, responsables, fecha_corte, entradas_seguimiento)
-      VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, $20::jsonb, $21, $22::jsonb, $23::date, $24::jsonb)
+       puntos_control, frecuencia_puntos_control, responsables, fecha_corte, entradas_seguimiento, tareas_seguimiento)
+      VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, $20::jsonb, $21, $22::jsonb, $23::date, $24::jsonb, $25::jsonb)
       RETURNING *
     `;
     
@@ -355,6 +355,8 @@ export class PlanAnual5RolesService {
       createDto.fecha_corte || null,  // $23::date
       // ⚡ NUEVO: Entradas de seguimiento iniciales
       entradasSeguimientoStr,  // $24::jsonb
+      // ⚡ NUEVO: Tareas de seguimiento (sub-tareas)
+      JSON.stringify(createDto.tareas_seguimiento || []),  // $25::jsonb
     ]);
 
     const saved = result[0];
@@ -562,6 +564,13 @@ export class PlanAnual5RolesService {
       updates.push(`entradas_seguimiento = $${paramIndex++}::jsonb`);
       values.push(entradasStr);
       cambios.push({ campo: 'entradas_seguimiento', valorAnterior: '(array)', valorNuevo: `${((updateDto as any).entradas_seguimiento as any[]).length} entradas` });
+    }
+    // Tareas de seguimiento (sub-tareas de la actividad)
+    if ((updateDto as any).tareas_seguimiento !== undefined) {
+      const tareasStr = JSON.stringify((updateDto as any).tareas_seguimiento);
+      updates.push(`tareas_seguimiento = $${paramIndex++}::jsonb`);
+      values.push(tareasStr);
+      cambios.push({ campo: 'tareas_seguimiento', valorAnterior: '(array)', valorNuevo: `${((updateDto as any).tareas_seguimiento as any[]).length} tareas` });
     }
     // Puntos de control y responsables múltiples
     if (updateDto.puntos_control !== undefined) {

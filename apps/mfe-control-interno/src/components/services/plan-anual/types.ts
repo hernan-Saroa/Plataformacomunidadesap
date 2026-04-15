@@ -151,6 +151,16 @@ export interface CreateActividadDto {
     archivos?: Array<{ nombre: string; url: string; tipo: string; tamanio: number }>;
     tipo: 'seguimiento' | 'hallazgo' | 'cierre';
   }>;
+  // Tareas de seguimiento (sub-tareas)
+  tareas_seguimiento?: Array<{
+    id: string;
+    descripcion: string;
+    completada: boolean;
+    responsables?: Array<{ id: string; nombre: string; cargo?: string }>;
+    fechaLimite?: string;
+    fechaCompletada?: string;
+    completadaPor?: string;
+  }>;
 }
 
 export interface UpdateActividadDto {
@@ -180,6 +190,16 @@ export interface UpdateActividadDto {
     texto?: string;
     archivos?: Array<{ nombre: string; url: string; tipo: string; tamanio: number }>;
     tipo: 'seguimiento' | 'hallazgo' | 'cierre';
+  }>;
+  // Tareas de seguimiento (sub-tareas)
+  tareas_seguimiento?: Array<{
+    id: string;
+    descripcion: string;
+    completada: boolean;
+    responsables?: Array<{ id: string; nombre: string; cargo?: string }>;
+    fechaLimite?: string;
+    fechaCompletada?: string;
+    completadaPor?: string;
   }>;
 }
 

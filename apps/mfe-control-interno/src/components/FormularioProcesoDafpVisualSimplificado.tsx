@@ -345,6 +345,12 @@ export function FormularioProcesoDafpVisual({
   const [procesoIdSeleccionado, setProcesoIdSeleccionado] = useState<string>(procesoInicial?.id || '');
   const [valorProcesoSeleccionado, setValorProcesoSeleccionado] = useState<string>(procesoInicial?.selectorProcesoCodificado || '');
 
+  // ── Multi-select para Unidades Auditables ──
+  const [unidadesDisponibles, setUnidadesDisponibles] = useState<string[]>([]);
+  const [unidadesSeleccionadas, setUnidadesSeleccionadas] = useState<Set<string>>(new Set());
+  const [unidadDropdownOpen, setUnidadDropdownOpen] = useState(false);
+  const unidadDropdownRef = useRef<HTMLDivElement>(null);
+
   const prevOpenRef = useRef(false);
   const prevProcesoIdRef = useRef<string | undefined>(undefined);
 
@@ -508,6 +514,10 @@ export function FormularioProcesoDafpVisual({
     const esEspecial = flagEspecial === 'ESP' || Boolean(proceso.esEspecial);
 
     setProcesoIdSeleccionado(proceso.id);
+    // Parse unidades auditables y auto-seleccionar todas
+    const unidadesParsed = macroproceso.split(';').map(u => u.trim()).filter(Boolean);
+    setUnidadesDisponibles(unidadesParsed);
+    setUnidadesSeleccionadas(new Set(unidadesParsed));
     setFormData((prev) => ({
       ...prev,
       selectorProcesoCodificado: encodedValue,
@@ -515,7 +525,7 @@ export function FormularioProcesoDafpVisual({
       nombre,
       tipoProceso: tipo,
       dependenciaResponsable: dependencia,
-      macroproceso,
+      macroproceso: unidadesParsed.join('; '),
       procesoEspecial: esEspecial,
       modoProcesoEspecial: esEspecial ? 'todos_los_anos' : 'ponderacion',
     }));
@@ -709,14 +719,80 @@ export function FormularioProcesoDafpVisual({
                         className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 px-3 py-2.5 text-sm"
                       />
                     </div>
-                    <div>
+                    <div className="relative" ref={unidadDropdownRef}>
                       <label className="mb-1.5 block text-xs font-bold text-gray-700">Unidad auditable</label>
-                      <input
-                        type="text"
-                        readOnly
-                        value={formData.macroproceso || ''}
-                        className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 px-3 py-2.5 text-sm"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => setUnidadDropdownOpen(!unidadDropdownOpen)}
+                        className={`w-full rounded-lg border-2 px-3 py-2.5 text-sm text-left flex items-center justify-between transition-all ${
+                          unidadDropdownOpen ? 'border-[#2962FF] ring-2 ring-[#2962FF]/20 bg-white' : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+                        }`}
+                      >
+                        <span className={unidadesSeleccionadas.size > 0 ? 'text-gray-900' : 'text-gray-400'}>
+                          {unidadesSeleccionadas.size > 0
+                            ? `${unidadesSeleccionadas.size} unidad${unidadesSeleccionadas.size > 1 ? 'es' : ''} seleccionada${unidadesSeleccionadas.size > 1 ? 's' : ''}`
+                            : 'Seleccione unidades...'}
+                        </span>
+                        <svg className={`w-4 h-4 text-gray-500 transition-transform ${unidadDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                      </button>
+                      {unidadDropdownOpen && unidadesDisponibles.length > 0 && (
+                        <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg max-h-48 overflow-y-auto">
+                          <div className="p-1">
+                            <button
+                              type="button"
+                              className="w-full text-left px-3 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded"
+                              onClick={() => {
+                                const allSelected = unidadesSeleccionadas.size === unidadesDisponibles.length;
+                                const next = allSelected ? new Set<string>() : new Set(unidadesDisponibles);
+                                setUnidadesSeleccionadas(next);
+                                setFormData(prev => ({ ...prev, macroproceso: allSelected ? '' : unidadesDisponibles.join('; ') }));
+                              }}
+                            >
+                              {unidadesSeleccionadas.size === unidadesDisponibles.length ? '✕ Deseleccionar todas' : '✓ Seleccionar todas'}
+                            </button>
+                            <div className="border-t border-gray-100 my-1" />
+                            {unidadesDisponibles.map((u) => (
+                              <label
+                                key={u}
+                                className="flex items-center gap-2 px-3 py-2 hover:bg-blue-50 rounded cursor-pointer transition-colors"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={unidadesSeleccionadas.has(u)}
+                                  onChange={() => {
+                                    const next = new Set(unidadesSeleccionadas);
+                                    if (next.has(u)) next.delete(u);
+                                    else next.add(u);
+                                    setUnidadesSeleccionadas(next);
+                                    setFormData(prev => ({ ...prev, macroproceso: Array.from(next).join('; ') }));
+                                  }}
+                                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-sm text-gray-700">{u}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {unidadesSeleccionadas.size > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {Array.from(unidadesSeleccionadas).map((u) => (
+                            <span key={u} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[11px] font-medium">
+                              {u}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = new Set(unidadesSeleccionadas);
+                                  next.delete(u);
+                                  setUnidadesSeleccionadas(next);
+                                  setFormData(prev => ({ ...prev, macroproceso: Array.from(next).join('; ') }));
+                                }}
+                                className="hover:text-blue-900 font-bold"
+                              >×</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
