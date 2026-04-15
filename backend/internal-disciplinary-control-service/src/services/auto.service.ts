@@ -22,11 +22,13 @@ import {
   ProcessStatus,
 } from '../entities/disciplinary-process.entity';
 
-const APERTURA_TYPES = [
-  AutoType.AUTO_APERTURA,
-  AutoType.AUTO_APERTURA_INVESTIGACION,
-  AutoType.AUTO_APERTURA_INDAGACION,
-];
+// Función para verificar si un tipo es de apertura (incluyendo dinámicos)
+const isAperturaType = (tipo: string): boolean => {
+  return tipo === AutoType.AUTO_APERTURA ||
+         tipo === AutoType.AUTO_APERTURA_INVESTIGACION ||
+         tipo === AutoType.AUTO_APERTURA_INDAGACION ||
+         tipo.startsWith('AUTO_APERTURA_');
+};
 
 @Injectable()
 export class AutoService {
@@ -240,7 +242,7 @@ export class AutoService {
       auto.numero = await this.sequenceService.generateAutoConsecutivo();
       await this.prepareApprovedDocument(auto);
 
-      if (APERTURA_TYPES.includes(auto.tipo as AutoType) && auto.etapaDestino) {
+      if (isAperturaType(auto.tipo) && auto.etapaDestino) {
         const fechaAprobacion = new Date();
         const etapaAnterior = auto.process.etapaActual;
 

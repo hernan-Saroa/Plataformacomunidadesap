@@ -331,7 +331,7 @@ class APIClient {
 
       // Verificar si es el formato del backend (success/data) o el formato esperado (exito/datos)
       if (data.success !== undefined) {
-        // Formato del backend: { success: true, data: {...}, timestamp: ... }
+        // Formato del backend: { success: true, data: {...}, message: ..., timestamp: ... }
         if (!data.success) {
           throw new APIClientError(
             response.status,
@@ -340,6 +340,11 @@ class APIClient {
             data.details
           );
         }
+        // Si el tipo esperado incluye success/message/data, devolver la respuesta completa
+        if (typeof data === 'object' && data.success !== undefined && data.message !== undefined && data.data !== undefined) {
+          return data as T;
+        }
+        // De lo contrario, devolver solo data
         return data.data as T;
       } else if (data.exito !== undefined) {
         // Formato esperado: { exito: true, datos: {...} }

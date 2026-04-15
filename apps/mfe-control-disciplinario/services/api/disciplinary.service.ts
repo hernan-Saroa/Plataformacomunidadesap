@@ -1269,29 +1269,29 @@ class DisciplinaryService {
     /**
      * Crear nueva configuración de auto
      */
-    async createAutosConfiguration(data: CreateAutoConfigurationDto): Promise<AutoConfiguration> {
-        return apiClient.post<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration`, data);
+    async createAutosConfiguration(data: CreateAutoConfigurationDto): Promise<{ success: boolean; message: string; data: AutoConfiguration }> {
+        return apiClient.post<{ success: boolean; message: string; data: AutoConfiguration }>(`${SERVICE_PREFIX}/autos-configuration`, data);
     }
 
     /**
      * Actualizar configuración de auto
      */
-    async updateAutosConfiguration(id: string, data: UpdateAutoConfigurationDto): Promise<AutoConfiguration> {
-        return apiClient.put<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}`, data);
+    async updateAutosConfiguration(id: string, data: UpdateAutoConfigurationDto): Promise<{ success: boolean; message: string; data: AutoConfiguration }> {
+        return apiClient.put<{ success: boolean; message: string; data: AutoConfiguration }>(`${SERVICE_PREFIX}/autos-configuration/${id}`, data);
     }
 
     /**
      * Eliminar configuración de auto
      */
-    async deleteAutosConfiguration(id: string): Promise<void> {
-        return apiClient.delete<void>(`${SERVICE_PREFIX}/autos-configuration/${id}`);
+    async deleteAutosConfiguration(id: string): Promise<{ success: boolean; message: string }> {
+        return apiClient.delete<{ success: boolean; message: string }>(`${SERVICE_PREFIX}/autos-configuration/${id}`);
     }
 
     /**
-     * Activar/desactivar configuración de auto
+     * Cambiar estado de configuración de auto (activar/desactivar)
      */
-    async toggleAutosConfigurationEstado(id: string): Promise<AutoConfiguration> {
-        return apiClient.patch<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/toggle-estado`, {});
+    async toggleAutosConfigurationEstado(id: string): Promise<{ success: boolean; message: string; data: AutoConfiguration }> {
+        return apiClient.patch<{ success: boolean; message: string; data: AutoConfiguration }>(`${SERVICE_PREFIX}/autos-configuration/${id}/toggle-estado`, {});
     }
 
     /**

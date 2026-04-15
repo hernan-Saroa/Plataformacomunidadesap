@@ -6,15 +6,31 @@ import {
   IsNumber,
   IsIn,
   Matches,
+  Validate,
+  ValidationArguments,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
 } from 'class-validator';
-import { AutoType, AutoStatus } from '../entities/legal-auto.entity';
+import { AutoType, AutoStatus, isValidAutoType } from '../entities/legal-auto.entity';
+
+// Validador personalizado para tipos de auto
+@ValidatorConstraint({ name: 'isValidAutoType', async: false })
+export class IsValidAutoTypeConstraint implements ValidatorConstraintInterface {
+  validate(tipo: string, args: ValidationArguments) {
+    return isValidAutoType(tipo);
+  }
+
+  defaultMessage(args: ValidationArguments) {
+    return `Tipo de auto inválido: ${args.value}. Debe ser un tipo válido o AUTO_APERTURA_{ETAPA} para aperturas dinámicas.`;
+  }
+}
 
 export class CreateLegalAutoDto {
   @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   processId: string;
 
-  @IsEnum(AutoType)
-  tipoAuto: AutoType;
+  @Validate(IsValidAutoTypeConstraint)
+  tipoAuto: string;
 
   @IsOptional()
   @IsString()

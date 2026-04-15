@@ -87,12 +87,12 @@ export function useAutosConfiguration(): UseAutosConfigurationReturn {
         setLoading(true);
         setError(null);
         try {
-            const newConfig = await disciplinaryService.createAutosConfiguration(data);
-            setConfigurations(prev => [...prev, newConfig]);
-            if (newConfig.estado === 'activo') {
-                setActiveConfigurations(prev => [...prev, newConfig].sort((a, b) => a.orden - b.orden));
+            const response = await disciplinaryService.createAutosConfiguration(data);
+            setConfigurations(prev => [...prev, response.data]);
+            if (response.data.estado === 'activo') {
+                setActiveConfigurations(prev => [...prev, response.data].sort((a, b) => a.orden - b.orden));
             }
-            return newConfig;
+            return response.data;
         } catch (err: any) {
             setError(err.message || 'Error al crear la configuración');
             return null;

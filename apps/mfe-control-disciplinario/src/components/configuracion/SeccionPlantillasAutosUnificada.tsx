@@ -123,7 +123,7 @@ export interface TipoAuto {
   id: string;
   nombre: string;
   descripcion: string;
-  etapa: EtapaProcesoId;
+  etapa: string; // Changed from EtapaProcesoId to string for dynamic stages
   plantilla: PlantillaArchivo | null; // ✅ SOLO UNA PLANTILLA POR TIPO
   activo: boolean;
   orden: number;

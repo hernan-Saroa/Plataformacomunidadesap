@@ -129,10 +129,10 @@ export function SeccionAutosParametrizados() {
 
     try {
       setLoadingAccion('creando');
-      const nuevo = await disciplinaryService.createAutosConfiguration(formData);
-      setAutos(prev => [...prev, nuevo]);
+      const response = await disciplinaryService.createAutosConfiguration(formData);
+      setAutos(prev => [...prev, response.data]);
       setShowModalAgregar(false);
-      toast.success('Auto creado exitosamente');
+      toast.success(response.message || 'Auto creado exitosamente');
     } catch (err: any) {
       console.error('Error creando auto:', err);
       toast.error(err.message || 'Error al crear el auto');
