@@ -448,7 +448,17 @@ export class CertificatesService {
         this.resolveEmploymentStatus(request.hiring_date, request.request_date, request.status) === 'ACTIVO',
     );
 
-    // Prioridad 2 dentro de activos: contrato base (no encargo).
+    // Prioridad 2 dentro de activos: encargos vigentes.
+    // Si existe un encargo activo, debe ser la base del certificado.
+    const activeEncargoRequests = activeRequests.filter(
+      (request) => this.normalizeEncargoType(request.observations) === 'E',
+    );
+
+    if (activeEncargoRequests.length) {
+      return activeEncargoRequests[0];
+    }
+
+    // Prioridad 3 dentro de activos: contrato base (no encargo).
     const activeWithoutEncargo = activeRequests.filter(
       (request) => this.normalizeEncargoType(request.observations) !== 'E',
     );

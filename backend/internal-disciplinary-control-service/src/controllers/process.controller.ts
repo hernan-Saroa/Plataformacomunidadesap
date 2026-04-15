@@ -731,8 +731,11 @@ export class ProcessController {
         };
       });
 
-      // Mapear autos procesales a documentos del expediente (todos los estados).
-      const documentosAutos = (proceso.autos || []).map((auto: any) => {
+      // Mapear autos procesales a documentos del expediente (solo aprobados/firmados/notificados).
+      const autosAprobados = (proceso.autos || []).filter((auto: any) =>
+        ['APROBADO', 'FIRMADO', 'NOTIFICADO'].includes(auto.estado)
+      );
+      const documentosAutos = autosAprobados.map((auto: any) => {
         const sizeBytes = auto.documentSize || new TextEncoder().encode(auto.contenido || '').length;
         const tamaño = sizeBytes >= 1024 * 1024
           ? `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`
