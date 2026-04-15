@@ -186,6 +186,24 @@ export class AutoController {
   }
 
   /**
+   * Enviar auto pliego de cargos aprobado a Oficina Jurídica
+   */
+  @Patch(':id/send-juridica')
+  @ApiOperation({
+    summary: 'Enviar Pliego de Cargos a Jurídica',
+    description: 'Envía el auto pliego de cargos aprobado a la Oficina Jurídica, cerrando el proceso',
+  })
+  async sendPliegoToJuridica(
+    @Param('id') id: string,
+    @Query('enviadoPorId') enviadoPorId: string,
+  ): Promise<void> {
+    if (!enviadoPorId) {
+      throw new Error('enviadoPorId es requerido');
+    }
+    return await this.autoService.sendPliegoToJuridica(id, enviadoPorId);
+  }
+
+  /**
    * Firmar Auto (Paso Final)
    */
   @Patch(':id/sign')

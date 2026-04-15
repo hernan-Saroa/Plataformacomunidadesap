@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { useResponsive } from './hooks/useResponsive';
 import { motion, AnimatePresence } from 'motion/react';
-import { LayoutGrid, Users, FileText, Mail, Bell, ClipboardList, Clock, ArrowRightLeft } from 'lucide-react';
+import { LayoutGrid, Users, Shield, FileText, Mail, Bell, ClipboardList, Clock, ArrowRightLeft } from 'lucide-react';
 
 // Importar secciones individuales
 import { ConfiguracionEstadosKanban } from './configuracion/ConfiguracionEstadosKanban';
@@ -20,11 +20,12 @@ import { ConfiguracionEntidadesRemision } from './configuracion/ConfiguracionEnt
 import { ConfiguracionTiposRemision } from './configuracion/ConfiguracionTiposRemision';
 import { ConfiguracionNotificacionesAlertas } from './configuracion/ConfiguracionNotificacionesAlertas';
 import { ConfiguracionPrescripcion } from './configuracion/ConfiguracionPrescripcion';
+import { ConfiguracionConductasDisciplinarias } from './configuracion/ConfiguracionConductasDisciplinarias';
 
-type TabActiva = 'ESTADOS_KANBAN' | 'CARGOS' | 'PLANTILLAS_AUTOS' | 'PLANTILLAS_OFICIOS' | 'PLANTILLAS_ACTAS' | 'ENTIDADES' | 'TIPOS_REMISION' | 'NOTIFICACIONES' | 'PRESCRIPCION';
+type TabActiva = 'ESTADOS_KANBAN' | 'CARGOS' | 'CONDUCTAS_DISCIPLINARIAS' | 'PLANTILLAS_AUTOS' | 'PLANTILLAS_OFICIOS' | 'PLANTILLAS_ACTAS' | 'ENTIDADES' | 'TIPOS_REMISION' | 'NOTIFICACIONES' | 'PRESCRIPCION';
 
 export function ModuloConfiguracionPremium() {
-  const [tabActiva, setTabActiva] = useState<TabActiva>('PLANTILLAS_AUTOS'); // Por defecto en Plantillas
+  const [tabActiva, setTabActiva] = useState<TabActiva>('CONDUCTAS_DISCIPLINARIAS'); // Por defecto en Conductas Disciplinarias
   const { isMobile } = useResponsive();
 
   return (
@@ -59,6 +60,12 @@ export function ModuloConfiguracionPremium() {
               onClick={() => setTabActiva('CARGOS')}
               icon={<Users className="w-4 h-4" />}
               label="Cargos y Capacidad"
+            />
+            <TabButton
+              active={tabActiva === 'CONDUCTAS_DISCIPLINARIAS'}
+              onClick={() => setTabActiva('CONDUCTAS_DISCIPLINARIAS')}
+              icon={<Shield className="w-4 h-4" />}
+              label="Conductas Disciplinarias"
             />
             <TabButton
               active={tabActiva === 'PLANTILLAS_AUTOS'}
@@ -117,6 +124,7 @@ export function ModuloConfiguracionPremium() {
         >
           {tabActiva === 'ESTADOS_KANBAN' && <ConfiguracionEstadosKanban />}
           {tabActiva === 'CARGOS' && <ConfiguracionCargos />}
+          {tabActiva === 'CONDUCTAS_DISCIPLINARIAS' && <ConfiguracionConductasDisciplinarias />}
           {tabActiva === 'PLANTILLAS_AUTOS' && <ConfiguracionPlantillasAutos />}
           {tabActiva === 'PLANTILLAS_OFICIOS' && <ConfiguracionPlantillasOficios />}
           {tabActiva === 'PLANTILLAS_ACTAS' && <ConfiguracionPlantillasActas />}

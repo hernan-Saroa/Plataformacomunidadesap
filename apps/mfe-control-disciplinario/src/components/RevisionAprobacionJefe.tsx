@@ -7,10 +7,13 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  FileText, Search, CheckCircle, Calendar, Filter, Clock, AlertTriangle, Shield, Eye, X as XIcon, ArrowRight, UserCheck
+  FileText, Search, CheckCircle, Calendar, Filter, Clock, AlertTriangle, Shield, Eye, X as XIcon, ArrowRight, UserCheck, Send, Scale
 } from 'lucide-react';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
+import { disciplinaryService } from '../../services/api/disciplinary.service';
+import { authService } from '../../services/api/auth.service';
+import { toast } from 'sonner';
 
 // ==================== UTILIDADES ====================
 
@@ -69,22 +72,25 @@ interface RevisionAprobacionJefeProps {
   solicitudesReasignacion?: SolicitudReasignacion[];
   onAprobar: (borradorId: string, comentarios: string) => void;
   onDevolver: (borradorId: string, motivo: string, comentarios: string, archivos: File[]) => void;
+  onSendJuridica?: (borradorId: string) => void;
   onAprobarReasignacion?: (solicitudId: string, observaciones: string) => void;
   onRechazarReasignacion?: (solicitudId: string, motivoRechazo: string) => void;
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
 
-export function RevisionAprobacionJefe({ 
-  borradores, 
-  solicitudesReasignacion = [], 
-  onAprobar, 
+export function RevisionAprobacionJefe({
+  borradores,
+  solicitudesReasignacion = [],
+  onAprobar,
   onDevolver,
+  onSendJuridica,
   onAprobarReasignacion,
   onRechazarReasignacion
 }: RevisionAprobacionJefeProps) {
   const [borradorSeleccionado, setBorradorSeleccionado] = useState<BorradorPendiente | null>(null);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudReasignacion | null>(null);
+  const [borradorEnvioJuridica, setBorradorEnvioJuridica] = useState<BorradorPendiente | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'todos' | 'pendiente_revision' | 'en_revision' | 'aprobado' | 'devuelto'>('todos');
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'autos' | 'reasignaciones'>('todos');
@@ -536,9 +542,26 @@ export function RevisionAprobacionJefe({
                           <div className="flex items-start gap-1.5">
                             <AlertTriangle style={{ width: 12, height: 12, color: '#D97706', marginTop: 1, flexShrink: 0 }} />
                             <p className="text-[10px] leading-relaxed" style={{ color: '#92400E' }}>
-                              <strong>Auto Pliego de Cargos:</strong> Al aprobar este auto, el proceso será <strong>cerrado permanentemente</strong> y se notificará automáticamente a la Oficina de Jurídica.
+                              <strong>Auto Pliego de Cargos:</strong> Al aprobar este auto, aparecerá la opción para <strong>enviar a la Oficina Jurídica</strong> y cerrar el proceso permanentemente.
                             </p>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Botón Envío a jurídica para autos aprobados de pliego de cargos */}
+                      {(borrador.titulo?.toLowerCase().includes('pliego') || borrador.plantilla?.toLowerCase().includes('pliego')) && borrador.estado === 'aprobado' && (
+                        <div className="mt-2 flex justify-end">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setBorradorEnvioJuridica(borrador);
+                            }}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                            style={{ background: '#10B981', color: 'white' }}
+                          >
+                            <Send style={{ width: 12, height: 12 }} />
+                            Envío a jurídica
+                          </button>
                         </div>
                       )}
                     </div>
@@ -698,6 +721,98 @@ export function RevisionAprobacionJefe({
           )}
         </div>
       </div>
+
+      {/* Modal de Envío a Jurídica */}
+      <AnimatePresence>
+        {borradorEnvioJuridica && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-center gap-3 p-4 border-b border-gray-200">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: '#D1FAE5' }}>
+                  <Scale style={{ width: 20, height: 20, color: '#10B981' }} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Envío a Oficina Jurídica</h3>
+                  <p className="text-xs text-gray-500">Confirmar envío del auto a jurídica</p>
+                </div>
+              </div>
+
+              <div className="p-4 space-y-4">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText style={{ width: 14, height: 14, color: '#003DA5' }} />
+                    <span className="text-sm font-bold text-gray-900">{borradorEnvioJuridica.titulo}</span>
+                  </div>
+                  <p className="text-xs text-gray-600">
+                    Proceso: {borradorEnvioJuridica.numeroProceso}<br />
+                    Denunciado: {borradorEnvioJuridica.denunciado}
+                  </p>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle style={{ width: 16, height: 16, color: '#D97706', marginTop: 1, flexShrink: 0 }} />
+                    <div className="text-sm text-amber-800">
+                      <p className="font-medium mb-1">Esta acción cerrará permanentemente el proceso</p>
+                      <p className="text-xs leading-relaxed">
+                        Al enviar a la Oficina Jurídica, el proceso disciplinario será archivado y ya no podrá ser modificado.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setBorradorEnvioJuridica(null)}
+                    className="flex-1 px-4 py-2 text-sm font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!borradorEnvioJuridica?.autoId) {
+                        toast.error('Error: No se pudo identificar el auto');
+                        return;
+                      }
+
+                      try {
+                        const userId = authService.getCurrentUser()?.id || '';
+                        await disciplinaryService.sendJuridica(borradorEnvioJuridica.autoId, userId);
+
+                        toast.success('Auto enviado a jurídica exitosamente', {
+                          description: `El proceso ${borradorEnvioJuridica.numeroProceso} ha sido cerrado y archivado`,
+                          duration: 5000,
+                        });
+
+                        onSendJuridica?.(borradorEnvioJuridica.id);
+                        setBorradorEnvioJuridica(null);
+                      } catch (error) {
+                        toast.error('Error al enviar a jurídica', {
+                          description: 'No se pudo conectar con el servidor. Intente nuevamente.',
+                        });
+                      }
+                    }}
+                    className="flex-1 px-4 py-2 text-sm font-bold text-white rounded-lg transition-colors"
+                    style={{ background: '#10B981' }}
+                  >
+                    Confirmar Envío
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Modal de Revisión - Componente Central Unificado */}
       <AnimatePresence>

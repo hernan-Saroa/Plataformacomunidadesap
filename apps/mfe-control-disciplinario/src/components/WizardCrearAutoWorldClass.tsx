@@ -397,6 +397,8 @@ export function WizardCrearAutoWorldClass({
       return;
     }
 
+    const esApertura = tipoSeleccionado?.tipo && ['AUTO_APERTURA', 'AUTO_APERTURA_INVESTIGACION', 'AUTO_APERTURA_INDAGACION'].includes(tipoSeleccionado.tipo);
+
     try {
       setGuardando(true);
 
