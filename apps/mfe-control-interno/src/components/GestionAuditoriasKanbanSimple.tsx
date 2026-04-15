@@ -4433,10 +4433,10 @@ export function GestionAuditoriasKanbanSimple() {
               setAuditoriaSeleccionada(null);
             }}
             onIniciar={async (auditoria) => {
-              // ✅ Conectar con backend para cambiar fase a "en-curso"
+              // ✅ Conectar con backend para cambiar fase a "Ejecución"
               console.log('[onIniciar] Iniciando auditoría:', auditoria.id);
               
-              const exito = await cambiarFaseBackend(auditoria.id, 'en-curso');
+              const exito = await cambiarFaseBackend(auditoria.id, 'Ejecución');
               
               if (exito) {
                 setModalInicioAuditoriaOpen(false);
