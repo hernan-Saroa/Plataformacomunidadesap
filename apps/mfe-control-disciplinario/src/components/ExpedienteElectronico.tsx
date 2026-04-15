@@ -2118,9 +2118,15 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
         const respuesta = await disciplinaryService.getDocumentosExpediente(procesoSeleccionado.id);
 
         if (respuesta && respuesta.documentos) {
-          console.log('Documentos cargados desde BD:', respuesta.documentos.length);
+          // Filtro defensivo: solo mostrar autos aprobados/firmados/notificados
+          const soloAprobados = respuesta.documentos.filter((doc: any) => {
+            const estadoAuto = doc.metadatos?.estado;
+            if (!estadoAuto) return true;
+            return ['APROBADO', 'FIRMADO', 'NOTIFICADO'].includes(estadoAuto);
+          });
+          console.log('Documentos cargados desde BD:', soloAprobados.length);
           // El backend ya devuelve el formato correcto, hacer cast explícito
-          setDocumentos(respuesta.documentos as Documento[]);
+          setDocumentos(soloAprobados as Documento[]);
         } else {
           console.warn('No se recibieron documentos en la respuesta:', respuesta);
           setDocumentos([]);
@@ -2367,8 +2373,13 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
           const respuesta = await disciplinaryService.getDocumentosExpediente(procesoSeleccionado.id);
 
           if (respuesta && respuesta.documentos) {
-            setDocumentos(respuesta.documentos as Documento[]);
-            console.log('Documentos recargados:', respuesta.documentos.length);
+            const soloAprobados = respuesta.documentos.filter((doc: any) => {
+              const estadoAuto = doc.metadatos?.estado;
+              if (!estadoAuto) return true;
+              return ['APROBADO', 'FIRMADO', 'NOTIFICADO'].includes(estadoAuto);
+            });
+            setDocumentos(soloAprobados as Documento[]);
+            console.log('Documentos recargados:', soloAprobados.length);
           } else {
             console.warn('Respuesta de documentos vacía o inválida:', respuesta);
             // Intentar recargar una vez más después de un segundo
@@ -2376,7 +2387,12 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
               try {
                 const respuestaRetry = await disciplinaryService.getDocumentosExpediente(procesoSeleccionado.id);
                 if (respuestaRetry && respuestaRetry.documentos) {
-                  setDocumentos(respuestaRetry.documentos as Documento[]);
+                  const soloAprobadosRetry = respuestaRetry.documentos.filter((doc: any) => {
+                    const estadoAuto = doc.metadatos?.estado;
+                    if (!estadoAuto) return true;
+                    return ['APROBADO', 'FIRMADO', 'NOTIFICADO'].includes(estadoAuto);
+                  });
+                  setDocumentos(soloAprobadosRetry as Documento[]);
                 }
               } catch (e) {
                 console.error('Error en retry de recarga:', e);

@@ -420,7 +420,12 @@ export function ExpedientesElectronicosWorldClass() {
         try {
           const docsResponse = await disciplinaryService.getDocumentosExpediente(proceso.id);
           if (docsResponse?.documentos) {
-            docsResponse.documentos.forEach((doc: any) => {
+            const documentosFiltrados = docsResponse.documentos.filter((doc: any) => {
+              const estadoAuto = doc.metadatos?.estado;
+              if (!estadoAuto) return true; // No es un auto digital, mostrar siempre
+              return ['APROBADO', 'FIRMADO', 'NOTIFICADO'].includes(estadoAuto);
+            });
+            documentosFiltrados.forEach((doc: any) => {
               // Mapear tipo de documento del backend
               const tipoMap: Record<string, string> = {
                 'auto': 'apertura',
