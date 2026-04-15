@@ -45,8 +45,11 @@ export class ProcesoAuditable {
   })
   tipo: TipoProceso;
 
-  @Column({ type: 'varchar', length: 255, nullable: false })
-  macroproceso: string;
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  macroproceso?: string;
+
+  @Column({ name: 'unidades_auditables', type: 'jsonb', nullable: true, default: '[]' })
+  unidadesAuditables: { id: string; nombre: string; descripcion?: string }[];
 
   @Column({ type: 'varchar', length: 255, nullable: false })
   responsable: string;

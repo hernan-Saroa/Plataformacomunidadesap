@@ -16,6 +16,7 @@ import { ListasChequeoProvider } from "./listas-chequeo/ListasChequeoContext";
 import { HallazgosProvider } from "./HallazgosContext";
 import { TareasProvider } from "./TareasContext";
 import { toast } from "sonner";
+import { KanbanConfigProvider } from "./context/KanbanConfigContext";
 
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 
@@ -47,22 +48,24 @@ export function ControlInternoFull() {
   const [navegacionManual, setNavegacionManual] = useState<number>(0); // ← NUEVO: Timestamp de última navegación manual
 
   return (
-    <ControlInternoProvider>
-      <IntegracionAuditoriasPlanesProvider>
-        <ListasChequeoProvider>
-          <HallazgosProvider>
-            <TareasProvider>
-              <ControlInternoContent
-                seccionActiva={seccionActiva}
-                setSeccionActiva={setSeccionActiva}
-                navegacionManual={navegacionManual}
-                setNavegacionManual={setNavegacionManual}
-              />
-            </TareasProvider>
-          </HallazgosProvider>
-        </ListasChequeoProvider>
-      </IntegracionAuditoriasPlanesProvider>
-    </ControlInternoProvider>
+    <KanbanConfigProvider>
+      <ControlInternoProvider>
+        <IntegracionAuditoriasPlanesProvider>
+          <ListasChequeoProvider>
+            <HallazgosProvider>
+              <TareasProvider>
+                <ControlInternoContent
+                  seccionActiva={seccionActiva}
+                  setSeccionActiva={setSeccionActiva}
+                  navegacionManual={navegacionManual}
+                  setNavegacionManual={setNavegacionManual}
+                />
+              </TareasProvider>
+            </HallazgosProvider>
+          </ListasChequeoProvider>
+        </IntegracionAuditoriasPlanesProvider>
+      </ControlInternoProvider>
+    </KanbanConfigProvider>
   );
 }
 

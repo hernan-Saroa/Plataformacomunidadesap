@@ -511,19 +511,17 @@ export function ModalConfiguracionPuntosControl({
                       </span>
                     )}
                   </div>
-                  {frecuenciaSeleccionada === 'personalizada' && (
-                    <button
-                      onClick={() => setMostrarFormNuevo(!mostrarFormNuevo)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Agregar
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setMostrarFormNuevo(!mostrarFormNuevo)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Agregar
+                  </button>
                 </div>
 
                 {/* Formulario nuevo período (solo personalizada) */}
-                {frecuenciaSeleccionada === 'personalizada' && mostrarFormNuevo && (
+                {mostrarFormNuevo && (
                   <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-3 space-y-3">
                     <input
                       type="text"
@@ -676,8 +674,7 @@ export function ModalConfiguracionPuntosControl({
                                   </span>
                                 );
                               })()}
-                              {frecuenciaSeleccionada === 'personalizada' && (
-                                <div className="flex gap-1 shrink-0">
+                              <div className="flex gap-1 shrink-0">
                                   <button
                                     onClick={() => handleIniciarEdicion(punto)}
                                     className="p-1.5 hover:bg-blue-50 text-blue-500 rounded-lg transition-all"
@@ -693,7 +690,6 @@ export function ModalConfiguracionPuntosControl({
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
-                              )}
                             </div>
 
                             {/* Fechas: dos columnas con fondo de color */}

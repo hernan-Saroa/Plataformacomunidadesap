@@ -458,13 +458,13 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       {/* HEADER */}
       {/* ═══════════════════════════════════════════════════════════════ */}
       <div className="bg-white border-b-2 border-gray-200 shadow-sm flex-shrink-0">
-        <div className="px-8 py-6">
-          <div className="flex items-center justify-between mb-6">
+        <div className="px-6 py-4">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-3xl font-black mb-2" style={{ color: '#003DA5' }}>
+              <h1 className="text-base sm:text-lg font-black leading-tight" style={{ color: '#F97316' }}>
                 {modoSeguimiento ? `Seguimiento y Evaluación — Auditorías ${vigencia}` : `Programa de Auditoría ${vigencia}`}
               </h1>
-              <p className="text-gray-600 text-lg">
+              <p className="text-[11px] sm:text-xs text-gray-600 mt-0.5">
                 {modoSeguimiento
                   ? 'Visualización y seguimiento de auditorías del Universo — Rol 4: Evaluación y Seguimiento'
                   : 'Gestión integral del universo auditable y programa anual de auditorías'}
@@ -699,15 +699,24 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
                   const tiposList = loadTipos();
                   const resolverLabel = (value: string) =>
                     tiposList.find(t => t.value === (value || '').toLowerCase())?.label || value;
-                  return procesos.map(p => ({
-                    id: p.id,
-                    nombre: p.nombre,
-                    codigo: p.codigo,
-                    macroproceso: p.macroproceso || p._macroproceso,
-                    dependencia: p.dependenciaResponsable || p._dependencia,
-                    tipo: resolverLabel(p.tipo || ''),
-                    esEspecial: espIds.has(p.id),
-                  }));
+                  return procesos.map(p => {
+                    // Obtener TODAS las unidades auditables del proceso (no solo la primera)
+                    const unidades = (p as any).unidadesAuditables || (p as any)._unidadesAuditables || [];
+                    const unidadesStr = unidades.length > 0
+                      ? unidades.map((u: any) => u.nombre || u).filter(Boolean).join('; ')
+                      : p.macroproceso || p._macroproceso || '';
+                    // Dependencia: usar el valor completo que viene de Configuración (ya separado por '; ')
+                    const depStr = p._dependencia || p.dependenciaResponsable || '';
+                    return {
+                      id: p.id,
+                      nombre: p.nombre,
+                      codigo: p.codigo,
+                      macroproceso: unidadesStr,
+                      dependencia: depStr,
+                      tipo: resolverLabel(p.tipo || ''),
+                      esEspecial: espIds.has(p.id),
+                    };
+                  });
                 })()}
           vigenciaPlan={vigencia}
           fechaCortePlan={`${vigencia}-12-31`}
@@ -1156,35 +1165,35 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="space-y-6"
+      className="space-y-5"
     >
-      {/* Estadísticas de profesionales */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl border-2 border-blue-200 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-blue-700">Profesionales Activos</span>
-            <Users className="w-5 h-5 text-blue-600" />
+      {/* Estadísticas de profesionales — compactas, alineadas con Config */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl border border-blue-200 p-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-blue-700">Profesionales Activos</span>
+            <Users className="w-4 h-4 text-blue-600" />
           </div>
-          <p className="text-3xl font-black text-blue-700">{totalProfesionales}</p>
-          <p className="text-xs text-blue-600 mt-1">con asignaciones en el programa</p>
+          <p className="text-2xl font-black text-blue-700">{totalProfesionales}</p>
+          <p className="text-[11px] text-blue-600 mt-0.5">con asignaciones en el programa</p>
         </div>
 
-        <div className="bg-white rounded-xl border-2 border-yellow-200 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-yellow-700">Carga Media</span>
-            <Clock className="w-5 h-5 text-yellow-600" />
+        <div className="bg-white rounded-xl border border-yellow-200 p-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-yellow-700">Carga Media</span>
+            <Clock className="w-4 h-4 text-yellow-600" />
           </div>
-          <p className="text-3xl font-black text-yellow-700">{conCargaMedia}</p>
-          <p className="text-xs text-yellow-600 mt-1">profesionales en alerta</p>
+          <p className="text-2xl font-black text-yellow-700">{conCargaMedia}</p>
+          <p className="text-[11px] text-yellow-600 mt-0.5">profesionales en alerta</p>
         </div>
 
-        <div className="bg-white rounded-xl border-2 border-red-200 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-red-700">Carga Alta</span>
-            <AlertTriangle className="w-5 h-5 text-red-600" />
+        <div className="bg-white rounded-xl border border-red-200 p-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-red-700">Carga Alta</span>
+            <AlertTriangle className="w-4 h-4 text-red-600" />
           </div>
-          <p className="text-3xl font-black text-red-700">{conCargaAlta}</p>
-          <p className="text-xs text-red-600 mt-1">requieren balance de carga</p>
+          <p className="text-2xl font-black text-red-700">{conCargaAlta}</p>
+          <p className="text-[11px] text-red-600 mt-0.5">requieren balance de carga</p>
         </div>
       </div>
 
@@ -1198,7 +1207,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
 
       {/* Error de carga */}
       {errorProfesionales && !loadingProfesionales && (
-        <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 flex items-center justify-between">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between">
           <div className="flex items-center gap-2 text-red-700">
             <AlertCircle className="w-5 h-5" />
             <span>{errorProfesionales}</span>
@@ -1213,110 +1222,113 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
         </div>
       )}
 
-      {/* Mapa de carga profesional */}
+      {/* Lista de profesionales */}
       {!loadingProfesionales && (
-        <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
-          <h2 className="text-xl font-black text-gray-900 mb-4">
-            Equipo OCI Configurado
-          </h2>
-          <p className="text-sm text-gray-600 mb-6">
-            Profesionales configurados en el módulo OCI con su rol, especialidades y capacidad.
-          </p>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-base font-bold text-gray-900">
+                Equipo OCI Configurado
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Profesionales configurados con su rol, especialidades y carga real
+              </p>
+            </div>
+          </div>
 
-          <div className="space-y-4">
-            {profesionalesConSemaforo.map((p) => (
-              <div 
-                key={p.configuracion.id || p.usuario.id} 
-                className="border-2 border-gray-200 rounded-xl p-5 hover:border-blue-300 hover:shadow-md transition-all bg-gradient-to-r from-white to-gray-50/50"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-start gap-4">
-                    {/* Avatar con inicial */}
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0 ${
-                      p.semaforo === 'rojo' ? 'bg-gradient-to-br from-red-500 to-red-600' :
-                      p.semaforo === 'amarillo' ? 'bg-gradient-to-br from-yellow-500 to-amber-600' :
-                      'bg-gradient-to-br from-blue-500 to-blue-600'
-                    }`}>
-                      {p.usuario.nombre.charAt(0).toUpperCase()}
+          <div className="space-y-3">
+            {profesionalesConSemaforo.map((p) => {
+              const getColorCarga = (sem: string) => {
+                if (sem === 'rojo') return { border: 'border-red-300', bg: 'bg-red-50', text: 'text-red-700', bar: 'from-red-400 to-red-500' };
+                if (sem === 'amarillo') return { border: 'border-yellow-300', bg: 'bg-yellow-50', text: 'text-yellow-700', bar: 'from-yellow-400 to-amber-500' };
+                return { border: 'border-green-300', bg: 'bg-green-50', text: 'text-green-700', bar: 'from-green-400 to-green-500' };
+              };
+              const color = getColorCarga(p.semaforo);
+
+              return (
+                <div
+                  key={p.configuracion.id || p.usuario.id}
+                  className={`border ${color.border} rounded-xl p-4 hover:shadow-md transition-all`}
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    {/* Info del profesional */}
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 bg-gradient-to-br ${
+                        p.semaforo === 'rojo' ? 'from-red-500 to-red-600' :
+                        p.semaforo === 'amarillo' ? 'from-yellow-500 to-amber-600' :
+                        'from-blue-500 to-blue-600'
+                      }`}>
+                        {p.usuario.nombre.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-gray-900 text-sm truncate">{p.usuario.nombre}</p>
+                        <p className="text-xs text-blue-700 font-semibold">{p.configuracion.rolOCI}</p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {p.configuracion.especialidades.slice(0, 2).map((esp, i) => (
+                            <span key={i} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px]">
+                              {esp}
+                            </span>
+                          ))}
+                          {p.configuracion.especialidades.length > 2 && (
+                            <span className="px-1.5 py-0.5 bg-gray-200 text-gray-500 rounded text-[10px]">
+                              +{p.configuracion.especialidades.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold text-gray-900 text-base">{p.usuario.nombre}</p>
-                      <p className="text-sm text-blue-700 font-semibold mt-0.5">
-                        {p.configuracion.rolOCI}
-                      </p>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {p.configuracion.especialidades.slice(0, 3).map((esp, i) => (
-                          <span key={i} className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
-                            {esp}
-                          </span>
-                        ))}
-                        {p.configuracion.especialidades.length > 3 && (
-                          <span className="px-2 py-0.5 bg-gray-200 text-gray-500 rounded text-xs">
-                            +{p.configuracion.especialidades.length - 3}
-                          </span>
-                        )}
+
+                    {/* Badges + carga */}
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      {p.configuracion.puedeSerLider && (
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-lg text-[10px] font-bold border border-blue-200">
+                          ★ Líder
+                        </span>
+                      )}
+                      <div className="text-right">
+                        <span className={`inline-block px-2.5 py-1 rounded-lg text-xs font-bold ${color.bg} ${color.text}`}>
+                          {p.porcentaje}% carga
+                        </span>
                       </div>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <span
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
-                        p.semaforo === 'rojo'
-                          ? 'bg-red-100 text-red-700 border border-red-200'
-                          : p.semaforo === 'amarillo'
-                          ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
-                          : 'bg-green-100 text-green-700 border border-green-200'
-                      }`}
-                    >
-                      {p.porcentaje}% carga
-                    </span>
-                    {p.configuracion.puedeSerLider && (
-                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200">
-                        ★ Líder
+
+                  {/* Barra de progreso + info */}
+                  <div className="mt-3">
+                    <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all rounded-full bg-gradient-to-r ${color.bar}`}
+                        style={{ width: `${Math.min(p.porcentaje, 100)}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between mt-1.5 text-[11px] text-gray-500">
+                      <span>
+                        <strong className="text-gray-700">{p.estadisticas.auditoriasTotales}</strong> auditoría(s) • <strong className="text-gray-700">{p.estadisticas.horasAsignadas}h</strong> asignadas
                       </span>
-                    )}
+                      <span>
+                        Cap: {p.configuracion.capacidadMaximaAuditorias} aud. • {p.configuracion.horasMensualesDisponibles}h/mes
+                      </span>
+                    </div>
                   </div>
                 </div>
-                
-                {/* Barra de progreso mejorada */}
-                <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full transition-all rounded-full ${
-                      p.semaforo === 'rojo'
-                        ? 'bg-gradient-to-r from-red-400 to-red-500'
-                        : p.semaforo === 'amarillo'
-                        ? 'bg-gradient-to-r from-yellow-400 to-amber-500'
-                        : 'bg-gradient-to-r from-green-400 to-green-500'
-                    }`}
-                    style={{ width: `${Math.min(p.porcentaje, 100)}%` }}
-                  />
-                </div>
-                
-                {/* Info de capacidad */}
-                <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
-                  <span>
-                    <strong className="text-gray-700">{p.estadisticas.auditoriasTotales}</strong> auditoría(s) • <strong className="text-gray-700">{p.estadisticas.horasAsignadas}h</strong> asignadas
-                  </span>
-                  <span>
-                    Cap: {p.configuracion.capacidadMaximaAuditorias} aud. • {p.configuracion.horasMensualesDisponibles}h/mes
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {profesionalesConSemaforo.length === 0 && !loadingProfesionales && (
               <div className="text-center py-10">
                 <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                 <p className="text-gray-500 font-semibold">No hay profesionales configurados en OCI</p>
-                <p className="text-sm text-gray-400 mt-1">Configure profesionales en el módulo de Configuración OCI</p>
+                <p className="text-sm text-gray-400 mt-1">Configure profesionales en Configuraciones → Profesionales OCI</p>
               </div>
             )}
           </div>
         </div>
       )}
 
-      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
-        <p className="text-sm text-blue-800">
-          La configuración detallada de perfiles y capacidades puede gestionarse en <strong>Configuraciones → Profesionales OCI</strong>.
+      {/* Banner de enlace a Configuraciones */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+        <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-blue-700 leading-relaxed">
+          Para editar perfiles, capacidades y roles del equipo OCI, ve a <strong>Configuraciones → Profesionales OCI</strong> (menú lateral).
         </p>
       </div>
     </motion.div>

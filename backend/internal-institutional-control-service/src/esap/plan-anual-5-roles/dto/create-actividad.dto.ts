@@ -138,5 +138,20 @@ export class CreateActividadDto {
   @IsOptional()
   @IsString()
   fecha_corte?: string;
+
+  // ═══════════════════════════════════════════════════════════════
+  // TAREAS DE SEGUIMIENTO - sub-tareas de la actividad
+  // ═══════════════════════════════════════════════════════════════
+
+  @IsOptional()
+  tareas_seguimiento?: Array<{
+    id: string;
+    descripcion: string;
+    completada: boolean;
+    responsables?: Array<{ id: string; nombre: string; cargo?: string }>;
+    fechaLimite?: string;
+    fechaCompletada?: string;
+    completadaPor?: string;
+  }>;
 }
 

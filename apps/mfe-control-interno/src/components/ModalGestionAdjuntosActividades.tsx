@@ -236,7 +236,7 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
       tipo: archivo.type || 'application/octet-stream',
       tamaño: archivo.size,
       fechaCarga: new Date().toISOString(),
-      cargadoPor: 'Usuario Actual',
+      cargadoPor: autorNombre,
       url: URL.createObjectURL(archivo), // En producción, esto vendría del backend
       puntoControlId: tabActivo !== 'general' ? tabActivo : undefined // 🔵 Asociar al tab activo
     }));
