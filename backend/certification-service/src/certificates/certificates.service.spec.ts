@@ -9,6 +9,58 @@ describe('CertificatesService', () => {
     service = Object.create(CertificatesService.prototype) as CertificatesService;
   });
 
+  it('prioriza un encargo activo sobre un registro normal activo', () => {
+    const normalRequest = {
+      id: 'normal',
+      position_category: 'Cra. Administrativa',
+      observations: 'N',
+      status: 'A',
+      hiring_date: new Date('2024-06-18'),
+      request_date: null,
+    } as CertificateRequest;
+    const encargoRequest = {
+      id: 'encargo',
+      position_category: 'Cra. Administrativa',
+      observations: 'E',
+      status: 'A',
+      hiring_date: new Date('2025-12-01'),
+      request_date: null,
+    } as CertificateRequest;
+
+    const selected = service['selectPreferredRequestForCertificate']([
+      encargoRequest,
+      normalRequest,
+    ]);
+
+    expect(selected?.id).toBe('encargo');
+  });
+
+  it('mantiene el primer encargo activo cuando hay mas de uno', () => {
+    const firstEncargoRequest = {
+      id: 'encargo-1',
+      position_category: 'Cra. Administrativa',
+      observations: 'E',
+      status: 'A',
+      hiring_date: new Date('2025-12-01'),
+      request_date: null,
+    } as CertificateRequest;
+    const secondEncargoRequest = {
+      id: 'encargo-2',
+      position_category: 'Libre Nombramiento',
+      observations: 'E',
+      status: 'A',
+      hiring_date: new Date('2025-12-01'),
+      request_date: null,
+    } as CertificateRequest;
+
+    const selected = service['selectPreferredRequestForCertificate']([
+      firstEncargoRequest,
+      secondEncargoRequest,
+    ]);
+
+    expect(selected?.id).toBe('encargo-1');
+  });
+
   it('prioriza carrera administrativa sobre provisional cuando ambos registros estan activos y sin encargo', () => {
     const provisionalRequest = {
       id: 'provisional',
