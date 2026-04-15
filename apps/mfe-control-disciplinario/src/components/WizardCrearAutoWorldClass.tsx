@@ -162,7 +162,6 @@ export function WizardCrearAutoWorldClass({
   const [fechaAuto, setFechaAuto] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [observaciones, setObservaciones] = useState('');
-  const [etapaDestino, setEtapaDestino] = useState('');
   const [prorrogaMeses, setProrrogaMeses] = useState<number | null>(null);
 
   // Estados del Paso 3
@@ -340,10 +339,6 @@ export function WizardCrearAutoWorldClass({
         return;
       }
       const esApertura = tipoSeleccionado?.tipo && ['AUTO_APERTURA', 'AUTO_APERTURA_INVESTIGACION', 'AUTO_APERTURA_INDAGACION'].includes(tipoSeleccionado.tipo);
-      if (esApertura && !etapaDestino) {
-        toast.error('Debes seleccionar la etapa a la que transiciona el proceso');
-        return;
-      }
       if (tipoSeleccionado?.tipo === 'AUTO_PRORROGA' && !prorrogaMeses) {
         toast.error('Debes seleccionar la duración de la prórroga: 3 o 6 meses');
         return;
@@ -455,7 +450,7 @@ export function WizardCrearAutoWorldClass({
         documentName: archivoAdjunto.name,
         documentType: archivoAdjunto.type,
         documentSize: archivoAdjunto.size,
-        etapaDestino: etapaDestino || undefined,
+        etapaDestino: esApertura ? (tipoSeleccionado.etapa || undefined) : undefined,
         prorrogaMeses: prorrogaMeses || undefined,
       });
 
@@ -487,7 +482,6 @@ export function WizardCrearAutoWorldClass({
     setFechaAuto(new Date().toISOString().split('T')[0]);
     setFechaVencimiento('');
     setObservaciones('');
-    setEtapaDestino('');
     setProrrogaMeses(null);
     setArchivoAdjunto(null);
     setObservacionesAdjunto('');
@@ -1078,33 +1072,6 @@ export function WizardCrearAutoWorldClass({
                         </div>
                       </div>
 
-                      {/* Etapa Destino — solo para autos de apertura */}
-                      {tipoSeleccionado?.tipo && ['AUTO_APERTURA', 'AUTO_APERTURA_INVESTIGACION', 'AUTO_APERTURA_INDAGACION'].includes(tipoSeleccionado.tipo) && (
-                        <div className="mb-5">
-                          <label className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
-                            <ChevronRight className="w-4 h-4 text-blue-600" />
-                            Etapa a la que transiciona el proceso
-                            <span className="text-red-500">*</span>
-                          </label>
-                          <select
-                            value={etapaDestino}
-                            onChange={(e) => setEtapaDestino(e.target.value)}
-                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 transition-all text-sm font-medium shadow-sm bg-white"
-                          >
-                            <option value="">Selecciona la etapa destino...</option>
-                            <option value="INDAGACION_PREVIA">Indagación Previa</option>
-                            <option value="INVESTIGACION">Investigación Disciplinaria</option>
-                            <option value="EVALUACION">Evaluación y Análisis</option>
-                            <option value="JUZGAMIENTO">Juzgamiento</option>
-                            <option value="INDAGACION">Indagación</option>
-                            <option value="FALLO">Fallo / Decisión</option>
-                            <option value="SEGUNDA_INSTANCIA">Segunda Instancia</option>
-                          </select>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Al aprobar este auto, el proceso pasará automáticamente a esta etapa.
-                          </p>
-                        </div>
-                      )}
 
                       {/* Prórroga — solo para AUTO_PRORROGA */}
                       {tipoSeleccionado?.tipo === 'AUTO_PRORROGA' && (

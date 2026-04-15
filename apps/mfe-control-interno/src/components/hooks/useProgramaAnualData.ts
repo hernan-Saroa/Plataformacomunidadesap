@@ -175,6 +175,7 @@ function mapEstadoAuditoria(estado: string, estadoKanban?: string): EstadoAudito
     if (kanbanNorm === 'planeación' || kanbanNorm === 'planeacion' || kanbanNorm === 'plan anual') return 'PROGRAMADA';
     if (kanbanNorm === 'ejecución' || kanbanNorm === 'ejecucion') return 'EN_EJECUCION';
     if (kanbanNorm === 'comunicación' || kanbanNorm === 'comunicacion') return 'COMPLETADA';
+    if (kanbanNorm === 'seguimiento') return 'COMPLETADA';
     if (kanbanNorm === 'finalizada') return 'COMPLETADA'; // Finalizadas mapean a COMPLETADA
   }
   
