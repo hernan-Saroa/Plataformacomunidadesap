@@ -1598,7 +1598,11 @@ function TabPlaneacion({ auditoria, readOnly }: TabFaseProps) {
         </div>
       </Card>
       <div className="bg-white border-2 border-blue-200 rounded-lg p-4">
-        <SeccionListasChequeoExpediente auditoriaId={auditoria.id} etapaActual="Planeación" />
+        <SeccionListasChequeoExpediente 
+          auditoriaId={auditoria.id} 
+          etapaActual="Planeación" 
+          readOnly={readOnly}
+        />
       </div>
       <SeccionDocumentosPorEtapa auditoriaId={auditoria.id} etapa="planeacion" />
     </div>
@@ -1680,18 +1684,12 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist, read
         </div>
       </div>
 
-      {/* 2. LISTA DE CHEQUEO - SOLO LECTURA (muestra listas de Planeación) */}
+      {/* 2. LISTAS DE CHEQUEO DE EJECUCIÓN */}
       <div className="bg-white border-2 border-amber-200 rounded-lg p-4">
-        <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="flex items-center gap-2 text-xs text-blue-700">
-            <AlertCircle className="w-4 h-4" />
-            <p><strong>📋 Referencia:</strong> Estas son las listas de <strong>Planeación</strong> (solo lectura). Para editarlas, ve a la pestaña de Planeación.</p>
-          </div>
-        </div>
         <SeccionListasChequeoExpediente 
           auditoriaId={auditoria.id} 
-          etapaActual="Planeación" 
-          readOnly={true}
+          etapaActual="Ejecución" 
+          readOnly={readOnly}
         />
       </div>
 
@@ -1775,7 +1773,17 @@ function TabComunicacion({ auditoria, onComunicacionCompletada, readOnly }: TabF
           </div>
         </div>
       </Card>
-      {/* ❌ LISTAS DE CHEQUEO ELIMINADAS DE COMUNICACIÓN */}
+      
+      {/* LISTAS DE CHEQUEO DE COMUNICACIÓN */}
+      <div className="bg-white border-2 border-green-200 rounded-lg p-4">
+        <SeccionListasChequeoExpediente 
+          auditoriaId={auditoria.id} 
+          etapaActual="Comunicación" 
+          readOnly={readOnly}
+        />
+      </div>
+
+      {/* MÓDULO DE COMUNICACIÓN */}
       <div className="bg-white border-2 border-green-200 rounded-lg p-4">
         <ComunicacionAuditoriaModule
           auditoriaId={auditoria.id}
