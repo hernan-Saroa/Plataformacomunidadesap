@@ -962,10 +962,54 @@ export function ModuloConfiguracion() {
             </div>
           </div>
 
-          {/* 3. AUTOS PARAMETRIZADOS - Lista los autos de la BD */}
+          {/* 3. CONDUCTAS DISCIPLINARIAS */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="p-3 sm:p-4 lg:p-6">
+              <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <Shield className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#DC2626' }} />
+                    Conductas Disciplinarias
+                  </h2>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                    Catálogo parametrizable de conductas indisciplinarias para noticias disciplinarias
+                  </p>
+                </div>
+                <button
+                  onClick={() => {/* TODO: Implementar agregar conducta */}}
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                  style={{
+                    background: 'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)',
+                    boxShadow: '0 2px 4px rgba(220, 38, 38, 0.2)'
+                  }}
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Agregar Conducta</span>
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {/* TODO: Implementar lista de conductas con CRUD */}
+                <div className="text-center py-8 text-gray-500">
+                  <Shield className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>Funcionalidad de gestión de conductas disciplinarias próximamente disponible</p>
+                  <p className="text-xs mt-1">Las conductas se cargan automáticamente desde la base de datos</p>
+                </div>
+              </div>
+
+              <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-200">
+                <p className="text-xs text-red-800">
+                  <strong>Nota:</strong> Esta sección permitirá gestionar el catálogo de conductas indisciplinarias.
+                  Actualmente las conductas se administran directamente desde la base de datos.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 5. AUTOS PARAMETRIZADOS - Lista los autos de la BD */}
           <SeccionAutosParametrizados />
 
-          {/* 3. CAPACIDAD POR CARGO */}
+          {/* 4. CAPACIDAD POR CARGO */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
             <div className="p-3 sm:p-4 lg:p-6">
               <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">

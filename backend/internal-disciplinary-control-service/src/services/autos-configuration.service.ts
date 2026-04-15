@@ -93,16 +93,30 @@ export class AutosConfigurationService {
   /**
    * Obtener una configuración por tipo
    */
-  async findByTipo(tipo: string): Promise<AutoConfiguration> {
-    const autoConfig = await this.autoConfigRepository.findOne({
+  async findByTipo(tipo: string): Promise<AutoConfiguration | null> {
+    let autoConfig = await this.autoConfigRepository.findOne({
       where: { tipo },
     });
 
-    if (!autoConfig) {
-      throw new HttpException(
-        `Configuración de auto no encontrada para el tipo: ${tipo}`,
-        HttpStatus.NOT_FOUND,
-      );
+    // Si no existe configuración para un tipo dinámico de apertura, crearla automáticamente
+    if (!autoConfig && tipo.startsWith('AUTO_APERTURA_') && tipo !== 'AUTO_APERTURA') {
+      try {
+        const etapa = tipo.replace('AUTO_APERTURA_', '').replace(/_/g, ' ').toLowerCase();
+        const etapaCapitalized = etapa.charAt(0).toUpperCase() + etapa.slice(1);
+
+        autoConfig = await this.create({
+          tipo,
+          nombre: `Auto de Apertura a ${etapaCapitalized}`,
+          estado: 'activo',
+          stage: etapa.toUpperCase().replace(/\s+/g, '_'),
+          orden: 99, // alto orden por defecto
+        });
+
+        console.log(`Configuración automática creada para tipo: ${tipo}`);
+      } catch (error) {
+        console.error(`Error creando configuración automática para ${tipo}:`, error);
+        // No lanzamos error, devolvemos null para mantener compatibilidad
+      }
     }
 
     return autoConfig;

@@ -4524,21 +4524,21 @@ export function GestionAuditoriasKanbanSimple() {
               setAuditoriaSeleccionada(null);
             }}
             onIniciar={async (auditoria) => {
-              // ✅ Conectar con backend para cambiar fase a "en-curso"
+              // ✅ Conectar con backend para cambiar fase a "Planeación" (primera fase)
               console.log('[onIniciar] Iniciando auditoría:', auditoria.id);
               
-              const exito = await cambiarFaseBackend(auditoria.id, 'en-curso');
+              const exito = await cambiarFaseBackend(auditoria.id, 'Planeación');
               
               if (exito) {
                 setModalInicioAuditoriaOpen(false);
                 setAuditoriaSeleccionada(null);
                 toast.success('✅ Auditoría iniciada exitosamente', {
-                  description: 'La auditoría ha pasado a fase de Ejecución'
+                  description: 'La auditoría ha pasado a fase de Planeación'
                 });
                 // Actualizar el estado local
                 setAuditorias(prev => prev.map(aud =>
                   aud.id === auditoria.id
-                    ? { ...aud, estado: 'Ejecución' }
+                    ? { ...aud, estado: 'Planeación' }
                     : aud
                 ));
                 // Recargar desde backend para sincronizar

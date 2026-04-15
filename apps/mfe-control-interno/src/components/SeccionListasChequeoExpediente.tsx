@@ -80,10 +80,15 @@ function mapApiListaToExpediente(apiLista: any): ListaChequeo {
   // Mapear tipo del backend a etapaKanban del frontend
   const tipoToEtapa: Record<string, EtapaKanban> = {
     'planeacion': 'Planeación',
+    'PLANEACION': 'Planeación',
     'ejecucion': 'Ejecución',
+    'EJECUCION': 'Ejecución',
     'comunicacion': 'Comunicación',
+    'COMUNICACION': 'Comunicación',
     'seguimiento': 'Seguimiento',
-    'plan_anual': 'Plan Anual'
+    'SEGUIMIENTO': 'Seguimiento',
+    'plan_anual': 'Plan Anual',
+    'PLAN_ANUAL': 'Plan Anual'
   };
 
   const items: ItemChequeo[] = (apiLista.items || []).map((item: any, idx: number) => ({
@@ -571,9 +576,6 @@ export function SeccionListasChequeoExpediente({
             <div>
               <p className="text-sm font-semibold text-blue-900">
                 Progreso de la etapa {etapaActual}
-              </p>
-              <p className="text-xs text-blue-700">
-                Completa todas las listas para avanzar a la siguiente fase
               </p>
             </div>
           </div>

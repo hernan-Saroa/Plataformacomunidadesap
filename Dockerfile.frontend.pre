@@ -7,6 +7,10 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Evita que Puppeteer descargue Chrome/Chromium durante `npm install`.
+ENV PUPPETEER_SKIP_DOWNLOAD=1 \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
 # Copiar el frontend completo para que npm detecte todos los workspaces del monorepo
 COPY . .
 

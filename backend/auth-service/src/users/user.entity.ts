@@ -19,6 +19,9 @@ export class User {
   @Column({ default: true })
   is_active: boolean;
 
+  @Column({ type: 'numeric', precision: 6, scale: 0, nullable: true })
+  token: string | null;
+
   @CreateDateColumn()
   created_at: Date;
 

@@ -4,7 +4,7 @@
  * Formulario completo con validación y generación automática de número único
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   X, 
   AlertCircle, 
@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
+import { disciplinaryService, DisciplinaryBehavior } from '../../services/api/disciplinary.service';
 
 // ✅ NUEVO: Interface para Apoderado
 interface Apoderado {
@@ -112,23 +113,7 @@ const DEPENDENCIAS_ESAP = [
   ...TERRITORIALES_ESAP
 ];
 
-const CONDUCTAS_INDISCIPLINARIAS = [
-  'Abandono del cargo',
-  'Acoso laboral',
-  'Acoso sexual',
-  'Conflicto de intereses',
-  'Desconocimiento de jerarquía',
-  'Incumplimiento de deberes',
-  'Inasistencia injustificada',
-  'Irregularidades en contratación',
-  'Mal uso de recursos públicos',
-  'Negligencia en funciones',
-  'Omisión de denunciar',
-  'Retardo injustificado',
-  'Trato descortés al ciudadano',
-  'Violación de reserva',
-  'Otro' // ✅ MODIFICADO: Se eliminó "(especificar en descripción)" - ahora se muestra campo de texto
-];
+// Conductas indisciplinarias ahora se cargan desde la API
 
 // Mapa de valores DB (enum) → etiqueta de display para el SELECT
 const ORIGEN_DB_A_LABEL: Record<string, string> = {
@@ -141,6 +126,28 @@ const ORIGEN_DB_A_LABEL: Record<string, string> = {
 
 export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode }: CreateNoticiaModalProps) {
   const [currentStep, setCurrentStep] = useState(1);
+  const [conductasIndisciplinarias, setConductasIndisciplinarias] = useState<DisciplinaryBehavior[]>([]);
+  const [loadingConductas, setLoadingConductas] = useState(true);
+
+  // Cargar conductas indisciplinarias desde la API
+  useEffect(() => {
+    const loadConductas = async () => {
+      try {
+        setLoadingConductas(true);
+        const conductas = await disciplinaryService.getDisciplinaryBehaviors();
+        setConductasIndisciplinarias(conductas);
+      } catch (error) {
+        console.error('Error loading disciplinary behaviors:', error);
+        toast.error('Error al cargar las conductas indisciplinarias');
+        // Fallback to empty array
+        setConductasIndisciplinarias([]);
+      } finally {
+        setLoadingConductas(false);
+      }
+    };
+
+    loadConductas();
+  }, []);
 
   // En edición, el origen llega como valor de enum (ej: 'ANONIMO'). Lo convertimos a la
   // etiqueta que muestra el SELECT (ej: 'Anónimo') para que la opción quede seleccionada.
@@ -1846,12 +1853,15 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                       setConductaPersonalizada(''); // Limpiar campo personalizado si no es "Otro"
                     }
                   }}
-                  className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  disabled={loadingConductas}
+                  className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-gray-100"
                 >
-                  <option value="">Seleccione la conducta presuntamente indisciplinaria...</option>
-                  {CONDUCTAS_INDISCIPLINARIAS.map(conducta => (
-                    <option key={conducta} value={conducta}>
-                      {conducta}
+                  <option value="">
+                    {loadingConductas ? 'Cargando conductas...' : 'Seleccione la conducta presuntamente indisciplinaria...'}
+                  </option>
+                  {conductasIndisciplinarias.map(conducta => (
+                    <option key={conducta.id} value={conducta.nombre}>
+                      {conducta.nombre}
                     </option>
                   ))}
                 </select>

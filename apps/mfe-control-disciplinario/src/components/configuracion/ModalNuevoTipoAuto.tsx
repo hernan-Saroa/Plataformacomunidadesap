@@ -11,10 +11,31 @@ import {
   Zap, CheckCircle2, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { ETAPAS_PROCESO, type EtapaProcesoId, type TipoAuto } from './SeccionPlantillasAutosUnificada';
+import { disciplinaryService } from '../../../../services/api/disciplinary.service';
+import { type TipoAuto } from './SeccionPlantillasAutosUnificada';
 
 // ─── Tipos de acción disponibles ───────────────────────────────────────────
 export type TipoAccion = 'NORMAL' | 'APERTURA' | 'ARCHIVO' | 'PRORROGA' | 'PLIEGO';
+
+// Mapea el tipo del backend al tipoAccion del formulario
+const mapBackendToTipoAccion = (tipoBackend: string): TipoAccion => {
+  switch (tipoBackend) {
+    case 'AUTO_NORMAL':
+      return 'NORMAL';
+    case 'AUTO_ARCHIVO':
+      return 'ARCHIVO';
+    case 'AUTO_PRORROGA':
+      return 'PRORROGA';
+    case 'AUTO_FORMULACION_PLIEGO':
+      return 'PLIEGO';
+    default:
+      // Para tipos dinámicos de apertura: AUTO_APERTURA_*
+      if (tipoBackend.startsWith('AUTO_APERTURA_')) {
+        return 'APERTURA';
+      }
+      return 'NORMAL'; // fallback
+  }
+};
 
 const TIPOS_ACCION: {
   id: TipoAccion;
@@ -81,8 +102,7 @@ export function ModalNuevoTipoAuto({
 
   const [formData, setFormData] = useState({
     nombre: '',
-    descripcion: '',
-    etapa: 'INVESTIGACION' as EtapaProcesoId,
+    etapa: 'INVESTIGACION',
     activo: true,
     orden: 1,
     tipoAccion: 'NORMAL' as TipoAccion,
@@ -92,31 +112,63 @@ export function ModalNuevoTipoAuto({
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState(false);
 
+  // Stages from API
+  const [stages, setStages] = useState<Array<{ id: string; etapa: string; orden: number; activo: boolean; color?: string; descripcion?: string }>>([]);
+  const [loadingStages, setLoadingStages] = useState(false);
+
+  // Cargar stages activos
+  useEffect(() => {
+    const loadStages = async () => {
+      try {
+        setLoadingStages(true);
+        const stagesData = await disciplinaryService.getStageConfiguration();
+        const activeStages = stagesData.filter(stage => stage.activo);
+        setStages(activeStages);
+      } catch (error) {
+        console.error('Error loading stages:', error);
+        toast.error('Error al cargar las etapas');
+      } finally {
+        setLoadingStages(false);
+      }
+    };
+
+    if (isOpen) {
+      loadStages();
+    }
+  }, [isOpen]);
+
   // Cargar datos si estamos editando
   useEffect(() => {
     if (tipoEdicion) {
+      // Para tipos dinámicos de apertura, extraer la etapa del tipo
+      let etapa = tipoEdicion.etapa;
+      let tipoAccion = mapBackendToTipoAccion(tipoEdicion.tipo || '');
+
+      // Si es tipo dinámico de apertura y no hay etapa específica, extraerla del tipo
+      if (tipoEdicion.tipo?.startsWith('AUTO_APERTURA_') && tipoEdicion.tipo !== 'AUTO_APERTURA') {
+        const etapaFromTipo = tipoEdicion.tipo.replace('AUTO_APERTURA_', '').replace(/_/g, ' ');
+        etapa = etapaFromTipo;
+      }
+
       setFormData({
         nombre: tipoEdicion.nombre,
-        descripcion: tipoEdicion.descripcion || '',
-        etapa: tipoEdicion.etapa,
+        etapa: etapa,
         activo: tipoEdicion.activo,
         orden: tipoEdicion.orden,
-        tipoAccion: 'NORMAL',
+        tipoAccion: tipoAccion,
         plantillaFile: undefined,
       });
     } else {
       setFormData({
         nombre: '',
-        descripcion: '',
-        etapa: 'INVESTIGACION' as EtapaProcesoId,
+        etapa: stages.length > 0 ? stages[0].etapa : 'INVESTIGACION',
         activo: true,
         orden: 1,
         tipoAccion: 'NORMAL',
         plantillaFile: undefined,
       });
     }
-    setErrores({});
-  }, [tipoEdicion, isOpen]);
+  }, [tipoEdicion, isOpen, stages]);
 
   const esConAccion = TIPOS_ACCION.find((t) => t.id === formData.tipoAccion)?.conAccion ?? false;
 
@@ -159,12 +211,12 @@ export function ModalNuevoTipoAuto({
 
       const data: NuevoTipoAutoData = {
         nombre: formData.nombre.trim(),
-        descripcion: formData.descripcion.trim(),
         etapa: formData.etapa,
         activo: formData.activo,
         orden: formData.orden,
         tipoAccion: formData.tipoAccion,
         plantillaFile: formData.plantillaFile,
+
       };
 
       onGuardar(data);
@@ -373,22 +425,23 @@ export function ModalNuevoTipoAuto({
                         onChange={(e) =>
                           setFormData((prev) => ({
                             ...prev,
-                            etapa: e.target.value as EtapaProcesoId,
+                            etapa: e.target.value,
                           }))
                         }
-                        disabled={guardando}
+                        disabled={guardando || loadingStages}
                         className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                       >
-                        {(Object.keys(ETAPAS_PROCESO) as EtapaProcesoId[])
-                          .sort((a, b) => ETAPAS_PROCESO[a].orden - ETAPAS_PROCESO[b].orden)
-                          .map((key) => {
-                            const etapa = ETAPAS_PROCESO[key];
-                            return (
-                              <option key={key} value={key}>
-                                {etapa.nombre}
+                        {loadingStages ? (
+                          <option disabled>Cargando etapas...</option>
+                        ) : (
+                          stages
+                            .sort((a, b) => a.orden - b.orden)
+                            .map((stage) => (
+                              <option key={stage.id} value={stage.etapa}>
+                                {stage.etapa}
                               </option>
-                            );
-                          })}
+                            ))
+                        )}
                       </select>
                       <p className="mt-1 text-xs text-gray-500 flex items-center gap-1">
                         <Info className="w-3 h-3" />
@@ -472,23 +525,7 @@ export function ModalNuevoTipoAuto({
                 )}
               </div>
 
-              {/* Descripción (opcional) */}
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                  Descripción{' '}
-                  <span className="text-gray-400 font-normal">(opcional)</span>
-                </label>
-                <textarea
-                  value={formData.descripcion}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, descripcion: e.target.value }))
-                  }
-                  rows={2}
-                  disabled={guardando}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none"
-                  placeholder="Describe cuándo y para qué se usa este tipo de auto..."
-                />
-              </div>
+
 
               {/* Estado activo */}
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">

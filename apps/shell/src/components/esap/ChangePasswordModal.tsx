@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Mail, Lock, Key, ArrowRight, ArrowLeft, CheckCircle2, 
   Shield, Eye, EyeOff, Loader2, AlertCircle, Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { authService } from '../../services/api';
 
 interface ChangePasswordModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export function ChangePasswordModal({
   const [currentStep, setCurrentStep] = useState<Step>('request');
   const [email, setEmail] = useState(userEmail || '');
   const [token, setToken] = useState(['', '', '', '', '', '']);
+  const autoRequestRef = useRef(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -35,7 +37,7 @@ export function ChangePasswordModal({
   // Reset al abrir/cerrar
   useEffect(() => {
     if (isOpen) {
-      setCurrentStep(mode === 'authenticated' ? 'verify' : 'request');
+      setCurrentStep(mode === 'authenticated' && userEmail ? 'verify' : 'request');
       setEmail(userEmail || '');
       setToken(['', '', '', '', '', '']);
       setNewPassword('');
@@ -44,8 +46,20 @@ export function ChangePasswordModal({
       setShowConfirmPassword(false);
       setCountdown(0);
       setCanResend(false);
+      autoRequestRef.current = false;
     }
   }, [isOpen, userEmail, mode]);
+
+  // En modo autenticado, solicitar el código automáticamente al abrir
+  useEffect(() => {
+    if (!isOpen) return;
+    if (mode !== 'authenticated') return;
+    if (!userEmail) return;
+    if (autoRequestRef.current) return;
+
+    autoRequestRef.current = true;
+    void handleRequestToken(userEmail);
+  }, [isOpen, mode, userEmail]);
 
   // Countdown para reenvío
   useEffect(() => {
@@ -82,28 +96,38 @@ export function ChangePasswordModal({
   };
 
   // Paso 1: Solicitar token
-  const handleRequestToken = async () => {
-    if (!email || !email.includes('@')) {
+  const handleRequestToken = async (overrideEmail?: string): Promise<boolean> => {
+    const targetEmail = (overrideEmail ?? email).trim();
+    if (!targetEmail || !targetEmail.includes('@')) {
       toast.error('Por favor ingresa un correo válido');
-      return;
+      return false;
     }
 
     setIsLoading(true);
     try {
-      // En producción: enviar email con código
-      // await api.sendPasswordResetCode(email);
+      setEmail(targetEmail);
+      setToken(['', '', '', '', '', '']);
+      await authService.forgotPassword(targetEmail);
       
       toast.success('Código enviado a tu correo', {
-        description: `Revisa tu bandeja de entrada en ${email}`,
+        description: `Revisa tu bandeja de entrada en ${targetEmail}`,
         duration: 5000,
       });
       
       setCurrentStep('verify');
       setCountdown(60); // 60 segundos para reenviar
-    } catch (error) {
+      setCanResend(false);
+
+      setTimeout(() => {
+        document.getElementById('token-0')?.focus();
+      }, 0);
+
+      return true;
+    } catch (error: any) {
       toast.error('Error al enviar el código', {
-        description: 'Por favor intenta nuevamente',
+        description: error?.message || 'Por favor intenta nuevamente',
       });
+      return false;
     } finally {
       setIsLoading(false);
     }
@@ -119,15 +143,13 @@ export function ChangePasswordModal({
 
     setIsLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      console.log('🔑 Token verificado:', tokenValue);
+      await authService.verifyResetCode(email, tokenValue);
       toast.success('Código verificado correctamente');
       
       setCurrentStep('change');
-    } catch (error) {
+    } catch (error: any) {
       toast.error('Código incorrecto o expirado', {
-        description: 'Verifica el código o solicita uno nuevo',
+        description: error?.message || 'Verifica el código o solicita uno nuevo',
       });
       setToken(['', '', '', '', '', '']);
       document.getElementById('token-0')?.focus();
@@ -148,11 +170,24 @@ export function ChangePasswordModal({
       return;
     }
 
+    const tokenValue = token.join('');
+    if (tokenValue.length !== 6) {
+      toast.error('Ingresa el código completo de 6 dígitos');
+      return;
+    }
+
+    if (!email || !email.includes('@')) {
+      toast.error('Por favor ingresa un correo válido');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      console.log('🔒 Contraseña cambiada para:', email);
+      await authService.resetPassword({
+        email,
+        code: tokenValue,
+        newPassword,
+      });
       toast.success('Contraseña actualizada exitosamente');
       
       setCurrentStep('success');
@@ -161,9 +196,9 @@ export function ChangePasswordModal({
       setTimeout(() => {
         onClose();
       }, 3000);
-    } catch (error) {
+    } catch (error: any) {
       toast.error('Error al cambiar la contraseña', {
-        description: 'Por favor intenta nuevamente',
+        description: error?.message || 'Por favor intenta nuevamente',
       });
     } finally {
       setIsLoading(false);
@@ -176,13 +211,11 @@ export function ChangePasswordModal({
     setCountdown(60);
     setToken(['', '', '', '', '', '']);
     
-    try {
-      // TODO: API call - Reenviar token
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    const ok = await handleRequestToken(email);
+    if (ok) {
       toast.success('Nuevo código enviado');
       document.getElementById('token-0')?.focus();
-    } catch (error) {
-      toast.error('Error al reenviar el código');
+      return;
     }
   };
 
@@ -204,7 +237,7 @@ export function ChangePasswordModal({
   return (
     <AnimatePresence mode="wait">
       {isOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -342,7 +375,7 @@ export function ChangePasswordModal({
                     </div>
 
                     <button
-                      onClick={handleRequestToken}
+                      onClick={() => void handleRequestToken()}
                       disabled={isLoading || !email}
                       className="w-full py-3 bg-gradient-to-r from-[#1e5da8] to-[#2563eb] text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >

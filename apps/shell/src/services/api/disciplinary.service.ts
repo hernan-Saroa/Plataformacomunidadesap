@@ -152,6 +152,17 @@ export interface ProcessStatistics {
     timePercentage: number;
 }
 
+export interface DisciplinaryBehavior {
+    id: string;
+    codigo: string;
+    nombre: string;
+    descripcion?: string;
+    estado: boolean;
+    orden: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
 export interface DisciplinaryProcessActuacion {
     id: string;
     processId: string;
@@ -1767,9 +1778,79 @@ class DisciplinaryService {
 
     /**
      * Obtener solicitudes de reasignación de un proceso
-     */
+      */
     async getReassignmentRequestsByProcess(processId: string): Promise<DisciplinaryProcessReassignmentRequest[]> {
         return apiClient.get<DisciplinaryProcessReassignmentRequest[]>(`${SERVICE_PREFIX}/disciplinary-process-reassignment/process/${processId}`);
+    }
+
+    // ==================== CONDUCTAS DISCIPLINARIAS ====================
+
+    /**
+     * Obtiene todas las conductas disciplinarias activas
+     */
+    async getDisciplinaryBehaviors(): Promise<DisciplinaryBehavior[]> {
+        return apiClient.get<DisciplinaryBehavior[]>(`${SERVICE_PREFIX}/disciplinary-behaviors/active`);
+    }
+
+    /**
+     * Obtiene todas las conductas disciplinarias (activas e inactivas)
+     */
+    async getAllDisciplinaryBehaviors(): Promise<DisciplinaryBehavior[]> {
+        return apiClient.get<DisciplinaryBehavior[]>(`${SERVICE_PREFIX}/disciplinary-behaviors`);
+    }
+
+    /**
+     * Obtiene una conducta disciplinaria por ID
+     */
+    async getDisciplinaryBehaviorById(id: string): Promise<DisciplinaryBehavior> {
+        return apiClient.get<DisciplinaryBehavior>(`${SERVICE_PREFIX}/disciplinary-behaviors/${id}`);
+    }
+
+    /**
+     * Crea una nueva conducta disciplinaria
+     */
+    async createDisciplinaryBehavior(data: {
+        codigo: string;
+        nombre: string;
+        descripcion?: string;
+        estado?: boolean;
+        orden?: number;
+    }): Promise<DisciplinaryBehavior> {
+        return apiClient.post<DisciplinaryBehavior>(`${SERVICE_PREFIX}/disciplinary-behaviors`, data);
+    }
+
+    /**
+     * Actualiza una conducta disciplinaria existente
+     */
+    async updateDisciplinaryBehavior(id: string, data: {
+        codigo?: string;
+        nombre?: string;
+        descripcion?: string;
+        estado?: boolean;
+        orden?: number;
+    }): Promise<DisciplinaryBehavior> {
+        return apiClient.put<DisciplinaryBehavior>(`${SERVICE_PREFIX}/disciplinary-behaviors/${id}`, data);
+    }
+
+    /**
+     * Elimina una conducta disciplinaria
+     */
+    async deleteDisciplinaryBehavior(id: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/disciplinary-behaviors/${id}`);
+    }
+
+    /**
+     * Alterna el estado (activo/inactivo) de una conducta disciplinaria
+     */
+    async toggleDisciplinaryBehaviorStatus(id: string): Promise<DisciplinaryBehavior> {
+        return apiClient.put<DisciplinaryBehavior>(`${SERVICE_PREFIX}/disciplinary-behaviors/${id}/toggle-status`, {});
+    }
+
+    /**
+     * Reordena las conductas disciplinarias
+     */
+    async reorderDisciplinaryBehaviors(ids: string[]): Promise<void> {
+        return apiClient.post(`${SERVICE_PREFIX}/disciplinary-behaviors/reorder`, { ids });
     }
 
 }

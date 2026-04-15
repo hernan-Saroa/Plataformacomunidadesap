@@ -552,27 +552,23 @@ export function CronogramaAuditoriasPremium({
       {/* LEYENDA */}
       {/* ═══════════════════════════════════════════════════════════════ */}
       <div className="bg-gray-50 px-6 py-4 border-t-2 border-gray-200">
-        <p className="text-[11px] text-gray-600 mb-3 max-w-3xl leading-relaxed">
-          <span className="font-bold text-gray-800">Festivos:</span> los días festivos nacionales (Colombia) se resaltan en{' '}
-          <span className="text-red-800 font-semibold">rojo</span> y no muestran auditorías. Sábados y domingos se ven como días normales. Lista de fechas en{' '}
-          <code className="text-[10px] bg-gray-200 px-1 rounded align-middle">diasHabiles.ts</code>.
-        </p>
         <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <span className="text-xs font-bold text-gray-600">Estados:</span>
-            {Object.entries(COLORES_ESTADO)
-              .filter(([estado]) => estado !== 'CANCELADA')
-              .map(([estado, colores]) => (
-              <div key={estado} className="flex items-center gap-2">
-                <div
-                  className="w-4 h-4 rounded border-2"
-                  style={{ backgroundColor: colores.bg, borderColor: colores.border }}
-                />
-                <span className="text-xs font-semibold text-gray-700">
-                  {LABELS_ESTADO[estado as keyof typeof LABELS_ESTADO] || estado.replace('_', ' ')}
-                </span>
-              </div>
-            ))}
+            {(['planeacion', 'ejecucion', 'comunicacion', 'seguimiento', 'finalizada'] as ColumnaKanban[]).map((col) => {
+              const colores = COLORES_POR_COLUMNA_KANBAN[col];
+              return (
+                <div key={col} className="flex items-center gap-2">
+                  <div
+                    className="w-4 h-4 rounded border-2"
+                    style={{ backgroundColor: colores.bg, borderColor: colores.border }}
+                  />
+                  <span className="text-xs font-semibold text-gray-700">
+                    {ETIQUETA_COLUMNA_KANBAN[col]}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
