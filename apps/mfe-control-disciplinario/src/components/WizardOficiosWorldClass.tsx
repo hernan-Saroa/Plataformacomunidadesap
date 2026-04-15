@@ -510,7 +510,8 @@ export function WizardOficiosWorldClass({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 flex items-center justify-center z-[150] p-4 sm:p-6 bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 flex items-center justify-center z-[150] bg-black/50 backdrop-blur-sm"
+      style={{ padding: '4vh 4vw' }}
       onClick={onClose}
     >
       <motion.div
@@ -519,13 +520,14 @@ export function WizardOficiosWorldClass({
         exit={{ scale: 0.9, opacity: 0, y: 40 }}
         transition={{ type: 'spring', duration: 0.5 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-7xl max-h-[95vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-7xl overflow-hidden flex flex-col"
         style={{
+          maxHeight: '88vh',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)'
         }}
       >
         {/* ==================== HEADER PREMIUM ==================== */}
-        <div className="relative overflow-hidden">
+        <div className="relative overflow-hidden flex-shrink-0">
           {/* Gradient Background - Verde/Esmeralda para Oficios */}
           <div 
             className="absolute inset-0"
@@ -581,7 +583,7 @@ export function WizardOficiosWorldClass({
         </div>
 
         {/* ==================== TABS PREMIUM ==================== */}
-        <div className="bg-gradient-to-b from-gray-50 to-white border-b border-gray-200">
+        <div className="bg-gradient-to-b from-gray-50 to-white border-b border-gray-200 flex-shrink-0">
           <div className="px-6 sm:px-8 pt-4">
             <div className="flex gap-2">
               <button
