@@ -122,7 +122,6 @@ export interface PlantillaArchivo {
 export interface TipoAuto {
   id: string;
   nombre: string;
-  descripcion: string;
   etapa: string; // Changed from EtapaProcesoId to string for dynamic stages
   plantilla: PlantillaArchivo | null; // ✅ SOLO UNA PLANTILLA POR TIPO
   activo: boolean;
@@ -412,7 +411,7 @@ export function SeccionPlantillasAutosUnificada({
                                   </span>
                                 </div>
                                 <p className="text-xs text-gray-600 line-clamp-2">
-                                  {tipo.descripcion}
+                                  Tipo: {tipo.tipo || 'Sin tipo definido'}
                                 </p>
                               </div>
 
@@ -626,9 +625,9 @@ export function SeccionPlantillasAutosUnificada({
               {/* Contenido */}
               <div className="p-5 overflow-y-auto max-h-[calc(90vh-120px)] space-y-5">
                 <div>
-                  <h4 className="text-xs font-bold text-gray-700 mb-2">DESCRIPCIÓN:</h4>
+                  <h4 className="text-xs font-bold text-gray-700 mb-2">TIPO:</h4>
                   <p className="text-sm text-gray-700 bg-blue-50 border-l-4 border-blue-500 p-3 rounded">
-                    {vistaDetalles.descripcion}
+                    {vistaDetalles.tipo || 'Sin tipo definido'}
                   </p>
                 </div>
 

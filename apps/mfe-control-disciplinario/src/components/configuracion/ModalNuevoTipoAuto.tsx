@@ -102,7 +102,6 @@ export function ModalNuevoTipoAuto({
 
   const [formData, setFormData] = useState({
     nombre: '',
-    descripcion: '',
     etapa: 'INVESTIGACION',
     activo: true,
     orden: 1,
@@ -153,7 +152,6 @@ export function ModalNuevoTipoAuto({
 
       setFormData({
         nombre: tipoEdicion.nombre,
-        descripcion: tipoEdicion.descripcion || '',
         etapa: etapa,
         activo: tipoEdicion.activo,
         orden: tipoEdicion.orden,
@@ -163,7 +161,6 @@ export function ModalNuevoTipoAuto({
     } else {
       setFormData({
         nombre: '',
-        descripcion: '',
         etapa: stages.length > 0 ? stages[0].etapa : 'INVESTIGACION',
         activo: true,
         orden: 1,
@@ -214,12 +211,12 @@ export function ModalNuevoTipoAuto({
 
       const data: NuevoTipoAutoData = {
         nombre: formData.nombre.trim(),
-        descripcion: formData.descripcion.trim(),
         etapa: formData.etapa,
         activo: formData.activo,
         orden: formData.orden,
         tipoAccion: formData.tipoAccion,
         plantillaFile: formData.plantillaFile,
+
       };
 
       onGuardar(data);
@@ -528,23 +525,7 @@ export function ModalNuevoTipoAuto({
                 )}
               </div>
 
-              {/* Descripción (opcional) */}
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                  Descripción{' '}
-                  <span className="text-gray-400 font-normal">(opcional)</span>
-                </label>
-                <textarea
-                  value={formData.descripcion}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, descripcion: e.target.value }))
-                  }
-                  rows={2}
-                  disabled={guardando}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none"
-                  placeholder="Describe cuándo y para qué se usa este tipo de auto..."
-                />
-              </div>
+
 
               {/* Estado activo */}
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
