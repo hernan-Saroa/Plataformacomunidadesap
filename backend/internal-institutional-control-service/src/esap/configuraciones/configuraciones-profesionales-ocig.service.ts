@@ -271,17 +271,21 @@ export class ConfiguracionesProfesionalesOCIGService {
         idsConfigurados,
       );
 
-      // Query: todos los usuarios del sistema, excluyendo los ya configurados.
-      // Usa id_person (UUID) — la PK real de auth.personas.
+      // Query: usuarios del sistema CON roles de Control Interno, excluyendo los ya configurados.
+      // Solo muestra personas que tengan al menos un rol con categoría 'control_interno' o 'sistema'
       let query = `
-        SELECT
+        SELECT DISTINCT
           p.id_person,
           p.nom_largo,
           p.dir_email,
           p.num_identificacion
         FROM auth.personas p
         INNER JOIN auth."user" u ON u.id_person = p.id_person
+        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+        INNER JOIN auth.role r ON r.id = ur.id_rol
         WHERE p.nom_largo IS NOT NULL
+          AND u.is_active = true
+          AND r.category IN ('control_interno', 'sistema')
       `;
 
       const params: string[] = [];

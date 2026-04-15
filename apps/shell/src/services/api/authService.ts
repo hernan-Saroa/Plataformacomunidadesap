@@ -103,22 +103,36 @@ class AuthService {
   /**
    * Solicitar reset de contraseña
    */
-  async forgotPassword(email: string): Promise<void> {
-    await apiClient.post(
+  async forgotPassword(email: string): Promise<{
+    message?: string;
+    expiresInSeconds?: number;
+  }> {
+    return apiClient.post(
       API_ENDPOINTS.AUTH.FORGOT_PASSWORD,
       { email },
-      { skipAuth: true }
+      { skipAuth: true, retries: 0, skipErrorToast: true }
+    );
+  }
+
+  /**
+   * Verificar código de reset de contraseña
+   */
+  async verifyResetCode(email: string, code: string): Promise<void> {
+    await apiClient.post(
+      API_ENDPOINTS.AUTH.VERIFY_RESET_CODE,
+      { email, code },
+      { skipAuth: true, retries: 0, skipErrorToast: true }
     );
   }
 
   /**
    * Reset de contraseña con token
    */
-  async resetPassword(token: string, newPassword: string): Promise<void> {
+  async resetPassword(payload: { email: string; code: string; newPassword: string }): Promise<void> {
     await apiClient.post(
       API_ENDPOINTS.AUTH.RESET_PASSWORD,
-      { token, newPassword },
-      { skipAuth: true }
+      payload,
+      { skipAuth: true, retries: 0, skipErrorToast: true }
     );
   }
 

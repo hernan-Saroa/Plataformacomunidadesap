@@ -102,7 +102,7 @@ export class AutosConfigurationController {
    */
   @Get('tipo/:tipo')
   @ApiOperation({ summary: 'Obtener configuración por tipo' })
-  async findByTipo(@Param('tipo') tipo: string): Promise<AutoConfiguration> {
+  async findByTipo(@Param('tipo') tipo: string): Promise<AutoConfiguration | null> {
     return await this.autosConfigService.findByTipo(tipo);
   }
 

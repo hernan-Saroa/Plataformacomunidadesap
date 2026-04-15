@@ -181,6 +181,7 @@ export function WizardOficiosWorldClass({
 
   // Estados del Paso 2
   const [fechaOficio, setFechaOficio] = useState('');
+  const [nombreOficio, setNombreOficio] = useState('');
   const [destinatario, setDestinatario] = useState('');
   const [asunto, setAsunto] = useState('');
   const [observaciones, setObservaciones] = useState('');
@@ -346,6 +347,10 @@ export function WizardOficiosWorldClass({
         toast.error('Debes ingresar la fecha del oficio');
         return;
       }
+      if (!nombreOficio || !nombreOficio.trim()) {
+        toast.error('Debes ingresar un nombre para el oficio');
+        return;
+      }
       if (!destinatario || destinatario.length < 3) {
         toast.error('Debes ingresar un destinatario válido');
         return;
@@ -417,7 +422,7 @@ export function WizardOficiosWorldClass({
       const oficioCreado = await disciplinaryService.createOficio(
         proceso.id || proceso.numeroProceso, // Usar el ID real del proceso o el número como fallback
         {
-          nombre: tipoSeleccionado.nombre,
+          nombre: nombreOficio.trim(),
           destinatario: destinatario,
           asunto: asunto,
           descripcion: observaciones,
@@ -475,6 +480,7 @@ export function WizardOficiosWorldClass({
     setPaso(1);
     setTipoSeleccionado(null);
     setFechaOficio(new Date().toISOString().split('T')[0]);
+    setNombreOficio('');
     setDestinatario('');
     setAsunto('');
     setObservaciones('');
@@ -1092,6 +1098,21 @@ export function WizardOficiosWorldClass({
 
                     <div className="bg-white border-2 border-gray-200 rounded-2xl p-6 shadow-lg">
                       <div className="space-y-5">
+                        <div>
+                          <label className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
+                            <Tag className="w-4 h-4 text-emerald-600" />
+                            Nombre del Oficio
+                            <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={nombreOficio}
+                            onChange={(e) => setNombreOficio(e.target.value)}
+                            placeholder="Título personalizado para este oficio..."
+                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-600 transition-all text-sm font-medium shadow-sm"
+                          />
+                        </div>
+
                         <div>
                           <label className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
                             <Calendar className="w-4 h-4 text-emerald-600" />

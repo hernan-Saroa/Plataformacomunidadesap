@@ -93,17 +93,10 @@ export class AutosConfigurationService {
   /**
    * Obtener una configuración por tipo
    */
-  async findByTipo(tipo: string): Promise<AutoConfiguration> {
+  async findByTipo(tipo: string): Promise<AutoConfiguration | null> {
     const autoConfig = await this.autoConfigRepository.findOne({
       where: { tipo },
     });
-
-    if (!autoConfig) {
-      throw new HttpException(
-        `Configuración de auto no encontrada para el tipo: ${tipo}`,
-        HttpStatus.NOT_FOUND,
-      );
-    }
 
     return autoConfig;
   }

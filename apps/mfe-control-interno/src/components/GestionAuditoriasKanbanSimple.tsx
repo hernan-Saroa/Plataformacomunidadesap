@@ -1712,7 +1712,7 @@ function ColumnaKanban({
   
   return (
     <div 
-      className="bg-white rounded-lg md:rounded-xl shadow-md md:shadow-lg border border-gray-200 md:border-2 mb-3 md:mb-0 flex flex-col w-full md:flex-1 md:min-w-[200px] md:max-w-[400px]"
+      className="bg-white rounded-lg md:rounded-xl shadow-md md:shadow-lg border border-gray-200 md:border-2 mb-3 md:mb-0 flex flex-col w-full md:flex-1 md:min-w-[240px] md:max-w-[480px]"
       style={{
         height: 'calc(100vh - 280px)',
         maxHeight: 'calc(100vh - 280px)'
@@ -1729,7 +1729,7 @@ function ColumnaKanban({
               </div>
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-black text-[11px] md:text-xs lg:text-sm xl:text-base text-gray-800 truncate leading-tight">
+              <h3 className="font-black text-[11px] md:text-xs lg:text-sm xl:text-base text-gray-800 leading-tight">
                 {columna.titulo}
               </h3>
               {columna.diasEstimados && (
@@ -1827,6 +1827,15 @@ export function GestionAuditoriasKanbanSimple() {
   const puedeAsignarAuditoria = puedeRealizar('auditorias', 'assign') || puedeRealizar('auditorias', 'edit');
   const puedeArchivarAuditoria = puedeRealizar('auditorias', 'edit');
   
+  // ✅ OBTENER USUARIO ACTUAL PARA FILTROS
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  useEffect(() => {
+    try {
+      const userDataStr = localStorage.getItem('esap_user_data');
+      if (userDataStr) setCurrentUser(JSON.parse(userDataStr));
+    } catch (e) {}
+  }, []);
+
   // ✅ HOOK BACKEND: Cargar auditorías y auditores desde el backend
   const {
     auditorias: auditoriasBackend,
@@ -2190,7 +2199,24 @@ export function GestionAuditoriasKanbanSimple() {
     const cumpleBusqueda = aud.titulo.toLowerCase().includes(busqueda.toLowerCase()) ||
                            aud.codigo.toLowerCase().includes(busqueda.toLowerCase());
     const cumpleTerritorial = filtroTerritorial === 'Todas las Territoriales' || aud.territorial === filtroTerritorial;
-    return cumpleBusqueda && cumpleTerritorial;
+    
+    // ✅ FILTRO DE VISIBILIDAD DE USUARIO: Solo ve las suyas a menos que tenga permisos de análisis
+    let cumpleUsuario = true;
+    if (!puedeAprobarAuditoria && !puedeAsignarAuditoria) {
+      if (!currentUser) return false;
+      const currentName = currentUser.nombre || currentUser.nombres || '';
+      const currentDoc = String(currentUser.id || currentUser.idPersona || currentUser.documento || '');
+      
+      const isLider = aud.auditorLider?.numeroIdentificacion === currentDoc || 
+                      (aud.auditorLider?.nombre && currentName && aud.auditorLider.nombre.includes(currentName));
+      const isAsignado = aud.auditorAsignado?.numeroIdentificacion === currentDoc || 
+                         (aud.auditorAsignado?.nombre && currentName && aud.auditorAsignado.nombre.includes(currentName));
+      const isInEquipo = aud.equipoAuditores?.some(r => r.includes(currentName));
+      
+      cumpleUsuario = !!(isLider || isAsignado || isInEquipo);
+    }
+    
+    return cumpleBusqueda && cumpleTerritorial && cumpleUsuario;
   });
 
   // Colapsar todas las tarjetas

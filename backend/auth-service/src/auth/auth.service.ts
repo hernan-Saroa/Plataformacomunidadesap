@@ -1,5 +1,6 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { randomInt } from 'crypto';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
@@ -13,6 +14,9 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
   ) {}
+
+  private readonly logger = new Logger(AuthService.name);
+  private readonly passwordResetTtlMs = 10 * 60 * 1000; // 10 minutos
 
   async login(dto: LoginDto) {
     const identifier = dto.email || dto.username;
@@ -69,6 +73,96 @@ export class AuthService {
 
   async changePassword(userId: string, dto: ChangePasswordDto) {
     await this.usersService.changePassword(userId, dto.currentPassword, dto.newPassword);
+    return { message: 'Password actualizado correctamente' };
+  }
+
+  async forgotPassword(email: string) {
+    const normalizedEmail = email?.trim().toLowerCase();
+    if (!normalizedEmail) {
+      throw new BadRequestException('Email inválido');
+    }
+
+    const user = await this.usersService.findByEmail(normalizedEmail);
+    if (!user) {
+      throw new BadRequestException('No existe un usuario asociado a ese correo');
+    }
+
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    await this.usersService.setResetToken(user.id_user, code);
+
+    // Enviar el código por correo (vía notifications-service / SMTP).
+    // Si falla el envío, eliminar el código generado para evitar códigos "huérfanos".
+    try {
+      await this.sendPasswordResetEmail(normalizedEmail, code);
+    } catch (error: any) {
+      await this.usersService.setResetToken(user.id_user, null);
+      throw error;
+    }
+
+    return {
+      message: 'Código generado y enviado',
+      expiresInSeconds: Math.floor(this.passwordResetTtlMs / 1000),
+    };
+  }
+
+  async verifyResetCode(email: string, code: string) {
+    const normalizedEmail = email?.trim().toLowerCase();
+    if (!normalizedEmail) {
+      throw new BadRequestException('Email inválido');
+    }
+
+    const user = await this.usersService.findByEmail(normalizedEmail);
+    if (!user) {
+      throw new BadRequestException('No existe un usuario asociado a ese correo');
+    }
+
+    const storedToken = this.normalizeResetCode(user.token);
+    if (!storedToken) {
+      throw new BadRequestException('No hay un código activo para este correo');
+    }
+
+    if (this.isResetTokenExpired(user.updated_at)) {
+      await this.usersService.setResetToken(user.id_user, null);
+      throw new BadRequestException('El código expiró, solicita uno nuevo');
+    }
+
+    const provided = this.normalizeResetCode(code);
+    if (!provided || provided !== storedToken) {
+      throw new BadRequestException('Código inválido');
+    }
+
+    return { message: 'Código verificado correctamente' };
+  }
+
+  async resetPassword(email: string, code: string, newPassword: string) {
+    const normalizedEmail = email?.trim().toLowerCase();
+    if (!normalizedEmail) {
+      throw new BadRequestException('Email inválido');
+    }
+
+    const user = await this.usersService.findByEmail(normalizedEmail);
+    if (!user) {
+      throw new BadRequestException('No existe un usuario asociado a ese correo');
+    }
+
+    const storedToken = this.normalizeResetCode(user.token);
+    if (!storedToken) {
+      throw new BadRequestException('No hay un código activo para este correo');
+    }
+
+    if (this.isResetTokenExpired(user.updated_at)) {
+      await this.usersService.setResetToken(user.id_user, null);
+      throw new BadRequestException('El código expiró, solicita uno nuevo');
+    }
+
+    const provided = this.normalizeResetCode(code);
+    if (!provided || provided !== storedToken) {
+      throw new BadRequestException('Código inválido');
+    }
+
+    await this.usersService.setPassword(user.id_user, newPassword);
+    await this.usersService.setResetToken(user.id_user, null);
+
     return { message: 'Password actualizado correctamente' };
   }
 
@@ -152,6 +246,75 @@ export class AuthService {
       return email.toLowerCase();
     } catch {
       return null;
+    }
+  }
+
+  private normalizeResetCode(value: unknown): string | null {
+    if (value === null || value === undefined) return null;
+    const digits = String(value).replace(/\D+/g, '');
+    if (!digits) return null;
+    return digits.padStart(6, '0').slice(-6);
+  }
+
+  private isResetTokenExpired(updatedAt?: Date): boolean {
+    if (!updatedAt) return true;
+    const ts = updatedAt instanceof Date ? updatedAt.getTime() : new Date(updatedAt).getTime();
+    if (!Number.isFinite(ts)) return true;
+    return Date.now() - ts > this.passwordResetTtlMs;
+  }
+
+  private resolveNotificationsBaseUrl(): string {
+    const direct =
+      process.env.NOTIFICATIONS_SERVICE_URL ||
+      process.env.NOTIFICATION_SERVICE_URL;
+    if (direct) {
+      return direct.replace(/\/$/, '');
+    }
+    if ((process.env.NODE_ENV || 'development') !== 'production') {
+      return 'http://localhost:3009';
+    }
+    return 'http://notifications-service:3009';
+  }
+
+  private async sendPasswordResetEmail(to: string, code: string): Promise<void> {
+    const baseUrl = this.resolveNotificationsBaseUrl();
+    const url = `${baseUrl}/api/v1/emails/send`;
+    const expiresMinutes = Math.floor(this.passwordResetTtlMs / 60_000);
+
+    const subject = 'Código de verificación - Recuperación de contraseña ESAP';
+    const text = `Tu código de verificación es: ${code}\n\nVálido por ${expiresMinutes} minutos.\n\nSi no solicitaste este código, puedes ignorar este mensaje.`;
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ to, subject, text }),
+      });
+    } catch (error: any) {
+      this.logger.warn(
+        `No se pudo conectar a notifications-service (${baseUrl}): ${error?.message || error}`,
+      );
+      throw new InternalServerErrorException(
+        'No se pudo enviar el correo con el código de verificación',
+      );
+    }
+
+    if (!response.ok) {
+      let errorBody = '';
+      try {
+        errorBody = await response.text();
+      } catch (_) {
+        errorBody = '';
+      }
+      this.logger.warn(
+        `Error enviando email de recuperación: ${response.status} ${errorBody}`,
+      );
+      throw new InternalServerErrorException(
+        'No se pudo enviar el correo con el código de verificación',
+      );
     }
   }
 }

@@ -119,7 +119,6 @@ interface PlanAnual {
 // DATOS MOCK COMENTADOS - Ahora se cargan desde el backend
 // ════════════════════════════════════════════════════════════════════════════
 // Los auditores ahora vienen del hook useAuditores()
-/*
 const AUDITORES: Auditor[] = [
   { id: '1', nombre: 'Mario Oswaldo Bernal', cargo: 'Jefe de Control Interno', email: 'mario.bernal@esap.edu.co' },
   { id: '2', nombre: 'Ana María López', cargo: 'Auditora sénior', email: 'ana.lopez@esap.edu.co' },
@@ -127,7 +126,6 @@ const AUDITORES: Auditor[] = [
   { id: '4', nombre: 'Laura Rodríguez', cargo: 'Auditora', email: 'laura.rodriguez@esap.edu.co' },
   { id: '5', nombre: 'Juan Pablo García', cargo: 'Auditor júnior', email: 'juan.garcia@esap.edu.co' }
 ];
-*/
 
 // ════════════════════════════════════════════════════════════════════════════
 // DATOS: ESTRUCTURA OFICIAL DECRETO 648/2017
@@ -818,8 +816,8 @@ function crearPlanInicial(vigencia: number, jefeOCI: Auditor, rolesConfig?: any)
 // FUNCIÓN: CREAR PLAN CON DATOS MOCK (COMENTADA - AHORA SE USA BACKEND)
 // ════════════════════════════════════════════════════════════════════════════
 
-/* MOCK COMENTADO - Ahora los datos vienen del backend via usePlanAnualCompleto()
-function crearPlanConDatosMock(vigencia: number, jefeOCI: Auditor): PlanAnual {
+// MOCK DISPONIBLE
+export function crearPlanConDatosMock(vigencia: number, jefeOCI: Auditor): PlanAnual {
   const planBase = crearPlanInicial(vigencia, jefeOCI);
   
   // ═══════════════════════════════════════════════════════════════════════
@@ -1216,7 +1214,7 @@ function crearPlanConDatosMock(vigencia: number, jefeOCI: Auditor): PlanAnual {
     roles: rolesConProgreso
   };
 }
-FIN MOCK crearPlanConDatosMock */
+// FIN MOCK crearPlanConDatosMock
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -1496,7 +1494,11 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
 
   // Handler para cambiar de plan
   const handleCambiarPlan = async (planId: string) => {
-    if (planId === planActual?.id) return;
+    // Si la persona toca visualizar el plan que ya está activo, la scrolleamos hacia arriba
+    if (planId === planActual?.id) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     
     const planSeleccionado = planesAnteriores.find(p => p.id === planId);
     if (planSeleccionado) {
@@ -1510,12 +1512,16 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   // Hook para crear plan en backend
   const { mutate: crearPlanEnBackend, loading: creandoPlan } = useCreatePlanAnual();
 
-  const handleCrearPlan = async (vigencia: number, jefeOCI: Auditor, rolesConfig: any[], fechaInicio: string, fechaFin: string) => {
-    // Crear plan en backend
+  const handleCrearPlan = async (vigencia: number, jefeOCI: Auditor, rolesConfig: any[], fechaInicio: string, fechaFin: string): Promise<boolean> => {
+    try {
+      // Validar si el id es un UUID válido. Si no lo es, enviamos undefined para evitar el Error 400 del Backend.
+      const esIdUUID = jefeOCI.id && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(jefeOCI.id);
+
+      // Crear plan en backend
     const planCreado = await crearPlanEnBackend({
       año: vigencia,
       responsable: jefeOCI.nombre,
-      responsable_id: jefeOCI.id,
+      responsable_id: esIdUUID ? jefeOCI.id : undefined,
       fecha_inicio: fechaInicio,
       fecha_fin: fechaFin
     });
@@ -1669,9 +1675,8 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         }
       }
 
-      // Recargar datos del backend
-      await recargarPlan();
-      setVista('dashboard');
+      // NO recargamos el plan ni cambiamos la vista aquí, 
+      // lo hará el Wizard después de mostrar el Modal de feedback.
 
       if (actividadesFallidas === 0) {
         toast.success('Plan creado exitosamente', {
@@ -1688,13 +1693,17 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           duration: 10000
         });
       }
+      return true;
     } else {
-      // Error al crear - NO cargar datos mock, solo mostrar error
-      toast.error('Error al crear el plan', {
-        description: 'Verifique que el año sea válido (2020-2028) y vuelva a intentar'
-      });
+      // Ya se disparó el toast de error desde useCreatePlanAnual
+      return false;
     }
-  };
+  } catch (error: any) {
+    console.error('Error no manejado en handleCrearPlan:', error);
+    toast.error('Error inesperado al crear el plan', { description: error?.message || 'Error de conexión' });
+    return false;
+  }
+};
   
   // ═══════════════════════════════════════════════════════════════════════
   // FUNCIÓN PARA CARGAR DATOS MOCK (COMENTADA - AHORA SE USA BACKEND)
@@ -1747,6 +1756,10 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             key="wizard"
             onCancelar={() => setVista(planActual ? 'dashboard' : 'inicio')}
             onCrear={handleCrearPlan}
+            onTerminado={async () => {
+              await recargarPlan();
+              setVista('dashboard');
+            }}
           />
         )}
 

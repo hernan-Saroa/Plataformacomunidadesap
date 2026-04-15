@@ -13,6 +13,9 @@ import { LoginDto } from './dto/login.dto';
 import { MicrosoftLoginDto } from './dto/microsoft-login.dto';
 import { NewPersonDto } from './dto/new-person.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyResetCodeDto } from './dto/verify-reset-code.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Public } from './decorators/public.decorator';
 
@@ -54,6 +57,27 @@ export class AuthController {
   changePassword(@Req() req, @Body() dto: ChangePasswordDto) {
     const userId = req.user.userId;
     return this.authService.changePassword(userId, dto);
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(200)
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto.email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(200)
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.email, dto.code, dto.newPassword);
+  }
+
+  @Public()
+  @Post('verify-reset-code')
+  @HttpCode(200)
+  verifyResetCode(@Body() dto: VerifyResetCodeDto) {
+    return this.authService.verifyResetCode(dto.email, dto.code);
   }
 
   @UseGuards(JwtAuthGuard)
