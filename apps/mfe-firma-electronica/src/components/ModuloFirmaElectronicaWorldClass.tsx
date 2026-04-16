@@ -15,7 +15,7 @@ import {
   ChevronLeft, ChevronsLeft, ChevronsRight
 } from 'lucide-react';
 import { useState } from 'react';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
 import { VisorDocumentoFirmaOTP } from './VisorDocumentoFirmaOTP';
 import { ModalCompartirFirma } from './ModalCompartirFirma';
@@ -290,6 +290,8 @@ export function ModuloFirmaElectronicaWorldClass() {
   };
 
   return (
+    <>
+    <Toaster position="top-right" richColors />
     <div className="min-h-screen bg-white">
       {/* Header Premium World-Class */}
       <div className="bg-white border-b-2 border-gray-100 px-6 py-6 sticky top-0 z-10 shadow-sm">
@@ -586,5 +588,6 @@ export function ModuloFirmaElectronicaWorldClass() {
         }}
       />
     </div>
+    </>
   );
 }
