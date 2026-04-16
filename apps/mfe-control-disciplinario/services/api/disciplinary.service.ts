@@ -484,6 +484,10 @@ class DisciplinaryService {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/restore`, {});
     }
 
+    restoreProcess = async (id: string): Promise<any> => {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/restore`, {});
+    };
+
     /**
      * Obtiene las noticias asociadas a los procesos de un profesional específico
      */
