@@ -33,5 +33,13 @@ export class UpdateDocumentoDto {
   @IsOptional()
   @IsUUID()
   visibleAuditoriaId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  etapaKanbanId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  etapaNombreKanban?: string | null;
 }
 

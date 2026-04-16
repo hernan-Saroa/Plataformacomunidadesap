@@ -1333,7 +1333,7 @@ function TarjetaAuditoria({
             )}
 
             {/* Menú de Acciones Horizontales - CONDICIONAL SEGÚN ESTADO */}
-            <div className="flex items-center justify-between gap-1 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
+            <div className="grid grid-cols-3 gap-1 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
               {/* Cambiar estado - DESHABILITADO en Finalizada */}
               <button
                 onClick={(e) => {
@@ -1343,7 +1343,7 @@ function TarjetaAuditoria({
                   }
                 }}
                 disabled={auditoria.estado === 'Finalizada'}
-                className={`flex flex-col items-center gap-0.5 p-1 rounded transition-colors flex-1 ${
+                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
                   auditoria.estado === 'Finalizada' 
                     ? 'opacity-40 cursor-not-allowed' 
                     : 'hover:bg-white cursor-pointer'
@@ -1358,7 +1358,7 @@ function TarjetaAuditoria({
                 <span className="text-[9px] text-gray-600 font-medium">Estado</span>
               </button>
 
-              {/* Asignar auditor - SIEMPRE DISPONIBLE excepto Finalizada */}
+              {/* Asignar auditor */}
               {puedeAsignar && (
               <button
                 onClick={(e) => {
@@ -1368,7 +1368,7 @@ function TarjetaAuditoria({
                   }
                 }}
                 disabled={auditoria.estado === 'Finalizada'}
-                className={`flex flex-col items-center gap-0.5 p-1 rounded transition-colors flex-1 ${
+                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
                   auditoria.estado === 'Finalizada' 
                     ? 'opacity-40 cursor-not-allowed' 
                     : 'hover:bg-white cursor-pointer'
@@ -1394,7 +1394,7 @@ function TarjetaAuditoria({
                   }
                 }}
                 disabled={auditoria.estado !== 'Comunicación' && auditoria.estado !== 'Seguimiento'}
-                className={`flex flex-col items-center gap-0.5 p-1 rounded transition-colors flex-1 ${
+                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
                   auditoria.estado === 'Comunicación' || auditoria.estado === 'Seguimiento'
                     ? 'hover:bg-white cursor-pointer' 
                     : 'opacity-40 cursor-not-allowed'
@@ -1427,7 +1427,7 @@ function TarjetaAuditoria({
                   }
                 }}
                 disabled={auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual'}
-                className={`flex flex-col items-center gap-0.5 p-1 rounded transition-colors flex-1 ${
+                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
                   auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual'
                     ? 'hover:bg-white cursor-pointer' 
                     : 'opacity-40 cursor-not-allowed'
@@ -1456,7 +1456,7 @@ function TarjetaAuditoria({
                   }
                 }}
                 disabled={auditoria.estado !== 'Finalizada'}
-                className={`flex flex-col items-center gap-0.5 p-1 rounded transition-colors flex-1 ${
+                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
                   auditoria.estado === 'Finalizada' 
                     ? 'hover:bg-white cursor-pointer' 
                     : 'opacity-40 cursor-not-allowed'
@@ -1472,7 +1472,7 @@ function TarjetaAuditoria({
                 }`} />
                 <span className={`text-[9px] font-medium ${
                   auditoria.estado === 'Finalizada' ? 'text-orange-600' : 'text-gray-400'
-                }`}>Archiv</span>
+                }`}>Archivar</span>
               </button>
               )}
 
@@ -1486,7 +1486,7 @@ function TarjetaAuditoria({
                   }
                 }}
                 disabled={auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual'}
-                className={`flex flex-col items-center gap-0.5 p-1 rounded transition-colors flex-1 ${
+                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
                   auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual'
                     ? 'hover:bg-white cursor-pointer' 
                     : 'opacity-40 cursor-not-allowed'
@@ -1502,7 +1502,7 @@ function TarjetaAuditoria({
                 }`} />
                 <span className={`text-[9px] font-medium ${
                   auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual' ? 'text-red-600' : 'text-gray-400'
-                }`}>Elim</span>
+                }`}>Eliminar</span>
               </button>
               )}
             </div>
@@ -2974,10 +2974,23 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   // Eliminar individual - ACTUALIZADO
-  const handleEliminar = (auditoria: Auditoria) => {
-    setAuditoriaSeleccionada(auditoria);
-    setTipoAccionConfirmacion('eliminar');
-    setModalConfirmacionOpen(true);
+  const handleEliminar = async (auditoria: Auditoria) => {
+    const confirmado = window.confirm(
+      `¿Eliminar la auditoría ${auditoria.codigo}?\n\n` +
+      `"${auditoria.titulo}"\n\n` +
+      `⚠️ Esta acción no se puede deshacer.`
+    );
+    if (!confirmado) return;
+    try {
+      await eliminarAuditoriaBackend(auditoria.id);
+      setAuditorias(prev => prev.filter(a => a.id !== auditoria.id));
+      toast.success(`${auditoria.codigo} eliminada`, {
+        description: 'La auditoría ha sido eliminada permanentemente',
+        duration: 4000
+      });
+    } catch {
+      toast.error('No se pudo eliminar la auditoría');
+    }
   };
 
   // ============ INTEGRACIÓN: CREAR PLAN DE MEJORAMIENTO ============
