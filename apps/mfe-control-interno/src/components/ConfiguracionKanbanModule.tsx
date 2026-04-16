@@ -24,9 +24,31 @@ import {
   ChevronRight, Info, TrendingUp, Layout, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { HeaderSeccionConfig } from './HeaderSeccionConfig';
 
 // ✅ Hook para conexión con backend
 import { useConfiguracionKanban, type EtapaKanbanFrontend as EtapaKanban, type ConfiguracionGeneralKanban as ConfiguracionGeneral } from './services/useConfiguracionKanban';
+
+// ✅ Notificar cambios al KanbanConfigContext
+import { notificarCambioConfigKanban, type EtapaSLAConfig } from './context/KanbanConfigContext';
+// ════════════════════════════════════════════════════════════════════════════
+// HELPER: Sync SLA config to localStorage for KanbanConfigContext
+// ════════════════════════════════════════════════════════════════════════════
+
+function sincronizarSLAaLocalStorage(etapas: EtapaKanban[]) {
+  const slaMap: Record<string, EtapaSLAConfig> = {};
+  etapas.forEach(e => {
+    slaMap[e.nombre] = {
+      nombre: e.nombre,
+      slaDias: e.slaDias,
+      alertaPrevia: e.alertaPrevia,
+      notificacionesActivas: e.notificacionesActivas,
+      limiteWIP: e.limiteWIP,
+      color: e.color,
+    };
+  });
+  localStorage.setItem('kanban_sla_config', JSON.stringify(slaMap));
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -121,6 +143,9 @@ export function ConfiguracionKanbanModule() {
 
   const handleGuardarConfiguracion = () => {
     recargarDatos();
+    // Sync SLA config to localStorage for KanbanConfigContext
+    sincronizarSLAaLocalStorage(etapas);
+    notificarCambioConfigKanban();
     toast.success('💾 Configuración sincronizada', {
       description: 'Los cambios se aplicarán en el tablero Kanban'
     });
@@ -137,7 +162,7 @@ export function ConfiguracionKanbanModule() {
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto flex items-center justify-center min-h-[400px]">
+      <div className="w-full h-full p-4 sm:p-6 lg:p-8 flex items-center justify-center min-h-[400px]">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           <p className="text-gray-600">Cargando configuración del Kanban...</p>
@@ -148,7 +173,7 @@ export function ConfiguracionKanbanModule() {
 
   if (error) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto flex items-center justify-center min-h-[400px]">
+      <div className="w-full h-full p-4 sm:p-6 lg:p-8 flex items-center justify-center min-h-[400px]">
         <div className="flex flex-col items-center gap-4 text-center">
           <AlertTriangle className="w-12 h-12 text-red-500" />
           <div>
@@ -167,96 +192,81 @@ export function ConfiguracionKanbanModule() {
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="w-full h-full p-4 sm:p-6 lg:p-8">
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* HEADER */}
       {/* ═══════════════════════════════════════════════════════════════ */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-6 mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <div className="flex items-center gap-4">
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-3 rounded-xl">
-              <Columns className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl sm:text-3xl font-black text-gray-900">
-                  Configuración del Kanban
-                </h1>
-                {tableroId && (
-                  <span className="px-2 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-semibold">
-                    Conectado
-                  </span>
-                )}
-              </div>
-              <p className="text-sm sm:text-base text-gray-600 mt-1">
-                Personaliza etapas, SLA, límites WIP y reglas de transición
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setMostrarVistaPrevia(!mostrarVistaPrevia)}
-              className="px-4 py-2 bg-white border-2 border-gray-300 hover:border-blue-600 text-gray-700 rounded-lg font-semibold flex items-center gap-2 transition-all text-sm"
-            >
-              <Eye className="w-4 h-4" />
-              {mostrarVistaPrevia ? 'Ocultar' : 'Vista Previa'}
-            </button>
-            <button
-              onClick={handleRestaurarDefecto}
-              className="px-4 py-2 bg-white border-2 border-gray-300 hover:border-yellow-600 text-gray-700 rounded-lg font-semibold flex items-center gap-2 transition-all text-sm"
-            >
-              <Settings className="w-4 h-4" />
-              Restaurar
-            </button>
-            <button
-              onClick={handleGuardarConfiguracion}
-              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-semibold flex items-center gap-2 transition-all shadow-lg text-sm"
-            >
-              <Save className="w-4 h-4" />
-              Guardar Cambios
-            </button>
-          </div>
-        </div>
+      <HeaderSeccionConfig
+        icon={<Columns className="w-full h-full" />}
+        titulo="Configuración del Kanban"
+        subtitulo="Personaliza etapas, SLA, límites WIP y reglas de transición"
+      >
+        {tableroId && (
+          <span className="px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-semibold">
+            Conectado
+          </span>
+        )}
+        <button
+          onClick={() => setMostrarVistaPrevia(!mostrarVistaPrevia)}
+          className="px-3 py-1.5 bg-white border border-gray-300 hover:border-blue-500 text-gray-700 rounded-lg font-semibold flex items-center gap-1.5 transition-all text-xs"
+        >
+          <Eye className="w-3.5 h-3.5" />
+          {mostrarVistaPrevia ? 'Ocultar' : 'Vista Previa'}
+        </button>
+        <button
+          onClick={handleRestaurarDefecto}
+          className="px-3 py-1.5 bg-white border border-gray-300 hover:border-yellow-500 text-gray-700 rounded-lg font-semibold flex items-center gap-1.5 transition-all text-xs"
+        >
+          <Settings className="w-3.5 h-3.5" />
+          Restaurar
+        </button>
+        <button
+          onClick={handleGuardarConfiguracion}
+          className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-semibold flex items-center gap-1.5 transition-all shadow-sm text-xs"
+        >
+          <Save className="w-3.5 h-3.5" />
+          Guardar
+        </button>
+      </HeaderSeccionConfig>
 
-        {/* Tabs */}
-        <div className="flex gap-2 border-b-2 border-gray-200">
-          <button
-            onClick={() => setTabActiva('etapas')}
-            className={`px-4 py-3 font-bold text-sm transition-all flex items-center gap-2 border-b-2 -mb-0.5 ${
-              tabActiva === 'etapas'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Layers className="w-4 h-4" />
-            Gestión de Etapas
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">
-              {etapas.length}
-            </span>
-          </button>
-          <button
-            onClick={() => setTabActiva('general')}
-            className={`px-4 py-3 font-bold text-sm transition-all flex items-center gap-2 border-b-2 -mb-0.5 ${
-              tabActiva === 'general'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            Config. General
-          </button>
-          <button
-            onClick={() => setTabActiva('reglas')}
-            className={`px-4 py-3 font-bold text-sm transition-all flex items-center gap-2 border-b-2 -mb-0.5 ${
-              tabActiva === 'reglas'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Zap className="w-4 h-4" />
-            Reglas y Alertas
-          </button>
-        </div>
+      {/* Tabs */}
+      <div className="flex gap-1 bg-white rounded-xl border border-gray-200 p-1 mb-5">
+        <button
+          onClick={() => setTabActiva('etapas')}
+          className={`flex-1 px-4 py-2 font-bold text-xs transition-all flex items-center justify-center gap-1.5 rounded-lg ${
+            tabActiva === 'etapas'
+              ? 'bg-blue-50 text-blue-700 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          Gestión de Etapas
+          <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-bold">
+            {etapas.length}
+          </span>
+        </button>
+        <button
+          onClick={() => setTabActiva('general')}
+          className={`flex-1 px-4 py-2 font-bold text-xs transition-all flex items-center justify-center gap-1.5 rounded-lg ${
+            tabActiva === 'general'
+              ? 'bg-blue-50 text-blue-700 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+          }`}
+        >
+          <Settings className="w-3.5 h-3.5" />
+          Config. General
+        </button>
+        <button
+          onClick={() => setTabActiva('reglas')}
+          className={`flex-1 px-4 py-2 font-bold text-xs transition-all flex items-center justify-center gap-1.5 rounded-lg ${
+            tabActiva === 'reglas'
+              ? 'bg-blue-50 text-blue-700 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+          }`}
+        >
+          <Zap className="w-3.5 h-3.5" />
+          Reglas y Alertas
+        </button>
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════ */}
@@ -284,6 +294,7 @@ export function ConfiguracionKanbanModule() {
           <TabReglas
             key="reglas"
             etapas={etapas}
+            onActualizarEtapa={actualizarEtapa}
           />
         )}
       </AnimatePresence>
@@ -473,7 +484,7 @@ function TabEtapas({ etapas, onAgregar, onEditar, onEliminar, onMover }: TabEtap
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// TAB: CONFIGURACIÓN GENERAL
+// TAB: CONFIGURACIÓN GENERAL (REFACTORED — toggles funcionales)
 // ════════════════════════════════════════════════════════════════════════════
 
 interface TabGeneralProps {
@@ -483,7 +494,13 @@ interface TabGeneralProps {
 
 function TabGeneral({ config, onChange }: TabGeneralProps) {
   const handleToggle = (key: keyof ConfiguracionGeneral) => {
-    onChange({ ...config, [key]: !config[key] });
+    const nueva = { ...config, [key]: !config[key] };
+    onChange(nueva);
+    // Notificar al Kanban inmediatamente
+    notificarCambioConfigKanban();
+    toast.success(`✅ ${!config[key] ? 'Activado' : 'Desactivado'}`, {
+      description: 'El cambio se refleja en el tablero Kanban'
+    });
   };
 
   return (
@@ -493,81 +510,47 @@ function TabGeneral({ config, onChange }: TabGeneralProps) {
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
-      {/* Visualización */}
+      {/* Visualización — Toggles que SÍ controlan el Kanban */}
       <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
-        <h3 className="text-lg font-black text-gray-900 mb-4 flex items-center gap-2">
+        <h3 className="text-lg font-black text-gray-900 mb-2 flex items-center gap-2">
           <Eye className="w-5 h-5 text-blue-600" />
-          Opciones de Visualización
+          Opciones de Visualización del Kanban
         </h3>
+        <p className="text-sm text-gray-500 mb-4">Estos ajustes se aplican en tiempo real al tablero de Auditorías OCI.</p>
         <div className="space-y-4">
           <SwitchConfig
             label="Mostrar contadores de tarjetas"
-            description="Muestra el número de auditorías en cada columna"
+            description="Muestra el número de auditorías en cada columna del Kanban"
             checked={config.mostrarContadores}
             onChange={() => handleToggle('mostrarContadores')}
           />
           <SwitchConfig
             label="Mostrar tiempos transcurridos"
-            description="Muestra cuánto tiempo lleva una auditoría en cada fase"
+            description="Muestra cuántos días lleva cada auditoría en su etapa actual (con semáforo SLA)"
             checked={config.mostrarTiempos}
             onChange={() => handleToggle('mostrarTiempos')}
           />
           <SwitchConfig
             label="Vista compactada"
-            description="Reduce el espaciado para ver más información en pantalla"
+            description="Reduce el tamaño de las tarjetas para ver más auditorías en pantalla"
             checked={config.compactarVista}
             onChange={() => handleToggle('compactarVista')}
           />
-          <SwitchConfig
-            label="Mostrar avatar del auditor"
-            description="Muestra la inicial o foto del auditor asignado"
-            checked={config.mostrarAvatar}
-            onChange={() => handleToggle('mostrarAvatar')}
-          />
         </div>
       </div>
 
-      {/* Alertas y Notificaciones */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
-        <h3 className="text-lg font-black text-gray-900 mb-4 flex items-center gap-2">
-          <Bell className="w-5 h-5 text-yellow-600" />
-          Alertas y Notificaciones
-        </h3>
-        <div className="space-y-4">
-          <SwitchConfig
-            label="Alertas de SLA"
-            description="Notifica cuando una auditoría está próxima a vencer su SLA"
-            checked={config.alertasSLA}
-            onChange={() => handleToggle('alertasSLA')}
-          />
-          <SwitchConfig
-            label="Alertas de límite WIP"
-            description="Alerta cuando una columna alcanza su límite de trabajo en progreso"
-            checked={config.alertasWIP}
-            onChange={() => handleToggle('alertasWIP')}
-          />
-        </div>
-      </div>
-
-      {/* Comportamiento */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
-        <h3 className="text-lg font-black text-gray-900 mb-4 flex items-center gap-2">
-          <Zap className="w-5 h-5 text-purple-600" />
-          Comportamiento del Kanban
-        </h3>
-        <div className="space-y-4">
-          <SwitchConfig
-            label="Transiciones automáticas"
-            description="Mueve automáticamente las tarjetas cuando se cumplen las condiciones configuradas"
-            checked={config.transicionesAutomaticas}
-            onChange={() => handleToggle('transicionesAutomaticas')}
-          />
-          <SwitchConfig
-            label="Permitir arrastrar y soltar"
-            description="Habilita mover tarjetas entre columnas con drag & drop"
-            checked={config.permitirDragDrop}
-            onChange={() => handleToggle('permitirDragDrop')}
-          />
+      {/* Info Panel */}
+      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+        <div className="flex items-start gap-3">
+          <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-blue-800">
+            <strong>¿Cómo funcionan estos ajustes?</strong>
+            <ul className="list-disc list-inside mt-2 space-y-1">
+              <li><strong>Contadores:</strong> Muestra u oculta el badge con la cantidad de auditorías en cada columna</li>
+              <li><strong>Tiempos:</strong> Agrega un indicador con los días transcurridos y el semáforo SLA en cada tarjeta</li>
+              <li><strong>Vista compactada:</strong> Reduce padding y tamaño de fuente para mostrar más información</li>
+            </ul>
+          </div>
         </div>
       </div>
     </motion.div>
@@ -575,14 +558,64 @@ function TabGeneral({ config, onChange }: TabGeneralProps) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// TAB: REGLAS Y ALERTAS
+// TAB: REGLAS Y ALERTAS (REFACTORED — SLA/WIP/Alertas editables)
 // ════════════════════════════════════════════════════════════════════════════
 
 interface TabReglasProps {
   etapas: EtapaKanban[];
+  onActualizarEtapa?: (id: string, datos: Partial<EtapaKanban>) => Promise<EtapaKanban | null>;
 }
 
-function TabReglas({ etapas }: TabReglasProps) {
+function TabReglas({ etapas, onActualizarEtapa }: TabReglasProps) {
+  const [editandoSLA, setEditandoSLA] = useState<string | null>(null);
+  const [valoresSLA, setValoresSLA] = useState<{ slaDias: number; alertaPrevia: number; limiteWIP: number }>({ slaDias: 0, alertaPrevia: 0, limiteWIP: 5 });
+  const [guardandoSLA, setGuardandoSLA] = useState(false);
+
+  const iniciarEdicionSLA = (etapa: EtapaKanban) => {
+    setEditandoSLA(etapa.id);
+    setValoresSLA({
+      slaDias: etapa.slaDias,
+      alertaPrevia: etapa.alertaPrevia,
+      limiteWIP: etapa.limiteWIP >= 999 ? 999 : etapa.limiteWIP,
+    });
+  };
+
+  const guardarSLA = async (etapaId: string) => {
+    if (!onActualizarEtapa) return;
+    setGuardandoSLA(true);
+    try {
+      await onActualizarEtapa(etapaId, {
+        slaDias: valoresSLA.slaDias,
+        alertaPrevia: valoresSLA.alertaPrevia,
+        limiteWIP: valoresSLA.limiteWIP,
+      });
+      // Sync to localStorage for KanbanConfigContext
+      sincronizarSLAaLocalStorage(etapas.map(e =>
+        e.id === etapaId ? { ...e, slaDias: valoresSLA.slaDias, alertaPrevia: valoresSLA.alertaPrevia, limiteWIP: valoresSLA.limiteWIP } : e
+      ));
+      notificarCambioConfigKanban();
+      setEditandoSLA(null);
+    } catch {
+      toast.error('Error al guardar SLA');
+    } finally {
+      setGuardandoSLA(false);
+    }
+  };
+
+  const toggleNotificaciones = async (etapa: EtapaKanban) => {
+    if (!onActualizarEtapa) return;
+    await onActualizarEtapa(etapa.id, {
+      notificacionesActivas: !etapa.notificacionesActivas,
+    });
+    sincronizarSLAaLocalStorage(etapas.map(e =>
+      e.id === etapa.id ? { ...e, notificacionesActivas: !e.notificacionesActivas } : e
+    ));
+    notificarCambioConfigKanban();
+    toast.success(etapa.notificacionesActivas ? '🔕 Notificaciones desactivadas' : '🔔 Notificaciones activadas', {
+      description: etapa.nombre,
+    });
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -590,98 +623,192 @@ function TabReglas({ etapas }: TabReglasProps) {
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
-      {/* Resumen de SLAs */}
+      {/* ═══ SLA y ALERTAS por etapa — EDITABLE ═══ */}
       <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
-        <h3 className="text-lg font-black text-gray-900 mb-4 flex items-center gap-2">
-          <Clock className="w-5 h-5 text-blue-600" />
-          Resumen de SLA por Etapa
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+            <Clock className="w-5 h-5 text-blue-600" />
+            SLA y Alertas por Etapa
+          </h3>
+          <span className="text-xs text-gray-500 bg-green-50 text-green-700 px-2 py-1 rounded-full font-semibold border border-green-200">
+            ✓ Conectado al Kanban
+          </span>
+        </div>
+        <p className="text-sm text-gray-500 mb-4">
+          Click en <strong>Editar</strong> para ajustar el SLA, la alerta previa y el límite WIP de cada etapa. Los cambios se reflejan en el semáforo del tablero Kanban.
+        </p>
+
         <div className="space-y-3">
           {etapas.map((etapa) => (
-            <div key={etapa.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: etapa.color }}
-                />
-                <span className="font-bold text-gray-900">{etapa.nombre}</span>
-              </div>
-              <div className="flex items-center gap-6 text-sm">
-                <div>
-                  <span className="text-gray-500">SLA: </span>
-                  <span className="font-bold text-blue-600">
-                    {etapa.slaDias}d {etapa.slaHoras > 0 && `${etapa.slaHoras}h`}
-                  </span>
+            <div
+              key={etapa.id}
+              className={`rounded-lg border-2 transition-all ${
+                editandoSLA === etapa.id
+                  ? 'border-blue-400 bg-blue-50/50 shadow-md'
+                  : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+              }`}
+            >
+              {editandoSLA === etapa.id ? (
+                /* ═══ MODO EDICIÓN ═══ */
+                <div className="p-4">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: etapa.color }} />
+                    <span className="font-bold text-gray-900">{etapa.nombre}</span>
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-bold">Editando</span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">SLA (Días)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={valoresSLA.slaDias}
+                        onChange={(e) => setValoresSLA(prev => ({ ...prev, slaDias: parseInt(e.target.value) || 0 }))}
+                        className="w-full px-3 py-2 border-2 border-blue-300 rounded-lg focus:border-blue-500 focus:outline-none font-semibold text-blue-700 bg-white"
+                      />
+                      <p className="text-[10px] text-gray-400 mt-0.5">Tiempo máximo en esta etapa</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">Alerta (Días antes)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={valoresSLA.alertaPrevia}
+                        onChange={(e) => setValoresSLA(prev => ({ ...prev, alertaPrevia: parseInt(e.target.value) || 0 }))}
+                        className="w-full px-3 py-2 border-2 border-yellow-300 rounded-lg focus:border-yellow-500 focus:outline-none font-semibold text-yellow-700 bg-white"
+                      />
+                      <p className="text-[10px] text-gray-400 mt-0.5">Días antes para alertar</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">Límite WIP</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={valoresSLA.limiteWIP >= 999 ? '' : valoresSLA.limiteWIP}
+                        onChange={(e) => setValoresSLA(prev => ({ ...prev, limiteWIP: parseInt(e.target.value) || 999 }))}
+                        placeholder="∞"
+                        className="w-full px-3 py-2 border-2 border-purple-300 rounded-lg focus:border-purple-500 focus:outline-none font-semibold text-purple-700 bg-white"
+                      />
+                      <p className="text-[10px] text-gray-400 mt-0.5">Máx auditorías simultáneas</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => guardarSLA(etapa.id)}
+                      disabled={guardandoSLA}
+                      className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold text-sm flex items-center gap-2 hover:shadow-lg transition-all disabled:opacity-50"
+                    >
+                      {guardandoSLA ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      Guardar
+                    </button>
+                    <button
+                      onClick={() => setEditandoSLA(null)}
+                      className="px-4 py-2 bg-white border-2 border-gray-300 text-gray-700 rounded-lg font-semibold text-sm hover:bg-gray-50 transition-all"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-gray-500">Alerta: </span>
-                  <span className="font-bold text-yellow-600">{etapa.alertaPrevia}d antes</span>
+              ) : (
+                /* ═══ MODO LECTURA ═══ */
+                <div className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: etapa.color }} />
+                    <span className="font-bold text-gray-900">{etapa.nombre}</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm">
+                    <div className="text-center">
+                      <span className="text-gray-400 text-xs block">SLA</span>
+                      <span className="font-bold text-blue-600">{etapa.slaDias}d</span>
+                    </div>
+                    <div className="text-center">
+                      <span className="text-gray-400 text-xs block">Alerta</span>
+                      <span className="font-bold text-yellow-600">{etapa.alertaPrevia}d</span>
+                    </div>
+                    <div className="text-center">
+                      <span className="text-gray-400 text-xs block">WIP</span>
+                      <span className="font-bold text-purple-600">{etapa.limiteWIP >= 999 ? '∞' : etapa.limiteWIP}</span>
+                    </div>
+                    <button
+                      onClick={() => toggleNotificaciones(etapa)}
+                      title={etapa.notificacionesActivas ? 'Desactivar notificaciones' : 'Activar notificaciones'}
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        etapa.notificacionesActivas
+                          ? 'bg-green-100 hover:bg-green-200 text-green-600'
+                          : 'bg-gray-200 hover:bg-gray-300 text-gray-400'
+                      }`}
+                    >
+                      <Bell className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => iniciarEdicionSLA(etapa)}
+                      className="px-3 py-1.5 bg-white border-2 border-gray-300 hover:border-blue-500 text-gray-700 hover:text-blue-700 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                      Editar
+                    </button>
+                  </div>
                 </div>
-                {etapa.notificacionesActivas ? (
-                  <CheckCircle2 className="w-5 h-5 text-green-600" />
-                ) : (
-                  <X className="w-5 h-5 text-gray-400" />
-                )}
-              </div>
+              )}
             </div>
           ))}
         </div>
       </div>
 
-      {/* Reglas de transición */}
+      {/* ═══ FLUJO DE ETAPAS — Visual ═══ */}
       <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
         <h3 className="text-lg font-black text-gray-900 mb-4 flex items-center gap-2">
-          <Zap className="w-5 h-5 text-purple-600" />
-          Reglas de Transición Automática
+          <ChevronRight className="w-5 h-5 text-purple-600" />
+          Flujo de Etapas del Kanban
         </h3>
-        <div className="space-y-3">
-          {etapas.filter(e => e.reglaTransicionAutomatica).map((etapa) => (
-            <div key={etapa.id} className="border-2 border-purple-200 rounded-lg p-4 bg-purple-50">
-              <div className="flex items-start gap-3">
-                <Zap className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <div className="font-bold text-gray-900 mb-1">
-                    {etapa.nombre} → Siguiente etapa
-                  </div>
-                  <div className="text-sm text-gray-700">
-                    <strong>Condición:</strong> {etapa.condicionTransicion}
-                  </div>
+        <p className="text-sm text-gray-500 mb-4">
+          Las auditorías avanzan secuencialmente por estas etapas. El SLA define el tiempo máximo esperado en cada una.
+        </p>
+        <div className="flex items-center gap-2 overflow-x-auto pb-4">
+          {etapas.map((etapa, idx) => (
+            <div key={etapa.id} className="flex items-center gap-2 flex-shrink-0">
+              <div className="bg-white border-2 rounded-xl p-3 text-center min-w-[120px] shadow-sm"
+                   style={{ borderColor: etapa.color }}>
+                <div className="w-8 h-8 rounded-full mx-auto mb-1.5 flex items-center justify-center text-white font-bold text-sm"
+                     style={{ backgroundColor: etapa.color }}>
+                  {idx + 1}
                 </div>
+                <p className="text-xs font-bold text-gray-900">{etapa.nombre}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">{etapa.slaDias}d SLA</p>
               </div>
+              {idx < etapas.length - 1 && (
+                <ChevronRight className="w-5 h-5 text-gray-300 flex-shrink-0" />
+              )}
             </div>
           ))}
-          {etapas.filter(e => e.reglaTransicionAutomatica).length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              <Zap className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-              <p>No hay reglas de transición automática configuradas</p>
-            </div>
-          )}
+        </div>
+        <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
+          <span className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full bg-green-500" /> Dentro del SLA
+          </span>
+          <span className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full bg-yellow-500" /> Próximo a vencer
+          </span>
+          <span className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full bg-red-500" /> SLA vencido
+          </span>
         </div>
       </div>
 
-      {/* Límites WIP */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
-        <h3 className="text-lg font-black text-gray-900 mb-4 flex items-center gap-2">
-          <AlertTriangle className="w-5 h-5 text-yellow-600" />
-          Límites WIP (Work In Progress)
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          {etapas.map((etapa) => (
-            <div key={etapa.id} className="bg-gray-50 rounded-lg p-4 text-center">
-              <div className="text-3xl font-black text-blue-600 mb-1">
-                {etapa.limiteWIP === 999 ? '∞' : etapa.limiteWIP}
-              </div>
-              <div className="text-xs text-gray-600">{etapa.nombre}</div>
-            </div>
-          ))}
-        </div>
-        <div className="mt-4 bg-yellow-50 border-l-4 border-yellow-600 p-3 rounded">
-          <div className="flex items-start gap-2 text-sm text-yellow-800">
-            <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-            <p>
-              Los límites WIP ayudan a controlar la carga de trabajo y evitar cuellos de botella.
-              Cuando una columna alcanza su límite, se mostrará una alerta visual.
-            </p>
+      {/* ═══ INFO ═══ */}
+      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+        <div className="flex items-start gap-3">
+          <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-blue-800">
+            <strong>¿Cómo funciona el semáforo SLA?</strong>
+            <ul className="list-disc list-inside mt-2 space-y-1">
+              <li><strong>Verde:</strong> La auditoría está dentro del tiempo esperado (SLA)</li>
+              <li><strong>Amarillo:</strong> Faltan pocos días para vencer el SLA (según la alerta previa configurada)</li>
+              <li><strong>Rojo:</strong> El SLA ya venció — la auditoría ha excedido el tiempo esperado en esa etapa</li>
+              <li><strong>WIP:</strong> Cuando una columna alcanza su límite, se muestra una alerta visual en el tablero</li>
+            </ul>
           </div>
         </div>
       </div>

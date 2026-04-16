@@ -49,18 +49,40 @@ const TIPOS_AUTOS_DEFECTO: TipoAuto[] = [
 // Mapea el tipoAccion del formulario al valor `tipo` que espera el backend
 const mapTipoAccionToBackend = (tipoAccion: string, etapa: string): string => {
   switch (tipoAccion) {
+    case 'NORMAL':
+      return 'AUTO_NORMAL';
     case 'APERTURA':
-      if (etapa === 'INVESTIGACION') return 'AUTO_APERTURA_INVESTIGACION';
-      if (etapa === 'INDAGACION' || etapa === 'INDAGACION_PREVIA') return 'AUTO_APERTURA_INDAGACION';
-      return 'AUTO_APERTURA';
+      // Genera dinámicamente: AUTO_APERTURA_{NOMBRE_ETAPA}
+      const etapaNormalizada = etapa.toUpperCase().replace(/\s+/g, '_');
+      return `AUTO_APERTURA_${etapaNormalizada}`;
     case 'ARCHIVO':
       return 'AUTO_ARCHIVO';
     case 'PRORROGA':
       return 'AUTO_PRORROGA';
     case 'PLIEGO':
-      return 'PLIEGO_CARGOS';
+      return 'AUTO_FORMULACION_PLIEGO';
     default:
       return 'AUTO_NO_PREVISTO';
+  }
+};
+
+// Mapea el tipo del backend al tipoAccion del formulario
+const mapBackendToTipoAccion = (tipoBackend: string): TipoAccion => {
+  switch (tipoBackend) {
+    case 'AUTO_NORMAL':
+      return 'NORMAL';
+    case 'AUTO_ARCHIVO':
+      return 'ARCHIVO';
+    case 'AUTO_PRORROGA':
+      return 'PRORROGA';
+    case 'AUTO_FORMULACION_PLIEGO':
+      return 'PLIEGO';
+    default:
+      // Para tipos dinámicos de apertura: AUTO_APERTURA_*
+      if (tipoBackend.startsWith('AUTO_APERTURA_')) {
+        return 'APERTURA';
+      }
+      return 'NORMAL'; // fallback
   }
 };
 
@@ -321,7 +343,7 @@ export function ConfiguracionPlantillasAutos() {
             ),
           );
         } else {
-          await disciplinaryService.updateAutosConfiguration(tipoAutoEdicion.id, {
+          const response = await disciplinaryService.updateAutosConfiguration(tipoAutoEdicion.id, {
             nombre: nuevoTipo.nombre,
             stage: nuevoTipo.etapa,
             estado: nuevoTipo.activo ? 'activo' : 'inactivo',
@@ -336,9 +358,8 @@ export function ConfiguracionPlantillasAutos() {
           }
 
           await loadDatos();
+          toast.success(response.message || 'Tipo de auto actualizado correctamente');
         }
-
-        toast.success('Tipo de auto actualizado correctamente');
       } catch (error) {
         console.error('Error actualizando:', error);
         toast.error('Error al actualizar');
@@ -346,7 +367,7 @@ export function ConfiguracionPlantillasAutos() {
     } else {
       try {
         const tipoBackend = mapTipoAccionToBackend(nuevoTipo.tipoAccion, nuevoTipo.etapa);
-        const autoCreado = await disciplinaryService.createAutosConfiguration({
+        const response = await disciplinaryService.createAutosConfiguration({
           tipo: tipoBackend,
           nombre: nuevoTipo.nombre,
           estado: nuevoTipo.activo ? 'activo' : 'inactivo',
@@ -356,13 +377,13 @@ export function ConfiguracionPlantillasAutos() {
 
         if (nuevoTipo.plantillaFile) {
           await disciplinaryService.uploadAutoPlantilla(
-            autoCreado.id,
+            response.data.id,
             nuevoTipo.plantillaFile,
           );
         }
 
         await loadDatos();
-        toast.success('Tipo de auto creado correctamente');
+        toast.success(response.message || 'Tipo de auto creado correctamente');
       } catch (error) {
         console.error('Error creando:', error);
         const permitirFallbackLocal =
@@ -531,7 +552,7 @@ export function ConfiguracionPlantillasAutos() {
 
     if (auto && esAutoBackend(tipoAutoId)) {
       try {
-        await disciplinaryService.updateAutosConfiguration(tipoAutoId, {
+        const response = await disciplinaryService.updateAutosConfiguration(tipoAutoId, {
           nombre: auto.nombre,
           stage: auto.etapa,
           estado: auto.activo ? 'activo' : 'inactivo',
@@ -542,7 +563,7 @@ export function ConfiguracionPlantillasAutos() {
           estado_plantilla: plantilla?.activo !== false ? 'activo' : 'inactivo',
         });
         await loadDatos();
-        toast.success('Plantillas actualizadas correctamente');
+        toast.success(response.message || 'Plantillas actualizadas correctamente');
       } catch (error) {
         console.error('Error actualizando plantillas en BD:', error);
         setTiposAutos((prev) =>

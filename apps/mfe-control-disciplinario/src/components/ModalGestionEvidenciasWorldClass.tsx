@@ -261,7 +261,7 @@ export function ModalGestionEvidenciasWorldClass({
           {/* FILTROS POR CATEGORÍA */}
           {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
 
-          <div className="flex gap-2 flex-wrap">
+          {/* <div className="flex gap-2 flex-wrap">
             <Badge
               variant={categoriaFiltro === null ? 'default' : 'outline'}
               className="cursor-pointer hover:bg-gray-100"
@@ -279,13 +279,13 @@ export function ModalGestionEvidenciasWorldClass({
                 {cat.nombre}
               </Badge>
             ))}
-          </div>
+          </div> */}
 
           {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
           {/* LISTA DE EVIDENCIAS */}
           {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
 
-          <div className="space-y-3">
+          {/* <div className="space-y-3">
             {evidenciasFiltradas.length === 0 ? (
               <div className="text-center py-12">
                 <Archive className="w-16 h-16 mx-auto text-gray-300 mb-4" />
@@ -305,7 +305,7 @@ export function ModalGestionEvidenciasWorldClass({
                         <Archive className="w-5 h-5 text-orange-600" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        {/* Badge de Nomenclatura */}
+                        Badge de Nomenclatura
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <BadgeNomenclatura
                             nomenclatura={evidencia.nomenclatura}
@@ -365,7 +365,7 @@ export function ModalGestionEvidenciasWorldClass({
                 </Card>
               ))
             )}
-          </div>
+          </div> */}
         </div>
       </ResponsiveModal>
 

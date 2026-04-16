@@ -39,7 +39,8 @@ export interface ProcesoAuditable {
   nombre: string;
   descripcion: string;
   tipo: string;
-  macroproceso: string;
+  macroproceso?: string;
+  unidadesAuditables?: { id: string; nombre: string; descripcion?: string }[];
   responsable: string;
   dependencia: string;
   territorial?: string;
@@ -1662,6 +1663,10 @@ class ControlInternoService {
       descripcion?: string;
       tipoDocumento: string;
       etapa?: string;
+      /** ID de la etapa en etapa_kanban (estable si cambia el nombre) */
+      etapaKanbanId?: string;
+      /** Nombre de la etapa al momento de guardar (snapshot) */
+      etapaNombreKanban?: string;
       auditoriaId?: string;
       hallazgoId?: string;
       planMejoramientoId?: string;
@@ -1671,12 +1676,23 @@ class ControlInternoService {
     },
     onProgress?: (progress: number) => void
   ): Promise<any> {
+    console.log('🔍 [API SERVICE] ===== createDocumento =====');
+    console.log('🔍 [API SERVICE] metadata recibido:', metadata);
+    console.log('🔍 [API SERVICE] etapaKanbanId:', metadata.etapaKanbanId, 'tipo:', typeof metadata.etapaKanbanId);
+    console.log('🔍 [API SERVICE] etapaNombreKanban:', metadata.etapaNombreKanban, 'tipo:', typeof metadata.etapaNombreKanban);
+    
     const formData = new FormData();
     formData.append('file', file);
     formData.append('nombre', metadata.nombre);
     if (metadata.descripcion) formData.append('descripcion', metadata.descripcion);
     formData.append('tipoDocumento', metadata.tipoDocumento);
     if (metadata.etapa) formData.append('etapa', metadata.etapa);
+    
+    console.log('🔍 [API SERVICE] Añadiendo etapaKanbanId?', !!metadata.etapaKanbanId);
+    if (metadata.etapaKanbanId) formData.append('etapaKanbanId', metadata.etapaKanbanId);
+    
+    console.log('🔍 [API SERVICE] Añadiendo etapaNombreKanban?', !!metadata.etapaNombreKanban);
+    if (metadata.etapaNombreKanban) formData.append('etapaNombreKanban', metadata.etapaNombreKanban);
     if (metadata.auditoriaId) formData.append('auditoriaId', metadata.auditoriaId);
     if (metadata.hallazgoId) formData.append('hallazgoId', metadata.hallazgoId);
     if (metadata.planMejoramientoId) formData.append('planMejoramientoId', metadata.planMejoramientoId);

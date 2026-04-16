@@ -7,14 +7,14 @@ import {
   IsIn,
   Matches,
 } from 'class-validator';
-import { AutoType, AutoStatus } from '../entities/legal-auto.entity';
+import { AutoStatus } from '../entities/legal-auto.entity';
 
 export class CreateLegalAutoDto {
   @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   processId: string;
 
-  @IsEnum(AutoType)
-  tipoAuto: AutoType;
+  @IsString()
+  tipoAuto: string;
 
   @IsOptional()
   @IsString()

@@ -19,7 +19,7 @@ Esta es una plataforma de gestión para la comunidad ESAP, construida con una ar
 ## Requisitos
 
 - Docker y docker-compose instalados.
-- Node.js (v18+) si se despliega sin Docker.
+- Node.js (v22+) si se despliega sin Docker (requerido para `npm run dev:all`).
 - PostgreSQL y Redis si se despliega sin Docker.
 
 ## Instalación y Despliegue con Docker
@@ -31,7 +31,7 @@ Esta es una plataforma de gestión para la comunidad ESAP, construida con una ar
    - **Importante**: Configura las variables de autenticación Microsoft (`VITE_MICROSOFT_TENANT_ID` y `VITE_MICROSOFT_CLIENT_ID`) si usas autenticación OAuth. Sin estas variables, aparecerán advertencias pero la plataforma funcionará.
 3. Ejecuta `./deploy.local.sh up` para iniciar todos los servicios (incluyendo los 13 microfrontends).
 4. Verifica el estado con `docker-compose -f docker-compose.local.yml ps`.
-5. Accede al frontend enhttp://localhost:5173 y al API en http://localhost:3000.
+5. Accede al frontend en http://localhost:5173 y al API en http://localhost:3000.
 
 **Verificación del despliegue**:
 - Frontend: http://localhost:5173 (debería cargar la aplicación shell completa)
@@ -59,13 +59,18 @@ Esta es una plataforma de gestión para la comunidad ESAP, construida con una ar
 2. Configura la base de datos PostgreSQL con usuario `postgres` y contraseña `password`
 3. Inicia PostgreSQL y Redis localmente
 4. Inicia servicios backend:
-   - Ve a cada directorio en `backend/` y ejecuta `npm run start:dev`
-   - O usa un script personalizado para iniciar todos los servicios backend
+   - Opción A (recomendado): `npm run dev:backend` (inicia todos los microservicios en paralelo)
+   - Opción B: Ve a cada directorio en `backend/` y ejecuta `npm run start:dev`
+   - Para iniciar solo algunos: `npm run dev:backend -- --services=api-gateway,auth-service`
+   - Para ver nombres válidos: `npm run dev:backend -- --list-services`
 
 5. **Opción A: Despliegue completo de frontend (Recomendado)**
-   - Ejecuta `npm run dev:all` - inicia automáticamente todos los MFEs en puertos separados (3101-3112) y el shell en puerto 3000
-   - En equipos con menos RAM puedes iniciar solo un subconjunto: `npm run dev:all -- --apps=shell,mfe-control-interno,mfe-control-disciplinario`
-   - Para ver los nombres válidos: `npm run dev:all -- --list-apps`
+   - Ejecuta `npm run dev:all` - inicia el shell (Vite dev server) en puerto 3000 y deja cada MFE remoto servido en 3101-3112
+   - Por defecto, los MFEs remotos se construyen y quedan en modo watch (rebuild continuo). En portátiles con poca RAM/CPU puedes:
+     - Desactivar watch de remotos: `npm run dev:all -- --no-remote-watch`
+     - Mantener watch solo en algunos remotos: `npm run dev:all -- --watch-apps=mfe-control-disciplinario,mfe-reportes`
+   - Iniciar solo un subconjunto: `npm run dev:all -- --apps=shell,mfe-control-interno,mfe-control-disciplinario`
+   - Ver nombres válidos: `npm run dev:all -- --list-apps`
    - Accede al frontend en http://localhost:3000
 
 6. **Opción B: Solo shell (Limitado)**
@@ -74,7 +79,10 @@ Esta es una plataforma de gestión para la comunidad ESAP, construida con una ar
 
 ### Arquitectura de Desarrollo vs Producción
 
-- **Desarrollo Local**: Cada MFE corre en su propio servidor de desarrollo (puertos 3101-3112). El shell carga los MFEs remotamente via Module Federation.
+- **Desarrollo Local (`npm run dev:all`)**:
+  - Shell: corre con Vite en modo dev (HMR) en `http://localhost:3000`.
+  - Remotos: se compilan a `build/remotes/<mfe>/...` y se sirven en `http://localhost:3101-3112/remotes/<mfe>/...`.
+  - Watch de remotos: usa `vite build --watch` (puede consumir bastante RAM/CPU si se dejan todos los remotos vigilando).
 - **Docker/Producción**: Todos los MFEs se construyen estáticamente y se sirven a través de nginx gateway en el puerto principal.
 
 ### Puertos de Desarrollo
@@ -98,6 +106,8 @@ Esta es una plataforma de gestión para la comunidad ESAP, construida con una ar
 - `npm run dev`: Inicia solo el shell del frontend (puerto 3000). MFEs no disponibles.
 - `npm run dev:all`: Inicia todos los MFEs + shell. **Requiere Node.js v22+**.
 - `npm run dev:all -- --apps=<lista>`: Inicia solo los MFEs indicados, útil en Windows o equipos con poca memoria.
+- `npm run dev:all -- --no-remote-watch`: Sirve los MFEs remotos desde build/cache sin dejarlos en watch (menos consumo).
+- `npm run dev:all -- --watch-apps=<lista>`: Deja watch activo solo en los remotos indicados (menos consumo que vigilar todos).
 - `npm run dev:all -- --list-apps`: Lista los nombres válidos para `--apps`.
 - `npm run build`: Construye todos los MFEs y el shell para producción.
 - `npm run build:shell`: Construye solo el shell.
@@ -105,6 +115,9 @@ Esta es una plataforma de gestión para la comunidad ESAP, construida con una ar
 
 ### Backend
 - En cada directorio `backend/<servicio>/`: `npm run start:dev` para desarrollo
+- `npm run dev:backend`: Inicia todos los servicios de backend en paralelo.
+- `npm run dev:backend -- --services=<lista>`: Inicia solo los servicios indicados.
+- `npm run dev:backend -- --list-services`: Lista los nombres válidos para `--services`.
 
 ## Deploy rápido por ambiente
 
@@ -171,6 +184,7 @@ rebuild-mfe-select
 ### Native Development
 - **Node.js versión**: `npm run dev:all` requiere Node.js v22+. Si tienes versión anterior, actualiza o usa Docker.
 - **Windows / poca RAM**: Si aparece `fatal error: out of memory`, usa `npm run dev:all -- --apps=...` para cargar solo los MFEs necesarios.
+- **Portátiles con poca RAM (ej: 8GB)**: Para evitar que el equipo se caliente o se ponga lento, deja watch solo en los MFEs que estés editando: `npm run dev:all -- --watch-apps=mfe-control-disciplinario` (o desactívalo con `--no-remote-watch`).
 - **MFEs no cargan**: Asegúrate de usar `npm run dev:all`, no solo `npm run dev`. Los MFEs necesitan correr en puertos separados.
 - **Errores de Module Federation**: Verifica que todos los MFEs estén corriendo (puertos 3101-3112) antes de acceder al shell.
 - **Puertos ocupados**: Los MFEs usan puertos 3101-3112. Libera estos puertos si es necesario.

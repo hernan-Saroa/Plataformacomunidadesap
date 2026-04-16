@@ -11,13 +11,14 @@
  * @version 2.0
  */
 
-import React, { useState, useMemo } from 'react';
-import { Search, Plus, Filter, LayoutGrid, List, Download, FileText } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Search, Plus, Filter, LayoutGrid, List, Download, FileText, Loader2 } from 'lucide-react';
 import { KanbanColumn } from './KanbanColumn';
 import { type AuditoriaCardData } from './AuditoriaCard';
 import { type EstadoKanban } from '../utils/esapThemeOCI';
 import { ESAP_CLASSES } from '../utils/esapThemeOCI';
 import { toast } from 'sonner';
+import { useConfiguracionKanban } from '../services/useConfiguracionKanban';
 
 // ═════════════════════════════════════════════════════════════════════════
 // DATOS DE EJEMPLO
@@ -110,8 +111,23 @@ export function TableroKanbanOCI() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroTipo, setFiltroTipo] = useState<string>('todos');
   const [vista, setVista] = useState<'kanban' | 'lista'>('kanban');
+  
+  // ✅ Cargar etapas dinámicamente del backend
+  const { etapas, loading: loadingEtapas, cargarDatos } = useConfiguracionKanban();
+  
+  // Recargar etapas al montar el componente
+  useEffect(() => {
+    cargarDatos();
+  }, [cargarDatos]);
+  
+  // Filtrar y ordenar etapas visibles
+  const etapasVisibles = useMemo(() => {
+    return etapas
+      .filter(etapa => etapa.visible !== false)
+      .sort((a, b) => a.orden - b.orden);
+  }, [etapas]);
 
-  // Agrupar auditorías por estado
+  // Agrupar auditorías por estado dinámicamente
   const auditoriasPorEstado = useMemo(() => {
     let filtradas = auditorias;
 
@@ -131,15 +147,19 @@ export function TableroKanbanOCI() {
       filtradas = filtradas.filter((aud) => aud.tipo === filtroTipo);
     }
 
-    // Agrupar por estado
-    return {
-      backlog: filtradas.filter((a) => a.estado === 'backlog'),
-      planeacion: filtradas.filter((a) => a.estado === 'planeacion'),
-      ejecucion: filtradas.filter((a) => a.estado === 'ejecucion'),
-      comunicacion: filtradas.filter((a) => a.estado === 'comunicacion'),
-      cerrado: filtradas.filter((a) => a.estado === 'cerrado'),
-    };
-  }, [auditorias, busqueda, filtroTipo]);
+    // Agrupar por estado dinámicamente según etapas del backend
+    const agrupacion: Record<string, AuditoriaCardData[]> = {};
+    
+    etapasVisibles.forEach(etapa => {
+      // Normalizar el nombre de la etapa para matchear con el estado de las auditorías
+      const estadoNormalizado = etapa.nombre.toLowerCase().replace(/\s+/g, '');
+      agrupacion[etapa.nombre] = filtradas.filter(
+        (aud) => aud.estado.toLowerCase().replace(/\s+/g, '') === estadoNormalizado
+      );
+    });
+    
+    return agrupacion;
+  }, [auditorias, busqueda, filtroTipo, etapasVisibles]);
 
   // Handlers
   const handleNuevaAuditoria = () => {
@@ -291,53 +311,37 @@ export function TableroKanbanOCI() {
       {/* TABLERO KANBAN */}
       {vista === 'kanban' && (
         <div className="max-w-[1920px] mx-auto px-8 py-6">
-          <div className="flex gap-4 overflow-x-auto pb-4">
-            <KanbanColumn
-              estado="backlog"
-              titulo="BACKLOG"
-              count={auditoriasPorEstado.backlog.length}
-              auditorias={auditoriasPorEstado.backlog}
-              onAgregarNueva={handleNuevaAuditoria}
-              onOpenAuditoria={handleOpenAuditoria}
-              onDrop={handleDrop}
-            />
-
-            <KanbanColumn
-              estado="planeacion"
-              titulo="PLANEACIÓN"
-              count={auditoriasPorEstado.planeacion.length}
-              auditorias={auditoriasPorEstado.planeacion}
-              onOpenAuditoria={handleOpenAuditoria}
-              onDrop={handleDrop}
-            />
-
-            <KanbanColumn
-              estado="ejecucion"
-              titulo="EJECUCIÓN"
-              count={auditoriasPorEstado.ejecucion.length}
-              auditorias={auditoriasPorEstado.ejecucion}
-              onOpenAuditoria={handleOpenAuditoria}
-              onDrop={handleDrop}
-            />
-
-            <KanbanColumn
-              estado="comunicacion"
-              titulo="COMUNICACIÓN"
-              count={auditoriasPorEstado.comunicacion.length}
-              auditorias={auditoriasPorEstado.comunicacion}
-              onOpenAuditoria={handleOpenAuditoria}
-              onDrop={handleDrop}
-            />
-
-            <KanbanColumn
-              estado="cerrado"
-              titulo="CERRADO"
-              count={auditoriasPorEstado.cerrado.length}
-              auditorias={auditoriasPorEstado.cerrado}
-              onOpenAuditoria={handleOpenAuditoria}
-              onDrop={handleDrop}
-            />
-          </div>
+          {loadingEtapas ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-[#2874A6]" />
+              <span className="ml-3 text-gray-600">Cargando etapas del tablero...</span>
+            </div>
+          ) : etapasVisibles.length === 0 ? (
+            <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+              <p className="text-gray-600">No hay etapas configuradas en el tablero Kanban.</p>
+              <p className="text-sm text-gray-500 mt-2">Configure las etapas desde el módulo de Configuración.</p>
+            </div>
+          ) : (
+            <div className="flex gap-4 overflow-x-auto pb-4">
+              {etapasVisibles.map((etapa, index) => {
+                const auditoriasetapa = auditoriasPorEstado[etapa.nombre] || [];
+                const estadoNormalizado = etapa.nombre.toLowerCase().replace(/\s+/g, '') as EstadoKanban;
+                
+                return (
+                  <KanbanColumn
+                    key={etapa.id}
+                    estado={estadoNormalizado}
+                    titulo={etapa.nombre.toUpperCase()}
+                    count={auditoriasetapa.length}
+                    auditorias={auditoriasetapa}
+                    onAgregarNueva={index === 0 ? handleNuevaAuditoria : undefined}
+                    onOpenAuditoria={handleOpenAuditoria}
+                    onDrop={handleDrop}
+                  />
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

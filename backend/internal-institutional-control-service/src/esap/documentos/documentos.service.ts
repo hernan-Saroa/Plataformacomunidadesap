@@ -248,6 +248,8 @@ export class DocumentosService {
     if (updateDto.descripcion !== undefined) documento.descripcion = updateDto.descripcion;
     if (updateDto.tipoDocumento) documento.tipoDocumento = updateDto.tipoDocumento as TipoDocumento;
     if (updateDto.etapa !== undefined) documento.etapa = updateDto.etapa as EtapaDocumento;
+    if (updateDto.etapaKanbanId !== undefined) documento.etapaKanbanId = updateDto.etapaKanbanId;
+    if (updateDto.etapaNombreKanban !== undefined) documento.etapaNombreKanban = updateDto.etapaNombreKanban;
     if (updateDto.auditoriaId !== undefined) documento.auditoriaId = updateDto.auditoriaId;
     if (updateDto.hallazgoId !== undefined) documento.hallazgoId = updateDto.hallazgoId;
     if (updateDto.planMejoramientoId !== undefined) documento.planMejoramientoId = updateDto.planMejoramientoId;

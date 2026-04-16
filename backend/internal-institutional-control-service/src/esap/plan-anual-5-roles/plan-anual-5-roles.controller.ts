@@ -115,6 +115,17 @@ export class PlanAnual5RolesController {
     return this.service.update(id, updateDto, req.user?.userId);
   }
 
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_DELETE, CIP.PLAN_ANUAL_EDIT)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@Param('id') id: string, @Req() req: any) {
+    if (!id || id === 'undefined') {
+      throw new BadRequestException('id es requerido');
+    }
+    await this.service.remove(id, req.user?.userId);
+  }
+
   // Endpoint especial para aprobar - requiere permiso específico
   @Put(':id/aprobar')
   @UseGuards(JwtAuthGuard, PermissionsGuard)

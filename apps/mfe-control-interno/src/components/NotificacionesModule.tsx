@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { controlInternoService } from '../../../services/api/controlInternoService';
+import { HeaderSeccionConfig } from './HeaderSeccionConfig';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -657,28 +658,13 @@ export function NotificacionesModule() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* HEADER CON EXPLICACIÓN */}
+      {/* HEADER */}
       {/* ═══════════════════════════════════════════════════════════════ */}
-      <div className="bg-gradient-to-br from-blue-50 via-white to-blue-50 rounded-xl border-2 border-blue-200 p-6 mb-6">
-        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-          <div className="flex items-start gap-4">
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-3 rounded-xl">
-              <Settings className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-black text-gray-900 mb-2">
-                Configuración de Notificaciones
-              </h1>
-              <p className="text-sm sm:text-base text-gray-600 mb-4">
-                Configura qué eventos del sistema generan notificaciones automáticas
-              </p>
-
-              {/* Explicación clara */}
-              
-            </div>
-          </div>
-        </div>
-      </div>
+      <HeaderSeccionConfig
+        icon={<Settings className="w-full h-full" />}
+        titulo="Configuración de Notificaciones"
+        subtitulo="Configura qué eventos del sistema generan notificaciones automáticas"
+      />
 
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* ESTADÍSTICAS */}
@@ -895,22 +881,23 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
             {/* Toggle */}
             <button
               onClick={() => onToggle(evento.id)}
-              className={`relative w-14 h-7 rounded-full transition-all flex-shrink-0 ${
+              className={`relative inline-flex h-7 w-[52px] items-center rounded-full transition-colors flex-shrink-0 m-0 p-0 border-0 focus:outline-none ${
                 evento.activo ? 'bg-green-600' : 'bg-gray-300'
               }`}
               title={evento.activo ? 'Desactivar' : 'Activar'}
             >
-              <div
-                className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-transform flex items-center justify-center ${
-                  evento.activo ? 'translate-x-7' : 'translate-x-0'
+              <span className="sr-only">Toggle notification</span>
+              <span
+                className={`inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform duration-200 shadow-sm ${
+                  evento.activo ? 'translate-x-[28px]' : 'translate-x-[4px]'
                 }`}
               >
                 {evento.activo ? (
-                  <Play className="w-3 h-3 text-green-600" />
+                  <Play className="w-3 h-3 text-green-600 ml-0.5" strokeWidth={3} />
                 ) : (
-                  <Pause className="w-3 h-3 text-gray-400" />
+                  <Pause className="w-3 h-3 text-gray-400" strokeWidth={3} />
                 )}
-              </div>
+              </span>
             </button>
           </div>
 

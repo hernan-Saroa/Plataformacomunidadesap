@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   LayoutGrid, List, Plus, MoreVertical, Calendar, User, Clock,
   AlertCircle, CheckCircle, FileText, Eye, MessageSquare, History,
-  Filter, Search, ChevronDown, TrendingUp, Target, Shield,
+  Filter, Search, ChevronDown, TrendingUp, Target, Shield, Activity,
   Download, Columns3, ClipboardCheck, CheckSquare,
   Maximize2, Minimize2, RefreshCw, UserPlus, Send, FileDown, Archive, Trash2, Edit,
   ChevronsDown, ChevronsUp, Move, ChevronLeft, ChevronRight
@@ -67,6 +67,9 @@ import { useAuditoriasKanban, type AuditoriaKanban, type AuditorDisponible } fro
 
 // ✅ PERMISOS: Hook de control de acceso
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
+
+// ✅ CONFIGURACIÓN KANBAN: Context para aplicar config visual + SLA dinámico
+import { useKanbanConfig } from './context/KanbanConfigContext';
 
 // ============ TIPOS ============
 
@@ -876,13 +879,23 @@ function TarjetaAuditoria({
     })
   }));
 
+  // ✅ SEMÁFORO DINÁMICO: Calcular basado en SLA configurado en lugar de mock hardcodeado
+  const kanbanConfig = useKanbanConfig();
+
   const semaforoIndicator = {
     verde: { color: '#10B981', label: 'En término' },
     amarillo: { color: '#F59E0B', label: 'Próximo a vencer' },
     rojo: { color: '#DC2626', label: 'Vencido' }
   };
 
-  const semaforo = semaforoIndicator[auditoria.semaforo];
+  // Calcular días en etapa actual (usando fechaInicio como proxy)
+  const diasEnEtapa = auditoria.fechaInicio
+    ? Math.max(0, Math.ceil((Date.now() - new Date(auditoria.fechaInicio).getTime()) / (1000 * 60 * 60 * 24)))
+    : 0;
+  const semaforoCalculado = kanbanConfig.loaded
+    ? kanbanConfig.calcularSemaforoSLA(auditoria.estado, diasEnEtapa)
+    : (auditoria.semaforo || 'verde');
+  const semaforo = semaforoIndicator[semaforoCalculado];
   const mostrarBotonCrearPlan = puedeCrearPlan
     ? puedeCrearPlan(auditoria)
     : auditoria.estado === 'Comunicación' && auditoria.hallazgos > 0;
@@ -1320,7 +1333,7 @@ function TarjetaAuditoria({
             )}
 
             {/* Menú de Acciones Horizontales - CONDICIONAL SEGÚN ESTADO */}
-            <div className="flex items-center justify-between gap-1 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
+            <div className="grid grid-cols-3 gap-1 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
               {/* Cambiar estado - DESHABILITADO en Finalizada */}
               <button
                 onClick={(e) => {
@@ -1330,7 +1343,7 @@ function TarjetaAuditoria({
                   }
                 }}
                 disabled={auditoria.estado === 'Finalizada'}
-                className={`flex flex-col items-center gap-0.5 p-1 rounded transition-colors flex-1 ${
+                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
                   auditoria.estado === 'Finalizada' 
                     ? 'opacity-40 cursor-not-allowed' 
                     : 'hover:bg-white cursor-pointer'
@@ -1345,7 +1358,7 @@ function TarjetaAuditoria({
                 <span className="text-[9px] text-gray-600 font-medium">Estado</span>
               </button>
 
-              {/* Asignar auditor - SIEMPRE DISPONIBLE excepto Finalizada */}
+              {/* Asignar auditor */}
               {puedeAsignar && (
               <button
                 onClick={(e) => {
@@ -1355,7 +1368,7 @@ function TarjetaAuditoria({
                   }
                 }}
                 disabled={auditoria.estado === 'Finalizada'}
-                className={`flex flex-col items-center gap-0.5 p-1 rounded transition-colors flex-1 ${
+                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
                   auditoria.estado === 'Finalizada' 
                     ? 'opacity-40 cursor-not-allowed' 
                     : 'hover:bg-white cursor-pointer'
@@ -1381,7 +1394,7 @@ function TarjetaAuditoria({
                   }
                 }}
                 disabled={auditoria.estado !== 'Comunicación' && auditoria.estado !== 'Seguimiento'}
-                className={`flex flex-col items-center gap-0.5 p-1 rounded transition-colors flex-1 ${
+                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
                   auditoria.estado === 'Comunicación' || auditoria.estado === 'Seguimiento'
                     ? 'hover:bg-white cursor-pointer' 
                     : 'opacity-40 cursor-not-allowed'
@@ -1414,7 +1427,7 @@ function TarjetaAuditoria({
                   }
                 }}
                 disabled={auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual'}
-                className={`flex flex-col items-center gap-0.5 p-1 rounded transition-colors flex-1 ${
+                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
                   auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual'
                     ? 'hover:bg-white cursor-pointer' 
                     : 'opacity-40 cursor-not-allowed'
@@ -1443,7 +1456,7 @@ function TarjetaAuditoria({
                   }
                 }}
                 disabled={auditoria.estado !== 'Finalizada'}
-                className={`flex flex-col items-center gap-0.5 p-1 rounded transition-colors flex-1 ${
+                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
                   auditoria.estado === 'Finalizada' 
                     ? 'hover:bg-white cursor-pointer' 
                     : 'opacity-40 cursor-not-allowed'
@@ -1459,7 +1472,7 @@ function TarjetaAuditoria({
                 }`} />
                 <span className={`text-[9px] font-medium ${
                   auditoria.estado === 'Finalizada' ? 'text-orange-600' : 'text-gray-400'
-                }`}>Archiv</span>
+                }`}>Archivar</span>
               </button>
               )}
 
@@ -1473,7 +1486,7 @@ function TarjetaAuditoria({
                   }
                 }}
                 disabled={auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual'}
-                className={`flex flex-col items-center gap-0.5 p-1 rounded transition-colors flex-1 ${
+                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
                   auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual'
                     ? 'hover:bg-white cursor-pointer' 
                     : 'opacity-40 cursor-not-allowed'
@@ -1489,7 +1502,7 @@ function TarjetaAuditoria({
                 }`} />
                 <span className={`text-[9px] font-medium ${
                   auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual' ? 'text-red-600' : 'text-gray-400'
-                }`}>Elim</span>
+                }`}>Eliminar</span>
               </button>
               )}
             </div>
@@ -1591,6 +1604,10 @@ function ColumnaKanban({
       isOver: !!monitor.isOver()
     })
   }));
+
+  // ✅ Config visual + WIP
+  const kanbanConfig = useKanbanConfig();
+  const wipInfo = kanbanConfig.verificarWIP(columna.id, auditorias.length);
 
   // Contar auditorías por semáforo
   const auditoriasVerdes = auditorias.filter(a => a.semaforo === 'verde').length;
@@ -1712,7 +1729,7 @@ function ColumnaKanban({
   
   return (
     <div 
-      className="bg-white rounded-lg md:rounded-xl shadow-md md:shadow-lg border border-gray-200 md:border-2 mb-3 md:mb-0 flex flex-col w-full md:flex-1 md:min-w-[200px] md:max-w-[400px]"
+      className="bg-white rounded-lg md:rounded-xl shadow-md md:shadow-lg border border-gray-200 md:border-2 mb-3 md:mb-0 flex flex-col w-full md:flex-1 md:min-w-[264px] md:max-w-[528px]"
       style={{
         height: 'calc(100vh - 280px)',
         maxHeight: 'calc(100vh - 280px)'
@@ -1729,24 +1746,29 @@ function ColumnaKanban({
               </div>
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-black text-[11px] md:text-xs lg:text-sm xl:text-base text-gray-800 truncate leading-tight">
+              <h3 className="font-black text-[11px] md:text-xs lg:text-sm xl:text-base text-gray-800 leading-tight">
                 {columna.titulo}
               </h3>
-              {columna.diasEstimados && (
+              {columna.diasEstimados && kanbanConfig.config.mostrarTiempos && (
                 <p className="hidden md:flex text-[10px] lg:text-xs text-gray-500 items-center gap-1 mt-0.5">
                   <Clock className="w-2.5 h-2.5 lg:w-3 lg:h-3 flex-shrink-0" />
-                  <span className="truncate">{columna.diasEstimados} días</span>
+                  <span className="truncate">{columna.diasEstimados} días SLA</span>
                 </p>
               )}
             </div>
           </div>
 
-          {/* Badge + Botón Colapsar */}
+          {/* Badge + WIP + Botón Colapsar */}
           <div className="flex items-center gap-1 md:gap-1.5 lg:gap-2 flex-shrink-0">
-            <Badge className="font-semibold text-[10px] md:text-xs lg:text-sm px-1.5 md:px-2 py-0.5 md:py-1 bg-white border md:border-2 border-gray-200 text-gray-700">
-              {auditorias.length}
-            </Badge>
-            
+            {kanbanConfig.config.mostrarContadores && (
+              <Badge className={`font-semibold text-[10px] md:text-xs lg:text-sm px-1.5 md:px-2 py-0.5 md:py-1 ${
+                wipInfo.excede
+                  ? 'bg-red-100 border md:border-2 border-red-300 text-red-700'
+                  : 'bg-white border md:border-2 border-gray-200 text-gray-700'
+              }`}>
+                {auditorias.length}{wipInfo.limite < 999 ? `/${wipInfo.limite}` : ''}
+              </Badge>
+            )}
             {onToggleColapso && (
               <button
                 onClick={onToggleColapso}
@@ -1801,11 +1823,15 @@ function ColumnaKanban({
         </AnimatePresence>
 
         {auditorias.length === 0 && (
-          <Card className="p-6 border-dashed border-2 border-gray-200">
-            <p className="text-sm text-gray-400 text-center">
-              No hay auditorías en esta etapa
+          <div className="p-6 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-center" style={{ minHeight: '80px' }}>
+            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center mb-2">
+              <ClipboardCheck className="w-4 h-4 text-gray-300" />
+            </div>
+            <p className="text-xs text-gray-400 font-medium">
+              Sin auditorías en esta etapa
             </p>
-          </Card>
+            <p className="text-[10px] text-gray-300 mt-0.5">Arrastra tarjetas aquí</p>
+          </div>
         )}
       </div>
     </div>
@@ -1827,6 +1853,15 @@ export function GestionAuditoriasKanbanSimple() {
   const puedeAsignarAuditoria = puedeRealizar('auditorias', 'assign') || puedeRealizar('auditorias', 'edit');
   const puedeArchivarAuditoria = puedeRealizar('auditorias', 'edit');
   
+  // ✅ OBTENER USUARIO ACTUAL PARA FILTROS
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  useEffect(() => {
+    try {
+      const userDataStr = localStorage.getItem('esap_user_data');
+      if (userDataStr) setCurrentUser(JSON.parse(userDataStr));
+    } catch (e) {}
+  }, []);
+
   // ✅ HOOK BACKEND: Cargar auditorías y auditores desde el backend
   const {
     auditorias: auditoriasBackend,
@@ -1852,8 +1887,14 @@ export function GestionAuditoriasKanbanSimple() {
   // Estado local para auditorías (sincronizado con backend)
   const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
   const [vistaActiva, setVistaActiva] = useState<'kanban' | 'lista'>('kanban');
-  const [filtroTerritorial, setFiltroTerritorial] = useState<string>('Todas las Territoriales');
-  const [busqueda, setBusqueda] = useState('');
+  const [filtroTerritorial, setFiltroTerritorialRaw] = useState<string>(() => {
+    try { return sessionStorage.getItem('kanban_filtro_territorial') || 'Todas las Territoriales'; } catch { return 'Todas las Territoriales'; }
+  });
+  const [busqueda, setBusquedaRaw] = useState(() => {
+    try { return sessionStorage.getItem('kanban_busqueda') || ''; } catch { return ''; }
+  });
+  const setFiltroTerritorial = (v: string) => { setFiltroTerritorialRaw(v); try { sessionStorage.setItem('kanban_filtro_territorial', v); } catch {} };
+  const setBusqueda = (v: string) => { setBusquedaRaw(v); try { sessionStorage.setItem('kanban_busqueda', v); } catch {} };
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState<Auditoria | null>(null);
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [modalNotasOpen, setModalNotasOpen] = useState(false);
@@ -2190,7 +2231,24 @@ export function GestionAuditoriasKanbanSimple() {
     const cumpleBusqueda = aud.titulo.toLowerCase().includes(busqueda.toLowerCase()) ||
                            aud.codigo.toLowerCase().includes(busqueda.toLowerCase());
     const cumpleTerritorial = filtroTerritorial === 'Todas las Territoriales' || aud.territorial === filtroTerritorial;
-    return cumpleBusqueda && cumpleTerritorial;
+    
+    // ✅ FILTRO DE VISIBILIDAD DE USUARIO: Solo ve las suyas a menos que tenga permisos de análisis
+    let cumpleUsuario = true;
+    if (!puedeAprobarAuditoria && !puedeAsignarAuditoria) {
+      if (!currentUser) return false;
+      const currentName = currentUser.nombre || currentUser.nombres || '';
+      const currentDoc = String(currentUser.id || currentUser.idPersona || currentUser.documento || '');
+      
+      const isLider = aud.auditorLider?.numeroIdentificacion === currentDoc || 
+                      (aud.auditorLider?.nombre && currentName && aud.auditorLider.nombre.includes(currentName));
+      const isAsignado = aud.auditorAsignado?.numeroIdentificacion === currentDoc || 
+                         (aud.auditorAsignado?.nombre && currentName && aud.auditorAsignado.nombre.includes(currentName));
+      const isInEquipo = aud.equipoAuditores?.some(r => r.includes(currentName));
+      
+      cumpleUsuario = !!(isLider || isAsignado || isInEquipo);
+    }
+    
+    return cumpleBusqueda && cumpleTerritorial && cumpleUsuario;
   });
 
   // Colapsar todas las tarjetas
@@ -2916,10 +2974,23 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   // Eliminar individual - ACTUALIZADO
-  const handleEliminar = (auditoria: Auditoria) => {
-    setAuditoriaSeleccionada(auditoria);
-    setTipoAccionConfirmacion('eliminar');
-    setModalConfirmacionOpen(true);
+  const handleEliminar = async (auditoria: Auditoria) => {
+    const confirmado = window.confirm(
+      `¿Eliminar la auditoría ${auditoria.codigo}?\n\n` +
+      `"${auditoria.titulo}"\n\n` +
+      `⚠️ Esta acción no se puede deshacer.`
+    );
+    if (!confirmado) return;
+    try {
+      await eliminarAuditoriaBackend(auditoria.id);
+      setAuditorias(prev => prev.filter(a => a.id !== auditoria.id));
+      toast.success(`${auditoria.codigo} eliminada`, {
+        description: 'La auditoría ha sido eliminada permanentemente',
+        duration: 4000
+      });
+    } catch {
+      toast.error('No se pudo eliminar la auditoría');
+    }
   };
 
   // ============ INTEGRACIÓN: CREAR PLAN DE MEJORAMIENTO ============
@@ -3203,10 +3274,10 @@ export function GestionAuditoriasKanbanSimple() {
           <div className="flex flex-col gap-4">
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-3xl font-black leading-tight" style={{ color: '#F97316' }}>
+                <h2 className="text-base sm:text-lg font-black leading-tight" style={{ color: '#F97316' }}>
                   Auditorías OCI
                 </h2>
-                <p className="text-gray-600 mt-1">{auditoriasFiltradas.length} auditorías</p>
+                <p className="text-[11px] sm:text-xs text-gray-600 mt-0.5">{auditoriasFiltradas.length} auditorías</p>
               </div>
               <TooltipGuia {...TOOLTIPS_CONTROL_INTERNO['auditorias-kanban']} />
             </div>
@@ -3283,6 +3354,65 @@ export function GestionAuditoriasKanbanSimple() {
             </div>
           </div>
         </Card>
+
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        {/* KPIs EJECUTIVOS COMPACTOS                                    */}
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        {(() => {
+          const total = auditoriasFiltradas.length;
+          const enProgreso = auditoriasFiltradas.filter(a => 
+            ['Planeación', 'Ejecución', 'Comunicación', 'Seguimiento'].includes(a.estado)
+          ).length;
+          const finalizadas = auditoriasFiltradas.filter(a => a.estado === 'Finalizada').length;
+          const pctCumplimiento = total > 0 ? Math.round((finalizadas / total) * 100) : 0;
+          const conSLA = auditoriasFiltradas.filter(a => {
+            if (!a.fechaInicio || a.estado === 'Finalizada' || a.estado === 'Plan Anual') return false;
+            const dias = Math.floor((Date.now() - new Date(a.fechaInicio).getTime()) / 86400000);
+            const col = COLUMNAS_KANBAN.find(c => c.id === a.estado);
+            return col && dias > col.diasEstimados;
+          }).length;
+          
+          return (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                  <ClipboardCheck className="w-3.5 h-3.5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-lg font-black text-gray-900 leading-none">{total}</p>
+                  <p className="text-[10px] text-gray-500">Total auditorías</p>
+                </div>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+                  <Activity className="w-3.5 h-3.5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-lg font-black text-amber-700 leading-none">{enProgreso}</p>
+                  <p className="text-[10px] text-gray-500">En progreso</p>
+                </div>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+                  <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-lg font-black text-green-700 leading-none">{pctCumplimiento}%</p>
+                  <p className="text-[10px] text-gray-500">Cumplimiento</p>
+                </div>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${conSLA > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                  <AlertCircle className={`w-3.5 h-3.5 ${conSLA > 0 ? 'text-red-600' : 'text-gray-400'}`} />
+                </div>
+                <div>
+                  <p className={`text-lg font-black leading-none ${conSLA > 0 ? 'text-red-700' : 'text-gray-400'}`}>{conSLA}</p>
+                  <p className="text-[10px] text-gray-500">Fuera de SLA</p>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ACCIONES PRINCIPALES */}
         <div className="flex flex-wrap items-center justify-end gap-2" style={{ display: 'none' }}>
@@ -3528,12 +3658,12 @@ export function GestionAuditoriasKanbanSimple() {
                       flex-grow: 1;
                       flex-shrink: 1;
                       flex-basis: 0%;
-                      min-width: 240px;
+                      min-width: 264px;
                     }
                     
                     /* Asegurar min-width en columnas Kanban */
-                    .md\\:min-w-\\[240px\\] {
-                      min-width: 240px !important;
+                    .md\\:min-w-\\[264px\\] {
+                      min-width: 264px !important;
                     }
                   }
                   
@@ -4407,21 +4537,21 @@ export function GestionAuditoriasKanbanSimple() {
               setAuditoriaSeleccionada(null);
             }}
             onIniciar={async (auditoria) => {
-              // ✅ Conectar con backend para cambiar fase a "en-curso"
+              // ✅ Conectar con backend para cambiar fase a "Planeación" (primera fase)
               console.log('[onIniciar] Iniciando auditoría:', auditoria.id);
               
-              const exito = await cambiarFaseBackend(auditoria.id, 'en-curso');
+              const exito = await cambiarFaseBackend(auditoria.id, 'Planeación');
               
               if (exito) {
                 setModalInicioAuditoriaOpen(false);
                 setAuditoriaSeleccionada(null);
                 toast.success('✅ Auditoría iniciada exitosamente', {
-                  description: 'La auditoría ha pasado a fase de Ejecución'
+                  description: 'La auditoría ha pasado a fase de Planeación'
                 });
                 // Actualizar el estado local
                 setAuditorias(prev => prev.map(aud =>
                   aud.id === auditoria.id
-                    ? { ...aud, estado: 'Ejecución' }
+                    ? { ...aud, estado: 'Planeación' }
                     : aud
                 ));
                 // Recargar desde backend para sincronizar

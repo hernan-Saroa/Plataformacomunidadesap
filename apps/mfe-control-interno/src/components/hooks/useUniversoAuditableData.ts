@@ -55,6 +55,7 @@ export interface ProcesoAuditableUI {
   _dependencia?: string;
   _territorial?: string;
   _evaluacionRiesgo?: BackendProcesoAuditable['evaluacionRiesgo'];
+  _unidadesAuditables?: any[];
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -172,6 +173,7 @@ export function mapBackendToUI(proceso: BackendProcesoAuditable): ProcesoAuditab
     _dependencia: proceso.dependencia,
     _territorial: proceso.territorial,
     _evaluacionRiesgo: proceso.evaluacionRiesgo,
+    _unidadesAuditables: (proceso as any).unidadesAuditables || [],
   };
 }
 
@@ -382,8 +384,9 @@ export function useUniversoAuditableData(
     
     try {
       const backendProcesos = await controlInternoService.getProcesosAuditables(!incluirInactivos);
-      
+      console.log(`[useUniversoAuditableData] Fetched ${Array.isArray(backendProcesos) ? backendProcesos.length : 0} procesos (soloActivos=${!incluirInactivos})`);
       if (Array.isArray(backendProcesos) && backendProcesos.length > 0) {
+        console.log('[useUniversoAuditableData] Procesos:', backendProcesos.map((p: any) => `${p.codigo} - ${p.nombre}`));
         const mapped = backendProcesos.map(mapBackendToUI);
         setProcesos(mapped);
         setIsOnline(true);
@@ -405,7 +408,7 @@ export function useUniversoAuditableData(
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [incluirInactivos]);
 
   // ── Auto-fetch al montar ──
   useEffect(() => {

@@ -43,12 +43,13 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('plan.roles', 'roles')
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
+      .where("plan.estado != 'eliminado'")
       .orderBy('plan.año', 'DESC')
       .addOrderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC');
 
     if (year) {
-      query.where('plan.año = :year', { year });
+      query.andWhere('plan.año = :year', { year });
     }
 
     return query.getMany();
@@ -61,6 +62,7 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.id = :id', { id })
+      .andWhere("plan.estado != 'eliminado'")
       .orderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC')
       .getOne();
@@ -79,6 +81,7 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.año = :year', { year })
+      .andWhere("plan.estado != 'eliminado'")
       .orderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC')
       .getOne();
@@ -319,8 +322,8 @@ export class PlanAnual5RolesService {
       INSERT INTO control_interno.actividad_plan_anual_5 
       (rol_id, plan_id, nombre, descripcion, responsable, fecha_inicio, fecha_fin, estado, porcentaje_avance, observaciones, prioridad,
        control, evaluacion, seguimiento, requiere_verificacion_director, verificada_por_director, fecha_verificacion, observaciones_director, configuracion_evidencias,
-       puntos_control, frecuencia_puntos_control, responsables, fecha_corte, entradas_seguimiento)
-      VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, $20::jsonb, $21, $22::jsonb, $23::date, $24::jsonb)
+       puntos_control, frecuencia_puntos_control, responsables, fecha_corte, entradas_seguimiento, tareas_seguimiento)
+      VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, $20::jsonb, $21, $22::jsonb, $23::date, $24::jsonb, $25::jsonb)
       RETURNING *
     `;
     
@@ -352,6 +355,8 @@ export class PlanAnual5RolesService {
       createDto.fecha_corte || null,  // $23::date
       // ⚡ NUEVO: Entradas de seguimiento iniciales
       entradasSeguimientoStr,  // $24::jsonb
+      // ⚡ NUEVO: Tareas de seguimiento (sub-tareas)
+      JSON.stringify(createDto.tareas_seguimiento || []),  // $25::jsonb
     ]);
 
     const saved = result[0];
@@ -560,6 +565,13 @@ export class PlanAnual5RolesService {
       values.push(entradasStr);
       cambios.push({ campo: 'entradas_seguimiento', valorAnterior: '(array)', valorNuevo: `${((updateDto as any).entradas_seguimiento as any[]).length} entradas` });
     }
+    // Tareas de seguimiento (sub-tareas de la actividad)
+    if ((updateDto as any).tareas_seguimiento !== undefined) {
+      const tareasStr = JSON.stringify((updateDto as any).tareas_seguimiento);
+      updates.push(`tareas_seguimiento = $${paramIndex++}::jsonb`);
+      values.push(tareasStr);
+      cambios.push({ campo: 'tareas_seguimiento', valorAnterior: '(array)', valorNuevo: `${((updateDto as any).tareas_seguimiento as any[]).length} tareas` });
+    }
     // Puntos de control y responsables múltiples
     if (updateDto.puntos_control !== undefined) {
       updates.push(`puntos_control = $${paramIndex++}::jsonb`);
@@ -676,6 +688,38 @@ export class PlanAnual5RolesService {
       undefined,
       undefined,
       [{ campo: 'activo', valorAnterior: 'true', valorNuevo: 'false' }]
+    );
+  }
+
+  async remove(id: string, usuarioId?: string): Promise<void> {
+    const plan = await this.planRepository.findOne({
+      where: { id },
+      relations: ['roles', 'roles.actividades', 'roles.actividades.adjuntos'],
+    });
+
+    if (!plan) {
+      throw new NotFoundException(`Plan Anual con ID ${id} no encontrado`);
+    }
+
+    const vigenciaOriginal = plan.año;
+
+    // Soft delete release pattern
+    plan.estado = 'eliminado' as any;
+    // Liberar la vigencia para que el usuario pueda crear otro plan en el mismo año,
+    // garantizando que no choque con la restricción @Unique(['año']) de TypeORM
+    plan.año = -(Date.now() % 1000000000); 
+
+    await this.planRepository.save(plan);
+
+    // Dejar traza explícita e imborrable en el Módulo de Auditoría (Historial interno)
+    await this.registrarHistorial(
+      plan.id,
+      TipoEventoPlanAnual.CAMBIO_ESTADO,
+      'Eliminación de Plan Anual',
+      `El Plan Anual de Auditoría de la vigencia ${vigenciaOriginal} fue eliminado por el usuario. Eliminación lógica registrada por control de trazabilidad.`,
+      usuarioId || 1, 
+      JSON.stringify({ accion: 'SOFT_DELETE', vigenciaOriginal }),
+      'eliminado'
     );
   }
 

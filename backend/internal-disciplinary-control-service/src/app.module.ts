@@ -26,6 +26,7 @@ import { DisciplinaryProcessTask } from './entities/disciplinary-process-task.en
 import { DisciplinaryProcessNote } from './entities/disciplinary-process-note.entity';
 import { DisciplinaryNewsProcess } from './entities/disciplinary-news-process.entity';
 import { DisciplinaryProcessReassignmentRequest } from './entities/disciplinary-process-reassignment-request.entity';
+import { DisciplinaryBehavior } from './entities/disciplinary-behavior.entity';
 
 // Controllers
 import { NewsController } from './controllers/news.controller';
@@ -42,6 +43,7 @@ import { DisciplinaryProcessActuacionesController } from './controllers/discipli
 import { DisciplinaryProcessTasksController } from './controllers/disciplinary-process-tasks.controller';
 import { DisciplinaryProcessNotesController } from './controllers/disciplinary-process-notes.controller';
 import { DisciplinaryProcessReassignmentController } from './controllers/disciplinary-process-reassignment.controller';
+import { DisciplinaryBehaviorController } from './controllers/disciplinary-behavior.controller';
 
 // Services
 import { NewsService } from './services/news.service';
@@ -96,6 +98,7 @@ import { DisciplinaryProcessTasksService } from './services/disciplinary-process
 import { DisciplinaryProcessNotesService } from './services/disciplinary-process-notes.service';
 import { DisciplinaryProcessReassignmentService } from './services/disciplinary-process-reassignment.service';
 import { JuridicaEmailService } from './services/juridica-email.service';
+import { DisciplinaryBehaviorService } from './services/disciplinary-behavior.service';
 
 @Module({
   imports: [
@@ -135,6 +138,7 @@ import { JuridicaEmailService } from './services/juridica-email.service';
       DisciplinaryProcessTask,
       DisciplinaryProcessNote,
       DisciplinaryProcessReassignmentRequest,
+      DisciplinaryBehavior,
     ]),
   ],
   controllers: [
@@ -162,6 +166,7 @@ import { JuridicaEmailService } from './services/juridica-email.service';
     EntidadRemisionController,
     TipoRemisionController,
     DisciplinaryProcessReassignmentController,
+    DisciplinaryBehaviorController,
   ],
   providers: [
     AppService,
@@ -193,6 +198,7 @@ import { JuridicaEmailService } from './services/juridica-email.service';
     DisciplinaryProcessNotesService,
     DisciplinaryProcessReassignmentService,
     JuridicaEmailService,
+    DisciplinaryBehaviorService,
   ],
 })
 export class AppModule { }

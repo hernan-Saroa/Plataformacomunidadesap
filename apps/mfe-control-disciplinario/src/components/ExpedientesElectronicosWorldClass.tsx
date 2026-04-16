@@ -24,6 +24,7 @@ import { ModalSubirDocumento } from './ModalSubirDocumento';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { buildApiUrl, API_MODE } from '../../../config/environment';
 import { toast } from 'sonner';
+import * as mammoth from 'mammoth';
 
 // ============ INTERFACES ============
 
@@ -372,6 +373,7 @@ export function ExpedientesElectronicosWorldClass() {
   const [documentoParaVer, setDocumentoParaVer] = useState<Documento | null>(null);
   const [documentoUrl, setDocumentoUrl] = useState<string | null>(null);
   const [cargandoDocumento, setCargandoDocumento] = useState(false);
+  const [esDocumentoConvertido, setEsDocumentoConvertido] = useState(false);
   const [documentoParaEliminar, setDocumentoParaEliminar] = useState<Documento | null>(null);
   const [eliminandoDocumento, setEliminandoDocumento] = useState(false);
 
@@ -418,7 +420,12 @@ export function ExpedientesElectronicosWorldClass() {
         try {
           const docsResponse = await disciplinaryService.getDocumentosExpediente(proceso.id);
           if (docsResponse?.documentos) {
-            docsResponse.documentos.forEach((doc: any) => {
+            const documentosFiltrados = docsResponse.documentos.filter((doc: any) => {
+              const estadoAuto = doc.metadatos?.estado;
+              if (!estadoAuto) return true; // No es un auto digital, mostrar siempre
+              return ['APROBADO', 'FIRMADO', 'NOTIFICADO'].includes(estadoAuto);
+            });
+            documentosFiltrados.forEach((doc: any) => {
               // Mapear tipo de documento del backend
               const tipoMap: Record<string, string> = {
                 'auto': 'apertura',
@@ -1073,8 +1080,45 @@ export function ExpedientesElectronicosWorldClass() {
       }
       
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      setDocumentoUrl(url);
+
+      // Check if it's a DOCX file and convert to HTML for display
+      if (blob.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        const arrayBuffer = await blob.arrayBuffer();
+        try {
+          const result = await mammoth.convertToHtml({ arrayBuffer });
+          const htmlContent = result.value;
+          const docxHtml = `
+            <div style="font-family: Arial, sans-serif; padding: 20px; background: white; min-height: 100vh;">
+              <style>
+                .docx-content { max-width: 800px; margin: 0 auto; }
+                .docx-content p { margin-bottom: 10px; line-height: 1.5; }
+                .docx-content h1, .docx-content h2, .docx-content h3 { margin-top: 20px; margin-bottom: 10px; }
+                .docx-content ul, .docx-content ol { margin-left: 20px; }
+                .docx-content table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+                .docx-content td, .docx-content th { border: 1px solid #ddd; padding: 8px; }
+                .docx-content th { background-color: #f5f5f5; }
+              </style>
+              <div class="docx-content">
+                ${htmlContent}
+              </div>
+            </div>
+          `;
+          const htmlBlob = new Blob([docxHtml], { type: 'text/html' });
+          const url = window.URL.createObjectURL(htmlBlob);
+          setDocumentoUrl(url);
+          setEsDocumentoConvertido(true);
+        } catch (conversionError) {
+          console.error('Error converting DOCX to HTML:', conversionError);
+          // Fallback to original blob
+          const url = window.URL.createObjectURL(blob);
+          setDocumentoUrl(url);
+          setEsDocumentoConvertido(false);
+        }
+      } else {
+        const url = window.URL.createObjectURL(blob);
+        setDocumentoUrl(url);
+        setEsDocumentoConvertido(false);
+      }
       
       toast.info(`Abriendo ${getFileTypeDisplayName(doc.archivoAcceso)}...`);
     } catch (error: any) {
@@ -1692,7 +1736,7 @@ export function ExpedientesElectronicosWorldClass() {
 
       {/* ✅ MODAL: VISOR DE DOCUMENTOS - Showing documents in modal based on file type */}
       {showModalVisor && documentoParaVer && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4" onClick={() => { setShowModalVisor(false); setDocumentoUrl(null); }}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4" onClick={() => { setShowModalVisor(false); setDocumentoUrl(null); setEsDocumentoConvertido(false); }}>
           <motion.div 
             initial={{ scale: 0.9 }} 
             animate={{ scale: 1 }} 
@@ -1712,7 +1756,9 @@ export function ExpedientesElectronicosWorldClass() {
                   )}
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">{getFileTypeDisplayName(documentoParaVer.archivoAcceso)}</h3>
+                  <h3 className="text-sm font-bold text-white">
+                    {esDocumentoConvertido ? 'Documento Word (Convertido)' : getFileTypeDisplayName(documentoParaVer.archivoAcceso)}
+                  </h3>
                   <p className="text-xs text-blue-100">{documentoParaVer.descripcionPrincipal.substring(0, 60)}...</p>
                 </div>
               </div>
@@ -1727,7 +1773,7 @@ export function ExpedientesElectronicosWorldClass() {
                   </button>
                 )}
                 <button 
-                  onClick={() => { setShowModalVisor(false); setDocumentoUrl(null); }} 
+                  onClick={() => { setShowModalVisor(false); setDocumentoUrl(null); setEsDocumentoConvertido(false); }}
                   className="p-1.5 hover:bg-white/20 rounded-md"
                 >
                   <X className="w-4 h-4 text-white" />
@@ -1794,16 +1840,18 @@ export function ExpedientesElectronicosWorldClass() {
                   )}
                   
                   {/* HTML Viewer */}
-                  {getFileType(documentoParaVer.archivoAcceso) === 'html' && (
+                  {(getFileType(documentoParaVer.archivoAcceso) === 'html' || esDocumentoConvertido) && (
                     <iframe
                       src={documentoUrl}
-                      className="w-full h-full"
+                      className="w-full"
+                      style={{ height: '65vh', minHeight: '500px', border: 'none' }}
                       title="Visor HTML"
+                      sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
                     />
                   )}
-                  
+
                   {/* Document/Other - Show in iframe or offer download */}
-                  {['document', 'spreadsheet', 'other'].includes(getFileType(documentoParaVer.archivoAcceso)) && (
+                  {['document', 'spreadsheet', 'other'].includes(getFileType(documentoParaVer.archivoAcceso)) && !esDocumentoConvertido && (
                     <div className="flex flex-col items-center justify-center h-64 p-8">
                       <FileText className="w-16 h-16 text-gray-400 mb-4" />
                       <p className="text-lg font-semibold text-gray-700 mb-2">
@@ -1861,7 +1909,7 @@ export function ExpedientesElectronicosWorldClass() {
                   </button>
                 )}
                 <button
-                  onClick={() => { setShowModalVisor(false); setDocumentoUrl(null); }}
+                  onClick={() => { setShowModalVisor(false); setDocumentoUrl(null); setEsDocumentoConvertido(false); }}
                   className="px-4 py-2 bg-gray-500 text-white rounded-lg text-sm font-semibold hover:bg-gray-600"
                 >
                   Cerrar

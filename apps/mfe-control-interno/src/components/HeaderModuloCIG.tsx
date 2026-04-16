@@ -23,15 +23,15 @@ export function HeaderModuloCIG({
   accionesPersonalizadas 
 }: HeaderModuloCIGProps) {
   return (
-    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-2 sm:mb-4">
+    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
       <div className="flex-1">
         <h2 
-          className="font-black leading-tight text-xl sm:text-2xl"
+          className="font-black leading-tight text-base sm:text-lg"
           style={{ color: '#F97316' }}
         >
           {titulo}
         </h2>
-        <p className="text-xs sm:text-sm text-gray-600 mt-0.5">
+        <p className="text-[11px] sm:text-xs text-gray-600 mt-0.5">
           {subtitulo}
         </p>
       </div>

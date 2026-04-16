@@ -86,6 +86,8 @@ export interface ProcesoAuditable {
   tipoProceso: TipoProceso;
   tipoSede: 'Sede Principal' | 'Territorial';
   territorial?: string;
+  macroproceso?: string;
+  unidadesAuditables?: { id: string; nombre: string; descripcion?: string }[];
   responsableProceso: string;
   responsableProcesoId?: string;
   

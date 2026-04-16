@@ -364,6 +364,21 @@ export function ControlDisciplinarioFull() {
     });
   }, [borradores]);
 
+  const handleSendJuridica = useCallback(async (borradorId: string) => {
+    const borrador = borradores.find(b => b.id === borradorId);
+
+    // Remover el borrador de la lista ya que el proceso se cierra
+    setBorradores(prev => prev.filter(b => b.id !== borradorId));
+
+    setRevisionLog(prev => [...prev, {
+      borradorId,
+      procesoId: borrador?.numeroProceso || borradorId,
+      accion: 'enviado_juridica',
+      comentarios: 'Enviado a Oficina Jurídica - Proceso cerrado',
+      fecha: new Date().toISOString(),
+    }]);
+  }, [borradores]);
+
   // ✅ NUEVO: Handler para aprobar reasignación
   const handleAprobarReasignacion = useCallback(async (solicitudId: string, observaciones: string) => {
     try {
@@ -514,6 +529,7 @@ export function ControlDisciplinarioFull() {
           solicitudesReasignacion={solicitudesReasignacion}
           onAprobar={handleAprobarBorrador}
           onDevolver={handleDevolverBorrador}
+          onSendJuridica={handleSendJuridica}
           onAprobarReasignacion={handleAprobarReasignacion}
           onRechazarReasignacion={handleRechazarReasignacion}
         />

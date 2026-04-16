@@ -58,7 +58,7 @@ if %ERROR_COUNT% gtr 0 (
 )
 
 REM Verificar si PostgreSQL está disponible
-set "PSQL_PATH=C:\Program Files\PostgreSQL\18\bin\psql.exe"
+set "PSQL_PATH=C:\Program Files\PostgreSQL\17\bin\psql.exe"
 if not exist "%PSQL_PATH%" (
     echo Error: PostgreSQL no encontrado en %PSQL_PATH%
     echo Por favor instala PostgreSQL o ajusta la ruta en este script.

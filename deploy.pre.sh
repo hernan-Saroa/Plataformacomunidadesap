@@ -533,7 +533,9 @@ cmd_clean_safe() {
     docker system df
 
     docker container prune -f
-    docker image prune -f
+    # Elimina imágenes NO usadas (aunque estén "taggeadas").
+    # No borra imágenes en uso por contenedores en ejecución.
+    docker image prune -a -f
     docker builder prune -f --filter "until=168h"
     docker network prune -f
 
