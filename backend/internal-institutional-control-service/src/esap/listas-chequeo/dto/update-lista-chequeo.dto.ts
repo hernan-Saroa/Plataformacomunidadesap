@@ -88,4 +88,18 @@ export class UpdateListaChequeoDto {
   @IsOptional()
   @IsBoolean()
   faseSeguimiento?: boolean;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VINCULACIÓN CON ETAPA KANBAN DINÁMICA
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** ID de la etapa en la tabla etapa_kanban (estable aunque cambie el nombre) */
+  @IsOptional()
+  @IsUUID()
+  etapaKanbanId?: string;
+
+  /** Nombre de la etapa al momento de guardar (snapshot para display aunque cambie la config) */
+  @IsOptional()
+  @IsString()
+  etapaNombreKanban?: string;
 }

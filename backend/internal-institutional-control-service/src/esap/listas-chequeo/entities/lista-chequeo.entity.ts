@@ -181,6 +181,18 @@ export class ListaChequeo {
   @Column({ name: 'fase_seguimiento', type: 'boolean', default: false })
   faseSeguimiento: boolean;
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VINCULACIÓN CON ETAPA KANBAN DINÁMICA
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** ID de la etapa en la tabla etapa_kanban (estable aunque cambie el nombre) */
+  @Column({ name: 'etapa_kanban_id', type: 'uuid', nullable: true })
+  etapaKanbanId?: string;
+
+  /** Nombre de la etapa al momento de guardar (snapshot para display aunque cambie la config) */
+  @Column({ name: 'etapa_kanban_nombre', type: 'varchar', length: 255, nullable: true })
+  etapaNombreKanban?: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
