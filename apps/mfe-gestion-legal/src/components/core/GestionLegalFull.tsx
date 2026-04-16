@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { Toaster } from 'sonner';
 import {
   LayoutDashboard,
   Scale,
@@ -290,6 +291,8 @@ export function GestionLegalFull() {
   };
 
   return (
+    <>
+    <Toaster position="top-right" richColors />
     <ConfiguracionesSIGLProvider>
       <PermisosProvider>
         <ModuleLayout
@@ -306,5 +309,6 @@ export function GestionLegalFull() {
         </ModuleLayout>
       </PermisosProvider>
     </ConfiguracionesSIGLProvider>
+    </>
   );
 }
