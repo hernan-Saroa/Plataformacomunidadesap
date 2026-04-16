@@ -759,6 +759,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 onDescargarPDF={async () => {
                   if (!informePreliminar.generado) return;
                   const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+                  const { generarContenidoInformeIA, aplicarContenidoIA } = await import('./services/generarContenidoInformeIA');
                   const hallazgosParaPDF = (auditoria.hallazgos || []).map((h) => ({
                     codigo: h.codigo,
                     titulo: h.titulo,
@@ -769,40 +770,69 @@ export const ComunicacionAuditoriaModule: React.FC<{
                     efectos: h.efectos,
                     recomendaciones: h.recomendaciones,
                   }));
-                  await exportarPDFInformeAuditoria(
-                    'preliminar',
-                    {
-                      codigo: auditoria.codigo,
-                      nombre: auditoria.nombre,
-                      proceso: auditoria.proceso,
-                      auditorLider:
-                        typeof auditoria.auditorLider === 'string'
-                          ? auditoria.auditorLider
-                          : (auditoria as any).auditorLider?.nombre || 'No asignado',
-                      // Variables adicionales (opcionales)
-                      radicado: (auditoria as any).radicado,
-                      fechaOficio: informePreliminar.fecha,
-                      destinatarioNombre: (auditoria as any).responsable || (auditoria as any).responsableUnidad,
-                      destinatarioCargo: (auditoria as any).cargo || 'Director(a) Territorial',
-                      unidadAuditable: (auditoria as any).territorial || (auditoria as any).areaResponsable || auditoria.nombre,
-                      fechaLimitePronunciamiento: (auditoria as any).fechaLimitePronunciamiento,
-                      jefeOCI: (auditoria as any).jefeOCI,
-                      elaboro: typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre,
-                      tituloAuditoria: (auditoria as any).tituloAuditoria,
-                      responsableUnidadAuditada: (auditoria as any).responsable || (auditoria as any).responsableUnidad,
-                      lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).territorial,
-                      fechaEjecucionInicio: auditoria.fechaInicio,
-                      fechaEjecucionFin: auditoria.fechaFin,
-                      periodoAuditoria: auditoria.fechaInicio && auditoria.fechaFin ? `${auditoria.fechaInicio} al ${auditoria.fechaFin}` : undefined,
-                      equipoAuditor: (auditoria as any).equipoAuditores?.map((a: any) => ({ nombre: a.nombre || a, rol: a.rol })),
-                      objetivo: (auditoria as any).objetivo,
-                      alcance: (auditoria as any).alcance,
-                      marcoNormativo: (auditoria as any).marcoNormativo,
-                      contextoGeneral: (auditoria as any).contextoGeneral,
-                    },
-                    { ...informePreliminar, foliosAnexos: informePreliminar.hallazgos ? Math.max(10, informePreliminar.hallazgos * 3) : undefined },
-                    hallazgosParaPDF
-                  );
+
+                  // Datos base de la auditoría
+                  const auditoriaBase = {
+                    codigo: auditoria.codigo,
+                    nombre: auditoria.nombre,
+                    proceso: auditoria.proceso,
+                    auditorLider:
+                      typeof auditoria.auditorLider === 'string'
+                        ? auditoria.auditorLider
+                        : (auditoria as any).auditorLider?.nombre || 'No asignado',
+                    radicado: (auditoria as any).radicado,
+                    fechaOficio: informePreliminar.fecha,
+                    destinatarioNombre: (auditoria as any).responsable || (auditoria as any).responsableUnidad,
+                    destinatarioCargo: (auditoria as any).cargo || 'Director(a) Territorial',
+                    unidadAuditable: (auditoria as any).territorial || (auditoria as any).areaResponsable || auditoria.nombre,
+                    fechaLimitePronunciamiento: (auditoria as any).fechaLimitePronunciamiento,
+                    jefeOCI: (auditoria as any).jefeOCI,
+                    elaboro: typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre,
+                    tituloAuditoria: (auditoria as any).tituloAuditoria,
+                    responsableUnidadAuditada: (auditoria as any).responsable || (auditoria as any).responsableUnidad,
+                    lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).territorial,
+                    fechaEjecucionInicio: auditoria.fechaInicio,
+                    fechaEjecucionFin: auditoria.fechaFin,
+                    periodoAuditoria: auditoria.fechaInicio && auditoria.fechaFin ? `${auditoria.fechaInicio} al ${auditoria.fechaFin}` : undefined,
+                    equipoAuditor: (auditoria as any).equipoAuditores?.map((a: any) => ({ nombre: a.nombre || a, rol: a.rol })),
+                    // Campos opcionales del API (prioridad sobre generación IA)
+                    objetivo: (auditoria as any).objetivo,
+                    alcance: (auditoria as any).alcance,
+                    marcoNormativo: (auditoria as any).marcoNormativo,
+                    contextoGeneral: (auditoria as any).contextoGeneral,
+                    descripcionUnidad: (auditoria as any).descripcionUnidad,
+                    reuniones: (auditoria as any).reuniones,
+                    cartaRepresentacionFecha: (auditoria as any).cartaRepresentacionFecha,
+                    procesosAuditados: (auditoria as any).procesosAuditados,
+                    planesMejoramiento: (auditoria as any).planesMejoramiento,
+                    aspectosRelevantes: (auditoria as any).aspectosRelevantes,
+                    evaluacionControlInterno: (auditoria as any).evaluacionControlInterno,
+                    fortalezas: (auditoria as any).fortalezas,
+                    recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
+                  };
+
+                  // Generar contenido IA y aplicarlo (enriquece los campos vacíos)
+                  toast.loading('Generando contenido del informe...', { id: 'pdf-gen' });
+                  let auditoriaFinal = auditoriaBase;
+                  let informeFinal = { ...informePreliminar, foliosAnexos: informePreliminar.hallazgos ? Math.max(10, informePreliminar.hallazgos * 3) : undefined };
+                  try {
+                    const contenidoIA = await generarContenidoInformeIA(
+                      auditoriaBase,
+                      hallazgosParaPDF,
+                      (msg) => toast.loading(msg, { id: 'pdf-gen' })
+                    );
+                    auditoriaFinal = aplicarContenidoIA(auditoriaBase, contenidoIA);
+                    // Usar conclusiones generadas si no hay observaciones propias
+                    if (!informePreliminar.observaciones && contenidoIA.conclusiones) {
+                      informeFinal = { ...informeFinal, observaciones: contenidoIA.conclusiones };
+                    }
+                    toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen' });
+                  } catch {
+                    toast.dismiss('pdf-gen');
+                  }
+
+                  await exportarPDFInformeAuditoria('preliminar', auditoriaFinal, informeFinal, hallazgosParaPDF);
+                  toast.dismiss('pdf-gen');
                 }}
                 loading={loading}
                 puedeGenerar={!informePreliminar.generado}
@@ -2587,6 +2617,15 @@ const ModalPreviewInforme: React.FC<{
         alcance: (auditoria as any).alcance,
         marcoNormativo: (auditoria as any).marcoNormativo,
         contextoGeneral: (auditoria as any).contextoGeneral,
+        descripcionUnidad: (auditoria as any).descripcionUnidad,
+        reuniones: (auditoria as any).reuniones,
+        cartaRepresentacionFecha: (auditoria as any).cartaRepresentacionFecha,
+        procesosAuditados: (auditoria as any).procesosAuditados,
+        planesMejoramiento: (auditoria as any).planesMejoramiento,
+        aspectosRelevantes: (auditoria as any).aspectosRelevantes,
+        evaluacionControlInterno: (auditoria as any).evaluacionControlInterno,
+        fortalezas: (auditoria as any).fortalezas,
+        recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
       }),
     };
     const informeParaPDF = tipo === 'preliminar' && informe?.hallazgos
