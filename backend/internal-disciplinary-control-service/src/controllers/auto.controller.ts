@@ -195,7 +195,7 @@ export class AutoController {
   })
   async sendPliegoToJuridica(
     @Param('id') id: string,
-    @Query('enviadoPorId') enviadoPorId: string,
+    @Body('enviadoPorId') enviadoPorId: string,
   ): Promise<void> {
     if (!enviadoPorId) {
       throw new Error('enviadoPorId es requerido');
