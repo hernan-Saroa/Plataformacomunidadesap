@@ -6,6 +6,7 @@
 import { useState, useEffect, lazy, Suspense, type ComponentType } from 'react';
 import { SidebarPremium } from './SidebarPremium';
 import { TopBar } from './TopBar';
+import { PortalDashboard } from '../portal/PortalDashboard';
 
 // ✅ SIEMPRE IMPORTADOS (Core components)
 import { ProfileModal } from './ProfileModal';
@@ -93,6 +94,7 @@ const ControlInternoFull = lazyRemote(() => import('control_interno/Module'), ['
 const PortalTransaccionalUsuarioMD3 = lazy(() => import('./control-interno/PortalTransaccionalUsuarioMD3').then(m => ({ default: m.PortalTransaccionalUsuarioMD3 })));
 const ControlDisciplinarioFull = lazyRemote(() => import('control_disciplinario/Module'), ['ControlDisciplinarioFull']);
 const GestionLegalFull = lazyRemote(() => import('gestion_legal/Module'), ['GestionLegalFull']);
+const PTAModule = lazyRemote(() => import('pta/Module'), ['PTAModule', 'PTAKanbanModule']);
 const CertificadosLaboralesRouter = lazyRemote(() => import('certificados_laborales/Router'), ['CertificadosLaboralesRouter']);
 const EstructuraOrganizacionalModule = lazyRemote(() => import('estructura_org/Module'), ['EstructuraOrganizacionalModule']);
 const ProgramasAcademicosModule = lazyRemote(() => import('programas_academicos/Module'), ['ProgramasAcademicosModule']);
@@ -143,6 +145,7 @@ type ModuleView =
   | 'programas-academicos'
   | 'gestion-passwords'
   | 'demo-pta-motor'
+  | 'pta'
   | 'gestion-profesoral';
 
 interface BackofficeAppProps {
@@ -169,6 +172,21 @@ interface BackofficeAppProps {
   userRoles?: string[];
 }
 
+const ACADEMIC_ROLE_CODES = new Set(['ESTUDIANTE', 'DOCENTE', 'GRADUADO', 'ASPIRANTE']);
+const ACADEMIC_ROLE_LABELS = new Set(['Estudiante', 'Docente', 'Graduado', 'Aspirante']);
+
+function shouldUseAcademicLayout(userData: any, userRoles?: string[]) {
+  const roleCodes = Array.isArray(userData?.roles)
+    ? (userData.roles as unknown[]).map((r) => String(r))
+    : [];
+  const hasOnlyAcademicCodes = roleCodes.length > 0 && roleCodes.every((role) => ACADEMIC_ROLE_CODES.has(role));
+
+  const roleLabels = Array.isArray(userRoles) ? userRoles.map((r) => String(r)) : [];
+  const hasOnlyAcademicLabels = roleLabels.length > 0 && roleLabels.every((role) => ACADEMIC_ROLE_LABELS.has(role));
+
+  return hasOnlyAcademicCodes || hasOnlyAcademicLabels;
+}
+
 export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, usuario, userData, userRoles }: BackofficeAppProps = {}) {
   console.log('BackofficeApp', userData, userRoles)
   const currentUser = userData || {
@@ -177,11 +195,43 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     personId: usuario?.id || 'admin-001'
   };
   console.log('📋 Usuario actual:', userData?.module);
+
+  // Layout por rol: Docentes/Estudiantes (Portal) vs Administrativo (Backoffice)
+  if (shouldUseAcademicLayout(userData, userRoles)) {
+    const portalUserRoles = Array.isArray(userRoles) && userRoles.length > 0
+      ? userRoles
+      : (Array.isArray(userData?.roles) && userData.roles.length > 0
+        ? userData.roles
+          .map((role: any) => String(role))
+          .filter((role: string) => ACADEMIC_ROLE_CODES.has(role))
+          .map((role: string) => (role === 'DOCENTE' ? 'Docente' : role === 'ESTUDIANTE' ? 'Estudiante' : role === 'GRADUADO' ? 'Graduado' : 'Aspirante'))
+        : ['Estudiante']);
+
+    return (
+      <PortalDashboard
+        userName={currentUser.name}
+        userEmail={currentUser.email}
+        userPersonId={currentUser.personId}
+        userRoles={portalUserRoles}
+        hasBothSystemsAccess={!!userData?.hasBothSystemsAccess}
+        onSystemChange={onSystemChange}
+        userData={{
+          ...(userData && typeof userData === 'object' ? userData : {}),
+          rol_principal: portalUserRoles[0],
+          datos_por_rol: (userData && typeof userData === 'object' && 'datos_por_rol' in userData) ? (userData as any).datos_por_rol : {},
+        }}
+        onLogout={onLogout}
+      />
+    );
+  }
+
   const initialModule = userData?.module === 'control-interno' ? 'control-interno'
     : userData?.module === 'control-disciplinario' ? 'control-disciplinario'
       : userData?.module === 'registro-academico' ? 'graduates'
         : userData?.module === 'certificados-laborales' ? 'certificados-laborales'
           : userData?.module === 'gestion-legal' ? 'gestion-legal'
+            : userData?.module === 'pta' ? 'pta'
+              : userData?.module === 'pta-portal' ? 'pta'
             : userData?.module === 'procesos' ? 'control-interno'
               : userData?.module === 'graduates' ? 'graduates'
                 : userData?.module === 'carpeta-digital' ? 'carpeta-digital'
@@ -239,6 +289,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       'control-interno': 'control-interno',
       'control-disciplinario': 'control-disciplinario',
       'gestion-legal': 'gestion-legal',
+      'pta': 'pta',
       'gestion-passwords': 'gestion-passwords',
       'gestion-profesoral': 'gestion-profesoral'
     };
@@ -420,6 +471,26 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           <Suspense fallback={<ModuleLoader />}>
             <GestionLegalFull />
           </Suspense>
+        );
+
+      case 'pta':
+        return (
+          <div className="grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-6">
+            <aside className="hidden lg:block">
+              <div id="portal-left-sidebar-slot" className="space-y-5" />
+            </aside>
+            <div className="min-w-0">
+              <Suspense fallback={<ModuleLoader />}>
+                <PTAModule
+                  userPersonId={currentUser.personId}
+                  userName={currentUser.name}
+                  userEmail={currentUser.email}
+                  userRoles={userRoles || []}
+                  embedded
+                />
+              </Suspense>
+            </div>
+          </div>
         );
 
       case 'certificados-laborales':
