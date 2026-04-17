@@ -237,11 +237,11 @@ export async function exportarPDFInformeAuditoria(
   const doc: JsPDFType = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
-    format: 'letter',
+    format: 'a4',
   }) as unknown as JsPDFType;
 
   const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 20;
+  const margin = 15;
   const FOOTER_MARGIN = 40;
   const LH = 5;           // line height base
   const SEC = 6;          // space between sections
@@ -255,7 +255,7 @@ export async function exportarPDFInformeAuditoria(
   const añoActual = new Date().getFullYear();
 
   // ─── Derivar valores ────────────────────────────────────────────────────────
-  const radicado = auditoria.radicado || `I-${añoActual}-${auditoria.codigo.replace(/\D/g, '').slice(-6) || '000000'}`;
+  const radicado = auditoria.radicado || `I-${añoActual}-${auditoria.codigo?.replace(/\D/g, '').slice(-6) || '000000'}`;
   const fechaOficio = auditoria.fechaOficio || fechaStr;
   const cargoDest = auditoria.destinatarioCargo || 'Director(a) Territorial';
   // Si destinatarioNombre parece un ID (sin espacios y corto), usar cargo como nombre de display
@@ -273,35 +273,44 @@ export async function exportarPDFInformeAuditoria(
     ?? (hallazgosDetalle?.length || 0) * 2 + 10;
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // PÁGINA 1 — CARTA DE CUBIERTA (con encabezado y pie institucional)
+  // PÁGINA 1 — CARTA DE CUBIERTA (Estilo Oficio)
   // ═══════════════════════════════════════════════════════════════════════════
   if (tipo === 'preliminar') {
-    // Encabezado institucional EM-FO-003
-    let y = encabezadoInforme(doc) + 4;
+    const logoBase64 = await getLogoESAP();
+    
+    // Logo simple (sin tabla)
+    doc.addImage(logoBase64, 'PNG', margin, 15, 30, 30);
+    
+    // Pie de página (página 1)
     dibujarPieInstitucional(doc as any, 1, true);
 
-    // Bloque radicado / fecha (alineado a la derecha)
-    doc.setFontSize(9);
-    const boxW = 80;
+    // Bloque radicado / fecha (estilo redondeado y simplificado)
+    doc.setFontSize(8);
+    const boxW = 55;
+    const boxH = 14;
     const boxX = pageWidth - margin - boxW;
-    doc.setDrawColor(0, 0, 0);
-    doc.setLineWidth(0.3);
-    doc.rect(boxX, y - 2, boxW, 12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Radicado:', boxX + 2, y + 2);
+    const boxY = 20;
+    
+    doc.setDrawColor(120, 120, 120);
+    doc.setLineWidth(0.2);
+    // Rectángulo redondeado para el radicado
+    (doc as any).roundedRect(boxX, boxY, boxW, boxH, 3, 3);
+    
     doc.setFont('helvetica', 'normal');
-    doc.text(radicado, boxX + 22, y + 2);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Fecha:', boxX + 2, y + 7);
-    doc.setFont('helvetica', 'normal');
-    doc.text(fechaOficio, boxX + 16, y + 7);
-    y += 20;
+    doc.text(`Radicado: ${radicado}`, boxX + 3, boxY + 5);
+    doc.text(`Fecha: ${fechaOficio}`, boxX + 3, boxY + 10);
+    
+    let y = boxY + boxH + 20;
 
-    // Ciudad y fecha
-    doc.setFontSize(10);
+    // Código consecutivo (AUD-...) y Ciudad
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Bogotá, D.C., ${fechaOficio}`, margin, y);
-    y += 8;
+    if (auditoria.codigo) {
+      doc.text(auditoria.codigo, margin, y);
+      y += 5;
+    }
+    doc.text(`Bogotá, D.C.`, margin, y);
+    y += 12;
 
     // Destinatario — nombre siempre en MAYÚSCULAS negrita
     const nombreDestDisplay = destinatario === cargoDest ? '' : destinatario.toUpperCase();

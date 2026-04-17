@@ -39,6 +39,7 @@ export interface ContenidoInformeIA {
   fortalezas: string[];
   recomendacionesPorCategoria: Array<{ categoria: string; items: string[] }>;
   conclusiones: string;
+  paginas?: PaginaInformeIA[];
 }
 
 // ─── Prompt institucional ─────────────────────────────────────────────────────
@@ -195,7 +196,46 @@ function contenidoPorDefecto(
   const periodo = auditoria.periodoAuditoria || `vigencia ${año}`;
   const ini = auditoria.fechaEjecucionInicio || `enero ${año}`;
   const fin = auditoria.fechaEjecucionFin || `diciembre ${año}`;
-  const lugar = auditoria.lugarEjecucion || 'la sede territorial';
+  const lugar = auditoria.lugarEjecucion || 'Bogotá, D.C.';
+  const radicado = auditoria.radicado || `I-${año}-000000`;
+  const fechaHoy = new Date().toLocaleDateString('es-CO');
+  const destinatario = auditoria.destinatarioNombre || 'Director(a) Territorial';
+  const cargo = auditoria.destinatarioCargo || 'Director(a) Territorial';
+
+  const paginas: PaginaInformeIA[] = [];
+
+  // PÁGINA 1: OFICIO
+  paginas.push({
+    numero: 1,
+    tipo: 'OFICIO',
+    encabezado: 'ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP | OFICINA DE CONTROL INTERNO',
+    contenido: `
+      RADICADO:    ${radicado}
+      FECHA:       ${fechaHoy}
+      CONSECUTIVO: ${auditoria.codigo}
+      CIUDAD:      ${lugar}
+
+      Doctor(a)
+      ${destinatario.toUpperCase()}
+      ${cargo}
+      ESAP - ${unidad}
+      E. S. D.
+
+      ASUNTO: Informe Preliminar de Auditoría Interna de Evaluación y Seguimiento ${unidad} - ${periodo}.
+
+      Respetado(a) Doctor(a), reciba un cordial saludo:
+
+      La Oficina de Control Interno de la ESAP, en cumplimiento de las funciones asignadas por la Ley 87 de 1993 y el Plan Anual de Auditoría aprobado para el año ${año}, se permite remitir el Informe Preliminar de Auditoría de Evaluación y Seguimiento a los procesos de la ${unidad}, ejecutada entre el ${ini} y el ${fin}.
+
+      Al respecto, se informa que la unidad dispone de un plazo de cinco (5) días hábiles contados a partir del recibo de la presente comunicación, para que se pronuncie frente a los hallazgos identificados, allegando las evidencias que considere pertinentes para su desvirtuamiento o aclaración.
+
+      Cordialmente,
+
+      JEFE OFICINA DE CONTROL INTERNO
+      Escuela Superior de Administración Pública - ESAP
+    `,
+    piePagina: 'Informe Preliminar de Auditoría Interna - Página 1'
+  });
 
   const tieneHallazgos = hallazgos.length > 0;
 
@@ -951,6 +991,9 @@ export function aplicarContenidoIA(
     procesosAuditados:          realArr(auditoria.procesosAuditados,         contenido.procesosAuditados),
     fortalezas:                 realArr(auditoria.fortalezas,                contenido.fortalezas),
     recomendacionesPorCategoria: realArr(auditoria.recomendacionesPorCategoria, contenido.recomendacionesPorCategoria),
+    // @ts-ignore - Agregamos paginas al objeto auditoria para que lo use el PDF
+    paginas: contenido.paginas,
     // Las conclusiones van al campo observaciones del informe (se maneja en el componente)
+    paginas: paginas,
   };
 }
