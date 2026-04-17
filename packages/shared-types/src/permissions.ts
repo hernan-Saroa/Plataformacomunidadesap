@@ -178,6 +178,8 @@ export enum Permissions {
   CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_DELETE = 'control-disciplinario.configuraciones.cargo.delete',
   CONTROL_DISCIPLINARIO_CONFIGURACIONES_FIRMA_UPLOAD = 'control-disciplinario.configuraciones.firma.upload',
 
+  //--------------------------------------------------------------------------------------------------------------------------
+
   // Auditoría OCIG
   CONTROL_INTERNO_AUDITORIA_MANAGE = 'control-interno.auditoria.manage',
   CONTROL_INTERNO_AUDITORIA_VIEW = 'control-interno.auditoria.view',
