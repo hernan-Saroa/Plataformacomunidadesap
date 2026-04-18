@@ -285,6 +285,7 @@ export function ConfiguracionConductasDisciplinarias() {
               <Plus className="w-4 h-4" />
               Crear Primera Conducta
             </button>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-gray-200">

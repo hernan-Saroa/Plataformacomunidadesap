@@ -16,6 +16,8 @@ import {
 import { toast } from 'sonner';
 import { FlujoTerminosAlertas } from './FlujoTerminosAlertas';
 import disciplinaryService, { DisciplinaryProcess } from '../../../services/api/disciplinary.service';
+import { authService } from '../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 

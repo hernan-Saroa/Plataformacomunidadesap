@@ -4137,8 +4137,7 @@ export function ModalDetallesProceso({
                       );
 
                       if (!autoPliego) {
-                        return (
-                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE_PLIEGO) && (
+                        return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE_PLIEGO) ? (
                             <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#D97706', background: '#FFFBEB' }}>
                               <button
                                 onClick={() => setMostrarModalPliego(true)}
@@ -4152,13 +4151,11 @@ export function ModalDetallesProceso({
                                 Cierra el proceso y traslada a Oficina Jurídica
                               </p>
                             </div>
-                          )}
-                        );
+                        ) : null;
                       }
 
                       if (autoPliego.estado === 'borrador') {
-                        return (
-                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) && (
+                        return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) ? (
                             <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#7C3AED', background: '#F5F3FF' }}>
                               <button
                                 onClick={() => handleEnviarARevision(autoPliego)}
@@ -4172,8 +4169,7 @@ export function ModalDetallesProceso({
                                 Auto creado — envíalo al Jefe para aprobación
                               </p>
                             </div>
-                          )}
-                        );
+                        ) : null;
                       }
 
                       if (autoPliego.estado === 'en_revision') {
@@ -4195,8 +4191,7 @@ export function ModalDetallesProceso({
                       }
 
                       if (autoPliego.estado === 'aprobado') {
-                        return (
-                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) && (
+                        return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ? (
                             <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#2563EB', background: '#EFF6FF' }}>
                               <button
                                 onClick={() => setMostrarModalEnvioJuridica(true)}
@@ -4210,8 +4205,7 @@ export function ModalDetallesProceso({
                                 Auto aprobado — listo para enviar a Oficina Jurídica
                               </p>
                             </div>
-                          )}
-                        );
+                        ) : null;
                       }
 
                       return null;
@@ -6100,6 +6094,5 @@ export function ModalDetallesProceso({
     document.body
   );
 }
-
 
 
