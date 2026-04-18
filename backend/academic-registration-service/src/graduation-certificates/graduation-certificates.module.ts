@@ -13,6 +13,8 @@ import { GraduationCertificatesController } from './graduation-certificates.cont
 import { GraduatesController } from './graduates.controller';
 import { GraduationCertificatesService } from './graduation-certificates.service';
 import { PdfGeneratorService } from './pdf-generator.service';
+import { GraduateOracleIntegrationController } from './graduate-oracle-integration.controller';
+import { GraduateOracleIntegrationService } from './graduate-oracle-integration.service';
 
 @Module({
   imports: [
@@ -28,8 +30,16 @@ import { PdfGeneratorService } from './pdf-generator.service';
       GraduateFile,
     ]),
   ],
-  controllers: [GraduationCertificatesController, GraduatesController],
-  providers: [GraduationCertificatesService, PdfGeneratorService],
-  exports: [GraduationCertificatesService],
+  controllers: [
+    GraduationCertificatesController,
+    GraduatesController,
+    GraduateOracleIntegrationController,
+  ],
+  providers: [
+    GraduationCertificatesService,
+    PdfGeneratorService,
+    GraduateOracleIntegrationService,
+  ],
+  exports: [GraduationCertificatesService, GraduateOracleIntegrationService],
 })
 export class GraduationCertificatesModule {}
