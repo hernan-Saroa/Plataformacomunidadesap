@@ -335,6 +335,13 @@ export class UsersService {
     await this.userRepo.save(user);
   }
 
+  async setMicrosoftToken(userId: string, microsoftOid: string): Promise<void> {
+    await this.userRepo.update(
+      { id_user: userId },
+      { tokenMicrosoft: microsoftOid },
+    );
+  }
+
   async findAll(): Promise<User[]> {
     return this.userRepo.find({
       relations: ['person', 'person.seccional', 'person.seccional.ubicacion', 'person.sede', 'person.sede.geopolitica', 'roles']
