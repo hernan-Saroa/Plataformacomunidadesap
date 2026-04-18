@@ -40,142 +40,155 @@ services:
   frontend-shell:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.app
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
       args:
         <<: *frontend-build-args
         FRONTEND_APP_DIR: shell
         FRONTEND_DIST_DIR: /app/build
+        FRONTEND_PREBUILT_DIST_DIR: build
     container_name: superapp-frontend-shell${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
 
   frontend-mfe-estructura-org:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.app
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
       args:
         <<: *frontend-build-args
         FRONTEND_APP_DIR: mfe-estructura-org
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-estructura-org
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-estructura-org
     container_name: superapp-mfe-estructura-org${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
 
   frontend-mfe-gestion-profesoral:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.app
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
       args:
         <<: *frontend-build-args
         FRONTEND_APP_DIR: mfe-gestion-profesoral
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-gestion-profesoral
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-gestion-profesoral
     container_name: superapp-mfe-gestion-profesoral${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
 
   frontend-mfe-programas-academicos:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.app
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
       args:
         <<: *frontend-build-args
         FRONTEND_APP_DIR: mfe-programas-academicos
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-programas-academicos
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-programas-academicos
     container_name: superapp-mfe-programas-academicos${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
 
   frontend-mfe-gestion-personas:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.app
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
       args:
         <<: *frontend-build-args
         FRONTEND_APP_DIR: mfe-gestion-personas
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-gestion-personas
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-gestion-personas
     container_name: superapp-mfe-gestion-personas${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
 
   frontend-mfe-auditoria:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.app
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
       args:
         <<: *frontend-build-args
         FRONTEND_APP_DIR: mfe-auditoria
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-auditoria
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-auditoria
     container_name: superapp-mfe-auditoria${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
 
   frontend-mfe-reportes:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.app
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
       args:
         <<: *frontend-build-args
         FRONTEND_APP_DIR: mfe-reportes
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-reportes
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-reportes
     container_name: superapp-mfe-reportes${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
 
   frontend-mfe-registro-academico:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.app
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
       args:
         <<: *frontend-build-args
         FRONTEND_APP_DIR: mfe-registro-academico
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-registro-academico
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-registro-academico
     container_name: superapp-mfe-registro-academico${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
 
   frontend-mfe-certificados-laborales:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.app
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
       args:
         <<: *frontend-build-args
         FRONTEND_APP_DIR: mfe-certificados-laborales
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-certificados-laborales
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-certificados-laborales
     container_name: superapp-mfe-certificados-laborales${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
 
   frontend-mfe-firma-electronica:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.app
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
       args:
         <<: *frontend-build-args
         FRONTEND_APP_DIR: mfe-firma-electronica
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-firma-electronica
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-firma-electronica
     container_name: superapp-mfe-firma-electronica${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
 
   frontend-mfe-control-interno:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.app
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
       args:
         <<: *frontend-build-args
         FRONTEND_APP_DIR: mfe-control-interno
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-control-interno
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-control-interno
     container_name: superapp-mfe-control-interno${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
 
   frontend-mfe-control-disciplinario:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.app
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
       args:
         <<: *frontend-build-args
         FRONTEND_APP_DIR: mfe-control-disciplinario
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-control-disciplinario
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-control-disciplinario
     container_name: superapp-mfe-control-disciplinario${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
 
   frontend-mfe-gestion-legal:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.app
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
       args:
         <<: *frontend-build-args
         FRONTEND_APP_DIR: mfe-gestion-legal
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-gestion-legal
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-gestion-legal
     container_name: superapp-mfe-gestion-legal${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
