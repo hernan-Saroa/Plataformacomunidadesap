@@ -22,6 +22,14 @@ export class User {
   @Column({ type: 'numeric', precision: 6, scale: 0, nullable: true })
   token: string | null;
 
+  @Column({
+    name: 'token_microsoft',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  tokenMicrosoft: string | null;
+
   @CreateDateColumn()
   created_at: Date;
 

@@ -8,6 +8,16 @@ import { MicrosoftLoginDto } from './dto/microsoft-login.dto';
 import { NewPersonDto } from './dto/new-person.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
+interface MicrosoftIdTokenClaims {
+  aud?: string;
+  tid?: string;
+  oid?: string;
+  preferred_username?: string;
+  email?: string;
+  upn?: string;
+  name?: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -38,7 +48,6 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-
     return this.buildLoginResponse(user);
   }
 
@@ -48,7 +57,8 @@ export class AuthService {
       throw new UnauthorizedException('Solo se permiten cuentas institucionales @esap.edu.co');
     }
 
-    const tokenEmail = this.extractEmailFromMicrosoftToken(dto.idToken);
+    const claims = this.extractAndValidateMicrosoftClaims(dto.idToken);
+    const tokenEmail = this.extractEmailFromMicrosoftClaims(claims);
     if (!tokenEmail || tokenEmail !== email) {
       throw new UnauthorizedException('Token de Microsoft inválido');
     }
@@ -57,6 +67,8 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('El usuario no existe en la plataforma');
     }
+
+    await this.usersService.setMicrosoftToken(user.id_user, claims.oid);
 
     return this.buildLoginResponse(user);
   }
@@ -227,26 +239,107 @@ export class AuthService {
     };
   }
 
-  private extractEmailFromMicrosoftToken(idToken: string): string | null {
+  private extractAndValidateMicrosoftClaims(
+    idToken: string,
+  ): MicrosoftIdTokenClaims & { aud: string; tid: string; oid: string } {
+    const claims = this.decodeMicrosoftIdToken(idToken);
+    const expectedAudience = this.getRequiredEnvValue([
+      'MICROSOFT_CLIENT_ID',
+      'VITE_MICROSOFT_CLIENT_ID',
+      'AZURE_CLIENT_ID',
+    ]);
+    const expectedTenantId = this.getRequiredEnvValue([
+      'MICROSOFT_TENANT_ID',
+      'VITE_MICROSOFT_TENANT_ID',
+      'AZURE_TENANT_ID',
+    ]);
+
+    const tokenAudience = this.normalizeMicrosoftClaim(claims.aud);
+    const tokenTenantId = this.normalizeMicrosoftClaim(claims.tid);
+
+    if (tokenAudience !== expectedAudience) {
+      this.logger.warn('Microsoft login rechazado por audience inválido');
+      throw new UnauthorizedException('Token de Microsoft inválido');
+    }
+
+    if (tokenTenantId !== expectedTenantId) {
+      this.logger.warn('Microsoft login rechazado por tenant inválido');
+      throw new UnauthorizedException('Token de Microsoft inválido');
+    }
+
+    if (!claims.oid) {
+      this.logger.warn(
+        'Microsoft login rechazado porque el token no contiene oid',
+      );
+      throw new UnauthorizedException('Token de Microsoft inválido');
+    }
+
+    return {
+      ...claims,
+      aud: tokenAudience,
+      tid: tokenTenantId,
+      oid: claims.oid,
+    };
+  }
+
+  private decodeMicrosoftIdToken(idToken: string): MicrosoftIdTokenClaims {
     try {
       const [, payload] = idToken.split('.');
-      if (!payload) return null;
+      if (!payload) {
+        throw new UnauthorizedException('Token de Microsoft inválido');
+      }
 
       const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
-      const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+      const padded = normalized.padEnd(
+        Math.ceil(normalized.length / 4) * 4,
+        '=',
+      );
       const decoded = Buffer.from(padded, 'base64').toString('utf8');
       const parsed = JSON.parse(decoded) as Record<string, unknown>;
 
-      const email =
-        (typeof parsed.preferred_username === 'string' && parsed.preferred_username) ||
-        (typeof parsed.email === 'string' && parsed.email) ||
-        (typeof parsed.upn === 'string' && parsed.upn) ||
-        '';
-
-      return email.toLowerCase();
+      return {
+        aud: typeof parsed.aud === 'string' ? parsed.aud : undefined,
+        tid: typeof parsed.tid === 'string' ? parsed.tid : undefined,
+        oid: typeof parsed.oid === 'string' ? parsed.oid : undefined,
+        preferred_username:
+          typeof parsed.preferred_username === 'string'
+            ? parsed.preferred_username
+            : undefined,
+        email: typeof parsed.email === 'string' ? parsed.email : undefined,
+        upn: typeof parsed.upn === 'string' ? parsed.upn : undefined,
+        name: typeof parsed.name === 'string' ? parsed.name : undefined,
+      };
     } catch {
-      return null;
+      throw new UnauthorizedException('Token de Microsoft inválido');
     }
+  }
+
+  private extractEmailFromMicrosoftClaims(
+    claims: MicrosoftIdTokenClaims,
+  ): string | null {
+    const email = claims.preferred_username || claims.email || claims.upn || '';
+
+    return email ? email.toLowerCase() : null;
+  }
+
+  private getRequiredEnvValue(names: string[]): string {
+    for (const name of names) {
+      const value = this.normalizeMicrosoftClaim(process.env[name]);
+      if (value) return value;
+    }
+
+    throw new InternalServerErrorException(
+      `Falta configurar una de estas variables de entorno: ${names.join(', ')}`,
+    );
+  }
+
+  private normalizeMicrosoftClaim(value?: string): string {
+    return (
+      value
+        ?.trim()
+        .replace(/^["']|["']$/g, '')
+        .toLowerCase() || ''
+    );
   }
 
   private normalizeResetCode(value: unknown): string | null {
