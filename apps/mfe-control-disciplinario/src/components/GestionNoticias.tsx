@@ -1397,7 +1397,7 @@ export function GestionNoticias() {
             RF001 - Sistema de Radicación | RF002 - Revisión y Asignación
           </p>
         </div>
-        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE) && (
+        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CREATE) && (
         <Button
           onClick={() => setShowCreateModal(true)}
           className="flex items-center gap-2 w-full sm:w-auto"
@@ -1682,7 +1682,7 @@ export function GestionNoticias() {
                   </button>
 
                   {/* Botón Archivar */}
-                  {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE) && (
+                  {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR) && (
                     <button
                       onClick={() => {
                         setNoticiaSeleccionada(noticia);
@@ -1696,7 +1696,7 @@ export function GestionNoticias() {
                   )}
 
                   {/* Botón Remitir por Competencia - solo si NO ha sido remitido */}
-                  {(noticia.estado !== 'remitido') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR) && (
+                  {(noticia.estado !== 'remitido') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_REDIMIR) && (
                     <button
                       onClick={() => {
                         setNoticiaSeleccionada(noticia);
@@ -1728,7 +1728,7 @@ export function GestionNoticias() {
                       )}
 
                       {/* Asignar */}
-                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE) && (
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_ASIGNAR) && (
                       <button
                         onClick={() => {
                           setNoticiaSeleccionada(noticia);

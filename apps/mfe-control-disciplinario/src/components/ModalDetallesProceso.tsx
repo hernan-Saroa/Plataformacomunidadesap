@@ -25,6 +25,7 @@ import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
 import { ModalReasignarProfesional } from './ModalReasignarProfesional';
 import { ModalPliegoCargos } from './ModalPliegoCargos';
 import { authService } from '../../../services/api';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import {
   disciplinaryService,
   type CreateDisciplinaryProcessActuacionDto,
@@ -5154,11 +5155,13 @@ export function ModalDetallesProceso({
                       <span className="text-xs font-black text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
                         <Zap className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />Historial
                       </span>
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTUACIONES_CREATE) && (
                       <button onClick={() => setMostrarModalNuevaActuacion(true)}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white"
                         style={{ background: '#003DA5' }}>
                         <Plus className="w-3 h-3" />Nueva
                       </button>
+                      )}
                     </div>
 
                     {/* Filtro por etapa + toggle agrupado */}
@@ -5412,11 +5415,13 @@ export function ModalDetallesProceso({
                       <span className="text-xs font-black text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
                         <CheckSquare className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />Tareas
                       </span>
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_TAREAS_CREATE) && (
                       <button onClick={() => setMostrarModalNuevaTarea(true)}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white"
                         style={{ background: '#003DA5' }}>
                         <Plus className="w-3 h-3" />Nueva
                       </button>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-wrap mb-2">
@@ -5673,12 +5678,14 @@ export function ModalDetallesProceso({
                           <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
                           Visible solo dentro del expediente
                         </div>
+                        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_NOTAS_CREATE) && (
                         <button onClick={guardarNota} disabled={!notaTexto.trim() || creandoNota}
                           className="inline-flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-[1.01] shadow-[0_14px_30px_rgba(37,99,235,0.28)]"
                           style={{ background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)' }}>
                           {creandoNota ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                           {creandoNota ? 'Guardando...' : 'Guardar Nota'}
                         </button>
+                        )}
                       </div>
                     </motion.div>
 

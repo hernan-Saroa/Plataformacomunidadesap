@@ -4039,25 +4039,56 @@ export function DashboardKanbanOperativo({
         // Persistir restauración en el backend para noticias
         await disciplinaryService.restoreNews(item.id);
       } else {
-        // Para procesos, intentar usar el método del servicio, con fallback a fetch directo
-        try {
-          if (typeof disciplinaryService.restoreProcess === 'function') {
-            await disciplinaryService.restoreProcess(item.id);
-          } else {
-            // Fallback: usar fetch directo si el método no está disponible
-            // Nota: El endpoint puede no estar disponible si el backend no está corriendo
-            console.warn('El método restoreProcess no está disponible. El backend puede no estar corriendo.');
+        // Para procesos, llamar directamente al servicio disciplinario (bypass API gateway)
+        console.log('Restoring process:', item.id, 'Calling disciplinary service directly');
 
-            // Simular éxito para evitar que el usuario se bloquee
-            // En producción, esto debería mostrar un mensaje de error al usuario
-            console.log('Simulando restauración exitosa para proceso:', item.id);
+        try {
+          // Call disciplinary service directly on port 3005
+          const response = await fetch(`http://localhost:3005/disciplinary-processes/${item.id}/restore`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('esap_auth_token') || localStorage.getItem('esap_access_token') || ''}`,
+            },
+            body: JSON.stringify({}),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Direct service call failed:', response.status, errorText);
+            throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
           }
-        } catch (error) {
-          console.error('Error en restauración de proceso:', error);
-          // En lugar de lanzar el error, mostrar un mensaje informativo
-          toast.error('El servicio de backend no está disponible. La restauración se simulará localmente.');
+
+          const result = await response.json();
+          console.log('Restore successful:', result);
+        } catch (directError) {
+          console.error('Direct service call failed, trying gateway fallback:', directError);
+
+          // Fallback to gateway if direct call fails
+          try {
+            const gatewayResponse = await fetch(`/control-disciplinario/api/v1/disciplinary-processes/${item.id}/restore`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({}),
+            });
+            if (!gatewayResponse.ok) {
+              throw new Error(`Gateway error! status: ${gatewayResponse.status}`);
+            }
+          } catch (gatewayError) {
+            console.error('Both direct and gateway calls failed');
+            throw gatewayError;
+          }
         }
 
+        itemRestaurado.restaurado = true; // El backend ya lo actualizó, pero marcamos localmente
+      }
+          } catch (apiError) {
+            console.error('Direct API call failed:', apiError);
+            throw apiError;
+          }
+        }
         itemRestaurado.restaurado = true; // El backend ya lo actualizó, pero marcamos localmente
       }
 
@@ -5844,6 +5875,7 @@ export function DashboardKanbanOperativo({
                                 <Edit2 className="w-3.5 h-3.5 mr-2" />
                                 Editor
                               </Button>
+                              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_DOC_UPLOAD) && (
                               <Button
                                 onClick={() => {
                                   setModalActivo('subir-documentos');
@@ -5854,6 +5886,7 @@ export function DashboardKanbanOperativo({
                                 <Upload className="w-3.5 h-3.5 mr-2" />
                                 Subir Docs
                               </Button>
+                              )}
                             </div>
                           </div>
 

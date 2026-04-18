@@ -484,10 +484,6 @@ class DisciplinaryService {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/restore`, {});
     }
 
-    restoreProcess = async (id: string): Promise<any> => {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/restore`, {});
-    };
-
     /**
      * Obtiene las noticias asociadas a los procesos de un profesional específico
      */
@@ -1670,6 +1666,11 @@ class DisciplinaryService {
     async getReassignmentRequestsByProcess(processId: string): Promise<DisciplinaryProcessReassignmentRequest[]> {
         return apiClient.get<DisciplinaryProcessReassignmentRequest[]>(`${SERVICE_PREFIX}/disciplinary-process-reassignment/process/${processId}`);
     }
+
+    // Ensure restoreProcess is available
+    restoreProcess = async (id: string): Promise<any> => {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/restore`, {});
+    };
 
 }
 

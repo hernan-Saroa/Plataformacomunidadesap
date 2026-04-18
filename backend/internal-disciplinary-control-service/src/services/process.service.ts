@@ -1392,5 +1392,39 @@ export class ProcessService {
 
     return procesoOrigenActualizado;
   }
+
+  /**
+   * Restaura un proceso archivado al flujo activo
+   */
+  async restore(id: string): Promise<DisciplinaryProcess> {
+    const proceso = await this.processRepository.findOne({
+      where: { id },
+      relations: ['news'],
+    });
+
+    if (!proceso) {
+      throw new HttpException(
+        `Proceso con ID ${id} no encontrado. No se puede restaurar un proceso que no existe. Verifique que el ID sea correcto y que el proceso haya sido creado previamente.`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    // Verificar que el proceso esté archivado
+    if (proceso.estado !== ProcessStatus.ARCHIVADO) {
+      throw new HttpException(
+        `El proceso ${proceso.radicadoProceso} no está archivado (estado actual: ${proceso.estado}). Solo los procesos archivados pueden ser restaurados.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Cambiar estado a ACTIVO y marcar como restaurado
+    proceso.estado = ProcessStatus.ACTIVO;
+    proceso.restaurado = true;
+
+    // Nota: El historial de auditoría se maneja en el frontend o podría agregarse como campo JSON en el futuro
+    console.log(`Proceso ${proceso.radicadoProceso} restaurado al flujo activo desde estado archivado`);
+
+    return await this.processRepository.save(proceso);
+  }
 }
 

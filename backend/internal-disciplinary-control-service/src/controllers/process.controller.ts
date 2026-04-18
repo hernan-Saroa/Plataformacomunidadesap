@@ -1214,4 +1214,38 @@ export class ProcessController {
       );
     }
   }
+
+  /**
+   * Restaurar proceso archivado al flujo activo
+   */
+  @Patch(':id/restore')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Restaurar Proceso Archivado',
+    description: 'Restaura un proceso disciplinario archivado al flujo activo',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Proceso restaurado exitosamente',
+    type: DisciplinaryProcess,
+  })
+  @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
+  @ApiResponse({ status: 500, description: 'Error interno del servidor' })
+  async restore(@Param('id') id: string): Promise<DisciplinaryProcess> {
+    try {
+      console.log(`[ProcessController] Restaurando proceso con ID: ${id}`);
+      const result = await this.processService.restore(id);
+      console.log(`[ProcessController] Proceso restaurado exitosamente: ${result.id}`);
+      return result;
+    } catch (error) {
+      console.error(`[ProcessController] Error al restaurar proceso ${id}:`, error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Error al restaurar proceso: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }
