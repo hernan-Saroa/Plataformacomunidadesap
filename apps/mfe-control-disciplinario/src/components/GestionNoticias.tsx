@@ -1397,7 +1397,7 @@ export function GestionNoticias() {
             RF001 - Sistema de Radicación | RF002 - Revisión y Asignación
           </p>
         </div>
-        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CREATE) && (
+        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE) && (
         <Button
           onClick={() => setShowCreateModal(true)}
           className="flex items-center gap-2 w-full sm:w-auto"
@@ -1658,6 +1658,7 @@ export function GestionNoticias() {
 
                 <div className="flex flex-wrap gap-2">
                   {/* Botón Ver Historial */}
+                  {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTUACIONES_VIEW) && (
                   <button
                     onClick={() => {
                       setNoticiaSeleccionada(noticia);
@@ -1668,8 +1669,10 @@ export function GestionNoticias() {
                   >
                     <History className="w-4 h-4 text-purple-600" />
                   </button>
+                  )}
 
                   {/* Botón Ver Detalles */}
+                  {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DETAIL) && (
                   <button
                     onClick={() => {
                       setNoticiaSeleccionada(noticia);
@@ -1680,6 +1683,7 @@ export function GestionNoticias() {
                   >
                     <Eye className="w-4 h-4 text-gray-600" />
                   </button>
+                  )}
 
                   {/* Botón Archivar */}
                   {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR) && (
@@ -1696,7 +1700,7 @@ export function GestionNoticias() {
                   )}
 
                   {/* Botón Remitir por Competencia - solo si NO ha sido remitido */}
-                  {(noticia.estado !== 'remitido') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_REDIMIR) && (
+                  {(noticia.estado !== 'remitido') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR) && (
                     <button
                       onClick={() => {
                         setNoticiaSeleccionada(noticia);

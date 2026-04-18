@@ -25,6 +25,8 @@ import {
   CheckCircle, Phone, Mail, Briefcase,
   Scale, Clock, FileWarning, Download, Eye, Users, Gavel, Loader2
 } from 'lucide-react';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ═══════════════════════════════════════════════════════════════
 // TIPOS (extendidos para datos completos de creación)
@@ -508,22 +510,26 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => { onClose(); onEditar(n); }}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg border text-gray-700 hover:bg-gray-100 transition-all"
-              style={{ borderColor: '#003DA5', color: '#003DA5' }}
-            >
-              <FileEdit className="w-3.5 h-3.5" />
-              Editar
-            </button>
-            <button
-              onClick={() => { onClose(); onConvertir(n); }}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg text-white transition-all hover:opacity-90"
-              style={{ backgroundColor: '#003DA5' }}
-            >
-              <PlusCircle className="w-3.5 h-3.5" />
-              Convertir a Proceso
-            </button>
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT) && (
+              <button
+                onClick={() => { onClose(); onEditar(n); }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg border text-gray-700 hover:bg-gray-100 transition-all"
+                style={{ borderColor: '#003DA5', color: '#003DA5' }}
+              >
+                <FileEdit className="w-3.5 h-3.5" />
+                Editar
+              </button>
+            )}
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR) && (
+              <button
+                onClick={() => { onClose(); onConvertir(n); }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg text-white transition-all hover:opacity-90"
+                style={{ backgroundColor: '#003DA5' }}
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                Convertir a Proceso
+              </button>
+            )}
           </div>
         </div>
         </motion.div>

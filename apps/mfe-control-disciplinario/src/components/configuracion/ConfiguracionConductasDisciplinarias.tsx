@@ -24,6 +24,8 @@ import { toast } from 'sonner';
 
 // API
 import { disciplinaryService, DisciplinaryBehavior } from '../../../../shell/src/services/api/disciplinary.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // Tipos locales
 interface ConductaFormData {
@@ -257,6 +259,7 @@ export function ConfiguracionConductasDisciplinarias() {
           </p>
         </div>
 
+        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
         <button
           onClick={abrirModalCrear}
           className="flex items-center gap-2 px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#1e5da8]/90 transition-colors"
@@ -264,6 +267,7 @@ export function ConfiguracionConductasDisciplinarias() {
           <Plus className="w-4 h-4" />
           Nueva Conducta
         </button>
+        )}
       </div>
 
       {/* Lista de conductas */}
@@ -273,6 +277,7 @@ export function ConfiguracionConductasDisciplinarias() {
             <Shield className="w-12 h-12 mx-auto mb-4 text-gray-400" />
             <h4 className="text-lg font-medium text-gray-900 mb-2">No hay conductas configuradas</h4>
             <p className="text-gray-600 mb-4">Comienza creando tu primera conducta disciplinaria</p>
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
             <button
               onClick={abrirModalCrear}
               className="inline-flex items-center gap-2 px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#1e5da8]/90"
@@ -316,33 +321,39 @@ export function ConfiguracionConductasDisciplinarias() {
 
                   {/* Acciones */}
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => toggleEstadoConducta(conducta)}
-                      className={`p-2 rounded-lg transition-colors ${
-                        conducta.estado
-                          ? 'text-green-600 hover:bg-green-50'
-                          : 'text-gray-400 hover:bg-gray-50'
-                      }`}
-                      title={conducta.estado ? 'Desactivar conducta' : 'Activar conducta'}
-                    >
-                      {conducta.estado ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                    </button>
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
+                      <button
+                        onClick={() => toggleEstadoConducta(conducta)}
+                        className={`p-2 rounded-lg transition-colors ${
+                          conducta.estado
+                            ? 'text-green-600 hover:bg-green-50'
+                            : 'text-gray-400 hover:bg-gray-50'
+                        }`}
+                        title={conducta.estado ? 'Desactivar conducta' : 'Activar conducta'}
+                      >
+                        {conducta.estado ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                      </button>
+                    )}
 
-                    <button
-                      onClick={() => abrirModalEditar(conducta)}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="Editar conducta"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
+                      <button
+                        onClick={() => abrirModalEditar(conducta)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Editar conducta"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    )}
 
-                    <button
-                      onClick={() => eliminarConducta(conducta)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Eliminar conducta"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
+                      <button
+                        onClick={() => eliminarConducta(conducta)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Eliminar conducta"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

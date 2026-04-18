@@ -125,7 +125,13 @@ BEGIN
     (gen_random_uuid(), 'control-disciplinario.configuraciones.notificaciones.semaforo', 'Configuración / Notificaciones y Alertas / Parámetros de Alertas y Semáforo', 'Permite configurar el sistema de semáforo de avance de procesos', v_module_id, true),
     (gen_random_uuid(), 'control-disciplinario.configuraciones.notificaciones.guardar', 'Configuración / Notificaciones y Alertas / Guardar Cambios', 'Permite guardar los cambios de notificaciones y alertas', v_module_id, true),
     (gen_random_uuid(), 'control-disciplinario.configuraciones.prescripcion.edit', 'Configuración / Prescripción Disciplinaria', 'Permite modificar los años de prescripción de cada proceso', v_module_id, true),
-    (gen_random_uuid(), 'control-disciplinario.configuraciones.prescripcion.guardar', 'Configuración / Prescripción Disciplinaria / Guardar Cambios', 'Permite guardar el cambio de la prescripción disciplinaria', v_module_id, true)
+    (gen_random_uuid(), 'control-disciplinario.configuraciones.prescripcion.guardar', 'Configuración / Prescripción Disciplinaria / Guardar Cambios', 'Permite guardar el cambio de la prescripción disciplinaria', v_module_id, true),
+    (gen_random_uuid(), 'control-disciplinario.procesos.notas.delete', 'Eliminar Nota', 'Permite eliminar una nota del proceso disciplinario', v_module_id, true),
+    (gen_random_uuid(), 'control-disciplinario.procesos.create_pliego', 'Crear Pliego de Cargos', 'Permite generar el pliego de cargos de un proceso', v_module_id, true),
+    (gen_random_uuid(), 'control-disciplinario.procesos.files.send_to_review', 'Enviar Archivos a Revisión', 'Permite enviar documentos del proceso a revisión por parte del jefe', v_module_id, true),
+    (gen_random_uuid(), 'control-disciplinario.procesos.send_to_juridica', 'Remitir a Jurídica', 'Permite remitir el proceso a la oficina jurídica', v_module_id, true),
+    (gen_random_uuid(), 'control-disciplinario.procesos.files.upload', 'Cargar Archivos', 'Permite cargar archivos generales al proceso', v_module_id, true),
+    (gen_random_uuid(), 'control-disciplinario.procesos.tareas.edit', 'Editar Tareas', 'Permite editar información de las tareas asignadas', v_module_id, true)
   ON CONFLICT (code) DO UPDATE 
     SET name = EXCLUDED.name,
         description = EXCLUDED.description;
@@ -197,7 +203,8 @@ BEGIN
     'control-disciplinario.terminos.export_pdf',
     'control-disciplinario.profesionales.manage',
     'control-disciplinario.profesionales.view',
-    'control-disciplinario.profesionales.view_procesos'
+    'control-disciplinario.profesionales.view_procesos',
+    'control-disciplinario.procesos.files.upload'
   )
   ON CONFLICT (id_rol, id_permission) DO UPDATE SET is_active = true;
 
@@ -239,7 +246,11 @@ BEGIN
     'control-disciplinario.terminos.manage',
     'control-disciplinario.terminos.view',
     'control-disciplinario.terminos.view_mine',
-    'control-disciplinario.terminos.termino.finish'
+    'control-disciplinario.terminos.termino.finish',
+    'control-disciplinario.procesos.notas.delete',
+    'control-disciplinario.procesos.files.send_to_review',
+    'control-disciplinario.procesos.files.upload',
+    'control-disciplinario.procesos.tareas.edit'
   )
   ON CONFLICT (id_rol, id_permission) DO UPDATE SET is_active = true;
 

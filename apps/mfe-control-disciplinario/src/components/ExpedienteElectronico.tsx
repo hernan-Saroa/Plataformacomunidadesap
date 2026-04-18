@@ -11,7 +11,7 @@ import {
   AlertCircle, File, FileCheck, Search, Filter, X,
   ChevronDown, ChevronRight, Trash2, Edit2, ExternalLink,
   Archive, Folder, Shield, Key, Copy, Share2, FileSignature,
-  BarChart3, ZoomIn, RefreshCw, Package, Printer, Mail, Info, HelpCircle, Scale, Play
+  BarChart3, ZoomIn, RefreshCw, Package, Printer, Mail, Info, HelpCircle, Scale, Play, Lock
 } from 'lucide-react';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Button } from '@esap-mfe/shared-ui/button';
@@ -986,7 +986,7 @@ function ModalVisorDocumento({
             </div>
 
             {/* Botón Editar - Solo para Autos DIGITALES del sistema y si hay función de edición */}
-            {documento.tipo === 'auto' && documento.metadatos?.esAutoDigital && onEdit && (
+            {documento.tipo === 'auto' && documento.metadatos?.esAutoDigital && onEdit && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
               <button
                 onClick={() => onEdit(documento)}
                 className="p-2 mr-2 hover:bg-white/50 rounded-lg transition-colors text-blue-700 bg-blue-50 border border-blue-200 flex items-center gap-1"
@@ -1358,13 +1358,15 @@ function ModalVisorDocumento({
         {/* Footer - Botones condicionales según tipo de archivo */}
         < div className="p-6 border-t bg-gray-50 flex gap-3" >
           {/* Botón descargar siempre visible */}
-          <Button
-            onClick={handleDescargarVersion}
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Descargar Versión {versionSeleccionada}
-          </Button>
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPEDIENTE_ELECTRONICO_DOWNLOAD_DOC) && (
+            <Button
+              onClick={handleDescargarVersion}
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Descargar Versión {versionSeleccionada}
+            </Button>
+          )}
           {/* ✅ Botón ver/visualizar para TODOS los tipos de archivo con lógica condicional */}
           {(documento.urlExterna || (processId && documento.id)) && (
             <Button
@@ -1957,6 +1959,23 @@ interface ExpedienteElectronicoProps {
 }
 
 export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronicoProps = {}) {
+  const hasAccess = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE);
+
+  if (!hasAccess) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center bg-white rounded-2xl shadow-sm border m-8">
+        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+          <Lock className="w-8 h-8 text-red-600" />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Acceso Denegado</h2>
+        <p className="text-gray-600 max-w-md">
+          No tiene los permisos necesarios para acceder al módulo de expedientes electrónicos.
+          Por favor, contacte al administrador del sistema si cree que esto es un error.
+        </p>
+      </div>
+    );
+  }
+
   const [procesoSeleccionado, setProcesoSeleccionado] = useState<Proceso | null>(null);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -2734,14 +2753,16 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
             </div>
           </div>
 
-          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPEDIENTE_ELECTRONICO_DOWNLOAD_HOJA_CONTROL) && (
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE) && (
           <button
             onClick={handleExportarExpediente}
             className="px-5 py-2.5 rounded-lg text-white font-semibold hover:shadow-lg transition-all duration-200 flex items-center gap-2 hover:scale-105"
             style={{ background: '#DC2626' }}
             title="Descargar archivo ZIP con todos los expedientes del sistema"
           >
-            <Package className="w-5 h-5" />
+            <div className="w-5 h-5 flex items-center justify-center">
+              <Package className="w-5 h-5" />
+            </div>
             Exportar Todos (ZIP)
           </button>
           )}
@@ -2889,7 +2910,8 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
             <option value="acta">Actas</option>
             <option value="otro">Otros</option>
           </select>
-          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_DOC_UPLOAD) && (
+          {/* Botón Cargar Documento - Guardado por RBAC */}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPEDIENTE_ELECTRONICO_DOC_UPLOAD) && (
             <button
               onClick={() => setShowModalSeleccion(true)}
               className="px-4 py-2.5 rounded-lg text-white font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
@@ -3048,6 +3070,7 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
               <h2 className="text-xl font-bold" style={{ color: '#003DA5' }}>
                 Índice Electrónico del Expediente
               </h2>
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPEDIENTE_ELECTRONICO_DOWNLOAD_DOC) && (
               <button
                 onClick={handleImprimirIndice}
                 className="px-5 py-2.5 rounded-lg text-white font-semibold hover:shadow-lg transition-all duration-200 flex items-center gap-2 hover:scale-105"
@@ -3057,6 +3080,7 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
                 <Printer className="w-5 h-5" />
                 Imprimir Índice
               </button>
+              )}
             </div>
 
             <div className="overflow-x-auto">

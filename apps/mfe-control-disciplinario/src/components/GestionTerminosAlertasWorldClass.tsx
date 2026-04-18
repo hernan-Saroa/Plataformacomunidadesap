@@ -24,6 +24,8 @@ import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { WizardEnviarAlertas } from './WizardEnviarAlertas';
+import { authService } from '../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ============================================================================
 // INTERFACES
@@ -435,6 +437,7 @@ export function GestionTerminosAlertasWorldClass() {
           <div className="flex items-center gap-2">
             {vistaActual === 'terminos' && (
               <>
+                {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_ALERTAS_MANAGE) && (
                 <button
                   onClick={() => setMostrarWizardAlertas(true)}
                   className="px-4 py-2 rounded-xl font-semibold text-white flex items-center gap-2 hover:opacity-90 transition-all shadow-sm"
@@ -443,6 +446,7 @@ export function GestionTerminosAlertasWorldClass() {
                   <Zap className="w-4 h-4" />
                   <span className="hidden lg:inline">Enviar Alertas</span>
                 </button>
+                )}
                 <button
                   onClick={handleExportarPDF}
                   className="px-4 py-2 rounded-xl font-semibold border-2 flex items-center gap-2 hover:bg-gray-50 transition-colors"
@@ -453,7 +457,7 @@ export function GestionTerminosAlertasWorldClass() {
                 </button>
               </>
             )}
-            {vistaActual === 'terminos' && (
+            {vistaActual === 'terminos' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_ALERTAS_MANAGE) && (
               <button
                 onClick={() => setMostrarModalTermino(true)}
                 className="px-4 py-2 rounded-xl font-semibold text-white flex items-center gap-2 hover:opacity-90 transition-all shadow-sm"
