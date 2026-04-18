@@ -25,6 +25,8 @@ import {
   AlertDialogCancel,
 } from '@esap-mfe/shared-ui/alert-dialog';
 import { toast } from 'sonner';
+import { authService } from '../../../services/api';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 interface Persona {
   nombre: string;
@@ -196,6 +198,13 @@ export function SistemaComentarios({
       return;
     }
 
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_NOTAS_CREATE)) {
+      toast.error('No tienes permisos', {
+        description: 'No estás autorizado para crear notas en este proceso'
+      });
+      return;
+    }
+
     const archivosGrandes = archivosAdjuntos.filter((file) => file.size > MAX_FILE_SIZE);
     if (archivosGrandes.length > 0) {
       toast.error('Archivo demasiado grande', {
@@ -258,6 +267,13 @@ export function SistemaComentarios({
 
 
   const handleEliminarComentario = async (id: string) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_NOTES_DELETE)) {
+      toast.error('No tienes permisos', {
+        description: 'No estás autorizado para eliminar notas'
+      });
+      return;
+    }
+
     try {
       await legalService.deleteComentarioExpediente(id);
       setComentarios(comentarios.filter(c => c.id !== id));
@@ -521,6 +537,7 @@ export function SistemaComentarios({
             </button>
           </div>
 
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_NOTAS_CREATE) && (
           <button
             onClick={handleAgregarComentario}
             disabled={!nuevoComentario.trim()}
@@ -530,6 +547,7 @@ export function SistemaComentarios({
             <Send className="w-4 h-4" />
             Enviar
           </button>
+          )}
         </div>
 
         {/* Ayuda */}
@@ -662,6 +680,7 @@ function ComentarioItem({
             >
               <Pin className="w-3.5 h-3.5" />
             </Button>
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_NOTES_DELETE) && (
             <Button
               type="button"
               size="sm"
@@ -671,6 +690,7 @@ function ComentarioItem({
             >
               <Trash2 className="w-3.5 h-3.5" />
             </Button>
+            )}
           </div>
         </div>
 

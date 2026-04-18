@@ -467,7 +467,13 @@ export function RevisionAprobacionJefe({
                     esActivo ? 'hover:shadow-lg cursor-pointer hover:border-blue-300' : 'opacity-75'
                   }`}
                   style={{ borderColor: esActivo ? '#E5E7EB' : '#F3F4F6' }}
-                  onClick={() => esActivo && setBorradorSeleccionado(borrador)}
+                  onClick={() => {
+                    if (esActivo && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_MANAGE)) {
+                      setBorradorSeleccionado(borrador);
+                    } else if (esActivo) {
+                      toast.error('No tiene permisos para revisar borradores');
+                    }
+                  }}
                 >
                   <div className="flex items-start gap-3">
                     {/* Avatar */}
@@ -554,7 +560,11 @@ export function RevisionAprobacionJefe({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setBorradorEnvioJuridica(borrador);
+                              if (authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR)) {
+                                setBorradorEnvioJuridica(borrador);
+                              } else {
+                                toast.error('No tiene permisos para realizar envíos a jurídica');
+                              }
                             }}
                             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
                             style={{ background: '#10B981', color: 'white' }}
@@ -598,7 +608,13 @@ export function RevisionAprobacionJefe({
                       esActiva ? 'hover:shadow-lg cursor-pointer hover:border-blue-300' : 'opacity-75'
                     }`}
                     style={{ borderColor: esActiva ? '#E5E7EB' : '#F3F4F6' }}
-                    onClick={() => esActiva && setSolicitudSeleccionada(solicitud)}
+                    onClick={() => {
+                      if (esActiva && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION_APPROVE)) {
+                        setSolicitudSeleccionada(solicitud);
+                      } else if (esActiva) {
+                        toast.error('No tiene permisos para revisar solicitudes de reasignación');
+                      }
+                    }}
                   >
                     <div className="flex items-start gap-3">
                       {/* Avatar del profesional actual */}
@@ -905,26 +921,30 @@ export function RevisionAprobacionJefe({
               {/* Solo mostrar botones de acción si está pendiente */}
               {solicitudSeleccionada.estado === 'pendiente' && (
                 <div className="flex gap-3 pt-4 border-t">
-                  <button
-                    onClick={() => {
-                      onAprobarReasignacion?.(solicitudSeleccionada.id, '');
-                      setSolicitudSeleccionada(null);
-                    }}
-                    className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    Aprobar Reasignación
-                  </button>
-                  <button
-                    onClick={() => {
-                      onRechazarReasignacion?.(solicitudSeleccionada.id, 'Rechazado por el jefe');
-                      setSolicitudSeleccionada(null);
-                    }}
-                    className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <XIcon className="w-4 h-4" />
-                    Rechazar Reasignación
-                  </button>
+                  {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION_APPROVE) && (
+                    <button
+                      onClick={() => {
+                        onAprobarReasignacion?.(solicitudSeleccionada.id, '');
+                        setSolicitudSeleccionada(null);
+                      }}
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      Aprobar Reasignación
+                    </button>
+                  )}
+                  {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION_APPROVE) && (
+                    <button
+                      onClick={() => {
+                        onRechazarReasignacion?.(solicitudSeleccionada.id, 'Rechazado por el jefe');
+                        setSolicitudSeleccionada(null);
+                      }}
+                      className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <XIcon className="w-4 h-4" />
+                      Rechazar Reasignación
+                    </button>
+                  )}
                 </div>
               )}
               

@@ -699,6 +699,7 @@ export function GestionTerminosAlertas() {
           </div>
 
           <div className="flex items-center gap-2">
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_TERMS_EDIT) && (
             <button
               onClick={handleRecalcular}
               className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all text-xs sm:text-sm font-bold flex items-center gap-2"
@@ -706,7 +707,8 @@ export function GestionTerminosAlertas() {
               <RefreshCw className="w-4 h-4" />
               <span className="hidden sm:inline">Recalcular</span>
             </button>
-            {vistaActual === 'terminos' && (
+            )}
+            {vistaActual === 'terminos' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_TERMS_EDIT) && (
               <button
                 onClick={() => setShowModalNuevoTermino(true)}
                 className="px-3 py-2 rounded-lg text-white font-bold hover:shadow-lg transition-all text-xs sm:text-sm flex items-center gap-2"
@@ -750,20 +752,24 @@ export function GestionTerminosAlertas() {
                   <option value="vencido">🔴 Vencido</option>
                   <option value="cumplido">✅ Cumplido</option>
                 </select>
-                <button
-                  onClick={handleExportarExcel}
-                  className="px-4 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 bg-green-600 text-white hover:bg-green-700 text-sm"
-                >
-                  <Download className="w-4 h-4" />
-                  Excel
-                </button>
-                <button
-                  onClick={handleExportarPDF}
-                  className="px-4 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 bg-red-600 text-white hover:bg-red-700 text-sm"
-                >
-                  <Download className="w-4 h-4" />
-                  PDF
-                </button>
+                {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE) && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleExportarExcel}
+                    className="px-4 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 bg-green-600 text-white hover:bg-green-700 text-sm"
+                  >
+                    <Download className="w-4 h-4" />
+                    Excel
+                  </button>
+                  <button
+                    onClick={handleExportarPDF}
+                    className="px-4 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 bg-red-600 text-white hover:bg-red-700 text-sm"
+                  >
+                    <Download className="w-4 h-4" />
+                    PDF
+                  </button>
+                </div>
+                )}
               </div>
               <p className="text-sm text-gray-600 px-1">
                 Mostrando <span className="font-bold text-gray-900">{terminosFiltrados.length}</span> de <span className="font-bold text-gray-900">{terminos.length}</span> términos
@@ -913,7 +919,7 @@ export function GestionTerminosAlertas() {
                           {/* Acciones */}
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-end gap-2">
-                              {termino.estado !== 'cumplido' && (
+                              {termino.estado !== 'cumplido' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_TERMS_EDIT) && (
                                 <button
                                   onClick={() => handleMarcarCompleto(termino.id)}
                                   className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-green-600 hover:bg-green-700 flex items-center gap-1"
@@ -1157,7 +1163,7 @@ export function GestionTerminosAlertas() {
                   onClick={() => setShowFlujoModal(false)}
                   className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
                 >
-                  <X className="w-5 h-5 text-gray-600" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
               <div className="p-6">

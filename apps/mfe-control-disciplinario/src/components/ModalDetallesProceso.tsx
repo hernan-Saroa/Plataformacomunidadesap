@@ -3207,12 +3207,12 @@ export function ModalDetallesProceso({
   const bgTareas = bgActivo ? tareasFiltradas.length : tareas.length;
   const bgNotas = bgActivo ? notasFiltradas.length : notas.length;
 
-  const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
+  const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number; permission?: string }[] = [
     { id: 'general',     label: 'General',     icon: <FileText     className="w-3.5 h-3.5" /> },
     { id: 'archivos',    label: 'Archivos',    icon: <FolderOpen   className="w-3.5 h-3.5" />, badge: bgArchivos },
-    { id: 'actuaciones', label: 'Actuaciones', icon: <Zap          className="w-3.5 h-3.5" />, badge: bgActuaciones },
-    { id: 'tareas',      label: 'Tareas',      icon: <CheckSquare  className="w-3.5 h-3.5" />, badge: bgTareas },
-    { id: 'notas',       label: 'Notas',       icon: <FileEdit     className="w-3.5 h-3.5" />, badge: bgNotas || undefined },
+    { id: 'actuaciones', label: 'Actuaciones', icon: <Zap          className="w-3.5 h-3.5" />, badge: bgActuaciones, permission: Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTUACIONES_VIEW },
+    { id: 'tareas',      label: 'Tareas',      icon: <CheckSquare  className="w-3.5 h-3.5" />, badge: bgTareas,      permission: Permissions.CONTROL_DISCIPLINARIO_PROCESOS_TASKS_VIEW },
+    { id: 'notas',       label: 'Notas',       icon: <FileEdit     className="w-3.5 h-3.5" />, badge: bgNotas || undefined, permission: Permissions.CONTROL_DISCIPLINARIO_PROCESOS_NOTES_VIEW },
   ];
 
   const TIPO_ARCHIVO = [
@@ -3681,7 +3681,7 @@ export function ModalDetallesProceso({
                 <Shield className="w-3 h-3" /><span className="hidden sm:inline">Revisión</span>
               </button>
             )} */}
-            {puedeEnviarRevision && (
+            {puedeEnviarRevision && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleEnviarARevision(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all text-white"
                 style={{ background: '#003DA5' }}
@@ -3691,7 +3691,7 @@ export function ModalDetallesProceso({
                 <Send className="w-3 h-3" /><span className="hidden sm:inline">Enviar a Revisión</span>
               </button>
             )}
-            {puedeRecargar && (
+            {puedeRecargar && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_UPLOAD) && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleRecargarArchivo(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all"
                 style={{ borderColor: '#D97706', color: '#92400E', background: '#FFFBEB' }}
@@ -3838,6 +3838,9 @@ export function ModalDetallesProceso({
           {/* ══ PESTAÑAS ══ */}
           <div className="flex items-center gap-0.5 px-4 pt-2 border-b border-gray-200 flex-shrink-0 overflow-x-auto">
             {TABS.map(tab => {
+              // Validar permiso de pestaña
+              if (tab.permission && !authService.hasPermission(tab.permission)) return null;
+
               const active = tabActiva === tab.id;
               return (
                 <button key={tab.id} onClick={() => setTabActiva(tab.id)}
@@ -4094,16 +4097,18 @@ export function ModalDetallesProceso({
                             <Briefcase className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />
                             <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Profesional Asignado</span>
                           </div>
-                          <button
-                            onClick={() => setMostrarModalReasignar(true)}
-                            className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold rounded-lg border transition-all"
-                            style={{ borderColor: '#2962FF', color: '#2962FF', background: '#EFF6FF' }}
-                            onMouseEnter={e => { e.currentTarget.style.background = '#DBEAFE'; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = '#EFF6FF'; }}
-                            title="Solicitar reasignación del profesional">
-                            <Users className="w-2.5 h-2.5" />
-                            Reasignar
-                          </button>
+                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASSIGN) && (
+                            <button
+                              onClick={() => setMostrarModalReasignar(true)}
+                              className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold rounded-lg border transition-all"
+                              style={{ borderColor: '#2962FF', color: '#2962FF', background: '#EFF6FF' }}
+                              onMouseEnter={e => { e.currentTarget.style.background = '#DBEAFE'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = '#EFF6FF'; }}
+                              title="Solicitar reasignación del profesional">
+                              <Users className="w-2.5 h-2.5" />
+                              Reasignar
+                            </button>
+                          )}
                         </div>
                         <p className="text-sm font-bold text-gray-900">{getNombre(proceso.profesionalAsignado)}</p>
                         {getId(proceso.profesionalAsignado as any) && (
@@ -4133,37 +4138,41 @@ export function ModalDetallesProceso({
 
                       if (!autoPliego) {
                         return (
-                          <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#D97706', background: '#FFFBEB' }}>
-                            <button
-                              onClick={() => setMostrarModalPliego(true)}
-                              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
-                              style={{ background: '#D97706', color: 'white' }}
-                            >
-                              <FileText className="w-4 h-4" />
-                              Auto Pliego de Cargos
-                            </button>
-                            <p className="text-[10px] text-center mt-1.5" style={{ color: '#92400E' }}>
-                              Cierra el proceso y traslada a Oficina Jurídica
-                            </p>
-                          </div>
+                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE_PLIEGO) && (
+                            <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#D97706', background: '#FFFBEB' }}>
+                              <button
+                                onClick={() => setMostrarModalPliego(true)}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
+                                style={{ background: '#D97706', color: 'white' }}
+                              >
+                                <FileText className="w-4 h-4" />
+                                Auto Pliego de Cargos
+                              </button>
+                              <p className="text-[10px] text-center mt-1.5" style={{ color: '#92400E' }}>
+                                Cierra el proceso y traslada a Oficina Jurídica
+                              </p>
+                            </div>
+                          )}
                         );
                       }
 
                       if (autoPliego.estado === 'borrador') {
                         return (
-                          <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#7C3AED', background: '#F5F3FF' }}>
-                            <button
-                              onClick={() => handleEnviarARevision(autoPliego)}
-                              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
-                              style={{ background: '#7C3AED', color: 'white' }}
-                            >
-                              <Send className="w-4 h-4" />
-                              Enviar a Revisión
-                            </button>
-                            <p className="text-[10px] text-center mt-1.5" style={{ color: '#5B21B6' }}>
-                              Auto creado — envíalo al Jefe para aprobación
-                            </p>
-                          </div>
+                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) && (
+                            <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#7C3AED', background: '#F5F3FF' }}>
+                              <button
+                                onClick={() => handleEnviarARevision(autoPliego)}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
+                                style={{ background: '#7C3AED', color: 'white' }}
+                              >
+                                <Send className="w-4 h-4" />
+                                Enviar a Revisión
+                              </button>
+                              <p className="text-[10px] text-center mt-1.5" style={{ color: '#5B21B6' }}>
+                                Auto creado — envíalo al Jefe para aprobación
+                              </p>
+                            </div>
+                          )}
                         );
                       }
 
@@ -4187,19 +4196,21 @@ export function ModalDetallesProceso({
 
                       if (autoPliego.estado === 'aprobado') {
                         return (
-                          <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#2563EB', background: '#EFF6FF' }}>
-                            <button
-                              onClick={() => setMostrarModalEnvioJuridica(true)}
-                              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
-                              style={{ background: '#2563EB', color: 'white' }}
-                            >
-                              <Send className="w-4 h-4" />
-                              Enviar a Jurídica
-                            </button>
-                            <p className="text-[10px] text-center mt-1.5" style={{ color: '#1E40AF' }}>
-                              Auto aprobado — listo para enviar a Oficina Jurídica
-                            </p>
-                          </div>
+                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) && (
+                            <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#2563EB', background: '#EFF6FF' }}>
+                              <button
+                                onClick={() => setMostrarModalEnvioJuridica(true)}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
+                                style={{ background: '#2563EB', color: 'white' }}
+                              >
+                                <Send className="w-4 h-4" />
+                                Enviar a Jurídica
+                              </button>
+                              <p className="text-[10px] text-center mt-1.5" style={{ color: '#1E40AF' }}>
+                                Auto aprobado — listo para enviar a Oficina Jurídica
+                              </p>
+                            </div>
+                          )}
                         );
                       }
 
@@ -5287,7 +5298,7 @@ export function ModalDetallesProceso({
                         <div className="flex items-start gap-3 p-3">
                           <button
                             type="button"
-                            disabled={actualizando}
+                            disabled={actualizando || !authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_TASKS_EDIT)}
                             onClick={() => handleToggleTarea(tarea)}
                             className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${tarea.completada ? 'border-green-500 bg-green-500' : 'border-slate-300 hover:border-green-400'} disabled:opacity-60`}
                             title={tarea.completada ? 'Marcar como pendiente' : 'Marcar como completada'}
@@ -5561,19 +5572,21 @@ export function ModalDetallesProceso({
                           <div className="flex-1 min-w-0 pt-0.5">
                             <p className="text-[12px] font-semibold text-slate-800 leading-6 break-words">{nota.texto}</p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setNotaPendienteEliminarId((current) => current === nota.id ? null : nota.id)}
-                            disabled={eliminandoNotaId === nota.id}
-                            className="flex items-center justify-center w-9 h-9 rounded-2xl border border-red-200/80 text-red-500 bg-white hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 shadow-sm"
-                            title="Eliminar nota"
-                          >
-                            {eliminandoNotaId === nota.id ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-3.5 h-3.5" />
-                            )}
-                          </button>
+                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_NOTES_DELETE) && (
+                            <button
+                              type="button"
+                              onClick={() => setNotaPendienteEliminarId((current) => current === nota.id ? null : nota.id)}
+                              disabled={eliminandoNotaId === nota.id}
+                              className="flex items-center justify-center w-9 h-9 rounded-2xl border border-red-200/80 text-red-500 bg-white hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 shadow-sm"
+                              title="Eliminar nota"
+                            >
+                              {eliminandoNotaId === nota.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          )}
                         </div>
                         <div className="mt-3 flex items-center gap-2 flex-wrap pl-12">
                           <span className="px-2.5 py-1 text-[10px] font-semibold rounded-full inline-flex items-center gap-1 bg-slate-50 text-slate-500 border border-slate-200">

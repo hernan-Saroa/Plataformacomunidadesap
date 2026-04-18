@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { disciplinaryService } from '../../../../services/api/disciplinary.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ============ ETAPAS DEL PROCESO DISCIPLINARIO ============
 
@@ -245,6 +247,7 @@ export function SeccionPlantillasAutosUnificada({
                 <span className="sm:hidden">Guía</span>
               </button>
               
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_AUTOS_EDITAR) && (
               <button
                 onClick={onAgregarTipo}
                 className="flex items-center justify-center gap-1.5 px-3 lg:px-4 py-2 rounded-lg font-semibold text-xs lg:text-sm text-white transition-all hover:shadow-lg flex-1 lg:flex-initial"
@@ -257,6 +260,7 @@ export function SeccionPlantillasAutosUnificada({
                 <span className="hidden sm:inline">Nuevo Tipo de Auto</span>
                 <span className="sm:hidden">Nuevo</span>
               </button>
+              )}
             </div>
           </div>
 
@@ -416,6 +420,7 @@ export function SeccionPlantillasAutosUnificada({
                               </div>
 
                               {/* Toggle Activo */}
+                              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_AUTOS_EDITAR) && (
                               <button
                                 onClick={() => onToggleActivoTipo(tipo.id, !tipo.activo)}
                                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${
@@ -429,43 +434,50 @@ export function SeccionPlantillasAutosUnificada({
                                   }`}
                                 />
                               </button>
+                              )}
                             </div>
 
                             {/* Acciones */}
-                            <div className="flex flex-wrap items-center gap-2">
-                              <button
-                                onClick={() => onGestionarPlantilla(tipo)}
-                                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border-2 hover:shadow-sm transition-colors font-semibold text-xs ${
-                                  tipo.plantilla
-                                    ? 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100'
-                                    : 'bg-yellow-50 border-yellow-300 text-yellow-700 hover:bg-yellow-100'
-                                }`}
-                              >
-                                <Folder className="w-3.5 h-3.5" />
-                                {tipo.plantilla ? 'Gestionar Plantilla' : 'Subir Plantilla'}
-                              </button>
-                              <button
-                                onClick={() => onEditarTipo(tipo)}
-                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 border-2 border-blue-300 text-blue-700 hover:bg-blue-100 transition-colors font-semibold text-xs"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                                Editar
-                              </button>
-                              <button
-                                onClick={() => setVistaDetalles(tipo)}
-                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-50 border-2 border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors font-semibold text-xs"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                                Ver
-                              </button>
-                              <button
-                                onClick={() => onEliminarTipo(tipo.id)}
-                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 border-2 border-red-300 text-red-700 hover:bg-red-100 transition-colors font-semibold text-xs"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                Eliminar
-                              </button>
-                            </div>
+                             <div className="flex flex-wrap items-center gap-2">
+                                {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_AUTOS_PLANTILLA_EDITAR) && (
+                                <button
+                                  onClick={() => onGestionarPlantilla(tipo)}
+                                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border-2 hover:shadow-sm transition-colors font-semibold text-xs ${
+                                    tipo.plantilla
+                                      ? 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100'
+                                      : 'bg-yellow-50 border-yellow-300 text-yellow-700 hover:bg-yellow-100'
+                                  }`}
+                                >
+                                  <Folder className="w-3.5 h-3.5" />
+                                  {tipo.plantilla ? 'Gestionar Plantilla' : 'Subir Plantilla'}
+                                </button>
+                                )}
+                                {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_AUTOS_EDITAR) && (
+                                <button
+                                  onClick={() => onEditarTipo(tipo)}
+                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 border-2 border-blue-300 text-blue-700 hover:bg-blue-100 transition-colors font-semibold text-xs"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                  Editar
+                                </button>
+                                )}
+                                <button
+                                  onClick={() => setVistaDetalles(tipo)}
+                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-50 border-2 border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors font-semibold text-xs"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  Ver
+                                </button>
+                                {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_AUTOS_ELIMINAR) && (
+                                <button
+                                  onClick={() => onEliminarTipo(tipo.id)}
+                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 border-2 border-red-300 text-red-700 hover:bg-red-100 transition-colors font-semibold text-xs"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  Eliminar
+                                </button>
+                                )}
+                              </div>
                           </div>
                         </div>
                       </div>

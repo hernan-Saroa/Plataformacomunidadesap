@@ -43,6 +43,8 @@ import { SistemaComentarios } from './SistemaComentarios';
 import { ModalAsociarNoticiaProceso } from './ModalAsociarNoticiaProceso'; // ✅ NUEVO
 import { ModalAsociarNoticiaANoticia } from './ModalAsociarNoticiaANoticia'; // ✅ NUEVO: Modal para asociar noticia a noticia
 import { ModalAsignarProfesional } from './ModalAsignarProfesional'; // ✅ NUEVO: Modal de asignación de profesional
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { ModalSolicitarReasignacion } from './ModalSolicitarReasignacion'; // ✅ NUEVO: Modal de solicitud de reasignación
 import { ModalAprobarReasignacion } from './ModalAprobarReasignacion'; // ✅ NUEVO: Modal de aprobación de reasignación (Jefe OCID)
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto'; // ✅ REFACTORIZADO: Modal unificado de revisión y aprobación
@@ -316,6 +318,13 @@ interface TarjetaNoticiaProps {
 
 function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa }: TarjetaNoticiaProps) {
   const esJefe = authService.hasRole('rol-jefe-oci') || authService.isSuperAdmin();
+  const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR);
+  const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
+  const canViewDetail = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DETAIL);
+  const canDevolve = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER);
+  const canRedimir = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR);
+  const canArchive = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR);
+  const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
 
   const [hoverReenviar, setHoverReenviar] = useState(false);
 
@@ -477,23 +486,25 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             <div style={{ pointerEvents: 'none' }}>
               <KanbanActionSection>
                 <KanbanActionRowPrimary>
-                  {onVerDetalles && (
+                  {onVerDetalles && canViewDetail && (
                     <KanbanButtonSecondary onClick={() => onVerDetalles(noticia)} icon={<Eye className="w-3.5 h-3.5" />} title="Ver detalles">Detalles</KanbanButtonSecondary>
                   )}
-                  <KanbanButtonPrimary onClick={() => onConvertir(noticia)} icon={<PlusCircle className="w-3.5 h-3.5" />} title="Convertir a proceso">Convertir</KanbanButtonPrimary>
+                  {canConvert && (
+                    <KanbanButtonPrimary onClick={() => onConvertir(noticia)} icon={<PlusCircle className="w-3.5 h-3.5" />} title="Convertir a proceso">Convertir</KanbanButtonPrimary>
+                  )}
                 </KanbanActionRowPrimary>
               </KanbanActionSection>
             </div>
           ) : (
             <KanbanActionSection>
               <KanbanActionRowPrimary>
-                {onVerDetalles && (
+                {onVerDetalles && canViewDetail && (
                   <KanbanButtonSecondary onClick={() => onVerDetalles(noticia)} icon={<Eye className="w-3.5 h-3.5" />} title="Ver detalles">Detalles</KanbanButtonSecondary>
                 )}
-                {esJefe ? (
+                {canConvert && esJefe ? (
                   <KanbanButtonPrimary onClick={() => onConvertir(noticia)} icon={<PlusCircle className="w-3.5 h-3.5" />} title="Convertir a proceso">Convertir</KanbanButtonPrimary>
                 ) : (
-                  onEditarNoticia && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
+                  onEditarNoticia && canEdit && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
                     <KanbanButtonPrimary onClick={() => onEditarNoticia(noticia)} icon={<Edit className="w-3.5 h-3.5" />} title="Editar noticia">Editar</KanbanButtonPrimary>
                   )
                 )}
@@ -502,18 +513,18 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
               {/* Botones secundarios del Jefe — solo cuando NO está devuelta */}
               {esJefe && (
                 <KanbanActionRowTertiary>
-                  {onEditarNoticia && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
+                  {onEditarNoticia && canEdit && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
                     <KanbanButtonTertiary onClick={() => onEditarNoticia(noticia)} icon={<Edit className="w-3.5 h-3.5" />} title="Editar noticia" />
                   )}
-                  {!noticia.procesoAsociado && onAsociarNoticiaNoticia && (
+                  {!noticia.procesoAsociado && onAsociarNoticiaNoticia && canAssociate && (
                     <KanbanButtonTertiary onClick={() => onAsociarNoticiaNoticia(noticia)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a otra noticia" />
                   )}
-                  {!noticia.procesoAsociado && onAsociarNoticiaProceso && (
+                  {!noticia.procesoAsociado && onAsociarNoticiaProceso && canAssociate && (
                     <KanbanButtonTertiary onClick={() => onAsociarNoticiaProceso(noticia)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a proceso" />
                   )}
-                  <KanbanButtonTertiary onClick={() => onDevolver(noticia)} icon={<ArrowLeft className="w-3.5 h-3.5" />} title="Devolver" />
-                  <KanbanButtonTertiary onClick={() => onDevolverCompetencia(noticia)} icon={<Send className="w-3.5 h-3.5" />} title="Remitir por competencia" />
-                  <KanbanButtonDestructive onClick={() => onArchivar(noticia)} icon={<Archive className="w-3.5 h-3.5" />} title="Archivar" />
+                  {canDevolve && <KanbanButtonTertiary onClick={() => onDevolver(noticia)} icon={<ArrowLeft className="w-3.5 h-3.5" />} title="Devolver" />}
+                  {canRedimir && <KanbanButtonTertiary onClick={() => onDevolverCompetencia(noticia)} icon={<Send className="w-3.5 h-3.5" />} title="Remitir por competencia" />}
+                  {canArchive && <KanbanButtonDestructive onClick={() => onArchivar(noticia)} icon={<Archive className="w-3.5 h-3.5" />} title="Archivar" />}
                 </KanbanActionRowTertiary>
               )}
 
@@ -597,6 +608,13 @@ function TarjetaProceso({
   onToggleColapso,
   onEditarProceso // ✅ NUEVO: Editar proceso
 }: TarjetaProcesoProps) {
+  const canViewDetail = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_DETAIL);
+  const canViewExpediente = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_EXPIDIENTE);
+  const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_EDIT);
+  const canReassign = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION);
+  const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR_PROCESOS);
+  const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
+
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
     item: { ...proceso, tipoItem: 'proceso' },
@@ -830,38 +848,42 @@ function TarjetaProceso({
           {/* ═══ Acciones — Design Standard World Class ═══ */}
           <KanbanActionSection>
             <KanbanActionRowPrimary>
-              <KanbanButtonSecondary
-                onClick={(e) => { e.stopPropagation(); onVerDetalles(proceso); }}
-                icon={<FileText className="w-3.5 h-3.5" />}
-                title="Ver detalles"
-              >
-                Detalles
-              </KanbanButtonSecondary>
-              <KanbanButtonPrimary
-                onClick={(e) => { e.stopPropagation(); onVerExpediente(proceso); }}
-                icon={<Archive className="w-3.5 h-3.5" />}
-                title="Expediente"
-              >
-                Exp.
-              </KanbanButtonPrimary>
+              {onVerDetalles && canViewDetail && (
+                <KanbanButtonSecondary
+                  onClick={(e) => { e.stopPropagation(); onVerDetalles(proceso); }}
+                  icon={<FileText className="w-3.5 h-3.5" />}
+                  title="Ver detalles"
+                >
+                  Detalles
+                </KanbanButtonSecondary>
+              )}
+              {onVerExpediente && canViewExpediente && (
+                <KanbanButtonPrimary
+                  onClick={(e) => { e.stopPropagation(); onVerExpediente(proceso); }}
+                  icon={<Archive className="w-3.5 h-3.5" />}
+                  title="Expediente"
+                >
+                  Exp.
+                </KanbanButtonPrimary>
+              )}
             </KanbanActionRowPrimary>
 
             <KanbanActionRowTertiary>
-              {onEditarProceso && (
+              {onEditarProceso && canEdit && (
                 <KanbanButtonTertiary
                   onClick={(e) => { e.stopPropagation(); onEditarProceso(proceso); }}
                   icon={<Edit className="w-3.5 h-3.5" />}
                   title="Editar proceso"
                 />
               )}
-              {proceso.etapaActual !== 'Recepción' && onSolicitarReasignacion && (
+              {proceso.etapaActual !== 'Recepción' && onSolicitarReasignacion && canReassign && (
                 <KanbanButtonTertiary
                   onClick={(e) => { e.stopPropagation(); onSolicitarReasignacion(proceso); }}
                   icon={<UserCheck className="w-3.5 h-3.5" />}
                   title="Reasignar profesional"
                 />
               )}
-              {proceso.etapaActual !== 'Recepción' && onAsociarProcesoProceso && (
+              {proceso.etapaActual !== 'Recepción' && onAsociarProcesoProceso && canAssociate && (
                 <KanbanButtonTertiary
                   onClick={(e) => { e.stopPropagation(); onAsociarProcesoProceso(proceso); }}
                   icon={<Link2 className="w-3.5 h-3.5" />}
@@ -870,7 +892,7 @@ function TarjetaProceso({
               )}
             </KanbanActionRowTertiary>
 
-            {proceso.pendienteAprobacion && (
+            {proceso.pendienteAprobacion && canApprove && (
               <KanbanButtonSemantic
                 variant="success"
                 onClick={(e) => { e.stopPropagation(); onAprobarBorrador(proceso); }}
@@ -2868,18 +2890,26 @@ export function DashboardKanbanOperativo({
     setLoading(true);
     setDataError(null);
     try {
-      console.log('[DashboardKanban] Cargando datos desde backend...');
-      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_MANAGE)
-      console.log('hasPermissionNoticia', hasPermissionNoticia)
-      // Cargar noticias y procesos en paralelo (filtrados por profesional si hay filtro activo)
+      const canViewAll = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL);
+      const canViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_MINE);
+      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_MANAGE);
+      
+      console.log('hasPermissionNoticia', hasPermissionNoticia);
+      console.log('canViewAll', canViewAll);
+      console.log('canViewMine', canViewMine);
+      
+      const user = authService.getUser();
+      const currentUserId = user?.id;
+
+      // Cargar noticias y procesos en paralelo (filtrados por profesional si hay filtro activo o permiso restringido)
       const [noticiasRaw, procesosRaw] = await Promise.all([
         hasPermissionNoticia ?
-          filtroProfesionalId
-            ? disciplinaryService.getMisNoticias(filtroProfesionalId)
+          (filtroProfesionalId || (!canViewAll && canViewMine && currentUserId))
+            ? disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId)
             : disciplinaryService.getAllNoticias()
           : [],
-        filtroProfesionalId
-          ? disciplinaryService.getMisProcesos(filtroProfesionalId)
+        (filtroProfesionalId || (!canViewAll && canViewMine && currentUserId))
+          ? disciplinaryService.getMisProcesos(filtroProfesionalId || currentUserId)
           : disciplinaryService.getAllProcesos()
       ]);
 
@@ -3333,6 +3363,12 @@ export function DashboardKanbanOperativo({
 
   // ==================== HANDLERS ====================
   const handleDropItem = async (item: Item, nuevaEtapa: string) => {
+    // ✅ NUEVO: Validar permiso de movimiento en Kanban
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_KANBAN_MOVE)) {
+      toast.error('No tiene permiso para mover elementos en el Kanban');
+      return;
+    }
+
     // ✅ NUEVO: Validar orden de etapas desde backend config
     if (etapasConfig.length > 0) {
       // Obtener el orden de la etapa actual del item
@@ -3600,6 +3636,10 @@ export function DashboardKanbanOperativo({
   };
 
   const handleConvertirNoticia = (noticia: Noticia) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR)) {
+      toast.error('No tiene permisos para convertir noticias a procesos');
+      return;
+    }
     setItemSeleccionado(noticia);
     setProfesionalSeleccionado('');
     setObservaciones('');
@@ -3608,6 +3648,10 @@ export function DashboardKanbanOperativo({
 
   // ✅ NUEVO: Función para editar noticia
   const handleEditarNoticia = (noticia: Noticia) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT)) {
+      toast.error('No tiene permisos para editar noticias');
+      return;
+    }
     setNoticiaAEditar(noticia);
     setMostrarModalEditar(true);
   };
@@ -3855,6 +3899,10 @@ export function DashboardKanbanOperativo({
   };
 
   const handleDevolverNoticia = (noticia: Noticia) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_DEVOLVER)) {
+      toast.error('No tiene permisos para devolver noticias');
+      return;
+    }
     setItemSeleccionado(noticia);
     setObservaciones('');
     setModalActivo('devolver-noticia');
@@ -3971,6 +4019,10 @@ export function DashboardKanbanOperativo({
   };
 
   const handleArchivarNoticia = (noticia: Noticia) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR)) {
+      toast.error('No tiene permisos para archivar noticias');
+      return;
+    }
     setItemSeleccionado(noticia);
     setModalActivo('archivar-noticia');
   };
@@ -4105,6 +4157,10 @@ export function DashboardKanbanOperativo({
   // ✅ NUEVO: Handler para asignar profesional en transición Recepción → Valoración
   // ✅ MODIFICADO: Ahora sigue el orden de etapas desde la configuración del backend Y persiste en BD
   const handleAsignarProfesional = async (profesionalId: string, profesionalNombre: string, observaciones: string) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_ASIGNAR)) {
+      toast.error('No tiene permisos para asignar profesionales');
+      return;
+    }
     if (!itemSeleccionado) return;
 
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
@@ -5158,12 +5214,14 @@ export function DashboardKanbanOperativo({
                 onChange={(id) => setTipoVista(id as any)}
               />
 
-              <KanbanToolbarCTA
-                onClick={() => setModalActivo('crear-noticia')}
-                icon={<Plus style={{ width: 16, height: 16 }} />}
-              >
-                Nueva
-              </KanbanToolbarCTA>
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE) && (
+                <KanbanToolbarCTA
+                  onClick={() => setModalActivo('crear-noticia')}
+                  icon={<Plus style={{ width: 16, height: 16 }} />}
+                >
+                  Nueva
+                </KanbanToolbarCTA>
+              )}
             </div>
           </div>
         </div>
@@ -5232,14 +5290,16 @@ export function DashboardKanbanOperativo({
               <p className="text-sm mb-6" style={{ color: '#6B7280' }}>
                 Actualmente no existen noticias ni procesos disciplinarios en el sistema. Puede crear una nueva noticia haciendo clic en el botón "Nueva".
               </p>
-              <Button
-                onClick={() => setModalActivo('crear-noticia')}
-                className="px-6 py-2.5 text-white font-semibold rounded-xl shadow-md"
-                style={{ background: '#003DA5' }}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Crear Nueva Noticia
-              </Button>
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE) && (
+                <Button
+                  onClick={() => setModalActivo('crear-noticia')}
+                  className="px-6 py-2.5 text-white font-semibold rounded-xl shadow-md"
+                  style={{ background: '#003DA5' }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Crear Nueva Noticia
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -5782,18 +5842,20 @@ export function DashboardKanbanOperativo({
                             {/* Grid 2×2 de tipos de archivo */}
                             <div className="grid grid-cols-2 gap-px bg-gray-200">
                               {/* ── Autos ── */}
-                              <button
-                                onClick={() => setModalActivo('gestion-autos')}
-                                className="group flex flex-col items-center gap-2 p-4 bg-white hover:bg-purple-50 transition-colors"
-                              >
-                                <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%)' }}>
-                                  <Scale className="w-5 h-5 text-white" />
-                                </div>
-                                <div className="text-center">
-                                  <p className="text-sm font-bold text-gray-900">Autos</p>
-                                  <p className="text-xs text-gray-500">Providencias</p>
-                                </div>
-                              </button>
+                              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_CREATE) && (
+                                <button
+                                  onClick={() => setModalActivo('gestion-autos')}
+                                  className="group flex flex-col items-center gap-2 p-4 bg-white hover:bg-purple-50 transition-colors"
+                                >
+                                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%)' }}>
+                                    <Scale className="w-5 h-5 text-white" />
+                                  </div>
+                                  <div className="text-center">
+                                    <p className="text-sm font-bold text-gray-900">Autos</p>
+                                    <p className="text-xs text-gray-500">Providencias</p>
+                                  </div>
+                                </button>
+                              )}
 
                               {/* ── Evidencias ── */}
                               <button
