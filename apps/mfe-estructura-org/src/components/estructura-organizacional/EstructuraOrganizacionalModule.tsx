@@ -12,7 +12,7 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { Card, Button, Badge, Input } from '@esap-mfe/shared-ui';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import { estructuraService } from '../../services/estructuraService';
 import { CreateSeccionalSedeModal } from './CreateSeccionalSedeModal';
 import { useAuth } from '../../hooks';
@@ -658,6 +658,8 @@ function VistaListaTerritorialesCetap({
   const totalTerritoriales = territorialesFiltradas.length;
 
   return (
+    <>
+    <Toaster position="top-right" richColors />
     <div className="space-y-6">
       {/* Dashboard de Métricas - Diseño Mejorado */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -1094,5 +1096,6 @@ function VistaListaTerritorialesCetap({
         }
       `}</style>
     </div>
+    </>
   );
 }

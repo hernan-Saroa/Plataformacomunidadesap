@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@esap-mfe/shared-ui/dropdown-menu';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CreateUserManualModal } from './CreateUserManualModal';
@@ -199,6 +199,8 @@ export function EnrollmentManagementModule() {
   };
 
   return (
+    <>
+    <Toaster position="top-right" richColors />
     <div className="space-y-6">
       {/* Header */}
       <motion.div
@@ -749,5 +751,6 @@ export function EnrollmentManagementModule() {
         />
       )}
     </div>
+    </>
   );
 }

@@ -1662,6 +1662,10 @@ class ControlInternoService {
       descripcion?: string;
       tipoDocumento: string;
       etapa?: string;
+      /** ID de la etapa en etapa_kanban (UUID estable aunque cambie el nombre) */
+      etapaKanbanId?: string;
+      /** Nombre de la etapa al momento de guardar (snapshot) */
+      etapaNombreKanban?: string;
       auditoriaId?: string;
       hallazgoId?: string;
       planMejoramientoId?: string;
@@ -1677,6 +1681,8 @@ class ControlInternoService {
     if (metadata.descripcion) formData.append('descripcion', metadata.descripcion);
     formData.append('tipoDocumento', metadata.tipoDocumento);
     if (metadata.etapa) formData.append('etapa', metadata.etapa);
+    if (metadata.etapaKanbanId) formData.append('etapaKanbanId', metadata.etapaKanbanId);
+    if (metadata.etapaNombreKanban) formData.append('etapaNombreKanban', metadata.etapaNombreKanban);
     if (metadata.auditoriaId) formData.append('auditoriaId', metadata.auditoriaId);
     if (metadata.hallazgoId) formData.append('hallazgoId', metadata.hallazgoId);
     if (metadata.planMejoramientoId) formData.append('planMejoramientoId', metadata.planMejoramientoId);

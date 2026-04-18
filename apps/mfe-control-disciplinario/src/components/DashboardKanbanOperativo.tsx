@@ -19,7 +19,7 @@ import {
   MapPin, Info, ExternalLink, RefreshCw, Paperclip, UserCheck,
   List, Columns3, Menu, Edit2, FileSignature, History,
   ChevronsDown, ChevronsUp, ChevronUp, ChevronLeft, ChevronRight, Zap, Link2, UserCog, MessageCircle,
-  ClipboardList, FileEdit, Loader2
+  ClipboardList, FileEdit, Loader2, CornerDownLeft
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -140,7 +140,7 @@ interface Noticia {
   denunciante: Persona | string;
   denunciado: Persona | string;
   hechos: string;
-  estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada' | 'remitida' | 'asociada';
+  estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada' | 'remitida' | 'asociada' | 'devuelta';
   prioridad: 'alta' | 'media' | 'baja';
   diasPendientes: number;
   tipo: 'noticia';
@@ -317,6 +317,8 @@ interface TarjetaNoticiaProps {
 function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa }: TarjetaNoticiaProps) {
   const esJefe = authService.hasRole('rol-jefe-oci') || authService.isSuperAdmin();
 
+  const [hoverReenviar, setHoverReenviar] = useState(false);
+
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
     item: { ...noticia, tipoItem: 'noticia' },
@@ -334,6 +336,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
     <div
       ref={dragRef}
       className="cursor-grab active:cursor-grabbing touch-none w-full select-none"
+      style={noticia.estado === 'devuelta' && esJefe ? { filter: 'grayscale(60%) brightness(0.87) opacity(0.75)', transition: 'filter 0.3s' } : undefined}
     >
       <motion.div
         id={`noticia-${noticia.id}`}
@@ -353,6 +356,11 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             subtitle={noticia.origen}
             rightContent={
               <div className="flex items-center gap-1">
+                {noticia.estado === 'devuelta' && esJefe && (
+                  <span className="flex-shrink-0 p-1 rounded-full bg-red-100 border border-red-300" title="Noticia devuelta">
+                    <CornerDownLeft className="w-3 h-3 text-red-500" />
+                  </span>
+                )}
                 {noticia.procesoAsociado ? (
                   <span className="flex-shrink-0 p-1 rounded-full bg-purple-100 border border-purple-300" title="Asociada a proceso">
                     <Link2 className="w-2.5 h-2.5 text-purple-700" />
@@ -463,85 +471,82 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             </span>
           </div>
 
-          {/* ═══ Acciones — Design Standard World Class ═══ */}
-          <KanbanActionSection>
-            <KanbanActionRowPrimary>
-              {onVerDetalles && (
-                <KanbanButtonSecondary
-                  onClick={() => onVerDetalles(noticia)}
-                  icon={<Eye className="w-3.5 h-3.5" />}
-                  title="Ver detalles"
-                >
-                  Detalles
-                </KanbanButtonSecondary>
-              )}
-              {esJefe ? (
-                <KanbanButtonPrimary
-                  onClick={() => onConvertir(noticia)}
-                  icon={<PlusCircle className="w-3.5 h-3.5" />}
-                  title="Convertir a proceso"
-                >
-                  Convertir
-                </KanbanButtonPrimary>
-              ) : (
-                onEditarNoticia && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
-                  <KanbanButtonPrimary
-                    onClick={() => onEditarNoticia(noticia)}
-                    icon={<Edit className="w-3.5 h-3.5" />}
-                    title="Editar noticia"
-                  >
-                    Editar
-                  </KanbanButtonPrimary>
-                )
-              )}
-            </KanbanActionRowPrimary>
+          {/* ═══ Acciones ═══ */}
+          {/* Jefe con devuelta: todo deshabilitado */}
+          {esJefe && noticia.estado === 'devuelta' ? (
+            <div style={{ pointerEvents: 'none' }}>
+              <KanbanActionSection>
+                <KanbanActionRowPrimary>
+                  {onVerDetalles && (
+                    <KanbanButtonSecondary onClick={() => onVerDetalles(noticia)} icon={<Eye className="w-3.5 h-3.5" />} title="Ver detalles">Detalles</KanbanButtonSecondary>
+                  )}
+                  <KanbanButtonPrimary onClick={() => onConvertir(noticia)} icon={<PlusCircle className="w-3.5 h-3.5" />} title="Convertir a proceso">Convertir</KanbanButtonPrimary>
+                </KanbanActionRowPrimary>
+              </KanbanActionSection>
+            </div>
+          ) : (
+            <KanbanActionSection>
+              <KanbanActionRowPrimary>
+                {onVerDetalles && (
+                  <KanbanButtonSecondary onClick={() => onVerDetalles(noticia)} icon={<Eye className="w-3.5 h-3.5" />} title="Ver detalles">Detalles</KanbanButtonSecondary>
+                )}
+                {esJefe ? (
+                  <KanbanButtonPrimary onClick={() => onConvertir(noticia)} icon={<PlusCircle className="w-3.5 h-3.5" />} title="Convertir a proceso">Convertir</KanbanButtonPrimary>
+                ) : (
+                  onEditarNoticia && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
+                    <KanbanButtonPrimary onClick={() => onEditarNoticia(noticia)} icon={<Edit className="w-3.5 h-3.5" />} title="Editar noticia">Editar</KanbanButtonPrimary>
+                  )
+                )}
+              </KanbanActionRowPrimary>
 
-            {noticia.estado === 'devuelta' ? (
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-orange-50 border border-orange-200 rounded-lg mt-1">
-                <ArrowLeft className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
-                <span className="text-xs font-semibold text-orange-700">Noticia Devuelta</span>
-              </div>
-            ) : esJefe ? (
-              <KanbanActionRowTertiary>
-                {onEditarNoticia && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
-                  <KanbanButtonTertiary
-                    onClick={() => onEditarNoticia(noticia)}
-                    icon={<Edit className="w-3.5 h-3.5" />}
-                    title="Editar noticia"
-                  />
-                )}
-                {!noticia.procesoAsociado && onAsociarNoticiaNoticia && (
-                  <KanbanButtonTertiary
-                    onClick={() => onAsociarNoticiaNoticia(noticia)}
-                    icon={<Link2 className="w-3.5 h-3.5" />}
-                    title="Asociar a otra noticia"
-                  />
-                )}
-                {!noticia.procesoAsociado && onAsociarNoticiaProceso && (
-                  <KanbanButtonTertiary
-                    onClick={() => onAsociarNoticiaProceso(noticia)}
-                    icon={<Link2 className="w-3.5 h-3.5" />}
-                    title="Asociar a proceso"
-                  />
-                )}
-                <KanbanButtonTertiary
-                  onClick={() => onDevolver(noticia)}
-                  icon={<ArrowLeft className="w-3.5 h-3.5" />}
-                  title="Devolver"
-                />
-                <KanbanButtonTertiary
-                  onClick={() => onDevolverCompetencia(noticia)}
-                  icon={<Send className="w-3.5 h-3.5" />}
-                  title="Remitir por competencia"
-                />
-                <KanbanButtonDestructive
-                  onClick={() => onArchivar(noticia)}
-                  icon={<Archive className="w-3.5 h-3.5" />}
-                  title="Archivar"
-                />
-              </KanbanActionRowTertiary>
-            ) : null}
-          </KanbanActionSection>
+              {/* Botones secundarios del Jefe — solo cuando NO está devuelta */}
+              {esJefe && (
+                <KanbanActionRowTertiary>
+                  {onEditarNoticia && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
+                    <KanbanButtonTertiary onClick={() => onEditarNoticia(noticia)} icon={<Edit className="w-3.5 h-3.5" />} title="Editar noticia" />
+                  )}
+                  {!noticia.procesoAsociado && onAsociarNoticiaNoticia && (
+                    <KanbanButtonTertiary onClick={() => onAsociarNoticiaNoticia(noticia)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a otra noticia" />
+                  )}
+                  {!noticia.procesoAsociado && onAsociarNoticiaProceso && (
+                    <KanbanButtonTertiary onClick={() => onAsociarNoticiaProceso(noticia)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a proceso" />
+                  )}
+                  <KanbanButtonTertiary onClick={() => onDevolver(noticia)} icon={<ArrowLeft className="w-3.5 h-3.5" />} title="Devolver" />
+                  <KanbanButtonTertiary onClick={() => onDevolverCompetencia(noticia)} icon={<Send className="w-3.5 h-3.5" />} title="Remitir por competencia" />
+                  <KanbanButtonDestructive onClick={() => onArchivar(noticia)} icon={<Archive className="w-3.5 h-3.5" />} title="Archivar" />
+                </KanbanActionRowTertiary>
+              )}
+
+              {/* Badge "Noticia Devuelta" para el Profesional — hover convierte en Reenviar */}
+              {!esJefe && noticia.estado === 'devuelta' && (
+                <div
+                  className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg mt-1 cursor-pointer transition-all select-none ${
+                    hoverReenviar ? 'bg-green-500 border border-green-600' : 'bg-orange-50 border border-orange-200'
+                  }`}
+                  onMouseEnter={() => setHoverReenviar(true)}
+                  onMouseLeave={() => setHoverReenviar(false)}
+                  onClick={() => {
+                    disciplinaryService.changeNewsStatus(noticia.id, 'EN_VALORACION')
+                      .then(() => toast.success('Noticia reenviada para valoración'))
+                      .catch(() => toast.error('Error al reenviar noticia'));
+                  }}
+                  title={hoverReenviar ? 'Clic para reenviar a valoración' : 'Noticia devuelta'}
+                >
+                  {hoverReenviar ? (
+                    <>
+                      <CheckCircle className="w-3.5 h-3.5 text-white flex-shrink-0" />
+                      <span className="text-xs font-semibold text-white">Reenviar Noticia</span>
+                    </>
+                  ) : (
+                    <>
+                      <CornerDownLeft className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                      <span className="text-xs font-semibold text-orange-700">Noticia Devuelta</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </KanbanActionSection>
+          )}
         </KanbanCard>
       </motion.div>
     </div>
@@ -2439,7 +2444,7 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     switch (estado) {
       case 'ASIGNADA': return 'asignada';
       case 'EN_VALORACION': return 'en-valoracion';
-      case 'DEVUELTA': return 'archivada';
+      case 'DEVUELTA': return 'devuelta' as any;
       case 'ARCHIVADA': return 'archivada';
       default: return 'pendiente';
     }
@@ -2980,9 +2985,11 @@ export function DashboardKanbanOperativo({
       case 'EN_VALORACION':
         return 'en-valoracion';
       case 'DEVUELTA':
+        return 'devuelta';
+      case 'ARCHIVADA':
         return 'archivada';
       case 'REMITIDA':
-        return 'remitida'; // ✅ NUEVO: Mapear estado REMITIDA del backend
+        return 'remitida';
       default:
         return 'pendiente';
     }
@@ -3853,38 +3860,44 @@ export function DashboardKanbanOperativo({
     setModalActivo('devolver-noticia');
   };
 
-  const handleConfirmarDevolucion = (datos: {
+  const handleConfirmarDevolucion = async (datos: {
     motivo: string; motivoLabel: string;
     observaciones: string; numeroDevolucion: string;
   }) => {
-    // Actualizar estado de la noticia a 'devuelta' — permanece visible en el Kanban
-    setItems(prev => prev.map(item => {
-      if (item.id === itemSeleccionado.id && item.tipo === 'noticia') {
-        return {
-          ...item,
-          estado: 'devuelta' as any,
-          bitacora: [
-            ...(item as any).bitacora || [],
-            {
-              fecha: new Date().toISOString(),
-              accion: 'Devolucion',
-              detalle: `${datos.numeroDevolucion} — Motivo: ${datos.motivoLabel}. ${datos.observaciones}`,
-              usuario: 'Usuario Actual',
-            }
-          ],
-        };
-      }
-      return item;
-    }));
-    // ✅ Persistir devolución en el backend — notifica al radicador
-    disciplinaryService.returnNews(itemSeleccionado.id, datos.observaciones).catch(err =>
-      console.error('[DashboardKanban] Error al devolver noticia en backend:', err)
-    );
-    toast.success('Noticia Devuelta Exitosamente', {
-      description: `${itemSeleccionado.numero} → ${datos.numeroDevolucion}\nMotivo: ${datos.motivoLabel}`,
-    });
+    const noticiaId = itemSeleccionado.id;
+    const noticiaNumero = itemSeleccionado.numero;
     setModalActivo(null);
     setItemSeleccionado(null);
+    try {
+      await disciplinaryService.returnNews(noticiaId, datos.observaciones);
+      // Solo actualizar estado local si el backend confirmó
+      setItems(prev => prev.map(item => {
+        if (item.id === noticiaId && item.tipo === 'noticia') {
+          return {
+            ...item,
+            estado: 'devuelta' as any,
+            bitacora: [
+              ...(item as any).bitacora || [],
+              {
+                fecha: new Date().toISOString(),
+                accion: 'Devolucion',
+                detalle: `${datos.numeroDevolucion} — Motivo: ${datos.motivoLabel}. ${datos.observaciones}`,
+                usuario: 'Usuario Actual',
+              }
+            ],
+          };
+        }
+        return item;
+      }));
+      toast.success('Noticia Devuelta Exitosamente', {
+        description: `${noticiaNumero} → ${datos.numeroDevolucion}\nMotivo: ${datos.motivoLabel}`,
+      });
+    } catch (err) {
+      console.error('[DashboardKanban] Error al devolver noticia en backend:', err);
+      toast.error('Error al devolver la noticia', {
+        description: 'No se pudo guardar la devolución. Intenta de nuevo.',
+      });
+    }
   };
 
   const handleDevolverCompetencia = (noticia: Noticia) => {
