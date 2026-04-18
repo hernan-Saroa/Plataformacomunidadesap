@@ -5875,6 +5875,7 @@ export function DashboardKanbanOperativo({
                                 <Edit2 className="w-3.5 h-3.5 mr-2" />
                                 Editor
                               </Button>
+                              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_DOC_UPLOAD) && (
                               <Button
                                 onClick={() => {
                                   setModalActivo('subir-documentos');
@@ -5885,6 +5886,7 @@ export function DashboardKanbanOperativo({
                                 <Upload className="w-3.5 h-3.5 mr-2" />
                                 Subir Docs
                               </Button>
+                              )}
                             </div>
                           </div>
 

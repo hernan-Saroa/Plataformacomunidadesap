@@ -17,6 +17,8 @@ import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { toast } from 'sonner';
 import { disciplinaryService, DisciplinaryProcess, DisciplinaryNews } from '../../../services/api/disciplinary.service';
+import { authService } from '../../../services/api';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ==================== TIPOS ====================
 interface Proceso {
@@ -1001,6 +1003,7 @@ export function GestionProcesos() {
                   >
                     <Eye className="w-5 h-5" style={{ color: '#003DA5' }} />
                   </button>
+                  {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_EDIT) && (
                   <button
                     onClick={() => {
                       setProcesoEditar(proceso);
@@ -1011,6 +1014,7 @@ export function GestionProcesos() {
                   >
                     <Edit className="w-5 h-5" style={{ color: '#6B7280' }} />
                   </button>
+                  )}
                   <button
                     onClick={() => handleEliminar(proceso.id)}
                     disabled={deleting === proceso.id}

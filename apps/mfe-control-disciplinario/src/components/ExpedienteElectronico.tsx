@@ -1910,6 +1910,7 @@ function ModalVerCarpetas({ proceso, onClose }: ModalVerCarpetasProps) {
                             >
                               <Eye className="w-4 h-4" style={{ color: '#6B7280' }} />
                             </button>
+                            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPEDIENTE_ELECTRONICO_DOWNLOAD_DOC) && (
                             <button
                               onClick={() => handleDescargarDocumento(documento)}
                               className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -1917,6 +1918,7 @@ function ModalVerCarpetas({ proceso, onClose }: ModalVerCarpetasProps) {
                             >
                               <Download className="w-4 h-4" style={{ color: '#6B7280' }} />
                             </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2732,6 +2734,7 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
             </div>
           </div>
 
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPEDIENTE_ELECTRONICO_DOWNLOAD_HOJA_CONTROL) && (
           <button
             onClick={handleExportarExpediente}
             className="px-5 py-2.5 rounded-lg text-white font-semibold hover:shadow-lg transition-all duration-200 flex items-center gap-2 hover:scale-105"
@@ -2741,6 +2744,7 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
             <Package className="w-5 h-5" />
             Exportar Todos (ZIP)
           </button>
+          )}
 
 
           {/* Selector de Proceso - DESTACADO CON CARD NARANJA */}
@@ -3015,6 +3019,7 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
                               )}
                             </button>
                             {/* Botón Descargar: para todos los tipos */}
+                            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPEDIENTE_ELECTRONICO_DOWNLOAD_DOC) && (
                             <button
                               onClick={() => handleDescargarDocumento(doc)}
                               className="px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:opacity-80 transition-opacity"
@@ -3022,6 +3027,7 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
                               <Download className="w-3.5 h-3.5 inline mr-1" />
                               Descargar
                             </button>
+                            )}
                           </div>
                         </td>
                       </tr>
