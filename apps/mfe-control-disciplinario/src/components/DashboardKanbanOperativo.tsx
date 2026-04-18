@@ -4084,13 +4084,6 @@ export function DashboardKanbanOperativo({
 
         itemRestaurado.restaurado = true; // El backend ya lo actualizó, pero marcamos localmente
       }
-          } catch (apiError) {
-            console.error('Direct API call failed:', apiError);
-            throw apiError;
-          }
-        }
-        itemRestaurado.restaurado = true; // El backend ya lo actualizó, pero marcamos localmente
-      }
 
       setItems(prev => [...prev, itemRestaurado]);
       setItemsArchivados(prev => prev.filter(i => i.id !== item.id));
