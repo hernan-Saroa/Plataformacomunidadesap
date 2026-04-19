@@ -2898,7 +2898,7 @@ export function DashboardKanbanOperativo({
       console.log('canViewAll', canViewAll);
       console.log('canViewMine', canViewMine);
       
-      const user = authService.getUser();
+      const user = authService.getCurrentUser();
       const currentUserId = user?.id;
 
       // Cargar noticias y procesos en paralelo (filtrados por profesional si hay filtro activo o permiso restringido)

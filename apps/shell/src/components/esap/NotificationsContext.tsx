@@ -4,6 +4,8 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { notificationsService, Notification as ApiNotification } from '../../services/api/notificationsService';
+import { authService } from '../../services/api/authService';
 
 // ============ TIPOS ============
 
@@ -56,6 +58,30 @@ const NotificationsContext = createContext<NotificationsContextType | undefined>
 
 interface NotificationsProviderProps {
   children: ReactNode;
+}
+
+function mapApiNotification(n: ApiNotification): GlobalNotification {
+  return {
+    id_notificacion: n.id_notificacion,
+    tipo_notificacion: n.tipo_notificacion,
+    titulo: n.titulo,
+    mensaje: n.mensaje,
+    descripcion_corta: n.descripcion_corta,
+    icono: n.icono,
+    color: n.color,
+    prioridad: n.prioridad,
+    categoria: n.categoria,
+    leida: n.leida,
+    archivada: n.archivada,
+    fecha_creacion: n.fecha_creacion,
+    fecha_lectura: n.fecha_lectura,
+    tiene_accion: n.tiene_accion,
+    texto_boton_accion: n.texto_boton_accion,
+    url_accion: n.url_accion,
+    email_enviado: n.email_enviado,
+    email_abierto: n.email_abierto,
+    datos_adicionales: n.datos_adicionales,
+  };
 }
 
 export function NotificationsProvider({ children }: NotificationsProviderProps) {
@@ -117,37 +143,74 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
     });
   }, []);
 
+  // Cargar notificaciones desde el backend
+  const loadNotifications = useCallback(async () => {
+    const user = authService.getCurrentUser();
+    if (!user?.id) return;
+    try {
+      const result = await notificationsService.getUserNotifications(user.id, { limit: 50 });
+      const list = Array.isArray(result) ? result : (result.data || []);
+      const mapped = list.map(mapApiNotification);
+      setNotifications(mapped);
+    } catch (err) {
+      console.error('[Notif] error cargando notificaciones:', err);
+    }
+  }, []);
+
+  // Carga inicial: espera a que el usuario esté en localStorage (máx 5 intentos)
+  useEffect(() => {
+    let attempts = 0;
+    const tryLoad = () => {
+      const user = authService.getCurrentUser();
+      if (user?.id) {
+        loadNotifications();
+        return;
+      }
+      attempts++;
+      if (attempts < 5) setTimeout(tryLoad, 1000);
+    };
+    tryLoad();
+  }, [loadNotifications]);
+
+  // Polling cada 30 segundos para actualizar el badge
+  useEffect(() => {
+    const interval = setInterval(loadNotifications, 30_000);
+    return () => clearInterval(interval);
+  }, [loadNotifications]);
+
   // Marcar como leída
   const markAsRead = useCallback((id: string) => {
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id_notificacion === id 
+    setNotifications(prev =>
+      prev.map(notif =>
+        notif.id_notificacion === id
           ? { ...notif, leida: true, fecha_lectura: new Date().toISOString() }
           : notif
       )
     );
+    notificationsService.markAsRead(id).catch(() => {});
   }, []);
 
   // Marcar todas como leídas
   const markAllAsRead = useCallback(() => {
+    const user = authService.getCurrentUser();
     const now = new Date().toISOString();
-    setNotifications(prev => 
+    setNotifications(prev =>
       prev.map(notif => ({ ...notif, leida: true, fecha_lectura: now }))
     );
+    if (user?.id) notificationsService.markAllAsRead(user.id).catch(() => {});
   }, []);
 
   // Archivar notificación
   const archiveNotification = useCallback((id: string) => {
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id_notificacion === id 
-          ? { ...notif, archivada: true }
-          : notif
+    setNotifications(prev =>
+      prev.map(notif =>
+        notif.id_notificacion === id ? { ...notif, archivada: true } : notif
       )
     );
+    notificationsService.archive(id).catch(() => {});
   }, []);
 
-  // Limpiar todas las notificaciones
+  // Limpiar todas las notificaciones (solo local)
   const clearNotifications = useCallback(() => {
     setNotifications([]);
   }, []);
@@ -169,14 +232,6 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
   if (typeof window !== 'undefined') {
     window.__ESAP_NOTIFICATIONS_CONTEXT__ = value;
   }
-
-  useEffect(() => {
-    return () => {
-      if (typeof window !== 'undefined' && window.__ESAP_NOTIFICATIONS_CONTEXT__ === value) {
-        delete window.__ESAP_NOTIFICATIONS_CONTEXT__;
-      }
-    };
-  }, [value]);
 
   return (
     <NotificationsContext.Provider value={value}>
