@@ -1,5 +1,11 @@
 import type { jsPDF as JsPDFType } from 'jspdf';
-import { dibujarEncabezadoInstitucional, dibujarPieInstitucional, DOCUMENTOS_PREDEFINIDOS, type ConfiguracionDocumento } from './pdfESAPHeader';
+import { dibujarEncabezadoInstitucional, dibujarPieInstitucional, DOCUMENTOS_PREDEFINIDOS, getLogoESAP, type ConfiguracionDocumento } from './pdfESAPHeader';
+import { LOGO_INSTITUCIONAL_ESAP_B64 } from './logoInstitucionalESAP';
+
+/** Logo institucional ESAP - cargado desde modulo dedicado (base64 correcto, sin red ni CORS) */
+async function getLogoInstitucionalESAP(): Promise<string> {
+  return LOGO_INSTITUCIONAL_ESAP_B64;
+}
 
 // Tipos mínimos necesarios (coinciden con los de ComunicacionAuditoriaModule)
 export interface InformePreliminarPDF {
@@ -61,6 +67,10 @@ export interface AuditoriaBasicaPDF {
   }>;
   // --- Variables para secciones extendidas ---
   cartaRepresentacionFecha?: string;
+  /** Año del Plan Anual de Auditoría al que pertenece esta auditoría (ej: 2025) */
+  planAnualAño?: number;
+  /** Período evaluado (ej: '1 de enero al 31 de diciembre de 2024') — distinto a las fechas de ejecución */
+  periodoAuditadoTexto?: string;
   procesosAuditados?: Array<{
     categoria: string;
     numero: number;
@@ -253,6 +263,18 @@ export async function exportarPDFInformeAuditoria(
       : new Date().toLocaleDateString('es-CO');
 
   const añoActual = new Date().getFullYear();
+  // Año del Plan Anual: prioridad al campo explícito, luego metadata del plan, luego año de la fecha inicio
+  const planAnualAño: number =
+    auditoria.planAnualAño
+    || (auditoria as any).programaAnualMetadata?.año
+    || (auditoria.fechaEjecucionInicio ? new Date(auditoria.fechaEjecucionInicio).getFullYear() : añoActual);
+  // Período auditado en texto (distinto a las fechas de ejecución de la auditoría)
+  const periodoAuditadoTexto: string =
+    auditoria.periodoAuditadoTexto
+    || (auditoria as any).periodoAuditado
+    || (auditoria as any).programaAnualMetadata?.periodoAuditado
+    || auditoria.periodoAuditoria
+    || 'el periodo correspondiente';
 
   // ─── Derivar valores ────────────────────────────────────────────────────────
   const radicado = auditoria.radicado || `I-${añoActual}-${auditoria.codigo?.replace(/\D/g, '').slice(-6) || '000000'}`;
@@ -276,10 +298,10 @@ export async function exportarPDFInformeAuditoria(
   // PÁGINA 1 — CARTA DE CUBIERTA (Estilo Oficio)
   // ═══════════════════════════════════════════════════════════════════════════
   if (tipo === 'preliminar') {
-    const logoBase64 = await getLogoESAP();
-    
-    // Logo simple (sin tabla)
-    doc.addImage(logoBase64, 'PNG', margin, 15, 30, 30);
+    // Logo institucional completo (escudo + texto) únicamente en la página 1
+    // Se carga como base64 vía fetch para que jsPDF lo procese correctamente
+    const logoInstitucionalBase64 = await getLogoInstitucionalESAP();
+    doc.addImage(logoInstitucionalBase64, 'PNG', margin, 13, 65, 22);
     
     // Pie de página (página 1)
     dibujarPieInstitucional(doc as any, 1, true);
@@ -352,7 +374,7 @@ export async function exportarPDFInformeAuditoria(
     const parrafos = [
       `${tratamiento} reciba un cordial saludo:`,
       '',
-      `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${new Date().getFullYear()}, remite para su conocimiento y pronunciamiento el Informe Preliminar de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para el periodo correspondiente.`,
+      `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${planAnualAño}, remite para su conocimiento y pronunciamiento el Informe Preliminar de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para el periodo comprendido entre ${periodoAuditadoTexto}.`,
       '',
       `Así mismo, la ${unidad} tiene plazo hasta el ${plazoPronunc}, para que se pronuncie frente a cada uno de los hallazgos y recomendaciones incluidas en el informe preliminar, allegando los soportes y evidencias respectivos, con el objetivo que los hallazgos sean levantados o en su defecto declarada su firmeza.`,
       '',
@@ -424,10 +446,14 @@ export async function exportarPDFInformeAuditoria(
     'LUGAR Y FECHA DE EJECUCIÓN AUDITORIA:',
     `${lugar} / ${fechEjIni} – ${fechEjFin}`, TABLA_OPTS);
 
-  // Fila: PERIODO
+  // Fila: PERIODO — muestra el periodo auditado real (no las fechas de ejecución de la auditoría)
   y = filaTabla(doc, margin, y, tableW,
     'PERIODO DE LA AUDITORIA:',
-    auditoria.periodoAuditoria || 'Vigencia correspondiente.', TABLA_OPTS);
+    auditoria.periodoAuditadoTexto
+    || (auditoria as any).periodoAuditado
+    || (auditoria as any).programaAnualMetadata?.periodoAuditado
+    || auditoria.periodoAuditoria
+    || 'Vigencia correspondiente.', TABLA_OPTS);
 
   // Fila: EQUIPO AUDITOR
   {

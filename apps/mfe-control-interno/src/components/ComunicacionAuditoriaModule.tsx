@@ -771,7 +771,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
                     recomendaciones: h.recomendaciones,
                   }));
 
-                  // Datos base de la auditoría
+                    // Datos base de la auditoría
                   const auditoriaBase = {
                     codigo: auditoria.codigo,
                     nombre: auditoria.nombre,
@@ -783,17 +783,37 @@ export const ComunicacionAuditoriaModule: React.FC<{
                     radicado: (auditoria as any).radicado,
                     fechaOficio: informePreliminar.fecha,
                     destinatarioNombre: (auditoria as any).responsable || (auditoria as any).responsableUnidad,
-                    destinatarioCargo: (auditoria as any).cargo || 'Director(a) Territorial',
+                    destinatarioCargo: (auditoria as any).cargo || (auditoria as any).responsableAreaCargo || 'Director(a) Territorial',
                     unidadAuditable: (auditoria as any).territorial || (auditoria as any).areaResponsable || auditoria.nombre,
                     fechaLimitePronunciamiento: (auditoria as any).fechaLimitePronunciamiento,
                     jefeOCI: (auditoria as any).jefeOCI,
-                    elaboro: typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre,
+                    // Elaboró: líder + resto del equipo
+                    elaboro: [
+                      typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre,
+                      ...((auditoria as any).equipoAuditores?.slice?.(1) || []).map((a: any) => typeof a === 'string' ? a : a?.nombre).filter(Boolean),
+                    ].filter(Boolean).join(' / '),
                     tituloAuditoria: (auditoria as any).tituloAuditoria,
                     responsableUnidadAuditada: (auditoria as any).responsable || (auditoria as any).responsableUnidad,
-                    lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).territorial,
-                    fechaEjecucionInicio: auditoria.fechaInicio,
-                    fechaEjecucionFin: auditoria.fechaFin,
-                    periodoAuditoria: auditoria.fechaInicio && auditoria.fechaFin ? `${auditoria.fechaInicio} al ${auditoria.fechaFin}` : undefined,
+                    // Lugar de ejecución: campo explícito > sede > territorial
+                    lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).sede || (auditoria as any).territorial,
+                    // Fechas de ejecución de la auditoría (cuándo se realizó)
+                    fechaEjecucionInicio: (auditoria as any).fechaInicioEjecucion || auditoria.fechaInicio,
+                    fechaEjecucionFin: (auditoria as any).fechaFinEjecucion || auditoria.fechaFin,
+                    // Período auditado (qué vigencia se evaluó) — distinto a fechas de ejecución
+                    periodoAuditoria: (auditoria as any).periodoAuditoria
+                      || (auditoria as any).programaAnualMetadata?.periodoAuditado
+                      || (auditoria.fechaInicio && auditoria.fechaFin
+                          ? `${auditoria.fechaInicio} al ${auditoria.fechaFin}`
+                          : undefined),
+                    periodoAuditadoTexto: (auditoria as any).periodoAuditadoTexto
+                      || (auditoria as any).programaAnualMetadata?.periodoAuditado
+                      || (auditoria as any).periodoAuditoria,
+                    // Año del Plan Anual (para texto “Plan Anual de Auditoría del año XXXX”)
+                    planAnualAño: (auditoria as any).planAnualAño
+                      || (auditoria as any).programaAnualMetadata?.año
+                      || (auditoria.fechaInicio
+                          ? new Date(auditoria.fechaInicio).getFullYear()
+                          : new Date().getFullYear()),
                     equipoAuditor: (auditoria as any).equipoAuditores?.map((a: any) => ({ nombre: a.nombre || a, rol: a.rol })),
                     // Campos opcionales del API (prioridad sobre generación IA)
                     objetivo: (auditoria as any).objetivo,
