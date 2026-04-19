@@ -99,6 +99,7 @@ import { DisciplinaryProcessNotesService } from './services/disciplinary-process
 import { DisciplinaryProcessReassignmentService } from './services/disciplinary-process-reassignment.service';
 import { JuridicaEmailService } from './services/juridica-email.service';
 import { DisciplinaryBehaviorService } from './services/disciplinary-behavior.service';
+import { NotificationClientService } from './services/notification-client.service';
 
 @Module({
   imports: [
@@ -199,6 +200,7 @@ import { DisciplinaryBehaviorService } from './services/disciplinary-behavior.se
     DisciplinaryProcessReassignmentService,
     JuridicaEmailService,
     DisciplinaryBehaviorService,
+    NotificationClientService,
   ],
 })
 export class AppModule { }

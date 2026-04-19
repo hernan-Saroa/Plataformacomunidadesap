@@ -14,6 +14,7 @@ import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto'
 import { ReturnNewsDto } from '../dtos/return-news.dto';
 import { SequenceService } from './sequence.service';
 import { StorageService } from './storage.service';
+import { NotificationClientService } from './notification-client.service';
 
 interface FileData {
   buffer: Buffer;
@@ -33,6 +34,7 @@ export class NewsService {
     private stageConfigurationRepository: Repository<StageConfiguration>,
     private sequenceService: SequenceService,
     private storageService: StorageService,
+    private notificationClient: NotificationClientService,
   ) { }
 
   /**
@@ -96,9 +98,26 @@ export class NewsService {
         kanbanStage: initialStage.id,
         etapaActual: initialStage.etapa,
         historialAuditoria: initialHistory,
+        radicadorId: createNewsDto.radicadorId ?? null,
       } as any);
 
-      return await this.newsRepository.save(noticia) as unknown as DisciplinaryNews;
+      const noticiaGuardada = await this.newsRepository.save(noticia) as unknown as DisciplinaryNews;
+
+      this.notificationClient.notifyByRole('JEFE_DE_LA_OCID', {
+        tipo_notificacion: 'NUEVA_NOTICIA',
+        titulo: 'Nueva noticia disciplinaria radicada',
+        mensaje: `Se ha radicado una nueva noticia con número ${radicado}. Está pendiente de revisión.`,
+        descripcion_corta: `Noticia ${radicado} pendiente de revisión`,
+        icono: 'FileText',
+        color: '#2563EB',
+        prioridad: 'Media',
+        categoria: 'DISCIPLINARIO',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver noticia',
+        datos_adicionales: { noticiaId: noticiaGuardada.id, radicado },
+      }).catch(() => {});
+
+      return noticiaGuardada;
     } catch (error) {
       throw new HttpException(
         `Error al radicar noticia: ${error.message}`,
@@ -348,7 +367,27 @@ export class NewsService {
     };
     noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
 
-    return await this.newsRepository.save(noticia);
+    const noticiaGuardada = await this.newsRepository.save(noticia);
+
+    const radicadorIdDestino = returnNewsDto.radicadorId ?? noticia.radicadorId;
+    if (radicadorIdDestino) {
+      this.notificationClient.send({
+        id_usuario_destinatario: radicadorIdDestino,
+        tipo_notificacion: 'NOTICIA_DEVUELTA',
+        titulo: 'Noticia devuelta por el Jefe OCID',
+        mensaje: `La noticia ${noticia.radicado} ha sido devuelta. Observaciones: ${returnNewsDto.observaciones}`,
+        descripcion_corta: `Noticia ${noticia.radicado} devuelta`,
+        icono: 'ArrowLeft',
+        color: '#DC2626',
+        prioridad: 'Alta',
+        categoria: 'DISCIPLINARIO',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver noticia',
+        datos_adicionales: { noticiaId: noticia.id, radicado: noticia.radicado },
+      }).catch(() => {});
+    }
+
+    return noticiaGuardada;
   }
 
   /**
@@ -493,6 +532,23 @@ export class NewsService {
       // Guardar la noticia con el nuevo estado
       await this.newsRepository.save(noticia);
   
+      if (proceso.abogadoAsignadoId) {
+        this.notificationClient.send({
+          id_usuario_destinatario: proceso.abogadoAsignadoId,
+          tipo_notificacion: 'NOTICIA_ASOCIADA_PROCESO',
+          titulo: 'Nueva noticia asociada a tu proceso',
+          mensaje: `Se ha asociado la noticia ${noticia.radicado} al proceso ${proceso.radicadoProceso}. Justificación: ${justificacion}`,
+          descripcion_corta: `Noticia ${noticia.radicado} asociada al proceso ${proceso.radicadoProceso}`,
+          icono: 'Link',
+          color: '#7C3AED',
+          prioridad: 'Media',
+          categoria: 'DISCIPLINARIO',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver proceso',
+          datos_adicionales: { noticiaId: newsId, procesoId: procesoDestinoId },
+        }).catch(() => {});
+      }
+
       return {
         message: 'Asociación creada exitosamente',
         association: savedAssociation
