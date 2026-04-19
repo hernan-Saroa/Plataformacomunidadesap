@@ -1,6 +1,6 @@
 import { existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { remoteApps, repoRoot, shellApp } from './mfe.config.mjs';
 
 const viteCli = path.resolve(repoRoot, 'node_modules', 'vite', 'bin', 'vite.js');
@@ -11,29 +11,56 @@ if (!existsSync(viteCli)) {
   process.exit(1);
 }
 
-function runAppBuild(app) {
-  const result = spawnSync(process.execPath, [viteCli, 'build'], {
-    cwd: path.join(repoRoot, 'apps', app.appDir),
-    env: {
-      ...process.env,
-      PATH: process.env.PATH?.includes(nodeBinDir)
-        ? process.env.PATH
-        : `${nodeBinDir}:${process.env.PATH || ''}`,
-    },
-    stdio: 'inherit',
-  });
+const parallelism = Math.max(
+  1,
+  Number.parseInt(process.env.FRONTEND_BUILD_PARALLELISM || '2', 10) || 2,
+);
 
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
-  }
+function runAppBuild(app) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [viteCli, 'build'], {
+      cwd: path.join(repoRoot, 'apps', app.appDir),
+      env: {
+        ...process.env,
+        PATH: process.env.PATH?.includes(nodeBinDir)
+          ? process.env.PATH
+          : `${nodeBinDir}:${process.env.PATH || ''}`,
+      },
+      stdio: 'inherit',
+    });
+
+    child.on('error', reject);
+    child.on('exit', (code, signal) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(new Error(`${app.workspace} falló con ${signal || `código ${code}`}`));
+    });
+  });
 }
 
 rmSync(path.resolve(repoRoot, 'build'), { recursive: true, force: true });
 
-for (const app of remoteApps) {
-  console.log(`[build:frontends] Building ${app.workspace}...`);
-  runAppBuild(app);
+const apps = [...remoteApps, shellApp];
+let nextIndex = 0;
+
+async function worker() {
+  while (nextIndex < apps.length) {
+    const app = apps[nextIndex];
+    nextIndex += 1;
+    console.log(`[build:frontends] Building ${app.workspace}...`);
+    await runAppBuild(app);
+  }
 }
 
-console.log(`[build:frontends] Building ${shellApp.workspace}...`);
-runAppBuild(shellApp);
+try {
+  console.log(`[build:frontends] Paralelismo: ${Math.min(parallelism, apps.length)}`);
+  await Promise.all(
+    Array.from({ length: Math.min(parallelism, apps.length) }, () => worker()),
+  );
+} catch (error) {
+  console.error(`[build:frontends] ${error.message}`);
+  process.exit(1);
+}
