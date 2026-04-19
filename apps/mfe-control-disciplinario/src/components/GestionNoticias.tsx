@@ -1192,6 +1192,7 @@ export function GestionNoticias() {
         // Fecha de los hechos para cálculo de caducidad (Ley 734/2002 Art. 30)
         fechaHechos: data.fechaHechos || undefined,
         // NO enviar: radicado, fechaRecepcion, estado (los genera el backend)
+        radicadorId: authService.getCurrentUser()?.id,
       };
 
       await disciplinaryService.radicarNoticia(createDto, data.archivosAdjuntos || []);
@@ -1268,7 +1269,7 @@ export function GestionNoticias() {
 
     try {
       setLoading(true);
-      await disciplinaryService.returnNews(noticiaSeleccionada.id, observaciones);
+      await disciplinaryService.returnNews(noticiaSeleccionada.id, observaciones, (noticiaSeleccionada as any).radicadorId);
 
       toast.success('Noticia Devuelta', {
         description: `Se ha notificado a ${noticiaSeleccionada.radicador} sobre las correcciones requeridas.`

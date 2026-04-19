@@ -105,6 +105,7 @@ export function NotificationsPanelV2({
   };
 
   const filteredNotifications = notifications.filter(notif => {
+    if (notif.archivada) return false;
     if (filter === 'unread' && notif.leida) return false;
     if (filter === 'important' && notif.prioridad !== 'Alta' && notif.prioridad !== 'Crítica') return false;
     if (categoryFilter !== 'all' && notif.categoria !== categoryFilter) return false;

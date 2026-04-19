@@ -2,7 +2,7 @@ import { apiClient } from './apiClient';
 
 // Prefijo del servicio en el API Gateway
 // Nueva estructura: /{service}/api/v{version}/{path}
-const SERVICE_PREFIX = '/auth/api/v1';
+const SERVICE_PREFIX = '/notificaciones/api/v1';
 
 // Types
 export interface Notification {
@@ -63,8 +63,8 @@ export const notificationsService = {
     }
   ): Promise<{ data: Notification[]; total: number; no_leidas: number }> => {
     try {
-      const response = await apiClient.get(`${SERVICE_PREFIX}/users/${userId}/notifications`, { params });
-      return response.data;
+      const response = await apiClient.get(`${SERVICE_PREFIX}/users/${userId}/notifications`, params as Record<string, any>);
+      return response;
     } catch (error) {
       console.error('Error fetching notifications:', error);
       throw error;
