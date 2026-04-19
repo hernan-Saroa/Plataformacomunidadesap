@@ -9,6 +9,35 @@ Esta guía documenta el despliegue en DEV usando [deploy.dev.sh](/Users/henrryro
 - Archivo `.env.dev` presente en la raíz
 - Acceso al servidor `http://4.156.71.181`
 
+## Variables Oracle
+
+El despliegue Docker no lee `backend/certification-service/.env`; sólo usa `.env.dev` en la raíz. Para habilitar la integración de certificados laborales agrega este bloque a `.env.dev`:
+
+```bash
+ORACLE_FNC_ENABLED=true
+ORACLE_FNC_USER=USRINTEGRACION
+ORACLE_FNC_PASSWORD=""
+ORACLE_FNC_CONNECT_STRING=""
+ORACLE_FNC_SCHEMA=USRINTEGRACION
+ORACLE_FNC_VIEW=VW_INTEGRACIONFNC
+```
+
+Si se usa Oracle Thick mode con Instant Client, agrega también:
+
+```bash
+ORACLE_CLIENT_LIB_DIR=/ruta/al/instantclient
+```
+
+## Opciones De Login
+
+El login del shell usa `VITE_LOGIN_OPTIONS` en tiempo de build. Define esta variable en `.env.dev`:
+
+```bash
+# both: Microsoft + correo/contraseña
+# microsoft: sólo Microsoft
+VITE_LOGIN_OPTIONS="both"
+```
+
 ## Modos de despliegue
 
 El script soporta dos modos:

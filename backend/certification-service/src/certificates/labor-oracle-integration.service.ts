@@ -211,6 +211,19 @@ export class LaborOracleIntegrationService {
     return candidate?.errorNum === 1017 || code === 'ORA-01017' || message.includes('ORA-01017');
   }
 
+  private isConnectStringResolutionError(error: unknown): boolean {
+    const candidate = error as { code?: unknown; message?: unknown };
+    const code = String(candidate?.code || '').toUpperCase();
+    const message = String(candidate?.message || '').toUpperCase();
+    return (
+      code === 'NJS-530' ||
+      message.includes('NJS-530') ||
+      message.includes('ORA-12154') ||
+      message.includes('ORA-12514') ||
+      message.includes('ORA-12545')
+    );
+  }
+
   private async withConnection<T>(
     callback: (
       connection: OracleConnection,
@@ -235,6 +248,14 @@ export class LaborOracleIntegrationService {
           `Oracle rechazo usuario/clave para ${config.user} en ${config.connectString} usando modo ${mode}. ` +
             'Valida que ORACLE_FNC_USER conserve exactamente las mayusculas/minusculas del usuario en Oracle, ' +
             'que ORACLE_FNC_PASSWORD sea la clave real y que ORACLE_FNC_CONNECT_STRING apunte al mismo servicio usado en SQL Developer.',
+        );
+      }
+      if (this.isConnectStringResolutionError(error)) {
+        const mode = driver.thin === false ? 'Thick' : 'Thin';
+        throw new ServiceUnavailableException(
+          `Oracle FNC no pudo resolver o alcanzar el connect string ${config.connectString} usando modo ${mode}. ` +
+            'Valida desde el contenedor certification-service que el host del connect string resuelva por DNS y tenga salida al puerto 1521. ' +
+            'Ejemplos: docker exec certification-service getent hosts scan-pri.esap.edu.int y docker exec certification-service nc -vz scan-pri.esap.edu.int 1521.',
         );
       }
       throw error;

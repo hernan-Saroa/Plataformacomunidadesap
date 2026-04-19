@@ -3,6 +3,7 @@ x-frontend-build-args: &frontend-build-args
   VITE_ONLYOFFICE_URL: ${FRONTEND_VITE_ONLYOFFICE_URL:-http://172.16.202.169:9000}
   VITE_MICROSOFT_TENANT_ID: ${VITE_MICROSOFT_TENANT_ID}
   VITE_MICROSOFT_CLIENT_ID: ${VITE_MICROSOFT_CLIENT_ID}
+  VITE_LOGIN_OPTIONS: ${VITE_LOGIN_OPTIONS:-both}
 
 x-frontend-service: &frontend-service
   networks:
