@@ -380,6 +380,9 @@ export const ComunicacionAuditoriaModule: React.FC<{
               ? `${audData.territorialInfo.ciudad}${audData.territorialInfo.departamento ? ' – ' + audData.territorialInfo.departamento : ''}`
               : audData.territorial,
           }),
+          ...(audData.riesgosIdentificados && { riesgosIdentificados: audData.riesgosIdentificados }),
+          ...(audData.fortalezas && { fortalezas: audData.fortalezas }),
+          ...(audData.recomendacionesPorCategoria && { recomendacionesPorCategoria: audData.recomendacionesPorCategoria }),
         }));
       }
     } catch (err: any) {
@@ -829,6 +832,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
                     evaluacionControlInterno: (auditoria as any).evaluacionControlInterno,
                     fortalezas: (auditoria as any).fortalezas,
                     recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
+                    riesgosIdentificados: (auditoria as any).riesgosIdentificados,
                   };
 
                   // Generar contenido IA y aplicarlo (enriquece los campos vacíos)
@@ -1184,6 +1188,81 @@ const SeccionInformePreliminar: React.FC<{
           </div>
         </div>
       </CardSIGL>
+
+      {/* Riesgos Identificados del Proceso */}
+      {((auditoria as any).riesgosIdentificados?.length > 0 || (auditoria as any).objetivo) && (
+        <CardSIGL className={embedded ? '!border !border-gray-200 !shadow-none' : ''}>
+          <div className={embedded ? 'p-4' : 'p-6'}>
+            <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Target className="w-5 h-5 text-purple-600" />
+              Riesgos y Objetivos de la Auditoría
+            </h3>
+
+            {(auditoria as any).objetivo && (
+              <div className="mb-4">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Objetivo Técnico</span>
+                <p className="text-[13px] text-gray-700 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100 italic">{(auditoria as any).objetivo}</p>
+              </div>
+            )}
+
+            {(auditoria as any).alcance && (
+              <div className="mb-4">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Alcance de la Auditoría</span>
+                <p className="text-[13px] text-gray-700 leading-relaxed">{(auditoria as any).alcance}</p>
+              </div>
+            )}
+
+            {(auditoria as any).riesgosIdentificados?.length > 0 && (
+              <div className="mb-4">
+                <span className="text-xs font-bold text-red-400 uppercase tracking-wider block mb-2">Riesgos Específicos Identificados</span>
+                <div className="grid grid-cols-1 gap-2">
+                  {(auditoria as any).riesgosIdentificados.map((riesgo: string, idx: number) => (
+                    <div key={idx} className="flex items-start gap-2 p-2.5 bg-red-50/50 border border-red-100 rounded-lg text-[13px] text-red-900 leading-relaxed">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                      {riesgo}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(auditoria as any).fortalezas?.length > 0 && (
+              <div className="mb-4">
+                <span className="text-xs font-bold text-green-500 uppercase tracking-wider block mb-2">Fortalezas Identificadas</span>
+                <div className="grid grid-cols-1 gap-2">
+                  {(auditoria as any).fortalezas.map((f: string, idx: number) => (
+                    <div key={idx} className="flex items-start gap-2 p-2.5 bg-green-50/50 border border-green-100 rounded-lg text-[13px] text-green-900">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0 mt-0.5" />
+                      {f}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(auditoria as any).recomendacionesPorCategoria?.length > 0 && (
+              <div>
+                <span className="text-xs font-bold text-blue-500 uppercase tracking-wider block mb-2">Recomendaciones por Categoría</span>
+                <div className="space-y-3">
+                  {(auditoria as any).recomendacionesPorCategoria.map((cat: any, idx: number) => (
+                    <div key={idx} className="bg-blue-50/30 border border-blue-100 rounded-lg p-3">
+                      <h4 className="text-[13px] font-bold text-blue-900 mb-2 uppercase">{cat.categoria}</h4>
+                      <ul className="space-y-1">
+                        {cat.items?.map((item: string, i: number) => (
+                          <li key={i} className="text-[12px] text-blue-800 flex items-start gap-2">
+                            <span className="shrink-0 mt-1.5 w-1 h-1 bg-blue-400 rounded-full" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </CardSIGL>
+      )}
 
       {/* Lista de Hallazgos */}
       <CardSIGL className={embedded ? '!border !border-gray-200 !shadow-none' : ''}>
@@ -2649,6 +2728,7 @@ const ModalPreviewInforme: React.FC<{
         evaluacionControlInterno: (auditoria as any).evaluacionControlInterno,
         fortalezas: (auditoria as any).fortalezas,
         recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
+        riesgosIdentificados: (auditoria as any).riesgosIdentificados,
       }),
     };
 

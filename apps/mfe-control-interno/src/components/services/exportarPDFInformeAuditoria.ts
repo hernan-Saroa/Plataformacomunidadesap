@@ -86,6 +86,7 @@ export interface AuditoriaBasicaPDF {
   evaluacionControlInterno?: string;
   fortalezas?: string[];
   recomendacionesPorCategoria?: Array<{ categoria: string; items: string[] }>;
+  riesgosIdentificados?: string[];
 }
 
 /** Hallazgo para incluir en el detalle del informe preliminar */

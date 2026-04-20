@@ -988,12 +988,20 @@ export function aplicarContenidoIA(
     evaluacionControlInterno: real(auditoria.evaluacionControlInterno, contenido.evaluacionControlInterno),
     // Arrays: usar los del registro si tienen elementos, si no los generados
     marcoNormativo: realArr(normalizeMarcoNormativo(auditoria.marcoNormativo), contenido.marcoNormativo),
-    procesosAuditados:          realArr(auditoria.procesosAuditados,         contenido.procesosAuditados),
+    procesosAuditados: (() => {
+      const procs = realArr(auditoria.procesosAuditados, contenido.procesosAuditados);
+      if (procs && procs.length > 0 && auditoria.riesgosIdentificados && auditoria.riesgosIdentificados.length > 0) {
+        // Clonar el primer proceso y agregarle los riesgos identificados en el programa de auditoría
+        const firstProc = { ...procs[0] };
+        firstProc.riesgos = [...(firstProc.riesgos || []), ...auditoria.riesgosIdentificados];
+        return [firstProc, ...procs.slice(1)];
+      }
+      return procs;
+    })(),
     fortalezas:                 realArr(auditoria.fortalezas,                contenido.fortalezas),
     recomendacionesPorCategoria: realArr(auditoria.recomendacionesPorCategoria, contenido.recomendacionesPorCategoria),
     // @ts-ignore - Agregamos paginas al objeto auditoria para que lo use el PDF
     paginas: contenido.paginas,
     // Las conclusiones van al campo observaciones del informe (se maneja en el componente)
-    paginas: paginas,
   };
 }
