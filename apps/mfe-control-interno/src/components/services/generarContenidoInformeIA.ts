@@ -28,9 +28,13 @@ export interface ProcesoAuditadoIA {
 export interface ContenidoInformeIA {
   objetivo: string;
   alcance: string;
+  declaracion: string; // Nueva sección requerida
   contextoGeneral: string;
   descripcionUnidad: string;
-  marcoNormativo: string[];
+  marcoNormativo: {
+    generales: string[];
+    especificas: string[];
+  };
   cartaRepresentacionFecha?: string;
   procesosAuditados: ProcesoAuditadoIA[];
   planesMejoramiento: string;
@@ -78,70 +82,71 @@ function buildPrompt(auditoria: AuditoriaBasicaPDF, hallazgos: HallazgoPDF[], a�
 DATOS DE LA AUDITORÍA (JSON):
 ${auditoriaJson}
 
-INSTRUCCIONES:
+ESTRUCTURA Y SECCIONES REQUERIDAS:
 
-1. **OBJETIVO**: Redacta un objetivo claro y específico enfocado en evaluación de cumplimiento normativo, identificación de riesgos, evaluación de controles y fortalecimiento del sistema de control interno. Menciona la unidad auditada y el periodo. Mínimo 3 oraciones.
+1. **OBJETIVO**: Redacta el objetivo enfocado en la evaluación del cumplimiento normativo, identificación de riesgos, evaluación de controles internos y generación de recomendaciones. Mínimo 3 oraciones.
 
-2. **ALCANCE**: Define con precisión los procesos evaluados, el tipo de auditoría (basada en riesgos), el periodo auditado, los sistemas de información revisados y la posibilidad de revisión de vigencias anteriores cuando sea pertinente. Mínimo 3 oraciones.
+2. **ALCANCE**: Define los procesos auditados, el periodo evaluado y menciona limitaciones (si aplica). Mínimo 3 oraciones.
 
-3. **CONTEXTO GENERAL**: Explica el contexto institucional de la unidad auditada dentro de la ESAP, el motivo de la auditoría (plan anual), la metodología aplicada (muestreo, entrevistas, revisión documental) y las condiciones en que se desarrolló. Mínimo 4 oraciones.
+3. **DECLARACIÓN**: Redacta un párrafo formal indicando que la auditoría se basa en muestras representativas, que se revisaron evidencias documentales y se utilizaron los sistemas de información institucionales (MIPG, ISOLUCIÓN, etc.).
 
-4. **DESCRIPCIÓN DE LA UNIDAD**: Describe la unidad/territorial auditada, su función, estructura básica y rol dentro de la ESAP. 3-4 oraciones.
+4. **CONTEXTO GENERAL**: Explica la relación con el plan anual de auditoría, el rol de la Oficina de Control Interno y el propósito preventivo de la evaluación.
 
-5. **PROCESOS AUDITADOS**: Para CADA proceso, genera:
-   - categoria: una de "I. PROCESOS ESTRATÉGICOS", "II. PROCESOS MISIONALES", "III. PROCESOS DE APOYO"
-   - numero: número secuencial
-   - nombre: nombre formal del proceso en MAYÚSCULAS
-   - objetivo: objetivo específico del proceso auditado (2-3 oraciones)
-   - riesgos: array de 3-5 riesgos redactados profesionalmente con impacto (económico, reputacional u operativo). Cada riesgo debe mencionar la probabilidad y consecuencia.
-   - componentes: array con PLANEACIÓN y EJECUCIÓN. Cada uno con contenido de 3-4 oraciones describiendo qué documentos, evidencias y verificaciones se realizaron. Si hay hallazgos en ese proceso, mencionarlos de forma general (sin revelar conclusiones finales).
+5. **EJECUCIÓN DE LA AUDITORÍA**: Para CADA proceso evaluado en el JSON, genera:
+   - categoria: ESTRATÉGICO, MISIONAL o DE APOYO.
+   - numero: secuencial.
+   - nombre: nombre formal del proceso.
+   - objetivo: objetivo específico del proceso.
+   - riesgos: lista de riesgos asociados al proceso evaluado.
+   - componentes: Un array con dos items obligatorios:
+     * { "titulo": "EVALUACIÓN REALIZADA:", "contenido": "..." }
+     * { "titulo": "EVIDENCIAS ANALIZADAS:", "contenido": "..." }
 
-6. **PLANES DE MEJORAMIENTO**: Analiza si la unidad tiene planes de mejoramiento activos. Si tiene hallazgos en esta auditoría, indica que deberán suscribirse planes en los plazos reglamentarios. Si no tiene, justifica técnicamente.
+6. **HALLAZGOS**: Para cada hallazgo proporcionado en el JSON, redacta una versión formal que incluya detalladamente:
+   - Título y Descripción clara (Condición).
+   - Causa (Por qué sucedió).
+   - Riesgo asociado e Impacto (Efecto económico, operativo o reputacional).
+   - Criterio (Norma incumplida).
 
-7. **ASPECTOS RELEVANTES**: Redacta observaciones técnicas relevantes sobre la información analizada, tendencias identificadas, avances o retrocesos en el control interno. 3-4 oraciones.
+7. **RECOMENDACIONES**: Genera recomendaciones por categoría que sean claras, accionables y directamente relacionadas con los hallazgos identificados.
 
-8. **EVALUACIÓN CONTROL INTERNO**: Emite un juicio técnico (adecuado / en proceso de mejora / deficiente) con justificación analítica basada en los hallazgos y evidencias. 2-3 oraciones.
+8. **CONCLUSIÓN**: Incluye un resumen sobre el estado general del control interno en la unidad, el nivel de cumplimiento identificado y la necesidad de acciones de mejora prioritarias.
 
-9. **FORTALEZAS**: Lista de 3-5 fortalezas identificadas. Deben ser específicas y concretas, no genéricas.
+REGLAS DE REDACCIÓN:
+- Usa lenguaje formal institucional del sector público (ESAP).
+- No inventes leyes, usa referencias generales a la Ley 87 de 1993 y MIPG si es necesario.
+- Mantén coherencia técnica y enfoque analítico.
 
-10. **RECOMENDACIONES POR CATEGORÍA**: Agrupa las recomendaciones derivadas de los hallazgos por categorías temáticas (ej: GESTIÓN DOCUMENTAL, CONTRATACIÓN, TALENTO HUMANO, etc.). Cada categoría con 2-4 items numerados con lenguaje técnico y específico.
-
-11. **CONCLUSIONES**: Párrafo final resumiendo el estado del proceso, nivel de cumplimiento, principales hallazgos y perspectiva institucional. Mínimo 4 oraciones.
-
-REGLAS:
-- Usa SIEMPRE lenguaje formal institucional colombiano del sector público.
-- NUNCA uses textos genéricos, placeholders ni frases vacías.
-- Menciona siempre la unidad auditada específica y el periodo.
-- Los riesgos deben describir consecuencias reales y concretas.
-- Si NO hay hallazgos, justifica técnicamente por qué no se identificaron (no digas simplemente "sin hallazgos").
-- Mantén coherencia entre todas las secciones.
-
-RESPONDE ÚNICAMENTE con un objeto JSON válido con la siguiente estructura (sin markdown, sin explicaciones, solo JSON):
+RESPONDE ÚNICAMENTE con un objeto JSON válido (sin markdown):
 {
   "objetivo": "...",
   "alcance": "...",
+  "declaracion": "...",
   "contextoGeneral": "...",
   "descripcionUnidad": "...",
-  "marcoNormativo": ["norma1", "norma2", ...],
+  "marcoNormativo": {
+    "generales": ["Ley 87 de 1993", "Ley 1474 de 2011", "..."],
+    "especificas": ["Decreto 164 de 2021", "Resolución SC-043 de 2022", "..."]
+  },
   "procesosAuditados": [
     {
-      "categoria": "I. PROCESOS ESTRATÉGICOS",
+      "categoria": "...",
       "numero": 1,
-      "nombre": "NOMBRE DEL PROCESO",
+      "nombre": "...",
       "objetivo": "...",
-      "riesgos": ["riesgo1", "riesgo2"],
+      "riesgos": ["..."],
       "componentes": [
-        { "titulo": "PLANEACIÓN:", "contenido": "..." },
-        { "titulo": "EJECUCIÓN:", "contenido": "..." }
+        { "titulo": "EVALUACIÓN REALIZADA:", "contenido": "..." },
+        { "titulo": "EVIDENCIAS ANALIZADAS:", "contenido": "..." }
       ]
     }
   ],
   "planesMejoramiento": "...",
   "aspectosRelevantes": "...",
   "evaluacionControlInterno": "...",
-  "fortalezas": ["fortaleza1", "fortaleza2"],
+  "fortalezas": ["..."],
   "recomendacionesPorCategoria": [
-    { "categoria": "GESTIÓN DOCUMENTAL", "items": ["1. ...", "2. ..."] }
+    { "categoria": "...", "items": ["..."] }
   ],
   "conclusiones": "..."
 }`;
@@ -321,22 +326,17 @@ function contenidoPorDefecto(
         ],
         componentes: [
           {
-            titulo: 'PLANEACIÓN:',
+            titulo: 'EVALUACIÓN REALIZADA:',
             contenido:
-              `Se solicitó el Plan de Acción Institucional de la ${unidad} para la ${periodo} y se verificó ` +
-              `su articulación con el Plan de Desarrollo Institucional 2023-2026 de la ESAP. Se revisaron los ` +
-              `reportes de seguimiento trimestrales cargados en el sistema ISOLUCIÓN y la coherencia de los ` +
-              `indicadores con las metas institucionales definidas. Se verificó la existencia y vigencia del ` +
-              `Plan Anticorrupción y de Atención al Ciudadano - PAAC de la vigencia auditada.`,
+              `Se evaluó la articulación del Plan de Acción Institucional de la ${unidad} con el PDI 2023-2026. ` +
+              `Se verificó el cumplimiento de metas e indicadores reportados en ISOLUCIÓN, constatando la ` +
+              `transparencia y publicidad de la información en el portal web institucional.`,
           },
           {
-            titulo: 'EJECUCIÓN:',
+            titulo: 'EVIDENCIAS ANALIZADAS:',
             contenido:
-              `Se realizó revisión de los seguimientos al Plan de Acción de la ${periodo}, verificando ` +
-              `el cumplimiento de metas e indicadores reportados en ISOLUCIÓN con la documentación soporte. ` +
-              `Se verificó la publicación oportuna de la información en el portal web institucional conforme ` +
-              `a los lineamientos de la Ley de Transparencia. Se constató la realización de rendición de cuentas ` +
-              `y los mecanismos de participación ciudadana implementados durante la vigencia.`,
+              `Reportes de seguimiento trimestrales, Plan Anticorrupción y de Atención al Ciudadano, ` +
+              `actas de rendición de cuentas e instrumentos de planeación de la vigencia auditada.`,
           },
         ],
       },
@@ -355,7 +355,7 @@ function contenidoPorDefecto(
         ],
         componentes: [
           {
-            titulo: 'PLANEACIÓN:',
+            titulo: 'EVALUACIÓN REALIZADA:',
             contenido:
               `Se revisaron los instrumentos de seguimiento y evaluación del desempeño institucional de la ` +
               `${unidad} para la ${periodo}, incluyendo el Informe de Gestión y los reportes al MIPG. ` +
@@ -364,7 +364,7 @@ function contenidoPorDefecto(
               `formuladas para atender las brechas identificadas.`,
           },
           {
-            titulo: 'EJECUCIÓN:',
+            titulo: 'EVIDENCIAS ANALIZADAS:',
             contenido:
               `Se verificó el avance en la implementación de las políticas de gestión y desempeño institucional ` +
               `del MIPG aplicables a la ${unidad}. Se revisaron las actas de los Comités Institucionales de ` +
@@ -389,7 +389,7 @@ function contenidoPorDefecto(
         ],
         componentes: [
           {
-            titulo: 'PLANEACIÓN:',
+            titulo: 'EVALUACIÓN REALIZADA:',
             contenido:
               `Se revisó el procedimiento de gestión de PQRSDF adoptado por la ESAP y su implementación en ` +
               `la ${unidad} para la ${periodo}. Se solicitó el reporte de PQRSDF radicadas, respondidas ` +
@@ -397,7 +397,7 @@ function contenidoPorDefecto(
               `y los canales de atención habilitados conforme a los lineamientos institucionales.`,
           },
           {
-            titulo: 'EJECUCIÓN:',
+            titulo: 'EVIDENCIAS ANALIZADAS:',
             contenido:
               `Se realizó revisión de una muestra de PQRSDF radicadas en la ${periodo}, verificando ` +
               `la oportunidad de respuesta (15 días hábiles), la calidad del contenido y la trazabilidad ` +
@@ -426,7 +426,7 @@ function contenidoPorDefecto(
         ],
         componentes: [
           {
-            titulo: 'PLANEACIÓN:',
+            titulo: 'EVALUACIÓN REALIZADA:',
             contenido:
               `Se revisó el Plan de Seguridad y Privacidad de la Información y el Plan de Continuidad Tecnológica ` +
               `de la ${unidad} para la ${periodo}. Se verificó el uso de los sistemas de información ` +
@@ -435,7 +435,7 @@ function contenidoPorDefecto(
               `Gobierno Digital y accesibilidad web.`,
           },
           {
-            titulo: 'EJECUCIÓN:',
+            titulo: 'EVIDENCIAS ANALIZADAS:',
             contenido:
               `Se verificó el estado de los equipos de cómputo y la infraestructura tecnológica asignada ` +
               `a la ${unidad}, revisando las actas de entrega y los inventarios en el sistema SEVEN. ` +
@@ -464,7 +464,7 @@ function contenidoPorDefecto(
         ],
         componentes: [
           {
-            titulo: 'PLANEACIÓN:',
+            titulo: 'EVALUACIÓN REALIZADA:',
             contenido:
               `Se revisaron los programas académicos ofertados por la ${unidad} en la ${periodo}, verificando ` +
               `la vigencia de los registros calificados ante el MEN y el SNIES. Se solicitaron los planes de ` +
@@ -473,7 +473,7 @@ function contenidoPorDefecto(
               `periodicidad de sus sesiones.`,
           },
           {
-            titulo: 'EJECUCIÓN:',
+            titulo: 'EVIDENCIAS ANALIZADAS:',
             contenido:
               `Se realizó revisión de los expedientes académicos de una muestra de estudiantes matriculados, ` +
               `verificando el cumplimiento de los requisitos de admisión y la integridad de los documentos ` +
@@ -502,7 +502,7 @@ function contenidoPorDefecto(
         ],
         componentes: [
           {
-            titulo: 'PLANEACIÓN:',
+            titulo: 'EVALUACIÓN REALIZADA:',
             contenido:
               `Se revisó el portafolio de programas de extensión y proyección social ofertados por la ` +
               `${unidad} para la ${periodo} y los convenios interadministrativos suscritos. ` +
@@ -511,7 +511,7 @@ function contenidoPorDefecto(
               `planes de acción y los indicadores de seguimiento del proceso.`,
           },
           {
-            titulo: 'EJECUCIÓN:',
+            titulo: 'EVIDENCIAS ANALIZADAS:',
             contenido:
               `Se revisaron los contratos y convenios de extensión suscritos en la ${periodo}, ` +
               `verificando el cumplimiento de las obligaciones de las partes y la supervisión ejercida. ` +
@@ -539,7 +539,7 @@ function contenidoPorDefecto(
         ],
         componentes: [
           {
-            titulo: 'PLANEACIÓN:',
+            titulo: 'EVALUACIÓN REALIZADA:',
             contenido:
               `Se revisó el inventario de procesos judiciales y acciones de tutela en curso a cargo de la ` +
               `${unidad} para la ${periodo}. Se verificó la existencia de procedimientos documentados para ` +
@@ -547,7 +547,7 @@ function contenidoPorDefecto(
               `de conceptos jurídicos emitidos y de actos administrativos elaborados durante la vigencia.`,
           },
           {
-            titulo: 'EJECUCIÓN:',
+            titulo: 'EVIDENCIAS ANALIZADAS:',
             contenido:
               `Se verificó la gestión de los requerimientos recibidos de organismos de control (Contraloría, ` +
               `Procuraduría, Personería, Defensoría), constatando la oportunidad y calidad de las respuestas. ` +
@@ -573,7 +573,7 @@ function contenidoPorDefecto(
         ],
         componentes: [
           {
-            titulo: 'PLANEACIÓN:',
+            titulo: 'EVALUACIÓN REALIZADA:',
             contenido:
               `Se revisó el Plan Anual de Adquisiciones – PAA publicado en SECOP II para la ${periodo} ` +
               `y su articulación con el presupuesto aprobado y el Plan de Acción de la ${unidad}. ` +
@@ -582,7 +582,7 @@ function contenidoPorDefecto(
               `suscritos en la vigencia y los supervisores designados para cada uno.`,
           },
           {
-            titulo: 'EJECUCIÓN:',
+            titulo: 'EVIDENCIAS ANALIZADAS:',
             contenido:
               `Se realizó revisión de una muestra representativa de contratos suscritos en la ${periodo}, ` +
               `verificando los estudios previos, la publicación en SECOP II, las actas de inicio, ` +
@@ -610,7 +610,7 @@ function contenidoPorDefecto(
         ],
         componentes: [
           {
-            titulo: 'PLANEACIÓN:',
+            titulo: 'EVALUACIÓN REALIZADA:',
             contenido:
               `Se revisó el Plan Institucional de Bienestar e Incentivos de la ${unidad} para la ${periodo} ` +
               `y su articulación con el diagnóstico de necesidades de los servidores. Se verificó la ` +
@@ -619,7 +619,7 @@ function contenidoPorDefecto(
               `y ejecutadas durante la vigencia.`,
           },
           {
-            titulo: 'EJECUCIÓN:',
+            titulo: 'EVIDENCIAS ANALIZADAS:',
             contenido:
               `Se verificó la ejecución de las actividades de bienestar programadas, revisando los ` +
               `registros de asistencia, fotografías y soportes de las actividades desarrolladas. ` +
@@ -645,7 +645,7 @@ function contenidoPorDefecto(
         ],
         componentes: [
           {
-            titulo: 'PLANEACIÓN:',
+            titulo: 'EVALUACIÓN REALIZADA:',
             contenido:
               `Se revisó el presupuesto aprobado para la ${unidad} en la ${periodo} y los modificaciones ` +
               `presupuestales realizadas. Se verificó la existencia del Plan de Caja mensual y su ` +
@@ -654,7 +654,7 @@ function contenidoPorDefecto(
               `de la sede nacional.`,
           },
           {
-            titulo: 'EJECUCIÓN:',
+            titulo: 'EVIDENCIAS ANALIZADAS:',
             contenido:
               `Se verificó la ejecución presupuestal de ingresos y gastos de la ${periodo}, contrastando ` +
               `los reportes del SIIF Nación con los soportes documentales de los compromisos adquiridos. ` +
@@ -680,7 +680,7 @@ function contenidoPorDefecto(
         ],
         componentes: [
           {
-            titulo: 'PLANEACIÓN:',
+            titulo: 'EVALUACIÓN REALIZADA:',
             contenido:
               `Se revisó el Plan Institucional de Gestión Ambiental – PIGA y el Plan de Gestión Documental ` +
               `de la ${unidad} para la ${periodo}. Se solicitó el inventario de bienes muebles e inmuebles ` +
@@ -689,7 +689,7 @@ function contenidoPorDefecto(
               `y su implementación en los archivos de gestión de la dependencia.`,
           },
           {
-            titulo: 'EJECUCIÓN:',
+            titulo: 'EVIDENCIAS ANALIZADAS:',
             contenido:
               `Se realizó constatación física de una muestra del inventario de bienes de la ${unidad}, ` +
               `verificando la consistencia con los registros del sistema SEVEN y las actas de entrega ` +
@@ -718,7 +718,7 @@ function contenidoPorDefecto(
         ],
         componentes: [
           {
-            titulo: 'PLANEACIÓN:',
+            titulo: 'EVALUACIÓN REALIZADA:',
             contenido:
               `Se revisó la planta de personal de la ${unidad} reportada en el SIGEP y su articulación ` +
               `con la estructura organizacional establecida en el Decreto 219 de 2004. Se verificó el ` +
@@ -727,7 +727,7 @@ function contenidoPorDefecto(
               `los registros de novedades del personal para la vigencia auditada.`,
           },
           {
-            titulo: 'EJECUCIÓN:',
+            titulo: 'EVIDENCIAS ANALIZADAS:',
             contenido:
               `Se verificó la liquidación y pago de la nómina del ${periodo}, revisando los registros ` +
               `en SIIF Nación y los soportes de novedades (licencias, vacaciones, incapacidades). ` +
@@ -981,6 +981,7 @@ export function aplicarContenidoIA(
     // Texto narrativo: usar dato real si existe, si no el generado
     objetivo:            real(auditoria.objetivo,            contenido.objetivo),
     alcance:             real(auditoria.alcance,             contenido.alcance),
+    declaracion:         real((auditoria as any).declaracion, contenido.declaracion),
     contextoGeneral:     real(auditoria.contextoGeneral,     contenido.contextoGeneral),
     descripcionUnidad:   real(auditoria.descripcionUnidad,   contenido.descripcionUnidad),
     planesMejoramiento:  real(auditoria.planesMejoramiento,  contenido.planesMejoramiento),
