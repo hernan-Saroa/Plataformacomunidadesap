@@ -105,6 +105,8 @@ compose_env_mfe() {
     FRONTEND_APP_DOCKERFILE="${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}" \
     FRONTEND_NETWORK_KEY="$ENV_NETWORK_KEY" \
     FRONTEND_CONTAINER_SUFFIX="$ENV_CONTAINER_SUFFIX" \
+    FRONTEND_GATEWAY_BIND="${FRONTEND_GATEWAY_BIND:-127.0.0.1}" \
+    FRONTEND_GATEWAY_PORT="${FRONTEND_GATEWAY_PORT:-8080}" \
     FRONTEND_VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_ENV/services}" \
     FRONTEND_VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV:9000}" \
     docker compose -f "$COMPOSE_FILE_ENV" -f "$COMPOSE_FILE_MFE" --env-file "$ENV_FILE" "$@"
@@ -448,8 +450,10 @@ cmd_rebuild_all_mfe() {
         compose_env_mfe build "${BACKEND_ENV_SERVICES[@]}" frontend
 
         echo -e "${YELLOW}Empaquetando shell + MFEs desde artefactos ya compilados...${NC}"
-        compose_env_mfe_prebuilt build "${FRONTEND_MFE_APP_SERVICES[@]}"
-        compose_env_mfe_prebuilt up -d
+        compose_env_mfe_prebuilt build --no-cache "${FRONTEND_MFE_APP_SERVICES[@]}"
+        compose_env_mfe_prebuilt up -d --force-recreate "${FRONTEND_MFE_APP_SERVICES[@]}"
+        echo -e "${YELLOW}Recreando gateway frontend para refrescar rutas internas Docker...${NC}"
+        compose_env_mfe up -d --no-deps --force-recreate frontend
     else
         echo -e "${YELLOW}Fallback: usando build Docker tradicional para todo el stack MFE...${NC}"
         compose_env_mfe build

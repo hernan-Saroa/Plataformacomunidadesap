@@ -17,7 +17,7 @@ services:
       dockerfile: Dockerfile.frontend.gateway
     container_name: superapp-frontend${FRONTEND_CONTAINER_SUFFIX:--prod}
     ports:
-      - "80:80"
+      - "${FRONTEND_GATEWAY_BIND:-0.0.0.0}:${FRONTEND_GATEWAY_PORT:-80}:80"
     depends_on:
       - frontend-shell
       - frontend-mfe-estructura-org

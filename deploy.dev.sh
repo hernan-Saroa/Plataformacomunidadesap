@@ -478,8 +478,10 @@ cmd_rebuild_all_mfe() {
         compose_dev_mfe build "${BACKEND_DEV_SERVICES[@]}" frontend
 
         echo -e "${YELLOW}Empaquetando shell + MFEs desde artefactos ya compilados...${NC}"
-        compose_dev_mfe_prebuilt build "${FRONTEND_MFE_APP_SERVICES[@]}"
-        compose_dev_mfe_prebuilt up -d
+        compose_dev_mfe_prebuilt build --no-cache "${FRONTEND_MFE_APP_SERVICES[@]}"
+        compose_dev_mfe_prebuilt up -d --force-recreate "${FRONTEND_MFE_APP_SERVICES[@]}"
+        echo -e "${YELLOW}Recreando gateway frontend para refrescar rutas internas Docker...${NC}"
+        compose_dev_mfe up -d --no-deps --force-recreate frontend
     else
         echo -e "${YELLOW}Fallback: usando build Docker tradicional para todo el stack MFE...${NC}"
         compose_dev_mfe build

@@ -19,8 +19,6 @@ services:
         VITE_MICROSOFT_CLIENT_ID: ${VITE_MICROSOFT_CLIENT_ID}
         VITE_LOGIN_OPTIONS: ${VITE_LOGIN_OPTIONS:-both}
     container_name: superapp-frontend-prod
-    ports:
-      - "80:80"
     depends_on:
       - api-gateway
       - onlyoffice
