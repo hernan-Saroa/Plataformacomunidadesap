@@ -614,57 +614,67 @@ export const ComunicacionAuditoriaModule: React.FC<{
   // ====================================
 
   const duracionDias = auditoria.esTerritoriales ? 2 : 10; // SEDE: 10-15d, TERRITORIAL: 2d
-
   return (
-    <div className={embedded ? 'space-y-4' : 'min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 p-6'}>
-      <div className={embedded ? 'space-y-4' : 'max-w-7xl mx-auto space-y-6'}>
+    <div className={embedded ? 'space-y-4' : 'min-h-screen bg-[#F8FAFC] pb-20'}>
+      <div className={embedded ? 'space-y-4' : 'max-w-7xl mx-auto px-4 md:px-8 space-y-8 pt-6'}>
         
         {/* HEADER - oculto en modo embebido (el expediente ya tiene Card de fase) */}
         {!embedded && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-xl shadow-lg p-6"
+          className="bg-gradient-to-br from-[#003DA5] via-[#002B7A] to-[#001D52] text-white rounded-2xl shadow-2xl p-8 relative overflow-hidden"
         >
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                  <FileText className="w-6 h-6 text-white" />
+          {/* Elementos decorativos premium */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl animate-pulse" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-400/10 rounded-full -ml-24 -mb-24 blur-2xl" />
+
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8 relative z-10">
+            <div className="flex flex-col xl:flex-row items-center gap-6 text-center md:text-left">
+              <div className="flex flex-col md:flex-row items-center gap-6">
+                <div className="w-16 h-16 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-inner border border-white/20 shrink-0">
+                  <FileText className="w-8 h-8 text-blue-200" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Fase de Comunicación</h1>
-                  <p className="text-sm text-gray-500">{auditoria.codigo} - {auditoria.nombre}</p>
+                  <BadgeSIGL variant="info" className="bg-white/20 text-white border-white/30 backdrop-blur-sm mb-2 uppercase tracking-widest text-[10px] font-black">
+                    PROCESO DE AUDITORÍA
+                  </BadgeSIGL>
+                  <h1 className="text-3xl md:text-4xl font-black tracking-tight leading-tight">Fase de Comunicación</h1>
+                  <p className="text-blue-100/80 text-lg font-medium mt-1">
+                    {auditoria.codigo} <span className="mx-2 opacity-30">|</span> {auditoria.nombre}
+                  </p>
                 </div>
               </div>
               
-              <div className="flex items-center gap-4 mt-4">
-                <BadgeSIGL variant="info">
-                  <Users className="w-3 h-3" />
+              <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mt-2 md:mt-0">
+                <BadgeSIGL variant="info" className="bg-white/10 text-white border-white/10">
+                  <Users className="w-3 h-3 mr-1" />
                   {typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : auditoria.auditorLider?.nombre || 'No asignado'}
                 </BadgeSIGL>
-                <BadgeSIGL variant="default">
-                  <Calendar className="w-3 h-3" />
+                <BadgeSIGL variant="default" className="bg-white/10 text-white border-white/10">
+                  <Calendar className="w-3 h-3 mr-1" />
                   Duración: {duracionDias} días
                 </BadgeSIGL>
-                <BadgeSIGL variant="warning">
-                  <AlertCircle className="w-3 h-3" />
+                <BadgeSIGL variant="warning" className="bg-amber-400/20 text-amber-200 border-amber-400/30">
+                  <AlertCircle className="w-3 h-3 mr-1" />
                   {auditoria.hallazgos.length} Hallazgos
                 </BadgeSIGL>
               </div>
             </div>
 
-            <div className="text-right">
-              <div className="text-sm text-gray-500 mb-2">Progreso General</div>
-              <div className="flex items-center gap-3">
-                <div className="text-3xl font-bold text-[#003DA5]">{progreso}%</div>
-                <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${progreso}%` }}
-                    transition={{ duration: 0.5 }}
-                    className="h-full bg-gradient-to-r from-purple-500 to-purple-600"
-                  />
+            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 min-w-[200px]">
+              <div className="text-xs text-blue-100/60 uppercase tracking-widest font-bold mb-2">Progreso General</div>
+              <div className="flex items-center gap-4">
+                <div className="text-4xl font-black text-white">{progreso}%</div>
+                <div className="flex-1">
+                  <div className="h-2 bg-white/10 rounded-full overflow-hidden shadow-inner">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${progreso}%` }}
+                      transition={{ duration: 0.8, ease: "easeOut" }}
+                      className="h-full bg-gradient-to-r from-blue-400 to-indigo-400 shadow-[0_0_10px_rgba(96,165,250,0.5)]"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -673,8 +683,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
         )}
 
         {/* NAVEGACIÓN DE SECCIONES: Comunicación (1-4) o Seguimiento (5-6). Solo el tab Seguimiento del expediente muestra 5-6 (soloSeguimiento). */}
-        <div className={embedded ? 'bg-white border-2 border-green-200 rounded-lg p-4' : 'bg-white rounded-xl shadow-lg p-4'}>
-          <div className="flex items-center gap-2 overflow-x-auto">
+        <div className={embedded ? 'bg-white border-2 border-green-200 rounded-lg p-4' : 'bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-2 ring-1 ring-black/5 sticky top-6 z-40'}>
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth p-1">
             {soloSeguimiento ? (
               // Strip Seguimiento: Verificación | Informe de Cierre
               [
@@ -833,6 +843,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
                     fortalezas: (auditoria as any).fortalezas,
                     recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
                     riesgosIdentificados: (auditoria as any).riesgosIdentificados,
+                    riesgosAsociados: (auditoria as any).riesgosAsociados,
+                    declaracion: (auditoria as any).declaracion,
                   };
 
                   // Generar contenido IA y aplicarlo (enriquece los campos vacíos)
@@ -1432,7 +1444,7 @@ const SeccionGestionHallazgos: React.FC<{
         </div>
       </CardSIGL>
 
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {hallazgos.map((hallazgo) => {
           const estado = hallazgo.estado || 'notificado';
           const pendiente = estado === 'notificado';
@@ -1460,7 +1472,7 @@ const SeccionGestionHallazgos: React.FC<{
                 )}
 
                 {pendiente && (
-                  <div className="flex gap-2 mt-4">
+                  <div className="flex flex-wrap gap-3 mt-4">
                     <Button variant="outline" size="sm" className="border-green-600 text-green-700 hover:bg-green-50" onClick={() => onAceptar(hallazgo.id)} disabled={loading}>
                       <CheckCircle2 className="w-4 h-4 mr-2" />
                       Aceptar hallazgo
@@ -1903,6 +1915,47 @@ const SeccionInformeFinal: React.FC<{
           variant="outline"
           size="sm"
           disabled={!informe.generado}
+          className="font-medium text-blue-600 border-blue-200 hover:bg-blue-50"
+          title="Informe Ejecutivo de Auditoría Interna (EM-FO-011)"
+          onClick={async () => {
+            if (!informe.generado) return;
+            const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+            const hallazgosParaPDF = (hallazgos || []).map((h) => ({
+              codigo: h.codigo,
+              titulo: h.titulo,
+              gravedad: h.gravedad,
+              descripcion: h.descripcion || '',
+              criterioIncumplido: h.criterioIncumplido,
+              causas: h.causas,
+              efectos: h.efectos,
+              recomendaciones: h.recomendaciones,
+              estadoFinal: h.estado,
+              decisionAuditor: h.decisionAuditor,
+              fundamentacionTecnica: (h as any).fundamentacionTecnica,
+            }));
+            await exportarPDFInformeAuditoria(
+              'ejecutivo',
+              {
+                codigo: auditoria.codigo,
+                nombre: auditoria.nombre,
+                proceso: auditoria.proceso,
+                auditorLider:
+                  typeof auditoria.auditorLider === 'string'
+                    ? auditoria.auditorLider
+                    : (auditoria as any).auditorLider?.nombre || 'No asignado',
+              },
+              informe,
+              hallazgosParaPDF
+            );
+          }}
+        >
+          <FileText className="w-4 h-4 mr-2" />
+          Descargar Informe Ejecutivo OCI
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!informe.generado}
           className="font-medium"
           onClick={async () => {
             if (!informe.generado) return;
@@ -1930,6 +1983,22 @@ const SeccionInformeFinal: React.FC<{
                   typeof auditoria.auditorLider === 'string'
                     ? auditoria.auditorLider
                     : (auditoria as any).auditorLider?.nombre || 'No asignado',
+                tituloAuditoria: (auditoria as any).titulo || auditoria.nombre,
+                responsableUnidadAuditada: (auditoria as any).responsableUnidad || (auditoria as any).areaResponsable || '—',
+                lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).territorial || '—',
+                fechaEjecucionInicio: auditoria.fechaInicio,
+                fechaEjecucionFin: auditoria.fechaFin,
+                periodoAuditoria: (auditoria as any).periodoAuditadoTexto || (auditoria as any).periodoAuditado || (auditoria as any).periodoAuditoria || 'Vigencia correspondiente',
+                equipoAuditor: (auditoria as any).equipoAuditores,
+                objetivo: (auditoria as any).objetivo,
+                alcance: (auditoria as any).alcance,
+                marcoNormativo: (auditoria as any).marcoNormativo,
+                contextoGeneral: (auditoria as any).contextoGeneral,
+                declaracion: (auditoria as any).declaracion,
+                jefeOCI: (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
+                elaboro: (auditoria as any).elaboro || (typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre),
+                reviso: (auditoria as any).reviso || (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
+                aprobo: (auditoria as any).aprobo || (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
               },
               informe,
               hallazgosParaPDF
@@ -1937,7 +2006,7 @@ const SeccionInformeFinal: React.FC<{
           }}
         >
           <Download className="w-4 h-4 mr-2" />
-          Descargar PDF
+          Descargar Informe Final (PDF)
         </Button>
         {!informe.generado && (
           <Button
@@ -2729,6 +2798,7 @@ const ModalPreviewInforme: React.FC<{
         fortalezas: (auditoria as any).fortalezas,
         recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
         riesgosIdentificados: (auditoria as any).riesgosIdentificados,
+        declaracion: (auditoria as any).declaracion,
       }),
     };
 
