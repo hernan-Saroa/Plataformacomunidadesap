@@ -43,8 +43,6 @@ import { SistemaComentarios } from './SistemaComentarios';
 import { ModalAsociarNoticiaProceso } from './ModalAsociarNoticiaProceso'; // ✅ NUEVO
 import { ModalAsociarNoticiaANoticia } from './ModalAsociarNoticiaANoticia'; // ✅ NUEVO: Modal para asociar noticia a noticia
 import { ModalAsignarProfesional } from './ModalAsignarProfesional'; // ✅ NUEVO: Modal de asignación de profesional
-import { authService } from '../../../services/api/authService';
-import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { ModalSolicitarReasignacion } from './ModalSolicitarReasignacion'; // ✅ NUEVO: Modal de solicitud de reasignación
 import { ModalAprobarReasignacion } from './ModalAprobarReasignacion'; // ✅ NUEVO: Modal de aprobación de reasignación (Jefe OCID)
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto'; // ✅ REFACTORIZADO: Modal unificado de revisión y aprobación
@@ -2865,7 +2863,7 @@ export function DashboardKanbanOperativo({
     setEtapasLoading(true);
     try {
       const etapas = await disciplinaryService.getStageConfiguration();
-      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_MANAGE)
+      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW)
       console.log('[DashboardKanban] Etapas cargadas desde backend:', etapas);
       // Si no tienen orden, asignar orden por defecto basado en índice
       const etapasOrdenadas = (getDataArray<any>(etapas) || []).map((etapa, idx) => ({
@@ -2892,7 +2890,7 @@ export function DashboardKanbanOperativo({
     try {
       const canViewAll = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL);
       const canViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_MINE);
-      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_MANAGE);
+      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW);
       
       console.log('hasPermissionNoticia', hasPermissionNoticia);
       console.log('canViewAll', canViewAll);
@@ -2900,13 +2898,12 @@ export function DashboardKanbanOperativo({
       
       const user = authService.getUser();
       const currentUserId = user?.id;
+      const esJefe = authService.hasRole('rol-jefe-oci') || authService.isSuperAdmin();
 
       // Cargar noticias y procesos en paralelo (filtrados por profesional si hay filtro activo o permiso restringido)
       const [noticiasRaw, procesosRaw] = await Promise.all([
         hasPermissionNoticia ?
-          (filtroProfesionalId || (!canViewAll && canViewMine && currentUserId))
-            ? disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId)
-            : disciplinaryService.getAllNoticias()
+          disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId)
           : [],
         (filtroProfesionalId || (!canViewAll && canViewMine && currentUserId))
           ? disciplinaryService.getMisProcesos(filtroProfesionalId || currentUserId)
@@ -2926,6 +2923,13 @@ export function DashboardKanbanOperativo({
       // Separar noticias archivadas de las activas. Excluir ASIGNADA porque ya tienen proceso asociado
       const noticiasActivas = noticiasFiltradas.filter(n => {
         const estado = (n as any).estado;
+        // No se muestran noticias devueltas a menos que el usuario sea jefe o sean suyas propias
+        if (estado === 'DEVUELTA') {
+          const isOwner = (n as any).radicador === currentUserId;
+          if (!esJefe && !isOwner) {
+            return false;
+          }
+        }
         return estado !== 'ARCHIVADA' && estado !== 'ASIGNADA';
       });
       const noticiasArchivadas = noticiasFiltradas.filter(n => (n as any).estado === 'ARCHIVADA');
