@@ -447,7 +447,17 @@ export class NewsService {
         noticia.kanbanStage = stageConfig.id;
      }
      return await this.newsRepository.save(noticia);
-   }
+  }
+
+  /**
+   * Obtiene las noticias radicadas por un usuario específico
+   */
+  async findByRadicadorId(radicadorId: string): Promise<DisciplinaryNews[]> {
+    return await this.newsRepository.find({
+      where: { radicadorId },
+      order: { fechaRecepcion: 'DESC' },
+    });
+  }
 
   /**
    * Actualiza el historial de auditoría de una noticia

@@ -115,26 +115,27 @@ export class NewsController {
   }
 
   /**
-   * H3: Listar noticias del profesional autenticado
-   * Retorna las noticias asociadas a los procesos asignados al profesional
-   */
+    * H3: Listar noticias del usuario autenticado
+    * Retorna las noticias radicadas por el usuario autenticado
+    */
   @Get('my-news')
   @ApiOperation({
     summary: 'Mis Noticias',
-    description: 'Retorna las noticias asociadas a los procesos del profesional autenticado',
+    description: 'Retorna las noticias radicadas por el usuario autenticado',
   })
   @ApiResponse({
     status: 200,
-    description: 'Lista de noticias del profesional',
+    description: 'Lista de noticias del usuario',
     type: [DisciplinaryNews],
   })
   async getMyNews(
     @Query('profesionalId') profesionalId: string,
+    @Req() request: Request,
   ): Promise<DisciplinaryNews[]> {
-    if (!profesionalId) {
-      throw new BadRequestException('profesionalId es requerido');
-    }
-    return await this.newsService.findByProfessionalId(profesionalId);
+    // Obtener el ID del usuario autenticado del JWT
+    const userId = (request as any).user?.userId;
+    
+    return await this.newsService.findByRadicadorId(profesionalId || userId);
   }
 
   /**
