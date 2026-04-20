@@ -412,10 +412,10 @@ export function SeccionAutosParametrizados() {
                       <td className="px-5 py-3 whitespace-nowrap">
                         <button
                           onClick={() => handleToggleEstado(auto)}
-                          disabled={loadingAccion === auto.id}
+                          disabled={loadingAccion === auto.id || !authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_AUTOS_ACTIVAR)}
                           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                             auto.estado === 'activo' ? 'bg-green-500' : 'bg-gray-300'
-                          } ${loadingAccion === auto.id ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+                          } ${(loadingAccion === auto.id || !authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_AUTOS_ACTIVAR)) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                           title={auto.estado === 'activo' ? 'Activo - Click para desactivar' : 'Inactivo - Click para activar'}
                         >
                           <span
@@ -465,34 +465,40 @@ export function SeccionAutosParametrizados() {
                       {/* Acciones */}
                       <td className="px-5 py-3 whitespace-nowrap text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => handleGestionarPlantilla(auto)}
-                            disabled={loadingAccion === auto.id + '_plantilla'}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-50 border border-purple-200 text-purple-700 hover:bg-purple-100 transition-colors font-semibold text-xs"
-                            title="Gestionar plantilla Word"
-                          >
-                            <File className="w-3.5 h-3.5" />
-                            <span className="hidden sm:inline">Plantilla</span>
-                          </button>
+                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_AUTOS_PLANTILLA_EDITAR) && (
+                            <button
+                              onClick={() => handleGestionarPlantilla(auto)}
+                              disabled={loadingAccion === auto.id + '_plantilla'}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-50 border border-purple-200 text-purple-700 hover:bg-purple-100 transition-colors font-semibold text-xs"
+                              title="Gestionar plantilla Word"
+                            >
+                              <File className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Plantilla</span>
+                            </button>
+                          )}
                           
-                          <button
-                            onClick={() => handleEditar(auto)}
-                            disabled={loadingAccion === auto.id}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 transition-colors font-semibold text-xs"
-                            title="Editar auto"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                            <span className="hidden sm:inline">Editar</span>
-                          </button>
+                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_AUTOS_EDITAR) && (
+                            <button
+                              onClick={() => handleEditar(auto)}
+                              disabled={loadingAccion === auto.id}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 transition-colors font-semibold text-xs"
+                              title="Editar auto"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Editar</span>
+                            </button>
+                          )}
                           
-                          <button
-                            onClick={() => handleEliminar(auto)}
-                            disabled={loadingAccion === auto.id}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition-colors font-semibold text-xs"
-                            title="Eliminar auto"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_AUTOS_ELIMINAR) && (
+                            <button
+                              onClick={() => handleEliminar(auto)}
+                              disabled={loadingAccion === auto.id}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition-colors font-semibold text-xs"
+                              title="Eliminar auto"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

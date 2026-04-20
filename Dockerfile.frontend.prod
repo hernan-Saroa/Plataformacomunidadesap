@@ -21,16 +21,19 @@ RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps
 ARG VITE_API_URL=http://172.16.202.169/services
 ARG VITE_MICROSOFT_TENANT_ID=
 ARG VITE_MICROSOFT_CLIENT_ID=
+ARG VITE_LOGIN_OPTIONS=both
 
 # Exportar como variable de entorno Y crear .env.production
 # Vite necesita ambas cosas para inyectar la variable correctamente
 ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_MICROSOFT_TENANT_ID=${VITE_MICROSOFT_TENANT_ID}
 ENV VITE_MICROSOFT_CLIENT_ID=${VITE_MICROSOFT_CLIENT_ID}
+ENV VITE_LOGIN_OPTIONS=${VITE_LOGIN_OPTIONS}
 RUN test -n "${VITE_MICROSOFT_TENANT_ID}" && test -n "${VITE_MICROSOFT_CLIENT_ID}"
 RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
     echo "VITE_MICROSOFT_TENANT_ID=${VITE_MICROSOFT_TENANT_ID}" >> .env.production && \
     echo "VITE_MICROSOFT_CLIENT_ID=${VITE_MICROSOFT_CLIENT_ID}" >> .env.production && \
+    echo "VITE_LOGIN_OPTIONS=${VITE_LOGIN_OPTIONS}" >> .env.production && \
     echo "Contenido de .env.production:" && cat .env.production
 
 # Build de producción (Vite lee .env.production automáticamente)

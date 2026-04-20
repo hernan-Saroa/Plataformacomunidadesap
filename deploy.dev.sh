@@ -33,7 +33,10 @@ fi
 # Cargar variables de entorno
 if [ -f .env.dev ]; then
     echo -e "${YELLOW}Cargando variables de entorno desde .env.dev...${NC}"
-    export $(cat .env.dev | grep -v '^#' | xargs)
+    set -a
+    # shellcheck disable=SC1091
+    source .env.dev
+    set +a
 else
     echo -e "${RED}Error: Archivo .env.dev no encontrado${NC}"
     echo -e "${YELLOW}Crea el archivo .env.dev con las variables de entorno necesarias${NC}"
@@ -60,12 +63,42 @@ FRONTEND_MFE_SERVICES=(
     frontend-mfe-control-disciplinario
     frontend-mfe-gestion-legal
 )
+FRONTEND_MFE_APP_SERVICES=(
+    frontend-shell
+    frontend-mfe-estructura-org
+    frontend-mfe-gestion-profesoral
+    frontend-mfe-programas-academicos
+    frontend-mfe-gestion-personas
+    frontend-mfe-auditoria
+    frontend-mfe-reportes
+    frontend-mfe-registro-academico
+    frontend-mfe-certificados-laborales
+    frontend-mfe-firma-electronica
+    frontend-mfe-control-interno
+    frontend-mfe-control-disciplinario
+    frontend-mfe-gestion-legal
+)
+BACKEND_DEV_SERVICES=(
+    api-gateway
+    auth-service
+    academic-registration-service
+    academic-work-plan-service
+    certification-service
+    internal-disciplinary-control-service
+    interoperability-service
+    internal-institutional-control-service
+    legal-management-service
+    notifications-service
+    travel-expenses-service
+    audit-service
+)
 
 compose_dev() {
     docker compose -f "$COMPOSE_FILE_DEV" --env-file .env.dev "$@"
 }
 
 compose_dev_mfe() {
+    FRONTEND_APP_DOCKERFILE="${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}" \
     FRONTEND_NETWORK_KEY="superapp-net" \
     FRONTEND_CONTAINER_SUFFIX="-dev" \
     FRONTEND_VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_DEV/services}" \
@@ -73,9 +106,52 @@ compose_dev_mfe() {
     docker compose -f "$COMPOSE_FILE_DEV" -f "$COMPOSE_FILE_MFE" --env-file .env.dev "$@"
 }
 
+compose_dev_mfe_prebuilt() {
+    FRONTEND_APP_DOCKERFILE="Dockerfile.frontend.app.prebuilt" compose_dev_mfe "$@"
+}
+
 cleanup_build_artifacts() {
     echo -e "${YELLOW}Limpiando artefactos locales del backend para reducir el contexto de build...${NC}"
     find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
+}
+
+ensure_frontend_dependencies() {
+    if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+        echo -e "${YELLOW}Node/npm no están disponibles en el host. Se usará el build Docker tradicional.${NC}"
+        return 1
+    fi
+
+    local node_major
+    node_major=$(node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || echo 0)
+    if [ "$node_major" -lt 20 ]; then
+        echo -e "${YELLOW}Node $(node -v) no es suficiente para Vite 6. Usa Node 20+ para activar el modo rápido.${NC}"
+        return 1
+    fi
+
+    if [ ! -x node_modules/vite/bin/vite.js ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
+        echo -e "${YELLOW}Instalando/sincronizando dependencias frontend una sola vez en el host...${NC}"
+        PUPPETEER_SKIP_DOWNLOAD=1 \
+        PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+        npm install --legacy-peer-deps --prefer-offline --no-audit
+    else
+        echo -e "${GREEN}Dependencias frontend ya sincronizadas.${NC}"
+    fi
+}
+
+build_frontend_assets_once() {
+    if ! ensure_frontend_dependencies; then
+        return 1
+    fi
+
+    echo -e "${YELLOW}Compilando shell + MFEs una sola vez en el host...${NC}"
+    echo -e "${YELLOW}Paralelismo configurable con FRONTEND_BUILD_PARALLELISM, actual: ${FRONTEND_BUILD_PARALLELISM:-2}${NC}"
+    PUPPETEER_SKIP_DOWNLOAD=1 \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_DEV/services}" \
+    VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_DEV:9000}" \
+    VITE_LOGIN_OPTIONS="${VITE_LOGIN_OPTIONS:-both}" \
+    FRONTEND_BUILD_PARALLELISM="${FRONTEND_BUILD_PARALLELISM:-2}" \
+    npm run build
 }
 
 append_unique() {
@@ -388,12 +464,27 @@ cmd_rebuild_all_mfe() {
 
     echo -e "${YELLOW}Reconstruyendo backend + gateway + shell + todos los MFEs...${NC}"
     echo -e "${YELLOW}La aplicación seguirá disponible mientras termina el build.${NC}"
-    echo -e "${YELLOW}Este comando es costoso. Si solo cambió una parte, usa rebuild-mfe, rebuild-service o rebuild-changed.${NC}"
+    echo -e "${YELLOW}Modo rápido DEV: build frontend en host + empaquetado Nginx liviano.${NC}"
+    echo -e "${YELLOW}Para forzar el flujo Docker anterior usa: MFE_DOCKER_BUILD_ONLY=true $0 rebuild-all-mfe${NC}"
 
     cleanup_build_artifacts
 
-    compose_dev_mfe build
-    compose_dev_mfe up -d
+    if [ "${MFE_DOCKER_BUILD_ONLY:-false}" = "true" ]; then
+        echo -e "${YELLOW}Usando build Docker tradicional para todo el stack MFE...${NC}"
+        compose_dev_mfe build
+        compose_dev_mfe up -d
+    elif build_frontend_assets_once; then
+        echo -e "${YELLOW}Reconstruyendo backend y gateway...${NC}"
+        compose_dev_mfe build "${BACKEND_DEV_SERVICES[@]}" frontend
+
+        echo -e "${YELLOW}Empaquetando shell + MFEs desde artefactos ya compilados...${NC}"
+        compose_dev_mfe_prebuilt build "${FRONTEND_MFE_APP_SERVICES[@]}"
+        compose_dev_mfe_prebuilt up -d
+    else
+        echo -e "${YELLOW}Fallback: usando build Docker tradicional para todo el stack MFE...${NC}"
+        compose_dev_mfe build
+        compose_dev_mfe up -d
+    fi
 
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"

@@ -23,6 +23,8 @@ type OracleConnection = {
 
 type OracleDriver = {
   OUT_FORMAT_OBJECT: number;
+  thin?: boolean;
+  initOracleClient?: (config?: { libDir?: string }) => void;
   getConnection(config: {
     user: string;
     password: string;
@@ -35,14 +37,59 @@ type OracleIntegrationConfig = {
   user: string;
   password: string;
   connectString: string;
+  clientLibDir: string;
   schema: string;
   view: string;
   qualifiedView: string;
 };
 
+export type LaborOracleSuggestedRequest = {
+  request_number: string | null;
+  person_id: string | null;
+  full_name: string | null;
+  id_number: string | null;
+  career_category: string | null;
+  hiring_date: string | null;
+  position_category: string | null;
+  position_category_candidates: string[];
+  position_location: string | null;
+  monthly_salary: number | null;
+  salary_text: string | null;
+  cod_cargo: string | null;
+  cod_grade: string | null;
+  email: string | null;
+  personal_email: string | null;
+  phone: string | null;
+  department: string | null;
+  status: string | null;
+  observations: string | null;
+  request_date: string | null;
+  created_at: null;
+  updated_at: null;
+  source_dates: {
+    fecha_creacion: string | null;
+    fecha_ingreso: string | null;
+    fecha_retiro: string | null;
+  };
+  source_fields: {
+    tipo_vinculacion: string | null;
+    tipo_acto_administrativo: string | null;
+    dependencia: string | null;
+    sucursal: string | null;
+    centro_costo: string | null;
+  };
+  mapping_notes: string[];
+};
+
+type LaborOracleMappedRow = {
+  raw: OracleRow;
+  suggested_certificate_request: LaborOracleSuggestedRequest;
+};
+
 @Injectable()
 export class LaborOracleIntegrationService {
   private readonly logger = new Logger(LaborOracleIntegrationService.name);
+  private oracleClientInitialized = false;
 
   private normalizeBoolean(value: unknown): boolean {
     if (typeof value === 'boolean') return value;
@@ -85,12 +132,13 @@ export class LaborOracleIntegrationService {
     return {
       enabled: this.normalizeBoolean(process.env.ORACLE_FNC_ENABLED || 'false'),
       user: String(process.env.ORACLE_FNC_USER || '').trim(),
-      password: String(process.env.ORACLE_FNC_PASSWORD || '').trim(),
+      password: String(process.env.ORACLE_FNC_PASSWORD || ''),
       connectString: String(
         process.env.ORACLE_FNC_CONNECT_STRING ||
           process.env.ORACLE_FNC_CONNECTION_STRING ||
           '',
       ).trim(),
+      clientLibDir: String(process.env.ORACLE_CLIENT_LIB_DIR || '').trim(),
       schema,
       view,
       qualifiedView: `${schema}.${view}`,
@@ -130,13 +178,50 @@ export class LaborOracleIntegrationService {
     try {
       // Carga perezosa para no afectar el arranque del servicio cuando Oracle no este habilitado.
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      return require('oracledb') as OracleDriver;
+      const driver = require('oracledb') as OracleDriver;
+      const clientLibDir = String(process.env.ORACLE_CLIENT_LIB_DIR || '').trim();
+      if (clientLibDir && !this.oracleClientInitialized) {
+        try {
+          driver.initOracleClient?.({ libDir: clientLibDir });
+          this.oracleClientInitialized = true;
+          this.logger.log(`Oracle Client inicializado en modo Thick desde ${clientLibDir}`);
+        } catch (error) {
+          const detail = this.extractErrorMessage(error);
+          throw new ServiceUnavailableException(
+            `No fue posible inicializar Oracle Client con ORACLE_CLIENT_LIB_DIR=${clientLibDir}. Detalle: ${detail}`,
+          );
+        }
+      }
+      return driver;
     } catch (error) {
+      if (error instanceof ServiceUnavailableException) {
+        throw error;
+      }
       const detail = this.extractErrorMessage(error);
       throw new ServiceUnavailableException(
         `No fue posible cargar el driver Oracle "oracledb". Instalala en el microservicio antes de probar esta integracion. Detalle: ${detail}`,
       );
     }
+  }
+
+  private isInvalidCredentialsError(error: unknown): boolean {
+    const candidate = error as { code?: unknown; errorNum?: unknown; message?: unknown };
+    const code = String(candidate?.code || '').toUpperCase();
+    const message = String(candidate?.message || '').toUpperCase();
+    return candidate?.errorNum === 1017 || code === 'ORA-01017' || message.includes('ORA-01017');
+  }
+
+  private isConnectStringResolutionError(error: unknown): boolean {
+    const candidate = error as { code?: unknown; message?: unknown };
+    const code = String(candidate?.code || '').toUpperCase();
+    const message = String(candidate?.message || '').toUpperCase();
+    return (
+      code === 'NJS-530' ||
+      message.includes('NJS-530') ||
+      message.includes('ORA-12154') ||
+      message.includes('ORA-12514') ||
+      message.includes('ORA-12545')
+    );
   }
 
   private async withConnection<T>(
@@ -148,11 +233,33 @@ export class LaborOracleIntegrationService {
   ): Promise<T> {
     const config = this.ensureReadyConfig();
     const driver = this.loadOracleDriver();
-    const connection = await driver.getConnection({
-      user: config.user,
-      password: config.password,
-      connectString: config.connectString,
-    });
+    let connection: OracleConnection;
+
+    try {
+      connection = await driver.getConnection({
+        user: config.user,
+        password: config.password,
+        connectString: config.connectString,
+      });
+    } catch (error) {
+      if (this.isInvalidCredentialsError(error)) {
+        const mode = driver.thin === false ? 'Thick' : 'Thin';
+        throw new ServiceUnavailableException(
+          `Oracle rechazo usuario/clave para ${config.user} en ${config.connectString} usando modo ${mode}. ` +
+            'Valida que ORACLE_FNC_USER conserve exactamente las mayusculas/minusculas del usuario en Oracle, ' +
+            'que ORACLE_FNC_PASSWORD sea la clave real y que ORACLE_FNC_CONNECT_STRING apunte al mismo servicio usado en SQL Developer.',
+        );
+      }
+      if (this.isConnectStringResolutionError(error)) {
+        const mode = driver.thin === false ? 'Thick' : 'Thin';
+        throw new ServiceUnavailableException(
+          `Oracle FNC no pudo resolver o alcanzar el connect string ${config.connectString} usando modo ${mode}. ` +
+            'Valida desde el contenedor certification-service que el host del connect string resuelva por DNS y tenga salida al puerto 1521. ' +
+            'Ejemplos: docker exec certification-service getent hosts scan-pri.esap.edu.int y docker exec certification-service nc -vz scan-pri.esap.edu.int 1521.',
+        );
+      }
+      throw error;
+    }
 
     try {
       return await callback(connection, driver, config);
@@ -187,6 +294,15 @@ export class LaborOracleIntegrationService {
     return cleaned;
   }
 
+  private normalizeDocument(document: string): string {
+    const digits = String(document || '').replace(/\D+/g, '');
+    if (digits) return digits;
+    return String(document || '')
+      .trim()
+      .replace(/\s+/g, '')
+      .toUpperCase();
+  }
+
   private normalizeLimit(limit?: number): number {
     const parsed = Number(limit);
     if (!Number.isFinite(parsed)) return 5;
@@ -219,10 +335,7 @@ export class LaborOracleIntegrationService {
     }
 
     const parsed = Number(
-      String(value)
-        .trim()
-        .replace(/\s+/g, '')
-        .replace(',', '.'),
+      String(value).trim().replace(/\s+/g, '').replace(',', '.'),
     );
     return Number.isFinite(parsed) ? parsed : null;
   }
@@ -272,17 +385,25 @@ export class LaborOracleIntegrationService {
     return cargo || null;
   }
 
-  private buildSuggestedRequest(row: OracleRow) {
+  private buildSuggestedRequest(row: OracleRow): LaborOracleSuggestedRequest {
     const tipoVinculacion = this.toText(
-      this.pickValue(row, 'TIPO_VINCULACION', 'TIPOVINCULACION', 'Tipo_Vinculacion'),
+      this.pickValue(
+        row,
+        'TIPO_VINCULACION',
+        'TIPOVINCULACION',
+        'Tipo_Vinculacion',
+      ),
     );
-    const tipoActo = this.toText(
-      this.pickValue(row, 'TIPOACTOADMINISTRATIVO'),
-    );
+    const tipoActo = this.toText(this.pickValue(row, 'TIPOACTOADMINISTRATIVO'));
     const dependencia = this.toText(this.pickValue(row, 'DEPENDENCIA'));
     const sucursal = this.toText(this.pickValue(row, 'SUCURSAL'));
     const centroCosto = this.toText(
-      this.pickValue(row, 'CENTROCOSTO', 'Codigo_Centro_costo', 'CODIGO_CENTRO_COSTO'),
+      this.pickValue(
+        row,
+        'CENTROCOSTO',
+        'Codigo_Centro_costo',
+        'CODIGO_CENTRO_COSTO',
+      ),
     );
     const emailInstitucional = this.toText(this.pickValue(row, 'EMAIL'));
     const emailPersonal = this.toText(this.pickValue(row, 'EMAILPERSONAL'));
@@ -297,7 +418,9 @@ export class LaborOracleIntegrationService {
       career_category: this.buildCareerCategory(row),
       hiring_date: this.toDateOnly(this.pickValue(row, 'FECHA_INGRESO')),
       position_category: tipoActo || tipoVinculacion,
-      position_category_candidates: [tipoActo, tipoVinculacion].filter(Boolean),
+      position_category_candidates: [tipoActo, tipoVinculacion].filter(
+        (value): value is string => Boolean(value),
+      ),
       position_location: dependencia || sucursal,
       monthly_salary: this.toNumber(this.pickValue(row, 'SUELDO_BASICO')),
       salary_text: null,
@@ -329,21 +452,26 @@ export class LaborOracleIntegrationService {
         'position_category usa TIPOACTOADMINISTRATIVO y deja Tipo_Vinculacion como candidato alterno.',
         'position_location y department toman DEPENDENCIA como primera opcion.',
         'request_number y person_id quedan nulos porque la vista Oracle no los expone.',
-        'La respuesta es solo de prueba y no inserta ni actualiza datos en PostgreSQL.',
+        'La respuesta expone el mapeo usado para sincronizar certificate_requests cuando el autoservicio consulta el documento.',
       ],
     };
   }
 
-  private mapRow(row: OracleRow) {
+  private mapRow(row: OracleRow): LaborOracleMappedRow {
     return {
       raw: row,
       suggested_certificate_request: this.buildSuggestedRequest(row),
     };
   }
 
+  isEnabled(): boolean {
+    return this.getConfig().enabled;
+  }
+
   async getConnectionStatus() {
     const config = this.getConfig();
     const missing = this.getMissingConfig(config);
+    let driverInstalled = false;
 
     if (!config.enabled) {
       return {
@@ -354,6 +482,7 @@ export class LaborOracleIntegrationService {
         schema: config.schema,
         view: config.view,
         qualifiedView: config.qualifiedView,
+        mode: 'disabled',
         message:
           'La integracion Oracle FNC esta deshabilitada. Define ORACLE_FNC_ENABLED=true para probarla.',
       };
@@ -368,69 +497,65 @@ export class LaborOracleIntegrationService {
         schema: config.schema,
         view: config.view,
         qualifiedView: config.qualifiedView,
+        mode: 'not-ready',
         missingConfig: missing,
         message: `Faltan variables de entorno para Oracle FNC: ${missing.join(', ')}.`,
       };
     }
 
     try {
-      this.loadOracleDriver();
+      const driver = this.loadOracleDriver();
+      driverInstalled = true;
+      const mode = driver.thin === false ? 'thick' : 'thin';
+      const clientLibDir = config.clientLibDir || null;
+      return await this.withConnection(
+        async (connection, readyDriver, readyConfig) => {
+          await connection.execute(
+            'SELECT 1 AS STATUS FROM DUAL',
+            {},
+            { outFormat: readyDriver.OUT_FORMAT_OBJECT },
+          );
+
+          const result = await connection.execute(
+            `SELECT * FROM ${readyConfig.qualifiedView} WHERE ROWNUM <= 1`,
+            {},
+            { outFormat: readyDriver.OUT_FORMAT_OBJECT },
+          );
+
+          const rows = Array.isArray(result.rows) ? result.rows : [];
+          const sample = rows[0] || null;
+
+          return {
+            ok: true,
+            enabled: true,
+            driverInstalled: true,
+            connected: true,
+            mode,
+            clientLibDir,
+            schema: readyConfig.schema,
+            view: readyConfig.view,
+            qualifiedView: readyConfig.qualifiedView,
+            sampleColumns: sample
+              ? Object.keys(sample)
+              : (result.metaData || [])
+                  .map((item) => item.name || '')
+                  .filter(Boolean),
+            sampleRow: sample ? this.mapRow(sample) : null,
+            message: 'Conexion Oracle FNC exitosa y vista accesible.',
+          };
+        },
+      );
     } catch (error) {
       return {
         ok: false,
         enabled: true,
-        driverInstalled: false,
+        driverInstalled,
         connected: false,
         schema: config.schema,
         view: config.view,
         qualifiedView: config.qualifiedView,
-        message: this.extractErrorMessage(error),
-      };
-    }
-
-    try {
-      return await this.withConnection(async (connection, driver, readyConfig) => {
-        await connection.execute(
-          'SELECT 1 AS STATUS FROM DUAL',
-          {},
-          { outFormat: driver.OUT_FORMAT_OBJECT },
-        );
-
-        const result = await connection.execute(
-          `SELECT * FROM ${readyConfig.qualifiedView} WHERE ROWNUM <= 1`,
-          {},
-          { outFormat: driver.OUT_FORMAT_OBJECT },
-        );
-
-        const rows = Array.isArray(result.rows) ? result.rows : [];
-        const sample = rows[0] || null;
-
-        return {
-          ok: true,
-          enabled: true,
-          driverInstalled: true,
-          connected: true,
-          schema: readyConfig.schema,
-          view: readyConfig.view,
-          qualifiedView: readyConfig.qualifiedView,
-          sampleColumns: sample
-            ? Object.keys(sample)
-            : (result.metaData || [])
-                .map((item) => item.name || '')
-                .filter(Boolean),
-          sampleRow: sample ? this.mapRow(sample) : null,
-          message: 'Conexion Oracle FNC exitosa y vista accesible.',
-        };
-      });
-    } catch (error) {
-      return {
-        ok: false,
-        enabled: true,
-        driverInstalled: true,
-        connected: false,
-        schema: config.schema,
-        view: config.view,
-        qualifiedView: config.qualifiedView,
+        mode: config.clientLibDir ? 'thick' : 'thin',
+        clientLibDir: config.clientLibDir || null,
         message: this.extractErrorMessage(error),
       };
     }
@@ -438,13 +563,21 @@ export class LaborOracleIntegrationService {
 
   async findByDocument(document: string, limit?: number) {
     const cleanedDocument = this.sanitizeDocument(document);
+    const normalizedDocument = this.normalizeDocument(cleanedDocument);
     const safeLimit = this.normalizeLimit(limit);
 
     return await this.withConnection(async (connection, driver, config) => {
       const result = await connection.execute(
-        `SELECT * FROM ${config.qualifiedView} WHERE TRIM(TO_CHAR(CEDULA)) = :documento AND ROWNUM <= :limite`,
+        `SELECT *
+           FROM ${config.qualifiedView}
+          WHERE (
+            TRIM(TO_CHAR(CEDULA)) = :documento
+            OR REPLACE(REPLACE(REPLACE(TRIM(TO_CHAR(CEDULA)), '.', ''), '-', ''), ' ', '') = :documentoNormalizado
+          )
+            AND ROWNUM <= :limite`,
         {
           documento: cleanedDocument,
+          documentoNormalizado: normalizedDocument,
           limite: safeLimit,
         },
         { outFormat: driver.OUT_FORMAT_OBJECT },
@@ -464,5 +597,15 @@ export class LaborOracleIntegrationService {
         rows: rows.map((row) => this.mapRow(row)),
       };
     });
+  }
+
+  async findSuggestedRequestsByDocument(
+    document: string,
+    limit = 20,
+  ): Promise<LaborOracleSuggestedRequest[]> {
+    const result = await this.findByDocument(document, limit);
+    return result.rows
+      .map((row) => row.suggested_certificate_request)
+      .filter(Boolean);
   }
 }

@@ -787,7 +787,7 @@ export function ModalRevisionAuto({
                       Contenido del Auto
                     </h3>
                     <div className="flex gap-2">
-                      {!archivoAuto && (
+                      {!archivoAuto && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR) && (
                         <label htmlFor="upload-auto" className="cursor-pointer">
                           <div className="px-4 py-2 rounded-xl border-2 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-semibold" style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>
                             <Upload className="w-4 h-4" />
@@ -809,14 +809,16 @@ export function ModalRevisionAuto({
                           />
                         </label>
                       )}
-                      <button
-                        onClick={handleDescargarDocumento}
-                        className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
-                        style={{ background: '#10B981' }}
-                      >
-                        <Download className="w-4 h-4" />
-                        Descargar
-                      </button>
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ARCHIVOS_DOWNLOAD) && (
+                        <button
+                          onClick={handleDescargarDocumento}
+                          className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
+                          style={{ background: '#10B981' }}
+                        >
+                          <Download className="w-4 h-4" />
+                          Descargar
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -882,66 +884,66 @@ export function ModalRevisionAuto({
                        <p className="text-xs font-bold mb-2" style={{ color: '#1E40AF' }}>
                          Comentario sobre el documento (opcional)
                        </p>
-                       <textarea
-                         value={comentarioSubida}
-                         onChange={(e) => setComentarioSubida(e.target.value)}
-                         rows={2}
-                         placeholder="Describe los cambios realizados en este documento..."
-                         className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg focus:outline-none focus:border-blue-400 resize-none mb-3"
-                         style={{ background: '#fff' }}
-                       />
-                       <button
-                         disabled={subiendoDoc}
-                         onClick={async () => {
-                           if (!archivoAuto || !borrador.autoId) return;
-                           setSubiendoDoc(true);
-                           try {
-                             await disciplinaryService.uploadDocumentoRevision(
-                               borrador.autoId,
-                               archivoAuto,
-                               comentarioSubida,
-                             );
-                             toast.success('Documento reemplazado', { description: `Nueva versión guardada correctamente` });
-                             setArchivoAuto(null);
-                             setComentarioSubida('');
-                             setTipoVista('texto');
-                           } catch (err) {
-                             console.error('Error subiendo documento:', err);
-                             toast.error('Error al subir el documento');
-                           } finally {
-                             setSubiendoDoc(false);
-                           }
-                         }}
-                         className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50"
-                         style={{ background: subiendoDoc ? '#9CA3AF' : 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
-                       >
-                         {subiendoDoc ? (
-                           <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Subiendo...</>
-                         ) : (
-                           <><Upload className="w-4 h-4" />Confirmar subida</>
-                         )}
-                       </button>
-                     </div>
-                   )}
-
-                   {cargandoDoc ? (
-                    <div className="flex items-center justify-center p-10 rounded-xl border-2" style={{ borderColor: '#E5E7EB', background: '#F8FAFC' }}>
-                      <div className="text-center">
-                        <div className="w-8 h-8 border-4 border-[#003DA5] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                        <p className="text-sm" style={{ color: '#6B7280' }}>Cargando documento...</p>
+                        <textarea
+                          value={comentarioSubida}
+                          onChange={(e) => setComentarioSubida(e.target.value)}
+                          rows={2}
+                          placeholder="Describe los cambios realizados en este documento..."
+                          className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg focus:outline-none focus:border-blue-400 resize-none mb-3"
+                          style={{ background: '#fff' }}
+                        />
+                        <button
+                          disabled={subiendoDoc || !authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR)}
+                          onClick={async () => {
+                            if (!archivoAuto || !borrador.autoId) return;
+                            setSubiendoDoc(true);
+                            try {
+                              await disciplinaryService.uploadDocumentoRevision(
+                                borrador.autoId,
+                                archivoAuto,
+                                comentarioSubida,
+                              );
+                              toast.success('Documento reemplazado', { description: `Nueva versión guardada correctamente` });
+                              setArchivoAuto(null);
+                              setComentarioSubida('');
+                              setTipoVista('texto');
+                            } catch (err) {
+                              console.error('Error subiendo documento:', err);
+                              toast.error('Error al subir el documento');
+                            } finally {
+                              setSubiendoDoc(false);
+                            }
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50"
+                          style={{ background: subiendoDoc ? '#9CA3AF' : 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+                        >
+                          {subiendoDoc ? (
+                            <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Subiendo...</>
+                          ) : (
+                            <><Upload className="w-4 h-4" />Confirmar subida</>
+                          )}
+                        </button>
                       </div>
-                    </div>
-                   ) : documentoBackendUrl ? (
-                     <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
-                       <iframe
-                         src={documentoBackendUrl}
-                         className="w-full"
-                         style={{ height: '65vh', minHeight: '400px', border: 'none' }}
-                         title="Visor de Documento"
-                         sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-                       />
+                    )}
+
+                    {cargandoDoc ? (
+                     <div className="flex items-center justify-center p-10 rounded-xl border-2" style={{ borderColor: '#E5E7EB', background: '#F8FAFC' }}>
+                       <div className="text-center">
+                         <div className="w-8 h-8 border-4 border-[#003DA5] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                         <p className="text-sm" style={{ color: '#6B7280' }}>Cargando documento...</p>
+                       </div>
                      </div>
-                   ) : tipoVista === 'archivo' && archivoAuto ? (
+                    ) : documentoBackendUrl ? (
+                      <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
+                        <iframe
+                          src={documentoBackendUrl}
+                          className="w-full"
+                          style={{ height: '65vh', minHeight: '400px', border: 'none' }}
+                          title="Visor de Documento"
+                          sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                        />
+                      </div>
+                    ) : tipoVista === 'archivo' && archivoAuto ? (
                      <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
                        {archivoAuto.name.endsWith('.pdf') ? (
                          <iframe
@@ -1030,7 +1032,7 @@ export function ModalRevisionAuto({
 
           {/* Footer */}
           <div className="p-6 border-t flex gap-3" style={{ borderColor: '#E5E7EB', background: '#F9FAFB' }}>
-            {mostrarBotonDevolver && onDevolver && (
+            {mostrarBotonDevolver && onDevolver && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_DEVOLVER) && (
               <button
                 onClick={() => setShowModalDevolver(true)}
                 className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors flex items-center gap-2"
@@ -1040,14 +1042,16 @@ export function ModalRevisionAuto({
                 Devolver
               </button>
             )}
-            <button
-              onClick={() => setShowModalAprobar(true)}
-              className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-              style={{ background: '#059669' }}
-            >
-              <CheckCircle className="w-4 h-4" />
-              Aprobar Auto
-            </button>
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR) && (
+              <button
+                onClick={() => setShowModalAprobar(true)}
+                className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                style={{ background: '#059669' }}
+              >
+                <CheckCircle className="w-4 h-4" />
+                Aprobar Auto
+              </button>
+            )}
             <button
               onClick={onClose}
               className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors"

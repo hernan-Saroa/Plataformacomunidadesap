@@ -19,7 +19,7 @@ import {
   MapPin, Info, ExternalLink, RefreshCw, Paperclip, UserCheck,
   List, Columns3, Menu, Edit2, FileSignature, History,
   ChevronsDown, ChevronsUp, ChevronUp, ChevronLeft, ChevronRight, Zap, Link2, UserCog, MessageCircle,
-  ClipboardList, FileEdit, Loader2
+  ClipboardList, FileEdit, Loader2, CornerDownLeft
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -140,7 +140,7 @@ interface Noticia {
   denunciante: Persona | string;
   denunciado: Persona | string;
   hechos: string;
-  estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada' | 'remitida' | 'asociada';
+  estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada' | 'remitida' | 'asociada' | 'devuelta';
   prioridad: 'alta' | 'media' | 'baja';
   diasPendientes: number;
   tipo: 'noticia';
@@ -316,6 +316,15 @@ interface TarjetaNoticiaProps {
 
 function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa }: TarjetaNoticiaProps) {
   const esJefe = authService.hasRole('rol-jefe-oci') || authService.isSuperAdmin();
+  const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR);
+  const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
+  const canViewDetail = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DETAIL);
+  const canDevolve = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER);
+  const canRedimir = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR);
+  const canArchive = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR);
+  const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
+
+  const [hoverReenviar, setHoverReenviar] = useState(false);
 
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
@@ -334,6 +343,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
     <div
       ref={dragRef}
       className="cursor-grab active:cursor-grabbing touch-none w-full select-none"
+      style={noticia.estado === 'devuelta' && esJefe ? { filter: 'grayscale(60%) brightness(0.87) opacity(0.75)', transition: 'filter 0.3s' } : undefined}
     >
       <motion.div
         id={`noticia-${noticia.id}`}
@@ -353,6 +363,11 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             subtitle={noticia.origen}
             rightContent={
               <div className="flex items-center gap-1">
+                {noticia.estado === 'devuelta' && esJefe && (
+                  <span className="flex-shrink-0 p-1 rounded-full bg-red-100 border border-red-300" title="Noticia devuelta">
+                    <CornerDownLeft className="w-3 h-3 text-red-500" />
+                  </span>
+                )}
                 {noticia.procesoAsociado ? (
                   <span className="flex-shrink-0 p-1 rounded-full bg-purple-100 border border-purple-300" title="Asociada a proceso">
                     <Link2 className="w-2.5 h-2.5 text-purple-700" />
@@ -463,85 +478,84 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             </span>
           </div>
 
-          {/* ═══ Acciones — Design Standard World Class ═══ */}
-          <KanbanActionSection>
-            <KanbanActionRowPrimary>
-              {onVerDetalles && (
-                <KanbanButtonSecondary
-                  onClick={() => onVerDetalles(noticia)}
-                  icon={<Eye className="w-3.5 h-3.5" />}
-                  title="Ver detalles"
-                >
-                  Detalles
-                </KanbanButtonSecondary>
-              )}
-              {esJefe ? (
-                <KanbanButtonPrimary
-                  onClick={() => onConvertir(noticia)}
-                  icon={<PlusCircle className="w-3.5 h-3.5" />}
-                  title="Convertir a proceso"
-                >
-                  Convertir
-                </KanbanButtonPrimary>
-              ) : (
-                onEditarNoticia && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
-                  <KanbanButtonPrimary
-                    onClick={() => onEditarNoticia(noticia)}
-                    icon={<Edit className="w-3.5 h-3.5" />}
-                    title="Editar noticia"
-                  >
-                    Editar
-                  </KanbanButtonPrimary>
-                )
-              )}
-            </KanbanActionRowPrimary>
+          {/* ═══ Acciones ═══ */}
+          {/* Jefe con devuelta: todo deshabilitado */}
+          {esJefe && noticia.estado === 'devuelta' ? (
+            <div style={{ pointerEvents: 'none' }}>
+              <KanbanActionSection>
+                <KanbanActionRowPrimary>
+                  {onVerDetalles && canViewDetail && (
+                    <KanbanButtonSecondary onClick={() => onVerDetalles(noticia)} icon={<Eye className="w-3.5 h-3.5" />} title="Ver detalles">Detalles</KanbanButtonSecondary>
+                  )}
+                  {canConvert && (
+                    <KanbanButtonPrimary onClick={() => onConvertir(noticia)} icon={<PlusCircle className="w-3.5 h-3.5" />} title="Convertir a proceso">Convertir</KanbanButtonPrimary>
+                  )}
+                </KanbanActionRowPrimary>
+              </KanbanActionSection>
+            </div>
+          ) : (
+            <KanbanActionSection>
+              <KanbanActionRowPrimary>
+                {onVerDetalles && canViewDetail && (
+                  <KanbanButtonSecondary onClick={() => onVerDetalles(noticia)} icon={<Eye className="w-3.5 h-3.5" />} title="Ver detalles">Detalles</KanbanButtonSecondary>
+                )}
+                {canConvert && esJefe ? (
+                  <KanbanButtonPrimary onClick={() => onConvertir(noticia)} icon={<PlusCircle className="w-3.5 h-3.5" />} title="Convertir a proceso">Convertir</KanbanButtonPrimary>
+                ) : (
+                  onEditarNoticia && canEdit && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
+                    <KanbanButtonPrimary onClick={() => onEditarNoticia(noticia)} icon={<Edit className="w-3.5 h-3.5" />} title="Editar noticia">Editar</KanbanButtonPrimary>
+                  )
+                )}
+              </KanbanActionRowPrimary>
 
-            {noticia.estado === 'devuelta' ? (
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-orange-50 border border-orange-200 rounded-lg mt-1">
-                <ArrowLeft className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
-                <span className="text-xs font-semibold text-orange-700">Noticia Devuelta</span>
-              </div>
-            ) : esJefe ? (
-              <KanbanActionRowTertiary>
-                {onEditarNoticia && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
-                  <KanbanButtonTertiary
-                    onClick={() => onEditarNoticia(noticia)}
-                    icon={<Edit className="w-3.5 h-3.5" />}
-                    title="Editar noticia"
-                  />
-                )}
-                {!noticia.procesoAsociado && onAsociarNoticiaNoticia && (
-                  <KanbanButtonTertiary
-                    onClick={() => onAsociarNoticiaNoticia(noticia)}
-                    icon={<Link2 className="w-3.5 h-3.5" />}
-                    title="Asociar a otra noticia"
-                  />
-                )}
-                {!noticia.procesoAsociado && onAsociarNoticiaProceso && (
-                  <KanbanButtonTertiary
-                    onClick={() => onAsociarNoticiaProceso(noticia)}
-                    icon={<Link2 className="w-3.5 h-3.5" />}
-                    title="Asociar a proceso"
-                  />
-                )}
-                <KanbanButtonTertiary
-                  onClick={() => onDevolver(noticia)}
-                  icon={<ArrowLeft className="w-3.5 h-3.5" />}
-                  title="Devolver"
-                />
-                <KanbanButtonTertiary
-                  onClick={() => onDevolverCompetencia(noticia)}
-                  icon={<Send className="w-3.5 h-3.5" />}
-                  title="Remitir por competencia"
-                />
-                <KanbanButtonDestructive
-                  onClick={() => onArchivar(noticia)}
-                  icon={<Archive className="w-3.5 h-3.5" />}
-                  title="Archivar"
-                />
-              </KanbanActionRowTertiary>
-            ) : null}
-          </KanbanActionSection>
+              {/* Botones secundarios del Jefe — solo cuando NO está devuelta */}
+              {esJefe && (
+                <KanbanActionRowTertiary>
+                  {onEditarNoticia && canEdit && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
+                    <KanbanButtonTertiary onClick={() => onEditarNoticia(noticia)} icon={<Edit className="w-3.5 h-3.5" />} title="Editar noticia" />
+                  )}
+                  {!noticia.procesoAsociado && onAsociarNoticiaNoticia && canAssociate && (
+                    <KanbanButtonTertiary onClick={() => onAsociarNoticiaNoticia(noticia)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a otra noticia" />
+                  )}
+                  {!noticia.procesoAsociado && onAsociarNoticiaProceso && canAssociate && (
+                    <KanbanButtonTertiary onClick={() => onAsociarNoticiaProceso(noticia)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a proceso" />
+                  )}
+                  {canDevolve && <KanbanButtonTertiary onClick={() => onDevolver(noticia)} icon={<ArrowLeft className="w-3.5 h-3.5" />} title="Devolver" />}
+                  {canRedimir && <KanbanButtonTertiary onClick={() => onDevolverCompetencia(noticia)} icon={<Send className="w-3.5 h-3.5" />} title="Remitir por competencia" />}
+                  {canArchive && <KanbanButtonDestructive onClick={() => onArchivar(noticia)} icon={<Archive className="w-3.5 h-3.5" />} title="Archivar" />}
+                </KanbanActionRowTertiary>
+              )}
+
+              {/* Badge "Noticia Devuelta" para el Profesional — hover convierte en Reenviar */}
+              {!esJefe && noticia.estado === 'devuelta' && (
+                <div
+                  className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg mt-1 cursor-pointer transition-all select-none ${
+                    hoverReenviar ? 'bg-green-500 border border-green-600' : 'bg-orange-50 border border-orange-200'
+                  }`}
+                  onMouseEnter={() => setHoverReenviar(true)}
+                  onMouseLeave={() => setHoverReenviar(false)}
+                  onClick={() => {
+                    disciplinaryService.changeNewsStatus(noticia.id, 'EN_VALORACION')
+                      .then(() => toast.success('Noticia reenviada para valoración'))
+                      .catch(() => toast.error('Error al reenviar noticia'));
+                  }}
+                  title={hoverReenviar ? 'Clic para reenviar a valoración' : 'Noticia devuelta'}
+                >
+                  {hoverReenviar ? (
+                    <>
+                      <CheckCircle className="w-3.5 h-3.5 text-white flex-shrink-0" />
+                      <span className="text-xs font-semibold text-white">Reenviar Noticia</span>
+                    </>
+                  ) : (
+                    <>
+                      <CornerDownLeft className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                      <span className="text-xs font-semibold text-orange-700">Noticia Devuelta</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </KanbanActionSection>
+          )}
         </KanbanCard>
       </motion.div>
     </div>
@@ -592,6 +606,13 @@ function TarjetaProceso({
   onToggleColapso,
   onEditarProceso // ✅ NUEVO: Editar proceso
 }: TarjetaProcesoProps) {
+  const canViewDetail = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_DETAIL);
+  const canViewExpediente = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_EXPIDIENTE);
+  const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_EDIT);
+  const canReassign = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION);
+  const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR_PROCESOS);
+  const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
+
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
     item: { ...proceso, tipoItem: 'proceso' },
@@ -825,38 +846,42 @@ function TarjetaProceso({
           {/* ═══ Acciones — Design Standard World Class ═══ */}
           <KanbanActionSection>
             <KanbanActionRowPrimary>
-              <KanbanButtonSecondary
-                onClick={(e) => { e.stopPropagation(); onVerDetalles(proceso); }}
-                icon={<FileText className="w-3.5 h-3.5" />}
-                title="Ver detalles"
-              >
-                Detalles
-              </KanbanButtonSecondary>
-              <KanbanButtonPrimary
-                onClick={(e) => { e.stopPropagation(); onVerExpediente(proceso); }}
-                icon={<Archive className="w-3.5 h-3.5" />}
-                title="Expediente"
-              >
-                Exp.
-              </KanbanButtonPrimary>
+              {onVerDetalles && canViewDetail && (
+                <KanbanButtonSecondary
+                  onClick={(e) => { e.stopPropagation(); onVerDetalles(proceso); }}
+                  icon={<FileText className="w-3.5 h-3.5" />}
+                  title="Ver detalles"
+                >
+                  Detalles
+                </KanbanButtonSecondary>
+              )}
+              {onVerExpediente && canViewExpediente && (
+                <KanbanButtonPrimary
+                  onClick={(e) => { e.stopPropagation(); onVerExpediente(proceso); }}
+                  icon={<Archive className="w-3.5 h-3.5" />}
+                  title="Expediente"
+                >
+                  Exp.
+                </KanbanButtonPrimary>
+              )}
             </KanbanActionRowPrimary>
 
             <KanbanActionRowTertiary>
-              {onEditarProceso && (
+              {onEditarProceso && canEdit && (
                 <KanbanButtonTertiary
                   onClick={(e) => { e.stopPropagation(); onEditarProceso(proceso); }}
                   icon={<Edit className="w-3.5 h-3.5" />}
                   title="Editar proceso"
                 />
               )}
-              {proceso.etapaActual !== 'Recepción' && onSolicitarReasignacion && (
+              {proceso.etapaActual !== 'Recepción' && onSolicitarReasignacion && canReassign && (
                 <KanbanButtonTertiary
                   onClick={(e) => { e.stopPropagation(); onSolicitarReasignacion(proceso); }}
                   icon={<UserCheck className="w-3.5 h-3.5" />}
                   title="Reasignar profesional"
                 />
               )}
-              {proceso.etapaActual !== 'Recepción' && onAsociarProcesoProceso && (
+              {proceso.etapaActual !== 'Recepción' && onAsociarProcesoProceso && canAssociate && (
                 <KanbanButtonTertiary
                   onClick={(e) => { e.stopPropagation(); onAsociarProcesoProceso(proceso); }}
                   icon={<Link2 className="w-3.5 h-3.5" />}
@@ -865,7 +890,7 @@ function TarjetaProceso({
               )}
             </KanbanActionRowTertiary>
 
-            {proceso.pendienteAprobacion && (
+            {proceso.pendienteAprobacion && canApprove && (
               <KanbanButtonSemantic
                 variant="success"
                 onClick={(e) => { e.stopPropagation(); onAprobarBorrador(proceso); }}
@@ -2439,7 +2464,7 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     switch (estado) {
       case 'ASIGNADA': return 'asignada';
       case 'EN_VALORACION': return 'en-valoracion';
-      case 'DEVUELTA': return 'archivada';
+      case 'DEVUELTA': return 'devuelta' as any;
       case 'ARCHIVADA': return 'archivada';
       default: return 'pendiente';
     }
@@ -2838,7 +2863,7 @@ export function DashboardKanbanOperativo({
     setEtapasLoading(true);
     try {
       const etapas = await disciplinaryService.getStageConfiguration();
-      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_MANAGE)
+      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW)
       console.log('[DashboardKanban] Etapas cargadas desde backend:', etapas);
       // Si no tienen orden, asignar orden por defecto basado en índice
       const etapasOrdenadas = (getDataArray<any>(etapas) || []).map((etapa, idx) => ({
@@ -2863,18 +2888,25 @@ export function DashboardKanbanOperativo({
     setLoading(true);
     setDataError(null);
     try {
-      console.log('[DashboardKanban] Cargando datos desde backend...');
-      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_MANAGE)
-      console.log('hasPermissionNoticia', hasPermissionNoticia)
-      // Cargar noticias y procesos en paralelo (filtrados por profesional si hay filtro activo)
+      const canViewAll = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL);
+      const canViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_MINE);
+      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW);
+      
+      console.log('hasPermissionNoticia', hasPermissionNoticia);
+      console.log('canViewAll', canViewAll);
+      console.log('canViewMine', canViewMine);
+      
+      const user = authService.getCurrentUser();
+      const currentUserId = user?.id;
+      const esJefe = authService.hasRole('rol-jefe-oci') || authService.isSuperAdmin();
+
+      // Cargar noticias y procesos en paralelo (filtrados por profesional si hay filtro activo o permiso restringido)
       const [noticiasRaw, procesosRaw] = await Promise.all([
         hasPermissionNoticia ?
-          filtroProfesionalId
-            ? disciplinaryService.getMisNoticias(filtroProfesionalId)
-            : disciplinaryService.getAllNoticias()
+          disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId)
           : [],
-        filtroProfesionalId
-          ? disciplinaryService.getMisProcesos(filtroProfesionalId)
+        (filtroProfesionalId || (!canViewAll && canViewMine && currentUserId))
+          ? disciplinaryService.getMisProcesos(filtroProfesionalId || currentUserId)
           : disciplinaryService.getAllProcesos()
       ]);
 
@@ -2891,6 +2923,13 @@ export function DashboardKanbanOperativo({
       // Separar noticias archivadas de las activas. Excluir ASIGNADA porque ya tienen proceso asociado
       const noticiasActivas = noticiasFiltradas.filter(n => {
         const estado = (n as any).estado;
+        // No se muestran noticias devueltas a menos que el usuario sea jefe o sean suyas propias
+        if (estado === 'DEVUELTA') {
+          const isOwner = (n as any).radicador === currentUserId;
+          if (!esJefe && !isOwner) {
+            return false;
+          }
+        }
         return estado !== 'ARCHIVADA' && estado !== 'ASIGNADA';
       });
       const noticiasArchivadas = noticiasFiltradas.filter(n => (n as any).estado === 'ARCHIVADA');
@@ -2980,9 +3019,11 @@ export function DashboardKanbanOperativo({
       case 'EN_VALORACION':
         return 'en-valoracion';
       case 'DEVUELTA':
+        return 'devuelta';
+      case 'ARCHIVADA':
         return 'archivada';
       case 'REMITIDA':
-        return 'remitida'; // ✅ NUEVO: Mapear estado REMITIDA del backend
+        return 'remitida';
       default:
         return 'pendiente';
     }
@@ -3326,6 +3367,12 @@ export function DashboardKanbanOperativo({
 
   // ==================== HANDLERS ====================
   const handleDropItem = async (item: Item, nuevaEtapa: string) => {
+    // ✅ NUEVO: Validar permiso de movimiento en Kanban
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_KANBAN_MOVE)) {
+      toast.error('No tiene permiso para mover elementos en el Kanban');
+      return;
+    }
+
     // ✅ NUEVO: Validar orden de etapas desde backend config
     if (etapasConfig.length > 0) {
       // Obtener el orden de la etapa actual del item
@@ -3593,6 +3640,10 @@ export function DashboardKanbanOperativo({
   };
 
   const handleConvertirNoticia = (noticia: Noticia) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR)) {
+      toast.error('No tiene permisos para convertir noticias a procesos');
+      return;
+    }
     setItemSeleccionado(noticia);
     setProfesionalSeleccionado('');
     setObservaciones('');
@@ -3601,6 +3652,10 @@ export function DashboardKanbanOperativo({
 
   // ✅ NUEVO: Función para editar noticia
   const handleEditarNoticia = (noticia: Noticia) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT)) {
+      toast.error('No tiene permisos para editar noticias');
+      return;
+    }
     setNoticiaAEditar(noticia);
     setMostrarModalEditar(true);
   };
@@ -3848,43 +3903,53 @@ export function DashboardKanbanOperativo({
   };
 
   const handleDevolverNoticia = (noticia: Noticia) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_DEVOLVER)) {
+      toast.error('No tiene permisos para devolver noticias');
+      return;
+    }
     setItemSeleccionado(noticia);
     setObservaciones('');
     setModalActivo('devolver-noticia');
   };
 
-  const handleConfirmarDevolucion = (datos: {
+  const handleConfirmarDevolucion = async (datos: {
     motivo: string; motivoLabel: string;
     observaciones: string; numeroDevolucion: string;
   }) => {
-    // Actualizar estado de la noticia a 'devuelta' — permanece visible en el Kanban
-    setItems(prev => prev.map(item => {
-      if (item.id === itemSeleccionado.id && item.tipo === 'noticia') {
-        return {
-          ...item,
-          estado: 'devuelta' as any,
-          bitacora: [
-            ...(item as any).bitacora || [],
-            {
-              fecha: new Date().toISOString(),
-              accion: 'Devolucion',
-              detalle: `${datos.numeroDevolucion} — Motivo: ${datos.motivoLabel}. ${datos.observaciones}`,
-              usuario: 'Usuario Actual',
-            }
-          ],
-        };
-      }
-      return item;
-    }));
-    // ✅ Persistir devolución en el backend — notifica al radicador
-    disciplinaryService.returnNews(itemSeleccionado.id, datos.observaciones).catch(err =>
-      console.error('[DashboardKanban] Error al devolver noticia en backend:', err)
-    );
-    toast.success('Noticia Devuelta Exitosamente', {
-      description: `${itemSeleccionado.numero} → ${datos.numeroDevolucion}\nMotivo: ${datos.motivoLabel}`,
-    });
+    const noticiaId = itemSeleccionado.id;
+    const noticiaNumero = itemSeleccionado.numero;
     setModalActivo(null);
     setItemSeleccionado(null);
+    try {
+      await disciplinaryService.returnNews(noticiaId, datos.observaciones);
+      // Solo actualizar estado local si el backend confirmó
+      setItems(prev => prev.map(item => {
+        if (item.id === noticiaId && item.tipo === 'noticia') {
+          return {
+            ...item,
+            estado: 'devuelta' as any,
+            bitacora: [
+              ...(item as any).bitacora || [],
+              {
+                fecha: new Date().toISOString(),
+                accion: 'Devolucion',
+                detalle: `${datos.numeroDevolucion} — Motivo: ${datos.motivoLabel}. ${datos.observaciones}`,
+                usuario: 'Usuario Actual',
+              }
+            ],
+          };
+        }
+        return item;
+      }));
+      toast.success('Noticia Devuelta Exitosamente', {
+        description: `${noticiaNumero} → ${datos.numeroDevolucion}\nMotivo: ${datos.motivoLabel}`,
+      });
+    } catch (err) {
+      console.error('[DashboardKanban] Error al devolver noticia en backend:', err);
+      toast.error('Error al devolver la noticia', {
+        description: 'No se pudo guardar la devolución. Intenta de nuevo.',
+      });
+    }
   };
 
   const handleDevolverCompetencia = (noticia: Noticia) => {
@@ -3958,6 +4023,10 @@ export function DashboardKanbanOperativo({
   };
 
   const handleArchivarNoticia = (noticia: Noticia) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR)) {
+      toast.error('No tiene permisos para archivar noticias');
+      return;
+    }
     setItemSeleccionado(noticia);
     setModalActivo('archivar-noticia');
   };
@@ -4026,23 +4095,47 @@ export function DashboardKanbanOperativo({
         // Persistir restauración en el backend para noticias
         await disciplinaryService.restoreNews(item.id);
       } else {
-        // Para procesos, intentar usar el método del servicio, con fallback a fetch directo
-        try {
-          if (typeof disciplinaryService.restoreProcess === 'function') {
-            await disciplinaryService.restoreProcess(item.id);
-          } else {
-            // Fallback: usar fetch directo si el método no está disponible
-            // Nota: El endpoint puede no estar disponible si el backend no está corriendo
-            console.warn('El método restoreProcess no está disponible. El backend puede no estar corriendo.');
+        // Para procesos, llamar directamente al servicio disciplinario (bypass API gateway)
+        console.log('Restoring process:', item.id, 'Calling disciplinary service directly');
 
-            // Simular éxito para evitar que el usuario se bloquee
-            // En producción, esto debería mostrar un mensaje de error al usuario
-            console.log('Simulando restauración exitosa para proceso:', item.id);
+        try {
+          // Call disciplinary service directly on port 3005
+          const response = await fetch(`http://localhost:3005/disciplinary-processes/${item.id}/restore`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('esap_auth_token') || localStorage.getItem('esap_access_token') || ''}`,
+            },
+            body: JSON.stringify({}),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Direct service call failed:', response.status, errorText);
+            throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
           }
-        } catch (error) {
-          console.error('Error en restauración de proceso:', error);
-          // En lugar de lanzar el error, mostrar un mensaje informativo
-          toast.error('El servicio de backend no está disponible. La restauración se simulará localmente.');
+
+          const result = await response.json();
+          console.log('Restore successful:', result);
+        } catch (directError) {
+          console.error('Direct service call failed, trying gateway fallback:', directError);
+
+          // Fallback to gateway if direct call fails
+          try {
+            const gatewayResponse = await fetch(`/control-disciplinario/api/v1/disciplinary-processes/${item.id}/restore`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({}),
+            });
+            if (!gatewayResponse.ok) {
+              throw new Error(`Gateway error! status: ${gatewayResponse.status}`);
+            }
+          } catch (gatewayError) {
+            console.error('Both direct and gateway calls failed');
+            throw gatewayError;
+          }
         }
 
         itemRestaurado.restaurado = true; // El backend ya lo actualizó, pero marcamos localmente
@@ -4068,6 +4161,10 @@ export function DashboardKanbanOperativo({
   // ✅ NUEVO: Handler para asignar profesional en transición Recepción → Valoración
   // ✅ MODIFICADO: Ahora sigue el orden de etapas desde la configuración del backend Y persiste en BD
   const handleAsignarProfesional = async (profesionalId: string, profesionalNombre: string, observaciones: string) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_ASIGNAR)) {
+      toast.error('No tiene permisos para asignar profesionales');
+      return;
+    }
     if (!itemSeleccionado) return;
 
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
@@ -5121,12 +5218,14 @@ export function DashboardKanbanOperativo({
                 onChange={(id) => setTipoVista(id as any)}
               />
 
-              <KanbanToolbarCTA
-                onClick={() => setModalActivo('crear-noticia')}
-                icon={<Plus style={{ width: 16, height: 16 }} />}
-              >
-                Nueva
-              </KanbanToolbarCTA>
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE) && (
+                <KanbanToolbarCTA
+                  onClick={() => setModalActivo('crear-noticia')}
+                  icon={<Plus style={{ width: 16, height: 16 }} />}
+                >
+                  Nueva
+                </KanbanToolbarCTA>
+              )}
             </div>
           </div>
         </div>
@@ -5195,14 +5294,16 @@ export function DashboardKanbanOperativo({
               <p className="text-sm mb-6" style={{ color: '#6B7280' }}>
                 Actualmente no existen noticias ni procesos disciplinarios en el sistema. Puede crear una nueva noticia haciendo clic en el botón "Nueva".
               </p>
-              <Button
-                onClick={() => setModalActivo('crear-noticia')}
-                className="px-6 py-2.5 text-white font-semibold rounded-xl shadow-md"
-                style={{ background: '#003DA5' }}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Crear Nueva Noticia
-              </Button>
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE) && (
+                <Button
+                  onClick={() => setModalActivo('crear-noticia')}
+                  className="px-6 py-2.5 text-white font-semibold rounded-xl shadow-md"
+                  style={{ background: '#003DA5' }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Crear Nueva Noticia
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -5745,18 +5846,20 @@ export function DashboardKanbanOperativo({
                             {/* Grid 2×2 de tipos de archivo */}
                             <div className="grid grid-cols-2 gap-px bg-gray-200">
                               {/* ── Autos ── */}
-                              <button
-                                onClick={() => setModalActivo('gestion-autos')}
-                                className="group flex flex-col items-center gap-2 p-4 bg-white hover:bg-purple-50 transition-colors"
-                              >
-                                <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%)' }}>
-                                  <Scale className="w-5 h-5 text-white" />
-                                </div>
-                                <div className="text-center">
-                                  <p className="text-sm font-bold text-gray-900">Autos</p>
-                                  <p className="text-xs text-gray-500">Providencias</p>
-                                </div>
-                              </button>
+                              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_CREATE) && (
+                                <button
+                                  onClick={() => setModalActivo('gestion-autos')}
+                                  className="group flex flex-col items-center gap-2 p-4 bg-white hover:bg-purple-50 transition-colors"
+                                >
+                                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%)' }}>
+                                    <Scale className="w-5 h-5 text-white" />
+                                  </div>
+                                  <div className="text-center">
+                                    <p className="text-sm font-bold text-gray-900">Autos</p>
+                                    <p className="text-xs text-gray-500">Providencias</p>
+                                  </div>
+                                </button>
+                              )}
 
                               {/* ── Evidencias ── */}
                               <button
@@ -5831,6 +5934,7 @@ export function DashboardKanbanOperativo({
                                 <Edit2 className="w-3.5 h-3.5 mr-2" />
                                 Editor
                               </Button>
+                              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_DOC_UPLOAD) && (
                               <Button
                                 onClick={() => {
                                   setModalActivo('subir-documentos');
@@ -5841,6 +5945,7 @@ export function DashboardKanbanOperativo({
                                 <Upload className="w-3.5 h-3.5 mr-2" />
                                 Subir Docs
                               </Button>
+                              )}
                             </div>
                           </div>
 

@@ -40,7 +40,7 @@ import {
   Target, BarChart3, Save, Share2
 } from 'lucide-react';
 import { Card, Badge, Progress, Tooltip, TooltipContent, TooltipTrigger, Tabs, TabsContent, TabsList, TabsTrigger, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import { EmptyStatePremium } from './EmptyStatesPremium';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { ReportBuilderModal } from './ReportBuilderModal';
@@ -675,6 +675,8 @@ export function ReportsModuleV2() {
   };
 
   return (
+    <>
+    <Toaster position="top-right" richColors />
     <Container4K className="space-y-6">
       {/* Header - DÍA 5: ResponsiveHeader */}
       <ResponsiveHeader
@@ -878,5 +880,6 @@ export function ReportsModuleV2() {
         />
       )}
     </Container4K>
+    </>
   );
 }

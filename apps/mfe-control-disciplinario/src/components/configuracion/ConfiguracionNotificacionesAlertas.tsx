@@ -8,6 +8,8 @@ import { useState, useEffect } from 'react';
 import { AlertCircle, Save, RotateCcw, Bell } from 'lucide-react';
 import { toast } from 'sonner';
 import { disciplinaryService } from '../../../../services/api/disciplinary.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 interface ConfiguracionNotificaciones {
   vencimiento7dias: boolean;
@@ -151,6 +153,7 @@ export function ConfiguracionNotificacionesAlertas() {
               Sin guardar
             </span>
           )}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_RESET) && (
           <button
             onClick={restablecerDefecto}
             className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
@@ -158,6 +161,8 @@ export function ConfiguracionNotificacionesAlertas() {
             <RotateCcw className="w-4 h-4" />
             Restablecer
           </button>
+          )}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_NOTIFICACIONES_GUARDAR) && (
           <button
             onClick={guardarConfiguraciones}
             disabled={!cambiosPendientes}
@@ -169,6 +174,7 @@ export function ConfiguracionNotificacionesAlertas() {
             <Save className="w-4 h-4" />
             Guardar Cambios
           </button>
+          )}
         </div>
       </div>
 

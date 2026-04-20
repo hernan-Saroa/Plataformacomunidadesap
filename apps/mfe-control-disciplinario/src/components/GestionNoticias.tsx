@@ -1192,6 +1192,7 @@ export function GestionNoticias() {
         // Fecha de los hechos para cálculo de caducidad (Ley 734/2002 Art. 30)
         fechaHechos: data.fechaHechos || undefined,
         // NO enviar: radicado, fechaRecepcion, estado (los genera el backend)
+        radicadorId: authService.getCurrentUser()?.id,
       };
 
       await disciplinaryService.radicarNoticia(createDto, data.archivosAdjuntos || []);
@@ -1268,7 +1269,7 @@ export function GestionNoticias() {
 
     try {
       setLoading(true);
-      await disciplinaryService.returnNews(noticiaSeleccionada.id, observaciones);
+      await disciplinaryService.returnNews(noticiaSeleccionada.id, observaciones, (noticiaSeleccionada as any).radicadorId);
 
       toast.success('Noticia Devuelta', {
         description: `Se ha notificado a ${noticiaSeleccionada.radicador} sobre las correcciones requeridas.`
@@ -1658,6 +1659,7 @@ export function GestionNoticias() {
 
                 <div className="flex flex-wrap gap-2">
                   {/* Botón Ver Historial */}
+                  {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTUACIONES_VIEW) && (
                   <button
                     onClick={() => {
                       setNoticiaSeleccionada(noticia);
@@ -1668,8 +1670,10 @@ export function GestionNoticias() {
                   >
                     <History className="w-4 h-4 text-purple-600" />
                   </button>
+                  )}
 
                   {/* Botón Ver Detalles */}
+                  {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DETAIL) && (
                   <button
                     onClick={() => {
                       setNoticiaSeleccionada(noticia);
@@ -1680,9 +1684,10 @@ export function GestionNoticias() {
                   >
                     <Eye className="w-4 h-4 text-gray-600" />
                   </button>
+                  )}
 
                   {/* Botón Archivar */}
-                  {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE) && (
+                  {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR) && (
                     <button
                       onClick={() => {
                         setNoticiaSeleccionada(noticia);
@@ -1728,7 +1733,7 @@ export function GestionNoticias() {
                       )}
 
                       {/* Asignar */}
-                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE) && (
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_ASIGNAR) && (
                       <button
                         onClick={() => {
                           setNoticiaSeleccionada(noticia);

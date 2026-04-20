@@ -394,7 +394,7 @@ export const certificadosService = {
     }> {
       return apiClient.post(`${SERVICE_PREFIX}/certificates/autoservicio/verificar-documento`,
         { documento },
-        { requiresAuth: false }
+        { requiresAuth: false, retries: 0}
       );
     },
 

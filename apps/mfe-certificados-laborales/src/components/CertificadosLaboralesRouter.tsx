@@ -11,7 +11,7 @@ import {
   ChevronLeft,
   Settings
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import { CertificadosLaboralesDashboard } from './CertificadosLaboralesDashboard';
 import { ValidarCertificadoQR } from './ValidarCertificadoQR';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
@@ -174,9 +174,12 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail }: Certi
 
   // Vista principal: Dashboard con las funcionalidades integradas
   return (
-    <CertificadosLaboralesDashboard 
-      onNavigate={handleNavigate} 
+    <>
+    <Toaster position="top-right" richColors />
+    <CertificadosLaboralesDashboard
+      onNavigate={handleNavigate}
       canManageTemplates={canManageTemplate}
     />
+    </>
   );
 }

@@ -23,6 +23,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
+import { Lock } from 'lucide-react';
 
 // ============================================================================
 // INTERFACES
@@ -191,10 +194,27 @@ interface Props {
   onVerProcesos?: (profesional: Profesional) => void;
 }
 
-export function GestionProfesionalesWorldClass({ onVerProcesos }: Props) {
-  // Estados principales
-  const [profesionales, setProfesionales] = useState<Profesional[]>([]);
-  const [loading, setLoading] = useState(true);
+export function GestionProfesionalesWorldClass({ onVerProcesos }: { onVerProcesos?: (p: any) => void }) {
+  const [profesionales, setProfesionales] = useState<Profesional[]>(PROFESIONALES_MOCK);
+  const [loading, setLoading] = useState(false);
+  const [modalReasignar, setModalReasignar] = useState(false);
+  
+  const hasAccess = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_MANAGE);
+
+  if (!hasAccess) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center bg-white rounded-2xl shadow-sm border m-8">
+        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+          <Lock className="w-8 h-8 text-red-600" />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Acceso Denegado</h2>
+        <p className="text-gray-600 max-w-md">
+          No tiene los permisos necesarios para acceder al módulo de gestión de profesionales.
+          Por favor, contacte al administrador del sistema si cree que esto es un error.
+        </p>
+      </div>
+    );
+  }
 
   // Cargar profesionales desde el backend
   useEffect(() => {
@@ -338,6 +358,15 @@ export function GestionProfesionalesWorldClass({ onVerProcesos }: Props) {
       case 'comision': return 'Comisión';
       default: return estado;
     }
+  };
+
+  const handleReasignar = (profesional: Profesional) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASSIGN)) {
+      toast.error('No tiene permisos para reasignar procesos');
+      return;
+    }
+    setProfesionalSeleccionado(profesional);
+    setModalReasignar(true);
   };
 
   const getCargaColor = (profesional: Profesional) => {

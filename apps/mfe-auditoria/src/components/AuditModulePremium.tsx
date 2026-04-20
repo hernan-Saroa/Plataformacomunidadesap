@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Download, Filter, Calendar, ChevronDown, FileText, Shield, BarChart3, Activity, List, Clock, AlertTriangle } from 'lucide-react';
 import { Card, Badge, Button, Tabs, TabsList, TabsTrigger, TabsContent, Container4K, ResponsiveHeader, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@esap-mfe/shared-ui';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import { AuditLogTable } from './AuditLogTable';
 import { AuditEventDetail, type AuditEvent } from './AuditEventDetail';
 import { AuditAnalytics } from './AuditAnalytics';
@@ -1224,6 +1224,8 @@ export function AuditModulePremium() {
   ];
 
   return (
+    <>
+    <Toaster position="top-right" richColors />
     <div className="space-y-4 md:space-y-6 pb-6">
       {/* Header */}
       <motion.div
@@ -1376,5 +1378,6 @@ export function AuditModulePremium() {
         onClose={() => setIsDetailOpen(false)}
       />
     </div>
+    </>
   );
 }
