@@ -13,8 +13,8 @@ services:
       args:
         # Nueva estructura de URLs: /{service}/api/v{version}/{path}
         # Ejemplo: /auth/api/v1/users
-        VITE_API_URL: "http://172.16.202.222/services"
-        VITE_ONLYOFFICE_URL: "http://172.16.202.222:9000"
+        VITE_API_URL: "/services"
+        VITE_ONLYOFFICE_URL: "/onlyoffice"
         VITE_MICROSOFT_TENANT_ID: ${VITE_MICROSOFT_TENANT_ID}
         VITE_MICROSOFT_CLIENT_ID: ${VITE_MICROSOFT_CLIENT_ID}
         VITE_LOGIN_OPTIONS: ${VITE_LOGIN_OPTIONS:-both}

@@ -77,6 +77,7 @@ import { Label } from '@esap-mfe/shared-ui/label';
 import { Switch } from '@esap-mfe/shared-ui/switch';
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { PerfilUsuarioCompletoPT } from './PerfilUsuarioCompletoPT';
+import { PORTAL_EXTERNAL_URLS } from '../config/environment';
 import {
   Select,
   SelectContent,
@@ -1579,6 +1580,9 @@ function CampoPerfilEditableMD3({
 }
 
 function AccesosRapidosMD3({ onClickAcceso }: { onClickAcceso?: () => void }) {
+  const outlookUrl = PORTAL_EXTERNAL_URLS.outlook;
+  const humanosoftUrl = PORTAL_EXTERNAL_URLS.humanosoft;
+  const arcaUrl = PORTAL_EXTERNAL_URLS.arca;
   // Programas internos de ESAP para acceso rápido
   const accesos = [
     {
@@ -1588,7 +1592,7 @@ function AccesosRapidosMD3({ onClickAcceso }: { onClickAcceso?: () => void }) {
       icono: Mail,
       color: '#2962FF',
       bgColor: '#E3F2FD',
-      url: 'https://outlook.office.com/',
+      url: outlookUrl,
       externo: true
     },
     {
@@ -1598,7 +1602,7 @@ function AccesosRapidosMD3({ onClickAcceso }: { onClickAcceso?: () => void }) {
       icono: UserCog,
       color: '#F57C00',
       bgColor: '#FFF3E0',
-      url: '#',
+      url: humanosoftUrl,
       externo: true
     },
     {
@@ -1608,7 +1612,7 @@ function AccesosRapidosMD3({ onClickAcceso }: { onClickAcceso?: () => void }) {
       icono: Database,
       color: '#00C853',
       bgColor: '#E8F5E9',
-      url: '#',
+      url: arcaUrl,
       externo: true
     },
   ];
