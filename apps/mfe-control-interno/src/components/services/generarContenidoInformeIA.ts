@@ -994,6 +994,5 @@ export function aplicarContenidoIA(
     // @ts-ignore - Agregamos paginas al objeto auditoria para que lo use el PDF
     paginas: contenido.paginas,
     // Las conclusiones van al campo observaciones del informe (se maneja en el componente)
-    paginas: paginas,
   };
 }
