@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {  Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn , BeforeInsert, BeforeUpdate } from 'typeorm';
 import { UsuarioEntity } from './usuario.entity';
 
 @Entity({ schema: 'academic_work_plan', name: 'Persona' })
@@ -52,10 +52,20 @@ export class PersonaEntity {
   @Column({ type: 'text', nullable: true })
   tipo_usuario: string | null;
 
-  @CreateDateColumn({ name: 'createdAt', type: 'timestamp' })
+  @CreateDateColumn({ default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updatedAt', type: 'timestamp' })
+  @UpdateDateColumn({ default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
   updatedAt: Date;
-}
 
+  @BeforeInsert()
+  setTimestamps() {
+    this.createdAt = new Date();
+    this.updatedAt = new Date();
+  }
+
+  @BeforeUpdate()
+  updateTimestamp() {
+    this.updatedAt = new Date();
+  }
+}

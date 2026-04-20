@@ -1,9 +1,9 @@
-import {
+import { 
   Column,
-  CreateDateColumn,
   Entity,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
+  BeforeInsert, 
+  BeforeUpdate 
 } from 'typeorm';
 
 @Entity({ schema: 'academic_work_plan', name: 'PTAUserData' })
@@ -26,9 +26,20 @@ export class PtaUserDataEntity {
   @Column({ name: 'priority', type: 'jsonb', nullable: true })
   priority: any | null;
 
-  @CreateDateColumn({ name: 'createdAt', type: 'timestamptz' })
+  @Column({ name: 'createdAt', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updatedAt', type: 'timestamptz' })
+  @Column({ name: 'updatedAt', type: 'timestamp' })
   updatedAt: Date;
+
+  @BeforeInsert()
+  setTimestamps() {
+    this.createdAt = new Date();
+    this.updatedAt = new Date();
+  }
+
+  @BeforeUpdate()
+  updateTimestamp() {
+    this.updatedAt = new Date();
+  }
 }

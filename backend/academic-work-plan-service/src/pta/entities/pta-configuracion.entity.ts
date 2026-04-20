@@ -1,4 +1,4 @@
-import { Column, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import {  Column, Entity, PrimaryColumn, BeforeInsert, BeforeUpdate } from 'typeorm';
 
 @Entity({ schema: 'academic_work_plan', name: 'ConfiguracionSistema' })
 export class PtaConfiguracionEntity {
@@ -8,6 +8,16 @@ export class PtaConfiguracionEntity {
   @Column({ name: 'valor', type: 'jsonb', nullable: true })
   rules: any | null;
 
-  @UpdateDateColumn({ name: 'updatedAt', type: 'timestamp' })
+  @Column({ name: 'updatedAt', type: 'timestamp' })
   updatedAt: Date;
+
+  @BeforeInsert()
+  setTimestamps() {
+    this.updatedAt = new Date();
+  }
+
+  @BeforeUpdate()
+  updateTimestamp() {
+    this.updatedAt = new Date();
+  }
 }

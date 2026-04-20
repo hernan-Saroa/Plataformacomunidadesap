@@ -1,9 +1,8 @@
-import {
+import { 
   Column,
-  CreateDateColumn,
   Entity,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
+  BeforeInsert, BeforeUpdate 
 } from 'typeorm';
 
 @Entity({ schema: 'academic_work_plan', name: 'PlanTrabajoAcademico' })
@@ -47,9 +46,20 @@ export class PlanTrabajoAcademicoEntity {
   @Column({ name: 'tipoVinculacion', type: 'text', nullable: true })
   tipoVinculacion: string | null;
 
-  @CreateDateColumn({ name: 'createdAt', type: 'timestamp' })
+  @Column({ name: 'createdAt', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updatedAt', type: 'timestamp' })
+  @Column({ name: 'updatedAt', type: 'timestamp' })
   updatedAt: Date;
+
+  @BeforeInsert()
+  setTimestamps() {
+    this.createdAt = new Date();
+    this.updatedAt = new Date();
+  }
+
+  @BeforeUpdate()
+  updateTimestamp() {
+    this.updatedAt = new Date();
+  }
 }

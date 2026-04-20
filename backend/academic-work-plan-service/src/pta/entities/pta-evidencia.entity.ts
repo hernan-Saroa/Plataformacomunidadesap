@@ -1,10 +1,4 @@
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  PrimaryGeneratedColumn,
-  UpdateDateColumn,
-} from 'typeorm';
+import { Column, Entity, PrimaryGeneratedColumn, BeforeInsert, BeforeUpdate } from 'typeorm';
 
 @Entity({ schema: 'academic_work_plan', name: 'PtaEvidencia' })
 export class PtaEvidenciaEntity {
@@ -53,9 +47,20 @@ export class PtaEvidenciaEntity {
   @Column({ name: 'comentarioRevision', type: 'text', nullable: true })
   comentarioRevision: string | null;
 
-  @CreateDateColumn({ name: 'createdAt', type: 'timestamptz' })
+  @Column({ name: 'createdAt', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updatedAt', type: 'timestamptz' })
+  @Column({ name: 'updatedAt', type: 'timestamp' })
   updatedAt: Date;
+
+  @BeforeInsert()
+  setTimestamps() {
+    this.createdAt = new Date();
+    this.updatedAt = new Date();
+  }
+
+  @BeforeUpdate()
+  updateTimestamp() {
+    this.updatedAt = new Date();
+  }
 }

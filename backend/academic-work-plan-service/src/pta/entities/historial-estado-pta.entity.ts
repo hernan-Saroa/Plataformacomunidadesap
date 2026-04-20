@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {  Column, Entity, PrimaryGeneratedColumn , BeforeInsert } from 'typeorm';
 
 @Entity({ schema: 'academic_work_plan', name: 'HistorialEstadoPTA' })
 export class HistorialEstadoPtaEntity {
@@ -35,6 +35,11 @@ export class HistorialEstadoPtaEntity {
   @Column({ name: 'version', type: 'int', nullable: true })
   version: number | null;
 
-  @CreateDateColumn({ name: 'createdAt', type: 'timestamp' })
+  @Column({ name: 'createdAt', type: 'timestamp' })
   createdAt: Date;
+
+  @BeforeInsert()
+  setTimestamps() {
+    this.createdAt = new Date();
+  }
 }

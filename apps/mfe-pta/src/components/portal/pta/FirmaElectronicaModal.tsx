@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { X, Mail, ShieldCheck, QrCode, ArrowRight, CheckCircle2, Loader2, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { apiClient } from '../../../../../shell/src/services/api';
 
 interface FirmaElectronicaModalProps {
   ptaId: string;
@@ -20,8 +19,7 @@ export function FirmaElectronicaModal({
   nuevoEstado,
   correoDestino = 'tu correo institucional',
 }: FirmaElectronicaModalProps) {
-  const SERVICE_BASE = '/pta/api/v1';
-  const PTA_BASE = `${SERVICE_BASE}/pta`;
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
   const [step, setStep] = useState<'init' | 'otp' | 'success' | 'error'>('init');
   const [retryStep, setRetryStep] = useState<'init' | 'otp'>('init');
@@ -55,8 +53,12 @@ export function FirmaElectronicaModal({
   const generateOtpAndSend = async () => {
     setLoading(true);
     try {
-      const data: any = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/generate-otp`, {});
-      if (!data?.success) throw new Error(data?.message || 'Error generando OTP');
+      const res = await fetch(`${API_BASE_URL}/pta/${ptaId}/generate-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error('Error generando OTP');
       if (data.expiresAt) {
         expiresAtRef.current = new Date(data.expiresAt);
         setSegsRestantes(300);
@@ -76,8 +78,13 @@ export function FirmaElectronicaModal({
     if (finalOtp.length !== 6) return;
     setLoading(true);
     try {
-      const data: any = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/sign`, { otp: finalOtp, nuevoEstado });
-      if (!data?.success) throw new Error(data?.message || 'Error validando la firma.');
+      const res = await fetch(`${API_BASE_URL}/pta/${ptaId}/sign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otp: finalOtp, nuevoEstado }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || 'Error validando la firma.');
       setCertId(data.data?.certificado || '');
       setStep('success');
     } catch (e: any) {

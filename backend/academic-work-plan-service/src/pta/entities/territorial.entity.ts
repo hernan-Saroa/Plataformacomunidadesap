@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {  Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn , BeforeInsert, BeforeUpdate } from 'typeorm';
 import { SedeEntity } from './sede.entity';
 
 @Entity({ schema: 'academic_work_plan', name: 'Territorial' })
@@ -15,10 +15,20 @@ export class TerritorialEntity {
   @OneToMany(() => SedeEntity, (sede) => sede.territorial)
   sedes: SedeEntity[];
 
-  @CreateDateColumn({ name: 'createdAt', type: 'timestamp' })
+  @CreateDateColumn({ default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updatedAt', type: 'timestamp' })
+  @UpdateDateColumn({ default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
   updatedAt: Date;
-}
 
+  @BeforeInsert()
+  setTimestamps() {
+    this.createdAt = new Date();
+    this.updatedAt = new Date();
+  }
+
+  @BeforeUpdate()
+  updateTimestamp() {
+    this.updatedAt = new Date();
+  }
+}

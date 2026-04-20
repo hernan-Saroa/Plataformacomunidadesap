@@ -448,7 +448,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
             Portal Docente
           </span>
           <span className="hidden sm:inline text-xs font-semibold text-purple-700/80">
-            — Tablero de Gestión de Plan de Trabajo Académico
+            — Tablero de Gestión de Plan de Trabajo Académico (prueba)
           </span>
         </div>
       </div>

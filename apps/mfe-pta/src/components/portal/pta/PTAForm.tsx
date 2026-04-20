@@ -1206,26 +1206,39 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
 
-    const isReenvio = originalEstado === 'Devuelto' && enviar;
+    const currentEstadoLower = (estado || '').toLowerCase();
+    const originalEstadoLower = (originalEstado || '').toLowerCase();
+
+    let nuevoEstado = estado;
+    if (!isAdminEdit && enviar) {
+      if (currentEstadoLower === 'borrador' || originalEstadoLower === 'devuelto') {
+        nuevoEstado = 'Pendiente Jefatura';
+      } else if (currentEstadoLower === 'revision_docente_n1') {
+        nuevoEstado = 'Pendiente Decanatura';
+      } else if (currentEstadoLower === 'revision_docente_n2') {
+        nuevoEstado = 'Pendiente Gestión Profesoral';
+      } else {
+        nuevoEstado = estado; // Fallback to current
+      }
+    } else if (!isAdminEdit && !enviar) {
+      nuevoEstado = 'Borrador';
+    }
 
     const payload = {
       id: currentPtaId || undefined,
       docente_id: userPersonId,
+      docente_nombre: docenteName || userName, // Enforce identity
       periodo,
       dedicacion,
       tipo_vinculacion: tipoVinculacion,
       semanas_vinculacion: esNoVinculado ? semanasVinculacion : undefined,
       semanas_prorrateo: semanasProrrateo,
       horas_a_programar: horasAProgramar,
-      // Admin edit: preservar el estado actual del PTA (no degradar a Borrador)
-      // Docente: si va a firmar usa el estado actual, si guarda borrador usa 'Borrador'
-      estado: isAdminEdit ? estado : (enviar ? estado : 'Borrador'),
+      estado: isAdminEdit ? estado : nuevoEstado,
       _adminEdit: isAdminEdit || undefined,
       asignaturas: asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== ''),
-      // Modo libre (nombre lleno, sin rol): horas viven en las actividades → horas_solicitadas = 0
-      // Modo con rol (catálogo): horas_solicitadas = suma de actividades (desglose del proyecto)
-      investigacion_proyecto: invProyecto.nombre
-        ? { ...invProyecto, horas_solicitadas: invProyecto.rol ? hInvestigacion : 0 }
+      investigacion_proyecto: (invProyecto.nombre || invProyecto.codigo || invProyecto.rol || invProyecto.grupo)
+        ? { ...invProyecto, horas_solicitadas: invProyecto.rol ? hInvestigacion : (invProyecto.horas_solicitadas || 0) }
         : undefined,
       investigacion_actividades: invActividades.filter(a => (a.actividad_id && a.actividad_id !== '') || (a.nombre && a.horas_total > 0)),
       extension_actividades: extActividades.filter(e => e.actividad_id && e.actividad_id !== ''),
@@ -1755,7 +1768,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
                         return (
                           <div key={asig.id}
-                            className={`p-3 md:p-4 rounded-2xl border relative transition-all duration-300 ${
+                            className={`p-4 rounded-xl border relative transition-all duration-300 ${
                               tieneConflicto
                                 ? 'border-red-400 bg-red-50/60 shadow-[0_0_0_3px_rgba(239,68,68,0.12)] border-l-4 border-l-red-500'
                                 : bloqueadaPorTerritorial
@@ -1765,7 +1778,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     : 'border-blue-300 bg-blue-50/50 shadow-[0_0_0_3px_rgba(59,130,246,0.1)]'
                             }`}>
 
-                            <div className="flex items-center gap-2 mb-3">
+                            <div className="flex items-center gap-2 mb-4">
                               {isEditable && !bloqueadaPorTerritorial && (
                                 <button onClick={() => handleRemoveAsig(asig.id)} title="Eliminar Asignatura"
                                   className="absolute top-3 right-3 min-w-[36px] min-h-[36px] p-2 rounded-lg border border-gray-200 bg-white text-gray-400 cursor-pointer flex items-center justify-center hover:text-red-600 hover:bg-red-50 hover:border-red-200 active:scale-95 transition-all outline-none focus:ring-2 focus:ring-red-500/50">
@@ -1804,7 +1817,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                             </div>
 
                             {/* Row 1: Territorial editable + cascada CETAP → Programa → Asignatura */}
-                            <div className={`grid grid-cols-1 md:grid-cols-2 ${hasCetapsAsig ? 'xl:grid-cols-4' : 'xl:grid-cols-3'} gap-3 mb-3 pr-10`}>
+                            <div className={`grid grid-cols-1 md:grid-cols-2 ${hasCetapsAsig ? 'xl:grid-cols-4' : 'xl:grid-cols-3'} gap-4 mb-4 pr-10`}>
                               {/* TERRITORIAL — ahora editable */}
                               <FormSelect
                                 label="Territorial *"
@@ -1842,7 +1855,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                             </div>
 
                             {/* Row 2: Campos calculados + modalidad + fechas */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-3 mb-2">
+                            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-3 mb-3">
                               <ReadonlyField label="Núcleo" value={asig.nucleo_tematico || '—'} />
                               <ReadonlyField label="Semestre" value={asig.semestre ? `${asig.semestre}` : '—'} />
                               <ReadonlyField label="Créditos" value={`${asig.creditos}`} />
@@ -1850,11 +1863,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 onChange={v => handleAsigChange(asig.id, 'total_estudiantes', Math.min(50, Math.max(1, Number(v) || 1)))} />
                               <ReadonlyField label="Horas Base" value={`${asig.horas_base}h`} />
                               <div>
-                                <ReadonlyField
-                                  label="Total Horas"
-                                  value={`${asig.total_horas}h${tieneConflicto ? ' (excluido)' : ''}`}
-                                  color={tieneConflicto ? '#DC2626' : '#003DA5'}
-                                />
+                                <label className="block text-[0.68rem] font-semibold text-gray-500 mb-0.5">Total Horas</label>
+                                <div className={`px-2 py-1.5 rounded-md text-sm font-bold text-center ${tieneConflicto ? 'bg-red-50 border border-red-300 text-red-600 line-through' : 'bg-blue-50 border border-blue-200 text-[#003DA5]'}`}>
+                                  {asig.total_horas}h{tieneConflicto ? ' (excluido)' : ''}
+                                </div>
                               </div>
                               {/* Modalidad */}
                               <FormSelect label="Modalidad" value={asig.modalidad || 'PRESENCIAL'} disabled={!rowEditable}
@@ -1867,7 +1879,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                             </div>
 
                             {/* Row 3: Fechas de la actividad */}
-                            <div className="grid grid-cols-2 gap-3 mb-2">
+                            <div className="grid grid-cols-2 gap-3 mb-3">
                               <FormInput label="Fecha inicio" type="date" value={asig.fecha_inicio || ''} disabled={!rowEditable}
                                 onChange={v => handleAsigChange(asig.id, 'fecha_inicio', v)} />
                               <FormInput label="Fecha fin" type="date" value={asig.fecha_fin || ''} disabled={!rowEditable}
@@ -2503,7 +2515,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         {/* ─── SIDEBAR RESUMEN ─── */}
         {(() => {
           const summaryContent = (
-            <div className="w-full shrink-0 z-10">
+            <div className="w-full shrink-0 z-10 mb-8">
               <div className="bg-white/70 backdrop-blur-xl rounded-3xl border border-gray-200/50 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow">
                 <div className="px-6 py-5 bg-gradient-to-b from-white to-gray-50/50 border-b border-gray-100">
                   <h3 className="text-[13px] font-black tracking-widest text-[#003DA5] flex items-center gap-2 uppercase">
@@ -2601,18 +2613,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             <>
               {/* Si no hay slot (ej. modal de edición del backoffice), mostrar siempre */}
               {!slotNode && (
-                <div className="w-full mb-8">
+                <div className="w-full">
                   {summaryContent}
                 </div>
               )}
               {/* Para vista móvil, alineado abajo de forma nativa */}
               {slotNode && (
-                <div className="w-full lg:hidden mb-8">
+                <div className="w-full lg:hidden">
                   {summaryContent}
                 </div>
               )}
               {/* Para vista desktop, incrustado en el sidebar react-portal */}
-              {slotNode ? createPortal(<div className="hidden lg:block">{summaryContent}</div>, slotNode) : null}
+              {slotNode ? createPortal(<div className="hidden lg:block w-[280px] xl:w-[300px] mt-6">{summaryContent}</div>, slotNode) : null}
             </>
           );
         })()}
@@ -2669,7 +2681,7 @@ function FormSelect({ label, value, onChange, options, disabled, placeholder }: 
       <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">{label}</label>
       <div className="relative group">
         <select value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
-          className="w-full px-3 py-2 rounded-2xl border border-gray-200 bg-[#F8FAFC] hover:bg-white focus:bg-white focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10 text-[12px] font-semibold text-gray-700 outline-none disabled:bg-gray-50/60 disabled:text-gray-400 transition-all duration-200 shadow-sm cursor-pointer appearance-none min-h-[38px]">
+          className="w-full px-3 py-2 rounded-xl border border-transparent bg-gray-50/80 hover:bg-gray-100/60 focus:bg-white focus:border-blue-400/50 focus:ring-4 focus:ring-blue-500/10 text-[12px] font-semibold text-gray-700 outline-none disabled:bg-gray-50/50 disabled:text-gray-400 transition-all duration-300 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] cursor-pointer appearance-none min-h-[36px]">
           {placeholder && <option value="" disabled className="text-gray-400">{placeholder}</option>}
           {options.map(o => <option key={o.value} value={o.value} className="text-gray-900 font-medium">{o.label}</option>)}
         </select>
@@ -2687,7 +2699,7 @@ function FormInput({ label, value, onChange, disabled, type = 'text', placeholde
     <div className="flex flex-col">
       <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} placeholder={placeholder} min={min} max={max} step={step}
-        className="w-full px-3 py-2 rounded-2xl border border-gray-200 bg-[#F8FAFC] hover:bg-white focus:bg-white focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10 text-[12px] font-semibold text-gray-700 outline-none disabled:bg-gray-50/60 disabled:text-gray-400 transition-all duration-200 shadow-sm placeholder:text-gray-400 min-h-[38px]" />
+        className="w-full px-3 py-2 rounded-xl border border-transparent bg-gray-50/80 hover:bg-gray-100/60 focus:bg-white focus:border-blue-400/50 focus:ring-4 focus:ring-blue-500/10 text-[12px] font-semibold text-gray-700 outline-none disabled:bg-gray-50/50 disabled:text-gray-400 transition-all duration-300 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] placeholder:text-gray-400 min-h-[36px]" />
     </div>
   );
 }
@@ -2696,7 +2708,7 @@ function ReadonlyField({ label, value, color }: { label: string; value: string; 
   return (
     <div className="flex flex-col">
       <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">{label}</label>
-      <div className="px-3 py-2 rounded-2xl bg-[#F8FAFC] border border-gray-200 text-[12px] font-bold text-center flex items-center justify-center min-h-[38px] shadow-sm"
+      <div className="px-3 py-2 rounded-xl bg-gray-50/40 border border-transparent shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] text-[12px] font-bold text-center flex items-center justify-center min-h-[36px]"
         style={{ color: color || '#6B7280' }}>
         {value}
       </div>

@@ -5,7 +5,7 @@
 
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 
-const BASE_URL = `http://localhost:5000/api`;
+const BASE_URL = `http://localhost:3000/api`;
 
 async function fetchApi(endpoint: string, options: RequestInit = {}) {
   const res = await fetch(`${BASE_URL}${endpoint}`, {

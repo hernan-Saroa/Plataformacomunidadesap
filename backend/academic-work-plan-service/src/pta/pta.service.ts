@@ -12,6 +12,8 @@ import { AsignaturaEntity } from './entities/asignatura.entity';
 import { TerritorialEntity } from './entities/territorial.entity';
 import { SedeEntity } from './entities/sede.entity';
 import { DocenteEntity } from './entities/docente.entity';
+import { PersonaEntity } from './entities/persona.entity';
+import { UsuarioEntity } from './entities/usuario.entity';
 
 type SavePtaInput = Record<string, any>;
 
@@ -70,11 +72,10 @@ export class PtaService {
     return Array.isArray(rows) && rows.length > 0;
   }
 
-  private async resolveDocenteId(docenteKey: string) {
+  private async fetchAuthDocenteInfo(docenteKey: string): Promise<{ personId: string, email: string | null, fullName: string }> {
     const key = coalesceString(docenteKey);
     if (!key) throw new BadRequestException('docente_id es requerido');
 
-    // Fuente canónica: auth.personas + roles por auth.role.code = 'DOCENTE'
     const personasHasIdPerson = await this.hasColumn('auth', 'personas', 'id_person');
     const personasHasIdTercero = await this.hasColumn('auth', 'personas', 'id_tercero');
     const userHasIdPerson = await this.hasColumn('auth', 'user', 'id_person');
@@ -101,7 +102,11 @@ export class PtaService {
       SELECT
         ${personasHasIdPerson ? 'p.id_person::text' : 'NULL'} as person_id,
         ${personasHasIdTercero ? 'p.id_tercero::text' : 'NULL'} as tercero_id,
-        p.dir_email as email
+        p.dir_email as email,
+        p.primer_nombre, 
+        p.segundo_nombre, 
+        p.primer_apellido, 
+        p.segundo_apellido
       FROM auth.personas p
       JOIN auth."user" u ON ${joinUserPersonas}
       JOIN auth.user_roles ur ON ur.id_user = u.id_user AND COALESCE(ur.is_active, true) = true
@@ -119,26 +124,77 @@ export class PtaService {
 
     const personId = coalesceString(authRow.person_id, authRow.tercero_id) || key;
     const email = coalesceString(authRow.email);
+    const fullName = [
+      authRow.primer_nombre,
+      authRow.segundo_nombre,
+      authRow.primer_apellido,
+      authRow.segundo_apellido,
+    ].filter(Boolean).join(' ') || 'Docente ESAP';
+
+    return { personId, email, fullName };
+  }
+
+  private async resolveDocenteCompleto(docenteKey: string, options?: { fallbackTerritorial?: string }): Promise<{ personId: string, email: string | null, fullName: string }> {
+    const { personId, email, fullName } = await this.fetchAuthDocenteInfo(docenteKey);
 
     // Mapear a academic_work_plan."Docente" (para mantener compatibilidad con FK de PTA).
     const byId = await this.docenteRepo.findOne({ where: { id: personId } as any });
-    if (byId) return byId.id;
+    if (byId) return { personId: byId.id, email, fullName };
 
     const byPersonaId = await this.docenteRepo.findOne({ where: { personaId: personId } as any });
-    if (byPersonaId) return byPersonaId.id;
+    if (byPersonaId) return { personId: byPersonaId.id, email, fullName };
 
     if (email) {
       const byCorreo = await this.docenteRepo.findOne({ where: { correoInstitucional: email } as any });
-      if (byCorreo) return byCorreo.id;
+      if (byCorreo) return { personId: byCorreo.id, email, fullName };
     }
 
-    // Si el esquema PTA ya está unificado para usar directamente `auth.personas.id_person`,
-    // retornamos el `personId` como `docenteId` (evita bloquear el flujo).
-    // eslint-disable-next-line no-console
+    // Si no existe, auto-aprovisionamos el docente para no violar la FK al guardar el PTA
+    const fallbackTerritorial = options?.fallbackTerritorial || (await this.ptaRepo.manager.query(`SELECT id FROM academic_work_plan."Territorial" LIMIT 1`))?.[0]?.id;
+
+    if (fallbackTerritorial) {
+      console.warn(`[PTA] Auto-aprovisionando Docente ${personId} en academic_work_plan."Docente" para evitar error de FK.`);
+      try {
+        const usuarioRepo = this.ptaRepo.manager.getRepository(UsuarioEntity);
+        let user = await usuarioRepo.findOne({ where: { id: personId } });
+        if (!user) {
+          user = usuarioRepo.create({ id: personId, email: email || 'docente@esap.edu.co', password: 'N/A' });
+          await usuarioRepo.save(user);
+        }
+
+        const personaRepoLocal = this.ptaRepo.manager.getRepository(PersonaEntity);
+        let persona = await personaRepoLocal.findOne({ where: { id: personId } });
+        if (!persona) {
+          persona = personaRepoLocal.create({ id: personId, usuarioId: personId });
+          await personaRepoLocal.save(persona);
+        }
+
+        const nuevoDocente = this.docenteRepo.create({
+          id: personId,
+          personaId: personId,
+          territorialId: fallbackTerritorial,
+          tipoVinculacion: 'CARRERA_003',
+          dedicacion: 'Tiempo Completo',
+          estado: 'ACTIVO',
+          horasAsignables: 800,
+          correoInstitucional: email
+        });
+        await this.docenteRepo.save(nuevoDocente);
+        return { personId, email, fullName };
+      } catch (err) {
+        console.error('[PTA] Error aprovisionando docente dummy:', err);
+      }
+    }
+
     console.warn(
       `[PTA] Persona ${personId} tiene rol DOCENTE en auth, pero no se encontró mapeo en academic_work_plan."Docente". Usando personId como docenteId.`,
     );
-    return personId;
+    return { personId, email, fullName };
+  }
+
+  private async resolveDocenteId(docenteKey: string, options?: { fallbackTerritorial?: string }): Promise<string> {
+    const res = await this.resolveDocenteCompleto(docenteKey, options);
+    return res.personId;
   }
 
   private isMedioTiempo(dedicacionRaw: any): boolean {
@@ -306,9 +362,19 @@ export class PtaService {
       input?.docente?.id,
       input?.docente?.personaId,
     );
-    const docenteId = await this.resolveDocenteId(docenteKey || '');
+    const fallbackTerritorial = Array.isArray(input?.asignaturas) && input.asignaturas.length > 0 ? input.asignaturas[0].territorial_id : undefined;
+    const { personId: docenteId, fullName: dbName } = await this.resolveDocenteCompleto(docenteKey || '', { fallbackTerritorial });
+    
+    // Enrich identity if missing
+    if (!input.docente_nombre) {
+      input.docente_nombre = dbName;
+    }
+
     const periodo = coalesceString(input?.periodo) || '2026-1';
-    const estado = coalesceString(input?.estado) || 'BORRADOR';
+    let estado = coalesceString(input?.estado) || 'BORRADOR';
+    
+    // Normalize state case
+    if (estado.toLowerCase() === 'borrador') estado = 'Borrador';
     const isAdminEdit = Boolean(input?._adminEdit);
 
     // Regla legacy: máximo 1 PTA activo salvo solicitud aprobada.

@@ -6,12 +6,12 @@ const SERVICE_BASE = '/pta/api/v1';
 const PTA_BASE = `${SERVICE_BASE}/pta`;
 
 function normalizeResult<T>(raw: any, fallback: T): ApiResult<T> {
-  if (raw && typeof raw === 'object') {
-    const success = Boolean(raw.success ?? raw.exito ?? raw.ok);
-    const data = (raw.data ?? raw.datos ?? raw.result ?? raw) as T;
+  if (raw !== undefined && raw !== null) {
+    // Si raw es un array, o si no tiene las props de wrapper, apiClient ya lo desenvolvió
+    const success = raw.success !== false && raw.exito !== false && raw.ok !== false;
+    const data = (raw.data !== undefined ? raw.data : (raw.datos !== undefined ? raw.datos : (raw.result !== undefined ? raw.result : raw))) as T;
     return { success, data: (data ?? fallback) as T };
   }
-
   return { success: false, data: fallback };
 }
 
@@ -1189,3 +1189,306 @@ export async function uploadSolicitudFiles(files: File[]) {
     return { success: false, data: [] };
   }
 }
+
+// --- MIGRADOS DESDE EL REPO ANTERIOR ---
+export async function getPTAsPendientes() {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/pendientes`);
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error in getPTAsPendientes:', error);
+    return { success: false, data: [] };
+  }
+}
+
+export async function getCatalogoTiposVinculacion() {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/tipos-vinculacion`);
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error fetching tipos vinculacion:', error);
+    return { success: false, data: [] };
+  }
+}
+
+export async function calcularHorasProgramablesTipoVinculacion(data: {
+  tipo_vinculacion: string;
+  dedicacion: string;
+  semanas_vinculacion?: number;
+}) {
+  try {
+    const res = await fetch(`${BASE_URL}/catalogos/calcular-horas-programables`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error calculating horas programables:', error);
+    return { success: false, data: null };
+  }
+}
+
+export async function getCatalogoAulas() {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/aulas`);
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error fetching aulas:', error);
+    return { success: false, data: [] };
+  }
+}
+
+export async function getCatalogoEstadosCircular() {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/estados-circular`);
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error fetching estados circular:', error);
+    return { success: false, data: {} };
+  }
+}
+
+export async function editarComponentesPorRevisor(ptaId: string, data: {
+  actorId?: string;
+  actorRol?: string;
+  observaciones?: string;
+  nuevos_totales?: {
+    docencia?: number;
+    investigacion?: number;
+    extension?: number;
+    complementarias?: number;
+    academico_admin?: number;
+  };
+}) {
+  try {
+    const res = await fetch(`${BASE_URL}/${ptaId}/componentes`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error in editarComponentesPorRevisor:', error);
+    return { success: false };
+  }
+}
+
+// ═══ Seed: Inicializar datos demo ═══════════════════════════════════
+
+export async function sendPTAEmailNotification(data: {
+  docente_id: string;
+  docente_nombre?: string;
+  evento: string;
+  estado_nuevo: string;
+  pta_id: string;
+  actor?: string;
+  mensaje?: string;
+}) {
+  try {
+    const res = await fetch(`${BASE_URL}/notifications/email`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error sending email notification:', error);
+    return { success: false };
+  }
+}
+
+export async function getPTABellNotifications(docenteId?: string, unreadOnly = false) {
+  try {
+    const params = new URLSearchParams();
+    if (docenteId) params.set('docente_id', docenteId);
+    if (unreadOnly) params.set('unread_only', 'true');
+    const raw = await apiClient.get<any>(`${PTA_BASE}/notifications/bell?${params.toString()}`);
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error fetching bell notifications:', error);
+    return { success: false, data: { notifications: [], total: 0, unread_count: 0 } };
+  }
+}
+
+export async function markPTABellNotificationsRead(notificationIds: string[]) {
+  try {
+    const res = await fetch(`${BASE_URL}/notifications/bell/mark-read`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ notification_ids: notificationIds }),
+    });
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error marking bell notifications read:', error);
+    return { success: false };
+  }
+}
+
+export async function getPTAEmailHistory(docenteId?: string) {
+  try {
+    const params = new URLSearchParams();
+    if (docenteId) params.set('docente_id', docenteId);
+    const raw = await apiClient.get<any>(`${PTA_BASE}/notifications/email/history?${params.toString()}`);
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error fetching email history:', error);
+    return { success: false, data: { emails: [], total: 0 } };
+  }
+}
+
+// ═══ Preferencias de Notificación ═══════════════════════════════════
+
+export async function verificarFirmaDigitalPTA(certificadoId: string) {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/verificar/${encodeURIComponent(certificadoId)}`);
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error verifying PTA firma digital:', error);
+    return { success: false, data: null };
+  }
+}
+
+export async function webhookProgramaChange(data: { event: string; programa_id?: string; programa_nombre?: string; actor?: string; periodo?: string }) {
+  try {
+    const res = await fetch(`${BASE_URL}/sync/webhook/programa-change`, {
+      method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+    });
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error in webhook:', error);
+    return { success: false };
+  }
+}
+
+export async function cargaMasivaDocentes(data: { registros: any[]; periodo: string }) {
+  try {
+    const res = await fetch(`${BASE_URL}/carga-masiva/docentes`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error bulk loading docentes:', error);
+    return { success: false };
+  }
+}
+
+export async function getHistorialCargas() {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/carga-masiva/historial`);
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error fetching carga historial:', error);
+    return { success: false, data: [] };
+  }
+}
+
+// ═══ Alertas: Persistencia de alertas descartadas ════════════════════
+
+export async function solicitarAprobacionSNI(ptaId: string, data: {
+  rol?: string; proyecto_nombre?: string; proyecto_codigo?: string;
+  grupo?: string; horas_solicitadas: number; justificacion?: string;
+  solicitado_por?: string;
+}) {
+  try {
+    const res = await fetch(`${BASE_URL}/${ptaId}/solicitud-sni`, {
+      method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+    });
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error creating SNI solicitud:', error);
+    return { success: false };
+  }
+}
+
+export async function solicitarAprobacionSNPI(ptaId: string, data: {
+  direccion: string; actividades?: any[]; horas_solicitadas: number;
+  justificacion?: string; solicitado_por?: string;
+}) {
+  try {
+    const res = await fetch(`${BASE_URL}/${ptaId}/solicitud-snpi`, {
+      method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+    });
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error creating SNPI solicitud:', error);
+    return { success: false };
+  }
+}
+
+export async function getAlertasTemporalesPTA(periodo?: string) {
+  try {
+    const params = periodo ? `?periodo=${periodo}` : '';
+    const raw = await apiClient.get<any>(`${PTA_BASE}/alertas-temporales${params}`);
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error fetching alertas temporales:', error);
+    return { success: false, data: { alertas: [], total_alertas: 0 } };
+  }
+}
+
+// ═══ Referencias Normativas — Tooltips (Circular 003) ════════════════
+
+export async function getReferenciasNormativas(seccion?: string) {
+  try {
+    const params = seccion ? `?seccion=${seccion}` : '';
+    const raw = await apiClient.get<any>(`${PTA_BASE}/referencias-normativas${params}`);
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('Error fetching referencias normativas:', error);
+    return { success: false, data: {} };
+  }
+}
+
+// ═══ Integración RUND ↔ PTA (Carpeta Digital, Obs. #5, §13.5) ═══════
+
+export async function enviarPropuestaDocente(ptaId: string, observaciones: string) {
+  try {
+    const res = await fetch(`${BASE_URL}/pta/${ptaId}/enviar-propuesta`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ observaciones })
+    });
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+}
+
+export async function respuestaConcertacionDocente(ptaId: string, aceptaPropuesta: boolean, observaciones: string) {
+  try {
+    const res = await fetch(`${BASE_URL}/pta/${ptaId}/respuesta-docente`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ aceptaPropuesta, observaciones })
+    });
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+}
+
+// ═══ Solicitudes PTA — Segundo PTA ═══════════════════════════════════
+
