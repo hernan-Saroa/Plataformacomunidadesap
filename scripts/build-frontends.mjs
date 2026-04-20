@@ -41,7 +41,9 @@ function runAppBuild(app) {
   });
 }
 
-rmSync(path.resolve(repoRoot, 'build'), { recursive: true, force: true });
+if (process.env.FRONTEND_CLEAN_BUILD === 'true') {
+  rmSync(path.resolve(repoRoot, 'build'), { recursive: true, force: true });
+}
 
 const apps = [...remoteApps, shellApp];
 let nextIndex = 0;
