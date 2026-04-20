@@ -2,7 +2,7 @@
 
 # =====================================================
 # Script de Despliegue para ESAP SuperApp - ENTORNO PROD
-# Servidor: http://172.16.202.169
+# Servidor: https://comunidadesap.esap.edu.co
 # Uso: ./deploy.prod.sh [comando]
 # =====================================================
 
@@ -47,7 +47,7 @@ fi
 
 COMPOSE_FILE_ENV="docker-compose.prod.yml"
 COMPOSE_FILE_MFE="docker-compose.frontend-mfe.yml"
-SERVER_URL_ENV="http://172.16.202.169"
+SERVER_URL_ENV="https://comunidadesap.esap.edu.co"
 ENV_FILE=".env.prod"
 ENV_NETWORK_KEY="superapp-net-prod"
 ENV_CONTAINER_SUFFIX="-prod"
@@ -108,7 +108,7 @@ compose_env_mfe() {
     FRONTEND_GATEWAY_BIND="${FRONTEND_GATEWAY_BIND:-127.0.0.1}" \
     FRONTEND_GATEWAY_PORT="${FRONTEND_GATEWAY_PORT:-8080}" \
     FRONTEND_VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_ENV/services}" \
-    FRONTEND_VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV:9000}" \
+    FRONTEND_VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV}" \
     docker compose -f "$COMPOSE_FILE_ENV" -f "$COMPOSE_FILE_MFE" --env-file "$ENV_FILE" "$@"
 }
 
@@ -154,7 +154,7 @@ build_frontend_assets_once() {
     PUPPETEER_SKIP_DOWNLOAD=1 \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_ENV/services}" \
-    VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV:9000}" \
+    VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV}" \
     VITE_LOGIN_OPTIONS="${VITE_LOGIN_OPTIONS:-both}" \
     FRONTEND_BUILD_PARALLELISM="${FRONTEND_BUILD_PARALLELISM:-2}" \
     npm run build
@@ -391,8 +391,8 @@ cmd_up() {
 
     echo ""
     echo -e "${YELLOW}URLs de acceso (PROD):${NC}"
-    echo "  Frontend:    http://172.16.202.169"
-    echo "  API Gateway: http://172.16.202.169/services"
+    echo "  Frontend:    https://comunidadesap.esap.edu.co"
+    echo "  API Gateway: https://comunidadesap.esap.edu.co/services"
     echo ""
 }
 

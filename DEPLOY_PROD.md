@@ -7,7 +7,7 @@ Esta guía documenta el despliegue en producción usando [deploy.prod.sh](/Users
 - Docker instalado
 - `docker compose` disponible
 - Archivo `.env.prod`
-- Acceso al servidor `http://172.16.202.169`
+- Acceso al servidor `https://comunidadesap.esap.edu.co`
 
 ## Comandos base
 
@@ -87,6 +87,7 @@ Variables opcionales para `.env.prod`:
 FRONTEND_GATEWAY_BIND=127.0.0.1
 FRONTEND_GATEWAY_PORT=8080
 FRONTEND_VITE_API_URL=https://comunidadesap.esap.edu.co/services
+FRONTEND_VITE_ONLYOFFICE_URL=https://comunidadesap.esap.edu.co
 ```
 
 Después de cambiar la configuración SSL del servidor:
