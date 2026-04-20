@@ -1127,6 +1127,16 @@ export function GestionNoticias() {
 
   const handleCreateNoticia = async (data: any) => {
     try {
+      // Verificar que el usuario esté autenticado
+      const currentUser = authService.getCurrentUser();
+      console.log('[DEBUG] GestionNoticias handleCreateNoticia - currentUser:', currentUser);
+      if (!currentUser?.id) {
+        console.log('[DEBUG] GestionNoticias handleCreateNoticia - user not authenticated');
+        toast.error('Usuario no autenticado', 'Debe iniciar sesión para crear una noticia disciplinaria.');
+        return;
+      }
+      console.log('[DEBUG] GestionNoticias handleCreateNoticia - currentUser.id:', currentUser.id);
+
       setLoading(true);
       console.log('[DEBUG] handleCreateNoticia - data.archivosAdjuntos:', data.archivosAdjuntos);
       console.log('[DEBUG] handleCreateNoticia - archivos length:', data.archivosAdjuntos?.length || 0);
@@ -1194,6 +1204,8 @@ export function GestionNoticias() {
         // NO enviar: radicado, fechaRecepcion, estado (los genera el backend)
         radicadorId: authService.getCurrentUser()?.id,
       };
+
+      console.log('[DEBUG] GestionNoticias handleCreateNoticia - createDto.radicadorId:', createDto.radicadorId);
 
       await disciplinaryService.radicarNoticia(createDto, data.archivosAdjuntos || []);
 
@@ -1398,7 +1410,7 @@ export function GestionNoticias() {
             RF001 - Sistema de Radicación | RF002 - Revisión y Asignación
           </p>
         </div>
-        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE) && (
+        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CREATE || Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_CREATE) && (
         <Button
           onClick={() => setShowCreateModal(true)}
           className="flex items-center gap-2 w-full sm:w-auto"

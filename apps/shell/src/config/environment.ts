@@ -26,6 +26,7 @@ export const ENV = import.meta.env.MODE || 'development';
 const VITE_API_URL = import.meta.env.VITE_API_URL as string | undefined;
 const VITE_CERTIFICADOS_URL = import.meta.env.VITE_CERTIFICADOS_URL as string | undefined;
 const VITE_PUBLIC_FRONTEND_URL = import.meta.env.VITE_PUBLIC_FRONTEND_URL as string | undefined;
+const VITE_ONLYOFFICE_URL = import.meta.env.VITE_ONLYOFFICE_URL as string | undefined;
 
 // Modo de API: 'gateway' (usa API Gateway) o 'direct' (conexión directa a microservicios)
 // Auto-detectar: localhost = direct, producción = gateway
@@ -89,6 +90,32 @@ const getBrowserGatewayUrl = (): string | null => {
   return `${origin.replace(/\/$/, '')}/services`;
 };
 
+const getBrowserOnlyOfficeUrl = (): string | null => {
+  if (typeof window === 'undefined' || !window.location?.hostname) {
+    return null;
+  }
+
+  const { protocol, hostname, origin } = window.location;
+
+  if (isLoopbackHost(hostname)) {
+    return `${protocol}//${hostname}:8080`;
+  }
+
+  return `${origin.replace(/\/$/, '')}/onlyoffice`;
+};
+
+const getMetaConfiguredUrl = (metaName: string): string | undefined => {
+  if (typeof document === 'undefined') {
+    return undefined;
+  }
+
+  const configuredUrl = document
+    .querySelector<HTMLMetaElement>(`meta[name="${metaName}"]`)
+    ?.content?.trim();
+
+  return configuredUrl ? normalizeConfiguredGatewayUrl(configuredUrl) : undefined;
+};
+
 export const getApiGatewayBaseUrl = (): string => {
   const configuredUrl = VITE_API_URL ? normalizeConfiguredGatewayUrl(VITE_API_URL) : undefined;
   if (configuredUrl) {
@@ -105,16 +132,34 @@ export const getApiGatewayBaseUrl = (): string => {
 
 export const API_MODE = VITE_API_MODE || (isLocalhost ? 'direct' : 'gateway');
 
-// URL de OnlyOffice Document Server
-const VITE_ONLYOFFICE_URL = import.meta.env.VITE_ONLYOFFICE_URL as string | undefined;
-export const ONLYOFFICE_URL = VITE_ONLYOFFICE_URL || (isLocalhost ? 'http://localhost:8080' : 'http://onlyoffice:80');
+export const ONLYOFFICE_URL = (() => {
+  const configuredUrl = VITE_ONLYOFFICE_URL
+    ? normalizeConfiguredGatewayUrl(VITE_ONLYOFFICE_URL)
+    : undefined;
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+
+  const browserUrl = getBrowserOnlyOfficeUrl();
+  if (browserUrl) {
+    return browserUrl;
+  }
+
+  return '/onlyoffice';
+})();
 
 // URLs base del API Gateway según el entorno
 const API_GATEWAY_URLS = {
   development: 'http://localhost:3000', // API Gateway local
-  dev: 'http://4.156.71.181/services', // Servidor de desarrollo del equipo (via Nginx)
-  production: 'http://4.156.71.181/services', // Gateway expuesto en /services
+  dev: '/services',
+  production: '/services',
 };
+
+export const PORTAL_EXTERNAL_URLS = Object.freeze({
+  outlook: getMetaConfiguredUrl('esap-outlook-url') || '/externos/correo-institucional',
+  humanosoft: getMetaConfiguredUrl('esap-humanosoft-url') || '/externos/humano-soft',
+  arca: getMetaConfiguredUrl('esap-arca-url') || '/externos/arca',
+});
 
 // URLs directas a cada microservicio (para desarrollo local sin Docker)
 export const MICROSERVICE_URLS = {

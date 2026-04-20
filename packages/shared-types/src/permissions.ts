@@ -134,7 +134,6 @@ export enum Permissions {
 
   //Control Disciplinario - Noticias Disciplinarias
   CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_MANAGE = 'control-disciplinario.noticia-disciplinaria.manage',
-  CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE = 'control-disciplinario.noticia-disciplinaria.create',
   CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT = 'control-disciplinario.noticia-disciplinaria.edit',
   CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE = 'control-disciplinario.noticia-disciplinaria.delete',
   CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_ASIGNAR = 'control-disciplinario.noticia-disciplinaria.asignar',

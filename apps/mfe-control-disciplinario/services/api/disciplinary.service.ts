@@ -388,6 +388,7 @@ export interface CreateNewsDto {
     adjuntos?: string[];
     denunciante: any;
     disciplinable: any;
+    radicadorId?: string;
 }
 
 export interface AssignProcessDto {
@@ -428,6 +429,8 @@ class DisciplinaryService {
     // --- NOTICIAS ---
 
     async radicarNoticia(data: CreateNewsDto, files?: File[]): Promise<DisciplinaryNews> {
+        console.log('[DEBUG] radicarNoticia - data.radicadorId:', data.radicadorId);
+
         const formData = new FormData();
         // Solo enviar campos que acepta el DTO del backend
         formData.append('origen', data.origen);
@@ -442,12 +445,19 @@ class DisciplinaryService {
         if (data.adjuntos && data.adjuntos.length > 0) {
             formData.append('adjuntos', JSON.stringify(data.adjuntos));
         }
+        formData.append('radicadorId', data.radicadorId || '');
+        console.log('[DEBUG] radicarNoticia - appending radicadorId:', data.radicadorId || '');
 
         // Archivos con el campo correcto que espera el backend
         if (files && files.length > 0) {
             files.forEach((file) => {
                 formData.append('files', file); // Backend usa 'files', no 'adjuntos'
             });
+        }
+
+        console.log('[DEBUG] radicarNoticia - formData entries:');
+        for (const [key, value] of formData.entries()) {
+            console.log(`  ${key}:`, typeof value === 'string' ? value : 'File');
         }
 
         return apiClient.upload<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);

@@ -315,7 +315,7 @@ interface TarjetaNoticiaProps {
 }
 
 function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa }: TarjetaNoticiaProps) {
-  const esJefe = authService.hasRole('rol-jefe-oci') || authService.isSuperAdmin();
+  const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
   const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR);
   const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
   const canViewDetail = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DETAIL);
@@ -325,6 +325,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
   const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
 
   const [hoverReenviar, setHoverReenviar] = useState(false);
+
 
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
@@ -2499,6 +2500,7 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     tipo: 'noticia',
     kanbanStage: (noticia as any).kanbanStage,
     etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion',
+    radicador: (noticia as any).radicadorId,
     procesoAsociado: (noticia as any).procesoAsociadoId ? {
       id: (noticia as any).procesoAsociadoId,
       numeroProceso: (noticia as any).procesoAsociadoNumero || '',
@@ -2898,14 +2900,19 @@ export function DashboardKanbanOperativo({
       
       const user = authService.getCurrentUser();
       const currentUserId = user?.id;
-      const esJefe = authService.hasRole('rol-jefe-oci') || authService.isSuperAdmin();
+      const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+
+      console.log('esJefe', esJefe);
 
       // Cargar noticias y procesos en paralelo (filtrados por profesional si hay filtro activo o permiso restringido)
+      // Para superadmin o jefe ocid, mostrar todas las noticias y procesos sin filtrar
       const [noticiasRaw, procesosRaw] = await Promise.all([
         hasPermissionNoticia ?
-          disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId)
+          (esJefe ? disciplinaryService.getAllNoticias() : disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId))
           : [],
-        (filtroProfesionalId || (!canViewAll && canViewMine && currentUserId))
+        esJefe ?
+          disciplinaryService.getAllProcesos()
+          : (filtroProfesionalId || (!canViewAll && canViewMine && currentUserId))
           ? disciplinaryService.getMisProcesos(filtroProfesionalId || currentUserId)
           : disciplinaryService.getAllProcesos()
       ]);
@@ -3098,6 +3105,7 @@ export function DashboardKanbanOperativo({
       diasPendientes: (noticia as any).diasPendientes ?? dias,
       tipo: 'noticia' as const,
       etapaActual: etapaNormalizada,
+      radicador: (noticia as any).radicadorId,
       // ✅ NUEVO: Mapear campos de remisión por competencia
       numeroRC: (noticia as any).numeroRC || (noticia as any).radicadoRemision || undefined,
       entidadRemision: (noticia as any).entidadRemision || (noticia as any).entidadDestino || undefined,
@@ -3498,6 +3506,19 @@ export function DashboardKanbanOperativo({
       }
     }
 
+    // Obtener el usuario actual para el radicador
+    const currentUser = authService.getCurrentUser();
+    console.log('[DEBUG] handleCrearNoticia - currentUser:', currentUser);
+
+    // Verificar que el usuario esté autenticado
+    if (!currentUser?.id) {
+      console.log('[DEBUG] handleCrearNoticia - user not authenticated');
+      toast.error('Usuario no autenticado', 'Debe iniciar sesión para crear una noticia disciplinaria.');
+      return;
+    }
+
+    console.log('[DEBUG] handleCrearNoticia - currentUser.id:', currentUser.id);
+
     // Extraer primer denunciado y denunciante para campos principales
     const primerDenunciado = data.denunciados?.[0] || data.denunciado;
     const primerDenunciante = data.denunciantes?.[0];
@@ -3549,6 +3570,7 @@ export function DashboardKanbanOperativo({
           : (data.descripcionHechos || ''),
         conductas: data.conductaSeleccionada ? [data.conductaSeleccionada] : [],
         prioridad: (data.prioridad || 'media').toUpperCase(),
+        radicadorId: currentUser?.id,
         // Denunciante
         denunciante: primerDenunciante ? {
           nombre: primerDenunciante.nombre,
@@ -3571,6 +3593,7 @@ export function DashboardKanbanOperativo({
       };
 
       console.log('[DashboardKanban] Enviando datos al backend:', JSON.stringify(newsData, null, 2));
+      console.log('[DEBUG] handleCrearNoticia - newsData.radicadorId:', newsData.radicadorId);
 
       // Llamar al backend para crear la noticia
       const noticiaCreada = await disciplinaryService.radicarNoticia(newsData, data.archivosAdjuntos || []);
@@ -5218,7 +5241,7 @@ export function DashboardKanbanOperativo({
                 onChange={(id) => setTipoVista(id as any)}
               />
 
-              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE) && (
+              {authService.hasPermission(Permissions.NOTICIAS_DISCIPLINARIAS_CREATE || Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CREATE) && (
                 <KanbanToolbarCTA
                   onClick={() => setModalActivo('crear-noticia')}
                   icon={<Plus style={{ width: 16, height: 16 }} />}
