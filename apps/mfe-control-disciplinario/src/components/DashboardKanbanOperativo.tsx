@@ -2500,6 +2500,7 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     tipo: 'noticia',
     kanbanStage: (noticia as any).kanbanStage,
     etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion',
+    radicador: (noticia as any).radicadorId,
     procesoAsociado: (noticia as any).procesoAsociadoId ? {
       id: (noticia as any).procesoAsociadoId,
       numeroProceso: (noticia as any).procesoAsociadoNumero || '',
@@ -3104,6 +3105,7 @@ export function DashboardKanbanOperativo({
       diasPendientes: (noticia as any).diasPendientes ?? dias,
       tipo: 'noticia' as const,
       etapaActual: etapaNormalizada,
+      radicador: (noticia as any).radicadorId,
       // ✅ NUEVO: Mapear campos de remisión por competencia
       numeroRC: (noticia as any).numeroRC || (noticia as any).radicadoRemision || undefined,
       entidadRemision: (noticia as any).entidadRemision || (noticia as any).entidadDestino || undefined,
@@ -3504,6 +3506,19 @@ export function DashboardKanbanOperativo({
       }
     }
 
+    // Obtener el usuario actual para el radicador
+    const currentUser = authService.getCurrentUser();
+    console.log('[DEBUG] handleCrearNoticia - currentUser:', currentUser);
+
+    // Verificar que el usuario esté autenticado
+    if (!currentUser?.id) {
+      console.log('[DEBUG] handleCrearNoticia - user not authenticated');
+      toast.error('Usuario no autenticado', 'Debe iniciar sesión para crear una noticia disciplinaria.');
+      return;
+    }
+
+    console.log('[DEBUG] handleCrearNoticia - currentUser.id:', currentUser.id);
+
     // Extraer primer denunciado y denunciante para campos principales
     const primerDenunciado = data.denunciados?.[0] || data.denunciado;
     const primerDenunciante = data.denunciantes?.[0];
@@ -3555,6 +3570,7 @@ export function DashboardKanbanOperativo({
           : (data.descripcionHechos || ''),
         conductas: data.conductaSeleccionada ? [data.conductaSeleccionada] : [],
         prioridad: (data.prioridad || 'media').toUpperCase(),
+        radicadorId: currentUser?.id,
         // Denunciante
         denunciante: primerDenunciante ? {
           nombre: primerDenunciante.nombre,
@@ -3577,6 +3593,7 @@ export function DashboardKanbanOperativo({
       };
 
       console.log('[DashboardKanban] Enviando datos al backend:', JSON.stringify(newsData, null, 2));
+      console.log('[DEBUG] handleCrearNoticia - newsData.radicadorId:', newsData.radicadorId);
 
       // Llamar al backend para crear la noticia
       const noticiaCreada = await disciplinaryService.radicarNoticia(newsData, data.archivosAdjuntos || []);
