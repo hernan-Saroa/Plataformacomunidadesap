@@ -315,7 +315,7 @@ interface TarjetaNoticiaProps {
 }
 
 function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa }: TarjetaNoticiaProps) {
-  const esJefe = authService.hasRole('rol-jefe-oci') || authService.isSuperAdmin();
+  const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
   const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR);
   const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
   const canViewDetail = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DETAIL);
@@ -325,6 +325,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
   const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
 
   const [hoverReenviar, setHoverReenviar] = useState(false);
+
 
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
@@ -2898,14 +2899,19 @@ export function DashboardKanbanOperativo({
       
       const user = authService.getCurrentUser();
       const currentUserId = user?.id;
-      const esJefe = authService.hasRole('rol-jefe-oci') || authService.isSuperAdmin();
+      const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+
+      console.log('esJefe', esJefe);
 
       // Cargar noticias y procesos en paralelo (filtrados por profesional si hay filtro activo o permiso restringido)
+      // Para superadmin o jefe ocid, mostrar todas las noticias y procesos sin filtrar
       const [noticiasRaw, procesosRaw] = await Promise.all([
         hasPermissionNoticia ?
-          disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId)
+          (esJefe ? disciplinaryService.getAllNoticias() : disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId))
           : [],
-        (filtroProfesionalId || (!canViewAll && canViewMine && currentUserId))
+        esJefe ?
+          disciplinaryService.getAllProcesos()
+          : (filtroProfesionalId || (!canViewAll && canViewMine && currentUserId))
           ? disciplinaryService.getMisProcesos(filtroProfesionalId || currentUserId)
           : disciplinaryService.getAllProcesos()
       ]);

@@ -176,6 +176,7 @@ class AuthService {
     const user = this.getCurrentUser();
     const roles = user?.roles || [];
 
+    
     // Manejar tanto arrays de string como objetos { code, name }
     return roles.some((r: any) => {
       if (typeof r === 'string') return r === role;
