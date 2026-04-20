@@ -1398,7 +1398,7 @@ export function GestionNoticias() {
             RF001 - Sistema de Radicación | RF002 - Revisión y Asignación
           </p>
         </div>
-        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE) && (
+        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CREATE || Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_CREATE) && (
         <Button
           onClick={() => setShowCreateModal(true)}
           className="flex items-center gap-2 w-full sm:w-auto"

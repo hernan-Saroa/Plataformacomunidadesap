@@ -50,6 +50,7 @@ export interface DisciplinaryNews {
     };
     estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
     kanbanStage?: string;
+    radicadorId?: string;
     createdAt: string;
     updatedAt: string;
 }

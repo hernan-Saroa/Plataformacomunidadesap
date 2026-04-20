@@ -86,6 +86,7 @@ export interface AuditoriaBasicaPDF {
   evaluacionControlInterno?: string;
   fortalezas?: string[];
   recomendacionesPorCategoria?: Array<{ categoria: string; items: string[] }>;
+  riesgosIdentificados?: string[];
 }
 
 /** Hallazgo para incluir en el detalle del informe preliminar */
@@ -241,8 +242,9 @@ export async function exportarPDFInformeAuditoria(
   tipo: TipoInforme,
   auditoria: AuditoriaBasicaPDF,
   informe: InformePreliminarPDF | InformeFinalPDF,
-  hallazgosDetalle?: HallazgoPDF[]
-): Promise<void> {
+  hallazgosDetalle?: HallazgoPDF[],
+  returnBlobUrl: boolean = false
+): Promise<void | string> {
   const { jsPDF } = await import('jspdf');
   const doc: JsPDFType = new jsPDF({
     orientation: 'portrait',
@@ -1367,6 +1369,10 @@ export async function exportarPDFInformeAuditoria(
     } else {
       dibujarPieInstitucional(doc as any, i, true);
     }
+  }
+
+  if (returnBlobUrl) {
+    return doc.output('bloburl') as string;
   }
 
   // Guardar

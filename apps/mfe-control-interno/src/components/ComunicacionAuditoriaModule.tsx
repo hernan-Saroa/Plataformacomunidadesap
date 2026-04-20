@@ -380,6 +380,9 @@ export const ComunicacionAuditoriaModule: React.FC<{
               ? `${audData.territorialInfo.ciudad}${audData.territorialInfo.departamento ? ' – ' + audData.territorialInfo.departamento : ''}`
               : audData.territorial,
           }),
+          ...(audData.riesgosIdentificados && { riesgosIdentificados: audData.riesgosIdentificados }),
+          ...(audData.fortalezas && { fortalezas: audData.fortalezas }),
+          ...(audData.recomendacionesPorCategoria && { recomendacionesPorCategoria: audData.recomendacionesPorCategoria }),
         }));
       }
     } catch (err: any) {
@@ -829,6 +832,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
                     evaluacionControlInterno: (auditoria as any).evaluacionControlInterno,
                     fortalezas: (auditoria as any).fortalezas,
                     recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
+                    riesgosIdentificados: (auditoria as any).riesgosIdentificados,
                   };
 
                   // Generar contenido IA y aplicarlo (enriquece los campos vacíos)
@@ -1184,6 +1188,81 @@ const SeccionInformePreliminar: React.FC<{
           </div>
         </div>
       </CardSIGL>
+
+      {/* Riesgos Identificados del Proceso */}
+      {((auditoria as any).riesgosIdentificados?.length > 0 || (auditoria as any).objetivo) && (
+        <CardSIGL className={embedded ? '!border !border-gray-200 !shadow-none' : ''}>
+          <div className={embedded ? 'p-4' : 'p-6'}>
+            <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Target className="w-5 h-5 text-purple-600" />
+              Riesgos y Objetivos de la Auditoría
+            </h3>
+
+            {(auditoria as any).objetivo && (
+              <div className="mb-4">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Objetivo Técnico</span>
+                <p className="text-[13px] text-gray-700 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100 italic">{(auditoria as any).objetivo}</p>
+              </div>
+            )}
+
+            {(auditoria as any).alcance && (
+              <div className="mb-4">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Alcance de la Auditoría</span>
+                <p className="text-[13px] text-gray-700 leading-relaxed">{(auditoria as any).alcance}</p>
+              </div>
+            )}
+
+            {(auditoria as any).riesgosIdentificados?.length > 0 && (
+              <div className="mb-4">
+                <span className="text-xs font-bold text-red-400 uppercase tracking-wider block mb-2">Riesgos Específicos Identificados</span>
+                <div className="grid grid-cols-1 gap-2">
+                  {(auditoria as any).riesgosIdentificados.map((riesgo: string, idx: number) => (
+                    <div key={idx} className="flex items-start gap-2 p-2.5 bg-red-50/50 border border-red-100 rounded-lg text-[13px] text-red-900 leading-relaxed">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                      {riesgo}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(auditoria as any).fortalezas?.length > 0 && (
+              <div className="mb-4">
+                <span className="text-xs font-bold text-green-500 uppercase tracking-wider block mb-2">Fortalezas Identificadas</span>
+                <div className="grid grid-cols-1 gap-2">
+                  {(auditoria as any).fortalezas.map((f: string, idx: number) => (
+                    <div key={idx} className="flex items-start gap-2 p-2.5 bg-green-50/50 border border-green-100 rounded-lg text-[13px] text-green-900">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0 mt-0.5" />
+                      {f}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(auditoria as any).recomendacionesPorCategoria?.length > 0 && (
+              <div>
+                <span className="text-xs font-bold text-blue-500 uppercase tracking-wider block mb-2">Recomendaciones por Categoría</span>
+                <div className="space-y-3">
+                  {(auditoria as any).recomendacionesPorCategoria.map((cat: any, idx: number) => (
+                    <div key={idx} className="bg-blue-50/30 border border-blue-100 rounded-lg p-3">
+                      <h4 className="text-[13px] font-bold text-blue-900 mb-2 uppercase">{cat.categoria}</h4>
+                      <ul className="space-y-1">
+                        {cat.items?.map((item: string, i: number) => (
+                          <li key={i} className="text-[12px] text-blue-800 flex items-start gap-2">
+                            <span className="shrink-0 mt-1.5 w-1 h-1 bg-blue-400 rounded-full" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </CardSIGL>
+      )}
 
       {/* Lista de Hallazgos */}
       <CardSIGL className={embedded ? '!border !border-gray-200 !shadow-none' : ''}>
@@ -2585,11 +2664,13 @@ const ModalPreviewInforme: React.FC<{
   tipo: string;
   auditoria: Auditoria;
   informe: any;
+  hallazgos?: Hallazgo[];
   onClose: () => void;
 }> = ({ tipo, auditoria, informe, onClose }) => {
   const titulo = tipo === 'preliminar' ? 'Informe Preliminar' : tipo === 'final' ? 'Informe Final' : 'Informe Ejecutivo';
-  const handleDescargarPDF = async () => {
-    const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+
+  const prepararDatosPDF = () => {
     const hallazgosParaPDF =
       tipo === 'preliminar' && auditoria.hallazgos?.length
         ? auditoria.hallazgos.map((h: Hallazgo) => ({
@@ -2613,9 +2694,10 @@ const ModalPreviewInforme: React.FC<{
               recomendaciones: h.recomendaciones,
               estadoFinal: h.estado,
               decisionAuditor: h.decisionAuditor,
-              fundamentacionTecnica: h.fundamentacionTecnica,
+              fundamentacionTecnica: (h as any).fundamentacionTecnica,
             }))
           : undefined;
+
     const auditoriaBase = {
       codigo: auditoria.codigo,
       nombre: auditoria.nombre,
@@ -2646,111 +2728,91 @@ const ModalPreviewInforme: React.FC<{
         evaluacionControlInterno: (auditoria as any).evaluacionControlInterno,
         fortalezas: (auditoria as any).fortalezas,
         recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
+        riesgosIdentificados: (auditoria as any).riesgosIdentificados,
       }),
     };
+
     const informeParaPDF = tipo === 'preliminar' && informe?.hallazgos
       ? { ...informe, foliosAnexos: Math.max(10, informe.hallazgos * 3) }
       : informe;
+
+    return { auditoriaBase, informeParaPDF, hallazgosParaPDF };
+  };
+
+  useEffect(() => {
+    let active = true;
+    const generatePreview = async () => {
+      try {
+        const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+        const { auditoriaBase, informeParaPDF, hallazgosParaPDF } = prepararDatosPDF();
+        const url = await exportarPDFInformeAuditoria(
+          tipo === 'preliminar' ? 'preliminar' : 'final',
+          auditoriaBase,
+          informeParaPDF,
+          hallazgosParaPDF,
+          true
+        );
+        if (active && typeof url === 'string') {
+          setPdfUrl(url);
+        }
+      } catch (err) {
+        console.error('Error generando vista previa PDF:', err);
+      }
+    };
+    generatePreview();
+    return () => { active = false; };
+  }, [tipo, auditoria, informe]);
+
+  const handleDescargarPDF = async () => {
+    const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+    const { auditoriaBase, informeParaPDF, hallazgosParaPDF } = prepararDatosPDF();
     await exportarPDFInformeAuditoria(
       tipo === 'preliminar' ? 'preliminar' : 'final',
       auditoriaBase,
       informeParaPDF,
-      hallazgosParaPDF
+      hallazgosParaPDF,
+      false
     );
   };
+
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" size="lg">
-        <DialogHeader className="border-b pb-3">
-          <DialogTitle className="text-lg font-semibold flex items-center gap-2">
-            <Eye className="w-5 h-5 text-green-600" />
-            Vista Previa - {titulo}
-          </DialogTitle>
-        </DialogHeader>
-      <div className="prose max-w-none pt-2">
-        <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-lg mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP
-          </h2>
-          <h3 className="text-xl font-semibold text-purple-700">
-            Oficina de Control Interno
-          </h3>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <p className="font-semibold text-gray-700">Código Auditoría:</p>
-            <p className="text-gray-900">{auditoria.codigo}</p>
-          </div>
-          <div>
-            <p className="font-semibold text-gray-700">Proceso Auditado:</p>
-            <p className="text-gray-900">{auditoria.nombre}</p>
-          </div>
-          <div>
-            <p className="font-semibold text-gray-700">Auditor Líder:</p>
-            <p className="text-gray-900">{typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : auditoria.auditorLider?.nombre || 'No asignado'}</p>
-          </div>
-          <div>
-            <p className="font-semibold text-gray-700">Fecha de Generación:</p>
-            <p className="text-gray-900">{new Date(informe.fecha).toLocaleDateString()}</p>
+      <DialogContent className="max-w-[95vw] w-[95vw] sm:max-w-[95%] h-[95vh] flex flex-col p-0 overflow-hidden bg-gray-100 border-0 shadow-2xl" size="xl">
+        <div className="flex-none bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+          <DialogHeader className="p-0 border-0">
+            <DialogTitle className="text-xl font-bold flex items-center gap-2 text-gray-900 m-0">
+              <Eye className="w-6 h-6 text-blue-700" />
+              Vista Previa — {titulo}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center gap-3">
+            <Button size="sm" className="bg-blue-700 hover:bg-blue-800 text-white font-medium" onClick={handleDescargarPDF} disabled={!pdfUrl}>
+              <Download className="w-4 h-4 mr-1.5" /> Descargar PDF
+            </Button>
+            <Button size="sm" variant="outline" className="border-gray-300 text-gray-700 hover:bg-gray-50 font-medium" onClick={onClose}>
+              Cerrar
+            </Button>
           </div>
         </div>
 
-        <hr className="my-6" />
-
-        {tipo === 'preliminar' && (
-          <>
-            <h4 className="text-lg font-bold text-gray-900 mb-3">Hallazgos Identificados</h4>
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              <div className="bg-red-50 p-3 rounded border border-red-200">
-                <div className="text-2xl font-bold text-red-700">{informe.graves}</div>
-                <div className="text-sm text-red-600">Graves</div>
-              </div>
-              <div className="bg-yellow-50 p-3 rounded border border-yellow-200">
-                <div className="text-2xl font-bold text-yellow-700">{informe.moderados}</div>
-                <div className="text-sm text-yellow-600">Moderados</div>
-              </div>
-              <div className="bg-blue-50 p-3 rounded border border-blue-200">
-                <div className="text-2xl font-bold text-blue-700">{informe.leves}</div>
-                <div className="text-sm text-blue-600">Leves</div>
-              </div>
+        <div className="flex-1 overflow-hidden relative">
+          {!pdfUrl ? (
+            <div className="flex flex-col items-center justify-center gap-4 h-full text-gray-400 bg-gray-50">
+              <div className="w-10 h-10 rounded-full border-4 border-gray-200 border-t-blue-600 animate-spin flex-shrink-0" />
+              <p className="font-medium text-sm">Generando documento interactivo...</p>
             </div>
-
-            <h4 className="text-lg font-bold text-gray-900 mb-3 mt-6">Observaciones Generales</h4>
-            <p className="text-gray-700 whitespace-pre-wrap">{informe.observaciones}</p>
-          </>
-        )}
-
-        {tipo === 'final' && (
-          <>
-            <h4 className="text-lg font-bold text-gray-900 mb-3">Resultado de Controversias</h4>
-            <p className="text-gray-700">
-              Total controversias resueltas: {informe.controversiasResueltas}<br />
-              Hallazgos ajustados: {informe.hallazgosAjustados}
-            </p>
-
-            <h4 className="text-lg font-bold text-gray-900 mb-3 mt-6">Plazo Plan de Mejoramiento</h4>
-            <p className="text-gray-700">
-              El área auditada cuenta con {informe.plazosPlanMejora} días calendario para presentar el Plan de Mejoramiento.
-            </p>
-
-            <h4 className="text-lg font-bold text-gray-900 mb-3 mt-6">Observaciones Finales</h4>
-            <p className="text-gray-700 whitespace-pre-wrap">{informe.observacionesFinales}</p>
-          </>
-        )}
-
-      </div>
-
-      <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-        <Button variant="outline" size="sm" onClick={onClose}>Cerrar</Button>
-        <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={handleDescargarPDF}>
-          <Download className="w-4 h-4 mr-2" />
-          Descargar PDF
-        </Button>
-      </div>
-    </DialogContent>
+          ) : (
+             <iframe 
+               src={pdfUrl + '#toolbar=0&navpanes=0'} 
+               title="Vista Previa PDF"
+               className="w-full h-full border-none shadow-inner bg-gray-500 block m-auto"
+            />
+          )}
+        </div>
+      </DialogContent>
     </Dialog>
   );
 };
 
 export default ComunicacionAuditoriaModule;
+

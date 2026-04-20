@@ -164,5 +164,6 @@ export class DisciplinaryNewsResponseDto {
   conductas?: string[];
   estado: string;
   adjuntos: string[];
+  radicadorId?: string;
   updatedAt: Date;
 }

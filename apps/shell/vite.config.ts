@@ -4,10 +4,36 @@ import federation from '@originjs/vite-plugin-federation';
 import path from 'path';
 import { getBuildOutDir, getRemoteDefinitions, shellApp } from '../../scripts/mfe.config.mjs';
 
+const devExternalRedirects: Record<string, string> = {
+  '/externos/correo-institucional': 'https://outlook.office.com',
+  '/externos/humano-soft': 'https://humanosoft.esap.edu.co',
+  '/externos/arca': 'https://arca.esap.edu.co',
+};
+
+const externalRedirectPlugin = () => ({
+  name: 'esap-dev-external-redirects',
+  configureServer(server: { middlewares: { use: (handler: (req: { url?: string }, res: { statusCode: number; setHeader: (name: string, value: string) => void; end: () => void }, next: () => void) => void) => void } }) {
+    server.middlewares.use((req, res, next) => {
+      const requestPath = req.url ? req.url.split('?')[0] : '';
+      const redirectTarget = requestPath ? devExternalRedirects[requestPath] : undefined;
+
+      if (!redirectTarget) {
+        next();
+        return;
+      }
+
+      res.statusCode = 302;
+      res.setHeader('Location', redirectTarget);
+      res.end();
+    });
+  },
+});
+
 export default defineConfig(({ command }) => ({
   root: __dirname,
   plugins: [
     react(),
+    externalRedirectPlugin(),
     federation({
       name: shellApp.federationName,
       remotes: getRemoteDefinitions(command === 'serve' ? 'serve' : 'build'),

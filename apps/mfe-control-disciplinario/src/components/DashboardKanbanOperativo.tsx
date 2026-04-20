@@ -43,8 +43,6 @@ import { SistemaComentarios } from './SistemaComentarios';
 import { ModalAsociarNoticiaProceso } from './ModalAsociarNoticiaProceso'; // ✅ NUEVO
 import { ModalAsociarNoticiaANoticia } from './ModalAsociarNoticiaANoticia'; // ✅ NUEVO: Modal para asociar noticia a noticia
 import { ModalAsignarProfesional } from './ModalAsignarProfesional'; // ✅ NUEVO: Modal de asignación de profesional
-import { authService } from '../../../services/api/authService';
-import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { ModalSolicitarReasignacion } from './ModalSolicitarReasignacion'; // ✅ NUEVO: Modal de solicitud de reasignación
 import { ModalAprobarReasignacion } from './ModalAprobarReasignacion'; // ✅ NUEVO: Modal de aprobación de reasignación (Jefe OCID)
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto'; // ✅ REFACTORIZADO: Modal unificado de revisión y aprobación
@@ -317,7 +315,7 @@ interface TarjetaNoticiaProps {
 }
 
 function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa }: TarjetaNoticiaProps) {
-  const esJefe = authService.hasRole('rol-jefe-oci') || authService.isSuperAdmin();
+  const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
   const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR);
   const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
   const canViewDetail = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DETAIL);
@@ -327,6 +325,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
   const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
 
   const [hoverReenviar, setHoverReenviar] = useState(false);
+
 
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
@@ -2865,7 +2864,7 @@ export function DashboardKanbanOperativo({
     setEtapasLoading(true);
     try {
       const etapas = await disciplinaryService.getStageConfiguration();
-      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_MANAGE)
+      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW)
       console.log('[DashboardKanban] Etapas cargadas desde backend:', etapas);
       // Si no tienen orden, asignar orden por defecto basado en índice
       const etapasOrdenadas = (getDataArray<any>(etapas) || []).map((etapa, idx) => ({
@@ -2892,7 +2891,7 @@ export function DashboardKanbanOperativo({
     try {
       const canViewAll = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL);
       const canViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_MINE);
-      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_MANAGE);
+      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW);
       
       console.log('hasPermissionNoticia', hasPermissionNoticia);
       console.log('canViewAll', canViewAll);
@@ -2900,15 +2899,19 @@ export function DashboardKanbanOperativo({
       
       const user = authService.getCurrentUser();
       const currentUserId = user?.id;
+      const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+
+      console.log('esJefe', esJefe);
 
       // Cargar noticias y procesos en paralelo (filtrados por profesional si hay filtro activo o permiso restringido)
+      // Para superadmin o jefe ocid, mostrar todas las noticias y procesos sin filtrar
       const [noticiasRaw, procesosRaw] = await Promise.all([
         hasPermissionNoticia ?
-          (filtroProfesionalId || (!canViewAll && canViewMine && currentUserId))
-            ? disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId)
-            : disciplinaryService.getAllNoticias()
+          (esJefe ? disciplinaryService.getAllNoticias() : disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId))
           : [],
-        (filtroProfesionalId || (!canViewAll && canViewMine && currentUserId))
+        esJefe ?
+          disciplinaryService.getAllProcesos()
+          : (filtroProfesionalId || (!canViewAll && canViewMine && currentUserId))
           ? disciplinaryService.getMisProcesos(filtroProfesionalId || currentUserId)
           : disciplinaryService.getAllProcesos()
       ]);
@@ -2926,6 +2929,13 @@ export function DashboardKanbanOperativo({
       // Separar noticias archivadas de las activas. Excluir ASIGNADA porque ya tienen proceso asociado
       const noticiasActivas = noticiasFiltradas.filter(n => {
         const estado = (n as any).estado;
+        // No se muestran noticias devueltas a menos que el usuario sea jefe o sean suyas propias
+        if (estado === 'DEVUELTA') {
+          const isOwner = (n as any).radicador === currentUserId;
+          if (!esJefe && !isOwner) {
+            return false;
+          }
+        }
         return estado !== 'ARCHIVADA' && estado !== 'ASIGNADA';
       });
       const noticiasArchivadas = noticiasFiltradas.filter(n => (n as any).estado === 'ARCHIVADA');
@@ -5214,7 +5224,7 @@ export function DashboardKanbanOperativo({
                 onChange={(id) => setTipoVista(id as any)}
               />
 
-              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE) && (
+              {authService.hasPermission(Permissions.NOTICIAS_DISCIPLINARIAS_CREATE || Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CREATE) && (
                 <KanbanToolbarCTA
                   onClick={() => setModalActivo('crear-noticia')}
                   icon={<Plus style={{ width: 16, height: 16 }} />}
