@@ -922,10 +922,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         duration: 5000
       });
 
-      // Mostrar el código en consola para pruebas
-      console.log('🔐 CÓDIGO DE VALIDACIÓN:', codigo);
-      console.log('📧 Enviado a:', emailDestino);
-
       // Avanzar al siguiente paso
       setCodigoExpirado(false);
       setCountdownSeed((prev) => prev + 1);
