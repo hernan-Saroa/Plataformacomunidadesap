@@ -130,6 +130,10 @@ export class CreateDisciplinaryNewsDto {
   conductas?: string[];
 
   @IsOptional()
+  @IsString()
+  radicadorId?: string;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   @Transform(({ value }) => {

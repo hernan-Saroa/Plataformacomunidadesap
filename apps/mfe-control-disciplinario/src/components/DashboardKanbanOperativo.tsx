@@ -2896,7 +2896,7 @@ export function DashboardKanbanOperativo({
       console.log('canViewAll', canViewAll);
       console.log('canViewMine', canViewMine);
       
-      const user = authService.getUser();
+      const user = authService.getCurrentUser();
       const currentUserId = user?.id;
       const esJefe = authService.hasRole('rol-jefe-oci') || authService.isSuperAdmin();
 

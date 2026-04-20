@@ -91,6 +91,9 @@ export class DisciplinaryNews {
   @Column({ type: 'text', nullable: true })
   observaciones: string;
 
+  @Column({ type: 'uuid', nullable: true, name: 'radicador_id' })
+  radicadorId: string | null;
+
   @Column({ type: 'uuid', nullable: true })
   kanbanStage: string | null;
 

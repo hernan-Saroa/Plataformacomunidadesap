@@ -33,7 +33,10 @@ fi
 # Cargar variables de entorno
 if [ -f .env.dev ]; then
     echo -e "${YELLOW}Cargando variables de entorno desde .env.dev...${NC}"
-    export $(cat .env.dev | grep -v '^#' | xargs)
+    set -a
+    # shellcheck disable=SC1091
+    source .env.dev
+    set +a
 else
     echo -e "${RED}Error: Archivo .env.dev no encontrado${NC}"
     echo -e "${YELLOW}Crea el archivo .env.dev con las variables de entorno necesarias${NC}"
@@ -146,6 +149,7 @@ build_frontend_assets_once() {
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_DEV/services}" \
     VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_DEV:9000}" \
+    VITE_LOGIN_OPTIONS="${VITE_LOGIN_OPTIONS:-both}" \
     FRONTEND_BUILD_PARALLELISM="${FRONTEND_BUILD_PARALLELISM:-2}" \
     npm run build
 }
