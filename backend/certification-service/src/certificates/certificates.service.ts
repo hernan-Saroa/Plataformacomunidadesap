@@ -89,6 +89,7 @@ type OracleRequestSyncResult = {
 @Injectable()
 export class CertificatesService {
   private readonly logger = new Logger(CertificatesService.name);
+  private readonly emailFormatRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   private readonly geoCache = new Map<string, { expiresAt: number; value: GeoLookupResult | null }>();
   private readonly geoCacheTtlMs = 1000 * 60 * 60 * 6;
   private readonly geoCacheMissTtlMs = 1000 * 60 * 15;
@@ -1283,6 +1284,18 @@ export class CertificatesService {
     this.logger.log(
       `Solicitud de envío de código enviada a notifications-service para ${destinatario}`,
     );
+  }
+
+  private normalizarCorreo(email?: string | null): string {
+    return typeof email === 'string' ? email.trim() : '';
+  }
+
+  private tieneFormatoCorreoValido(email?: string | null): boolean {
+    const correoNormalizado = this.normalizarCorreo(email);
+    if (!correoNormalizado || correoNormalizado.toLowerCase() === 'n/a') {
+      return false;
+    }
+    return this.emailFormatRegex.test(correoNormalizado);
   }
 
   private buildLaborEmailHtml(
@@ -3077,6 +3090,13 @@ export class CertificatesService {
       );
     }
 
+    const emailDestino = this.normalizarCorreo(verificacion.solicitud.email);
+    if (emailDestino && !this.tieneFormatoCorreoValido(emailDestino)) {
+      throw new BadRequestException(
+        'El correo registrado no tiene un formato valido. No fue enviado el codigo de validacion.',
+      );
+    }
+
     // Generar codigo de 6 digitos
     const codigoValidacion = Math.floor(
       100000 + Math.random() * 900000,
@@ -3092,7 +3112,7 @@ export class CertificatesService {
     // Enviar email si hay configuracion SMTP
     try {
       await this.enviarCodigoPorEmail(
-        verificacion.solicitud.email,
+        emailDestino,
         codigoValidacion,
       );
     } catch (err) {
@@ -3103,12 +3123,12 @@ export class CertificatesService {
 
     return {
       mensaje: 'Codigo de validacion generado',
-      email: verificacion.solicitud.email,
+      email: emailDestino,
       // Devolver datos del empleado para mostrar en el frontend
       solicitud: {
         full_name: verificacion.solicitud.full_name,
         id_number: verificacion.solicitud.id_number,
-        email: verificacion.solicitud.email,
+        email: emailDestino,
         status: verificacion.solicitud.status,
         employment_status: employmentStatus,
         career_category: verificacion.solicitud.career_category,
