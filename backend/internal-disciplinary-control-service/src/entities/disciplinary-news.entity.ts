@@ -55,6 +55,7 @@ export class DisciplinaryNews {
   @Column({ unique: true })
   radicado: string; // ND-2025-001
 
+
   @CreateDateColumn()
   fechaRecepcion: Date;
 
