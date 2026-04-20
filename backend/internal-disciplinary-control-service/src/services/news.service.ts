@@ -43,8 +43,10 @@ export class NewsService {
   async create(
     createNewsDto: CreateDisciplinaryNewsDto,
     files?: FileData[],
+    userId?: string,
   ): Promise<DisciplinaryNews> {
     try {
+      console.log('[DEBUG] NewsService.create - DTO received:', JSON.stringify(createNewsDto, null, 2));
       // Generar radicado único
       const radicado = await this.sequenceService.generateNewsRadicado();
 
@@ -92,13 +94,13 @@ export class NewsService {
       const noticia = this.newsRepository.create({
         radicado,
         ...createNewsDto,
+        radicadorId: createNewsDto.radicadorId || userId,
         adjuntos,
         fechaCaducidad,
         estado: 'RADICADA',
         kanbanStage: initialStage.id,
         etapaActual: initialStage.etapa,
         historialAuditoria: initialHistory,
-        radicadorId: createNewsDto.radicadorId ?? null,
       } as any);
 
       const noticiaGuardada = await this.newsRepository.save(noticia) as unknown as DisciplinaryNews;

@@ -87,6 +87,9 @@ export interface AuditoriaBasicaPDF {
   fortalezas?: string[];
   recomendacionesPorCategoria?: Array<{ categoria: string; items: string[] }>;
   riesgosIdentificados?: string[];
+  /** 🆕 Riesgos estructurados por proceso (asociación directa) */
+  riesgosAsociados?: Array<{ proceso: string; riesgo: string }>;
+  declaracion?: string;
 }
 
 /** Hallazgo para incluir en el detalle del informe preliminar */
@@ -104,14 +107,16 @@ export interface HallazgoPDF {
   fundamentacionTecnica?: string;
 }
 
-type TipoInforme = 'preliminar' | 'final';
+type TipoInforme = 'preliminar' | 'final' | 'ejecutivo';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Dibuja el encabezado EM-FO-003 en la página activa y devuelve la Y donde termina */
-function encabezadoInforme(doc: JsPDFType): number {
-  const config = DOCUMENTOS_PREDEFINIDOS.INFORME_AUDITORIA_OCI as ConfiguracionDocumento;
-  return dibujarEncabezadoInstitucional(doc as any, config, 10);
+/** Dibuja el encabezado institucional en la página activa y devuelve la Y donde termina */
+function encabezadoInforme(doc: JsPDFType, tipo?: TipoInforme): number {
+  const config = tipo === 'ejecutivo'
+    ? DOCUMENTOS_PREDEFINIDOS.INFORME_EJECUTIVO_OCI
+    : DOCUMENTOS_PREDEFINIDOS.INFORME_AUDITORIA_OCI;
+  return dibujarEncabezadoInstitucional(doc as any, config as ConfiguracionDocumento, 10);
 }
 
 /**
@@ -127,7 +132,7 @@ function checkPage(
   const pageHeight = doc.internal.pageSize.getHeight();
   if (y + needed > pageHeight - footerMargin) {
     doc.addPage();
-    const newY = encabezadoInforme(doc);
+    const newY = encabezadoInforme(doc, (doc as any)._tipoInforme);
     dibujarPieInstitucional(doc as any, (doc as any).getNumberOfPages(), true);
     return newY + 4;
   }
@@ -159,7 +164,7 @@ function filaTabla(
   // Nueva página si no cabe
   if (y + rowH > pageHeight - footerMargin) {
     doc.addPage();
-    y = encabezadoInforme(doc) + 4;
+    y = encabezadoInforme(doc, (doc as any)._tipoInforme) + 4;
     dibujarPieInstitucional(doc as any, (doc as any).getNumberOfPages(), true);
   }
 
@@ -252,6 +257,9 @@ export async function exportarPDFInformeAuditoria(
     format: 'a4',
   }) as unknown as JsPDFType;
 
+  // Guardar el tipo en el objeto doc para que checkPage lo use
+  (doc as any)._tipoInforme = tipo;
+
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 15;
   const FOOTER_MARGIN = 40;
@@ -279,7 +287,8 @@ export async function exportarPDFInformeAuditoria(
     || 'el periodo correspondiente';
 
   // ─── Derivar valores ────────────────────────────────────────────────────────
-  const radicado = auditoria.radicado || `I-${añoActual}-${auditoria.codigo?.replace(/\D/g, '').slice(-6) || '000000'}`;
+  // El "consecutivo" es el radicado o el código técnico
+  const radicado = auditoria.radicado || auditoria.codigo || `I-${añoActual}-001`;
   const fechaOficio = auditoria.fechaOficio || fechaStr;
   const cargoDest = auditoria.destinatarioCargo || 'Director(a) Territorial';
   // Si destinatarioNombre parece un ID (sin espacios y corto), usar cargo como nombre de display
@@ -299,16 +308,13 @@ export async function exportarPDFInformeAuditoria(
   // ═══════════════════════════════════════════════════════════════════════════
   // PÁGINA 1 — CARTA DE CUBIERTA (Estilo Oficio)
   // ═══════════════════════════════════════════════════════════════════════════
-  if (tipo === 'preliminar') {
+  if (tipo === 'preliminar' || tipo === 'final') {
+    const isFinal = tipo === 'final';
     // Logo institucional completo (escudo + texto) únicamente en la página 1
-    // Se carga como base64 vía fetch para que jsPDF lo procese correctamente
     const logoInstitucionalBase64 = await getLogoInstitucionalESAP();
     doc.addImage(logoInstitucionalBase64, 'PNG', margin, 13, 65, 22);
     
-    // Pie de página (página 1)
-    dibujarPieInstitucional(doc as any, 1, true);
-
-    // Bloque radicado / fecha (estilo redondeado y simplificado)
+    // Bloque radicado / fecha (Estilo original solicitado)
     doc.setFontSize(8);
     const boxW = 55;
     const boxH = 14;
@@ -317,8 +323,11 @@ export async function exportarPDFInformeAuditoria(
     
     doc.setDrawColor(120, 120, 120);
     doc.setLineWidth(0.2);
-    // Rectángulo redondeado para el radicado
-    (doc as any).roundedRect(boxX, boxY, boxW, boxH, 3, 3);
+    if ((doc as any).roundedRect) {
+      (doc as any).roundedRect(boxX, boxY, boxW, boxH, 3, 3);
+    } else {
+      doc.rect(boxX, boxY, boxW, boxH);
+    }
     
     doc.setFont('helvetica', 'normal');
     doc.text(`Radicado: ${radicado}`, boxX + 3, boxY + 5);
@@ -326,76 +335,78 @@ export async function exportarPDFInformeAuditoria(
     
     let y = boxY + boxH + 20;
 
-    // Código consecutivo (AUD-...) y Ciudad
-    doc.setFontSize(9);
+    //    // Bogotá, D.C.
     doc.setFont('helvetica', 'normal');
-    if (auditoria.codigo) {
-      doc.text(auditoria.codigo, margin, y);
-      y += 5;
-    }
-    doc.text(`Bogotá, D.C.`, margin, y);
-    y += 12;
+    doc.setFontSize(10);
+    doc.text('Bogotá, D.C.', margin, y);
+    y += LH * 3;
 
-    // Destinatario — nombre siempre en MAYÚSCULAS negrita
-    const nombreDestDisplay = destinatario === cargoDest ? '' : destinatario.toUpperCase();
-    if (nombreDestDisplay) {
-      doc.setFont('helvetica', 'bold');
-      doc.text(nombreDestDisplay, margin, y);
-      y += 5;
-    }
+    // Destinatario
+    doc.setFont('helvetica', 'bold');
+    doc.text('Doctora', margin, y);
+    y += LH;
+    doc.text(destinatario.toUpperCase(), margin, y);
+    y += LH;
     doc.setFont('helvetica', 'normal');
     doc.text(cargoDest, margin, y);
-    y += 5;
-    doc.text(unidad, margin, y);
-    y += 5;
-    doc.text('E. S. D.', margin, y);
-    y += 10;
+    y += LH;
+    doc.text(`Dirección Territorial ${unidad.replace('Dirección Territorial ', '')}`, margin, y);
+    y += LH * 2;
 
-    // Asunto — "Asunto:" en negrita, texto en normal, en la misma línea
-    const asuntoValor = `Informe preliminar auditoría interna de evaluación y seguimiento ${unidad} – Vigencia correspondiente.`;
-    const asuntoValorLineas = doc.splitTextToSize(asuntoValor, pageWidth - 2 * margin - 20);
+    // Asunto
     doc.setFont('helvetica', 'bold');
     doc.text('Asunto:', margin, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(asuntoValorLineas[0] || '', margin + 20, y);
-    for (let i = 1; i < asuntoValorLineas.length; i++) {
-      y += LH;
-      doc.text(asuntoValorLineas[i], margin, y);
-    }
-    y += LH + SEC;
+    const asuntoTxt = isFinal
+      ? `Informe final auditoría interna de evaluación y seguimiento ${unidad} – Vigencia ${planAnualAño}.`
+      : `Informe preliminar auditoría interna de evaluación y seguimiento ${unidad} – Vigencia ${planAnualAño}.`;
+    const lAsunto = doc.splitTextToSize(asuntoTxt, tableW - 20);
+    doc.text(lAsunto, margin + 20, y);
+    y += (lAsunto.length * LH) + (LH * 2);
 
-    // Saludo personalizado
-    const nombreSaludo = destinatario === cargoDest ? '' : ` ${destinatario}`;
-    const tratamiento = cargoDest.toLowerCase().includes('director')
-      ? `Respetado(a) Doctor(a)${nombreSaludo}`
-      : `Respetado(a) ${cargoDest}${nombreSaludo}`;
+    // Saludo
+    const primerNombre = (destinatario.includes(' ') ? destinatario.split(' ')[0] : destinatario);
+    const saludo = `Respetada Doctora ${primerNombre}, reciba un cordial saludo:`;
+    doc.text(saludo, margin, y);
+    y += LH * 2;
 
     // Cuerpo
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    const parrafos = [
-      `${tratamiento} reciba un cordial saludo:`,
-      '',
-      `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${planAnualAño}, remite para su conocimiento y pronunciamiento el Informe Preliminar de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para el periodo comprendido entre ${periodoAuditadoTexto}.`,
-      '',
-      `Así mismo, la ${unidad} tiene plazo hasta el ${plazoPronunc}, para que se pronuncie frente a cada uno de los hallazgos y recomendaciones incluidas en el informe preliminar, allegando los soportes y evidencias respectivos, con el objetivo que los hallazgos sean levantados o en su defecto declarada su firmeza.`,
-      '',
-      'De antemano, agradecemos su colaboración en el desarrollo de las funciones de esta dependencia.',
-      '',
-      'Cordialmente,',
-      '',
-      '',
-      ...(jefe ? [jefe] : []),
-      'Jefe Oficina de Control Interno',
-    ].join('\n');
+    const parrafosCuerpo = isFinal
+      ? [
+          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento el Informe Final de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para el periodo comprendido entre el 1 de enero y el 31 de diciembre de ${planAnualAño - 1}.`,
+          '',
+          `La ${unidad} tiene plazo hasta el ${plazoPronunc}, para formular un plan de mejora el cual debe contener acciones con el objetivo de subsanar la(s) causa(s) raíz de los hallazgos formalizados.`,
+          '',
+          'De antemano, agradecemos su colaboración en el desarrollo de las funciones de esta dependencia.',
+          '',
+          'Cordialmente,',
+        ].join('\n')
+      : [
+          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento y pronunciamiento el Informe Preliminar de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para el periodo comprendido entre el 1 de enero y el 31 de diciembre de ${planAnualAño - 1}.`,
+          '',
+          `Así mismo, la ${unidad} tiene plazo hasta el ${plazoPronunc}, para que se pronuncie frente a cada uno de los hallazgos y recomendaciones incluidas en el informe preliminar, allegando los soportes y evidencias respectivos, con el objetivo que los hallazgos sean levantados o en su defecto declarada su firmeza.`,
+          '',
+          'De antemano, agradecemos su colaboración en el desarrollo de las funciones de esta dependencia.',
+          '',
+          'Cordialmente,',
+        ].join('\n');
 
-    const lineasCuerpo = doc.splitTextToSize(parrafos, pageWidth - 2 * margin);
+    const lineasCuerpo = doc.splitTextToSize(parrafosCuerpo, pageWidth - 2 * margin);
     doc.text(lineasCuerpo, margin, y);
-    y += lineasCuerpo.length * LH + SEC;
+    y += lineasCuerpo.length * LH + 15;
+
+    // Firma
+    doc.setFont('helvetica', 'bold');
+    doc.text(jefe.toUpperCase(), margin, y);
+    y += LH;
+    doc.setFont('helvetica', 'normal');
+    doc.text('Jefe Oficina de Control Interno', margin, y);
+    y += SEC + 10;
 
     // Pie de carta
-    doc.setFontSize(9);
-    doc.text(`Anexos: Informe Preliminar de Auditoría (${folios}) folios`, margin, y);
+    doc.setFontSize(8);
+    y = checkPage(doc, y, 25, FOOTER_MARGIN);
+    doc.text(`Anexos: Informe ${isFinal ? 'Final' : 'Preliminar'} de Auditoría (${folios}) folios`, margin, y);
     y += LH;
     doc.text('Copia: N/A', margin, y);
     y += LH + 2;
@@ -405,22 +416,20 @@ export async function exportarPDFInformeAuditoria(
     y += LH;
     doc.text(`Aprobó: ${aprobo}`, margin, y);
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // PÁGINA 2 — CUERPO DEL INFORME
-    // ═══════════════════════════════════════════════════════════════════════
     doc.addPage();
   }
 
-  // Encabezado institucional EM-FO-003 en la página actual
-  let y = encabezadoInforme(doc) + 4;
+  // Encabezado institucional en la página actual
+  let y = encabezadoInforme(doc, tipo) + 4;
 
   // ─── DATOS FORMALES (tabla con bordes) ────────────────────────────────────
-  const tituloInforme = tipo === 'preliminar'
-    ? 'Informe preliminar de auditoría de evaluación y seguimiento.'
-    : 'Informe final de auditoría de evaluación y seguimiento.';
+  let tituloInforme = '';
+  if (tipo === 'preliminar') tituloInforme = 'Informe preliminar de auditoría de evaluación y seguimiento.';
+  else if (tipo === 'ejecutivo') tituloInforme = 'Informe ejecutivo de auditoría de evaluación y seguimiento.';
+  else tituloInforme = 'Informe final de auditoría de evaluación y seguimiento.';
 
-  const tituloAud = auditoria.tituloAuditoria ||
-    `Auditoría interna basada en riesgos a los procesos al interior de la ${unidad} de la ESAP.`;
+  const tituloAud = (auditoria.tituloAuditoria ||
+    `Auditoría interna basada en riesgos a los procesos al interior de la ${unidad} de la ESAP.`).toUpperCase();
 
   const lugar = auditoria.lugarEjecucion || 'Sede de la unidad';
   const fechEjIni = auditoria.fechaEjecucionInicio || '—';
@@ -476,19 +485,65 @@ export async function exportarPDFInformeAuditoria(
     'La etapa de ejecución de la auditoría se realizará evaluando el desarrollo de las actividades, acciones y controles establecidos para el periodo correspondiente.';
   y = filaTabla(doc, margin, y, tableW, 'ALCANCE:', alc, TABLA_OPTS);
 
-  // Fila: DECLARACIÓN
-  const decl = 'La auditoría se realiza con base en el análisis de diferentes muestras aleatorias seleccionadas por los auditores, y se fundamenta en el siguiente soporte documental: expedientes, procesos y procedimientos del Sistema de Gestión, reportes de los sistemas de información, cruces y validaciones, página web, intranet y normas internas y externas, entre otros.';
-  y = filaTabla(doc, margin, y, tableW, 'DECLARACIÓN:', decl, TABLA_OPTS);
+  y += SEC + 4;
 
-  y += SEC;
+  // ── Declaración (Fuera de la tabla) ──
+  y = checkPage(doc, y, 20, FOOTER_MARGIN);
+  doc.setFont('helvetica', 'bold');
+  doc.text('DECLARACIÓN:', margin, y);
+  doc.setFont('helvetica', 'normal');
+  const declDefault = 'La auditoría se realiza con base en el análisis de diferentes muestras aleatorias seleccionadas por los auditores, y se fundamenta en el siguiente soporte documental: expedientes, procesos y procedimientos del Sistema de Gestión, reportes de los sistemas de información, cruces y validaciones, página web, intranet y normas internas y externas, entre otros.';
+  const decl = (auditoria as any).declaracion || declDefault;
+  const lDecl = doc.splitTextToSize(decl, tableW);
+  doc.text(lDecl, margin, y + LH);
+  y += (lDecl.length * LH) + SEC + 4;
 
-  // ─── ANTECEDENTES ──────────────────────────────────────────────────────────
+  // ── Instrumentos Decreto 648 ──
+  y = checkPage(doc, y, 30, FOOTER_MARGIN);
+  doc.setFont('helvetica', 'normal');
+  const instrumentoIntro = 'En aplicación al Decreto 648 de 2017 Artículo 2.2.21.4.8, la Oficina de Control Interno incorpora los siguientes Instrumentos para la Actividad de la Auditoría Interna:';
+  const lII = doc.splitTextToSize(instrumentoIntro, tableW);
+  doc.text(lII, margin, y);
+  y += (lII.length * LH) + 2;
+  const instrumentos = [
+    'Código de Ética del Auditor Interno que tiene como bases fundamentales, la integridad, objetividad, confidencialidad, conflictos de interés y competencia de éste.',
+    'Estatuto de auditoría, en el cual se establecen y comunican las directrices fundamentales que definen el marco dentro del cual se desarrollan las actividades de la Oficina de Control Interno, según los lineamientos de las normas internacionales de auditoría.'
+  ];
+  instrumentos.forEach(ins => {
+    const li = doc.splitTextToSize(`- ${ins}`, tableW - 8);
+    doc.text(li, margin + 4, y);
+    y += (li.length * LH) + 1;
+    y = checkPage(doc, y, 10, FOOTER_MARGIN);
+  });
+  y += 4;
+
+  // ── Carta de representación ──
+  const fechaCarta = (auditoria as any).cartaRepresentacionFecha || '8 de julio 2025';
+  y = checkPage(doc, y, 15, FOOTER_MARGIN);
+  doc.setFont('helvetica', 'normal');
+  const cartaText = `De acuerdo con la Carta de representación formalizada el ${fechaCarta}, la ${unidad} se comprometió a presentar a la Oficina de Control Interno información veraz, oportuna y de calidad.`;
+  const lcarta = doc.splitTextToSize(cartaText, tableW);
+  doc.text(lcarta, margin, y);
+  y += (lcarta.length * LH) + 6;
+
+  // ── Nota de Seguridad y Confidencialidad ──
+  y = checkPage(doc, y, 25, FOOTER_MARGIN);
+  doc.setFont('helvetica', 'bold');
+  const nsTitulo = 'NOTA DE SEGURIDAD Y CONFIDENCIALIDAD DE LA INFORMACIÓN:';
+  doc.text(nsTitulo, margin, y);
+  y += LH;
+  doc.setFont('helvetica', 'normal');
+  const textoNotaSeguridad = 'Este documento contiene información de interés exclusivo del auditor y el auditado para surtir los trámites establecidos en la Guía de Auditoría. En ese sentido, hasta tanto no se constituya como informe final y sea publicado en la página web de la ESAP, no podrá ser distribuido ni utilizado por terceros, ni se podrá hacer referencia a él en ningún otro asunto, sin el consentimiento previo y por escrito del Jefe de la Oficina de Control Interno.';
+  const lNS = doc.splitTextToSize(textoNotaSeguridad, tableW);
+  doc.text(lNS, margin, y);
+  y += (lNS.length * LH) + SEC + 4;
+
+  // ─── ANTECEDENTES (Centrado) ────────────────────────────────────────────────
   y = checkPage(doc, y, 20, FOOTER_MARGIN);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.setTextColor(0, 0, 0);
-  doc.text('ANTECEDENTES', margin, y);
-  y += LH + 3;
+  doc.text('ANTECEDENTES', margin + (tableW / 2), y, { align: 'center' });
+  y += LH + 4;
 
   // ── Marco Normativo ──
   doc.setFont('helvetica', 'bold');
@@ -499,42 +554,41 @@ export async function exportarPDFInformeAuditoria(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
 
-  // Normas base siempre incluidas
-  const normasBase = [
-    'Constitución Política de Colombia 1991.',
-    'Ley 87 de 1993 – Por la cual se establecen normas para el ejercicio del control interno.',
-    'Ley 489 de 1998 – Organización y funcionamiento de las entidades del orden nacional.',
-    'Decreto 1083 de 2015 – Decreto Único Reglamentario del Sector de la Función Pública.',
-    'Decreto 648 de 2017 – Por el cual se modifica y adiciona el Decreto 1083 de 2015 en relación con las disposiciones sobre el Subsistema de Control Interno.',
-    'Ley 80 de 1993 – Estatuto General de Contratación de la Administración Pública.',
-    'Ley 1150 de 2007 – Medidas para la eficiencia y la transparencia en la Ley 80 de 1993.',
-    'Ley 1474 de 2011 – Estatuto Anticorrupción.',
-    'Decreto 1082 de 2015 – Decreto Único Reglamentario del Sector Administrativo de Planeación Nacional.',
-  ];
-
-  let normasCustom: string[];
-  if (Array.isArray(auditoria.marcoNormativo)) {
-    normasCustom = auditoria.marcoNormativo;
-  } else if (auditoria.marcoNormativo) {
-    normasCustom = auditoria.marcoNormativo.split(',').map((s) => s.trim()).filter(Boolean);
+  // Extracción de normas desde la respuesta de la IA (ahora es un objeto)
+  let nGenerales: string[] = [];
+  let nEspecificas: string[] = [];
+  
+  if (typeof auditoria.marcoNormativo === 'object' && auditoria.marcoNormativo !== null) {
+    nGenerales = (auditoria.marcoNormativo as any).generales || [];
+    nEspecificas = (auditoria.marcoNormativo as any).especificas || [];
   } else {
-    normasCustom = [];
+    // Fallback por si la IA no siguió el nuevo formato o si vienen de antes
+    const normasBaseG = [
+      'Constitución Política de Colombia 1991.',
+      'Ley 87 de 1993 – Por la cual se establecen normas para el ejercicio del control interno.',
+      'Ley 80 de 1993 – Estatuto General de Contratación de la Administración Pública.',
+      'Ley 1150 de 2007 – Medidas para la eficiencia y la transparencia en la contratación.',
+      'Ley 1474 de 2011 – Estatuto Anticorrupción.',
+      'Decreto 1083 de 2015 – Único Reglamentario del Sector de Función Pública.',
+      'Decreto 1082 de 2015 – Único Reglamentario de Planeación Nacional.',
+    ];
+    const normasBaseE = [
+      'Decreto 164 de 2021 – Estructura de la ESAP.',
+      'Plan Decenal de Desarrollo 2023 – 2033 de la ESAP.',
+      'Resolución No SC-043 de 2022 – Comité de Inventarios de la ESAP.',
+      'Acuerdo 002 de 2018 – Reglamento Único Estudiantil ESAP.',
+    ];
+    nGenerales = normasBaseG;
+    nEspecificas = normasBaseE;
   }
 
-  const todasNormas = normasCustom.length > 0 ? normasCustom : normasBase;
-
-  // Agrupar: generales = primeras 5, específicas = resto
-  const normasGenerales = todasNormas.slice(0, 5);
-  const normasEspecificas = todasNormas.length > 5 ? todasNormas.slice(5) : [];
-
-  if (normasGenerales.length > 0) {
+  if (nGenerales.length > 0) {
     y = checkPage(doc, y, 8, FOOTER_MARGIN);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
     doc.text('Normas generales:', margin + 2, y);
     y += LH + 1;
     doc.setFont('helvetica', 'normal');
-    normasGenerales.forEach((n) => {
+    nGenerales.forEach((n) => {
       y = checkPage(doc, y, 7, FOOTER_MARGIN);
       const ls = doc.splitTextToSize(`o  ${n}`, tableW - 10);
       doc.text(ls, margin + 6, y);
@@ -542,14 +596,13 @@ export async function exportarPDFInformeAuditoria(
     });
     y += 2;
   }
-  if (normasEspecificas.length > 0) {
+  if (nEspecificas.length > 0) {
     y = checkPage(doc, y, 8, FOOTER_MARGIN);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
     doc.text('Normas específicas:', margin + 2, y);
     y += LH + 1;
     doc.setFont('helvetica', 'normal');
-    normasEspecificas.forEach((n) => {
+    nEspecificas.forEach((n) => {
       y = checkPage(doc, y, 7, FOOTER_MARGIN);
       const ls = doc.splitTextToSize(`o  ${n}`, tableW - 10);
       doc.text(ls, margin + 6, y);
@@ -558,36 +611,6 @@ export async function exportarPDFInformeAuditoria(
     y += 2;
   }
   y += SEC;
-
-  // ── Nota instrumentos Decreto 648 ──
-  y = checkPage(doc, y, 25, FOOTER_MARGIN);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  const notaInstrumentos =
-    `En aplicación al Decreto 648 de 2017 Artículo 2.2.21.4.8, la Oficina de Control Interno ` +
-    `incorpora los siguientes Instrumentos para la Actividad de la Auditoría Interna:`;
-  const lni = doc.splitTextToSize(notaInstrumentos, tableW);
-  doc.text(lni, margin, y);
-  y += lni.length * LH + 2;
-  ['1. Código de Ética del Auditor Interno.', '2. Estatuto de auditoría.'].forEach((item) => {
-    const li = doc.splitTextToSize(item, tableW - 8);
-    doc.text(li, margin + 6, y);
-    y += li.length * LH + 1;
-  });
-  y += SEC;
-
-  // ── Carta de representación ──
-  if (auditoria.cartaRepresentacionFecha) {
-    y = checkPage(doc, y, 14, FOOTER_MARGIN);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    const cartaText =
-      `De acuerdo con la Carta de representación formalizada el ${auditoria.cartaRepresentacionFecha}, ` +
-      `la ${unidad} se comprometió a presentar a la Oficina de Control Interno información veraz, oportuna y de calidad.`;
-    const lcarta = doc.splitTextToSize(cartaText, tableW);
-    doc.text(lcarta, margin, y);
-    y += lcarta.length * LH + SEC;
-  }
 
   // ═══════════════════════════════════════════════════════════════════════
   // CONTEXTO GENERAL DE LA AUDITORÍA
@@ -742,32 +765,18 @@ export async function exportarPDFInformeAuditoria(
     y += SEC;
   }
 
-  // ─── NOTA DE SEGURIDAD (caja amarilla) ─────────────────────────────────────
-  const notaH = 24;
-  y = checkPage(doc, y, notaH + 4, FOOTER_MARGIN);
-  doc.setFillColor(255, 250, 230);
-  doc.rect(margin, y, tableW, notaH, 'F');
-  doc.setDrawColor(180, 160, 60);
-  doc.setLineWidth(0.4);
-  doc.rect(margin, y, tableW, notaH);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('NOTA DE SEGURIDAD Y CONFIDENCIALIDAD DE LA INFORMACIÓN:', margin + 3, y + 6);
-  doc.setFont('helvetica', 'normal');
-  const notaSeg = doc.splitTextToSize(
-    'Este documento contiene información de interés exclusivo del auditor y el auditado para surtir los trámites establecidos en la Guía de Auditoría. En ese sentido, hasta tanto no se constituya como informe final y sea publicado en la página web de la ESAP, no podrá ser distribuido ni utilizado por terceros, ni se podrá hacer referencia a él en ningún otro asunto, sin el consentimiento previo y por escrito del Jefe de la Oficina de Control Interno.',
-    tableW - 6
-  );
-  doc.text(notaSeg, margin + 3, y + 12);
-  y += notaH + SEC;
+  // El resto del flujo de ejecución y hallazgos continúa según el tipo de informe.
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // CUERPO SEGÚN TIPO
+  // CUERPO DEL REPORTE
   // ═══════════════════════════════════════════════════════════════════════════
-  if (tipo === 'preliminar') {
-    const inf = informe as InformePreliminarPDF;
+  if (tipo === 'preliminar' || tipo === 'final' || tipo === 'ejecutivo') {
+    const isEjecutivo = tipo === 'ejecutivo';
+    const isFinal = tipo === 'final';
+    const infPrelim = !isFinal && !isEjecutivo ? informe as InformePreliminarPDF : null;
+    const infFinal = isFinal ? informe as InformeFinalPDF : null;
 
-    // ── EJECUCIÓN DE LA AUDITORÍA ──
+    // ── 1. EJECUCIÓN DE LA AUDITORÍA ──
     y = checkPage(doc, y, 20, FOOTER_MARGIN);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
@@ -784,88 +793,58 @@ export async function exportarPDFInformeAuditoria(
     doc.text(lejec, margin, y);
     y += lejec.length * LH + SEC;
 
-    // ── PROCESOS AUDITADOS (con datos o estructura por defecto) ──
     {
-      // Procesos por defecto según estructura ESAP si no hay datos
-      const defaultProcesos: typeof auditoria.procesosAuditados = [
+      const defaultProcesos: Array<{
+        categoria: string;
+        numero: number;
+        nombre: string;
+        objetivo?: string;
+        riesgos?: string[];
+        componentes?: Array<{ titulo: string; contenido: string }>;
+      }> = [
         {
-          categoria: 'I. PROCESOS ESTRATÉGICOS',
+          categoria: 'PROCESO EVALUADO',
           numero: 1,
-          nombre: `PROCESO DE EVALUACIÓN, CONTROL Y MEJORA`,
-          objetivo: `Evaluar el estado del sistema de control interno de la entidad, verificar el cumplimiento de normas y procedimientos, identificar riesgos y recomendar acciones de mejora.`,
-          riesgos: [
-            `Falta de seguimiento oportuno a los planes de mejoramiento suscritos.`,
-            `Inadecuado registro y archivo de la información de las auditorías realizadas.`,
-            `Ausencia de metodologías actualizadas para la evaluación del riesgo institucional.`,
-          ],
-          componentes: [
-            {
-              titulo: 'PLANEACIÓN:',
-              contenido: `Se verificó la existencia y aplicación del Plan Anual de Auditoría Interna, encontrando que el proceso cumple con los lineamientos establecidos en la normatividad vigente. Se evidenció la programación de actividades de auditoría acorde con los objetivos institucionales y los riesgos identificados.`,
-            },
-            {
-              titulo: 'EJECUCIÓN:',
-              contenido: `Se realizó revisión de los papeles de trabajo, evidencias documentales y seguimiento a las actividades programadas. Se verificó el cumplimiento de los procedimientos internos establecidos para el desarrollo de las auditorías internas.`,
-            },
-          ],
-        },
-        {
-          categoria: 'II. PROCESOS MISIONALES',
-          numero: 2,
-          nombre: `PROCESO DE EDUCACIÓN SUPERIOR`,
-          objetivo: `Ofertar y gestionar programas académicos de educación superior en administración pública, contribuyendo a la formación de servidores públicos idóneos para el Estado colombiano.`,
-          riesgos: [
-            `Incumplimiento de los requisitos de habilitación y acreditación de programas académicos.`,
-            `Inadecuada gestión de los recursos destinados al funcionamiento de los programas académicos.`,
-            `Deficiencias en la atención y seguimiento a la población estudiantil.`,
-          ],
-          componentes: [
-            {
-              titulo: 'PLANEACIÓN:',
-              contenido: `Se verificaron los planes de estudio, el registro calificado de los programas y los procesos de matrícula. Se evidenció la actualización curricular acorde con los lineamientos del Ministerio de Educación Nacional.`,
-            },
-            {
-              titulo: 'EJECUCIÓN:',
-              contenido: `Se revisaron los procesos académicos, la calidad de la prestación del servicio educativo, los mecanismos de comunicación con estudiantes y la gestión de los recursos académicos y de infraestructura.`,
-            },
-          ],
-        },
-        {
-          categoria: 'III. PROCESOS DE APOYO',
-          numero: 3,
-          nombre: `PROCESO DE GESTIÓN DE RECURSOS HUMANOS`,
-          objetivo: `Gestionar el talento humano de la entidad mediante la planeación, vinculación, desarrollo y bienestar del personal, garantizando la prestación eficiente del servicio público.`,
-          riesgos: [
-            `Demoras en los procesos de selección y vinculación de personal.`,
-            `Inadecuada gestión de las nóminas y liquidación de prestaciones sociales.`,
-            `Incumplimiento de los programas de bienestar e incentivos al personal.`,
-          ],
-          componentes: [
-            {
-              titulo: 'PLANEACIÓN:',
-              contenido: `Se verificó el Plan de Vacantes, la planta de personal autorizada y los procesos de selección meritocrática. Se revisaron los contratos de prestación de servicios y la vinculación de personal de carrera administrativa.`,
-            },
-            {
-              titulo: 'EJECUCIÓN:',
-              contenido: `Se revisaron las novedades de nómina, las liquidaciones de prestaciones sociales, los registros de asistencia y los programas de capacitación ejecutados durante el periodo auditado.`,
-            },
-          ],
-        },
+          nombre: `GESTIÓN INSTITUCIONAL`,
+          objetivo: `Evaluar el cumplimiento de los procesos y controles vigentes.`,
+          riesgos: [`Falla en el seguimiento a los planes de mejoramiento.`],
+          componentes: [{ titulo: 'EVALUACIÓN:', contenido: `Se realizó revisión de evidencias y seguimiento a los procesos auditados.` }],
+        }
       ];
 
-      const procesos = auditoria.procesosAuditados?.length
-        ? auditoria.procesosAuditados
-        : defaultProcesos ?? [];
+      // 1.1 Si no hay procesos pero hay riesgos asociados, agrupar por proceso de riesgo
+      let procesos = auditoria.procesosAuditados || [];
+      
+      if (!procesos.length && auditoria.riesgosAsociados?.length) {
+        // Agrupar riesgos por nombre de proceso
+        const gruposRiesgos = auditoria.riesgosAsociados.reduce((acc, r) => {
+          if (!acc[r.proceso]) acc[r.proceso] = [];
+          acc[r.proceso].push(r.riesgo);
+          return acc;
+        }, {} as Record<string, string[]>);
+
+        procesos = Object.entries(gruposRiesgos).map(([nombre, riesgos], idx) => ({
+          categoria: 'PROCESO EVALUADO',
+          numero: idx + 1,
+          nombre: nombre.toUpperCase(),
+          objetivo: `Evaluación de riesgos y controles para ${nombre}.`,
+          riesgos: riesgos,
+          componentes: [{ titulo: 'EVALUACIÓN:', contenido: `Se realizó la revisión de los controles asociados a los riesgos identificados para el proceso de ${nombre}.` }]
+        }));
+      }
+
+      if (!procesos.length) {
+        procesos = defaultProcesos;
+      }
 
       let tablaNum = 1;
       let categoriaActual = '';
 
       procesos.forEach((proc) => {
-        // ── Cabecera de categoría ──
+        // Categoría
         if (proc.categoria !== categoriaActual) {
           categoriaActual = proc.categoria;
           y = checkPage(doc, y, 14, FOOTER_MARGIN);
-          // Fondo gris claro para la categoría
           doc.setFillColor(230, 230, 230);
           doc.rect(margin, y - 1, tableW, 8, 'F');
           doc.setDrawColor(0, 0, 0);
@@ -873,12 +852,11 @@ export async function exportarPDFInformeAuditoria(
           doc.rect(margin, y - 1, tableW, 8);
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(10);
-          doc.setTextColor(0, 0, 0);
           doc.text(proc.categoria.toUpperCase(), margin + 3, y + 4);
           y += 12;
         }
 
-        // ── Número y nombre proceso ──
+        // Nombre Proceso
         y = checkPage(doc, y, 14, FOOTER_MARGIN);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
@@ -887,17 +865,15 @@ export async function exportarPDFInformeAuditoria(
         doc.text(lEncabProc, margin, y);
         y += lEncabProc.length * LH + 3;
 
-        // ── Objetivo del proceso ──
+        // Objetivo
         if (proc.objetivo) {
           y = checkPage(doc, y, 12, FOOTER_MARGIN);
           doc.setFontSize(9);
-          const objLabel = 'Objetivo: ';
-          const objW = doc.getTextWidth(objLabel);
           doc.setFont('helvetica', 'bold');
-          doc.text(objLabel, margin, y);
+          doc.text('Objetivo del proceso: ', margin, y);
+          const objW = doc.getTextWidth('Objetivo del proceso: ');
           doc.setFont('helvetica', 'normal');
           const lineasObj = doc.splitTextToSize(proc.objetivo, tableW - objW);
-          // Primera línea en la misma línea que el label
           if (lineasObj.length > 0) doc.text(lineasObj[0], margin + objW, y);
           if (lineasObj.length > 1) {
             y += LH;
@@ -907,273 +883,56 @@ export async function exportarPDFInformeAuditoria(
           y += 5;
         }
 
-        // ── Tabla de riesgos ──
-        if (proc.riesgos && proc.riesgos.length > 0) {
-          y = tablaRiesgos(doc, margin, y, tableW, proc.riesgos, { numTabla: tablaNum, nombreProceso: proc.nombre, footerMargin: FOOTER_MARGIN });
+        // Tabla de Riesgos (Usa los del proceso o busca en los globales asociados)
+        let riesgosAMostrar = proc.riesgos && proc.riesgos.length > 0 ? [...proc.riesgos] : [];
+        
+        // Buscar en riesgosAsociados (Estructurado)
+        if (auditoria.riesgosAsociados?.length) {
+          const asociados = auditoria.riesgosAsociados
+            .filter(r => r.proceso.toLowerCase().trim() === proc.nombre.toLowerCase().trim())
+            .map(r => r.riesgo);
+          riesgosAMostrar = [...new Set([...riesgosAMostrar, ...asociados])];
+        }
+
+        // Buscar en riesgosIdentificados (Legacy / String format "Proceso: Riesgo")
+        if (auditoria.riesgosIdentificados?.length) {
+          const legacy = auditoria.riesgosIdentificados
+            .filter(r => r.toLowerCase().includes(proc.nombre.toLowerCase().trim()))
+            .map(r => r.includes(':') ? r.split(':')[1].trim() : r);
+          riesgosAMostrar = [...new Set([...riesgosAMostrar, ...legacy])];
+        }
+
+        if (riesgosAMostrar.length > 0) {
+          y = tablaRiesgos(doc, margin, y, tableW, riesgosAMostrar, { numTabla: tablaNum, nombreProceso: proc.nombre, footerMargin: FOOTER_MARGIN });
           tablaNum++;
         }
 
-        // ── Componentes (PLANEACIÓN, EJECUCIÓN, etc.) ──
+        // Ejecución / Componentes (Sin repetir títulos de fase como Planeación/Ejecución)
         if (proc.componentes && proc.componentes.length > 0) {
           proc.componentes.forEach((comp) => {
-            y = checkPage(doc, y, 14, FOOTER_MARGIN);
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(9);
-            doc.text(comp.titulo, margin, y);
-            y += LH + 1;
+            const tituloLimpio = comp.titulo.replace(':', '').toUpperCase().trim();
+            const esTituloFase = ['PLANEACIÓN', 'EJECUCIÓN', 'PLANEACION', 'EJECUCION'].includes(tituloLimpio);
+            
+            if (!esTituloFase && comp.titulo.trim()) {
+              y = checkPage(doc, y, 14, FOOTER_MARGIN);
+              doc.setFont('helvetica', 'bold');
+              doc.text(comp.titulo, margin, y);
+              y += LH + 1;
+            } else {
+              y = checkPage(doc, y, 8, FOOTER_MARGIN);
+            }
+            
             doc.setFont('helvetica', 'normal');
             const lc = doc.splitTextToSize(comp.contenido, tableW);
             doc.text(lc, margin, y);
-            y += lc.length * LH + SEC;
+            y += lc.length * LH + 2;
           });
         }
-
-        // ── Hallazgos dentro del proceso (si tiene índices) ──
-        if (proc.hallazgosIndices && proc.hallazgosIndices.length > 0 && hallazgosDetalle && hallazgosDetalle.length > 0) {
-          proc.hallazgosIndices.forEach((idx) => {
-            const h = hallazgosDetalle[idx];
-            if (!h) return;
-            y = checkPage(doc, y, 20, FOOTER_MARGIN);
-            const sufH = h.titulo ? ` - ${h.titulo.toUpperCase()}` : '';
-            const titH = `HALLAZGO No. ${idx + 1}${sufH}`;
-            doc.setFont('helvetica', 'bolditalic');
-            doc.setFontSize(9);
-            doc.setTextColor(0, 0, 0);
-            const ltitH = doc.splitTextToSize(titH, tableW);
-            doc.text(ltitH, margin, y);
-            y += ltitH.length * LH + 2;
-            if (h.descripcion) {
-              y = checkPage(doc, y, 8, FOOTER_MARGIN);
-              doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-              doc.text('CONDICIÓN:', margin, y); y += LH;
-              doc.setFont('helvetica', 'normal');
-              const ld = doc.splitTextToSize(h.descripcion, tableW - 4);
-              doc.text(ld, margin + 2, y); y += ld.length * LH + 2;
-            }
-          });
-        }
-
-        y += 4; // Espacio entre procesos
-      });
-    }
-
-    // ── RESUMEN HALLAZGOS (cajas) ──
-    y = checkPage(doc, y, 30, FOOTER_MARGIN);
-    // ── RESUMEN DE HALLAZGOS IDENTIFICADOS (tabla formal) ──
-    y = checkPage(doc, y, 30, FOOTER_MARGIN);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.setTextColor(0, 0, 0);
-    doc.text('RESUMEN DE HALLAZGOS IDENTIFICADOS', margin, y);
-    y += 6;
-
-    {
-      // Cabecera tabla resumen
-      const colsSum = [15, 95, 25, 17];  // No | Hallazgo | Gravedad | Repetitivo
-      const rhSum = 7;
-      const headLabels = ['No.', 'HALLAZGO', 'GRAVEDAD', 'REPETITIVO'];
-      doc.setFillColor(210, 210, 210);
-      doc.rect(margin, y, tableW, rhSum, 'F');
-      doc.setDrawColor(0, 0, 0);
-      doc.setLineWidth(0.3);
-      doc.rect(margin, y, tableW, rhSum);
-      let cxs = margin;
-      headLabels.forEach((lbl, i) => {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8);
-        doc.text(lbl, cxs + 2, y + rhSum - 2);
-        if (i < headLabels.length - 1) doc.line(cxs + colsSum[i], y, cxs + colsSum[i], y + rhSum);
-        cxs += colsSum[i];
-      });
-      y += rhSum;
-
-      const lista0 = hallazgosDetalle && hallazgosDetalle.length > 0 ? hallazgosDetalle : [];
-      if (lista0.length === 0) {
-        // Fila vacía si no hay hallazgos
-        const rh0 = 7;
-        doc.rect(margin, y, tableW, rh0);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        doc.text('Sin hallazgos identificados.', margin + colsSum[0] + 2, y + rh0 - 2);
-        doc.line(margin + colsSum[0], y, margin + colsSum[0], y + rh0);
-        doc.line(margin + colsSum[0] + colsSum[1], y, margin + colsSum[0] + colsSum[1], y + rh0);
-        doc.line(margin + colsSum[0] + colsSum[1] + colsSum[2], y, margin + colsSum[0] + colsSum[1] + colsSum[2], y + rh0);
-        y += rh0;
-      } else {
-        lista0.forEach((h, i) => {
-          const cellTxt = h.titulo || h.descripcion?.substring(0, 90) || 'Sin título';
-          const linesCell = doc.splitTextToSize(cellTxt, colsSum[1] - 3);
-          const rh0 = Math.max(7, linesCell.length * 4.5 + 3);
-          y = checkPage(doc, y, rh0 + 2, FOOTER_MARGIN);
-          doc.setDrawColor(0, 0, 0);
-          doc.setLineWidth(0.3);
-          doc.rect(margin, y, tableW, rh0);
-          let rx0 = margin;
-          // No.
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
-          doc.text(String(i + 1), rx0 + 2, y + 5);
-          doc.line(rx0 + colsSum[0], y, rx0 + colsSum[0], y + rh0); rx0 += colsSum[0];
-          // Hallazgo
-          doc.text(linesCell, rx0 + 2, y + 5);
-          doc.line(rx0 + colsSum[1], y, rx0 + colsSum[1], y + rh0); rx0 += colsSum[1];
-          // Gravedad
-          doc.text(h.gravedad || '—', rx0 + 2, y + 5);
-          doc.line(rx0 + colsSum[2], y, rx0 + colsSum[2], y + rh0); rx0 += colsSum[2];
-          // Repetitivo
-          doc.text('No', rx0 + 2, y + 5);
-          y += rh0;
-        });
-      }
-      y += SEC;
-    }
-
-    // ── DETALLE DE HALLAZGOS ──
-    const lista = hallazgosDetalle && hallazgosDetalle.length > 0 ? hallazgosDetalle : [];
-
-    if (lista.length > 0) {
-      y = checkPage(doc, y, 14, FOOTER_MARGIN);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.setTextColor(0, 0, 0);
-      doc.text('HALLAZGOS', margin, y);
-      y += 7;
-
-      lista.forEach((h, index) => {
-        y = checkPage(doc, y, 20, FOOTER_MARGIN);
-
-        // Título hallazgo (cursiva bold como en el PDF original)
-        const sufTit = h.titulo ? ' - ' + h.titulo.toUpperCase() : '';
-        const titulo = `HALLAZGO No. ${index + 1}${sufTit}`;
-        doc.setFont('helvetica', 'bolditalic');
-        doc.setFontSize(9);
-        doc.setTextColor(0, 0, 0);
-        const ltit = doc.splitTextToSize(titulo, tableW);
-        doc.text(ltit, margin, y);
-        y += ltit.length * LH + 3;
-
-        // CONDICIÓN / Descripción
-        if (h.descripcion) {
-          y = checkPage(doc, y, 10, FOOTER_MARGIN);
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(9);
-          doc.text('CONDICIÓN:', margin, y);
-          y += LH;
-          doc.setFont('helvetica', 'normal');
-          const ld = doc.splitTextToSize(h.descripcion, tableW - 4);
-          doc.text(ld, margin + 2, y);
-          y += ld.length * LH + 2;
-        }
-
-        // CRITERIOS
-        if (h.criterioIncumplido) {
-          y = checkPage(doc, y, 10, FOOTER_MARGIN);
-          doc.setFont('helvetica', 'bold');
-          doc.text('CRITERIOS:', margin, y);
-          y += LH;
-          doc.setFont('helvetica', 'normal');
-          const lc = doc.splitTextToSize(h.criterioIncumplido, tableW - 4);
-          doc.text(lc, margin + 2, y);
-          y += lc.length * LH + 2;
-        }
-
-        // CAUSA
-        if (h.causas && h.causas.length > 0) {
-          y = checkPage(doc, y, 10, FOOTER_MARGIN);
-          doc.setFont('helvetica', 'bold');
-          doc.text('CAUSA:', margin, y);
-          y += LH;
-          doc.setFont('helvetica', 'normal');
-          const lca = doc.splitTextToSize(h.causas.join(' '), tableW - 4);
-          doc.text(lca, margin + 2, y);
-          y += lca.length * LH + 2;
-        }
-
-        // CONSECUENCIA / EFECTOS
-        if (h.efectos && h.efectos.length > 0) {
-          y = checkPage(doc, y, 10, FOOTER_MARGIN);
-          doc.setFont('helvetica', 'bold');
-          doc.text('CONSECUENCIA O EFECTOS:', margin, y);
-          y += LH;
-          doc.setFont('helvetica', 'normal');
-          const le = doc.splitTextToSize(h.efectos.join(' '), tableW - 4);
-          doc.text(le, margin + 2, y);
-          y += le.length * LH + 2;
-        }
-
-        // Gravedad
-        if (h.gravedad) {
-          y = checkPage(doc, y, 8, FOOTER_MARGIN);
-          doc.setFont('helvetica', 'bold');
-          doc.text(`Gravedad: `, margin, y);
-          doc.setFont('helvetica', 'normal');
-          doc.text(h.gravedad + (h.codigo ? `  |  Código: ${h.codigo}` : ''), margin + 22, y);
-          y += LH + 2;
-        }
-
         y += 4;
       });
     }
 
-
-    // ── RECOMENDACIONES ──
-    const tieneRecsCategorias = auditoria.recomendacionesPorCategoria && auditoria.recomendacionesPorCategoria.length > 0;
-    const tieneRecsHallazgos = lista.some((h) => h.recomendaciones && h.recomendaciones.length > 0);
-
-    if (tieneRecsCategorias || tieneRecsHallazgos) {
-      y = checkPage(doc, y, 14, FOOTER_MARGIN);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.text('RECOMENDACIONES', margin + tableW / 2, y, { align: 'center' });
-      y += 5;
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      const introRec = doc.splitTextToSize(
-        'A continuación, se relacionan las recomendaciones que surgen del trabajo de auditoría realizado.',
-        tableW
-      );
-      doc.text(introRec, margin, y);
-      y += introRec.length * LH + SEC;
-
-      if (tieneRecsCategorias) {
-        auditoria.recomendacionesPorCategoria!.forEach((cat) => {
-          y = checkPage(doc, y, 12, FOOTER_MARGIN);
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(9);
-          const catLabel = cat.categoria + ':';
-          doc.text(catLabel, margin, y);
-          const catW = doc.getTextWidth(catLabel);
-          doc.line(margin, y + 0.5, margin + catW, y + 0.5);
-          y += 5;
-          doc.setFont('helvetica', 'normal');
-          cat.items.forEach((item) => {
-            y = checkPage(doc, y, 6, FOOTER_MARGIN);
-            const li = doc.splitTextToSize(item, tableW);
-            doc.text(li, margin, y);
-            y += li.length * LH + 1;
-          });
-          y += 3;
-        });
-      } else {
-        let recNum = 1;
-        lista.forEach((h) => {
-          if (h.recomendaciones && h.recomendaciones.length > 0) {
-            h.recomendaciones.forEach((rec) => {
-              y = checkPage(doc, y, 8, FOOTER_MARGIN);
-              doc.setFont('helvetica', 'normal');
-              doc.setFontSize(9);
-              const lr = doc.splitTextToSize(`${recNum}) ${rec}`, tableW);
-              doc.text(lr, margin, y);
-              y += lr.length * LH + 2;
-              recNum++;
-            });
-          }
-        });
-      }
-      y += SEC;
-    }
-
-    // ── PLANES DE MEJORAMIENTO ──
+    // ── 2. PLANES DE MEJORAMIENTO ──
     y = checkPage(doc, y, 14, FOOTER_MARGIN);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
@@ -1186,82 +945,238 @@ export async function exportarPDFInformeAuditoria(
     doc.text(lplan, margin, y);
     y += lplan.length * LH + SEC;
 
-    // ── ASPECTOS RELEVANTES DE LA INFORMACIÓN ANALIZADA ──
+    // ── 3. ASPECTOS RELEVANTES DE LA INFORMACIÓN ANALIZADA ──
     y = checkPage(doc, y, 14, FOOTER_MARGIN);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
     doc.text('ASPECTOS RELEVANTES DE LA INFORMACIÓN ANALIZADA:', margin, y);
     y += 5;
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    const aspText = auditoria.aspectosRelevantes || '';
-    if (aspText) {
-      const lasp = doc.splitTextToSize(aspText, tableW);
-      doc.text(lasp, margin, y);
-      y += lasp.length * LH + SEC;
-    } else {
-      y += SEC;
-    }
+    const aspText = auditoria.aspectosRelevantes || 'No se registraron aspectos relevantes adicionales.';
+    const lasp = doc.splitTextToSize(aspText, tableW);
+    doc.text(lasp, margin, y);
+    y += lasp.length * LH + SEC;
 
-    // ── EVALUACIÓN DEL CONTROL INTERNO DEL PROCESO ──
+    // ── 4. EVALUACIÓN DEL CONTROL INTERNO DEL PROCESO ──
     y = checkPage(doc, y, 14, FOOTER_MARGIN);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    const evalLabel = 'EVALUACIÓN DEL CONTROL INTERNO DEL PROCESO: ';
-    doc.text(evalLabel, margin, y);
+    doc.text('EVALUACIÓN DEL CONTROL INTERNO DEL PROCESO:', margin, y);
+    y += 5;
     doc.setFont('helvetica', 'normal');
-    const evalText = auditoria.evaluacionControlInterno ||
-      'como resultado del trabajo desarrollado, se identifica que el control interno del proceso se encuentra en proceso de mejora.';
-    const evalW = doc.getTextWidth(evalLabel);
-    const leval = doc.splitTextToSize(evalText, tableW - evalW);
-    if (leval.length === 1 && evalW + doc.getTextWidth(leval[0]) < tableW) {
-      doc.text(leval[0], margin + evalW, y);
-    } else {
-      doc.text(leval, margin + evalW, y);
-    }
-    y += Math.max(leval.length, 1) * LH + SEC;
+    const evalText = auditoria.evaluacionControlInterno || 
+      'Como resultado del trabajo desarrollado, se identifica que el control interno del proceso se encuentra en proceso de mejora.';
+    const leval = doc.splitTextToSize(evalText, tableW);
+    doc.text(leval, margin, y);
+    y += leval.length * LH + SEC;
 
-    // ── FORTALEZAS ──
+    // ── 5. FORTALEZAS ──
     if (auditoria.fortalezas && auditoria.fortalezas.length > 0) {
       y = checkPage(doc, y, 14, FOOTER_MARGIN);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
       doc.text('FORTALEZAS', margin + tableW / 2, y, { align: 'center' });
       y += 6;
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      auditoria.fortalezas.forEach((f) => {
-        y = checkPage(doc, y, 6, FOOTER_MARGIN);
-        const lf = doc.splitTextToSize(`o  ${f}`, tableW - 6);
-        doc.text(lf, margin + 4, y);
-        y += lf.length * LH + 1;
+      auditoria.fortalezas.forEach((f, idx) => {
+        const lineas = doc.splitTextToSize(f, tableW - 12);
+        const hItem = Math.max(6, lineas.length * 4.5 + 2);
+        y = checkPage(doc, y, hItem + 2, FOOTER_MARGIN);
+
+        // Número con énfasis
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${idx + 1}.`, margin + 3, y + 4);
+        
+        doc.setFont('helvetica', 'normal');
+        doc.text(lineas, margin + 9, y + 4);
+        y += hItem + 1;
       });
       y += SEC;
     }
 
-    // ── CONCLUSIONES ──
-    y = checkPage(doc, y, 14, FOOTER_MARGIN);
+    // ── 6. RECOMENDACIONES ──
+    const tieneRecsCategorias = auditoria.recomendacionesPorCategoria && auditoria.recomendacionesPorCategoria.length > 0;
+    const listaH = hallazgosDetalle && hallazgosDetalle.length > 0 ? hallazgosDetalle : [];
+    const tieneRecsHallazgos = listaH.some((h) => h.recomendaciones && h.recomendaciones.length > 0);
+
+    if (tieneRecsCategorias || tieneRecsHallazgos) {
+      y = checkPage(doc, y, 14, FOOTER_MARGIN);
+      doc.setFont('helvetica', 'bold');
+      doc.text('RECOMENDACIONES', margin + tableW / 2, y, { align: 'center' });
+      y += 6;
+      doc.setFont('helvetica', 'normal');
+      if (tieneRecsCategorias) {
+        auditoria.recomendacionesPorCategoria!.forEach((cat) => {
+          // Título de la Categoría
+          const lCat = doc.splitTextToSize(cat.categoria.toUpperCase() + ':', tableW);
+          y = checkPage(doc, y, lCat.length * LH + 4, FOOTER_MARGIN);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(9);
+          doc.text(lCat, margin, y);
+          y += lCat.length * LH + 2;
+
+          // Items de la Categoría
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          cat.items.forEach((item, idx) => {
+            const lineasItem = doc.splitTextToSize(item, tableW - 12);
+            const hItem = Math.max(6, lineasItem.length * 4.5 + 2);
+            y = checkPage(doc, y, hItem + 2, FOOTER_MARGIN);
+            
+            // Bala/Número
+            doc.setFont('helvetica', 'bold');
+            doc.text(`${idx + 1}.`, margin + 3, y + 4);
+            doc.setFont('helvetica', 'normal');
+            doc.text(lineasItem, margin + 9, y + 4);
+            y += hItem + 1;
+          });
+          y += 2; // Espacio entre categorías
+        });
+      }
+      y += SEC;
+    }
+
+    // ── 7. RESULTADO DE CONTROVERSIAS (Solo Informe Final) ──
+    if (isFinal && infFinal) {
+      y = checkPage(doc, y, 14, FOOTER_MARGIN);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('RESULTADO DE CONTROVERSIAS', margin, y);
+      y += 7;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      const textoContr = `Total controversias resueltas: ${infFinal.controversiasResueltas}.\nHallazgos ajustados a partir de controversias: ${infFinal.hallazgosAjustados}.`;
+      const lcontr = doc.splitTextToSize(textoContr, tableW);
+      doc.text(lcontr, margin, y);
+      y += lcontr.length * LH + SEC;
+    }
+
+    // ── 8. DETALLE DE HALLAZGOS (con Causa y Efecto) ──
+    if (listaH.length > 0) {
+      y = checkPage(doc, y, 14, FOOTER_MARGIN);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('HALLAZGOS', margin, y);
+      y += 7;
+      listaH.forEach((h, index) => {
+        y = checkPage(doc, y, 20, FOOTER_MARGIN);
+        const titH = `HALLAZGO No. ${index + 1}${h.titulo ? ' - ' + h.titulo.toUpperCase() : ''}`;
+        doc.setFont('helvetica', 'bolditalic');
+        doc.setFontSize(9);
+        doc.text(titH, margin, y);
+        y += LH + 2;
+        if (h.descripcion) {
+          doc.setFont('helvetica', 'bold'); doc.text('CONDICIÓN:', margin, y); y += LH;
+          doc.setFont('helvetica', 'normal');
+          const ld = doc.splitTextToSize(h.descripcion, tableW - 4);
+          doc.text(ld, margin + 2, y); y += ld.length * LH + 2;
+        }
+        if (h.criterioIncumplido) {
+          doc.setFont('helvetica', 'bold'); doc.text('CRITERIO(S):', margin, y); y += LH;
+          doc.setFont('helvetica', 'normal');
+          const lcr = doc.splitTextToSize(h.criterioIncumplido, tableW - 4);
+          doc.text(lcr, margin + 2, y); y += lcr.length * LH + 2;
+        }
+        if (h.causas && h.causas.length > 0) {
+          doc.setFont('helvetica', 'bold'); doc.text('CAUSA:', margin, y); y += LH;
+          doc.setFont('helvetica', 'normal');
+          const lca = doc.splitTextToSize(h.causas.join(' '), tableW - 4);
+          doc.text(lca, margin + 2, y); y += lca.length * LH + 2;
+        }
+        if (h.efectos && h.efectos.length > 0) {
+          doc.setFont('helvetica', 'bold'); doc.text('CONSECUENCIA O EFECTOS:', margin, y); y += LH;
+          doc.setFont('helvetica', 'normal');
+          const le = doc.splitTextToSize(h.efectos.join(' '), tableW - 4);
+          doc.text(le, margin + 2, y); y += le.length * LH + 2;
+        }
+        if (isFinal && h.decisionAuditor) {
+          doc.setFont('helvetica', 'bold'); doc.text('DECISIÓN FINAL:', margin, y); y += LH;
+          doc.setFont('helvetica', 'normal');
+          doc.text(`${h.decisionAuditor.toUpperCase()}${h.codigo ? ' - ' + h.codigo : ''}`, margin + 2, y);
+          y += LH + 2;
+        }
+        if (isFinal && h.fundamentacionTecnica) {
+          doc.setFont('helvetica', 'bold'); doc.text('FUNDAMENTACIÓN TÉCNICA:', margin, y); y += LH;
+          doc.setFont('helvetica', 'normal');
+          const lft = doc.splitTextToSize(h.fundamentacionTecnica, tableW - 4);
+          doc.text(lft, margin + 2, y); y += lft.length * LH + 2;
+        }
+        
+        y = checkPage(doc, y, 10, FOOTER_MARGIN);
+      });
+      y += SEC;
+    }
+
+    // ── 9. RESUMEN DE HALLAZGOS IDENTIFICADOS ──
+    y = checkPage(doc, y, 30, FOOTER_MARGIN);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('RESUMEN DE HALLAZGOS', margin, y);
+    y += 6;
+    {
+      const colsSum = [15, 95, 30, 20];
+      const rhSum = 7;
+      const headLabels = ['No.', 'HALLAZGO', isFinal ? 'ESTADO' : 'GRAVEDAD', 'REPETITIVO'];
+      doc.setFillColor(210, 210, 210);
+      doc.rect(margin, y, tableW, rhSum, 'F');
+      let cxs = margin;
+      headLabels.forEach((lbl, i) => {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+        doc.text(lbl, cxs + 2, y + rhSum - 2);
+        if (i < headLabels.length - 1) doc.line(cxs + colsSum[i], y, cxs + colsSum[i], y + rhSum);
+        cxs += colsSum[i];
+      });
+      doc.rect(margin, y, tableW, rhSum);
+      y += rhSum;
+      listaH.forEach((h, i) => {
+        const cellTxt = h.titulo || h.descripcion?.substring(0, 90) || 'Sin título';
+        const linesCell = doc.splitTextToSize(cellTxt, colsSum[1] - 3);
+        const rh0 = Math.max(7, linesCell.length * 4.5 + 3);
+        y = checkPage(doc, y, rh0 + 2, FOOTER_MARGIN);
+        doc.rect(margin, y, tableW, rh0);
+        let rx0 = margin;
+        doc.setFont('helvetica', 'normal'); doc.text(String(i + 1), rx0 + 2, y + 5);
+        doc.line(rx0 + colsSum[0], y, rx0 + colsSum[0], y + rh0); rx0 += colsSum[0];
+        doc.text(linesCell, rx0 + 2, y + 5);
+        doc.line(rx0 + colsSum[1], y, rx0 + colsSum[1], y + rh0); rx0 += colsSum[1];
+        doc.text(isFinal ? (h.estadoFinal || '—') : (h.gravedad || '—'), rx0 + 2, y + 5);
+        doc.line(rx0 + colsSum[2], y, rx0 + colsSum[2], y + rh0);
+        y += rh0;
+      });
+      y += SEC;
+    }
+
+    // ── 10. PLAZO PARA PLAN DE MEJORAMIENTO (Solo Informe Final) ──
+    if (isFinal && infFinal) {
+      y = checkPage(doc, y, 20, FOOTER_MARGIN);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('PLAZO PARA EL PLAN DE MEJORAMIENTO', margin, y);
+      y += LH + 2;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(`El área auditada cuenta con ${infFinal.plazosPlanMejora || '15'} días calendario para la formulación del plan de mejora respectivo.`, margin, y);
+      y += LH + SEC;
+    }
+
+    // ── 11. CONCLUSIONES ──
+    y = checkPage(doc, y, 20, FOOTER_MARGIN);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.text('CONCLUSIONES', margin, y);
     y += 7;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    const obsText = inf.observaciones || 'Sin observaciones registradas.';
-    const lobs = doc.splitTextToSize(obsText, tableW);
+    const obsText = isFinal ? infFinal?.observacionesFinales : infPrelim?.observaciones;
+    const lobs = doc.splitTextToSize(obsText || 'Sin conclusiones registradas.', tableW);
     doc.text(lobs, margin, y);
     y += lobs.length * LH + SEC;
 
     // Firma final
-    y = checkPage(doc, y, 30, FOOTER_MARGIN);
+    y = checkPage(doc, y, 35, FOOTER_MARGIN);
     doc.text(`Bogotá D.C., ${fechaStr}`, margin, y);
     y += 20;
     if (jefe) {
       doc.setFont('helvetica', 'bold');
       doc.text(jefe, margin, y);
       y += LH;
-      doc.setFont('helvetica', 'normal');
-    } else {
       doc.setFont('helvetica', 'normal');
     }
     doc.text('Jefe Oficina de Control Interno', margin, y);
@@ -1273,86 +1188,6 @@ export async function exportarPDFInformeAuditoria(
     y += LH;
     doc.text(`Aprobó: ${aprobo}`, margin, y);
 
-  } else {
-    // ── INFORME FINAL ──
-    const inf = informe as InformeFinalPDF;
-
-    y = checkPage(doc, y, 14, FOOTER_MARGIN);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('RESULTADO DE CONTROVERSIAS', margin, y);
-    y += 8;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    const textoContr = `Total controversias resueltas: ${inf.controversiasResueltas}.\nHallazgos ajustados a partir de controversias: ${inf.hallazgosAjustados}.`;
-    const lcontr = doc.splitTextToSize(textoContr, tableW);
-    doc.text(lcontr, margin, y);
-    y += lcontr.length * LH + SEC;
-
-    const listaFinal = hallazgosDetalle && hallazgosDetalle.length > 0 ? hallazgosDetalle : [];
-    if (listaFinal.length > 0) {
-      y = checkPage(doc, y, 14, FOOTER_MARGIN);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.text('DECISIÓN FINAL POR HALLAZGO', margin, y);
-      y += 8;
-
-      listaFinal.forEach((h, index) => {
-        y = checkPage(doc, y, 14, FOOTER_MARGIN);
-        const headerH = 10;
-        doc.setFillColor(243, 244, 246);
-        doc.rect(margin, y, tableW, headerH, 'F');
-        doc.setDrawColor(200, 200, 200);
-        doc.rect(margin, y, tableW, headerH);
-
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        const tc = (h.titulo || h.descripcion?.substring(0, 80) || 'Sin título').trim();
-        doc.text(`Hallazgo ${index + 1}: ${tc}`, margin + 3, y + 4);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
-        const est = h.estadoFinal || h.decisionAuditor || 'N/A';
-        const codigoSuf = h.codigo ? '  |  Código: ' + h.codigo : '';
-        doc.text(`Estado final: ${est}${codigoSuf}`, margin + 3, y + 8.2);
-        y += headerH + 4;
-
-        if (h.fundamentacionTecnica?.trim()) {
-          y = checkPage(doc, y, 10, FOOTER_MARGIN);
-          doc.setFont('helvetica', 'bold');
-          doc.text('Fundamentación técnica:', margin + 2, y);
-          y += LH;
-          doc.setFont('helvetica', 'normal');
-          const lf = doc.splitTextToSize(h.fundamentacionTecnica, tableW - 4);
-          doc.text(lf, margin + 2, y);
-          y += lf.length * 3.5 + 4;
-        }
-        y += 4;
-      });
-    }
-
-    y = checkPage(doc, y, 14, FOOTER_MARGIN);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('PLAZO PARA EL PLAN DE MEJORAMIENTO', margin, y);
-    y += 8;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    const lplazo = doc.splitTextToSize(
-      `El área auditada cuenta con ${inf.plazosPlanMejora} días calendario para presentar el Plan de Mejoramiento.`,
-      tableW
-    );
-    doc.text(lplazo, margin, y);
-    y += lplazo.length * LH + SEC;
-
-    y = checkPage(doc, y, 14, FOOTER_MARGIN);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('OBSERVACIONES FINALES', margin, y);
-    y += 8;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    const lof = doc.splitTextToSize(inf.observacionesFinales || 'Sin observaciones finales.', tableW);
-    doc.text(lof, margin, y);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1363,7 +1198,7 @@ export async function exportarPDFInformeAuditoria(
     (doc as any).setPage(i);
     // Página 1 es la carta: pie sin info de sede (ya pintado arriba),
     // solo actualizamos número. Páginas 2+ tienen encabezado institucional.
-    if (tipo === 'preliminar' && i === 1) {
+    if ((tipo === 'preliminar' || tipo === 'final') && i === 1) {
       // ya tiene el pie, solo asegurar número de página correcto
       dibujarPieInstitucional(doc as any, i, false);
     } else {
@@ -1376,9 +1211,9 @@ export async function exportarPDFInformeAuditoria(
   }
 
   // Guardar
-  const filename =
-    tipo === 'preliminar'
-      ? `Informe_Preliminar_${auditoria.codigo}.pdf`
-      : `Informe_Final_${auditoria.codigo}.pdf`;
+  let filename = '';
+  if (tipo === 'preliminar') filename = `Informe_Preliminar_${auditoria.codigo}.pdf`;
+  else if (tipo === 'ejecutivo') filename = `Informe_Ejecutivo_${auditoria.codigo}.pdf`;
+  else filename = `Informe_Final_${auditoria.codigo}.pdf`;
   doc.save(filename);
 }
