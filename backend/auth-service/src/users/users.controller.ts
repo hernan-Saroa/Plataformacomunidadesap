@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Public } from '../auth/decorators/public.decorator';
 import { CreatePersonDto } from './dto/create-person.dto';
 import { PersonResponseDto } from './dto/person-response.dto';
 import { plainToClass } from 'class-transformer';
@@ -22,7 +23,7 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  // @UseGuards(JwtAuthGuard) // Uncomment if auth is required
+  @Public()
   async findAll(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
@@ -91,7 +92,7 @@ export class UsersController {
   }
 
   @Get(':id')
-  // @UseGuards(JwtAuthGuard)
+  @Public()
   async findOne(@Param('id') id: string) {
     const user = await this.usersService.findById(id);
     const person = user.person;

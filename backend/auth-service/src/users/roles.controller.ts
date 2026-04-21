@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query } from '@nestjs/common';
 import { RolesService } from './roles.service';
+import { Public } from '../auth/decorators/public.decorator';
 import type { CreateRoleDto, UpdateRoleDto, RoleFilters, RoleStats } from './roles.service';
 
 export interface RoleResponse {
@@ -28,6 +29,7 @@ export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
   @Get()
+  @Public()
   async findAll(@Query() filters: RoleFilters): Promise<{ roles: RoleResponse[], total: number }> {
     const result = await this.rolesService.findAll(filters);
     return {
