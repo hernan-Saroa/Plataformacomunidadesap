@@ -5049,14 +5049,36 @@ function SeccionGestionYSeguimiento({
           if (liderazgoVerTodos) return true; // Líderes o planificadores ven todo
           if (!currentUser) return false;
           
-          const currentName = currentUser.nombre || currentUser.nombres || '';
-          const currentId = String(currentUser.id || currentUser.idPersona || currentUser.documento || '');
+          const currentName = currentUser.nombre || currentUser.nombres || currentUser.name || '';
+          const currentEmail = currentUser.email || currentUser.correo || '';
+          // Recopilar todos los posibles IDs del usuario actual
+          const possibleIds = [
+            currentUser.id, currentUser.idPerson, currentUser.idPersona, 
+            currentUser.documento, currentUser.sub, currentUser.userId
+          ].filter(Boolean).map(String);
 
-          const isMainResp = String(actividad.responsable?.id) === currentId || (actividad.responsable?.nombre && currentName && actividad.responsable.nombre.includes(currentName));
-          const isRespAdicional = actividad.responsables?.some(r => String(r.id) === currentId || (r.nombre && currentName && r.nombre.includes(currentName)));
-          const isApoyo = actividad.responsablesApoyo?.some(r => String(r.id) === currentId || (r.nombre && currentName && r.nombre.includes(currentName)));
+          // Función helper para comparar identidad
+          const matchesUser = (r: any) => {
+            if (!r) return false;
+            // Comparar por ID
+            if (r.id && possibleIds.includes(String(r.id))) return true;
+            // Comparar por email
+            if (r.email && currentEmail && r.email.toLowerCase() === currentEmail.toLowerCase()) return true;
+            // Comparar por nombre (parcial)
+            if (r.nombre && currentName && (
+              r.nombre.toLowerCase().includes(currentName.toLowerCase()) || 
+              currentName.toLowerCase().includes(r.nombre.toLowerCase())
+            )) return true;
+            return false;
+          };
 
-          return isMainResp || isRespAdicional || isApoyo;
+          const isMainResp = matchesUser(actividad.responsable);
+          const isRespAdicional = actividad.responsables?.some(matchesUser);
+          const isApoyo = actividad.responsablesApoyo?.some(matchesUser);
+          // También verificar si el usuario es responsable del ROL (hereda visibilidad)
+          const isRolResp = (rol as any).responsables?.some(matchesUser);
+
+          return isMainResp || isRespAdicional || isApoyo || isRolResp;
         });
 
         // Si el usuario no tiene capacidad de gestión/análisis y no tiene actividades en este rol, lo ocultamos
