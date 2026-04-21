@@ -3244,8 +3244,13 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const puedeExportarPlan = puedeRealizar('plan-anual', 'export');
   const puedeSeguimiento = puedeRealizar('plan-anual', 'follow-up');
   const puedeEliminarPlan = puedeRealizar('plan-anual', 'delete');
+  const puedeVerPlan = puedeRealizar('plan-anual', 'view');
   // Permiso compuesto: editar O seguimiento para gestionar evidencias
   const puedeGestionarEvidencias = puedeEditarPlan || puedeSeguimiento;
+  // Tab Gestión: quienes pueden ver el plan O hacer seguimiento
+  const puedeVerGestion = puedeVerPlan || puedeSeguimiento || puedeEditarPlan || puedeAsignarActividades || esSuperUsuario;
+  // Tab Aprobación: solo aprobadores
+  const puedeVerAprobacion = puedeAprobarPlan || puedeActivarPlan || esSuperUsuario;
 
   // Cargar auditores desde backend al montar el componente (profesionales OCI configurados)
   useEffect(() => {
@@ -3850,8 +3855,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         {/* Tabs - Filtradas según permisos */}
         <div className="flex gap-2 border-b border-gray-200">
           {[
-            { id: 'gestion', label: 'Gestión y Seguimiento', icon: <TrendingUp className="w-4 h-4" />, visible: true },
-            { id: 'aprobar', label: 'Aprobación', icon: <FileCheck className="w-4 h-4" />, visible: true }
+            { id: 'gestion', label: 'Gestión y Seguimiento', icon: <TrendingUp className="w-4 h-4" />, visible: puedeVerGestion },
+            { id: 'aprobar', label: 'Aprobación', icon: <FileCheck className="w-4 h-4" />, visible: puedeVerAprobacion }
           ].filter(tab => tab.visible).map((tab) => (
             <button
               key={tab.id}
