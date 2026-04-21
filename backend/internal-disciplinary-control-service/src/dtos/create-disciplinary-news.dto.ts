@@ -90,6 +90,10 @@ export class CreateDisciplinaryNewsDto {
   @IsString()
   territorial: string;
 
+  @IsOptional()
+  @IsUUID()
+  radicadorId?: string;
+
   @IsString()
   dependenciaDenunciado: string;
 
@@ -128,10 +132,6 @@ export class CreateDisciplinaryNewsDto {
   @IsArray()
   @IsString({ each: true })
   conductas?: string[];
-
-  @IsOptional()
-  @IsString()
-  radicadorId?: string;
 
   @IsOptional()
   @IsArray()

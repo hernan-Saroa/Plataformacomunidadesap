@@ -89,6 +89,7 @@ type OracleRequestSyncResult = {
 @Injectable()
 export class CertificatesService {
   private readonly logger = new Logger(CertificatesService.name);
+  private readonly emailFormatRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   private readonly geoCache = new Map<string, { expiresAt: number; value: GeoLookupResult | null }>();
   private readonly geoCacheTtlMs = 1000 * 60 * 60 * 6;
   private readonly geoCacheMissTtlMs = 1000 * 60 * 15;
@@ -799,9 +800,40 @@ export class CertificatesService {
 
   private normalizeDateOnly(value?: Date | string | null): Date | null {
     if (!value) return null;
+
+    if (typeof value === 'string') {
+      const raw = value.trim();
+      if (!raw) return null;
+
+      const ymdMatch = raw.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+.*)?$/);
+      if (ymdMatch) {
+        const [, year, month, day] = ymdMatch;
+        return this.dateOnlyFromParts(Number(year), Number(month), Number(day));
+      }
+
+      const dmyMatch = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s+.*)?$/);
+      if (dmyMatch) {
+        const [, day, month, year] = dmyMatch;
+        return this.dateOnlyFromParts(Number(year), Number(month), Number(day));
+      }
+    }
+
     const date = value instanceof Date ? value : new Date(value);
     if (isNaN(date.getTime())) return null;
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
+  }
+
+  private dateOnlyFromParts(year: number, month: number, day: number): Date | null {
+    const date = new Date(year, month - 1, day, 12, 0, 0);
+    if (
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day
+    ) {
+      return null;
+    }
+
+    return date;
   }
 
   private resolveEmploymentStatusByDates(
@@ -1283,6 +1315,18 @@ export class CertificatesService {
     this.logger.log(
       `Solicitud de envío de código enviada a notifications-service para ${destinatario}`,
     );
+  }
+
+  private normalizarCorreo(email?: string | null): string {
+    return typeof email === 'string' ? email.trim() : '';
+  }
+
+  private tieneFormatoCorreoValido(email?: string | null): boolean {
+    const correoNormalizado = this.normalizarCorreo(email);
+    if (!correoNormalizado || correoNormalizado.toLowerCase() === 'n/a') {
+      return false;
+    }
+    return this.emailFormatRegex.test(correoNormalizado);
   }
 
   private buildLaborEmailHtml(
@@ -3077,6 +3121,13 @@ export class CertificatesService {
       );
     }
 
+    const emailDestino = this.normalizarCorreo(verificacion.solicitud.email);
+    if (emailDestino && !this.tieneFormatoCorreoValido(emailDestino)) {
+      throw new BadRequestException(
+        'El correo registrado no tiene un formato valido. No fue enviado el codigo de validacion.',
+      );
+    }
+
     // Generar codigo de 6 digitos
     const codigoValidacion = Math.floor(
       100000 + Math.random() * 900000,
@@ -3092,7 +3143,7 @@ export class CertificatesService {
     // Enviar email si hay configuracion SMTP
     try {
       await this.enviarCodigoPorEmail(
-        verificacion.solicitud.email,
+        emailDestino,
         codigoValidacion,
       );
     } catch (err) {
@@ -3103,12 +3154,12 @@ export class CertificatesService {
 
     return {
       mensaje: 'Codigo de validacion generado',
-      email: verificacion.solicitud.email,
+      email: emailDestino,
       // Devolver datos del empleado para mostrar en el frontend
       solicitud: {
         full_name: verificacion.solicitud.full_name,
         id_number: verificacion.solicitud.id_number,
-        email: verificacion.solicitud.email,
+        email: emailDestino,
         status: verificacion.solicitud.status,
         employment_status: employmentStatus,
         career_category: verificacion.solicitud.career_category,

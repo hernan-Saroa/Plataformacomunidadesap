@@ -13,7 +13,10 @@ import {
   BadRequestException,
   Put,
   Query,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
@@ -27,6 +30,7 @@ import { ReturnNewsDto } from '../dtos/return-news.dto';
 import { UpdateNewsKanbanDto } from '../dtos/update-news-kanban.dto';
 import { DisciplinaryNews } from '../entities/disciplinary-news.entity';
 import { DisciplinaryNewsProcess } from '../entities/disciplinary-news-process.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import * as path from 'path';
 
 interface FileData {
@@ -36,6 +40,7 @@ interface FileData {
 
 @ApiTags('Noticias Disciplinarias')
 @Controller('disciplinary-news')
+@UseGuards(JwtAuthGuard)
 export class NewsController {
   constructor(private newsService: NewsService) { }
 
@@ -57,9 +62,17 @@ export class NewsController {
   })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
   async create(
+    @Req() request: Request,
     @Body() createNewsDto: CreateDisciplinaryNewsDto,
     @UploadedFiles() files?: FileData[],
   ): Promise<DisciplinaryNews> {
+    
+    // Obtener el ID del usuario autenticado del JWT
+    const userId = (request as any).user?.userId;
+    if (!userId) {
+      throw new BadRequestException('Usuario no autenticado');
+    }
+
     // Validaciones de archivos
     if (files && files.length > 0) {
       for (const file of files) {
@@ -81,7 +94,7 @@ export class NewsController {
       }
     }
 
-    return await this.newsService.create(createNewsDto, files);
+    return await this.newsService.create(createNewsDto, files, userId);
   }
 
   /**
@@ -102,26 +115,27 @@ export class NewsController {
   }
 
   /**
-   * H3: Listar noticias del profesional autenticado
-   * Retorna las noticias asociadas a los procesos asignados al profesional
-   */
+    * H3: Listar noticias del usuario autenticado
+    * Retorna las noticias radicadas por el usuario autenticado
+    */
   @Get('my-news')
   @ApiOperation({
     summary: 'Mis Noticias',
-    description: 'Retorna las noticias asociadas a los procesos del profesional autenticado',
+    description: 'Retorna las noticias radicadas por el usuario autenticado',
   })
   @ApiResponse({
     status: 200,
-    description: 'Lista de noticias del profesional',
+    description: 'Lista de noticias del usuario',
     type: [DisciplinaryNews],
   })
   async getMyNews(
     @Query('profesionalId') profesionalId: string,
+    @Req() request: Request,
   ): Promise<DisciplinaryNews[]> {
-    if (!profesionalId) {
-      throw new BadRequestException('profesionalId es requerido');
-    }
-    return await this.newsService.findByProfessionalId(profesionalId);
+    // Obtener el ID del usuario autenticado del JWT
+    const userId = (request as any).user?.userId;
+    
+    return await this.newsService.findByRadicadorId(profesionalId || userId);
   }
 
   /**

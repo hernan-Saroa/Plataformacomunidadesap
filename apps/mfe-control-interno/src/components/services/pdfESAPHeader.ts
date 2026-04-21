@@ -309,6 +309,13 @@ export const DOCUMENTOS_PREDEFINIDOS = {
     titulo: 'INFORME DE AUDITORIA INTERNA OCI',
     proceso: 'EVALUACIÓN CONTROL Y MEJORA',
     documentoReferencia: 'Procedimiento Auditorías Internas basadas en riesgos EM-PT-004'
+  },
+  INFORME_EJECUTIVO_OCI: {
+    codigo: 'EM-FO-011',
+    version: 3,
+    fecha: '24/Oct/2025',
+    titulo: 'INFORME EJECUTIVO DE AUDITORÍA INTERNA',
+    proceso: 'EVALUACIÓN CONTROL Y MEJORA'
   }
 };
 
