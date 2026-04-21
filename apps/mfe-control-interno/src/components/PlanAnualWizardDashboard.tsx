@@ -3230,9 +3230,54 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const [currentUser, setCurrentUser] = useState<any>(null);
   useEffect(() => {
     try {
+      // Intentar múltiples fuentes de datos del usuario
       const userDataStr = localStorage.getItem('esap_user_data');
-      if (userDataStr) setCurrentUser(JSON.parse(userDataStr));
-    } catch (e) {}
+      const sesionStr = localStorage.getItem('esap-sesion-activa');
+      
+      let userData: any = null;
+      
+      if (userDataStr) {
+        userData = JSON.parse(userDataStr);
+      }
+      
+      // Si no hay esap_user_data, intentar con sesion activa
+      if (!userData && sesionStr) {
+        const sesion = JSON.parse(sesionStr);
+        userData = sesion?.user || sesion?.usuario || sesion;
+      }
+      
+      if (userData) {
+        // Normalizar campos para que el matching funcione
+        const normalized: any = { ...userData };
+        
+        // Extraer nombre completo de person si existe
+        if (userData.person?.first_name) {
+          normalized.nombre = `${userData.person.first_name} ${userData.person.last_name || ''}`.trim();
+        }
+        if (!normalized.nombre && !normalized.nombres) {
+          normalized.nombre = userData.fullName || userData.name || userData.username || '';
+        }
+        // Extraer email
+        if (!normalized.email && userData.person?.email) {
+          normalized.email = userData.person.email;
+        }
+        // Extraer IDs de person
+        if (userData.person?.id && !normalized.idPerson) {
+          normalized.idPerson = userData.person.id;
+        }
+        
+        console.log('👤 [PlanAnual] Usuario actual cargado:', {
+          nombre: normalized.nombre || normalized.nombres,
+          email: normalized.email,
+          id: normalized.id,
+          idPerson: normalized.idPerson || normalized.idPersona,
+        });
+        
+        setCurrentUser(normalized);
+      }
+    } catch (e) {
+      console.error('Error cargando usuario:', e);
+    }
   }, []);
   
   // Permisos del Plan Anual (sistema flexible basado en permisos, no roles)
