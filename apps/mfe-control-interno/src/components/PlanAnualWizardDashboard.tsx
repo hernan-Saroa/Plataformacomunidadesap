@@ -3995,11 +3995,7 @@ function SeccionGestionYSeguimiento({
           fechaLimite: t.fechaEntrega || null,
           fechaCompletada: t.fechaCompletado || null,
         }));
-        await fetch(`/api/control-interno/plan-anual-5-roles/actividades/${actividadId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tareas_seguimiento: backendTareas }),
-        });
+        await actividadesApi.update(String(actividadId), { tareas_seguimiento: backendTareas } as any);
       }
       toast.success('Tarea de seguimiento agregada');
       setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false });
@@ -4051,10 +4047,8 @@ function SeccionGestionYSeguimiento({
         responsables: (t.responsables || []).map(r => typeof r === 'string' ? { id: r, nombre: r } : r),
         fechaLimite: t.fechaEntrega || null, fechaCompletada: t.fechaCompletado || null,
       }));
-      fetch(`/api/control-interno/plan-anual-5-roles/actividades/${actividadId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tareas_seguimiento: backendTareas }),
-      }).catch(e => console.error('Error persistiendo tarea:', e));
+      actividadesApi.update(String(actividadId), { tareas_seguimiento: backendTareas } as any)
+        .catch(e => console.error('Error persistiendo tarea:', e));
     }
     toast.success(tareasActualizadas.find(t => t.id === tareaId)?.completada ? 'Tarea completada' : 'Tarea reabierta');
   };
@@ -4086,10 +4080,8 @@ function SeccionGestionYSeguimiento({
         responsables: (t.responsables || []).map(r => typeof r === 'string' ? { id: r, nombre: r } : r),
         fechaLimite: t.fechaEntrega || null, fechaCompletada: t.fechaCompletado || null,
       }));
-      fetch(`/api/control-interno/plan-anual-5-roles/actividades/${actividadId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tareas_seguimiento: backendTareas }),
-      }).catch(e => console.error('Error persistiendo comentario:', e));
+      actividadesApi.update(String(actividadId), { tareas_seguimiento: backendTareas } as any)
+        .catch(e => console.error('Error persistiendo comentario:', e));
     }
     toast.success('Comentario agregado a la tarea');
     setComentarioTareaId(null);
