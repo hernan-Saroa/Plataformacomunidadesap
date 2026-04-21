@@ -2798,6 +2798,7 @@ const ModalPreviewInforme: React.FC<{
         fortalezas: (auditoria as any).fortalezas,
         recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
         riesgosIdentificados: (auditoria as any).riesgosIdentificados,
+        procesoAuditado: (auditoria as any).procesoAuditado || (auditoria as any).proceso,
         declaracion: (auditoria as any).declaracion,
       }),
     };

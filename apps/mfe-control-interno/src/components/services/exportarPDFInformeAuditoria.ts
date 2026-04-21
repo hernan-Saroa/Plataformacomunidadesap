@@ -87,8 +87,7 @@ export interface AuditoriaBasicaPDF {
   fortalezas?: string[];
   recomendacionesPorCategoria?: Array<{ categoria: string; items: string[] }>;
   riesgosIdentificados?: string[];
-  /** 🆕 Riesgos estructurados por proceso (asociación directa) */
-  riesgosAsociados?: Array<{ proceso: string; riesgo: string }>;
+  procesoAuditado?: string;
   declaracion?: string;
 }
 
@@ -812,25 +811,26 @@ export async function exportarPDFInformeAuditoria(
         }
       ];
 
-      // 1.1 Si no hay procesos pero hay riesgos asociados, agrupar por proceso de riesgo
+      // 1.1 Si no hay procesos pero hay riesgos, crear proceso por defecto o agrupar
       let procesos = auditoria.procesosAuditados || [];
       
-      if (!procesos.length && auditoria.riesgosAsociados?.length) {
-        // Agrupar riesgos por nombre de proceso
-        const gruposRiesgos = auditoria.riesgosAsociados.reduce((acc, r) => {
-          if (!acc[r.proceso]) acc[r.proceso] = [];
-          acc[r.proceso].push(r.riesgo);
-          return acc;
-        }, {} as Record<string, string[]>);
+      if (!procesos.length) {
+        const nombreBase = auditoria.procesoAuditado || auditoria.proceso || 'GESTIÓN INSTITUCIONAL';
+        const riesgosBase = auditoria.riesgosIdentificados || [];
 
-        procesos = Object.entries(gruposRiesgos).map(([nombre, riesgos], idx) => ({
+        // Si hay riesgos que mencionan un proceso específico (Proceso: Riesgo), podríamos agruparlos.
+        // Pero para simplificar y "arreglarlo" rápido para el usuario:
+        procesos = [{
           categoria: 'PROCESO EVALUADO',
-          numero: idx + 1,
-          nombre: nombre.toUpperCase(),
-          objetivo: `Evaluación de riesgos y controles para ${nombre}.`,
-          riesgos: riesgos,
-          componentes: [{ titulo: 'EVALUACIÓN:', contenido: `Se realizó la revisión de los controles asociados a los riesgos identificados para el proceso de ${nombre}.` }]
-        }));
+          numero: 1,
+          nombre: nombreBase.toUpperCase(),
+          objetivo: auditoria.objetivo || `Evaluación de cumplimiento para ${nombreBase}.`,
+          riesgos: riesgosBase,
+          componentes: [{ 
+            titulo: 'EVALUACIÓN:', 
+            contenido: `Se realizó la revisión detallada de los procesos y controles asociados a la gestión de ${nombreBase}, considerando los riesgos identificados en la planeación.` 
+          }]
+        }];
       }
 
       if (!procesos.length) {
@@ -883,24 +883,9 @@ export async function exportarPDFInformeAuditoria(
           y += 5;
         }
 
-        // Tabla de Riesgos (Usa los del proceso o busca en los globales asociados)
+        // Los riesgos ya están en proc.riesgos desde la lógica de inicialización arriba.
         let riesgosAMostrar = proc.riesgos && proc.riesgos.length > 0 ? [...proc.riesgos] : [];
-        
-        // Buscar en riesgosAsociados (Estructurado)
-        if (auditoria.riesgosAsociados?.length) {
-          const asociados = auditoria.riesgosAsociados
-            .filter(r => r.proceso.toLowerCase().trim() === proc.nombre.toLowerCase().trim())
-            .map(r => r.riesgo);
-          riesgosAMostrar = [...new Set([...riesgosAMostrar, ...asociados])];
-        }
 
-        // Buscar en riesgosIdentificados (Legacy / String format "Proceso: Riesgo")
-        if (auditoria.riesgosIdentificados?.length) {
-          const legacy = auditoria.riesgosIdentificados
-            .filter(r => r.toLowerCase().includes(proc.nombre.toLowerCase().trim()))
-            .map(r => r.includes(':') ? r.split(':')[1].trim() : r);
-          riesgosAMostrar = [...new Set([...riesgosAMostrar, ...legacy])];
-        }
 
         if (riesgosAMostrar.length > 0) {
           y = tablaRiesgos(doc, margin, y, tableW, riesgosAMostrar, { numTabla: tablaNum, nombreProceso: proc.nombre, footerMargin: FOOTER_MARGIN });

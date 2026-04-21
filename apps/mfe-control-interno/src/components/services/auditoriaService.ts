@@ -56,7 +56,6 @@ export interface AuditoriaBackendDTO {
   criteriosAuditoria?: string[];
   normatividadAplicable?: string[];
   riesgosIdentificados?: string[];
-  riesgosAsociados?: Array<{ id: string; proceso: string; riesgo: string }>;
   controlesAplicar?: string[];
   equipoAuditores?: string[];
   programaAnualMetadata?: any;
@@ -102,7 +101,6 @@ export interface AuditoriaFormData {
   // Riesgos
   nivelRiesgo?: string;
   riesgosIdentificados?: string[];
-  riesgosAsociados?: Array<{ id: string; proceso: string; riesgo: string }>;
   controlesAplicar?: string[];
   
   // Recursos
@@ -193,7 +191,6 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     criteriosAuditoria: form.criteriosAuditoria,
     normatividadAplicable: form.normatividadAplicable,
     riesgosIdentificados: form.riesgosIdentificados,
-    riesgosAsociados: form.riesgosAsociados,
     controlesAplicar: form.controlesAplicar,
     equipoAuditores: form.equipoAuditores,
     programaAnualMetadata: form.vinculadaPlanAnual ? {
